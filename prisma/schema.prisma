@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum Role {
+  PRELEVEUR
+  ADMIN
+}
+
+enum SampleType {
+  ALIMENTAIRE
+  EAU
+  AMBIANCE
+}
+
+enum SampleStatus {
+  PRELEVE
+  RECU
+  EN_ANALYSE
+  RESULTATS_SAISIS
+  VALIDE
+  RAPPORT_ENVOYE
+}
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  name      String
+  email     String?
+  password  String
+  role      Role
+  samples   Sample[]
+  createdAt DateTime @default(now())
+}
+
+model Client {
+  id      String   @id @default(cuid())
+  name    String
+  contact String?
+  email   String?
+  phone   String?
+  samples Sample[]
+}
+
+model AnalysisParameter {
+  id       String            @id @default(cuid())
+  name     String
+  category SampleType
+  samples  SampleParameter[]
+}
+
+model Sample {
+  id         String            @id @default(cuid())
+  code       String            @unique
+  clientId   String
+  client     Client            @relation(fields: [clientId], references: [id])
+  userId     String
+  user       User              @relation(fields: [userId], references: [id])
+  lieu       String
+  type       SampleType
+  notes      String?           @db.Text
+  status     SampleStatus      @default(PRELEVE)
+  sampledAt  DateTime          @default(now())
+  createdAt  DateTime          @default(now())
+  parameters SampleParameter[]
+}
+
+model SampleParameter {
+  sampleId    String
+  parameterId String
+  sample      Sample            @relation(fields: [sampleId], references: [id], onDelete: Cascade)
+  parameter   AnalysisParameter @relation(fields: [parameterId], references: [id])
+
+  @@id([sampleId, parameterId])
+}

@@ -1,26 +1,144 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f1f5f9;
+  --foreground: #0f172a;
+  --brand-navy: #1a3a5c;
+  --brand-navy-dark: #0f2844;
+  --brand-navy-light: #e8eef4;
+  --brand-accent: #2d6a9f;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-brand: #1a3a5c;
+  --color-brand-dark: #0f2844;
+  --color-brand-light: #e8eef4;
+  --color-brand-accent: #2d6a9f;
+  --font-sans: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* App shell background */
+.app-bg {
+  background-color: #f1f5f9;
+  background-image:
+    radial-gradient(ellipse 80% 60% at 0% 0%, rgba(26, 58, 92, 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 100% 100%, rgba(45, 106, 159, 0.05) 0%, transparent 55%),
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.8) 0%, transparent 50%);
+}
+
+/* Page header gradient banner */
+.page-header {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.25rem;
+  background: linear-gradient(135deg, #1a3a5c 0%, #234b73 45%, #2d6a9f 100%);
+  padding: 1.5rem 1.75rem;
+  box-shadow:
+    0 4px 6px -1px rgba(26, 58, 92, 0.12),
+    0 10px 24px -4px rgba(26, 58, 92, 0.18);
+}
+
+.page-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 85% 15%, rgba(255, 255, 255, 0.12) 0%, transparent 40%),
+    radial-gradient(circle at 10% 90%, rgba(255, 255, 255, 0.06) 0%, transparent 35%);
+  pointer-events: none;
+}
+
+.page-header > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Form inputs — vertical padding only; use Tailwind pl-/pr-/px- for horizontal */
+.input-field {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  padding-block: 0.875rem;
+  font-size: 0.875rem;
+  color: #1e293b;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.input-field:focus {
+  border-color: rgba(26, 58, 92, 0.4);
+  box-shadow: 0 0 0 3px rgba(26, 58, 92, 0.1);
+}
+
+.input-field:hover:not(:focus) {
+  border-color: #cbd5e1;
+}
+
+/* Section title inside cards */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.section-title svg {
+  color: var(--brand-navy);
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media (max-width: 639px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #print-label,
+  #print-label * {
+    visibility: visible;
+  }
+
+  #print-label {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
 }
