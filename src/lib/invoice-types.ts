@@ -16,9 +16,12 @@ export type InvoiceClient = {
   ice: string | null;
 };
 
+export type InvoiceStatus = "EN_ATTENTE" | "PAYEE";
+
 export type Invoice = {
   id: string;
   number: string;
+  status: InvoiceStatus;
   issueDate: string;
   dueDate: string | null;
   notes: string | null;

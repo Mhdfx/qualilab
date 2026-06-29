@@ -123,6 +123,7 @@ async function main() {
       number: `FAC-${year}-0001`,
       clientId: client.id,
       createdById: admin.id,
+      status: "EN_ATTENTE",
       issueDate: new Date(),
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       notes: "Paiement par virement bancaire sous 30 jours.\nMerci de rappeler le numéro de facture lors du règlement.",

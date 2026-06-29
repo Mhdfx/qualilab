@@ -27,6 +27,11 @@ enum SampleStatus {
   RAPPORT_ENVOYE
 }
 
+enum InvoiceStatus {
+  EN_ATTENTE
+  PAYEE
+}
+
 model User {
   id        String    @id @default(cuid())
   username  String    @unique
@@ -90,6 +95,7 @@ model Invoice {
   client      Client        @relation(fields: [clientId], references: [id])
   createdById String
   createdBy   User          @relation(fields: [createdById], references: [id])
+  status      InvoiceStatus @default(EN_ATTENTE)
   issueDate   DateTime      @default(now())
   dueDate     DateTime?
   notes       String?       @db.Text

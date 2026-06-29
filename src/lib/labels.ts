@@ -1,4 +1,4 @@
-import type { SampleStatus, SampleType } from "@/generated/prisma/client";
+import type { InvoiceStatus, SampleStatus, SampleType } from "@/generated/prisma/client";
 
 export const SAMPLE_TYPE_LABELS: Record<SampleType, string> = {
   ALIMENTAIRE: "Alimentaire",
@@ -27,6 +27,11 @@ export function formatDate(date: Date | string) {
     new Date(date)
   );
 }
+
+export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
+  EN_ATTENTE: "En attente",
+  PAYEE: "Payée",
+};
 
 export const CURRENCY = "DH";
 

@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `invoice` ADD COLUMN `status` ENUM('EN_ATTENTE', 'PAYEE') NOT NULL DEFAULT 'EN_ATTENTE';

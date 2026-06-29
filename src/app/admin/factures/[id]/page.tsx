@@ -24,6 +24,7 @@ export default async function FactureDetailPage({
   const serialized: Invoice = {
     id: invoice.id,
     number: invoice.number,
+    status: invoice.status,
     issueDate: invoice.issueDate.toISOString(),
     dueDate: invoice.dueDate ? invoice.dueDate.toISOString() : null,
     notes: invoice.notes,

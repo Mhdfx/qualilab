@@ -35,13 +35,16 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { clientId, dueDate, notes, taxRate, items } = body as {
+    const { clientId, dueDate, notes, taxRate, status, items } = body as {
       clientId?: string;
       dueDate?: string;
       notes?: string;
       taxRate?: number | string;
+      status?: string;
       items?: IncomingItem[];
     };
+
+    const invoiceStatus = status === "PAYEE" ? "PAYEE" : "EN_ATTENTE";
 
     if (!clientId) {
       return NextResponse.json(
@@ -92,6 +95,7 @@ export async function POST(request: Request) {
         number,
         clientId,
         createdById: session.id,
+        status: invoiceStatus,
         dueDate: dueDate ? new Date(dueDate) : null,
         notes: notes?.trim() || null,
         taxRate: rate,

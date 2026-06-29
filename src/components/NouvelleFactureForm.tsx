@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Building2,
   CalendarClock,
+  BadgeCheck,
   Plus,
   Trash2,
   Percent,
@@ -48,6 +49,7 @@ export function NouvelleFactureForm() {
   const [clientId, setClientId] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [taxRate, setTaxRate] = useState("20");
+  const [status, setStatus] = useState<"EN_ATTENTE" | "PAYEE">("EN_ATTENTE");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<LineItem[]>(() => [newLine()]);
   const [submitting, setSubmitting] = useState(false);
@@ -112,6 +114,7 @@ export function NouvelleFactureForm() {
           clientId,
           dueDate: dueDate || undefined,
           notes,
+          status,
           taxRate: Number(taxRate) || 0,
           items: validItems.map((item) => ({
             description: item.description,
@@ -154,7 +157,7 @@ export function NouvelleFactureForm() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="p-5 sm:p-6">
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
             <div>
               <label className="section-title mb-2">
                 <Building2 className="h-4 w-4" />
@@ -186,6 +189,21 @@ export function NouvelleFactureForm() {
                 onChange={(e) => setDueDate(e.target.value)}
                 className="input-field px-4"
               />
+            </div>
+
+            <div>
+              <label className="section-title mb-2">
+                <BadgeCheck className="h-4 w-4" />
+                Statut
+              </label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as "EN_ATTENTE" | "PAYEE")}
+                className="input-field px-4"
+              >
+                <option value="EN_ATTENTE">En attente</option>
+                <option value="PAYEE">Payée</option>
+              </select>
             </div>
           </div>
         </Card>
