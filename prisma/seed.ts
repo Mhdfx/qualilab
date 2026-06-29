@@ -169,6 +169,31 @@ async function main() {
       items: { create: invoiceItemsWithTotals },
     },
   });
+
+  const invoice2Items = [{ description: "Salmonelles", quantity: 1, unitPrice: 450 }];
+  const invoice2ItemsWithTotals = invoice2Items.map((item) => ({
+    ...item,
+    lineTotal: Math.round(item.quantity * item.unitPrice * 100) / 100,
+  }));
+  const subtotal2 =
+    Math.round(invoice2ItemsWithTotals.reduce((s, i) => s + i.lineTotal, 0) * 100) / 100;
+  const taxAmount2 = Math.round(subtotal2 * (taxRate / 100) * 100) / 100;
+  const total2 = Math.round((subtotal2 + taxAmount2) * 100) / 100;
+
+  await prisma.invoice.create({
+    data: {
+      number: `FAC-${year}-0002`,
+      clientId: client.id,
+      createdById: admin.id,
+      status: "EN_ATTENTE",
+      issueDate: new Date(),
+      taxRate,
+      subtotal: subtotal2,
+      taxAmount: taxAmount2,
+      total: total2,
+      items: { create: invoice2ItemsWithTotals },
+    },
+  });
 }
 
 main()
