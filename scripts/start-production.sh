@@ -12,4 +12,6 @@ fi
 
 : "${PORT:=3000}"
 
+bash scripts/wait-for-db.sh
+
 exec node ./node_modules/next/dist/bin/next start --hostname 0.0.0.0 --port "$PORT"
