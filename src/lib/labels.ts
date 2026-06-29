@@ -27,3 +27,13 @@ export function formatDate(date: Date | string) {
     new Date(date)
   );
 }
+
+export const CURRENCY = "DH";
+
+export function formatCurrency(amount: number) {
+  const value = new Intl.NumberFormat("fr-FR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(amount) ? amount : 0);
+  return `${value} ${CURRENCY}`;
+}

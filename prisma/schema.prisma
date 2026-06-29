@@ -28,23 +28,27 @@ enum SampleStatus {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  username  String   @unique
+  id        String    @id @default(cuid())
+  username  String    @unique
   name      String
   email     String?
   password  String
   role      Role
   samples   Sample[]
-  createdAt DateTime @default(now())
+  invoices  Invoice[]
+  createdAt DateTime  @default(now())
 }
 
 model Client {
-  id      String   @id @default(cuid())
-  name    String
-  contact String?
-  email   String?
-  phone   String?
-  samples Sample[]
+  id       String    @id @default(cuid())
+  name     String
+  contact  String?
+  email    String?
+  phone    String?
+  address  String?
+  ice      String?
+  samples  Sample[]
+  invoices Invoice[]
 }
 
 model AnalysisParameter {
@@ -77,4 +81,32 @@ model SampleParameter {
   parameter   AnalysisParameter @relation(fields: [parameterId], references: [id])
 
   @@id([sampleId, parameterId])
+}
+
+model Invoice {
+  id          String        @id @default(cuid())
+  number      String        @unique
+  clientId    String
+  client      Client        @relation(fields: [clientId], references: [id])
+  createdById String
+  createdBy   User          @relation(fields: [createdById], references: [id])
+  issueDate   DateTime      @default(now())
+  dueDate     DateTime?
+  notes       String?       @db.Text
+  taxRate     Float         @default(20)
+  subtotal    Float         @default(0)
+  taxAmount   Float         @default(0)
+  total       Float         @default(0)
+  items       InvoiceItem[]
+  createdAt   DateTime      @default(now())
+}
+
+model InvoiceItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Float   @default(1)
+  unitPrice   Float   @default(0)
+  lineTotal   Float   @default(0)
 }

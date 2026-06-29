@@ -131,14 +131,25 @@ button {
   }
 
   #print-label,
-  #print-label * {
+  #print-label *,
+  .print-area,
+  .print-area * {
     visibility: visible;
   }
 
-  #print-label {
+  #print-label,
+  .print-area {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  @page {
+    margin: 14mm;
   }
 }

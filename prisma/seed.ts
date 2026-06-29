@@ -28,6 +28,8 @@ const parameters = [
 async function main() {
   const passwordHash = await bcrypt.hash("password", 10);
 
+  await prisma.invoiceItem.deleteMany();
+  await prisma.invoice.deleteMany();
   await prisma.sampleParameter.deleteMany();
   await prisma.sample.deleteMany();
   await prisma.user.deleteMany();
@@ -41,7 +43,7 @@ async function main() {
     },
   });
 
-  await prisma.user.create({
+  const admin = await prisma.user.create({
     data: {
       username: "admin",
       name: "Sara Mansouri",
@@ -51,17 +53,21 @@ async function main() {
   });
 
   const clientsData = [
-    { name: "Restaurant Le Palmier", contact: "Ahmed B.", email: "contact@lepalmier.ma", phone: "06 12 34 56 78" },
-    { name: "Station d'eau Atlas", contact: "Fatima Z.", email: "labo@atlas-eau.ma", phone: "05 22 11 22 33" },
-    { name: "Usine AgroMaroc", contact: "Youssef K.", email: "qualite@agromaroc.ma", phone: "05 37 44 55 66" },
-    { name: "Hôtel Riviera", contact: "Nadia R.", email: "hygiene@riviera.ma", phone: "05 24 88 99 00" },
-    { name: "Boulangerie du Centre", contact: "Omar T.", email: "boulangerie@centre.ma", phone: "06 98 76 54 32" },
+    { name: "Restaurant Le Palmier", contact: "Ahmed B.", email: "contact@lepalmier.ma", phone: "06 12 34 56 78", address: "12 Rue des Oliviers, Casablanca", ice: "001234567000045" },
+    { name: "Station d'eau Atlas", contact: "Fatima Z.", email: "labo@atlas-eau.ma", phone: "05 22 11 22 33", address: "Zone Industrielle Sud, Marrakech", ice: "001234567000046" },
+    { name: "Usine AgroMaroc", contact: "Youssef K.", email: "qualite@agromaroc.ma", phone: "05 37 44 55 66", address: "Lot 45, Quartier Industriel, Rabat", ice: "001234567000047" },
+    { name: "Hôtel Riviera", contact: "Nadia R.", email: "hygiene@riviera.ma", phone: "05 24 88 99 00", address: "Avenue de la Corniche, Agadir", ice: "001234567000048" },
+    { name: "Boulangerie du Centre", contact: "Omar T.", email: "boulangerie@centre.ma", phone: "06 98 76 54 32", address: "8 Place du Marché, Fès", ice: "001234567000049" },
   ];
 
   const clients = [];
   for (const clientData of clientsData) {
     const existing = await prisma.client.findFirst({ where: { name: clientData.name } });
-    clients.push(existing ?? (await prisma.client.create({ data: clientData })));
+    clients.push(
+      existing
+        ? await prisma.client.update({ where: { id: existing.id }, data: clientData })
+        : await prisma.client.create({ data: clientData })
+    );
   }
 
   for (const param of parameters) {
@@ -94,6 +100,38 @@ async function main() {
 
   await prisma.sampleParameter.createMany({
     data: params.map((p) => ({ sampleId: sample.id, parameterId: p.id })),
+  });
+
+  const invoiceItems = [
+    { description: "Analyse microbiologique — Salmonelles", quantity: 1, unitPrice: 450 },
+    { description: "Analyse microbiologique — Listeria monocytogenes", quantity: 1, unitPrice: 480 },
+    { description: "Recherche E. coli & coliformes", quantity: 2, unitPrice: 320 },
+    { description: "Prélèvement sur site & transport", quantity: 1, unitPrice: 250 },
+  ];
+  const invoiceItemsWithTotals = invoiceItems.map((item) => ({
+    ...item,
+    lineTotal: Math.round(item.quantity * item.unitPrice * 100) / 100,
+  }));
+  const subtotal =
+    Math.round(invoiceItemsWithTotals.reduce((s, i) => s + i.lineTotal, 0) * 100) / 100;
+  const taxRate = 20;
+  const taxAmount = Math.round(subtotal * (taxRate / 100) * 100) / 100;
+  const total = Math.round((subtotal + taxAmount) * 100) / 100;
+
+  await prisma.invoice.create({
+    data: {
+      number: `FAC-${year}-0001`,
+      clientId: client.id,
+      createdById: admin.id,
+      issueDate: new Date(),
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      notes: "Paiement par virement bancaire sous 30 jours.\nMerci de rappeler le numéro de facture lors du règlement.",
+      taxRate,
+      subtotal,
+      taxAmount,
+      total,
+      items: { create: invoiceItemsWithTotals },
+    },
   });
 }
 

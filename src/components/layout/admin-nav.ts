@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   FlaskConical,
+  FileText,
   Users,
   Building2,
   UserCog,
@@ -15,6 +16,7 @@ export const adminNav: NavSection[] = [
     items: [
       { label: "Tableau de bord", href: "/admin", icon: LayoutDashboard },
       { label: "Prélèvements", href: "/admin", icon: FlaskConical },
+      { label: "Factures", href: "/admin/factures", icon: FileText },
     ],
   },
   {
