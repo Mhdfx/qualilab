@@ -12,6 +12,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:setup": "prisma migrate deploy && prisma db seed",
+    "db:check": "tsx scripts/check-db.ts",
     "db:studio": "prisma studio"
   },
   "prisma": {

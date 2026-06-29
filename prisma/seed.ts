@@ -1,16 +1,10 @@
 import "dotenv/config";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { getMariaDbConfig } from "../src/lib/database-url";
 import bcrypt from "bcryptjs";
 
-const adapter = new PrismaMariaDb({
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "qualilab_proto",
-  connectionLimit: 5,
-});
-
+const adapter = new PrismaMariaDb(getMariaDbConfig());
 const prisma = new PrismaClient({ adapter });
 
 const parameters = [

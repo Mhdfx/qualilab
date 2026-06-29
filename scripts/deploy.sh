@@ -19,20 +19,29 @@ fi
 echo "==> Installing dependencies"
 npm ci
 
+echo "==> Checking database connection"
+npm run db:check
+
 echo "==> Running database migrations"
 npm run db:migrate:deploy
+
+echo "==> Seeding database"
+npm run db:seed
 
 echo "==> Building application"
 npm run build
 
 echo "==> Restarting PM2"
-if pm2 describe qualilab >/dev/null 2>&1; then
-  pm2 restart qualilab
-else
-  pm2 start ecosystem.config.cjs
-fi
-
+pm2 delete qualilab 2>/dev/null || true
+pm2 start ecosystem.config.cjs
 pm2 save
+
+sleep 3
+echo "==> Health check"
+curl -sf http://127.0.0.1:3000/api/health || {
+  echo "Health check failed — see: pm2 logs qualilab --lines 50"
+  exit 1
+}
 
 echo ""
 echo "=== Deploy complete ==="
