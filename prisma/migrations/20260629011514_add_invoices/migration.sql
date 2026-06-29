@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE `client` ADD COLUMN `address` VARCHAR(191) NULL,
+ALTER TABLE `Client` ADD COLUMN `address` VARCHAR(191) NULL,
     ADD COLUMN `ice` VARCHAR(191) NULL;
 
 -- CreateTable
