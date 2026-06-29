@@ -7,22 +7,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { PrimaryLink } from "@/components/PrimaryButton";
-import { formatCurrency, formatDate, INVOICE_STATUS_LABELS } from "@/lib/labels";
+import { formatCurrency, formatDate } from "@/lib/labels";
 import type { Invoice } from "@/lib/invoice-types";
-
-function StatusPill({ status }: { status: Invoice["status"] }) {
-  const styles =
-    status === "PAYEE"
-      ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-      : "bg-amber-50 text-amber-700 ring-amber-200";
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.06em] ring-1 ${styles}`}
-    >
-      {INVOICE_STATUS_LABELS[status]}
-    </span>
-  );
-}
 
 export function FacturesList() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -135,10 +121,7 @@ export function FacturesList() {
                   </p>
                 </div>
                 <p className="font-medium text-slate-900">{inv.client.name}</p>
-                <div className="mt-2 flex items-center gap-2">
-                  <StatusPill status={inv.status} />
-                  <span className="text-sm text-slate-500">{formatDate(inv.issueDate)}</span>
-                </div>
+                <p className="mt-2 text-sm text-slate-500">{formatDate(inv.issueDate)}</p>
               </Link>
             ))}
           </div>
@@ -151,7 +134,6 @@ export function FacturesList() {
                     <th className="px-5 py-3.5 font-semibold">N° Facture</th>
                     <th className="px-5 py-3.5 font-semibold">Client</th>
                     <th className="px-5 py-3.5 font-semibold">Date</th>
-                    <th className="px-5 py-3.5 font-semibold">Statut</th>
                     <th className="px-5 py-3.5 text-right font-semibold">Total TTC</th>
                   </tr>
                 </thead>
@@ -169,9 +151,6 @@ export function FacturesList() {
                       </td>
                       <td className="px-5 py-4 font-medium text-slate-800">{inv.client.name}</td>
                       <td className="px-5 py-4 text-slate-500">{formatDate(inv.issueDate)}</td>
-                      <td className="px-5 py-4">
-                        <StatusPill status={inv.status} />
-                      </td>
                       <td className="px-5 py-4 text-right font-semibold text-slate-900">
                         {formatCurrency(inv.total)}
                       </td>

@@ -63,6 +63,14 @@ model AnalysisParameter {
   samples  SampleParameter[]
 }
 
+model LabService {
+  id        String  @id @default(cuid())
+  name      String
+  category  String
+  unitPrice Float   @default(0)
+  active    Boolean @default(true)
+}
+
 model Sample {
   id         String            @id @default(cuid())
   code       String            @unique

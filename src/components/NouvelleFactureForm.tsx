@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   Building2,
   CalendarClock,
-  BadgeCheck,
   Plus,
   Trash2,
   Percent,
@@ -18,6 +17,12 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { formatCurrency } from "@/lib/labels";
+import {
+  LAB_SERVICE_CATEGORIES,
+  LAB_SERVICE_CATEGORY_LABELS,
+  type LabServiceOption,
+} from "@/lib/lab-services";
+import { computeInvoiceTotals, computeLineAmounts } from "@/lib/invoice-math";
 
 type ClientOption = {
   id: string;
@@ -26,6 +31,7 @@ type ClientOption = {
 
 type LineItem = {
   key: string;
+  serviceId: string;
   description: string;
   quantity: string;
   unitPrice: string;
@@ -37,6 +43,7 @@ function newLine(): LineItem {
   lineCounter += 1;
   return {
     key: `line-${lineCounter}`,
+    serviceId: "",
     description: "",
     quantity: "1",
     unitPrice: "",
@@ -46,10 +53,10 @@ function newLine(): LineItem {
 export function NouvelleFactureForm() {
   const router = useRouter();
   const [clients, setClients] = useState<ClientOption[]>([]);
+  const [services, setServices] = useState<LabServiceOption[]>([]);
   const [clientId, setClientId] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [taxRate, setTaxRate] = useState("20");
-  const [status, setStatus] = useState<"EN_ATTENTE" | "PAYEE">("EN_ATTENTE");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<LineItem[]>(() => [newLine()]);
   const [submitting, setSubmitting] = useState(false);
@@ -61,26 +68,54 @@ export function NouvelleFactureForm() {
       .then((data) => {
         if (Array.isArray(data)) setClients(data);
       });
+    fetch("/api/lab-services")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setServices(data);
+      });
   }, []);
 
+  const servicesByCategory = useMemo(() => {
+    const grouped = new Map<string, LabServiceOption[]>();
+    for (const category of LAB_SERVICE_CATEGORIES) {
+      grouped.set(
+        category,
+        services.filter((s) => s.category === category)
+      );
+    }
+    return grouped;
+  }, [services]);
+
   const { subtotal, taxAmount, total } = useMemo(() => {
-    const sub = items.reduce((sum, item) => {
-      const qty = Number(item.quantity) || 0;
-      const price = Number(item.unitPrice) || 0;
-      return sum + qty * price;
-    }, 0);
     const rate = Math.max(0, Number(taxRate) || 0);
-    const tax = sub * (rate / 100);
-    return {
-      subtotal: Math.round(sub * 100) / 100,
-      taxAmount: Math.round(tax * 100) / 100,
-      total: Math.round((sub + tax) * 100) / 100,
-    };
+    const validItems = items
+      .filter((item) => item.description.trim() && Number(item.quantity) > 0)
+      .map((item) => ({
+        quantity: Number(item.quantity) || 0,
+        unitPrice: Number(item.unitPrice) || 0,
+      }));
+    return computeInvoiceTotals(validItems, rate);
   }, [items, taxRate]);
 
   function updateItem(key: string, field: keyof LineItem, value: string) {
     setItems((prev) =>
       prev.map((item) => (item.key === key ? { ...item, [field]: value } : item))
+    );
+  }
+
+  function selectService(key: string, serviceId: string) {
+    const service = services.find((s) => s.id === serviceId);
+    setItems((prev) =>
+      prev.map((item) =>
+        item.key === key
+          ? {
+              ...item,
+              serviceId,
+              description: service?.name ?? "",
+              unitPrice: service ? String(service.unitPrice) : "",
+            }
+          : item
+      )
     );
   }
 
@@ -114,7 +149,6 @@ export function NouvelleFactureForm() {
           clientId,
           dueDate: dueDate || undefined,
           notes,
-          status,
           taxRate: Number(taxRate) || 0,
           items: validItems.map((item) => ({
             description: item.description,
@@ -157,7 +191,7 @@ export function NouvelleFactureForm() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="p-5 sm:p-6">
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div>
               <label className="section-title mb-2">
                 <Building2 className="h-4 w-4" />
@@ -191,20 +225,6 @@ export function NouvelleFactureForm() {
               />
             </div>
 
-            <div>
-              <label className="section-title mb-2">
-                <BadgeCheck className="h-4 w-4" />
-                Statut
-              </label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as "EN_ATTENTE" | "PAYEE")}
-                className="input-field px-4"
-              >
-                <option value="EN_ATTENTE">En attente</option>
-                <option value="PAYEE">Payée</option>
-              </select>
-            </div>
           </div>
         </Card>
 
@@ -228,27 +248,50 @@ export function NouvelleFactureForm() {
             <div className="hidden grid-cols-[1fr_5rem_8rem_8rem_2.5rem] gap-3 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 sm:grid">
               <span>Désignation</span>
               <span className="text-center">Qté</span>
-              <span className="text-right">P.U. (DH)</span>
-              <span className="text-right">Total</span>
+              <span className="text-right">P.U. HT</span>
+              <span className="text-right">Total TTC</span>
               <span />
             </div>
 
             {items.map((item) => {
-              const lineTotal =
-                (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
+              const qty = Number(item.quantity) || 0;
+              const price = Number(item.unitPrice) || 0;
+              const rate = Math.max(0, Number(taxRate) || 0);
+              const { lineTtc } = computeLineAmounts(qty, price, rate);
               return (
                 <div
                   key={item.key}
                   className="grid grid-cols-2 gap-3 rounded-xl border border-slate-100 bg-slate-50/50 p-3 sm:grid-cols-[1fr_5rem_8rem_8rem_2.5rem] sm:items-center sm:border-0 sm:bg-transparent sm:p-0"
                 >
                   <div className="col-span-2 sm:col-span-1">
-                    <input
-                      type="text"
-                      placeholder="Ex : Analyse microbiologique — eau potable"
-                      value={item.description}
-                      onChange={(e) => updateItem(item.key, "description", e.target.value)}
+                    <select
+                      value={item.serviceId}
+                      onChange={(e) => selectService(item.key, e.target.value)}
                       className="input-field px-4 py-2.5"
-                    />
+                      required
+                    >
+                      <option value="">
+                        {services.length === 0
+                          ? "Chargement des prestations…"
+                          : "Sélectionner une prestation…"}
+                      </option>
+                      {LAB_SERVICE_CATEGORIES.map((category) => {
+                        const categoryServices = servicesByCategory.get(category) ?? [];
+                        if (categoryServices.length === 0) return null;
+                        return (
+                          <optgroup
+                            key={category}
+                            label={LAB_SERVICE_CATEGORY_LABELS[category]}
+                          >
+                            {categoryServices.map((service) => (
+                              <option key={service.id} value={service.id}>
+                                {service.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        );
+                      })}
+                    </select>
                   </div>
                   <input
                     type="number"
@@ -272,7 +315,7 @@ export function NouvelleFactureForm() {
                     className="input-field px-3 py-2.5 text-right"
                   />
                   <div className="flex items-center justify-end px-1 text-sm font-semibold tabular-nums text-slate-700">
-                    {formatCurrency(lineTotal)}
+                    {formatCurrency(lineTtc)}
                   </div>
                   <button
                     type="button"

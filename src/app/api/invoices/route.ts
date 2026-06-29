@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateInvoiceNumber } from "@/lib/invoice-number";
+import { computeInvoiceTotals } from "@/lib/invoice-math";
 
 export async function GET() {
   const session = await getSession();
@@ -77,16 +78,11 @@ export async function POST(request: Request) {
     }
 
     const rate = Math.max(0, Number(taxRate) || 0);
+    const { subtotal, taxAmount, total } = computeInvoiceTotals(cleanItems, rate);
     const itemsWithTotals = cleanItems.map((item) => ({
       ...item,
       lineTotal: Math.round(item.quantity * item.unitPrice * 100) / 100,
     }));
-    const subtotal =
-      Math.round(
-        itemsWithTotals.reduce((sum, item) => sum + item.lineTotal, 0) * 100
-      ) / 100;
-    const taxAmount = Math.round(subtotal * (rate / 100) * 100) / 100;
-    const total = Math.round((subtotal + taxAmount) * 100) / 100;
 
     const number = await generateInvoiceNumber();
 

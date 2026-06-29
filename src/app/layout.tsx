@@ -13,8 +13,8 @@ export const metadata: Metadata = {
   description:
     "Système de gestion des prélèvements et analyses — Qualilab International",
   icons: {
-    icon: "/qualilab-logo.png",
-    apple: "/qualilab-logo.png",
+    icon: "/qualilab-logo-nobg.png",
+    apple: "/qualilab-logo-nobg.png",
   },
 };
 

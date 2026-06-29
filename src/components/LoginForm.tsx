@@ -125,8 +125,8 @@ export default function LoginForm() {
           <div className="absolute bottom-16 left-12 h-0 w-0 border-l-[30px] border-r-[30px] border-b-[52px] border-l-transparent border-r-transparent border-b-white/10" />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(255,255,255,0.1)_0%,transparent_50%)]" />
 
-          <div className="relative z-10 rounded-2xl bg-white/95 p-5 shadow-xl backdrop-blur-sm">
-            <BrandLogo />
+          <div className="relative z-10">
+            <BrandLogo variant="onDark" />
           </div>
           <p className="relative z-10 mt-6 max-w-xs text-sm leading-relaxed text-white/90">
             Laboratoire d&apos;analyses agroalimentaire, eaux &amp; environnement de

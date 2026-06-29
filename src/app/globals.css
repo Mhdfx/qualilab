@@ -145,11 +145,27 @@ button {
     width: 100%;
   }
 
+  .invoice-sheet {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+    min-height: 281mm !important;
+    display: flex !important;
+    flex-direction: column !important;
+    page-break-inside: avoid;
+  }
+
+  .invoice-footer {
+    margin-top: auto !important;
+  }
+
   .no-print {
     display: none !important;
   }
 
   @page {
-    margin: 14mm;
+    size: A4 portrait;
+    margin: 8mm;
   }
 }

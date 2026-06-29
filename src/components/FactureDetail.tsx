@@ -1,37 +1,59 @@
 "use client";
 
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Download, Printer } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
-import { formatCurrency, formatDate, INVOICE_STATUS_LABELS } from "@/lib/labels";
+import { formatCurrency } from "@/lib/labels";
 import { COMPANY } from "@/lib/company";
-import { amountToFrenchWords } from "@/lib/number-to-words-fr";
+import { downloadInvoicePdf } from "@/lib/download-invoice-pdf";
+import { computeInvoiceTotals } from "@/lib/invoice-math";
 import type { Invoice } from "@/lib/invoice-types";
 
-function StatusBadge({ status }: { status: Invoice["status"] }) {
-  const styles =
-    status === "PAYEE"
-      ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-      : "bg-amber-50 text-amber-700 ring-amber-200";
-  const dot = status === "PAYEE" ? "bg-emerald-500" : "bg-amber-500";
+const INVOICE_BLUE = "#4472C4";
+const INVOICE_BLUE_LIGHT = "#DDEBF7";
 
-  return (
-    <span
-      className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] ring-1 ${styles}`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-      {INVOICE_STATUS_LABELS[status]}
-    </span>
-  );
+function formatInvoiceDate(date: Date | string) {
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(date));
 }
 
+const VAT_RATES = [20, 10, 5.5] as const;
+
 export function FactureDetail({ invoice }: { invoice: Invoice }) {
-  function handleDownload() {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  function handlePrint() {
     window.print();
   }
 
+  async function handleDownloadPdf() {
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+
+    setDownloading(true);
+    try {
+      await downloadInvoicePdf(sheet, `${invoice.number}.pdf`);
+    } catch (error) {
+      console.error("PDF generation failed:", error);
+      alert("Impossible de générer le PDF. Réessayez ou utilisez Imprimer.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  const clientNumber = invoice.client.ice ?? invoice.client.id.slice(-8).toUpperCase();
+  const { subtotal, taxAmount, total, lines: lineAmounts } = computeInvoiceTotals(
+    invoice.items,
+    invoice.taxRate
+  );
+
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-[210mm]">
       <div className="no-print mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Link
           href="/admin/factures"
@@ -43,7 +65,7 @@ export function FactureDetail({ invoice }: { invoice: Invoice }) {
         <div className="flex gap-3">
           <button
             type="button"
-            onClick={handleDownload}
+            onClick={handlePrint}
             className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98]"
           >
             <Printer className="h-4 w-4" />
@@ -51,206 +73,226 @@ export function FactureDetail({ invoice }: { invoice: Invoice }) {
           </button>
           <button
             type="button"
-            onClick={handleDownload}
-            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full bg-gradient-to-b from-[#234b73] to-[#1a3a5c] px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand/25 transition-all hover:from-[#2d6a9f] hover:to-[#1a3a5c] active:scale-[0.98]"
+            onClick={handleDownloadPdf}
+            disabled={downloading}
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full bg-gradient-to-b from-[#234b73] to-[#1a3a5c] px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand/25 transition-all hover:from-[#2d6a9f] hover:to-[#1a3a5c] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Download className="h-4 w-4" />
-            Télécharger (PDF)
+            {downloading ? "Génération…" : "Télécharger (PDF)"}
           </button>
         </div>
       </div>
 
-      <div className="print-area relative overflow-hidden rounded-2xl bg-white shadow-xl shadow-slate-300/40 ring-1 ring-slate-100">
-        {/* Subtle watermark */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden select-none"
-        >
-          <span className="-rotate-[24deg] whitespace-nowrap text-[7rem] font-semibold uppercase tracking-[0.12em] text-slate-900/[0.03]">
-            {COMPANY.name}
-          </span>
+      <div
+        ref={sheetRef}
+        className="print-area invoice-sheet flex min-h-[277mm] flex-col overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-slate-200"
+      >
+        {/* Logo + client */}
+        <div className="flex items-start justify-between gap-6 px-6 pt-6 pb-4">
+          <BrandLogo variant="invoice" className="w-[200px] sm:w-[240px]" />
+          <div className="min-w-0 text-right text-[11px] leading-relaxed text-slate-700">
+            <p className="mb-1 text-xs font-bold text-slate-900">Votre client</p>
+            <p className="font-semibold text-slate-900">{invoice.client.name}</p>
+            {invoice.client.address && <p>{invoice.client.address}</p>}
+            {invoice.client.contact && <p>{invoice.client.contact}</p>}
+            {invoice.client.phone && <p>Tél : {invoice.client.phone}</p>}
+            {invoice.client.email && <p>{invoice.client.email}</p>}
+          </div>
         </div>
 
-        <div className="relative z-10">
-          {/* Header band */}
-          <div className="flex flex-col gap-6 bg-gradient-to-br from-[#1a3a5c] via-[#234b73] to-[#2d6a9f] px-8 py-10 text-white sm:flex-row sm:items-start sm:justify-between sm:px-10">
-            <div>
-              <p className="text-3xl font-semibold tracking-tight">Facture</p>
-              <p className="mt-2 font-mono text-sm tracking-wide text-white/70">
-                {invoice.number}
-              </p>
-            </div>
-            <div className="flex flex-col gap-4 sm:items-end">
-              <StatusBadge status={invoice.status} />
-              <div className="space-y-1 text-xs sm:text-right">
-                <p className="text-white/55">
-                  Date d&apos;émission
-                  <span className="ml-2 text-sm font-semibold text-white">
-                    {formatDate(invoice.issueDate)}
-                  </span>
-                </p>
-                {invoice.dueDate && (
-                  <p className="text-white/55">
-                    Échéance
-                    <span className="ml-2 text-sm font-semibold text-white">
-                      {formatDate(invoice.dueDate)}
-                    </span>
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
+        {/* Émetteur */}
+        <div
+          className="mx-6 px-4 py-3 text-[11px] leading-relaxed text-slate-700"
+          style={{ backgroundColor: INVOICE_BLUE_LIGHT }}
+        >
+          <p className="font-bold text-slate-900">{COMPANY.name}</p>
+          <p>{COMPANY.address}</p>
+          <p>{COMPANY.city}</p>
+          <p>Tél : {COMPANY.phone}</p>
+          <p>{COMPANY.email}</p>
+        </div>
 
-          {/* Parties */}
-          <div className="grid grid-cols-1 gap-8 px-8 py-8 sm:grid-cols-2 sm:px-10">
-            <div>
-              <BrandLogo variant="full" className="mb-4" />
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                Émetteur
-              </p>
-              <p className="text-sm font-semibold text-slate-900">{COMPANY.name}</p>
-              <div className="mt-2 space-y-1 text-xs leading-relaxed text-slate-500">
-                <p>{COMPANY.address}</p>
-                <p>{COMPANY.city}</p>
-                <p>Tél&nbsp;: {COMPANY.phone}</p>
-                <p>{COMPANY.email}</p>
-                <p>ICE&nbsp;: {COMPANY.ice} · RC&nbsp;: {COMPANY.rc}</p>
-              </div>
-            </div>
-            <div className="sm:text-right">
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                Facturé à
-              </p>
-              <p className="text-sm font-semibold text-slate-900">{invoice.client.name}</p>
-              <div className="mt-2 space-y-1 text-xs leading-relaxed text-slate-500">
-                {invoice.client.contact && <p>{invoice.client.contact}</p>}
-                {invoice.client.address && <p>{invoice.client.address}</p>}
-                {invoice.client.phone && <p>Tél&nbsp;: {invoice.client.phone}</p>}
-                {invoice.client.email && <p>{invoice.client.email}</p>}
-                {invoice.client.ice && <p>ICE&nbsp;: {invoice.client.ice}</p>}
-              </div>
-            </div>
+        {/* Métadonnées facture */}
+        <div
+          className="mx-6 mt-3 grid grid-cols-2 gap-x-4 gap-y-2 px-4 py-3 text-[11px] text-white sm:grid-cols-5"
+          style={{ backgroundColor: INVOICE_BLUE }}
+        >
+          <div>
+            <p className="opacity-85">Facture N°</p>
+            <p className="font-bold">{invoice.number}</p>
           </div>
+          <div>
+            <p className="opacity-85">N° Devis</p>
+            <p className="font-bold">—</p>
+          </div>
+          <div>
+            <p className="opacity-85">N° Client</p>
+            <p className="font-bold">{clientNumber}</p>
+          </div>
+          <div>
+            <p className="opacity-85">En date du</p>
+            <p className="font-bold">{formatInvoiceDate(invoice.issueDate)}</p>
+          </div>
+          <div className="col-span-2 sm:col-span-1">
+            <p className="opacity-85">Échéance au</p>
+            <p className="font-bold">
+              {invoice.dueDate ? formatInvoiceDate(invoice.dueDate) : "—"}
+            </p>
+          </div>
+        </div>
 
-          {/* Items */}
-          <div className="px-8 sm:px-10">
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
-                <thead>
-                  <tr className="text-[11px] uppercase tracking-[0.08em] text-slate-500">
-                    <th className="rounded-l-lg bg-slate-50 px-4 py-3 font-semibold">
-                      Désignation
-                    </th>
-                    <th className="bg-slate-50 px-4 py-3 text-center font-semibold">Qté</th>
-                    <th className="bg-slate-50 px-4 py-3 text-right font-semibold">P.U. HT</th>
-                    <th className="rounded-r-lg bg-slate-50 px-4 py-3 text-right font-semibold">
-                      Total HT
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {invoice.items.map((item) => (
-                    <tr key={item.id} className="border-b border-slate-100">
-                      <td className="border-b border-slate-100 px-4 py-4 text-slate-800">
-                        {item.description}
+        {/* Lignes de prestation */}
+        <div className="mx-6 mt-3 overflow-x-auto">
+          <table className="min-w-full border-collapse text-[11px]">
+            <thead>
+              <tr className="text-white" style={{ backgroundColor: INVOICE_BLUE }}>
+                <th className="px-2 py-2 text-left font-semibold">Description</th>
+                <th className="w-14 px-2 py-2 text-center font-semibold">Unité</th>
+                <th className="w-12 px-2 py-2 text-center font-semibold">Qté</th>
+                <th className="w-24 px-2 py-2 text-right font-semibold">P.U. HT</th>
+                <th className="w-14 px-2 py-2 text-center font-semibold">TVA</th>
+                <th className="w-24 px-2 py-2 text-right font-semibold">Montant TVA</th>
+                <th className="w-24 px-2 py-2 text-right font-semibold">Total HT</th>
+                <th className="w-24 px-2 py-2 text-right font-semibold">Total TTC</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoice.items.map((item, index) => {
+                const amounts = lineAmounts[index];
+                return (
+                <tr
+                  key={item.id}
+                  className={index % 2 === 0 ? "bg-white" : "bg-slate-50/80"}
+                >
+                  <td className="border-b border-slate-200 px-2 py-1.5 text-slate-800">
+                    {item.description}
+                  </td>
+                  <td className="border-b border-slate-200 px-2 py-1.5 text-center text-slate-600">
+                    u.
+                  </td>
+                  <td className="border-b border-slate-200 px-2 py-1.5 text-center tabular-nums text-slate-700">
+                    {item.quantity}
+                  </td>
+                  <td className="border-b border-slate-200 px-2 py-1.5 text-right tabular-nums text-slate-700">
+                    {formatCurrency(item.unitPrice)}
+                  </td>
+                  <td className="border-b border-slate-200 px-2 py-1.5 text-center tabular-nums text-slate-600">
+                    {invoice.taxRate}&nbsp;%
+                  </td>
+                  <td className="border-b border-slate-200 px-2 py-1.5 text-right tabular-nums text-slate-700">
+                    {formatCurrency(amounts.lineVat)}
+                  </td>
+                  <td className="border-b border-slate-200 px-2 py-1.5 text-right tabular-nums font-medium text-slate-800">
+                    {formatCurrency(amounts.lineHt)}
+                  </td>
+                  <td className="border-b border-slate-200 px-2 py-1.5 text-right tabular-nums font-semibold text-slate-900">
+                    {formatCurrency(amounts.lineTtc)}
+                  </td>
+                </tr>
+              );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* TVA + totaux */}
+        <div className="mx-6 mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse text-[11px]">
+              <thead>
+                <tr className="text-white" style={{ backgroundColor: INVOICE_BLUE }}>
+                  <th className="px-2 py-1.5 text-right font-semibold">Total HT</th>
+                  <th className="px-2 py-1.5 text-center font-semibold">Taux TVA</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">Total TVA</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">Total TTC</th>
+                </tr>
+              </thead>
+              <tbody>
+                {VAT_RATES.map((rate) => {
+                  const active = Math.abs(rate - invoice.taxRate) < 0.01;
+                  const rowHt = active ? subtotal : 0;
+                  const rowVat = active ? taxAmount : 0;
+                  const rowTtc = active ? total : 0;
+                  return (
+                    <tr key={rate} className="border-b border-slate-200">
+                      <td className="px-2 py-1.5 text-right tabular-nums text-slate-700">
+                        {active ? formatCurrency(rowHt) : "—"}
                       </td>
-                      <td className="border-b border-slate-100 px-4 py-4 text-center tabular-nums text-slate-500">
-                        {item.quantity}
+                      <td className="px-2 py-1.5 text-center tabular-nums text-slate-600">
+                        {rate}&nbsp;%
                       </td>
-                      <td className="border-b border-slate-100 px-4 py-4 text-right tabular-nums text-slate-500">
-                        {formatCurrency(item.unitPrice)}
+                      <td className="px-2 py-1.5 text-right tabular-nums text-slate-700">
+                        {active ? formatCurrency(rowVat) : "—"}
                       </td>
-                      <td className="border-b border-slate-100 px-4 py-4 text-right font-semibold tabular-nums text-slate-800">
-                        {formatCurrency(item.lineTotal)}
+                      <td className="px-2 py-1.5 text-right tabular-nums text-slate-700">
+                        {active ? formatCurrency(rowTtc) : "—"}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Totals */}
-            <div className="mt-8 flex justify-end">
-              <div className="relative w-full max-w-xs pl-5">
-                <span className="absolute left-0 top-1 h-[calc(100%-0.5rem)] w-[3px] rounded-full bg-brand" />
-                <div className="flex items-center justify-between py-1.5 text-sm">
-                  <span className="text-slate-500">Sous-total HT</span>
-                  <span className="tabular-nums text-slate-800">
-                    {formatCurrency(invoice.subtotal)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between py-1.5 text-sm">
-                  <span className="text-slate-500">TVA ({invoice.taxRate}%)</span>
-                  <span className="tabular-nums text-slate-800">
-                    {formatCurrency(invoice.taxAmount)}
-                  </span>
-                </div>
-                <div className="mt-2 flex items-baseline justify-between rounded-lg bg-brand-light/60 px-4 py-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-brand">
-                    Total TTC
-                  </span>
-                  <span className="text-xl font-semibold tabular-nums text-brand">
-                    {formatCurrency(invoice.total)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Amount in words */}
-            <div className="mt-8 rounded-lg border border-slate-200 px-4 py-3">
-              <p className="text-sm leading-relaxed text-slate-600">
-                Arrêtée la présente facture à la somme de{" "}
-                <span className="font-semibold text-slate-800">
-                  {amountToFrenchWords(invoice.total)}
-                </span>
-                .
-              </p>
-            </div>
-
-            {/* Payment terms + RIB */}
-            <div className="mt-8 grid grid-cols-1 gap-6 rounded-xl bg-slate-50/80 px-6 py-6 sm:grid-cols-2">
-              <div>
-                <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                  Conditions de paiement
-                </p>
-                <div className="space-y-1 text-xs leading-relaxed text-slate-600">
-                  <p>
-                    {invoice.dueDate
-                      ? `Règlement avant le ${formatDate(invoice.dueDate)}.`
-                      : "Règlement à réception de la facture."}
-                  </p>
-                  {invoice.notes && (
-                    <p className="whitespace-pre-line text-slate-500">{invoice.notes}</p>
-                  )}
-                </div>
-              </div>
-              <div className="sm:border-l sm:border-slate-200 sm:pl-6">
-                <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                  Coordonnées bancaires
-                </p>
-                <div className="space-y-1 text-xs leading-relaxed text-slate-600">
-                  <p>{COMPANY.bank}</p>
-                  <p>
-                    RIB&nbsp;: <span className="tabular-nums">{COMPANY.rib}</span>
-                  </p>
-                  <p>
-                    IBAN&nbsp;: <span className="tabular-nums">{COMPANY.iban}</span>
-                  </p>
-                  <p>SWIFT&nbsp;: {COMPANY.swift}</p>
-                </div>
-              </div>
-            </div>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
 
-          {/* Footer */}
-          <div className="mt-8 border-t border-slate-100 px-8 py-8 text-center sm:px-10">
-            <p className="text-sm text-slate-500">
-              Merci de votre confiance — {COMPANY.name}
+          <div
+            className="min-w-[220px] px-4 py-3 text-[11px] text-white sm:w-[240px]"
+            style={{ backgroundColor: INVOICE_BLUE }}
+          >
+            <table className="w-full border-collapse">
+              <tbody>
+                <tr>
+                  <td className="py-0.5 opacity-90">Total HT</td>
+                  <td className="py-0.5 text-right font-semibold tabular-nums">
+                    {formatCurrency(subtotal)}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-0.5 opacity-90">Total TVA</td>
+                  <td className="py-0.5 text-right font-semibold tabular-nums">
+                    {formatCurrency(taxAmount)}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-0.5 opacity-90">Total TTC</td>
+                  <td className="py-0.5 text-right font-semibold tabular-nums">
+                    {formatCurrency(total)}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="border-t border-white/30 pt-2 font-bold">Net à payer</td>
+                  <td className="border-t border-white/30 pt-2 text-right text-sm font-bold tabular-nums">
+                    {formatCurrency(total)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Pied de page — ancré en bas de la page */}
+        <div className="invoice-footer mx-6 mt-auto grid grid-cols-1 gap-4 border-t border-slate-200 px-0 py-4 pb-6 text-[11px] leading-relaxed text-slate-600 sm:grid-cols-2">
+          <div>
+            <p className="mb-1 font-bold text-slate-800">Conditions de paiement</p>
+            <p>
+              {invoice.dueDate
+                ? `Règlement avant le ${formatInvoiceDate(invoice.dueDate)}.`
+                : "Règlement à réception de la facture."}
             </p>
-            <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
-              {COMPANY.address}, {COMPANY.city} · {COMPANY.phone} · {COMPANY.email}
-              <br />
-              RC&nbsp;: {COMPANY.rc} · ICE&nbsp;: {COMPANY.ice}
+            {invoice.notes && (
+              <p className="mt-1 whitespace-pre-line text-slate-500">{invoice.notes}</p>
+            )}
+          </div>
+          <div>
+            <p className="mb-1 font-bold text-slate-800">Coordonnées bancaires</p>
+            <p>{COMPANY.bank}</p>
+            <p>
+              IBAN : <span className="tabular-nums">{COMPANY.iban}</span>
+            </p>
+            <p>
+              BIC : <span className="tabular-nums">{COMPANY.swift}</span>
+            </p>
+            <p>
+              RIB : <span className="tabular-nums">{COMPANY.rib}</span>
             </p>
           </div>
         </div>

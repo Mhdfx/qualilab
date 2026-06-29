@@ -25,6 +25,32 @@ const parameters = [
   { name: "Salmonelles surfaces", category: "AMBIANCE" as const },
 ];
 
+const labServices = [
+  { name: "Salmonelles", category: "ALIMENTAIRE", unitPrice: 450 },
+  { name: "Listeria monocytogenes", category: "ALIMENTAIRE", unitPrice: 480 },
+  { name: "E. coli", category: "ALIMENTAIRE", unitPrice: 320 },
+  { name: "Coliformes totaux", category: "ALIMENTAIRE", unitPrice: 280 },
+  { name: "Levures & moisissures", category: "ALIMENTAIRE", unitPrice: 260 },
+  { name: "Coliformes totaux", category: "EAU", unitPrice: 280 },
+  { name: "E. coli", category: "EAU", unitPrice: 320 },
+  { name: "Entérocoques", category: "EAU", unitPrice: 340 },
+  { name: "Pseudomonas aeruginosa", category: "EAU", unitPrice: 380 },
+  { name: "Flore totale", category: "EAU", unitPrice: 220 },
+  { name: "Légionelles", category: "EAU", unitPrice: 420 },
+  { name: "Flore totale surfaces", category: "AMBIANCE", unitPrice: 240 },
+  { name: "Coliformes", category: "AMBIANCE", unitPrice: 260 },
+  { name: "Staphylocoques", category: "AMBIANCE", unitPrice: 270 },
+  { name: "Levures", category: "AMBIANCE", unitPrice: 230 },
+  { name: "Salmonelles surfaces", category: "AMBIANCE", unitPrice: 450 },
+  { name: "Prélèvement sur site & transport", category: "PRESTATION", unitPrice: 250 },
+  { name: "Rapport d'analyse certifié", category: "PRESTATION", unitPrice: 150 },
+  { name: "Intervention urgente (< 24 h)", category: "PRESTATION", unitPrice: 350 },
+];
+
+function serviceId(category: string, name: string) {
+  return `${category}-${name}`.replace(/\s+/g, "-").toLowerCase();
+}
+
 async function main() {
   const passwordHash = await bcrypt.hash("password", 10);
 
@@ -78,6 +104,15 @@ async function main() {
     });
   }
 
+  for (const service of labServices) {
+    const id = serviceId(service.category, service.name);
+    await prisma.labService.upsert({
+      where: { id },
+      update: service,
+      create: { id, ...service },
+    });
+  }
+
   const year = new Date().getFullYear();
   const client = clients[0];
   const params = await prisma.analysisParameter.findMany({
@@ -103,9 +138,9 @@ async function main() {
   });
 
   const invoiceItems = [
-    { description: "Analyse microbiologique — Salmonelles", quantity: 1, unitPrice: 450 },
-    { description: "Analyse microbiologique — Listeria monocytogenes", quantity: 1, unitPrice: 480 },
-    { description: "Recherche E. coli & coliformes", quantity: 2, unitPrice: 320 },
+    { description: "Salmonelles", quantity: 1, unitPrice: 450 },
+    { description: "Listeria monocytogenes", quantity: 1, unitPrice: 480 },
+    { description: "E. coli", quantity: 2, unitPrice: 320 },
     { description: "Prélèvement sur site & transport", quantity: 1, unitPrice: 250 },
   ];
   const invoiceItemsWithTotals = invoiceItems.map((item) => ({
