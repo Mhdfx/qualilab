@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Qualilab International — LIMS
 
-## Getting Started
+Fullstack web app for a Moroccan analysis laboratory (agri-food, water,
+workplace hygiene). It digitizes the full sample lifecycle — field collection →
+lab reception → analysis → quality validation → official PDF report → automatic
+email to client → invoicing — with 7 role-based user profiles.
 
-First, run the development server:
+**Status:** client-approved prototype live (field intake + invoicing); building
+the full production LIMS.
+
+## Working on this repo? Read the docs first.
+
+Any developer or AI assistant (Claude, Codex, Cursor) must read, in order:
+
+1. **[AGENTS.md](AGENTS.md)** — how to work here, golden rules, session protocol
+2. **[HANDOFF.md](HANDOFF.md)** — current state, architecture, "where do I change X"
+3. **[PROGRESS.md](PROGRESS.md)** — live tracker: done / in progress / next
+4. **[PLAN.md](PLAN.md)** — phased production roadmap + target data model
+5. **[CODE_QUALITY.md](CODE_QUALITY.md)** — the non-negotiable quality bar
+6. `finalversion.xlsx` / `finalversion.md` — authoritative client scope
+
+## Stack
+
+Next.js 16 (App Router, TS strict) · MySQL/MariaDB + Prisma · **Better Auth**
+(7-role authorization via a `requireRole` guard) · Tailwind v4 · server-side PDF
+(Playwright) · Resend email · VPS + PM2.
+
+## Quick start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env      # set DATABASE_URL + AUTH_SECRET
+npm install
+npm run db:setup          # migrate + seed
+npm run dev               # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Demo logins after seed: `admin` / `password`, `pre1` / `password`.
+See [AGENTS.md §6](AGENTS.md) for the full command list.
