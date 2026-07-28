@@ -8,7 +8,9 @@
 
 ## ▶ NEXT ACTION
 
-**Begin Phase 1, task 1 — adopt Better Auth.** Baseline build is green and the
+**HOLD — do not start coding until the user explicitly says go.** When cleared:
+Phase 1, task 1 — adopt Better Auth with the **username plugin** (username login,
+not email) + admin plugin + `role` field. Baseline build is green and the
 compatibility spike passed (Next 16 + Prisma 7 + custom client path + MySQL +
 MariaDB driver adapter all supported — see HANDOFF decision log). Install
 `better-auth`, wire `prismaAdapter(prisma,{provider:"mysql"})` + admin plugin +
@@ -68,8 +70,20 @@ reconcile existing `User` relations, then rebuild. After that: central
 ## Phase 5 — Production hardening
 - [ ] Per-role dashboards + direction view + global search
 - [ ] Domain + HTTPS + daily backups + tested restore
-- [ ] E2E tests, data migration, docs (user/admin/ops), training
+- [ ] E2E tests, docs (user/admin/ops), training
+- [ ] **[client 28-07]** Legacy data migration (clients, reports, invoices)
 - [ ] **Demo:** go-live
+
+## Extensions — client meeting 2026-07-28 (after core; re-cost/replan)
+Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
+- [ ] Phase 6 — Achat & Stock: suppliers, payment-term alerts, inventory
+- [ ] Phase 7 (later) — Qualité: métrologie, EIL, monitoring temp.
+- [ ] Phase 8 (later) — Portail client (`CLIENT` role) + Réclamations
+- [ ] Workflow changes folded into core: numbering at reception (P2), auto-calc
+      results (P2), double validation (P2), bench sheet (P2/3), admin silent
+      report edit (P3), editable designations (P4)
+- [ ] **Confirm with client:** double-validation rule · code/serial format ·
+      calc methods · legacy data formats · stock granularity + `MAGASINIER` role
 
 ---
 

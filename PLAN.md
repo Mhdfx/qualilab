@@ -76,11 +76,20 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 ### Phase 2 — LIMS core (the heart)
 - **Reception & conformity:** queue of `PRELEVE`, quick-verify screen, mark
   conform/non-conform (with reason), assign to a technician → `RECU`.
+  - **[client 28-07] Numbering at reception:** the official **control code +
+    serial number** are generated **here, not by the préleveur** (préleveur never
+    sees them). Move `sample-code.ts` generation out of the field POST; add
+    distinct `controlCode` + `serialNumber` fields; hide from préleveur UI.
 - **Result entry (technician):** their assigned samples; per-parameter value /
   unit / threshold / conformity; work status incl. anomaly; save-in-progress;
   submit when complete → `EN_ANALYSE` → `RESULTATS_SAISIS`.
+  - **[client 28-07] Auto-calculated results:** compute results from raw inputs
+    via per-method formulas, with correction of erroneous entries (needs the
+    lab's calculation methods — *to confirm*).
 - **Validation (validateur):** review results vs thresholds + history; validate
   → `VALIDE`; reject with comment → back to technician.
+  - **[client 28-07] Double validation (technique + admin)** at steps 4→5 —
+    *exact rule to confirm with client.*
 - Full audit on every transition; state machine enforced.
 - **Demo:** a sample travels `PRELEVE → VALIDE` through the right hands.
 
@@ -91,6 +100,12 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
   re-downloadable.
 - **Auto email** to client on validation → `RAPPORT_ENVOYE`; `EmailLog` +
   manual resend (gestionnaire).
+- **[client 28-07] Bench sheet (feuille de paillasse):** printable worksheet
+  grouping samples/parameters **by date** for on-bench result entry, with a
+  value/note column.
+- **[client 28-07] Admin silent report edit:** the ADMIN can edit a validated
+  report **without an audit-trail entry.** Implement per request — ⚠️ note the
+  traceability trade-off; propose an optional discreet internal log (confirm).
 - **Demo:** validating a sample emails the client a real PDF; it's re-sendable.
 
 ### Phase 4 — Clients, invoice link, administration
@@ -98,6 +113,8 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
   payments); reserved to gestionnaire + admin.
 - **Invoicing from validated samples:** validated analyses become invoice lines
   at catalog prices (wire onto existing invoice plumbing); keep free lines.
+  - **[client 28-07] Editable designations:** full control over product/service
+    line labels and report designations on invoices (admin-configurable naming).
 - **Admin config:** users & roles (create, disable, reset password), analysis
   parameters (per domain, units, thresholds), service catalog, document
   templates, company coordinates, audit-log viewer.
@@ -108,9 +125,42 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 - Per-role dashboards + **direction view** (samples by status, avg lead time,
   activity by domain, billed/collected) + global search.
 - Domain + HTTPS, **daily DB backups** + tested restore, security pass.
-- End-to-end tests, data migration/import, documentation (user-by-role, admin,
-  ops), training.
+- End-to-end tests, documentation (user-by-role, admin, ops), training.
+- **[client 28-07] Legacy data migration:** import existing **clients, reports,
+  invoices** from the lab's current systems (needs source access/exports +
+  field mapping + validation — *formats to confirm*).
 - **Demo:** official go-live.
+
+---
+
+## Extension modules — client meeting 2026-07-28 (beyond original scope)
+
+> These came from the client's team meeting after the scope doc was signed off.
+> They are **additional scope** — sequence after the core LIMS (Phases 1–5) and
+> re-cost/replan. The client flagged Quality + Réclamations explicitly as a
+> *"volet plus tardif"* (later track).
+
+### Phase 6 — Achat & Stock (Purchasing & Inventory)
+- Supplier base + per-supplier **payment conventions**; **payment-due alerts**.
+- Stock/inventory tracking (items, levels, movements) with low-stock alerts.
+- Ties into Facturation/Comptable; possible new role **Magasinier/Acheteur**
+  (or handled by Comptable/Admin — *to confirm*).
+
+### Phase 7 — Système Qualité (Quality) *(later track)*
+- **Métrologie:** equipment register + calibration/verification schedule + records.
+- **EIL** (essais interlaboratoires / proficiency testing): campaign tracking.
+- **Contrôles/monitoring:** equipment temperature (fridge/incubator) logs +
+  out-of-range alerts.
+
+### Phase 8 — Portail client & Réclamations *(later track)*
+- **Client portal:** a new **8th profile `CLIENT`** — each client logs in to a
+  scoped, read-only space to consult their reports and track analysis progress
+  in real time. (Better Auth makes adding a `CLIENT` role straightforward.)
+- **Réclamations:** centralized complaints/claims tab linked to samples/clients.
+
+**Roles impact:** the 7 core roles may grow to **8** (`CLIENT` portal) and
+possibly **9** (`MAGASINIER`) — confirm before Phase 1 seed if we want the enum
+future-proofed early.
 
 ---
 
