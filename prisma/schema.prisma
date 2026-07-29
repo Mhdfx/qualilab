@@ -9,7 +9,25 @@ datasource db {
 
 enum Role {
   PRELEVEUR
+  RECEPTIONNISTE
+  TECHNICIEN
+  VALIDATEUR
+  GESTIONNAIRE
+  COMPTABLE
   ADMIN
+  CLIENT
+}
+
+enum ResultWorkStatus {
+  EN_COURS
+  TERMINE
+  ANOMALIE
+}
+
+enum ReportSendStatus {
+  NON_ENVOYE
+  ENVOYE
+  ECHEC
 }
 
 enum SampleType {
@@ -32,16 +50,80 @@ enum InvoiceStatus {
   PAYEE
 }
 
+/// Better Auth owns authentication (User/Session/Account/Verification).
+/// `role` drives the LIMS authorization — keep in sync with src/lib/roles.ts.
 model User {
-  id        String    @id @default(cuid())
-  username  String    @unique
-  name      String
-  email     String?
-  password  String
-  role      Role
-  samples   Sample[]
-  invoices  Invoice[]
-  createdAt DateTime  @default(now())
+  id              String    @id @default(cuid())
+  name            String
+  email           String    @unique
+  emailVerified   Boolean   @default(false)
+  image           String?
+  username        String?   @unique
+  displayUsername String?
+  role            String    @default("PRELEVEUR")
+  banned          Boolean?  @default(false)
+  banReason       String?
+  banExpires      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sessions Session[]
+  accounts Account[]
+
+  samples          Sample[]
+  invoices         Invoice[]
+  receivedSamples  Sample[]  @relation("SampleReceivedBy")
+  assignedSamples  Sample[]  @relation("SampleTechnician")
+  validatedSamples Sample[]  @relation("SampleValidatedBy")
+  enteredResults   Result[]
+  auditLogs        AuditLog[]
+
+  @@index([role])
+}
+
+model Session {
+  id             String   @id @default(cuid())
+  expiresAt      DateTime
+  token          String   @unique
+  ipAddress      String?
+  userAgent      String?  @db.Text
+  impersonatedBy String?
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  idToken               String?   @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?   @db.Text
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String   @db.Text
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
 }
 
 model Client {
@@ -60,7 +142,10 @@ model AnalysisParameter {
   id       String            @id @default(cuid())
   name     String
   category SampleType
+  unit     String?
+  threshold String?
   samples  SampleParameter[]
+  results  Result[]
 }
 
 model LabService {
@@ -72,19 +157,124 @@ model LabService {
 }
 
 model Sample {
-  id         String            @id @default(cuid())
-  code       String            @unique
-  clientId   String
-  client     Client            @relation(fields: [clientId], references: [id])
-  userId     String
-  user       User              @relation(fields: [userId], references: [id])
-  lieu       String
-  type       SampleType
-  notes      String?           @db.Text
-  status     SampleStatus      @default(PRELEVE)
+  id       String @id @default(cuid())
+  /// Internal field reference, created by the préleveur.
+  code     String @unique
+  /// Official numbering — assigned at RECEPTION only (client request 2026-07-28).
+  /// Never visible to the préleveur.
+  controlCode  String? @unique
+  serialNumber String? @unique
+
+  clientId String     @map("clientId")
+  client   Client     @relation(fields: [clientId], references: [id])
+  userId   String
+  user     User       @relation(fields: [userId], references: [id])
+  lieu     String
+  type     SampleType
+  notes    String?    @db.Text
+  status   SampleStatus @default(PRELEVE)
+
+  // Workflow actors — each transition records who performed it.
+  receivedById    String?
+  receivedBy      User?     @relation("SampleReceivedBy", fields: [receivedById], references: [id])
+  receivedAt      DateTime?
+  conformity      Boolean?
+  conformityNote  String?   @db.Text
+  technicianId    String?
+  technician      User?     @relation("SampleTechnician", fields: [technicianId], references: [id])
+  assignedAt      DateTime?
+  validatedById   String?
+  validatedBy     User?     @relation("SampleValidatedBy", fields: [validatedById], references: [id])
+  validatedAt     DateTime?
+  rejectionReason String?   @db.Text
+
   sampledAt  DateTime          @default(now())
   createdAt  DateTime          @default(now())
   parameters SampleParameter[]
+  results    Result[]
+  report     Report?
+
+  @@index([status])
+  @@index([technicianId])
+  @@index([clientId])
+}
+
+/// One measured value per (sample, parameter), entered by a technician.
+model Result {
+  id          String            @id @default(cuid())
+  sampleId    String
+  sample      Sample            @relation(fields: [sampleId], references: [id], onDelete: Cascade)
+  parameterId String
+  parameter   AnalysisParameter @relation(fields: [parameterId], references: [id])
+
+  value      String?
+  unit       String?
+  threshold  String?
+  conform    Boolean?
+  workStatus ResultWorkStatus @default(EN_COURS)
+  note       String?          @db.Text
+
+  enteredById String?
+  enteredBy   User?    @relation(fields: [enteredById], references: [id])
+  enteredAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([sampleId, parameterId])
+  @@index([sampleId])
+}
+
+/// The official analysis report generated on validation.
+model Report {
+  id         String @id @default(cuid())
+  sampleId   String @unique
+  sample     Sample @relation(fields: [sampleId], references: [id], onDelete: Cascade)
+  number     String @unique
+  conclusion String? @db.Text
+
+  technicianName String?
+  validatorName  String?
+  validatedAt    DateTime?
+
+  sendStatus ReportSendStatus @default(NON_ENVOYE)
+  sentAt     DateTime?
+  sentTo     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  emails    EmailLog[]
+}
+
+/// Delivery journal for report emails (date, recipient, status, resend).
+model EmailLog {
+  id         String   @id @default(cuid())
+  reportId   String?
+  report     Report?  @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  to         String
+  subject    String
+  status     String
+  providerId String?
+  error      String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([reportId])
+}
+
+/// Traceability: who did what, when. Written by logAudit() on every mutation.
+model AuditLog {
+  id       String  @id @default(cuid())
+  actorId  String?
+  actor    User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action   String
+  entity   String
+  entityId String?
+  metadata String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorId])
+  @@index([createdAt])
 }
 
 model SampleParameter {

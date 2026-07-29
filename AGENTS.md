@@ -29,7 +29,8 @@ validation → official PDF report → automatic email to client → invoicing.
 | 3 | **PROGRESS.md** | What's done / in progress / next — the live tracker |
 | 4 | **PLAN.md** | The full phased roadmap + target data model |
 | 5 | **CODE_QUALITY.md** | The non-negotiable quality bar (front + back + all) |
-| 6 | `finalversion.md` | The exhaustive client-facing scope (reference) |
+| 6 | **TESTPLAN.md** | The browser test path — append a section per checkpoint |
+| 7 | `finalversion.md` | The exhaustive client-facing scope (reference) |
 
 If the graph exists (`graphify-out/`), use it to navigate structure instead of
 blind grepping.
@@ -77,7 +78,7 @@ open `node_modules/next/dist/docs/` and confirm the current API.
 |---|---|
 | Framework | Next.js 16.2.9 App Router + TypeScript (strict) |
 | DB / ORM | **MySQL / MariaDB** + Prisma (adapter `@prisma/adapter-mariadb`) |
-| Auth | **Better Auth** (email/password + sessions + admin/user-mgmt) on Prisma/MySQL. **7-role authorization** stays ours via a central `requireRole()` guard. *(Migrating from the current custom `jose`+bcrypt setup — Phase 1 task 1.)* |
+| Auth | **Better Auth** 1.6.25 (username + admin plugins) on Prisma/MySQL — ✅ in place. **7-role authorization** is ours via `requireRole()` / `requireApiRole()` in `src/lib/auth.ts`. |
 | PDF (reports) | **Server-side HTML→PDF via headless Chromium (Playwright)** — see PLAN. Keep client jsPDF only for the existing invoice demo |
 | Email | **Resend** (transactional) |
 | Styling | Tailwind CSS v4 + project design skills (top-tier per screen) |
@@ -98,7 +99,8 @@ npm run db:check         # scripts/check-db.ts — connectivity smoke test
 npm run db:studio        # prisma studio
 ```
 
-Demo logins after seed: `admin` / `password`, `pre1` / `password`.
+Demo logins after seed (all password `password`): `pre1`, `recep1`, `tech1`,
+`valid1`, `commercial1`, `compta1`, `admin`.
 
 ## 7. Session protocol — how continuity survives across platforms
 
@@ -116,8 +118,11 @@ Demo logins after seed: `admin` / `password`, `pre1` / `password`.
 1. Update **PROGRESS.md**: tick completed items, move the "▶ NEXT ACTION" line,
    add a dated line to the Session Log.
 2. Update **HANDOFF.md** if state changed (new routes, models, env, decisions).
-3. Ensure `npm run build` passes (or note explicitly in PROGRESS why it doesn't).
-4. Commit with a clear message. Never leave the repo in a half-broken state
+3. **Append a checkpoint section to TESTPLAN.md** listing what to click through
+   in the browser — and mark what you actually verified.
+4. Ensure `npm run build` **and** `npm run lint` pass (or note explicitly in
+   PROGRESS why they don't).
+5. Commit with a clear message. Never leave the repo in a half-broken state
    without a written note in PROGRESS.
 
 > If you only remember one thing: **leave the repo so the next assistant, on a

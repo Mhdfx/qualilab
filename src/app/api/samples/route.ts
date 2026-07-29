@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { requireApiRole } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { generateSampleCode } from "@/lib/sample-code";
 import type { SampleType } from "@/generated/prisma/client";
 
 export async function GET() {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Non autorisé." }, { status: 401 });
-  }
+  const session = await requireApiRole();
+  if (session instanceof NextResponse) return session;
 
+  // A préleveur only ever sees their own field work; the lab roles see all.
   const where =
-    session.role === "ADMIN" ? {} : { userId: session.id };
+    session.role === "PRELEVEUR" ? { userId: session.id } : {};
 
   const samples = await prisma.sample.findMany({
     where,
@@ -27,10 +27,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const session = await getSession();
-  if (!session || session.role !== "PRELEVEUR") {
-    return NextResponse.json({ error: "Non autorisé." }, { status: 401 });
-  }
+  const session = await requireApiRole("PRELEVEUR");
+  if (session instanceof NextResponse) return session;
 
   try {
     const body = await request.json();
@@ -70,6 +68,14 @@ export async function POST(request: Request) {
         user: { select: { id: true, name: true } },
         parameters: { include: { parameter: true } },
       },
+    });
+
+    await logAudit({
+      actorId: session.id,
+      action: "SAMPLE_CREATED",
+      entity: "Sample",
+      entityId: sample.id,
+      metadata: { code: sample.code, type: sample.type, clientId },
     });
 
     return NextResponse.json(sample, { status: 201 });

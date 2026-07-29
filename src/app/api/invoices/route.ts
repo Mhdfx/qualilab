@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { requireApiRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateInvoiceNumber } from "@/lib/invoice-number";
 import { computeInvoiceTotals } from "@/lib/invoice-math";
 
 export async function GET() {
-  const session = await getSession();
-  if (!session || session.role !== "ADMIN") {
-    return NextResponse.json({ error: "Non autorisé." }, { status: 401 });
-  }
+  const session = await requireApiRole("COMPTABLE", "ADMIN");
+  if (session instanceof NextResponse) return session;
 
   const invoices = await prisma.invoice.findMany({
     include: {
@@ -29,10 +27,8 @@ type IncomingItem = {
 };
 
 export async function POST(request: Request) {
-  const session = await getSession();
-  if (!session || session.role !== "ADMIN") {
-    return NextResponse.json({ error: "Non autorisé." }, { status: 401 });
-  }
+  const session = await requireApiRole("COMPTABLE", "ADMIN");
+  if (session instanceof NextResponse) return session;
 
   try {
     const body = await request.json();

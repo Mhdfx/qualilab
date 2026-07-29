@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { MapPin, Building2, Clock, FlaskConical } from "lucide-react";
 import type { SampleType } from "@/generated/prisma/client";
@@ -17,6 +17,9 @@ type Parameter = { id: string; name: string; category: SampleType };
 
 const TYPES: SampleType[] = ["ALIMENTAIRE", "EAU", "AMBIANCE"];
 
+/** No external store to watch — the snapshot only flips on mount. */
+const subscribeNoop = () => () => {};
+
 export default function NouveauPrelevementPage() {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -32,11 +35,14 @@ export default function NouveauPrelevementPage() {
   const [confirmedAt, setConfirmedAt] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [parameterIds, setParameterIds] = useState<string[]>([]);
-  const [nowLabel, setNowLabel] = useState("");
-
-  useEffect(() => {
-    setNowLabel(formatDateTime(new Date()));
-  }, []);
+  // The current time is client-only: rendering it on the server would produce a
+  // hydration mismatch, so it stays empty until the component has mounted.
+  const isMounted = useSyncExternalStore(
+    subscribeNoop,
+    () => true,
+    () => false
+  );
+  const nowLabel = isMounted ? formatDateTime(new Date()) : "";
 
   useEffect(() => {
     fetch("/api/clients")

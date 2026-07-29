@@ -8,15 +8,17 @@
 
 ## ▶ NEXT ACTION
 
-**HOLD — do not start coding until the user explicitly says go.** When cleared:
-Phase 1, task 1 — adopt Better Auth with the **username plugin** (username login,
-not email) + admin plugin + `role` field. Baseline build is green and the
-compatibility spike passed (Next 16 + Prisma 7 + custom client path + MySQL +
-MariaDB driver adapter all supported — see HANDOFF decision log). Install
-`better-auth`, wire `prismaAdapter(prisma,{provider:"mysql"})` + admin plugin +
-`role` field, mount `/api/auth/[...all]`, generate + migrate its tables,
-reconcile existing `User` relations, then rebuild. After that: central
-`requireRole()` guard, then extend the `Role` enum to 7.
+**Phase 1 is complete and verified (2026-07-29).** Better Auth (username login),
+the central `requireRole()` guard, the 7 roles, the extended data model and the
+7 role dashboards are all live; build + lint pass; browser-tested (see
+`TESTPLAN.md` Checkpoints A & B).
+
+Next: **Phase 2, task 1 — Reception & conformity.** Build the `/reception`
+queue of samples at status `PRELEVE`, the quick-verify screen, conformity
+(with reason), assignment to a technician, and — per the client's 28-07 request
+— generate the official **control code + serial number at reception** (never
+visible to the préleveur). Use the `canTransition()` state machine for
+`PRELEVE → RECU` and call `logAudit()` on the change.
 
 ---
 
@@ -29,24 +31,26 @@ reconcile existing `User` relations, then rebuild. After that: central
 - [x] Write cross-platform docs (AGENTS, HANDOFF, PLAN, PROGRESS, CODE_QUALITY)
 - [x] `npm run build` passes on current Next 16 code (clean baseline, exit 0)
 - [x] Better Auth compatibility spike — GREEN (Next 16 + Prisma 7 + MySQL + driver adapter)
-- [ ] Confirm local DB connectivity (`npm run db:check`) and seed works
+- [x] Confirm local DB connectivity (`npm run db:check`) and seed works
 
-## Phase 1 — Foundation & roles
-- [ ] **Adopt Better Auth**: install + config (prismaAdapter mysql, admin plugin, `role` field)
-- [ ] Mount `/api/auth/[...all]`; generate + migrate Better Auth tables
-- [ ] Reconcile existing `User` relations (`Sample.userId`, `Invoice.createdById`)
-- [ ] Rewrite login/logout + `getSession` call-sites; seed users via Better Auth
-- [ ] Central guard `requireRole()` / `requireSession()` on top of Better Auth session
-- [ ] Refactor existing admin + préleveur layouts and all API routes onto it
-- [ ] Extend `Role` enum to 7 roles
-- [ ] Add models: `Result`, `Report`, `AuditLog`, `EmailLog`
-- [ ] Add `Sample` actor fields (`receivedById`, `technicianId`, `validatedById`, `rejectionReason`, `receivedAt`)
-- [ ] Migration created + applied; Prisma client regenerated
-- [ ] Update `prisma/seed.ts` for 7 demo users + richer sample data
-- [ ] `logAudit()` helper
-- [ ] Status state-machine helper (only legal transitions)
-- [ ] 7 role dashboard shells + routing
-- [ ] **Demo:** each role logs into its own dashboard
+## Phase 1 — Foundation & roles ✅ COMPLETE (2026-07-29)
+- [x] **Adopt Better Auth**: install 1.6.25 + config (prismaAdapter mysql, username + admin plugins, `role` field)
+- [x] Mount `/api/auth/[...all]`; Better Auth tables migrated (User/Session/Account/Verification)
+- [x] Reconcile existing `User` relations (`Sample.userId`, `Invoice.createdById`)
+- [x] Rewrite login/logout + `getSession` call-sites; seed users via Better Auth
+- [x] `trustedOrigins` CSRF config (env-driven prod, any localhost in dev)
+- [x] Central guard `requireRole()` / `requireApiRole()` on top of Better Auth session
+- [x] Refactor existing admin + préleveur layouts and all API routes onto it
+- [x] Extend `Role` enum to 7 roles (+ `CLIENT` reserved for the future portal)
+- [x] Add models: `Result`, `Report`, `AuditLog`, `EmailLog`
+- [x] Add `Sample` actor fields (`receivedById`, `technicianId`, `validatedById`, `rejectionReason`, `receivedAt`, `conformity`) + `controlCode`/`serialNumber`
+- [x] Migration created + applied; Prisma client regenerated
+- [x] Update `prisma/seed.ts` for 7 demo users + richer sample data
+- [x] `logAudit()` helper
+- [x] Status state-machine helper (`canTransition`, only legal transitions)
+- [x] 7 role dashboard shells + routing (`/reception`, `/technicien`, `/validation`, `/commercial`, `/comptabilite`)
+- [x] **Demo:** each role logs into its own dashboard — verified in browser
+- [x] `npm run build` + `npm run lint` pass clean
 
 ## Phase 2 — LIMS core
 - [ ] Reception & conformity + assign to technician (`PRELEVE → RECU`)
@@ -90,6 +94,16 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
 
+- **2026-07-29 · Claude Code** · **Phase 1 delivered.** Installed Better Auth
+  1.6.25 (username + admin plugins), replaced the custom jose/bcrypt auth,
+  added the central `requireRole`/`requireApiRole` guard and moved every page
+  and API route onto it. Extended Prisma: 7 roles + CLIENT, Result/Report/
+  AuditLog/EmailLog, Sample actor + reception-numbering fields; migration
+  applied; seed now creates one user per role. Added `logAudit()` and the
+  sample status state machine. Built the 5 new role spaces with live
+  indicators. Fixed a real CSRF/origin bug (`trustedOrigins`) that would have
+  broken login on the VPS, and a pre-existing lint error. Build + lint green,
+  browser-verified. Created `TESTPLAN.md`. Next: Phase 2 reception.
 - **2026-07-27 · Claude Code** · Analyzed prototype against client scope; locked
   stack; created cross-platform doc system (AGENTS, CLAUDE, HANDOFF, PLAN,
   PROGRESS, CODE_QUALITY). Baseline `npm run build` GREEN. Ran Better Auth

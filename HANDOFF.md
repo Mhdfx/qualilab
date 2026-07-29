@@ -4,7 +4,7 @@
 > "where do I change X" map. Read after `AGENTS.md`. **Keep this current** — it
 > is what lets any AI on any platform continue without archaeology.
 >
-> Last updated: **2026-07-27** · Branch: `master` · Remote:
+> Last updated: **2026-07-29** · Branch: `master` · Remote:
 > `github.com/Mhdfx/qualilab.git`
 
 ---
@@ -13,79 +13,131 @@
 
 | Block | Module | State |
 |---|---|---|
-| Préleveur | Field intake (mobile 3-step, auto code `QL-YYYY-NNNNN`, param by domain, history) | ✅ **Built & client-approved** |
-| Facturation | Manual invoice: catalog, `FAC-YYYY-NNNN`, 20% VAT, statuses, PDF export, amount-in-words | ✅ **Built & client-approved** |
-| Auth | `jose` JWT signed cookie + bcrypt | ⚠️ **Only 2 roles** (`PRELEVEUR`, `ADMIN`) |
+| Préleveur | Field intake (mobile 3-step, param by domain, history) | ✅ **Built & client-approved** |
+| Facturation | Manual invoice: catalog, `FAC-YYYY-NNNN`, 20% VAT, statuses, PDF export | ✅ **Built & client-approved** |
+| Auth | **Better Auth** (username + admin plugins), 7 roles + `CLIENT` | ✅ **Phase 1 done** |
+| Authorization | Central `requireRole()` / `requireApiRole()` on every page + route | ✅ **Phase 1 done** |
+| Role spaces | 7 dashboards with live indicators | ✅ **Phase 1 done** |
+| Data model | 13 tables incl. `Result`/`Report`/`AuditLog`/`EmailLog` | ✅ **Phase 1 done** |
+| Foundations | `logAudit()`, sample status state machine | ✅ **Phase 1 done** |
 | Clients | list API only | ⚠️ **Read-only**, no CRUD / 360 |
-| LIMS core | reception, results, validation, report, email | ❌ **Not built** |
-| Data model | 8 tables | ❌ No `Result` / `Report` / `AuditLog` / `EmailLog`; only `PRELEVE` status ever set |
+| LIMS core | reception, results, validation, report, email | ❌ **Phase 2–3** |
 | Infra | VPS + PM2 + `/api/health` + watchdog/autostart/backup scripts | ✅ **Working** (prototype) |
 
-**Bottom line:** everything between *"sample arrives at the lab"* and *"report
-emailed to client"* is unbuilt. That is the production project. Full breakdown in
-`PLAN.md`; live tracker in `PROGRESS.md`.
+**Bottom line:** the foundation (auth, roles, guards, data model, audit, state
+machine, dashboards) is in place. What remains is the workflow itself —
+everything between *"sample arrives at the lab"* and *"report emailed to
+client"*. Full breakdown in `PLAN.md`; live tracker in `PROGRESS.md`; browser
+test path in `TESTPLAN.md`.
 
 ## 2. Architecture map
 
 ```
 src/
   app/
-    layout.tsx, page.tsx, globals.css, login/
+    layout.tsx, page.tsx (role-aware redirect), globals.css, login/
     api/
-      auth/{login,logout}/     session cookie in/out
+      auth/[...all]/           ★ Better Auth handler (sign-in/out, session, admin)
       samples/                 GET (role-scoped) · POST (PRELEVEUR creates)
       clients/  parameters/  lab-services/   read endpoints
-      invoices/  invoices/[id]/   invoice CRUD
+      invoices/  invoices/[id]/   invoice CRUD (COMPTABLE + ADMIN)
       health/                  liveness probe for PM2/watchdog
     preleveur/                 role space: dashboard + nouveau (3-step)
+    reception/                 role space (Phase 2 screens to come)
+    technicien/                role space (Phase 2 screens to come)
+    validation/                role space (Phase 2 screens to come)
+    commercial/                role space (Phase 4 screens to come)
+    comptabilite/              role space (Phase 4 screens to come)
     admin/                     role space: dashboard + factures (list/new/[id])
   components/
-    layout/  (AdminShell, PreleveurShell, Sidebar, *-nav.ts, nav-types.ts)
-    ui/      (Card, StatCard, StatusBadge, TypeBadge, StepIndicator, PageHeader, LoadingState)
+    layout/  AdminShell, PreleveurShell, RoleShells.tsx (5 role shells),
+             DashboardShell, Sidebar, admin-nav / preleveur-nav / role-navs.ts
+    ui/      Card, StatCard, StatusBadge, TypeBadge, StepIndicator, PageHeader, LoadingState
+    RoleDashboard.tsx          shared role landing page (stats + mission + next steps)
     + feature components (SampleTable, SampleDetailPanel, FactureDetail, ...)
   lib/
-    auth.ts            session: hash/verify, createSession, getSession, clearSession, getDashboardPath
+    auth-server.ts     ★ Better Auth instance (username + admin plugins, trustedOrigins)
+    auth.ts            ★ getSession + requireRole / requireApiRole guards
+    auth-client.ts     client-side authClient (signIn/signOut)
+    roles.ts           ★ ROLES, ROLE_LABELS, ROLE_HOME, getDashboardPath
+    audit.ts           ★ logAudit() — call on every mutation
+    sample-status.ts   ★ canTransition() state machine + status labels
     prisma.ts          Prisma client (MariaDB adapter, singleton)
     database-url.ts    parse DATABASE_URL → mariadb config
     company.ts         ★ single source of truth for company/legal identity
     sample-code.ts     QL-YYYY-NNNNN generator
-    invoice-number.ts  FAC-YYYY-NNNN generator
-    invoice-math.ts / invoice-types.ts / lab-services.ts / labels.ts
+    invoice-number.ts / invoice-math.ts / invoice-types.ts / lab-services.ts / labels.ts
     number-to-words-fr.ts   amount-in-words (FR) for invoices
     download-invoice-pdf.ts  ⚠️ CLIENT-side screenshot PDF (invoice demo only)
   generated/prisma/    ★ generated Prisma client — DO NOT edit, gitignored
 prisma/
-  schema.prisma  ·  seed.ts  ·  migrations/ (5 so far)
+  schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (6)
 scripts/         VPS ops: deploy, wait-for-db, health-watchdog, setup-autostart, setup-database, start-production, vps-setup, check-db
 ```
 
 No import cycles. Path alias: `@/*` → `src/*`.
 
-## 3. Auth & authorization — the pattern to extend
+## 3. Auth & authorization — **the pattern to follow**
 
-Current pattern (works for 2 roles, must generalize to 7):
+**Authentication = Better Auth. Authorization = our guard.** Never mix them.
 
-- **Session:** `src/lib/auth.ts` — `getSession()` reads the `qualilab_session`
-  signed cookie and returns `{ id, username, name, role }` or `null`.
-- **Page/layout guard:** each role layout calls `getSession()` and `redirect()`s
-  on wrong/missing role. Example `src/app/admin/layout.tsx`:
-  `if (!session) redirect("/login"); if (session.role !== "ADMIN") redirect("/preleveur");`
-- **Route guard:** each route handler re-checks inline, e.g.
-  `if (!session || session.role !== "PRELEVEUR") return 401;`
+- **Instance:** `src/lib/auth-server.ts` — Better Auth with the **username**
+  plugin (lab staff sign in with `admin`, `tech1`, … — no email needed; a
+  synthetic `<username>@qualilab.local` address is stored and never mailed) and
+  the **admin** plugin (`adminRoles: ["ADMIN"]`) for user management.
+  Public sign-up is disabled: accounts are provisioned by the admin.
+- **CSRF/origins:** `trustedOrigins` — in production it reads
+  `BETTER_AUTH_TRUSTED_ORIGINS`; in development any localhost port is accepted.
+  ⚠️ Set `BETTER_AUTH_URL` + `BETTER_AUTH_TRUSTED_ORIGINS` on the VPS or
+  sign-in fails with `INVALID_ORIGIN`.
+- **Session:** `getSession()` in `src/lib/auth.ts` returns
+  `{ id, username, name, role }` or `null`.
 
-⚠️ **Debt:** role checks are hardcoded string comparisons scattered per file.
-Before Phase 1 grows this to 7 roles, introduce **one central guard** in
-`src/lib/auth.ts` (e.g. `requireRole(...roles)` / `requireSession()`) returning
-the session or redirecting/401, and route every page and API through it. This is
-the #1 correctness+security lever — do it before adding roles.
+**Guards — use these everywhere, no inline role checks:**
 
-## 4. Data model (current) — see PLAN.md §Target model for what's added
+```ts
+// page / layout (server component): returns session or redirects
+const session = await requireRole("TECHNICIEN", "ADMIN");
 
-`User`(role: PRELEVEUR|ADMIN) · `Client` · `AnalysisParameter`(category) ·
-`LabService` · `Sample`(status enum has all 6 values but only `PRELEVE` is set) ·
-`SampleParameter`(join) · `Invoice` · `InvoiceItem`.
-Enums: `Role`, `SampleType`(ALIMENTAIRE|EAU|AMBIANCE), `SampleStatus`(6),
-`InvoiceStatus`(EN_ATTENTE|PAYEE).
+// route handler: returns session OR the response to return as-is
+const guard = await requireApiRole("COMPTABLE", "ADMIN");
+if (guard instanceof NextResponse) return guard;
+```
+
+Wrong role on a page → redirected to **their own** dashboard (never a dead end).
+API → `401 Non autorisé.` when signed out, `403 Accès refusé.` when the role is
+wrong. Role → landing page mapping lives in `src/lib/roles.ts` (`ROLE_HOME`).
+
+**Client components** use `authClient` from `src/lib/auth-client.ts`
+(`signIn.username(...)`, `signOut()`).
+
+## 3b. Traceability & workflow foundations
+
+- **`logAudit({actorId, action, entity, entityId, metadata})`** (`lib/audit.ts`)
+  — call on **every** mutation. Never lets an audit failure break the action.
+- **`canTransition(from, to, role, reason?)`** (`lib/sample-status.ts`) — the
+  only place allowed to authorise a `Sample.status` change. Encodes who may do
+  what, and requires a reason for the validator's rejection (backwards move).
+  Use it before every status write, then `logAudit()`.
+
+## 4. Data model
+
+**Auth (Better Auth):** `User` · `Session` · `Account` (credentials) ·
+`Verification`.
+`User` carries `username`, `role` (string, mirrors the `Role` enum), `banned`.
+
+**LIMS:** `Client` · `AnalysisParameter`(category, unit, threshold) ·
+`LabService` · `Sample` · `SampleParameter`(join) · `Result` · `Report` ·
+`EmailLog` · `AuditLog` · `Invoice` · `InvoiceItem`.
+
+`Sample` now carries the full workflow: `controlCode` + `serialNumber`
+(assigned **at reception**, never shown to the préleveur), `receivedById` /
+`receivedAt` / `conformity` / `conformityNote`, `technicianId` / `assignedAt`,
+`validatedById` / `validatedAt` / `rejectionReason`.
+
+Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
+`SampleStatus`(6) · `ResultWorkStatus`(EN_COURS|TERMINE|ANOMALIE) ·
+`ReportSendStatus` · `InvoiceStatus`.
 
 ## 5. "Where do I change X?"
 
@@ -97,9 +149,14 @@ Enums: `Role`, `SampleType`(ALIMENTAIRE|EAU|AMBIANCE), `SampleStatus`(6),
 | VAT / invoice totals math | `src/lib/invoice-math.ts` |
 | Amount-in-words wording | `src/lib/number-to-words-fr.ts` |
 | Analysis parameters / services / prices | `prisma/seed.ts` (and Admin config screen once built) |
-| Session / login / roles | `src/lib/auth.ts` + `src/app/api/auth/*` |
+| Login / session behaviour | `src/lib/auth-server.ts` (Better Auth config) |
+| Access rules for a page or route | `requireRole` / `requireApiRole` in `src/lib/auth.ts` |
+| Add a role / change a role's landing page | `src/lib/roles.ts` + Prisma `Role` enum |
+| Who may move a sample to a status | `src/lib/sample-status.ts` (`TRANSITIONS`) |
+| What gets audited | `logAudit()` calls + `src/lib/audit.ts` |
 | Add a DB field/table | `prisma/schema.prisma` → `npm run db:migrate` → client regenerates |
-| Nav items per role | `src/components/layout/*-nav.ts` |
+| Nav items per role | `src/components/layout/admin-nav.ts`, `preleveur-nav.ts`, `role-navs.ts` |
+| A role's dashboard content | `src/app/<role>/page.tsx` + `components/RoleDashboard.tsx` |
 | Shared UI look | `src/components/ui/*` + design skills |
 | Status/type badge labels | `src/lib/labels.ts`, `components/ui/StatusBadge.tsx`, `TypeBadge.tsx` |
 | PM2 / restart behavior | `ecosystem.config.cjs`, `scripts/start-production.sh` |
@@ -110,12 +167,14 @@ Enums: `Role`, `SampleType`(ALIMENTAIRE|EAU|AMBIANCE), `SampleStatus`(6),
 | Var | Purpose | Notes |
 |---|---|---|
 | `DATABASE_URL` | `mysql://user:pass@host:3306/db` | parsed by `database-url.ts` |
-| `AUTH_SECRET` | JWT signing secret | ≥32 chars; `openssl rand -base64 32` |
+| `AUTH_SECRET` | Better Auth signing secret | ≥32 chars; `openssl rand -base64 32` |
+| `BETTER_AUTH_URL` | Public origin of the app | **Required in production** (e.g. `https://app.qualilab.ma`). Unset in dev |
+| `BETTER_AUTH_TRUSTED_ORIGINS` | Comma-separated origins allowed to call auth (CSRF) | **Required in production**; dev trusts any localhost |
 | `NODE_ENV` | `development` / `production` | |
 | `PORT` | prod port (default 3000) | |
 | `AUTH_COOKIE_SECURE` | set `false` only for plain-HTTP testing | HTTPS in prod |
 
-**To add (production):** `RESEND_API_KEY` (email), `EMAIL_FROM`, and any
+**To add later:** `RESEND_API_KEY` + `EMAIL_FROM` (Phase 3 email), and any
 Playwright/Chromium path config for server-side PDF. Log new vars here **and** in
 `.env.example` / `.env.production.example` the moment they're introduced.
 
@@ -143,11 +202,16 @@ final hosting is TBD — **we build and test on our VPS for now.**
 
 ## 9. Known debt / watch-outs
 
-- Role checks hardcoded per file → centralize (see §3) **before** adding roles.
+- ~~Role checks hardcoded per file~~ → **resolved:** everything now goes through
+  `requireRole` / `requireApiRole`. Keep it that way; never re-introduce an
+  inline `session.role === "..."` check in a page or route.
 - Invoice PDF is a flattened client-side screenshot (no text, single page) — do
   **not** reuse it for official analysis reports.
-- Sample status is a 6-value enum but nothing advances it past `PRELEVE`; the
-  state machine must be enforced server-side (no skipping/reversing).
+- Sample status still only ever reaches `PRELEVE` in practice — Phase 2 wires the
+  transitions. The state machine (`canTransition`) already exists: **use it**,
+  never write `status` directly.
+- `bcryptjs` and `jose` are still in package.json but unused by the app since
+  Better Auth took over hashing/sessions — remove when convenient.
 - `src/generated/prisma/` is gitignored — regenerated by `prisma generate` on
   install/build. Never edit or import it as if hand-written source.
 - **Sample numbering moves to reception** (client 28-07): don't wire the

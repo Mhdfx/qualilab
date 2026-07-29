@@ -1,9 +1,11 @@
-import { SignJWT, jwtVerify } from "jose";
-import { cookies } from "next/headers";
-import bcrypt from "bcryptjs";
-import type { Role } from "@/generated/prisma/client";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth-server";
+import { getDashboardPath, isRole, type Role } from "@/lib/roles";
 
-const COOKIE_NAME = "qualilab_session";
+export type { Role };
+export { getDashboardPath };
 
 export type SessionUser = {
   id: string;
@@ -12,69 +14,66 @@ export type SessionUser = {
   role: Role;
 };
 
-function getSecret() {
-  const secret = process.env.AUTH_SECRET;
-  if (!secret) throw new Error("AUTH_SECRET is not set");
-  return new TextEncoder().encode(secret);
-}
-
-export async function hashPassword(password: string) {
-  return bcrypt.hash(password, 10);
-}
-
-export async function verifyPassword(password: string, hash: string) {
-  return bcrypt.compare(password, hash);
-}
-
-export async function createSession(user: SessionUser) {
-  const token = await new SignJWT({
-    id: user.id,
-    username: user.username,
-    name: user.name,
-    role: user.role,
-  })
-    .setProtectedHeader({ alg: "HS256" })
-    .setExpirationTime("7d")
-    .sign(getSecret());
-
-  const cookieStore = await cookies();
-  const secure =
-    process.env.AUTH_COOKIE_SECURE === "false"
-      ? false
-      : process.env.NODE_ENV === "production";
-
-  cookieStore.set(COOKIE_NAME, token, {
-    httpOnly: true,
-    secure,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-  });
-}
-
+/**
+ * Current session, or null. Safe to call from any server component or route.
+ *
+ * Authorization rule for the whole app: never trust the client. Every page and
+ * every route handler resolves the session here and goes through one of the
+ * guards below — hiding a control in the UI is not access control.
+ */
 export async function getSession(): Promise<SessionUser | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
-  if (!token) return null;
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return null;
 
-  try {
-    const { payload } = await jwtVerify(token, getSecret());
-    return {
-      id: payload.id as string,
-      username: payload.username as string,
-      name: payload.name as string,
-      role: payload.role as Role,
-    };
-  } catch {
-    return null;
+  const user = session.user as typeof session.user & {
+    username?: string | null;
+    role?: string | null;
+  };
+  if (!isRole(user.role)) return null;
+
+  return {
+    id: user.id,
+    username: user.username ?? "",
+    name: user.name ?? "",
+    role: user.role,
+  };
+}
+
+/**
+ * Page guard: returns the session or redirects.
+ *
+ * - not signed in            → /login
+ * - signed in, wrong role    → their own dashboard (never a dead end)
+ */
+export async function requireRole(...allowed: Role[]): Promise<SessionUser> {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  if (allowed.length > 0 && !allowed.includes(session.role)) {
+    redirect(getDashboardPath(session.role));
   }
+  return session;
 }
 
-export async function clearSession() {
-  const cookieStore = await cookies();
-  cookieStore.delete(COOKIE_NAME);
+/** Page guard for screens any authenticated user may open. */
+export async function requireSession(): Promise<SessionUser> {
+  return requireRole();
 }
 
-export function getDashboardPath(role: Role) {
-  return role === "ADMIN" ? "/admin" : "/preleveur";
+/**
+ * API guard. Returns either the session or the response to return as-is:
+ *
+ *   const guard = await requireApiRole("TECHNICIEN");
+ *   if (guard instanceof NextResponse) return guard;
+ */
+export async function requireApiRole(
+  ...allowed: Role[]
+): Promise<SessionUser | NextResponse> {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Non autorisé." }, { status: 401 });
+  }
+  if (allowed.length > 0 && !allowed.includes(session.role)) {
+    return NextResponse.json({ error: "Accès refusé." }, { status: 403 });
+  }
+  return session;
 }

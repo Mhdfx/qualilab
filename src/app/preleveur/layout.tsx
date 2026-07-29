@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { PreleveurShell } from "@/components/layout/PreleveurShell";
 
 export default async function PreleveurLayout({
@@ -7,9 +6,7 @@ export default async function PreleveurLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  if (session.role !== "PRELEVEUR") redirect("/admin");
+  const session = await requireRole("PRELEVEUR");
 
   return <PreleveurShell userName={session.name}>{children}</PreleveurShell>;
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { User, Lock, ShieldCheck } from "lucide-react";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { BrandLogo } from "@/components/BrandLogo";
+import { authClient } from "@/lib/auth-client";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -19,19 +20,19 @@ export default function LoginForm() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+      const { error: signInError } = await authClient.signIn.username({
+        username: username.trim(),
+        password,
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Connexion impossible.");
+      if (signInError) {
+        setError("Identifiants incorrects.");
         return;
       }
 
-      router.push(data.redirect);
+      // The server resolves the landing page from the role (single source of
+      // truth in lib/roles.ts), so we let "/" redirect us there.
+      router.push("/");
       router.refresh();
     } catch {
       setError("Connexion impossible. Réessayez.");

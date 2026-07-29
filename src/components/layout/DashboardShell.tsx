@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { LogOut, Menu } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import type { NavSection } from "./nav-types";
+import { authClient } from "@/lib/auth-client";
 
 type DashboardShellProps = {
   children: React.ReactNode;
@@ -43,7 +44,7 @@ export function DashboardShell({
   }, [mobileOpen]);
 
   async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await authClient.signOut();
     router.push("/login");
     router.refresh();
   }

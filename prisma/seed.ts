@@ -2,10 +2,61 @@ import "dotenv/config";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { getMariaDbConfig } from "../src/lib/database-url";
-import bcrypt from "bcryptjs";
+import { auth, internalEmailFor } from "../src/lib/auth-server";
 
 const adapter = new PrismaMariaDb(getMariaDbConfig());
 const prisma = new PrismaClient({ adapter });
+
+/** Demo accounts — one per role. Password for all: "password". */
+const demoUsers = [
+  { username: "pre1", name: "Karim Benali", role: "PRELEVEUR" },
+  { username: "recep1", name: "Salma Idrissi", role: "RECEPTIONNISTE" },
+  { username: "tech1", name: "Yassine Amrani", role: "TECHNICIEN" },
+  { username: "valid1", name: "Dr. Nawal Bennani", role: "VALIDATEUR" },
+  { username: "commercial1", name: "Hicham Tazi", role: "GESTIONNAIRE" },
+  { username: "compta1", name: "Leila Fassi", role: "COMPTABLE" },
+  { username: "admin", name: "Sara Mansouri", role: "ADMIN" },
+] as const;
+
+/**
+ * Creates the demo accounts.
+ *
+ * Public sign-up is disabled (accounts are provisioned by the admin), so the
+ * seed goes through Better Auth's own context to hash the password exactly as
+ * the runtime does — the credentials live in the Account table, never here.
+ */
+async function seedUsers() {
+  const ctx = await auth.$context;
+  const created: Record<string, string> = {};
+
+  for (const user of demoUsers) {
+    const record = await prisma.user.create({
+      data: {
+        name: user.name,
+        email: internalEmailFor(user.username),
+        emailVerified: true,
+        username: user.username,
+        displayUsername: user.username,
+        role: user.role,
+      },
+      select: { id: true },
+    });
+
+    await prisma.account.create({
+      data: {
+        accountId: record.id,
+        providerId: "credential",
+        userId: record.id,
+        password: await ctx.password.hash("password"),
+      },
+    });
+
+    created[user.role] = record.id;
+    console.log(`  user: ${user.username.padEnd(12)} (${user.role})`);
+  }
+
+  return created;
+}
 
 const parameters = [
   { name: "Salmonelles", category: "ALIMENTAIRE" as const },
@@ -52,31 +103,22 @@ function serviceId(category: string, name: string) {
 }
 
 async function main() {
-  const passwordHash = await bcrypt.hash("password", 10);
-
+  await prisma.auditLog.deleteMany();
+  await prisma.emailLog.deleteMany();
+  await prisma.report.deleteMany();
+  await prisma.result.deleteMany();
   await prisma.invoiceItem.deleteMany();
   await prisma.invoice.deleteMany();
   await prisma.sampleParameter.deleteMany();
   await prisma.sample.deleteMany();
+  await prisma.session.deleteMany();
+  await prisma.account.deleteMany();
   await prisma.user.deleteMany();
 
-  const preleveur = await prisma.user.create({
-    data: {
-      username: "pre1",
-      name: "Karim Benali",
-      password: passwordHash,
-      role: "PRELEVEUR",
-    },
-  });
-
-  const admin = await prisma.user.create({
-    data: {
-      username: "admin",
-      name: "Sara Mansouri",
-      password: passwordHash,
-      role: "ADMIN",
-    },
-  });
+  console.log("Seeding users (one per role)...");
+  const users = await seedUsers();
+  const preleveur = { id: users.PRELEVEUR };
+  const admin = { id: users.ADMIN };
 
   const clientsData = [
     { name: "Restaurant Le Palmier", contact: "Ahmed B.", email: "contact@lepalmier.ma", phone: "06 12 34 56 78", address: "12 Rue des Oliviers, Casablanca", ice: "001234567000045" },
