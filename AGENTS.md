@@ -124,12 +124,51 @@ Demo logins after seed (all password `password`): `pre1`, `recep1`, `tech1`,
 1. Update **PROGRESS.md**: tick completed items, move the "▶ NEXT ACTION" line,
    add a dated line to the Session Log.
 2. Update **HANDOFF.md** if state changed (new routes, models, env, decisions).
-3. **Append a checkpoint section to TESTPLAN.md** listing what to click through
-   in the browser — and mark what you actually verified.
+3. Update **TESTPLAN.md**: tick what you verified in the browser.
 4. Ensure `npm run build` **and** `npm run lint` pass (or note explicitly in
    PROGRESS why they don't).
 5. Commit with a clear message. Never leave the repo in a half-broken state
    without a written note in PROGRESS.
+
+## 8. END OF PHASE checklist — every file to touch
+
+Run through this list when a phase is finished. **A / B / C** = always /
+if-changed / code-level source of truth.
+
+**A. Always update (all three, every phase — no exceptions):**
+
+| File | What to change |
+|---|---|
+| **PROGRESS.md** | tick the phase's items, mark the phase ✅ COMPLETE + date, move "▶ NEXT ACTION" to the next task, add a Session Log entry, list anything `[!]` blocked and what is needed to unblock it |
+| **TESTPLAN.md** | flesh out that phase's checkpoint with the real screens built, tick only what you saw working in a browser, fill the **Sign-off log** row (phase, who, date, result) |
+| **HANDOFF.md** | §1 state table, §2 architecture map (new routes/files), §4 data model (new tables/fields), §5 "where do I change X", §6 env vars, §8 decision log (append-only), §9 debt/watch-outs, and bump the "Last updated" date |
+
+**B. Update only if that thing changed:**
+
+| File | Update when |
+|---|---|
+| **PLAN.md** | scope, target data model or phase content changed (new client request, a design decision that alters the plan) |
+| **AGENTS.md** | the stack, golden rules, commands, or this protocol changed |
+| **README.md** | the stack summary, quick-start steps or demo accounts changed |
+| **CODE_QUALITY.md** | a new standing quality rule was agreed |
+| **CLAUDE.md** | Claude-specific tooling notes changed (design skills, graphify) |
+| **.env.example** + **.env.production.example** | **any** new environment variable — document it in HANDOFF §6 in the same commit |
+| **package.json** | new script/command → also mirror it in AGENTS §6 and README |
+
+**C. Code-level single sources of truth — keep in sync, never fork the fact:**
+
+| File | Holds |
+|---|---|
+| `prisma/schema.prisma` + `prisma/migrations/` | every schema change goes through a migration, never a manual DB edit |
+| `prisma/seed.ts` | a fresh DB + `npm run db:seed` must still demo the whole flow end to end |
+| `src/lib/roles.ts` | the role list, labels and landing pages — keep in sync with the Prisma `Role` enum |
+| `src/lib/company.ts` | company / legal identity (never hardcode these in a component) |
+| `src/lib/sample-status.ts` | who may move a sample to which status |
+| `src/lib/labels.ts` | user-facing French labels and formatting |
+
+**Client-facing documents (not dev files — update when scope changes, and tell
+the user before sending anything):** `finalversion.xlsx` / `finalversion.md`,
+plus the generated client PDFs at the repo root.
 
 > If you only remember one thing: **leave the repo so the next assistant, on a
 > different platform, can pick up from PROGRESS.md's top line with zero
