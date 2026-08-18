@@ -86,13 +86,23 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 - [ ] Workflow changes folded into core: numbering at reception (P2), auto-calc
       results (P2), double validation (P2), bench sheet (P2/3), admin silent
       report edit (P3), editable designations (P4)
-- [ ] **Confirm with client:** double-validation rule · code/serial format ·
-      calc methods · legacy data formats · stock granularity + `MAGASINIER` role
+- [x] **Client answers received (2026-08-18)** — see HANDOFF sections 8/10:
+      double validation (validateur + admin, every sample) · blind dual
+      numbering · NM-norm defaults · legacy import-only · `MAGASINIER` role ·
+      no internal log on silent edit · portal confirmed (admin-managed)
+- [ ] Still pending from client: per-parameter formulas (mid-project) · legacy
+      data files · Quality equipment list / EIL perimeter
 
 ---
 
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
+
+- **2026-08-18 · Claude Code** · Client answered the open questions; decisions
+  locked in HANDOFF section 8 (double validation both-approve, blind dual
+  numbering, NM-norm defaults, legacy import-only, MAGASINIER role, no
+  silent-edit log, portal admin-managed). PLAN Phase 2 updated accordingly.
+  No code changes.
 
 - **2026-07-29 · Claude Code** · **Phase 1 delivered.** Installed Better Auth
   1.6.25 (username + admin plugins), replaced the custom jose/bcrypt auth,

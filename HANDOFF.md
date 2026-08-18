@@ -4,7 +4,7 @@
 > "where do I change X" map. Read after `AGENTS.md`. **Keep this current** — it
 > is what lets any AI on any platform continue without archaeology.
 >
-> Last updated: **2026-07-29** · Branch: `master` · Remote:
+> Last updated: **2026-08-18** · Branch: `master` · Remote:
 > `github.com/Mhdfx/qualilab.git`
 
 ---
@@ -196,6 +196,13 @@ final hosting is TBD — **we build and test on our VPS for now.**
 | 2026-07-27 | **Username-based login** (Better Auth username plugin), not email | Lab staff/field techs log in with usernames (`admin`, `pre1`); no personal emails required. Use username + admin plugins, `role` as additional user field |
 | 2026-07-28 | **Scope expanded** — client meeting additions (see PLAN "Extension modules" + §10 below) | Client added Purchasing/Stock, Quality (metrology/EIL/monitoring), Client portal, Réclamations, plus workflow changes (numbering at reception, auto-calc results, bench sheet, admin silent report edit, double validation, legacy data migration). Sequenced after core Phases 1–5; Quality + Réclamations are a "later track" |
 | 2026-07-28 | Sample **control code + serial generated at RECEPTION**, not by préleveur | Client requirement. Moves `sample-code.ts` generation from the field POST to reception; préleveur never sees the number. Add distinct `controlCode` + `serialNumber` fields |
+| 2026-08-18 | **Double validation confirmed: EVERY sample needs BOTH Validateur AND Admin** approval before the report is emitted | Client answer. Design: VALIDATEUR performs technical validation, then ADMIN gives final approval -> only then `VALIDE` + report/email. Rejection by either returns the sample to the technician with a reason |
+| 2026-08-18 | **Dual numbering, blind-analysis design** | Client answer: each sample carries 2 numbers assigned at reception — `controlCode` (official traceable, sequential) + `serialNumber` (**blind analysis code, crypto-random, non-sequential**). Purpose: the préleveur/sample collector can never know or predict which number a sample gets, so results cannot be targeted or faked. Format is ours to design; security requirement is the client's |
+| 2026-08-18 | **Analysis parameters/thresholds: default to standard Moroccan norms (NM)** | Client will provide the official per-parameter methods/formulas mid-project; until then seed units/thresholds from Moroccan standards (NM food-micro / drinking-water norms) |
+| 2026-08-18 | **Legacy data: import-only, method decided when the company hands over the data** | We only fetch/import what they provide (clients, reports, invoices); no live integration with old systems |
+| 2026-08-18 | **Stock gets its own role (`MAGASINIER`)** | Client confirms a dedicated person handles stock/purchasing. Add the role + enum value at Phase 6 (documented reserve, like `CLIENT`) |
+| 2026-08-18 | **Admin silent report edit: NO internal log** ("no for now") | Client declined the optional discreet safety-net log. Zero trace, scoped strictly to ADMIN + report edits |
+| 2026-08-18 | **Client portal confirmed** (Phase 8): `CLIENT` accounts are **created/managed by the ADMIN** (no self-signup); each client sees the status and results/reports of their own samples only | Client answer. `CLIENT` role already reserved in `lib/roles.ts` |
 | 2026-07-27 | **Server-side PDF via Playwright** for official reports | Pixel-perfect, selectable text, multi-page, reuses design-skill HTML. Client jsPDF stays for invoice demo only |
 | 2026-07-27 | **Resend** for transactional email | Best deliverability; matches spec "service dédié" |
 | 2026-07-27 | UI via **installed design skills**, top-tier per screen | Client-facing pro tool; brand-consistent |
@@ -240,7 +247,12 @@ the client response PDF `reponse-demandes-client-2026-07-28.pdf`):
 | 10 | **Client portal** (8th role `CLIENT`) | Phase 8 (later) |
 | 11 | **Réclamations** tab (complaints) | Phase 8 (later) |
 
-**Open items to confirm with client:** exact double-validation rule (#9);
-control-code vs serial-number format (#8); result calculation methods (#5);
-legacy data formats/access (#1); stock granularity + whether a `MAGASINIER`
-role is needed (#2). These are listed in the client response PDF.
+**Client answers received 2026-08-18** (full decisions in the section 8 log):
+double validation = both Validateur AND Admin on every sample (#9) - dual
+numbering with a blind crypto-random serial, format ours to design (#8) -
+default thresholds to Moroccan NM norms, official formulas arrive mid-project
+(#5) - legacy data = import-only once handed over (#1) - dedicated `MAGASINIER`
+role for stock (#2) - silent admin edit stays with NO internal log (#7) -
+client portal confirmed, admin-managed accounts (#10).
+**Still open:** exact per-parameter formulas (mid-project) - legacy data files
+(when provided) - Quality-module equipment list & EIL perimeter (Phase 7).

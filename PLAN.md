@@ -76,20 +76,27 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 ### Phase 2 — LIMS core (the heart)
 - **Reception & conformity:** queue of `PRELEVE`, quick-verify screen, mark
   conform/non-conform (with reason), assign to a technician → `RECU`.
-  - **[client 28-07] Numbering at reception:** the official **control code +
-    serial number** are generated **here, not by the préleveur** (préleveur never
-    sees them). Move `sample-code.ts` generation out of the field POST; add
-    distinct `controlCode` + `serialNumber` fields; hide from préleveur UI.
+  - **[client 28-07 + 18-08] Numbering at reception — blind design:** two
+    numbers per sample, generated here, never shown to the préleveur:
+    `controlCode` (official, traceable, sequential e.g. `QLC-AAAA-NNNNN`) and
+    `serialNumber` (**blind analysis code: crypto-random, non-sequential,
+    unguessable** — the anti-cheating identifier technicians work with).
+    Fields already exist in the schema; build the secure generator in
+    `lib/sample-code.ts` (crypto.randomBytes-based, collision-checked).
 - **Result entry (technician):** their assigned samples; per-parameter value /
   unit / threshold / conformity; work status incl. anomaly; save-in-progress;
   submit when complete → `EN_ANALYSE` → `RESULTATS_SAISIS`.
-  - **[client 28-07] Auto-calculated results:** compute results from raw inputs
-    via per-method formulas, with correction of erroneous entries (needs the
-    lab's calculation methods — *to confirm*).
-- **Validation (validateur):** review results vs thresholds + history; validate
-  → `VALIDE`; reject with comment → back to technician.
-  - **[client 28-07] Double validation (technique + admin)** at steps 4→5 —
-    *exact rule to confirm with client.*
+  - **[client 28-07 + 18-08] Auto-calculated results:** compute results from
+    raw inputs via per-method formulas, with correction of erroneous entries.
+    **Default units/thresholds from standard Moroccan norms (NM)**; the lab's
+    official formulas arrive mid-project and slot into the same helper.
+- **Validation (validateur + admin):** review results vs thresholds + history.
+  - **[client 18-08 CONFIRMED] Double validation on EVERY sample:** the
+    VALIDATEUR validates technically first, then the ADMIN gives final
+    approval — only after both does the sample become `VALIDE` and the
+    report/email fire. Either can reject with a reason → back to technician.
+    Model with `validatedById/validatedAt` (validateur) + a second admin
+    approval field (e.g. `approvedById/approvedAt`) — design at build time.
 - Full audit on every transition; state machine enforced.
 - **Demo:** a sample travels `PRELEVE → VALIDE` through the right hands.
 
@@ -103,9 +110,10 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 - **[client 28-07] Bench sheet (feuille de paillasse):** printable worksheet
   grouping samples/parameters **by date** for on-bench result entry, with a
   value/note column.
-- **[client 28-07] Admin silent report edit:** the ADMIN can edit a validated
-  report **without an audit-trail entry.** Implement per request — ⚠️ note the
-  traceability trade-off; propose an optional discreet internal log (confirm).
+- **[client 28-07 + 18-08] Admin silent report edit:** the ADMIN can edit a
+  validated report **without an audit-trail entry.** Client declined the
+  optional internal safety-net log — zero trace, scoped strictly to ADMIN +
+  report edits.
 - **Demo:** validating a sample emails the client a real PDF; it's re-sendable.
 
 ### Phase 4 — Clients, invoice link, administration
@@ -143,8 +151,8 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 ### Phase 6 — Achat & Stock (Purchasing & Inventory)
 - Supplier base + per-supplier **payment conventions**; **payment-due alerts**.
 - Stock/inventory tracking (items, levels, movements) with low-stock alerts.
-- Ties into Facturation/Comptable; possible new role **Magasinier/Acheteur**
-  (or handled by Comptable/Admin — *to confirm*).
+- **[client 18-08 CONFIRMED]** dedicated **`MAGASINIER`** role operates this
+  module (9th profile; add enum value + space at Phase 6).
 
 ### Phase 7 — Système Qualité (Quality) *(later track)*
 - **Métrologie:** equipment register + calibration/verification schedule + records.
@@ -153,14 +161,14 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
   out-of-range alerts.
 
 ### Phase 8 — Portail client & Réclamations *(later track)*
-- **Client portal:** a new **8th profile `CLIENT`** — each client logs in to a
-  scoped, read-only space to consult their reports and track analysis progress
-  in real time. (Better Auth makes adding a `CLIENT` role straightforward.)
+- **Client portal [client 18-08 CONFIRMED]:** `CLIENT` accounts are
+  **created and managed by the ADMIN** (no self-signup — consistent with our
+  disabled public sign-up). Each client logs into a scoped, read-only space:
+  status tracking + results/reports of **their own** samples only.
 - **Réclamations:** centralized complaints/claims tab linked to samples/clients.
 
-**Roles impact:** the 7 core roles may grow to **8** (`CLIENT` portal) and
-possibly **9** (`MAGASINIER`) — confirm before Phase 1 seed if we want the enum
-future-proofed early.
+**Roles impact [settled]:** 9 profiles total — the 7 core roles + `CLIENT`
+(portal, already reserved in `lib/roles.ts`) + `MAGASINIER` (added at Phase 6).
 
 ---
 
