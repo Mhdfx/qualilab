@@ -54,6 +54,7 @@ visible to the préleveur). Use the `canTransition()` state machine for
 
 ## Phase 2 — LIMS core
 - [ ] Reception & conformity + assign to technician (`PRELEVE → RECU`)
+- [ ] **[alerts]** schema prep: `Result.numericValue`, `AnalysisParameter.alertOnExceed` + `limitValue`, `Sample.produit` + `numeroLot`, `ClientEmail` model, `EmailLog.type`
 - [ ] Technician result entry (per-parameter) + save-in-progress
 - [ ] Submit results (`EN_ANALYSE → RESULTATS_SAISIS`)
 - [ ] Validation / rejection (`→ VALIDE` or back to technician)
@@ -63,6 +64,11 @@ visible to the préleveur). Use the `canTransition()` state machine for
 ## Phase 3 — Reports & email
 - [ ] Server-side PDF report (Playwright, branded HTML) + archive + re-download
 - [ ] Auto email on validation (`→ RAPPORT_ENVOYE`) + `EmailLog` + resend
+- [ ] **[client 18-08] Alertes de contamination automatiques** (E. coli /
+      Salmonelle / Listeria over limit → grouped mail to the client's address
+      list + lab in copy, Produit/Site/Date/Lot/Germe/Résultat/Limite table)
+- [ ] **[blocked-ish]** Resend needs DNS verification of
+      `qualilabinternational.com` — client must add the DNS records
 - [ ] **Demo:** validation emails a real PDF to the client
 
 ## Phase 4 — Clients, invoice link, admin
@@ -97,6 +103,12 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
+
+- **2026-08-18 · Claude Code** · Client sent a model **contamination alert
+  email**: new requirement added to PLAN (Phase 3) + HANDOFF (item 12). It
+  forces 5 schema additions in Phase 2 (numeric results, alert flags + limits,
+  produit/lot, multi-email clients, EmailLog type). Captured the lab's real
+  contact details for `company.ts`. No code changes yet.
 
 - **2026-08-18 · Claude Code** · Client answered the open questions; decisions
   locked in HANDOFF section 8 (double validation both-approve, blind dual

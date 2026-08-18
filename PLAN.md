@@ -39,6 +39,11 @@ screens and data; enforced by the central guard on every page and route.
 | **`EmailLog`** (new) | `reportId`, `to`, `subject`, `status`, `providerId`, `error?`, `createdAt` |
 | `Sample` fields (new) | `receivedById?`, `technicianId?`, `validatedById?`, `rejectionReason?`, `receivedAt?`, plus status transitions |
 | Config (new, optional) | `DocumentTemplate` (report/email templates) if admin editing is in scope |
+| **[alerts 18-08]** `Result.numericValue` (Float?) | the typed value stays as entered (`8,9.10²`), a parsed numeric copy enables threshold comparison |
+| **[alerts 18-08]** `AnalysisParameter.alertOnExceed` (Bool) + `limitValue` (Float?) | flags the sensitive germs (E. coli, Salmonelle, Listeria) and their norm limit |
+| **[alerts 18-08]** `Sample.produit` + `Sample.numeroLot` | both are columns in the client's alert table; not in the schema today |
+| **[alerts 18-08]** `ClientEmail` (new) | a client has **several** recipient addresses; flags for reports vs alerts |
+| **[alerts 18-08]** `EmailLog.type` | distinguishes RAPPORT from ALERTE_CONTAMINATION in the send journal |
 
 All changes go through `prisma/schema.prisma` → migration → regenerate. Keep the
 seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
@@ -90,6 +95,13 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
     raw inputs via per-method formulas, with correction of erroneous entries.
     **Default units/thresholds from standard Moroccan norms (NM)**; the lab's
     official formulas arrive mid-project and slot into the same helper.
+  - **[alerts 18-08] Numeric results are mandatory:** results must be stored
+    numerically (`numericValue`) as well as displayed as typed, because the
+    contamination alert compares the value against the norm limit. Accept
+    scientific notation as the lab writes it (`8,9.10²` = 8.9×10²) and parse
+    it — a display-only string cannot drive an automatic alert.
+  - **[alerts 18-08] Capture `produit` and `N° de lot`** at prélèvement /
+    réception: both appear in the alert email table.
 - **Validation (validateur + admin):** review results vs thresholds + history.
   - **[client 18-08 CONFIRMED] Double validation on EVERY sample:** the
     VALIDATEUR validates technically first, then the ADMIN gives final
@@ -110,6 +122,28 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 - **[client 28-07] Bench sheet (feuille de paillasse):** printable worksheet
   grouping samples/parameters **by date** for on-bench result entry, with a
   value/note column.
+
+- **[client 18-08 NEW] Alertes de contamination automatiques** — separate from
+  the report email, and business-critical:
+  - **Trigger:** on result entry for a **sensitive microbiological parameter**
+    (E. coli, Salmonelle, Listeria monocytogenes — admin-configurable via
+    `alertOnExceed`), when the measured value **exceeds the norm limit**, and
+    **after validation of the result**.
+  - **Recipients:** the client's **list** of alert addresses, with the lab in
+    copy (`direction@…` + the responsable technique) — CC list configurable.
+  - **Content** (per the client's model email, subject `Alerte de
+    contamination par <germe>`): intro line then a table —
+    **Produit · Site de prélèvement · Date de réception · N° de lot · Le germe
+    · Résultat UFC/g · Limite UFC/g** — one row per breaching result, followed
+    by the lab signature block (responsable technique, tél, email, adresse).
+  - **Grouping:** one email per client/germ listing every breaching product
+    (the model email shows two products in a single alert), not one mail per
+    result.
+  - Logged in `EmailLog` with `type = ALERTE_CONTAMINATION`, resendable.
+  - ⚠️ **Assumption to confirm:** "après validation" = after the sample is
+    fully `VALIDE` (validateur **and** admin, per the 18-08 rule). If the lab
+    wants the alert to leave earlier because contamination is urgent, say so —
+    it is a one-line change to the trigger.
 - **[client 28-07 + 18-08] Admin silent report edit:** the ADMIN can edit a
   validated report **without an audit-trail entry.** Client declined the
   optional internal safety-net log — zero trace, scoped strictly to ADMIN +

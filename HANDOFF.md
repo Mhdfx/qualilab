@@ -203,6 +203,8 @@ final hosting is TBD — **we build and test on our VPS for now.**
 | 2026-08-18 | **Stock gets its own role (`MAGASINIER`)** | Client confirms a dedicated person handles stock/purchasing. Add the role + enum value at Phase 6 (documented reserve, like `CLIENT`) |
 | 2026-08-18 | **Admin silent report edit: NO internal log** ("no for now") | Client declined the optional discreet safety-net log. Zero trace, scoped strictly to ADMIN + report edits |
 | 2026-08-18 | **Silent-edit feature: BUILD it** (user decision) | Ambiguity resolved: the feature ships in Phase 3 as requested. If the client later drops it, removal is trivial (delete the edit route + button); retrofitting it after delivery would not be. Keep it isolated behind one route + one guard so it stays cheap to remove |
+| 2026-08-18 | **NEW REQUIREMENT: automatic contamination alert emails** (client model email received) | On sensitive micro parameters (E. coli, Salmonelle, Listeria), when a result exceeds the norm limit and the result is validated, an automatic mail goes to the client's listed addresses with a Produit/Site/Date/Lot/Germe/Résultat/Limite table + lab signature. Distinct from the report email. Forces 5 schema additions — see PLAN data-model table |
+| 2026-08-18 | **Results must be stored numerically** (`Result.numericValue`) | Direct consequence of the alert feature: threshold breach cannot be detected from a display string. Keep the value as typed (scientific notation `8,9.10²`) **and** a parsed numeric for comparison |
 | 2026-08-18 | **Client portal confirmed** (Phase 8): `CLIENT` accounts are **created/managed by the ADMIN** (no self-signup); each client sees the status and results/reports of their own samples only | Client answer. `CLIENT` role already reserved in `lib/roles.ts` |
 | 2026-07-27 | **Server-side PDF via Playwright** for official reports | Pixel-perfect, selectable text, multi-page, reuses design-skill HTML. Client jsPDF stays for invoice demo only |
 | 2026-07-27 | **Resend** for transactional email | Best deliverability; matches spec "service dédié" |
@@ -247,6 +249,7 @@ the client response PDF `reponse-demandes-client-2026-07-28.pdf`):
 | 9 | Double validation (technique + admin) — *confirm* | Phase 2 |
 | 10 | **Client portal** (8th role `CLIENT`) | Phase 8 (later) |
 | 11 | **Réclamations** tab (complaints) | Phase 8 (later) |
+| 12 | **[18-08] Alertes de contamination automatiques** (E. coli / Salmonelle / Listeria over limit → mail to the client's address list) | Phase 3 — with data-model prep in Phase 2 |
 
 **Client answers received 2026-08-18** (full decisions in the section 8 log):
 double validation = both Validateur AND Admin on every sample (#9) - dual
@@ -256,4 +259,13 @@ default thresholds to Moroccan NM norms, official formulas arrive mid-project
 role for stock (#2) - silent admin edit stays with NO internal log (#7) -
 client portal confirmed, admin-managed accounts (#10).
 **Still open:** exact per-parameter formulas (mid-project) - legacy data files
-(when provided) - Quality-module equipment list & EIL perimeter (Phase 7).
+(when provided) - Quality-module equipment list & EIL perimeter (Phase 7) -
+**alert trigger timing** (before or after full double validation) - **the norm
+limits per sensitive germ** (the model email shows E. coli limit 1.10² UFC/g).
+
+**Real company details** appeared in the client's model email (2026-08-17) and
+should replace the placeholders in `src/lib/company.ts` once confirmed:
+Laboratoire Qualilab International - Tél 0522-470-083/086 -
+info@qualilabinternational.com - 6, rue Ibn Al Jaouzi (Ex Colonel Gros),
+Quartier des Hôpitaux, 20360 - Responsable technique: Boutiri Abdellah -
+direction@qualilabinternational.com (alert CC). ICE/RC/RIB still needed.
