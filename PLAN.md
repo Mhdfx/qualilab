@@ -113,7 +113,9 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 - **[client 28-07 + 18-08] Admin silent report edit:** the ADMIN can edit a
   validated report **without an audit-trail entry.** Client declined the
   optional internal safety-net log — zero trace, scoped strictly to ADMIN +
-  report edits.
+  report edits. **Build it now** (decision 18-08): keep it isolated behind a
+  single route + guard so it can be removed in one commit if the client
+  changes his mind.
 - **Demo:** validating a sample emails the client a real PDF; it's re-sendable.
 
 ### Phase 4 — Clients, invoice link, administration

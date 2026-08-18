@@ -202,6 +202,7 @@ final hosting is TBD — **we build and test on our VPS for now.**
 | 2026-08-18 | **Legacy data: import-only, method decided when the company hands over the data** | We only fetch/import what they provide (clients, reports, invoices); no live integration with old systems |
 | 2026-08-18 | **Stock gets its own role (`MAGASINIER`)** | Client confirms a dedicated person handles stock/purchasing. Add the role + enum value at Phase 6 (documented reserve, like `CLIENT`) |
 | 2026-08-18 | **Admin silent report edit: NO internal log** ("no for now") | Client declined the optional discreet safety-net log. Zero trace, scoped strictly to ADMIN + report edits |
+| 2026-08-18 | **Silent-edit feature: BUILD it** (user decision) | Ambiguity resolved: the feature ships in Phase 3 as requested. If the client later drops it, removal is trivial (delete the edit route + button); retrofitting it after delivery would not be. Keep it isolated behind one route + one guard so it stays cheap to remove |
 | 2026-08-18 | **Client portal confirmed** (Phase 8): `CLIENT` accounts are **created/managed by the ADMIN** (no self-signup); each client sees the status and results/reports of their own samples only | Client answer. `CLIENT` role already reserved in `lib/roles.ts` |
 | 2026-07-27 | **Server-side PDF via Playwright** for official reports | Pixel-perfect, selectable text, multi-page, reuses design-skill HTML. Client jsPDF stays for invoice demo only |
 | 2026-07-27 | **Resend** for transactional email | Best deliverability; matches spec "service dédié" |
