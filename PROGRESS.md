@@ -104,6 +104,11 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
 
+- **2026-08-18 · Claude Code** · Expanded `TESTPLAN.md` into the complete
+  browser test path for every phase (A–G + regression suite + cross-cutting +
+  sign-off log), with Phase 1 results kept. Logged the working method: build
+  continuously, pause only when a task truly needs missing lab information.
+
 - **2026-08-18 · Claude Code** · Client sent a model **contamination alert
   email**: new requirement added to PLAN (Phase 3) + HANDOFF (item 12). It
   forces 5 schema additions in Phase 2 (numeric results, alert flags + limits,

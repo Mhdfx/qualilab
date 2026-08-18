@@ -29,7 +29,7 @@ validation → official PDF report → automatic email to client → invoicing.
 | 3 | **PROGRESS.md** | What's done / in progress / next — the live tracker |
 | 4 | **PLAN.md** | The full phased roadmap + target data model |
 | 5 | **CODE_QUALITY.md** | The non-negotiable quality bar (front + back + all) |
-| 6 | **TESTPLAN.md** | The browser test path — append a section per checkpoint |
+| 6 | **TESTPLAN.md** | The full browser test path, every phase. Tick what you verified; extend the phase section when you finish it |
 | 7 | `finalversion.md` | The exhaustive client-facing scope (reference) |
 
 If the graph exists (`graphify-out/`), use it to navigate structure instead of
@@ -56,7 +56,13 @@ blind grepping.
 7. **Keep the docs alive.** Follow the session protocol below so the next AI —
    on any platform — continues without friction.
 8. **Verify before "done".** Build + run + exercise the flow. Report failures
-   honestly with output. "Done" means demonstrated, not assumed.
+   honestly with output. "Done" means demonstrated, not assumed. Tick the
+   matching items in `TESTPLAN.md` — only for what you actually saw working.
+9. **Build continuously; pause at the point of need.** Don't stall waiting for
+   information that isn't required yet. When a task genuinely needs missing
+   input from the lab (norm limits, calculation formulas, legacy data files,
+   equipment list), stop there, mark it `[!]` in PROGRESS with exactly what is
+   needed, finish everything else in the phase, and tell the user.
 
 ## 4. Framework warning — this is NOT the Next.js you know
 
