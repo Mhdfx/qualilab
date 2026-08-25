@@ -104,6 +104,10 @@ Next: **Phase 4 — Clients, facturation liée, administration.**
 - [ ] 🔒 Official limits — needs the lab's figures (`NEEDEDINFO` item 1)
 - [x] **Demo:** approving a contaminated sample produces the report, emails it
       and raises the E. coli alert
+- [x] **Performance pass** ✅ 2026-08-25 — cursor pagination on `/api/samples`
+      and `/api/invoices`, composite indexes matching the real queries
+      (`[status, receivedAt]`, `[technicianId, status]`, `[userId, createdAt]`),
+      and the first indexes ever on `Invoice`
 
 ## Phase 4 — Clients, invoice link, admin
 - [ ] Client CRUD + archive + 360° view
@@ -137,6 +141,14 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
+
+- **2026-08-25 · Claude Code** · **Performance pass so the system stays fast as
+  the database grows.** Added cursor pagination to the two lists that grow
+  without bound (samples, invoices) and the composite indexes matching how the
+  screens actually query; `Invoice` had no index at all. Fixed a bug this
+  introduced in the invoice list, whose payload guard silently emptied the
+  table. Also brought `PLAN.md` up to date — it had not been marked as phases
+  were delivered.
 
 - **2026-08-25 · Claude Code** · **Phase 3 delivered.** Approval now produces
   the official report (three signatures, selectable text, rebuilt on demand

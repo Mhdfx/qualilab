@@ -90,12 +90,13 @@ src/
     emails/templates.ts  the report mail and the contamination alert
     report-dispatch.ts ★ what happens on approval: report, send, alerts
     bench-sheet-html.ts  the printable worksheet
+    pagination.ts      ★ cursor paging — use it on any list that grows
     invoice-number.ts / invoice-math.ts / invoice-types.ts / lab-services.ts / labels.ts
     number-to-words-fr.ts   amount-in-words (FR) for invoices
     download-invoice-pdf.ts  ⚠️ CLIENT-side screenshot PDF (invoice demo only)
   generated/prisma/    ★ generated Prisma client — DO NOT edit, gitignored
 prisma/
-  schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (8)
+  schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (10)
   ⚠️ the VPS needs a Chromium for the PDF: `apt install chromium`
 scripts/         VPS ops: deploy, wait-for-db, health-watchdog, setup-autostart, setup-database, start-production, vps-setup, check-db
 ```
@@ -184,6 +185,7 @@ Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 | The report's layout, wording or conclusion | `src/lib/report-html.ts` |
 | The email wording (report / alert) | `src/lib/emails/templates.ts` |
 | What is sent on approval | `src/lib/report-dispatch.ts` |
+| How a growing list is paged | `src/lib/pagination.ts` (cursor, not page numbers) |
 | Which parameters raise a contamination alert | `AnalysisParameter.alertOnExceed` + `limitValue` (seeded in `prisma/seed.ts`) |
 | What gets audited | `logAudit()` calls + `src/lib/audit.ts` |
 | Add a DB field/table | `prisma/schema.prisma` → `npm run db:migrate` → client regenerates |
@@ -281,9 +283,12 @@ final hosting is TBD — **we build and test on our VPS for now.**
   its official methods — they drive both conformity and the alerts.
 - Results are stored twice on purpose: `value` as typed, `numericValue` parsed.
   Never compare against `value`.
-- ⚠️ **No pagination yet.** `/api/samples`, the invoice list and the queues load
-  every matching row. Fine with demo data, a problem after a year of real use —
-  paginate them before go-live (Phase 5), and index any new filter column.
+- ~~No pagination~~ → **resolved 2026-08-25.** `/api/samples` and
+  `/api/invoices` are cursor-paginated (`lib/pagination.ts`), and the composite
+  indexes match how the screens query. **Any new list that grows with time must
+  use the same helper**, and any new filter or sort column needs its index —
+  the system has to stay fast once the database is full, not only when it is
+  empty. The queues are naturally bounded by status, so they were left direct.
 - **Admin silent report edit** (client 28-07) intentionally bypasses the audit
   trail for ADMIN only. This is a deliberate client choice; keep it scoped to
   ADMIN + report edits and nothing else.

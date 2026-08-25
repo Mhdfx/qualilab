@@ -24,8 +24,25 @@
 | # | What we need | Why | Blocks |
 |---|---|---|---|
 | 1 | **Les limites normatives officielles par paramètre** (UFC/g, UFC/100 mL…), en particulier E. coli, Salmonelles et Listeria monocytogenes | Conformity and the contamination alert are decided by comparing a result to its limit. We currently use provisional Moroccan (NM) values; only E. coli at 1.10² UFC/g is confirmed, taken from your alert email of 17/08 | Alerts, and the accuracy of every conformity verdict |
-| 2 | **Accès DNS du domaine `qualilabinternational.com`** (ou contact de l'hébergeur) | The mail service must be authenticated on your domain, otherwise reports and alerts land in spam or are refused | Sending reports and alerts |
+| 2 | **Envoi des emails** — trois choses, détaillées ci-dessous | Everything is built; only the delivery hop is missing | Real sending of reports and alerts |
 | 3 | **Coordonnées légales définitives** : ICE, RC, RIB/IBAN, adresse exacte — et le **logo en haute définition** | They are printed on every official report and invoice. Our current values are placeholders | Official report and invoice |
+
+#### Détail de l'item 2 — ce qu'il faut pour activer les emails
+
+1. **Le domaine à utiliser pour l'expéditeur** — nous partons du principe que
+   ce sera `qualilabinternational.com`, avec une adresse du type
+   `no-reply@qualilabinternational.com`. À confirmer.
+2. **Un accès aux DNS de ce domaine** — soit un accès à l'interface
+   (OVH, Cloudflare, l'hébergeur actuel…), soit le contact de la personne qui
+   les gère. Nous fournirons **3 enregistrements à ajouter** (SPF, DKIM, DMARC) :
+   ils prouvent que nos envois viennent bien de vous, sans quoi les rapports
+   partent en spam ou sont refusés. Ils ne changent rien à vos emails existants.
+3. **Un compte chez le service d'envoi** (Resend) — création gratuite pour le
+   volume du laboratoire ; nous pouvons le créer et vous le transférer, ou vous
+   le créez et nous transmettez la clé.
+
+Sans ces éléments, tout fonctionne déjà mais les envois sont **enregistrés dans
+le journal sans être réellement expédiés**, et l'interface l'indique clairement.
 
 ### 🟠 Needed soon — Phase 3 / Phase 4
 
@@ -84,8 +101,11 @@ de contamination, nous aurions besoin des éléments suivants :
 **Prioritaire (bloquant) :**
 1. Les **limites normatives officielles** par paramètre, en particulier E. coli,
    Salmonelles et Listeria monocytogenes.
-2. Un **accès DNS** au domaine `qualilabinternational.com` (ou le contact de
-   votre hébergeur), nécessaire pour que les emails partent de façon fiable.
+2. Pour activer l'envoi réel des emails : **confirmation du domaine
+   expéditeur**, un **accès aux DNS** (ou le contact de la personne qui les
+   gère) pour y ajouter 3 enregistrements d'authentification, et un **compte
+   chez le service d'envoi**. Tout le reste est déjà opérationnel — les envois
+   sont actuellement enregistrés sans être expédiés.
 3. Vos **coordonnées légales définitives** (ICE, RC, RIB/IBAN, adresse) et votre
    **logo en haute définition**.
 

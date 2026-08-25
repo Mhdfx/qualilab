@@ -90,8 +90,12 @@ reason. Treat a sluggish page like a bug and fix it before shipping.
 - **Select only the fields the screen uses** — see `lib/sample-select.ts`.
 - **Index every column used in a `where`, `orderBy` or join.** Adding a filter
   means checking the index exists in `schema.prisma`.
-- **Paginate every list that grows with time** (samples, invoices, audit log).
-  A screen must never load "all rows ever".
+- **Paginate every list that grows with time** (samples, invoices, audit log)
+  with the **cursor** helper in `lib/pagination.ts` — never page numbers, whose
+  cost grows with depth. A screen must never load "all rows ever".
+- **The system must stay fast as the database fills**, not merely start fast.
+  Before shipping a query, ask what it does at 50 000 samples: if the answer is
+  "scans the table", add the index or the page.
 - **Keep the client bundle small**: no heavy library for something small, and
   import icons/components individually.
 - **Production is a production build** (`next build`), never a dev server.

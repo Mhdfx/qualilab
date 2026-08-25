@@ -17,9 +17,10 @@ export function PreleveurDashboard({ userName }: PreleveurDashboardProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/samples")
+    // Paginated: the dashboard shows the most recent page, not the archive.
+    fetch("/api/samples?limit=50")
       .then((r) => r.json())
-      .then((data) => setSamples(data))
+      .then((data) => setSamples(data.items ?? []))
       .finally(() => setLoading(false));
   }, []);
 

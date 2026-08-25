@@ -1,23 +1,29 @@
 import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { pageParams, toPage } from "@/lib/pagination";
 import { generateInvoiceNumber } from "@/lib/invoice-number";
 import { computeInvoiceTotals } from "@/lib/invoice-math";
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await requireApiRole("COMPTABLE", "ADMIN");
   if (session instanceof NextResponse) return session;
 
-  const invoices = await prisma.invoice.findMany({
+  const { take, cursor, skip } = pageParams(request);
+
+  const rows = await prisma.invoice.findMany({
     include: {
       client: true,
       createdBy: { select: { id: true, name: true } },
       items: true,
     },
     orderBy: { createdAt: "desc" },
+    take: take + 1,
+    cursor,
+    skip,
   });
 
-  return NextResponse.json(invoices);
+  return NextResponse.json(toPage(rows, take));
 }
 
 type IncomingItem = {

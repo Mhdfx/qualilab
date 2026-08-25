@@ -246,6 +246,12 @@ model Sample {
   @@index([status])
   @@index([technicianId])
   @@index([clientId])
+  // Composite indexes matching how the screens actually query, so the queues
+  // stay fast once the table holds years of samples rather than a handful.
+  @@index([status, receivedAt])
+  @@index([technicianId, status])
+  @@index([userId, createdAt])
+  @@index([createdAt])
 }
 
 /// One measured value per (sample, parameter), entered by a technician.
@@ -275,6 +281,7 @@ model Result {
 
   @@unique([sampleId, parameterId])
   @@index([sampleId])
+  @@index([parameterId])
 }
 
 /// The official analysis report generated on validation.
@@ -312,6 +319,7 @@ model EmailLog {
   createdAt  DateTime @default(now())
 
   @@index([reportId])
+  @@index([type, createdAt])
 }
 
 /// Traceability: who did what, when. Written by logAudit() on every mutation.
@@ -357,6 +365,10 @@ model Invoice {
   total       Float         @default(0)
   items       InvoiceItem[]
   createdAt   DateTime      @default(now())
+
+  @@index([clientId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model InvoiceItem {

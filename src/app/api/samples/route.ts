@@ -4,9 +4,10 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { generateSampleCode } from "@/lib/sample-code";
 import { sampleSelectFor } from "@/lib/sample-select";
+import { pageParams, toPage } from "@/lib/pagination";
 import type { SampleType } from "@/generated/prisma/client";
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await requireApiRole();
   if (session instanceof NextResponse) return session;
 
@@ -14,14 +15,20 @@ export async function GET() {
   const where =
     session.role === "PRELEVEUR" ? { userId: session.id } : {};
 
-  const samples = await prisma.sample.findMany({
+  // Never load the whole table: this list grows for the life of the laboratory.
+  const { take, cursor, skip } = pageParams(request);
+
+  const rows = await prisma.sample.findMany({
     where,
     // The préleveur's payload deliberately excludes the laboratory numbering.
     select: sampleSelectFor(session.role),
     orderBy: { createdAt: "desc" },
+    take: take + 1,
+    cursor,
+    skip,
   });
 
-  return NextResponse.json(samples);
+  return NextResponse.json(toPage(rows, take));
 }
 
 export async function POST(request: Request) {

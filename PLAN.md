@@ -13,6 +13,14 @@ One web app, three blocks (LIMS · Facturation · Module préleveur), **7 roles*
 invoices generated from validated samples, full admin configuration, complete
 audit trail — running on the VPS with HTTPS + daily backups.
 
+## Where we are (2026-08-25)
+
+Phases 1 to 3 are delivered and verified: a sample travels the whole circuit,
+the report is produced and sent, and a contamination alert fires when a
+sensitive parameter is over its limit. Two things run in a clearly-labelled
+simulation until the laboratory answers — real email delivery (needs DNS) and
+the official norm limits — both tracked in `NEEDEDINFO.md`. Phase 4 is next.
+
 ## The sample lifecycle (the spine of the whole system)
 
 ```
@@ -58,12 +66,16 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
   `Sample.status`; rejects illegal transitions.
 - **Server-side PDF renderer** (Playwright/Chromium) rendering branded HTML.
 - **Email sender** (Resend) with `EmailLog` write + resend support.
+- **Cursor pagination** (`lib/pagination.ts`) on every list that grows with
+  time, plus composite indexes matching how the screens query. This is what
+  keeps the system fast **after** the database fills up, not just on day one —
+  see `CODE_QUALITY.md` §4b.
 
 ---
 
 ## Phases (each ends in a demo + client validation)
 
-### Phase 1 — Foundation & roles
+### Phase 1 — Foundation & roles ✅ DELIVERED 2026-07-29
 - **Adopt Better Auth** (task 1): install, `prismaAdapter(prisma,{provider:"mysql"})`,
   email/password + admin plugin, `role` as an additional user field; mount the
   handler at `/api/auth/[...all]`; generate + migrate its tables; reconcile the
@@ -78,7 +90,7 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 - 7 role dashboard shells (each role logs into its own space).
 - **Demo:** every profile logs in and lands on its own dashboard.
 
-### Phase 2 — LIMS core (the heart)
+### Phase 2 — LIMS core (the heart) ✅ DELIVERED 2026-08-25
 - **Reception & conformity:** queue of `PRELEVE`, quick-verify screen, mark
   conform/non-conform (with reason), assign to a technician → `RECU`.
   - **[client 28-07 + 18-08] Numbering at reception — blind design:** two
@@ -112,7 +124,7 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 - Full audit on every transition; state machine enforced.
 - **Demo:** a sample travels `PRELEVE → VALIDE` through the right hands.
 
-### Phase 3 — Reports & email
+### Phase 3 — Reports & email ✅ DELIVERED 2026-08-25 (delivery simulated until DNS)
 - **Official PDF report** (server-side Playwright, branded HTML): identity, code,
   client, place/date, préleveur, results table w/ thresholds + conformity,
   conclusion, technician + validator signatures, validation date. Archived +
@@ -152,7 +164,7 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
   changes his mind.
 - **Demo:** validating a sample emails the client a real PDF; it's re-sendable.
 
-### Phase 4 — Clients, invoice link, administration
+### Phase 4 — Clients, invoice link, administration ◀ NEXT
 - **Clients:** full CRUD + archive + **360° view** (samples, reports, invoices,
   payments); reserved to gestionnaire + admin.
 - **Invoicing from validated samples:** validated analyses become invoice lines

@@ -16,10 +16,11 @@ export function FacturesList() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    fetch("/api/invoices")
+    // Paginated: the list shows the most recent page, not every invoice ever.
+    fetch("/api/invoices?limit=50")
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) setInvoices(data);
+        setInvoices(Array.isArray(data?.items) ? data.items : []);
       })
       .finally(() => setLoading(false));
   }, []);
