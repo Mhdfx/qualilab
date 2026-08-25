@@ -7,6 +7,7 @@ import {
   UserCog,
   Settings,
   BarChart3,
+  ShieldCheck,
 } from "lucide-react";
 import type { NavSection } from "./nav-types";
 
@@ -16,6 +17,7 @@ export const adminNav: NavSection[] = [
     items: [
       { label: "Tableau de bord", href: "/admin", icon: LayoutDashboard },
       { label: "Prélèvements", href: "/admin", icon: FlaskConical },
+      { label: "Approbations", href: "/validation", icon: ShieldCheck },
       { label: "Factures", href: "/admin/factures", icon: FileText },
     ],
   },

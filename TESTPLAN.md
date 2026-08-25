@@ -104,7 +104,7 @@ The short list that proves nothing broke. ~5 minutes.
 ---
 
 ## Checkpoint C — LIMS core (Phase 2)
-*C1–C5 verified · C6 (validation) to build*
+*C1–C8 verified — Phase 2 complete*
 
 ### C1. Réception — the queue
 - [x] `recep1` → `/reception` lists every sample at status **Prélevé**.
@@ -165,15 +165,29 @@ The short list that proves nothing broke. ~5 minutes.
 - [x] A parameter that does not belong to the sample is refused (400).
 - [x] Mobile (375px): the sheet stacks, no horizontal overflow.
 
-### C6. Validation — **double validation, every sample** — *to build*
-- [ ] `valid1` → `/validation` lists samples at **Résultats saisis**.
-- [ ] The view shows results **against their thresholds**, technician notes, history.
-- [ ] Validateur validates → the sample moves to "awaiting admin approval",
-      **not** straight to Validé.
-- [ ] `admin` sees samples awaiting final approval and approves.
-- [ ] **Only after both** does the status become **Validé**.
-- [ ] Rejection (by validateur or admin) **requires a comment**.
-- [ ] A rejected sample returns to the technician, who sees the comment.
+### C6. Validation — **double validation, every sample**
+*verified 2026-08-25*
+- [x] `valid1` → `/validation` lists samples at **Résultats saisis**.
+- [x] The view shows each result **against its threshold**, technician notes and
+      the sample's context (produit, lot, technicien, non-conformité à réception).
+- [x] Sensitive parameters are marked, and a non-conform result warns that a
+      contamination alert will be sent after approval.
+- [x] Validateur validates → the sample moves to "attente admin",
+      **not** straight to Validé; the status stays *Résultats saisis*.
+- [x] The validateur then sees a locked message: the final approval belongs to
+      the administrator.
+- [x] `admin` sees the samples awaiting approval (menu "Approbations") and approves.
+- [x] **Only after both** does the status become **Validé** — both signatures
+      stored with name, role and timestamp.
+- [x] A validateur trying to approve alone → **409** "Seul un administrateur
+      peut donner l'approbation finale."
+- [x] An admin trying to approve without technical validation → **409**
+      "La validation technique du validateur est requise avant l'approbation."
+- [x] Rejection **requires a comment** — refused without one, in the form and
+      at the API.
+- [x] A rejected sample returns to the technician at **En analyse**, carrying
+      the motif and the name of who sent it back; the technical validation is
+      **cleared**, so corrected results must be validated again.
 
 ### C7. The state machine — illegal moves are refused
 - [x] A sample already received cannot be received again — **409** with a clear
@@ -181,14 +195,19 @@ The short list that proves nothing broke. ~5 minutes.
 - [x] An unknown sample id returns **404**, not a crash.
 - [x] Only RECEPTIONNISTE / ADMIN may receive: `pre1` **403**, `tech1` **403**,
       signed out **401**.
-- [ ] A technician cannot validate their own sample *(with C6)*.
-- [ ] A sample cannot skip a step (e.g. Prélevé → Validé) *(with C6)*.
+- [x] A technician cannot validate their own sample — validation is restricted
+      to VALIDATEUR / ADMIN (`tech1` → **403**).
+- [x] A sample cannot skip a step: neither approval alone moves it to Validé,
+      and `RESULTATS_SAISIS → VALIDE` is admin-only in the state machine.
 
 ### C8. Audit trail
 - [x] Reception records **who** did it and **when**
       (`SAMPLE_RECEIVED` with code, control code, conformity, technician).
 - [x] Sample creation is recorded (`SAMPLE_CREATED`).
-- [ ] The sample detail shows the timeline of what happened *(with C5)*.
+- [x] The full chain is recorded end to end: `SAMPLE_RECEIVED →
+      SAMPLE_ANALYSIS_STARTED → RESULTS_SAVED → RESULTS_SUBMITTED →
+      SAMPLE_VALIDATED_TECHNICAL → SAMPLE_APPROVED` (and `SAMPLE_REJECTED`).
+- [ ] The sample detail shows this timeline visually *(Phase 5 dashboards)*.
 
 ## Checkpoint D — Reports, email & alerts (Phase 3) — *to build*
 
@@ -339,7 +358,7 @@ The short list that proves nothing broke. ~5 minutes.
 | Phase 1 (A + B) | Claude Code | 2026-07-29 | ✅ passed |
 | Phase 2 · C1–C4 réception | Claude Code | 2026-08-23 | ✅ passed |
 | Phase 2 · C5 saisie résultats | Claude Code | 2026-08-25 | ✅ passed |
-| Phase 2 · C6 validation | | | |
+| Phase 2 · C6 double validation | Claude Code | 2026-08-25 | ✅ passed |
 | Phase 3 (D) | | | |
 | Phase 4 (E) | | | |
 | Phase 5 (F) | | | |

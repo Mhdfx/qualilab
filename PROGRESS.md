@@ -8,20 +8,27 @@
 
 ## ▶ NEXT ACTION
 
-**Phase 2 · C1 (réception) and C2 (saisie des résultats) are complete and
-verified (2026-08-25).** A sample now travels `PRELEVE → RECU → EN_ANALYSE →
-RESULTATS_SAISIS` with blind numbering, automatic conformity and a full audit
-chain. Build + lint pass; browser-tested (see `TESTPLAN.md` C1–C5, C7, C8).
+**Phase 2 is COMPLETE and verified (2026-08-25).** A sample now travels the
+whole circuit — `PRELEVE → RECU → EN_ANALYSE → RESULTATS_SAISIS → VALIDE` —
+with blind numbering, automatic conformity, double validation and a full audit
+chain. Build + lint pass; browser-tested (see `TESTPLAN.md` C1–C8).
 
-Next: **Phase 2 · C3 — Validation qualité (double validation).** Build
-`/validation`: the queue of samples at `RESULTATS_SAISIS`, the control view
-(results vs thresholds, technician notes, sample history), then the
-**two-step approval the client confirmed on 2026-08-18** — VALIDATEUR validates
-technically, then ADMIN approves; only then does the sample become `VALIDE`.
-Either can reject with a mandatory comment, which returns the sample to the
-technician. This needs one small schema addition: a second approval pair
-(`approvedById` / `approvedAt`) alongside `validatedById` / `validatedAt`, plus
-a state-machine step between `RESULTATS_SAISIS` and `VALIDE`.
+**This is the Phase 2 client demo:** log in as each role and walk one sample
+from the field to "Validé".
+
+Next: **Phase 3 — Rapports, emails et alertes.** In order:
+1. Server-side PDF report (Playwright + branded HTML), archived and
+   re-downloadable — triggered by the admin's final approval.
+2. Automatic send to the client's `ClientEmail` list (Resend) → `RAPPORT_ENVOYE`,
+   logged in `EmailLog`, resendable.
+3. **Contamination alerts** — grouped mail per client for sensitive parameters
+   over their limit. The data is already in place: `numericValue`, `limitValue`,
+   `alertOnExceed`, `produit`, `numeroLot`, `ClientEmail`.
+4. Feuille de paillasse (printable by date) and the admin's silent report edit.
+
+⚠️ **Two items must come from the lab before 3 can be finished:** the official
+norm limits per germ, and DNS access for `qualilabinternational.com` so Resend
+can send. Steps 1 and 4 are not blocked — start there.
 
 ---
 
@@ -55,7 +62,7 @@ a state-machine step between `RESULTATS_SAISIS` and `VALIDE`.
 - [x] **Demo:** each role logs into its own dashboard — verified in browser
 - [x] `npm run build` + `npm run lint` pass clean
 
-## Phase 2 — LIMS core
+## Phase 2 — LIMS core ✅ COMPLETE (2026-08-25)
 - [x] **Reception & conformity + assign to technician (`PRELEVE → RECU`)** ✅ 2026-08-23
   - [x] Blind numbering: sequential `controlCode` + crypto-random `serialNumber`
   - [x] `sample-select.ts` — numbering excluded from the préleveur's payload at the query
@@ -73,9 +80,14 @@ a state-machine step between `RESULTATS_SAISIS` and `VALIDE`.
   - [x] Work status incl. anomaly (description mandatory)
   - [x] Technician isolation enforced server-side (`sample-access.ts`)
 - [x] **Submit results (`RECU → EN_ANALYSE → RESULTATS_SAISIS`)** ✅ 2026-08-25
-- [ ] Validation / rejection (`→ VALIDE` or back to technician) — **double validation**
+- [x] **Validation / rejection — double validation** ✅ 2026-08-25
+  - [x] `canValidateTechnically()` + `canApprove()` guard the two steps
+  - [x] Validateur signs off technically; ADMIN alone moves the sample to VALIDE
+  - [x] Neither shortcut possible: validateur-alone and admin-without-technical both refused
+  - [x] Rejection requires a motif, returns the sample to the technician and clears the technical sign-off
+  - [x] "Attente admin" is a derived state — the six client-facing statuses are unchanged
 - [x] Audit on every transition; state machine enforced server-side
-- [ ] **Demo:** sample travels `PRELEVE → VALIDE`
+- [x] **Demo:** sample travels `PRELEVE → VALIDE` ✅ verified end to end
 
 ## Phase 3 — Reports & email
 - [ ] Server-side PDF report (Playwright, branded HTML) + archive + re-download
@@ -119,6 +131,17 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
+
+- **2026-08-25 · Claude Code** · **Phase 2 · C3 delivered — double validation.
+  Phase 2 is complete.** The two approvals the client confirmed are now
+  enforced: the validateur signs off technically, the admin approves, and only
+  the second step sets the status to VALIDE. Neither can act alone — both
+  shortcuts are refused server-side with an explanatory message. Rejection
+  requires a motif, returns the sample to the technician and clears the
+  technical sign-off so corrected results are re-validated from scratch.
+  "Attente admin" is modelled as a derived state rather than a seventh status,
+  so the six statuses in the client's specification stay exactly as promised.
+  Build + lint green, browser-verified. Next: Phase 3 reports and alerts.
 
 - **2026-08-25 · Claude Code** · **Phase 2 · C2 delivered — saisie des
   résultats.** Applied the five schema additions the contamination alerts need

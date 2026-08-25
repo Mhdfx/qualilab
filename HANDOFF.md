@@ -23,7 +23,7 @@
 | Clients | list API only | ⚠️ **Read-only**, no CRUD / 360 |
 | LIMS core — **réception** | queue, verify, conformity, assignment, **blind numbering** | ✅ **Phase 2 · C1 done** |
 | LIMS core — **saisie résultats** | bench sheet, automatic conformity, submit | ✅ **Phase 2 · C2 done** |
-| LIMS core — validation | double validation (validateur + admin) | ❌ **Phase 2 · C3** |
+| LIMS core — **validation** | double validation (validateur + admin), rejet motivé | ✅ **Phase 2 · C3 done** |
 | LIMS core — report, email | PDF, auto email, alerts | ❌ **Phase 3** |
 | Infra | VPS + PM2 + `/api/health` + watchdog/autostart/backup scripts | ✅ **Working** (prototype) |
 
@@ -44,13 +44,14 @@ src/
       samples/                 GET (audience-scoped) · POST (PRELEVEUR creates)
       samples/[id]/reception/  ★ PRELEVE → RECU: numbering, conformity, assignment
       samples/[id]/results/    ★ PUT save (RECU → EN_ANALYSE) · submit/ POST (→ RESULTATS_SAISIS)
+      samples/[id]/validation/ ★ POST validate | approve (→ VALIDE) | reject (→ EN_ANALYSE)
       clients/  parameters/  lab-services/   read endpoints
       invoices/  invoices/[id]/   invoice CRUD (COMPTABLE + ADMIN)
       health/                  liveness probe for PM2/watchdog
     preleveur/                 role space: dashboard + nouveau (3-step)
     reception/                 queue + [id] verify screen ✅
     technicien/                bench queue + [id] result entry sheet ✅
-    validation/                role space (Phase 2 screens to come)
+    validation/                queue + [id] control view (two-step approval) ✅
     commercial/                role space (Phase 4 screens to come)
     comptabilite/              role space (Phase 4 screens to come)
     admin/                     role space: dashboard + factures (list/new/[id])
@@ -61,6 +62,7 @@ src/
     RoleDashboard.tsx          shared role landing page (stats + mission + next steps)
     reception/  ReceptionQueue, ReceptionForm (conformity + assignment + numbers)
     technicien/ WorkQueue, ResultEntryForm (per-parameter entry + live conformity)
+    validation/ ValidationQueue, ValidationPanel (the two approvals + rejection)
     + feature components (SampleTable, SampleDetailPanel, FactureDetail, ...)
   lib/
     auth-server.ts     ★ Better Auth instance (username + admin plugins, trustedOrigins)
@@ -81,7 +83,7 @@ src/
     download-invoice-pdf.ts  ⚠️ CLIENT-side screenshot PDF (invoice demo only)
   generated/prisma/    ★ generated Prisma client — DO NOT edit, gitignored
 prisma/
-  schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (7)
+  schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (8)
 scripts/         VPS ops: deploy, wait-for-db, health-watchdog, setup-autostart, setup-database, start-production, vps-setup, check-db
 ```
 
@@ -164,6 +166,7 @@ Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 | Access rules for a page or route | `requireRole` / `requireApiRole` in `src/lib/auth.ts` |
 | Add a role / change a role's landing page | `src/lib/roles.ts` + Prisma `Role` enum |
 | Who may move a sample to a status | `src/lib/sample-status.ts` (`TRANSITIONS`) |
+| The two-approval rule | `canValidateTechnically()` / `canApprove()` in `sample-status.ts` |
 | How a typed result is read / conformity computed | `src/lib/result-value.ts` |
 | Which parameters raise a contamination alert | `AnalysisParameter.alertOnExceed` + `limitValue` (seeded in `prisma/seed.ts`) |
 | What gets audited | `logAudit()` calls + `src/lib/audit.ts` |
@@ -222,6 +225,7 @@ final hosting is TBD — **we build and test on our VPS for now.**
 | 2026-08-18 | **Working method: build continuously, pause at the point of need** | We do not wait for every unknown up front. Build until a task genuinely requires missing information (norms, formulas, legacy files, equipment list), then stop, ask the lab for exactly that, and resume. Anything blocked goes to PROGRESS as `[!]` with what is needed |
 | 2026-08-25 | **Speed is a stated requirement** | The lab works in this tool all day. Targets and rules in `CODE_QUALITY.md` §4b; checks in `TESTPLAN.md`. Treat a slow screen as a defect |
 | 2026-08-25 | **No Redis for now** | At 1–10 concurrent users it would add a service to run, deploy, monitor and back up for no measurable gain: sessions live in MySQL and pages are server-rendered. **Revisit when** we add scheduled jobs (Phase 6/7 alerts) or if a measurement — not a hunch — shows a real bottleneck |
+| 2026-08-25 | **"Attente admin" is a derived state, not a seventh status** | The client's specification promises exactly six tracked statuses. The technical validation is recorded on the sample (`validatedById`), and the sample stays `RESULTATS_SAISIS` until the admin approves — so the two-step rule is enforced without changing the status model the client validated. Use `approvalState(sample)` to read it |
 | 2026-08-25 | **Containers at Phase 5, not before** | docker-compose (app + MySQL + volume), Next `output: "standalone"`, Chromium for the PDF, nginx for HTTPS. Gives a reproducible deploy; switching mid-build would cost time without changing a feature |
 | 2026-08-18 | **Client portal confirmed** (Phase 8): `CLIENT` accounts are **created/managed by the ADMIN** (no self-signup); each client sees the status and results/reports of their own samples only | Client answer. `CLIENT` role already reserved in `lib/roles.ts` |
 | 2026-07-27 | **Server-side PDF via Playwright** for official reports | Pixel-perfect, selectable text, multi-page, reuses design-skill HTML. Client jsPDF stays for invoice demo only |

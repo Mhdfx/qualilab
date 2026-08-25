@@ -32,7 +32,10 @@ const TRANSITIONS: Transition[] = [
   { from: "PRELEVE", to: "RECU", roles: ["RECEPTIONNISTE", "ADMIN"] },
   { from: "RECU", to: "EN_ANALYSE", roles: ["TECHNICIEN", "ADMIN"] },
   { from: "EN_ANALYSE", to: "RESULTATS_SAISIS", roles: ["TECHNICIEN", "ADMIN"] },
-  { from: "RESULTATS_SAISIS", to: "VALIDE", roles: ["VALIDATEUR", "ADMIN"] },
+  // Double validation (client, 2026-08-18): the VALIDATEUR signs off technically
+  // first — recorded on the sample, not as a status change — then the ADMIN
+  // approves, and only that second step moves the sample to VALIDE.
+  { from: "RESULTATS_SAISIS", to: "VALIDE", roles: ["ADMIN"] },
   { from: "VALIDE", to: "RAPPORT_ENVOYE", roles: ["VALIDATEUR", "ADMIN"] },
   // Quality rejection — returns the sample to the technician, reason required.
   {
@@ -86,4 +89,73 @@ export function nextStatus(current: SampleStatus): SampleStatus | null {
 /** Display labels live in `labels.ts` — the single source of truth for wording. */
 export function statusLabel(status: SampleStatus) {
   return SAMPLE_STATUS_LABELS[status] ?? status;
+}
+
+/**
+ * The two approvals a sample needs before its report may be issued.
+ *
+ * The client requires both on every sample: the VALIDATEUR checks the results
+ * technically, then the ADMIN approves. "Awaiting approval" is derived — the
+ * sample is still `RESULTATS_SAISIS`, but its technical validation is recorded
+ * — so the six tracked statuses stay exactly as specified.
+ */
+export type ApprovalState =
+  | "AWAITING_TECHNICAL"
+  | "AWAITING_ADMIN"
+  | "APPROVED";
+
+export function approvalState(sample: {
+  validatedById: string | null;
+  approvedById: string | null;
+}): ApprovalState {
+  if (sample.approvedById) return "APPROVED";
+  if (sample.validatedById) return "AWAITING_ADMIN";
+  return "AWAITING_TECHNICAL";
+}
+
+export const APPROVAL_LABELS: Record<ApprovalState, string> = {
+  AWAITING_TECHNICAL: "En attente de validation technique",
+  AWAITING_ADMIN: "En attente d'approbation admin",
+  APPROVED: "Approuvé",
+};
+
+/** Guards the technical validation step (which is not a status change). */
+export function canValidateTechnically(
+  sample: { status: SampleStatus; validatedById: string | null },
+  role: Role
+): TransitionCheck {
+  if (role !== "VALIDATEUR" && role !== "ADMIN") {
+    return { ok: false, error: "Votre profil n'est pas autorisé à valider." };
+  }
+  if (sample.status !== "RESULTATS_SAISIS") {
+    return {
+      ok: false,
+      error: `Un échantillon « ${statusLabel(sample.status)} » n'est pas à valider.`,
+    };
+  }
+  if (sample.validatedById) {
+    return { ok: false, error: "La validation technique est déjà enregistrée." };
+  }
+  return { ok: true };
+}
+
+/** Guards the admin's final approval, which is what sets the status to VALIDE. */
+export function canApprove(
+  sample: { status: SampleStatus; validatedById: string | null },
+  role: Role
+): TransitionCheck {
+  if (role !== "ADMIN") {
+    return {
+      ok: false,
+      error: "Seul un administrateur peut donner l'approbation finale.",
+    };
+  }
+  if (!sample.validatedById) {
+    return {
+      ok: false,
+      error:
+        "La validation technique du validateur est requise avant l'approbation.",
+    };
+  }
+  return canTransition(sample.status, "VALIDE", role);
 }

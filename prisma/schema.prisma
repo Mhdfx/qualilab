@@ -80,6 +80,8 @@ model User {
   receivedSamples  Sample[]  @relation("SampleReceivedBy")
   assignedSamples  Sample[]  @relation("SampleTechnician")
   validatedSamples Sample[]  @relation("SampleValidatedBy")
+  approvedSamples  Sample[]  @relation("SampleApprovedBy")
+  rejectedSamples  Sample[]  @relation("SampleRejectedBy")
   enteredResults   Result[]
   auditLogs        AuditLog[]
 
@@ -217,10 +219,23 @@ model Sample {
   technicianId    String?
   technician      User?     @relation("SampleTechnician", fields: [technicianId], references: [id])
   assignedAt      DateTime?
+  /// Technical validation by the VALIDATEUR — the first of two approvals.
   validatedById   String?
   validatedBy     User?     @relation("SampleValidatedBy", fields: [validatedById], references: [id])
   validatedAt     DateTime?
+  /// Final approval by the ADMIN — the second. The client requires BOTH on
+  /// every sample (2026-08-18), so the status only becomes VALIDE once this is
+  /// set. "Awaiting approval" is therefore a derived state — validated but not
+  /// yet approved — rather than a seventh status, keeping the six tracked
+  /// statuses the client's specification promises.
+  approvedById    String?
+  approvedBy      User?     @relation("SampleApprovedBy", fields: [approvedById], references: [id])
+  approvedAt      DateTime?
   rejectionReason String?   @db.Text
+  /// Who sent it back, so the technician knows which desk rejected it.
+  rejectedById    String?
+  rejectedBy      User?     @relation("SampleRejectedBy", fields: [rejectedById], references: [id])
+  rejectedAt      DateTime?
 
   sampledAt  DateTime          @default(now())
   createdAt  DateTime          @default(now())
