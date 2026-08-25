@@ -89,40 +89,56 @@ le journal sans être réellement expédiés**, et l'interface l'indique clairem
 
 > **Dernier envoi : (aucun encore)**
 
-**Objet : Éléments nécessaires pour la suite du développement — LIMS Qualilab**
+**Objet : Développement terminé — éléments nécessaires pour la mise en service — LIMS Qualilab**
 
 Bonjour,
 
-Le développement avance bien : le cycle complet de l'échantillon est désormais
-opérationnel (prélèvement, réception avec numérotation, saisie des résultats,
-double validation). Pour poursuivre sur les rapports, les emails et les alertes
-de contamination, nous aurions besoin des éléments suivants :
+Le développement du système est arrivé à son terme : le cycle complet de
+l'échantillon fonctionne (prélèvement, réception avec numérotation, saisie des
+résultats, double validation), le rapport d'analyse PDF est généré et envoyé
+automatiquement, les alertes de contamination sont opérationnelles, la
+facturation se génère depuis les analyses validées, et le laboratoire dispose
+d'écrans d'administration complets (utilisateurs, paramètres d'analyse,
+catalogue, coordonnées).
 
-**Prioritaire (bloquant) :**
-1. Les **limites normatives officielles** par paramètre, en particulier E. coli,
-   Salmonelles et Listeria monocytogenes.
-2. Pour activer l'envoi réel des emails : **confirmation du domaine
-   expéditeur**, un **accès aux DNS** (ou le contact de la personne qui les
-   gère) pour y ajouter 3 enregistrements d'authentification, et un **compte
-   chez le service d'envoi**. Tout le reste est déjà opérationnel — les envois
-   sont actuellement enregistrés sans être expédiés.
-3. Vos **coordonnées légales définitives** (ICE, RC, RIB/IBAN, adresse) et votre
-   **logo en haute définition**.
+Pour passer à la mise en service, il ne nous manque plus que des éléments de
+votre côté :
 
-**Souhaitable rapidement :**
-4. Les **méthodes de calcul** par paramètre.
-5. Un **modèle du rapport d'analyse** que vous utilisez aujourd'hui.
-6. Le **texte de l'email** qui accompagne un rapport.
-7. Un **modèle de feuille de paillasse**.
-8. Les **adresses email par client** (rapports / alertes).
+**Pour activer l'envoi réel des emails (rapports + alertes) :**
+1. Confirmation du domaine expéditeur (nous proposons
+   `qualilabinternational.com`, avec une adresse du type `no-reply@...`).
+2. Un accès aux DNS de ce domaine, ou le contact de la personne qui les gère —
+   nous fournirons 3 enregistrements à ajouter (ils ne changent rien à vos
+   emails actuels).
+3. Un compte chez le service d'envoi (gratuit à votre volume) — nous pouvons le
+   créer et vous le transférer.
+   *En attendant, les envois sont enregistrés dans le journal sans partir.*
+
+**Pour que les documents officiels soient exacts :**
+4. Les **limites normatives officielles** par paramètre (E. coli, Salmonelles,
+   Listeria en priorité) — un écran est prêt pour les saisir ; nous utilisons
+   des valeurs marocaines usuelles en attendant.
+5. Vos **coordonnées légales définitives** (ICE, RC, RIB/IBAN, adresse) et
+   votre **logo en haute définition** — un écran est prêt pour les saisir.
+6. Les **méthodes de calcul** par paramètre (pour le calcul automatique).
+
+**Pour préparer la bascule :**
+7. L'**export de votre base actuelle** (clients, rapports, factures), dans le
+   format disponible.
+8. La **liste des comptes utilisateurs** : nom, fonction, rôle.
+9. Les **adresses email par client** (qui reçoit les rapports, qui reçoit les
+   alertes).
 
 **Trois décisions de votre part :**
-9. Un échantillon **non conforme à réception** doit-il être analysé malgré tout,
-   ou bloqué ?
-10. L'**alerte de contamination** doit-elle partir dès la validation technique,
-    ou après l'approbation de l'administrateur ?
-11. Sur le **portail client**, le client verra-t-il uniquement ses rapports, ou
-    aussi l'avancement des analyses et ses factures ?
+10. Un échantillon **non conforme à réception** doit-il être analysé malgré
+    tout, ou bloqué ?
+11. L'**alerte de contamination** doit-elle partir dès la validation technique,
+    ou après l'approbation de l'administrateur (fonctionnement actuel) ?
+12. Sur le futur **portail client**, le client verra-t-il uniquement ses
+    rapports, ou aussi l'avancement des analyses et ses factures ?
+
+Dès réception de ces éléments, nous planifions avec vous la recette (tests par
+vos équipes), la formation, et la mise en service officielle.
 
 Bien cordialement,
 
