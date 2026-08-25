@@ -142,9 +142,15 @@ model Client {
   phone    String?
   address  String?
   ice      String?
+  /// Clients are archived, never deleted: samples, reports and invoices refer
+  /// to them and the laboratory's history must stay readable.
+  archived Boolean   @default(false)
+  createdAt DateTime @default(now())
   emails   ClientEmail[]
   samples  Sample[]
   invoices Invoice[]
+
+  @@index([archived, name])
 }
 
 /// A client receives mail at several addresses: the client asked for reports

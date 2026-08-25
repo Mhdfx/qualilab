@@ -71,13 +71,7 @@ export const commercialNav: NavSection[] = [
     items: [
       { label: "Tableau de bord", href: "/commercial", icon: LayoutDashboard },
       { label: "Clients", href: "/commercial#clients", icon: Building2 },
-    ],
-  },
-  {
-    title: "À venir",
-    items: [
-      { label: "Fiche client 360°", icon: BarChart3, disabled: true, badge: "Phase 4" },
-      { label: "Renvoi de rapport", icon: FileCheck2, disabled: true, badge: "Phase 3" },
+      { label: "Nouveau client", href: "/commercial/nouveau", icon: BarChart3 },
     ],
   },
 ];

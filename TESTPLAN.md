@@ -269,10 +269,25 @@ The short list that proves nothing broke. ~5 minutes.
 ## Checkpoint E — Clients, invoicing & administration (Phase 4) — *to build*
 
 ### E1. Clients
-- [ ] Gestionnaire/admin can create, modify and archive a client.
-- [ ] A client can hold **several email addresses** (report vs alert recipients).
-- [ ] Fiche client 360° shows their samples, reports, invoices and payments.
-- [ ] Search and filters work on a realistic list.
+*verified 2026-08-25*
+- [x] Gestionnaire/admin can **create** a client; a technician gets **403**.
+- [x] The raison sociale is required; a duplicate name is refused (**409**),
+      since two identical names are indistinguishable in every picker.
+- [x] A malformed **ICE** is refused (15 digits), and spaces are normalised away
+      — it is printed on the invoice.
+- [x] An invalid **email** is refused rather than silently dropped.
+- [x] A client can hold **several email addresses**, each flagged for reports
+      and/or alerts; addresses are lowercased and duplicates refused.
+- [x] Editing updates both the record and the address list in one action.
+- [x] **Archiving** hides the client from the pickers but keeps its history;
+      `?archived=true` still lists it, and it can be reactivated.
+- [x] **Fiche client 360°** shows coordinates, recipients, recent samples with
+      their status and a link to each report, invoices with their payment
+      status, and the billed / collected totals.
+- [x] Search filters by raison sociale, contact, ICE or email.
+- [x] Empty states: no client, no result for a search, no address registered
+      (which warns that nothing can be sent).
+- [ ] Check the fiche on mobile with a client holding many samples.
 
 ### E2. Invoicing from validated samples
 - [ ] Selecting a client's validated samples generates the invoice lines

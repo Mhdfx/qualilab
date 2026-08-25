@@ -8,26 +8,25 @@
 
 ## ▶ NEXT ACTION
 
-**Phase 3 is code-complete and verified (2026-08-25).** Approval now produces
-the official PDF report, emails it to the client's address list, and fires a
-grouped contamination alert when a sensitive parameter is over its limit. The
-feuille de paillasse prints, and the admin's silent edit exists. Build + lint
-pass; browser-verified end to end (see `TESTPLAN.md` D1–D5).
+**Phase 4 · E1 (Clients) is complete and verified (2026-08-25).** Full CRUD,
+archive rather than delete, the multi-address recipient list the alerts depend
+on, and the fiche 360°. A test suite now exists (55 tests) and `npm test` is
+part of the definition of done.
 
-**Two things are simulated until the lab answers — by design, not by omission:**
-- Emails are journalised as `SIMULE` instead of delivered, until
-  `RESEND_API_KEY` + DNS (`NEEDEDINFO` item 2). The screen says so.
-- The alert limits are provisional Moroccan (NM) values until the official
-  figures arrive (`NEEDEDINFO` item 1). Changing a limit needs no code.
+Next: **Phase 4 · E2 — Facture depuis les échantillons validés.**
+1. Pick a client's validated samples that are not yet invoiced; their analyses
+   become the lines, at catalogue prices.
+2. **Editable désignations** — the client asked to control how products and
+   reports are named on the invoice.
+3. Mark which samples an invoice covers, so none is billed twice.
+4. **Upgrade the invoice PDF to the server-side renderer** — it is still the
+   prototype's client-side screenshot while the report is rendered by Chromium.
+   `lib/pdf.ts` and the pattern in `report-html.ts` are ready; this is the right
+   moment, since invoicing is being touched anyway.
 
-Next: **Phase 4 — Clients, facturation liée, administration.**
-1. Clients: full CRUD + archive + **fiche 360°** (échantillons, rapports,
-   factures, paiements) + management of their email list.
-2. **Facture depuis les échantillons validés** — the analyses become invoice
-   lines at catalogue prices; the plumbing already exists from the prototype.
-   Includes the editable désignations the client asked for.
-3. Admin: users & roles, analysis parameters (**where the real norms get
-   entered**), service catalogue, company details, audit-log viewer.
+Then **E3 — Administration**: users & roles, analysis parameters (**where the
+real norm limits get entered** once the lab sends them), service catalogue,
+company details, audit-log viewer.
 
 ---
 
@@ -110,8 +109,13 @@ Next: **Phase 4 — Clients, facturation liée, administration.**
       and the first indexes ever on `Invoice`
 
 ## Phase 4 — Clients, invoice link, admin
-- [ ] Client CRUD + archive + 360° view
-- [ ] Invoice generated from validated samples
+- [x] **Client CRUD + archive + 360° view** ✅ 2026-08-25
+  - [x] `client-validation.ts` — pure, tested rules shared by the API and the form
+  - [x] Multi-address recipient list (reports / alerts), which the sending depends on
+  - [x] Archive rather than delete: samples, reports and invoices still refer to the client
+  - [x] Search, empty states, and a warning when no address is registered
+- [ ] Invoice generated from validated samples (+ editable désignations)
+- [ ] **Upgrade the invoice PDF to server-side rendering** (still a screenshot)
 - [ ] Admin: users/roles, parameters, catalog, templates, company, audit viewer
 - [ ] **Demo:** configure everything + invoice from a validated sample
 
@@ -141,6 +145,17 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
+
+- **2026-08-25 · Claude Code** · **Test suite, then Phase 4 · E1 — clients.**
+  Added vitest and 55 tests over the rules that would be expensive to get
+  wrong: reading a bench value, money, the state machine, and now client
+  validation. `npm test` joins build and lint in the definition of done. Built
+  the client base: creation, editing, archiving rather than deletion, the
+  multi-address recipient list the alerts depend on, and the fiche 360° showing
+  a client's samples, reports, invoices and totals on one screen. Two
+  environment problems fixed on the way — a stale Prisma client in the running
+  dev server, and a transitive dependency pruned by an earlier uninstall.
+  Next: E2, invoicing from validated samples.
 
 - **2026-08-25 · Claude Code** · **Audit of the inherited prototype before
   extending it.** The demo code stored every amount as `Float`, accepted a

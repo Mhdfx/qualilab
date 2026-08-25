@@ -20,7 +20,7 @@
 | Role spaces | 7 dashboards with live indicators | ✅ **Phase 1 done** |
 | Data model | 13 tables incl. `Result`/`Report`/`AuditLog`/`EmailLog` | ✅ **Phase 1 done** |
 | Foundations | `logAudit()`, sample status state machine | ✅ **Phase 1 done** |
-| Clients | list API only | ⚠️ **Read-only**, no CRUD / 360 |
+| Clients | CRUD, archive, recipient lists, fiche 360° | ✅ **Phase 4 · E1 done** |
 | LIMS core — **réception** | queue, verify, conformity, assignment, **blind numbering** | ✅ **Phase 2 · C1 done** |
 | LIMS core — **saisie résultats** | bench sheet, automatic conformity, submit | ✅ **Phase 2 · C2 done** |
 | LIMS core — **validation** | double validation (validateur + admin), rejet motivé | ✅ **Phase 2 · C3 done** |
@@ -50,14 +50,16 @@ src/
       samples/[id]/report/send/ POST — send or resend to the client
       bench-sheet/             GET ?date= — printable feuille de paillasse
       reports/[id]/admin-edit/ ⚠️ PATCH — admin edit, deliberately NOT audited
-      clients/  parameters/  lab-services/   read endpoints
+      clients/                 GET (searchable) · POST (GESTIONNAIRE/ADMIN)
+      clients/[id]/            GET · PATCH (edit, archive, recipient list)
+      parameters/  lab-services/   read endpoints
       invoices/  invoices/[id]/   invoice CRUD (COMPTABLE + ADMIN)
       health/                  liveness probe for PM2/watchdog
     preleveur/                 role space: dashboard + nouveau (3-step)
     reception/                 queue + [id] verify screen ✅
     technicien/                bench queue + [id] result entry sheet ✅
     validation/                queue + [id] control view (two-step approval) ✅
-    commercial/                role space (Phase 4 screens to come)
+    commercial/                client base + [id] fiche 360° + nouveau + [id]/modifier ✅
     comptabilite/              role space (Phase 4 screens to come)
     admin/                     role space: dashboard + factures (list/new/[id])
   components/
@@ -91,12 +93,16 @@ src/
     report-dispatch.ts ★ what happens on approval: report, send, alerts
     bench-sheet-html.ts  the printable worksheet
     pagination.ts      ★ cursor paging — use it on any list that grows
+    money.ts           ★ toMoney() — every DECIMAL crossing a boundary
+    invoice-serialize.ts  shapes an invoice for the wire (Decimal → number)
+    retry-unique.ts    retries a sequential-number collision
+    client-validation.ts  ★ client + recipient-list rules (pure, tested)
     invoice-number.ts / invoice-math.ts / invoice-types.ts / lab-services.ts / labels.ts
     number-to-words-fr.ts   amount-in-words (FR) for invoices
     download-invoice-pdf.ts  ⚠️ CLIENT-side screenshot PDF (invoice demo only)
   generated/prisma/    ★ generated Prisma client — DO NOT edit, gitignored
 prisma/
-  schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (10)
+  schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (12)
   ⚠️ the VPS needs a Chromium for the PDF: `apt install chromium`
 scripts/         VPS ops: deploy, wait-for-db, health-watchdog, setup-autostart, setup-database, start-production, vps-setup, check-db
 ```
@@ -186,6 +192,8 @@ Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 | The email wording (report / alert) | `src/lib/emails/templates.ts` |
 | What is sent on approval | `src/lib/report-dispatch.ts` |
 | How a growing list is paged | `src/lib/pagination.ts` (cursor, not page numbers) |
+| Client / ICE / email validation | `src/lib/client-validation.ts` |
+| How money crosses a boundary | `src/lib/money.ts` + `invoice-serialize.ts` |
 | Which parameters raise a contamination alert | `AnalysisParameter.alertOnExceed` + `limitValue` (seeded in `prisma/seed.ts`) |
 | What gets audited | `logAudit()` calls + `src/lib/audit.ts` |
 | Add a DB field/table | `prisma/schema.prisma` → `npm run db:migrate` → client regenerates |
@@ -288,9 +296,13 @@ report is rendered server-side, and there is no automated test suite.
   selectable text) while the analysis report is rendered server-side by
   Chromium. The machinery to fix it exists — `lib/pdf.ts` + an HTML template
   like `report-html.ts`. Worth doing in Phase 4, when invoicing is touched.
-- **No automated tests.** Verification is manual, through `TESTPLAN.md`. Before
-  go-live the critical paths deserve real tests: the value parser, the money
-  math, the state machine, and the role guards.
+- ~~No automated tests~~ → **resolved 2026-08-25.** `npm test` runs vitest over
+  the rules the laboratory depends on (value parser, money, state machine,
+  client validation). **Anything new in `lib/` that decides a value, a verdict,
+  a permission or an amount ships with its test** — see `CODE_QUALITY.md` §4c.
+- ⚠️ **Restart the dev server after a schema change.** Prisma's client is loaded
+  into the running Node process, so new fields produce "Unknown field" until the
+  server is restarted — it is not a code error.
 - Sample status still only ever reaches `PRELEVE` in practice — Phase 2 wires the
   transitions. The state machine (`canTransition`) already exists: **use it**,
   never write `status` directly.

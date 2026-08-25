@@ -1,5 +1,5 @@
 import { defineConfig } from "vitest/config";
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Tests cover the rules the laboratory depends on being right — reading a
@@ -20,6 +20,8 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: { "@": resolve(__dirname, "./src") },
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
   },
 });
