@@ -6,11 +6,13 @@ import { FileText, Plus, Search, Receipt, Wallet, FileBarChart } from "lucide-re
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { useInvoiceBasePath } from "@/lib/invoice-paths";
 import { PrimaryLink } from "@/components/PrimaryButton";
 import { formatCurrency, formatDate } from "@/lib/labels";
 import type { Invoice } from "@/lib/invoice-types";
 
 export function FacturesList() {
+  const base = useInvoiceBasePath();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -60,7 +62,7 @@ export function FacturesList() {
         title="Factures"
         subtitle="Créez, consultez et téléchargez les factures clients"
         action={
-          <PrimaryLink href="/admin/factures/nouvelle" className="px-6 py-3">
+          <PrimaryLink href={`${base}/nouvelle`} className="px-6 py-3">
             <Plus className="h-4 w-4" />
             Nouvelle facture
           </PrimaryLink>
@@ -112,7 +114,7 @@ export function FacturesList() {
             {filtered.map((inv) => (
               <Link
                 key={inv.id}
-                href={`/admin/factures/${inv.id}`}
+                href={`${base}/${inv.id}`}
                 className="block rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition-all hover:border-slate-300 hover:shadow-md active:scale-[0.99]"
               >
                 <div className="mb-3 flex items-start justify-between gap-2">
@@ -143,7 +145,7 @@ export function FacturesList() {
                     <tr
                       key={inv.id}
                       onClick={() => {
-                        window.location.href = `/admin/factures/${inv.id}`;
+                        window.location.href = `${base}/${inv.id}`;
                       }}
                       className="cursor-pointer transition-colors hover:bg-brand-light/40"
                     >

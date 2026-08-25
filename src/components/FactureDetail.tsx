@@ -1,12 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
 import Link from "next/link";
+import { useInvoiceBasePath } from "@/lib/invoice-paths";
 import { ArrowLeft, Download, Printer } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { formatCurrency } from "@/lib/labels";
 import { COMPANY } from "@/lib/company";
-import { downloadInvoicePdf } from "@/lib/download-invoice-pdf";
 import { computeInvoiceTotals } from "@/lib/invoice-math";
 import type { Invoice } from "@/lib/invoice-types";
 
@@ -24,26 +23,9 @@ function formatInvoiceDate(date: Date | string) {
 const VAT_RATES = [20, 10, 5.5] as const;
 
 export function FactureDetail({ invoice }: { invoice: Invoice }) {
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const [downloading, setDownloading] = useState(false);
-
+  const base = useInvoiceBasePath();
   function handlePrint() {
     window.print();
-  }
-
-  async function handleDownloadPdf() {
-    const sheet = sheetRef.current;
-    if (!sheet) return;
-
-    setDownloading(true);
-    try {
-      await downloadInvoicePdf(sheet, `${invoice.number}.pdf`);
-    } catch (error) {
-      console.error("PDF generation failed:", error);
-      alert("Impossible de générer le PDF. Réessayez ou utilisez Imprimer.");
-    } finally {
-      setDownloading(false);
-    }
   }
 
   const clientNumber = invoice.client.ice ?? invoice.client.id.slice(-8).toUpperCase();
@@ -56,7 +38,7 @@ export function FactureDetail({ invoice }: { invoice: Invoice }) {
     <div className="mx-auto max-w-[210mm]">
       <div className="no-print mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Link
-          href="/admin/factures"
+          href={base}
           className="inline-flex items-center gap-2 text-sm text-slate-500 transition hover:text-brand"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -71,20 +53,21 @@ export function FactureDetail({ invoice }: { invoice: Invoice }) {
             <Printer className="h-4 w-4" />
             Imprimer
           </button>
-          <button
-            type="button"
-            onClick={handleDownloadPdf}
-            disabled={downloading}
-            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full bg-gradient-to-b from-[#234b73] to-[#1a3a5c] px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand/25 transition-all hover:from-[#2d6a9f] hover:to-[#1a3a5c] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+          {/* Rendered server-side, like the analysis report: selectable text
+              and real page breaks rather than a screenshot of this page. */}
+          <a
+            href={`/api/invoices/${invoice.id}/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full bg-gradient-to-b from-[#234b73] to-[#1a3a5c] px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand/25 transition-all hover:from-[#2d6a9f] hover:to-[#1a3a5c] active:scale-[0.98]"
           >
             <Download className="h-4 w-4" />
-            {downloading ? "Génération…" : "Télécharger (PDF)"}
-          </button>
+            Télécharger (PDF)
+          </a>
         </div>
       </div>
 
       <div
-        ref={sheetRef}
         className="print-area invoice-sheet flex min-h-[277mm] flex-col overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-slate-200"
       >
         {/* Logo + client */}

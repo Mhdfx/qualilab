@@ -8,25 +8,23 @@
 
 ## ▶ NEXT ACTION
 
-**Phase 4 · E2 (facturation depuis les échantillons validés) is complete and
-verified (2026-08-25).** A client's validated analyses become invoice lines at
-catalogue prices, the wording of every line is editable, and a sample can never
-be billed twice. 66 tests pass; build and lint clean.
+**Phase 4 · E1 + E2 complete, and both gaps they surfaced are fixed
+(2026-08-25).** The comptable now has their own invoice space, and the invoice
+is rendered server-side like the report — the screenshot machinery, and the two
+libraries behind it, are gone. 66 tests pass; build and lint clean.
 
-Two things surfaced while testing and are the immediate next steps:
-
-1. 🔴 **The comptable cannot reach the invoice screens.** They live under
-   `/admin`, which is ADMIN-only, although `/api/invoices` already allows
-   COMPTABLE — the role exists precisely to invoice. Give invoicing its own
-   route under `/comptabilite` reusing the existing components
-   (`FacturesList`, `NouvelleFactureForm`, `FactureDetail`).
-2. 🟠 **The invoice PDF is still the prototype's client-side screenshot** while
-   the analysis report is rendered server-side. `lib/pdf.ts` and the pattern in
-   `report-html.ts` are ready; write `invoice-html.ts` and a download route.
-
-Then **E3 — Administration**: users & roles, analysis parameters (**where the
-real norm limits get entered** once the lab sends them), service catalogue,
-company details, audit-log viewer.
+Next: **Phase 4 · E3 — Administration.**
+1. **Users & roles** — create an account, assign one of the roles, disable it,
+   reset a password. Better Auth's admin plugin is already configured.
+2. **Analysis parameters** — this is **where the real norm limits get entered**
+   once the lab sends them: unit, threshold, numeric limit, and the
+   "sensitive" flag that decides which germs raise a contamination alert.
+   Changing a limit here must need no code.
+3. **Service catalogue** — labels and prices, activate/deactivate.
+4. **Company details** — the identity printed on every report and invoice,
+   editable without touching `company.ts`.
+5. **Audit-log viewer** — read-only, filterable, the traceability promise made
+   visible.
 
 ---
 
@@ -121,7 +119,11 @@ company details, audit-log viewer.
   - [x] Server-side guards: wrong client, not validated, already invoiced
   - [x] The line désignation is a real editable field (it was a dropdown, so
         picker-added lines could not even be submitted)
-- [ ] 🔴 Give the **comptable** access to the invoice screens (currently ADMIN-only routes)
+- [x] **Comptable has their own invoice space** ✅ 2026-08-25 — shared
+      components, links derived from the space they render in
+- [x] **Invoice PDF rendered server-side** ✅ 2026-08-25 — selectable text,
+      amount in words, RIB/IBAN, legal mentions; `html-to-image` and `jspdf`
+      removed with the screenshot code
 - [ ] **Upgrade the invoice PDF to server-side rendering** (still a screenshot)
 - [ ] Admin: users/roles, parameters, catalog, templates, company, audit viewer
 - [ ] **Demo:** configure everything + invoice from a validated sample
@@ -152,6 +154,16 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
+
+- **2026-08-25 · Claude Code** · **Closed both gaps E2 surfaced.** The comptable
+  now has their own invoice space rather than screens locked behind an
+  admin-only route — the components are shared, and their links follow the
+  space they are rendered in so nobody is bounced. The invoice is rendered
+  server-side like the analysis report: selectable text, real page breaks, the
+  amount in words and the RIB, instead of a flattened screenshot of the page.
+  Removed the screenshot code and the two libraries it needed. Next: E3,
+  administration — including the screen where the lab's real norm limits will
+  be entered.
 
 - **2026-08-25 · Claude Code** · **Phase 4 · E2 — invoicing from validated
   analyses.** A client's validated samples now become invoice lines at

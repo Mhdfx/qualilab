@@ -55,13 +55,14 @@ src/
       clients/[id]/billable/   GET — validated analyses not yet invoiced
       parameters/  lab-services/   read endpoints
       invoices/  invoices/[id]/   invoice CRUD (COMPTABLE + ADMIN)
+      invoices/[id]/pdf/       GET — the invoice rendered server-side
       health/                  liveness probe for PM2/watchdog
     preleveur/                 role space: dashboard + nouveau (3-step)
     reception/                 queue + [id] verify screen ✅
     technicien/                bench queue + [id] result entry sheet ✅
     validation/                queue + [id] control view (two-step approval) ✅
     commercial/                client base + [id] fiche 360° + nouveau + [id]/modifier ✅
-    comptabilite/              role space (Phase 4 screens to come)
+    comptabilite/              dashboard + factures (list/nouvelle/[id]) ✅
     admin/                     role space: dashboard + factures (list/new/[id])
   components/
     layout/  AdminShell, PreleveurShell, RoleShells.tsx (5 role shells),
@@ -99,9 +100,10 @@ src/
     retry-unique.ts    retries a sequential-number collision
     client-validation.ts  ★ client + recipient-list rules (pure, tested)
     billing.ts         ★ analyses → invoice lines at catalogue prices (pure, tested)
+    invoice-html.ts    ★ the invoice as a printable document
+    invoice-paths.ts   useInvoiceBasePath() — invoice links follow the role's space
     invoice-number.ts / invoice-math.ts / invoice-types.ts / lab-services.ts / labels.ts
     number-to-words-fr.ts   amount-in-words (FR) for invoices
-    download-invoice-pdf.ts  ⚠️ CLIENT-side screenshot PDF (invoice demo only)
   generated/prisma/    ★ generated Prisma client — DO NOT edit, gitignored
 prisma/
   schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (13)
@@ -295,14 +297,12 @@ report is rendered server-side, and there is no automated test suite.
 - ~~Role checks hardcoded per file~~ → **resolved:** everything now goes through
   `requireRole` / `requireApiRole`. Keep it that way; never re-introduce an
   inline `session.role === "..."` check in a page or route.
-- 🔴 **The comptable cannot reach the invoice screens.** They live under
-  `/admin` (ADMIN-only) while `/api/invoices` allows COMPTABLE — the role
-  exists to invoice. Needs its own route under `/comptabilite` reusing the
-  existing components.
-- **Invoice PDF is still a client-side screenshot** (flattened, single page, no
-  selectable text) while the analysis report is rendered server-side by
-  Chromium. The machinery to fix it exists — `lib/pdf.ts` + an HTML template
-  like `report-html.ts`. Worth doing in Phase 4, when invoicing is touched.
+- ~~The comptable cannot reach the invoice screens~~ → **resolved 2026-08-25**:
+  `/comptabilite/factures` reuses the same components, and
+  `useInvoiceBasePath()` makes their links follow the space they render in.
+  **A shared invoice component must never hardcode `/admin/...`.**
+- ~~Invoice PDF is a client-side screenshot~~ → **resolved 2026-08-25**: it is
+  rendered by Chromium from `invoice-html.ts`, like the report.
 - ~~No automated tests~~ → **resolved 2026-08-25.** `npm test` runs vitest over
   the rules the laboratory depends on (value parser, money, state machine,
   client validation). **Anything new in `lib/` that decides a value, a verdict,

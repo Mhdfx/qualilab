@@ -309,10 +309,12 @@ The short list that proves nothing broke. ~5 minutes.
       a second attempt is refused (**409**, naming the sample).
 - [x] A sample belonging to another client is refused (**400**).
 - [x] A sample that is not validated is refused (**409**).
-- [ ] Invoice PDF is still the prototype's client-side screenshot — to move to
-      the server-side renderer like the analysis report.
-- [ ] The **comptable** cannot yet reach the invoice screens: they live under
-      `/admin`, although the API already allows COMPTABLE.
+- [x] **Invoice PDF is rendered server-side** like the analysis report:
+      selectable text, real page breaks, the amount in words, the RIB/IBAN and
+      the legal mentions. The screenshot machinery is gone.
+- [x] **The comptable reaches the invoice screens** in their own space
+      (`/comptabilite/factures`), from the shared components — links follow the
+      space they are rendered in, so nobody is bounced to an admin-only route.
 
 ### E3. Administration
 - [ ] Admin creates a user, assigns a role, disables an account, resets a password.
@@ -405,6 +407,8 @@ The short list that proves nothing broke. ~5 minutes.
 | Phase 2 · C5 saisie résultats | Claude Code | 2026-08-25 | ✅ passed |
 | Phase 2 · C6 double validation | Claude Code | 2026-08-25 | ✅ passed |
 | Phase 3 (D) | Claude Code | 2026-08-25 | ✅ passed (delivery pending DNS) |
-| Phase 4 (E) | | | |
+| Phase 4 · E1 clients | Claude Code | 2026-08-25 | ✅ passed |
+| Phase 4 · E2 facturation | Claude Code | 2026-08-25 | ✅ passed |
+| Phase 4 · E3 administration | | | |
 | Phase 5 (F) | | | |
 | Extensions (G) | | | |

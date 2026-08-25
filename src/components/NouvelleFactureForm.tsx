@@ -13,6 +13,7 @@ import {
   FileText,
   AlertCircle,
 } from "lucide-react";
+import { useInvoiceBasePath } from "@/lib/invoice-paths";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
@@ -59,6 +60,7 @@ function newLine(): LineItem {
 
 export function NouvelleFactureForm() {
   const router = useRouter();
+  const base = useInvoiceBasePath();
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [services, setServices] = useState<LabServiceOption[]>([]);
   const [clientId, setClientId] = useState("");
@@ -178,7 +180,7 @@ export function NouvelleFactureForm() {
       }
 
       const invoice = await res.json();
-      router.push(`/admin/factures/${invoice.id}`);
+      router.push(`${base}/${invoice.id}`);
     } catch {
       setError("Une erreur réseau est survenue.");
       setSubmitting(false);
@@ -188,7 +190,7 @@ export function NouvelleFactureForm() {
   return (
     <div className="mx-auto max-w-4xl">
       <Link
-        href="/admin/factures"
+        href={base}
         className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-brand"
       >
         <ArrowLeft className="h-4 w-4" />
@@ -449,7 +451,7 @@ export function NouvelleFactureForm() {
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
           <SecondaryButton
             type="button"
-            onClick={() => router.push("/admin/factures")}
+            onClick={() => router.push(base)}
             className="px-6 py-3"
           >
             Annuler

@@ -81,13 +81,8 @@ export const comptabiliteNav: NavSection[] = [
     title: "Menu principal",
     items: [
       { label: "Tableau de bord", href: "/comptabilite", icon: LayoutDashboard },
-      { label: "Factures", href: "/comptabilite#factures", icon: FileText },
-    ],
-  },
-  {
-    title: "À venir",
-    items: [
-      { label: "Suivi des paiements", icon: Wallet, disabled: true, badge: "Phase 4" },
+      { label: "Factures", href: "/comptabilite/factures", icon: FileText },
+      { label: "Nouvelle facture", href: "/comptabilite/factures/nouvelle", icon: Wallet },
     ],
   },
 ];
