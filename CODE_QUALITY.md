@@ -69,6 +69,36 @@ about all six.
   fixed sets.
 - **Seed stays runnable:** a fresh DB + `db:seed` must demo the full flow.
 
+## 4b. Performance — the system must feel instant
+
+**A laboratory tool is used all day, on the bench, between two samples. Slow is
+a defect.** Speed is a requirement here, not a nice-to-have: every screen should
+answer immediately, and no action should leave the user waiting without a
+reason. Treat a sluggish page like a bug and fix it before shipping.
+
+**Targets** (on the VPS, over the real domain):
+- First view of any screen: **under 1 second**.
+- Any click that changes something (save, receive, submit): **under 500 ms**
+  before the interface responds — with a busy state if it cannot be.
+- Nothing on screen may "jump" while loading.
+
+**Rules that keep it there:**
+- **Server Components by default.** `"use client"` only where interaction needs
+  it. Data is fetched on the server, never in a client waterfall.
+- **Run independent queries in parallel** (`Promise.all`), never in sequence.
+- **Never query in a loop.** No N+1: shape the data with one `select`/`include`.
+- **Select only the fields the screen uses** — see `lib/sample-select.ts`.
+- **Index every column used in a `where`, `orderBy` or join.** Adding a filter
+  means checking the index exists in `schema.prisma`.
+- **Paginate every list that grows with time** (samples, invoices, audit log).
+  A screen must never load "all rows ever".
+- **Keep the client bundle small**: no heavy library for something small, and
+  import icons/components individually.
+- **Production is a production build** (`next build`), never a dev server.
+
+**Before calling a screen done:** open it with realistic data, not three demo
+rows. If it hesitates, it is not finished.
+
 ## 5. Security & privacy (sensitive data)
 - **Never log secrets, tokens, passwords, or full personal records.**
 - **Never expose another role's or another préleveur's data** — scope every
@@ -92,6 +122,7 @@ about all six.
 
 ## 8. Verification before "done"
 1. `npm run lint` clean · `npm run build` passes.
+0. The screen responds instantly with realistic data (see §4b).
 2. Authorization verified server-side for every new/changed surface.
 3. The affected flow exercised end-to-end (real click-through or request).
 4. Loading/empty/error states checked.

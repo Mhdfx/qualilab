@@ -75,7 +75,12 @@ blind grepping.
 8. **Verify before "done".** Build + run + exercise the flow. Report failures
    honestly with output. "Done" means demonstrated, not assumed. Tick the
    matching items in `TESTPLAN.md` — only for what you actually saw working.
-9. **Build continuously; pause at the point of need.** Don't stall waiting for
+9. **Speed is a requirement.** The lab uses this all day between samples: every
+   screen answers in under a second, every action acknowledges in under half a
+   second. Server Components by default, parallel queries, no N+1, indexed
+   filters, paginated lists. A slow screen is a defect — see `CODE_QUALITY.md`
+   §4b before shipping one.
+10. **Build continuously; pause at the point of need.** Don't stall waiting for
    information that isn't required yet. When a task genuinely needs missing
    input from the lab (norm limits, calculation formulas, legacy data files,
    equipment list), stop there, mark it `[!]` in PROGRESS with exactly what is

@@ -318,6 +318,14 @@ The short list that proves nothing broke. ~5 minutes.
 - [ ] Keyboard navigation reaches every action; focus is always visible.
 - [ ] Error messages are readable and in French.
 
+### Performance — check on every new screen
+- [ ] The screen appears in **under 1 second** (production build, real domain).
+- [ ] A save / submit acknowledges in **under 500 ms**, or shows a busy state.
+- [ ] Nothing jumps or reflows while the page loads.
+- [ ] The screen still feels instant with **realistic data**, not three demo rows
+      (a few hundred samples, a full year of invoices).
+- [ ] No list loads every row ever recorded — long lists are paginated.
+
 ### Robustness
 - [ ] Every screen has a loading state, an empty state and an error state.
 - [ ] Double-clicking a submit button does not create two records.

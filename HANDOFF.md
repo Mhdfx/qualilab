@@ -220,6 +220,9 @@ final hosting is TBD — **we build and test on our VPS for now.**
 | 2026-08-18 | **NEW REQUIREMENT: automatic contamination alert emails** (client model email received) | On sensitive micro parameters (E. coli, Salmonelle, Listeria), when a result exceeds the norm limit and the result is validated, an automatic mail goes to the client's listed addresses with a Produit/Site/Date/Lot/Germe/Résultat/Limite table + lab signature. Distinct from the report email. Forces 5 schema additions — see PLAN data-model table |
 | 2026-08-18 | **Results must be stored numerically** (`Result.numericValue`) | Direct consequence of the alert feature: threshold breach cannot be detected from a display string. Keep the value as typed (scientific notation `8,9.10²`) **and** a parsed numeric for comparison |
 | 2026-08-18 | **Working method: build continuously, pause at the point of need** | We do not wait for every unknown up front. Build until a task genuinely requires missing information (norms, formulas, legacy files, equipment list), then stop, ask the lab for exactly that, and resume. Anything blocked goes to PROGRESS as `[!]` with what is needed |
+| 2026-08-25 | **Speed is a stated requirement** | The lab works in this tool all day. Targets and rules in `CODE_QUALITY.md` §4b; checks in `TESTPLAN.md`. Treat a slow screen as a defect |
+| 2026-08-25 | **No Redis for now** | At 1–10 concurrent users it would add a service to run, deploy, monitor and back up for no measurable gain: sessions live in MySQL and pages are server-rendered. **Revisit when** we add scheduled jobs (Phase 6/7 alerts) or if a measurement — not a hunch — shows a real bottleneck |
+| 2026-08-25 | **Containers at Phase 5, not before** | docker-compose (app + MySQL + volume), Next `output: "standalone"`, Chromium for the PDF, nginx for HTTPS. Gives a reproducible deploy; switching mid-build would cost time without changing a feature |
 | 2026-08-18 | **Client portal confirmed** (Phase 8): `CLIENT` accounts are **created/managed by the ADMIN** (no self-signup); each client sees the status and results/reports of their own samples only | Client answer. `CLIENT` role already reserved in `lib/roles.ts` |
 | 2026-07-27 | **Server-side PDF via Playwright** for official reports | Pixel-perfect, selectable text, multi-page, reuses design-skill HTML. Client jsPDF stays for invoice demo only |
 | 2026-07-27 | **Resend** for transactional email | Best deliverability; matches spec "service dédié" |
@@ -251,6 +254,9 @@ final hosting is TBD — **we build and test on our VPS for now.**
   its official methods — they drive both conformity and the alerts.
 - Results are stored twice on purpose: `value` as typed, `numericValue` parsed.
   Never compare against `value`.
+- ⚠️ **No pagination yet.** `/api/samples`, the invoice list and the queues load
+  every matching row. Fine with demo data, a problem after a year of real use —
+  paginate them before go-live (Phase 5), and index any new filter column.
 - **Admin silent report edit** (client 28-07) intentionally bypasses the audit
   trail for ADMIN only. This is a deliberate client choice; keep it scoped to
   ADMIN + report edits and nothing else.
