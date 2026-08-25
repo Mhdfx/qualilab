@@ -186,6 +186,7 @@ Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 | `NODE_ENV` | `development` / `production` | |
 | `PORT` | prod port (default 3000) | |
 | `AUTH_COOKIE_SECURE` | set `false` only for plain-HTTP testing | HTTPS in prod |
+| `NEXT_PUBLIC_DEMO_MODE` | `false` hides the demo-accounts panel on the login page | **Set to `false`** once the lab's real accounts exist |
 
 **To add later:** `RESEND_API_KEY` + `EMAIL_FROM` (Phase 3 email), and any
 Playwright/Chromium path config for server-side PDF. Log new vars here **and** in

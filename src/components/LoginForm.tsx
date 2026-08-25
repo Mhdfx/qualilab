@@ -6,6 +6,7 @@ import { User, Lock, ShieldCheck } from "lucide-react";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { BrandLogo } from "@/components/BrandLogo";
 import { authClient } from "@/lib/auth-client";
+import { DemoAccounts } from "@/components/DemoAccounts";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -113,11 +114,13 @@ export default function LoginForm() {
             </PrimaryButton>
           </form>
 
-          <p className="mt-8 text-center text-xs text-slate-400">
-            Démo : <span className="font-medium text-slate-500">pre1</span> /{" "}
-            <span className="font-medium text-slate-500">admin</span> — mot de passe{" "}
-            <span className="font-medium text-slate-500">password</span>
-          </p>
+          <DemoAccounts
+            onPick={(demoUsername, demoPassword) => {
+              setUsername(demoUsername);
+              setPassword(demoPassword);
+              setError("");
+            }}
+          />
         </div>
 
         <div className="relative hidden overflow-hidden bg-gradient-to-br from-[#1a3a5c] via-[#234b73] to-[#2d6a9f] md:flex md:w-[45%] md:flex-col md:items-center md:justify-center md:px-10 md:text-center">
