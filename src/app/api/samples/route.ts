@@ -12,9 +12,36 @@ export async function GET(request: Request) {
   const session = await requireApiRole();
   if (session instanceof NextResponse) return session;
 
+  const params = new URL(request.url).searchParams;
+  const q = params.get("q")?.trim();
+  const status = params.get("status");
+
   // A préleveur only ever sees their own field work; the lab roles see all.
-  const where =
-    session.role === "PRELEVEUR" ? { userId: session.id } : {};
+  // The search runs in the database, not on the loaded page — otherwise a
+  // code typed by the réceptionniste would only match the 50 newest samples.
+  //
+  // The préleveur's search deliberately excludes the laboratory numbering:
+  // a hit on a serial number would tell them which of their samples carries
+  // it, and the whole point of the blind numbering is that they cannot know.
+  const searchable = [
+    { code: { contains: q } },
+    { produit: { contains: q } },
+    { numeroLot: { contains: q } },
+    { lieu: { contains: q } },
+    { client: { name: { contains: q } } },
+    ...(session.role !== "PRELEVEUR"
+      ? [
+          { controlCode: { contains: q } },
+          { serialNumber: { contains: q } },
+        ]
+      : []),
+  ];
+
+  const where = {
+    ...(session.role === "PRELEVEUR" ? { userId: session.id } : {}),
+    ...(status ? { status: status as never } : {}),
+    ...(q ? { OR: searchable } : {}),
+  };
 
   // Never load the whole table: this list grows for the life of the laboratory.
   const { take, cursor, skip } = pageParams(request);

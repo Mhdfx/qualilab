@@ -28,7 +28,8 @@
 | LIMS core — **validation** | double validation (validateur + admin), rejet motivé | ✅ **Phase 2 · C3 done** |
 | LIMS core — **rapport PDF** | official report, 3 signatures, on-demand render | ✅ **Phase 3 · started** |
 | LIMS core — **email, alertes** | auto send, grouped contamination alerts, bench sheet | ✅ **Phase 3 done** (delivery simulated until DNS) |
-| Infra | VPS + PM2 + `/api/health` + watchdog/autostart/backup scripts | ✅ **Working** (prototype) |
+| Direction & recherche | direction view, DB-backed global search | ✅ **Phase 5 done** |
+| Infra | Docker image + compose, backups, `DEPLOY.md` — PM2 kept as fallback | ✅ **artifacts ready** (VPS deploy pending) |
 
 **Bottom line:** the foundation (auth, roles, guards, data model, audit, state
 machine, dashboards) is in place. What remains is the workflow itself —
@@ -75,6 +76,8 @@ src/
              DashboardShell, Sidebar, admin-nav / preleveur-nav / role-navs.ts
     ui/      Card, StatCard, StatusBadge, TypeBadge, StepIndicator, PageHeader, LoadingState
     RoleDashboard.tsx          shared role landing page (stats + mission + next steps)
+    admin/      ParametersManager, UsersManager, CatalogueManager, CompanyForm,
+                DirectionStats (the direction view)
     reception/  ReceptionQueue, ReceptionForm (conformity + assignment + numbers)
     technicien/ WorkQueue, ResultEntryForm (per-parameter entry + live conformity)
     validation/ ValidationQueue, ValidationPanel (the two approvals + rejection)
@@ -199,6 +202,8 @@ Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 | Add a role / change a role's landing page | `src/lib/roles.ts` + Prisma `Role` enum |
 | Who may move a sample to a status | `src/lib/sample-status.ts` (`TRANSITIONS`) |
 | The two-approval rule | `canValidateTechnically()` / `canApprove()` in `sample-status.ts` |
+| What the global search matches | `GET /api/samples` (`q` param) — préleveur excluded from numbering fields |
+| Deploy / backups / restore | `DEPLOY.md` + `Dockerfile` + `docker-compose.yml` + `scripts/backup-db.sh` |
 | How a typed result is read / conformity computed | `src/lib/result-value.ts` |
 | The report's layout, wording or conclusion | `src/lib/report-html.ts` |
 | The email wording (report / alert) | `src/lib/emails/templates.ts` |
@@ -238,12 +243,13 @@ Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 Playwright/Chromium path config for server-side PDF. Log new vars here **and** in
 `.env.example` / `.env.production.example` the moment they're introduced.
 
-## 7. Deployment (VPS, current)
+## 7. Deployment
 
-`build → prisma generate → next build`; served by PM2 (`ecosystem.config.cjs`,
-fork mode, autorestart, 512M cap). `scripts/` cover DB wait, watchdog,
-autostart-on-reboot, DB setup. `/api/health` is the liveness probe. Client's
-final hosting is TBD — **we build and test on our VPS for now.**
+**Read `DEPLOY.md`** — the runbook: Docker Compose (app + MySQL on a private
+network, Chromium in-image, migrations on boot), nginx + certbot in front,
+`scripts/backup-db.sh` on cron with `restore-db.sh` tested once. PM2
+(`ecosystem.config.cjs` + `scripts/*.sh`) remains the bare-metal fallback.
+`/api/health` is the liveness probe.
 
 ## 8. Decision log (append-only — never rewrite history)
 

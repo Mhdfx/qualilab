@@ -8,23 +8,24 @@
 
 ## ▶ NEXT ACTION
 
-**PHASE 4 IS COMPLETE (2026-08-25).** The laboratory is autonomous on its
-configuration: clients and their recipient lists, invoicing from validated
-analyses with editable wording, user accounts, analysis parameters (where the
-official norms get entered), the service catalogue, the company identity, and
-the audit journal. 76 tests; build and lint clean; browser-verified end to end.
+**Phase 5's code portion is complete (2026-08-25).** The direction view, the
+database-backed global search (blind numbering excluded from the préleveur's
+search), the production build with HSTS, the Docker image with Chromium, the
+compose stack, the backup/restore scripts and `DEPLOY.md` are all in place and
+verified locally.
 
-**This is the Phase 4 client demo:** configure everything without touching
-code, then invoice a validated sample.
+**What remains needs things only the outside world can provide:**
+1. **The VPS**: first deploy per `DEPLOY.md`, certbot HTTPS, cron the backup,
+   one real restore (date it in DEPLOY.md), full TESTPLAN pass on the deployed
+   system.
+2. **The lab** (`NEEDEDINFO.md`): DNS + Resend key → flip real email on;
+   official norm limits → enter in `/admin/parametres`; real ICE/RC/RIB + logo
+   → enter in `/admin/entreprise`; legacy export → import; real user list →
+   create accounts, set `NEXT_PUBLIC_DEMO_MODE=false`.
+3. Then: **recette** with the lab's team, formation, go-live.
 
-Next: **Phase 5 — production hardening.**
-1. Per-role dashboards + direction view (samples by status, delays, billed /
-   collected) + global search by code / client / status.
-2. Deployment: VPS, domain + HTTPS, `standalone` build, chromium, PM2 —
-   the scripts exist from the prototype and need revisiting.
-3. Daily DB backups + a tested restore.
-4. E2E pass of `TESTPLAN.md` on the production build.
-5. Legacy data import — waits on the lab's export (NEEDEDINFO item 18).
+Extensions (Phases 6–8: Achat/Stock, Qualité, Portail client) start after
+go-live, each with its own scoping — see PLAN.
 
 ---
 
@@ -140,12 +141,21 @@ Next: **Phase 5 — production hardening.**
         bundles never drag the database driver
 - [ ] **Demo:** configure everything + invoice from a validated sample
 
-## Phase 5 — Production hardening
-- [ ] Per-role dashboards + direction view + global search
-- [ ] Domain + HTTPS + daily backups + tested restore
-- [ ] E2E tests, docs (user/admin/ops), training
-- [ ] **[client 28-07]** Legacy data migration (clients, reports, invoices)
-- [ ] **Demo:** go-live
+## Phase 5 — Production hardening ✅ CODE PORTION COMPLETE (2026-08-25)
+- [x] **Direction view** on `/admin`: pipeline, turnaround, billed/collected,
+      status distribution, month activity, alert count
+- [x] **Global search in the database** (code, controlCode, serialNumber,
+      produit, lot, lieu, client) — debounced from the dashboard
+- [x] **Blind-numbering oracle closed**: the préleveur's search excludes the
+      laboratory numbering, so a serial can never be mapped back to a field code
+- [x] Production build + `next start` smoke: health OK, HSTS on
+- [x] `Dockerfile` (standalone + Chromium, non-root) + `docker-compose.yml`
+      (private network, migrations on boot)
+- [x] `backup-db.sh` (verified dumps, retention) + `restore-db.sh` (guarded)
+      + `DEPLOY.md` runbook
+- [ ] 🔒 VPS: first deploy, HTTPS, cron backup, **tested restore**, full
+      TESTPLAN pass on the deployed system
+- [ ] 🔒 Legacy data import (waits on the lab's export)
 
 ## Extensions — client meeting 2026-07-28 (after core; re-cost/replan)
 Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
@@ -166,6 +176,17 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
+
+- **2026-08-25 · Claude Code** · **Phase 5 code portion.** Built the direction
+  view (pipeline, turnaround, billed/collected, status bars) and moved the
+  dashboard search into the database so any code finds any sample from any
+  year — and closed an oracle this created: a préleveur searching a serial
+  number would have learned which of their samples carries it, so their search
+  now excludes the laboratory numbering, verified both ways. Wrote the
+  production artifacts: Dockerfile with Chromium, compose stack with private
+  DB and boot-time migrations, guarded backup/restore scripts, DEPLOY.md
+  runbook. Production build smoke-tested: health OK, HSTS present. What
+  remains needs the VPS or the lab.
 
 - **2026-08-25 · Claude Code** · **E3 part 2 — Phase 4 complete.** Users:
   accounts created through Better Auth's admin API, disabling revokes the

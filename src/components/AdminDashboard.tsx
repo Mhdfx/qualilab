@@ -18,26 +18,25 @@ export function AdminDashboard() {
   const [selected, setSelected] = useState<SampleRow | null>(null);
 
   useEffect(() => {
-    // Paginated: the dashboard shows the most recent page, not the archive.
-    fetch("/api/samples?limit=50")
-      .then((r) => r.json())
-      .then((data) => setSamples(data.items ?? []))
-      .finally(() => setLoading(false));
-  }, []);
+    // The search runs in the database: a code typed here finds a sample from
+    // any year, not just the newest page. Debounced so typing stays smooth.
+    const handle = window.setTimeout(() => {
+      const query = search.trim()
+        ? `&q=${encodeURIComponent(search.trim())}`
+        : "";
+      fetch(`/api/samples?limit=50${query}`)
+        .then((r) => r.json())
+        .then((data) => setSamples(data.items ?? []))
+        .finally(() => setLoading(false));
+    }, search ? 250 : 0);
 
-  const filtered = useMemo(() => {
-    return samples.filter((s) => {
-      const matchesType = typeFilter === "ALL" || s.type === typeFilter;
-      const q = search.toLowerCase();
-      const matchesSearch =
-        !q ||
-        s.code.toLowerCase().includes(q) ||
-        s.client.name.toLowerCase().includes(q) ||
-        s.lieu.toLowerCase().includes(q) ||
-        s.user?.name.toLowerCase().includes(q);
-      return matchesType && matchesSearch;
-    });
-  }, [samples, search, typeFilter]);
+    return () => window.clearTimeout(handle);
+  }, [search]);
+
+  const filtered = useMemo(
+    () => samples.filter((s) => typeFilter === "ALL" || s.type === typeFilter),
+    [samples, typeFilter]
+  );
 
   const preleveurCount = new Set(samples.map((s) => s.user?.name)).size;
 

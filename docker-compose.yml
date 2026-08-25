@@ -1,0 +1,47 @@
+# Qualilab LIMS — the whole system with one command: `docker compose up -d`.
+#
+# Two services: the app and its MySQL, joined on a private network. The
+# database is never exposed to the host network in production — only the app
+# port is, and nginx (or the host's reverse proxy) terminates HTTPS in front
+# of it.
+#
+# Secrets come from `.env` next to this file (see .env.production.example).
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: qualilab
+      MYSQL_USER: qualilab
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "qualilab", "-p${DB_PASSWORD}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "mysql://qualilab:${DB_PASSWORD}@db:3306/qualilab"
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL in .env}
+      BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:?set BETTER_AUTH_TRUSTED_ORIGINS in .env}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      NEXT_PUBLIC_DEMO_MODE: ${NEXT_PUBLIC_DEMO_MODE:-false}
+    ports:
+      - "127.0.0.1:3000:3000"
+    # Migrations run before the server starts, so a deploy is: pull, build, up.
+    command: sh -c "node node_modules/prisma/build/index.js migrate deploy && node server.js"
+
+volumes:
+  db-data:

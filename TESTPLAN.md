@@ -378,20 +378,42 @@ The short list that proves nothing broke. ~5 minutes.
 
 ---
 
-## Checkpoint F — Production readiness (Phase 5) — *to build*
+## Checkpoint F — Production readiness (Phase 5)
+*code portion verified 2026-08-25 · VPS portion waits for the server*
 
-- [ ] Dashboards per role + direction view (samples by status, average delays,
-      activity per domain, billed / collected).
-- [ ] Global search by code, client, date, status returns the right sample.
-- [ ] The app is reachable on the real domain over **HTTPS** (padlock, no warning).
-- [ ] Logging in over the real domain works (no origin/CSRF error).
-- [ ] A database backup exists and a **restore has been tested**.
-- [ ] Imported legacy data (clients, reports, invoices) displays correctly.
-- [ ] The app restarts by itself after a server reboot.
-- [ ] Full end-to-end run on the production server: prélèvement → réception →
-      analyse → validation → rapport → email → facture.
+### F1. Direction view & global search
+- [x] `/admin` opens on the direction view: samples in the pipeline, average
+      turnaround (réception → validation), billed and collected totals.
+- [x] Samples by status as a bar list; activity by domain this month; the
+      month's contamination-alert count.
+- [x] **The dashboard search runs in the database**: a serial number, control
+      code, produit, lot, lieu or client name finds a sample from any year,
+      not only the newest page (verified: SN-…, QLC-…, produit).
+- [x] **The préleveur's search cannot resolve laboratory numbering**: searching
+      a serial or control code returns nothing for them, while their
+      legitimate searches still work — the blind numbering stays blind.
+- [ ] Re-check turnaround once real (multi-day) data exists — demo data shows
+      0 h because samples were approved minutes after reception.
 
----
+### F2. Production build
+- [x] `next build` (standalone) compiles clean; `next start` serves.
+- [x] `/api/health` answers `{status: ok, database: connected}`.
+- [x] Security headers present in production mode, **including HSTS**.
+- [x] Login page serves on the production build.
+
+### F3. Deployment artifacts (to exercise on the VPS)
+- [x] `Dockerfile` — 3-stage, standalone output, Chromium in-image, non-root.
+- [x] `docker-compose.yml` — app + MySQL, private network, DB not exposed,
+      migrations on boot, healthchecked.
+- [x] `scripts/backup-db.sh` — daily dump, gzip-verified, 30-day retention,
+      refuses suspiciously small files.
+- [x] `scripts/restore-db.sh` — destructive restore behind a typed confirmation.
+- [x] `DEPLOY.md` — first deploy, updates, rollback, the 5-minute post-deploy
+      check.
+- [ ] 🔒 **On the VPS**: run the first deploy, HTTPS via certbot, cron the
+      backup, **perform one real restore and date it in DEPLOY.md**.
+- [ ] 🔒 Full `TESTPLAN` pass against the deployed system.
+- [ ] 🔒 Legacy data import — waits on the lab's export (NEEDEDINFO item 18).
 
 ## Checkpoint G — Extensions (Phases 6–8) — *to build*
 
@@ -460,5 +482,5 @@ The short list that proves nothing broke. ~5 minutes.
 | Phase 4 · E1 clients | Claude Code | 2026-08-25 | ✅ passed |
 | Phase 4 · E2 facturation | Claude Code | 2026-08-25 | ✅ passed |
 | Phase 4 · E3 administration | Claude Code | 2026-08-25 | ✅ passed |
-| Phase 5 (F) | | | |
+| Phase 5 · F1–F3 code portion | Claude Code | 2026-08-25 | ✅ passed (VPS steps pending) |
 | Extensions (G) | | | |
