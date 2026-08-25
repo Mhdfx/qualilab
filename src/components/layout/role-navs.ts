@@ -1,7 +1,6 @@
 import {
   LayoutDashboard,
   Inbox,
-  ClipboardCheck,
   FlaskConical,
   ShieldCheck,
   FileCheck2,
@@ -45,8 +44,7 @@ export const technicienNav: NavSection[] = [
   {
     title: "À venir",
     items: [
-      { label: "Saisie des résultats", icon: ClipboardCheck, disabled: true, badge: "Phase 2" },
-      { label: "Feuille de paillasse", icon: FileText, disabled: true, badge: "Phase 2" },
+      { label: "Feuille de paillasse", icon: FileText, disabled: true, badge: "Phase 3" },
     ],
   },
 ];

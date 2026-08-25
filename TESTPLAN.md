@@ -104,7 +104,7 @@ The short list that proves nothing broke. ~5 minutes.
 ---
 
 ## Checkpoint C — LIMS core (Phase 2)
-*C1–C4 (réception) verified 2026-08-23 · C5–C8 to build*
+*C1–C5 verified · C6 (validation) to build*
 
 ### C1. Réception — the queue
 - [x] `recep1` → `/reception` lists every sample at status **Prélevé**.
@@ -139,17 +139,31 @@ The short list that proves nothing broke. ~5 minutes.
 - [x] After reception the status becomes **Reçu** and the technician's
       dashboard count increases (verified: 3 samples → "Qui m'attendent 3").
 
-### C5. Result entry (technicien) — *to build*
-- [ ] `tech1` sees **only** the samples assigned to them.
-- [ ] The sample opens with **one line per requested parameter**.
-- [ ] For each parameter: value, unit, reference threshold, conformity.
-- [ ] Scientific notation as the lab writes it (`8,9.10²`) is accepted and
-      displayed back correctly.
-- [ ] A partially filled sheet can be **saved and reopened** without data loss.
-- [ ] Work status per result: en cours / terminé / **anomalie** (with description).
-- [ ] `produit` and `N° de lot` are captured and visible.
-- [ ] Submitting is only possible when every parameter is filled.
-- [ ] After submission the status is **Résultats saisis**.
+### C5. Result entry (technicien)
+*verified 2026-08-25*
+- [x] `tech1` sees **only** the samples assigned to them — a second technician
+      (`tech2`) gets **403** on the API, is redirected away from the page, and
+      the sample does not appear in their queue.
+- [x] The sample opens with **one line per requested parameter**.
+- [x] For each parameter: value, unit, reference threshold, conformity.
+- [x] Scientific notation as the lab writes it (`8,9.10²`) is accepted, stored
+      as typed **and** parsed to 890 for the comparison.
+- [x] Conformity is computed live: `8,9.10²` vs limit 100 → "Non conforme —
+      lu 890 UFC/g · limite 100 UFC/g · Dépassement"; `50` vs 1000 → Conforme;
+      `Absence` → Conforme.
+- [x] A value that cannot be read as a number asks the technician to decide.
+- [x] A partially filled sheet **saves and reopens** without data loss; the
+      first save moves the sample to **En analyse**.
+- [x] Work status per result: en cours / terminé / anomalie — an anomaly
+      without a description is refused (400).
+- [x] `produit` and `N° de lot` are captured at reception and shown here.
+- [x] Submitting is blocked until every parameter is filled — the API names the
+      missing ones.
+- [x] After submission the status is **Résultats saisis** and the bench empties.
+- [x] Once submitted the sheet is read-only: inputs disabled, no submit button,
+      values still visible.
+- [x] A parameter that does not belong to the sample is refused (400).
+- [x] Mobile (375px): the sheet stacks, no horizontal overflow.
 
 ### C6. Validation — **double validation, every sample** — *to build*
 - [ ] `valid1` → `/validation` lists samples at **Résultats saisis**.
@@ -316,7 +330,8 @@ The short list that proves nothing broke. ~5 minutes.
 |---|---|---|---|
 | Phase 1 (A + B) | Claude Code | 2026-07-29 | ✅ passed |
 | Phase 2 · C1–C4 réception | Claude Code | 2026-08-23 | ✅ passed |
-| Phase 2 · C5–C8 | | | |
+| Phase 2 · C5 saisie résultats | Claude Code | 2026-08-25 | ✅ passed |
+| Phase 2 · C6 validation | | | |
 | Phase 3 (D) | | | |
 | Phase 4 (E) | | | |
 | Phase 5 (F) | | | |

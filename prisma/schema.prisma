@@ -18,6 +18,11 @@ enum Role {
   CLIENT
 }
 
+enum EmailType {
+  RAPPORT
+  ALERTE_CONTAMINATION
+}
+
 enum ResultWorkStatus {
   EN_COURS
   TERMINE
@@ -130,12 +135,31 @@ model Client {
   id       String    @id @default(cuid())
   name     String
   contact  String?
+  /// Primary address, kept for the existing screens.
   email    String?
   phone    String?
   address  String?
   ice      String?
+  emails   ClientEmail[]
   samples  Sample[]
   invoices Invoice[]
+}
+
+/// A client receives mail at several addresses: the client asked for reports
+/// and contamination alerts to reach a list, not a single contact.
+model ClientEmail {
+  id       String  @id @default(cuid())
+  clientId String
+  client   Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  email    String
+  label    String?
+  /// Receives the analysis reports.
+  forReports Boolean @default(true)
+  /// Receives the contamination alerts.
+  forAlerts  Boolean @default(true)
+
+  @@unique([clientId, email])
+  @@index([clientId])
 }
 
 model AnalysisParameter {
@@ -143,7 +167,14 @@ model AnalysisParameter {
   name     String
   category SampleType
   unit     String?
+  /// Human-readable reference threshold shown to the technician.
   threshold String?
+  /// Numeric limit used to decide conformity and to trigger alerts.
+  limitValue Float?
+  /// Sensitive microbiological parameters (E. coli, Salmonelle, Listeria):
+  /// exceeding the limit triggers an automatic contamination alert to the
+  /// client once the result is validated. Configurable by the admin.
+  alertOnExceed Boolean @default(false)
   samples  SampleParameter[]
   results  Result[]
 }
@@ -170,6 +201,9 @@ model Sample {
   userId   String
   user     User       @relation(fields: [userId], references: [id])
   lieu     String
+  /// Product sampled and its batch number — both appear in the alert email.
+  produit    String?
+  numeroLot  String?
   type     SampleType
   notes    String?    @db.Text
   status   SampleStatus @default(PRELEVE)
@@ -207,7 +241,11 @@ model Result {
   parameterId String
   parameter   AnalysisParameter @relation(fields: [parameterId], references: [id])
 
+  /// The value exactly as the technician typed it (e.g. "8,9.10²").
   value      String?
+  /// The same value parsed to a number. A contamination alert compares a result
+  /// to its limit, and a display string cannot be compared — so both are kept.
+  numericValue Float?
   unit       String?
   threshold  String?
   conform    Boolean?
@@ -250,6 +288,7 @@ model EmailLog {
   id         String   @id @default(cuid())
   reportId   String?
   report     Report?  @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  type       EmailType @default(RAPPORT)
   to         String
   subject    String
   status     String

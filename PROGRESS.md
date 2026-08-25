@@ -8,19 +8,20 @@
 
 ## ▶ NEXT ACTION
 
-**Phase 2 · C1 (Réception & numérotation aveugle) is complete and verified
-(2026-08-23).** Queue, verify screen, conformity, technician assignment and the
-blind numbering all work end to end; build + lint pass; browser-tested (see
-`TESTPLAN.md` C1–C4, C7, C8).
+**Phase 2 · C1 (réception) and C2 (saisie des résultats) are complete and
+verified (2026-08-25).** A sample now travels `PRELEVE → RECU → EN_ANALYSE →
+RESULTATS_SAISIS` with blind numbering, automatic conformity and a full audit
+chain. Build + lint pass; browser-tested (see `TESTPLAN.md` C1–C5, C7, C8).
 
-Next: **Phase 2 · C2 — Saisie des résultats (technicien).** Add the schema the
-contamination alerts need (`Result.numericValue`, `AnalysisParameter.alertOnExceed`
-+ `limitValue`, `Sample.produit` + `numeroLot`, `ClientEmail`, `EmailLog.type`),
-then build the per-parameter entry sheet: value / unit / threshold / conformity,
-work status incl. anomaly, save-in-progress, and submit
-(`RECU → EN_ANALYSE → RESULTATS_SAISIS`) through `canTransition()` + `logAudit()`.
-Accept scientific notation as the lab writes it (`8,9.10²`) and store it
-numerically.
+Next: **Phase 2 · C3 — Validation qualité (double validation).** Build
+`/validation`: the queue of samples at `RESULTATS_SAISIS`, the control view
+(results vs thresholds, technician notes, sample history), then the
+**two-step approval the client confirmed on 2026-08-18** — VALIDATEUR validates
+technically, then ADMIN approves; only then does the sample become `VALIDE`.
+Either can reject with a mandatory comment, which returns the sample to the
+technician. This needs one small schema addition: a second approval pair
+(`approvedById` / `approvedAt`) alongside `validatedById` / `validatedAt`, plus
+a state-machine step between `RESULTATS_SAISIS` and `VALIDE`.
 
 ---
 
@@ -61,11 +62,19 @@ numerically.
   - [x] Reception API with state machine + audit + concurrency guards (P2025/P2002)
   - [x] Queue, verify screen, conformity (+ motif), technician picker with workload
   - [x] Success panel showing both numbers, copiable, for labelling the sample
-- [ ] **[alerts]** schema prep: `Result.numericValue`, `AnalysisParameter.alertOnExceed` + `limitValue`, `Sample.produit` + `numeroLot`, `ClientEmail` model, `EmailLog.type`
-- [ ] Technician result entry (per-parameter) + save-in-progress
-- [ ] Submit results (`EN_ANALYSE → RESULTATS_SAISIS`)
+  - [x] `produit` + `N° de lot` captured at reception (needed by the alert email)
+- [x] **[alerts] schema prep** ✅ 2026-08-25 — `Result.numericValue`,
+      `AnalysisParameter.alertOnExceed` + `limitValue`, `Sample.produit` +
+      `numeroLot`, `ClientEmail` model, `EmailLog.type`; seeded with provisional
+      NM norms (⚠️ official limits still to come from the lab)
+- [x] **Technician result entry (per-parameter) + save-in-progress** ✅ 2026-08-25
+  - [x] `result-value.ts` parses the lab's notation (`8,9.10²`, `< 10`, `Absence`)
+  - [x] Conformity computed automatically against the parameter limit
+  - [x] Work status incl. anomaly (description mandatory)
+  - [x] Technician isolation enforced server-side (`sample-access.ts`)
+- [x] **Submit results (`RECU → EN_ANALYSE → RESULTATS_SAISIS`)** ✅ 2026-08-25
 - [ ] Validation / rejection (`→ VALIDE` or back to technician) — **double validation**
-- [ ] Audit on every transition; state machine enforced server-side
+- [x] Audit on every transition; state machine enforced server-side
 - [ ] **Demo:** sample travels `PRELEVE → VALIDE`
 
 ## Phase 3 — Reports & email
@@ -110,6 +119,17 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
+
+- **2026-08-25 · Claude Code** · **Phase 2 · C2 delivered — saisie des
+  résultats.** Applied the five schema additions the contamination alerts need
+  and seeded provisional NM norms. Added `result-value.ts`, which reads the
+  notation the lab actually writes (`8,9.10²` → 890, `< 10`, `Absence`) so a
+  result can be compared to its limit — verified against the two values in the
+  client's own alert email. Built the bench sheet: per-parameter entry with
+  automatic conformity, anomaly descriptions, save-and-resume, and submission
+  gated on completeness. Technician isolation is enforced server-side via
+  `sample-access.ts`. `produit` + `N° de lot` are now captured at reception.
+  Build + lint green, browser-verified end to end. Next: C3 double validation.
 
 - **2026-08-23 · Claude Code** · **Phase 2 · C1 delivered — réception.** Built
   the blind numbering (sequential control code + crypto-random serial), the

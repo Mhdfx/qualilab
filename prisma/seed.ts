@@ -58,22 +58,37 @@ async function seedUsers() {
   return created;
 }
 
+/**
+ * Analysis parameters with their units and reference limits.
+ *
+ * ⚠️ PROVISIONAL VALUES. The laboratory will supply its official methods and
+ * limits mid-project (client, 2026-08-18); until then these follow the usual
+ * Moroccan (NM) microbiological criteria and must be treated as defaults, not
+ * as regulatory truth. The one confirmed figure is E. coli in food at
+ * 1.10² UFC/g, taken from the client's own alert email of 2026-08-17.
+ *
+ * `alertOnExceed` marks the sensitive germs the client wants alerts on:
+ * E. coli, Salmonelles and Listeria monocytogenes.
+ */
 const parameters = [
-  { name: "Salmonelles", category: "ALIMENTAIRE" as const },
-  { name: "Listeria", category: "ALIMENTAIRE" as const },
-  { name: "E. coli", category: "ALIMENTAIRE" as const },
-  { name: "Coliformes totaux", category: "ALIMENTAIRE" as const },
-  { name: "Levures & moisissures", category: "ALIMENTAIRE" as const },
-  { name: "Coliformes totaux", category: "EAU" as const },
-  { name: "E. coli", category: "EAU" as const },
-  { name: "Entérocoques", category: "EAU" as const },
-  { name: "Pseudomonas aeruginosa", category: "EAU" as const },
-  { name: "Flore totale", category: "EAU" as const },
-  { name: "Flore totale surfaces", category: "AMBIANCE" as const },
-  { name: "Coliformes", category: "AMBIANCE" as const },
-  { name: "Staphylocoques", category: "AMBIANCE" as const },
-  { name: "Levures", category: "AMBIANCE" as const },
-  { name: "Salmonelles surfaces", category: "AMBIANCE" as const },
+  // Alimentaire
+  { name: "Salmonelles", category: "ALIMENTAIRE" as const, unit: "/25 g", threshold: "Absence /25 g", limitValue: 0, alertOnExceed: true },
+  { name: "Listeria", category: "ALIMENTAIRE" as const, unit: "UFC/g", threshold: "Absence /25 g", limitValue: 0, alertOnExceed: true },
+  { name: "E. coli", category: "ALIMENTAIRE" as const, unit: "UFC/g", threshold: "1.10² UFC/g", limitValue: 100, alertOnExceed: true },
+  { name: "Coliformes totaux", category: "ALIMENTAIRE" as const, unit: "UFC/g", threshold: "1.10³ UFC/g", limitValue: 1000, alertOnExceed: false },
+  { name: "Levures & moisissures", category: "ALIMENTAIRE" as const, unit: "UFC/g", threshold: "1.10⁴ UFC/g", limitValue: 10000, alertOnExceed: false },
+  // Eau
+  { name: "Coliformes totaux", category: "EAU" as const, unit: "UFC/100 mL", threshold: "Absence /100 mL", limitValue: 0, alertOnExceed: false },
+  { name: "E. coli", category: "EAU" as const, unit: "UFC/100 mL", threshold: "Absence /100 mL", limitValue: 0, alertOnExceed: true },
+  { name: "Entérocoques", category: "EAU" as const, unit: "UFC/100 mL", threshold: "Absence /100 mL", limitValue: 0, alertOnExceed: false },
+  { name: "Pseudomonas aeruginosa", category: "EAU" as const, unit: "UFC/100 mL", threshold: "Absence /100 mL", limitValue: 0, alertOnExceed: false },
+  { name: "Flore totale", category: "EAU" as const, unit: "UFC/mL", threshold: "1.10² UFC/mL", limitValue: 100, alertOnExceed: false },
+  // Ambiance
+  { name: "Flore totale surfaces", category: "AMBIANCE" as const, unit: "UFC/cm²", threshold: "1.10¹ UFC/cm²", limitValue: 10, alertOnExceed: false },
+  { name: "Coliformes", category: "AMBIANCE" as const, unit: "UFC/cm²", threshold: "Absence /cm²", limitValue: 0, alertOnExceed: false },
+  { name: "Staphylocoques", category: "AMBIANCE" as const, unit: "UFC/cm²", threshold: "Absence /cm²", limitValue: 0, alertOnExceed: false },
+  { name: "Levures", category: "AMBIANCE" as const, unit: "UFC/cm²", threshold: "1.10¹ UFC/cm²", limitValue: 10, alertOnExceed: false },
+  { name: "Salmonelles surfaces", category: "AMBIANCE" as const, unit: "/cm²", threshold: "Absence", limitValue: 0, alertOnExceed: true },
 ];
 
 const labServices = [
@@ -104,6 +119,7 @@ function serviceId(category: string, name: string) {
 
 async function main() {
   await prisma.auditLog.deleteMany();
+  await prisma.clientEmail.deleteMany();
   await prisma.emailLog.deleteMany();
   await prisma.report.deleteMany();
   await prisma.result.deleteMany();
@@ -136,6 +152,20 @@ async function main() {
         ? await prisma.client.update({ where: { id: existing.id }, data: clientData })
         : await prisma.client.create({ data: clientData })
     );
+  }
+
+  // Each client receives mail at several addresses (client request 2026-08-17):
+  // the quality contact plus, for some, a management address in copy.
+  for (const client of clients) {
+    const [local, domain] = (client.email ?? "").split("@");
+    if (!local || !domain) continue;
+    await prisma.clientEmail.createMany({
+      data: [
+        { clientId: client.id, email: client.email!, label: "Contact qualité", forReports: true, forAlerts: true },
+        { clientId: client.id, email: `direction@${domain}`, label: "Direction", forReports: false, forAlerts: true },
+      ],
+      skipDuplicates: true,
+    });
   }
 
   for (const param of parameters) {

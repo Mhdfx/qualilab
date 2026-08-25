@@ -23,6 +23,8 @@ type ReceptionFormProps = {
   sampleId: string;
   sampleCode: string;
   technicians: TechnicianOption[];
+  initialProduit: string;
+  initialNumeroLot: string;
 };
 
 type Assigned = {
@@ -35,8 +37,12 @@ export function ReceptionForm({
   sampleId,
   sampleCode,
   technicians,
+  initialProduit,
+  initialNumeroLot,
 }: ReceptionFormProps) {
   const router = useRouter();
+  const [produit, setProduit] = useState(initialProduit);
+  const [numeroLot, setNumeroLot] = useState(initialNumeroLot);
   const [conformity, setConformity] = useState<boolean | null>(null);
   const [conformityNote, setConformityNote] = useState("");
   const [technicianId, setTechnicianId] = useState("");
@@ -72,6 +78,8 @@ export function ReceptionForm({
           conformity,
           conformityNote: conformityNote.trim(),
           technicianId,
+          produit: produit.trim(),
+          numeroLot: numeroLot.trim(),
         }),
       });
 
@@ -108,6 +116,38 @@ export function ReceptionForm({
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Contrôle à réception
         </h2>
+
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label htmlFor="produit" className="block text-sm font-medium text-slate-700">
+              Produit
+            </label>
+            <input
+              id="produit"
+              type="text"
+              value={produit}
+              onChange={(event) => setProduit(event.target.value)}
+              placeholder="Ex. : Salade printanière"
+              className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            />
+          </div>
+          <div>
+            <label htmlFor="numeroLot" className="block text-sm font-medium text-slate-700">
+              N° de lot
+            </label>
+            <input
+              id="numeroLot"
+              type="text"
+              value={numeroLot}
+              onChange={(event) => setNumeroLot(event.target.value)}
+              placeholder="Facultatif"
+              className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            />
+          </div>
+        </div>
+        <p className="mt-1.5 text-xs text-slate-500">
+          Repris sur le rapport et sur les alertes de contamination.
+        </p>
 
         <fieldset className="mt-4">
           <legend className="text-sm font-medium text-slate-700">

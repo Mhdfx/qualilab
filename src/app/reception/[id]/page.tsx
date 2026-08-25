@@ -29,6 +29,8 @@ export default async function ReceptionDetailPage({
         type: true,
         status: true,
         notes: true,
+        produit: true,
+        numeroLot: true,
         sampledAt: true,
         client: { select: { name: true, ice: true } },
         user: { select: { name: true } },
@@ -158,6 +160,8 @@ export default async function ReceptionDetailPage({
             sampleId={sample.id}
             sampleCode={sample.code}
             technicians={technicianOptions}
+            initialProduit={sample.produit ?? ""}
+            initialNumeroLot={sample.numeroLot ?? ""}
           />
         )}
       </div>

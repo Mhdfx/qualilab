@@ -22,7 +22,8 @@
 | Foundations | `logAudit()`, sample status state machine | ✅ **Phase 1 done** |
 | Clients | list API only | ⚠️ **Read-only**, no CRUD / 360 |
 | LIMS core — **réception** | queue, verify, conformity, assignment, **blind numbering** | ✅ **Phase 2 · C1 done** |
-| LIMS core — results, validation | result entry, double validation | ❌ **Phase 2 · C2–C3** |
+| LIMS core — **saisie résultats** | bench sheet, automatic conformity, submit | ✅ **Phase 2 · C2 done** |
+| LIMS core — validation | double validation (validateur + admin) | ❌ **Phase 2 · C3** |
 | LIMS core — report, email | PDF, auto email, alerts | ❌ **Phase 3** |
 | Infra | VPS + PM2 + `/api/health` + watchdog/autostart/backup scripts | ✅ **Working** (prototype) |
 
@@ -42,12 +43,13 @@ src/
       auth/[...all]/           ★ Better Auth handler (sign-in/out, session, admin)
       samples/                 GET (audience-scoped) · POST (PRELEVEUR creates)
       samples/[id]/reception/  ★ PRELEVE → RECU: numbering, conformity, assignment
+      samples/[id]/results/    ★ PUT save (RECU → EN_ANALYSE) · submit/ POST (→ RESULTATS_SAISIS)
       clients/  parameters/  lab-services/   read endpoints
       invoices/  invoices/[id]/   invoice CRUD (COMPTABLE + ADMIN)
       health/                  liveness probe for PM2/watchdog
     preleveur/                 role space: dashboard + nouveau (3-step)
     reception/                 queue + [id] verify screen ✅
-    technicien/                role space (Phase 2 screens to come)
+    technicien/                bench queue + [id] result entry sheet ✅
     validation/                role space (Phase 2 screens to come)
     commercial/                role space (Phase 4 screens to come)
     comptabilite/              role space (Phase 4 screens to come)
@@ -58,6 +60,7 @@ src/
     ui/      Card, StatCard, StatusBadge, TypeBadge, StepIndicator, PageHeader, LoadingState
     RoleDashboard.tsx          shared role landing page (stats + mission + next steps)
     reception/  ReceptionQueue, ReceptionForm (conformity + assignment + numbers)
+    technicien/ WorkQueue, ResultEntryForm (per-parameter entry + live conformity)
     + feature components (SampleTable, SampleDetailPanel, FactureDetail, ...)
   lib/
     auth-server.ts     ★ Better Auth instance (username + admin plugins, trustedOrigins)
@@ -71,12 +74,14 @@ src/
     company.ts         ★ single source of truth for company/legal identity
     sample-code.ts     ★ QL (field) · QLC (control, sequential) · SN (blind, crypto-random)
     sample-select.ts   ★ audience-scoped Prisma selects — hides numbering from the préleveur
+    sample-access.ts   ★ loadAssignedSample() — a technician only touches their own samples
+    result-value.ts    ★ parses the lab's notation (8,9.10² / < 10 / Absence) + conformity
     invoice-number.ts / invoice-math.ts / invoice-types.ts / lab-services.ts / labels.ts
     number-to-words-fr.ts   amount-in-words (FR) for invoices
     download-invoice-pdf.ts  ⚠️ CLIENT-side screenshot PDF (invoice demo only)
   generated/prisma/    ★ generated Prisma client — DO NOT edit, gitignored
 prisma/
-  schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (6)
+  schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (7)
 scripts/         VPS ops: deploy, wait-for-db, health-watchdog, setup-autostart, setup-database, start-production, vps-setup, check-db
 ```
 
@@ -159,6 +164,8 @@ Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 | Access rules for a page or route | `requireRole` / `requireApiRole` in `src/lib/auth.ts` |
 | Add a role / change a role's landing page | `src/lib/roles.ts` + Prisma `Role` enum |
 | Who may move a sample to a status | `src/lib/sample-status.ts` (`TRANSITIONS`) |
+| How a typed result is read / conformity computed | `src/lib/result-value.ts` |
+| Which parameters raise a contamination alert | `AnalysisParameter.alertOnExceed` + `limitValue` (seeded in `prisma/seed.ts`) |
 | What gets audited | `logAudit()` calls + `src/lib/audit.ts` |
 | Add a DB field/table | `prisma/schema.prisma` → `npm run db:migrate` → client regenerates |
 | Nav items per role | `src/components/layout/admin-nav.ts`, `preleveur-nav.ts`, `role-navs.ts` |
@@ -237,6 +244,12 @@ final hosting is TBD — **we build and test on our VPS for now.**
   sample read, go through `sampleSelectFor(role)` — a raw `findMany` would leak it.
 - **Open question for the lab:** a sample marked *non conforme* is still received
   and assigned today. Confirm whether it should instead be blocked from analysis.
+- ⚠️ **The seeded analysis limits are provisional.** `prisma/seed.ts` carries
+  usual Moroccan (NM) criteria as defaults; only the E. coli figure (1.10² UFC/g)
+  is confirmed, from the client's alert email. Replace them when the lab sends
+  its official methods — they drive both conformity and the alerts.
+- Results are stored twice on purpose: `value` as typed, `numericValue` parsed.
+  Never compare against `value`.
 - **Admin silent report edit** (client 28-07) intentionally bypasses the audit
   trail for ADMIN only. This is a deliberate client choice; keep it scoped to
   ADMIN + report edits and nothing else.

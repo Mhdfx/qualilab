@@ -1,53 +1,66 @@
 import { FlaskConical, ClipboardCheck, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { RoleDashboard } from "@/components/RoleDashboard";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatCard } from "@/components/ui/StatCard";
+import { WorkQueue } from "@/components/technicien/WorkQueue";
 
 export default async function TechnicienPage() {
   const session = await requireRole("TECHNICIEN", "ADMIN");
 
-  // A technician only ever sees their own workload.
-  const mine =
-    session.role === "TECHNICIEN" ? { technicianId: session.id } : {};
+  // A technician only ever sees their own bench; ADMIN oversees everything.
+  const mine = session.role === "TECHNICIEN" ? { technicianId: session.id } : {};
 
-  const [attribues, enAnalyse, anomalies, saisis] = await Promise.all([
-    prisma.sample.count({ where: { ...mine, status: "RECU" } }),
-    prisma.sample.count({ where: { ...mine, status: "EN_ANALYSE" } }),
-    prisma.result.count({
-      where: { workStatus: "ANOMALIE", sample: mine },
+  const [items, anomalies, submitted] = await Promise.all([
+    prisma.sample.findMany({
+      where: { ...mine, status: { in: ["RECU", "EN_ANALYSE"] } },
+      select: {
+        id: true,
+        serialNumber: true,
+        controlCode: true,
+        type: true,
+        status: true,
+        receivedAt: true,
+        conformity: true,
+        client: { select: { name: true } },
+        parameters: { select: { parameter: { select: { id: true } } } },
+        results: { select: { value: true, workStatus: true } },
+      },
+      orderBy: { receivedAt: "asc" },
     }),
+    prisma.result.count({ where: { workStatus: "ANOMALIE", sample: mine } }),
     prisma.sample.count({ where: { ...mine, status: "RESULTATS_SAISIS" } }),
   ]);
 
+  const waiting = items.filter((item) => item.status === "RECU").length;
+  const inProgress = items.filter((item) => item.status === "EN_ANALYSE").length;
+
   return (
-    <RoleDashboard
-      badge="Espace technicien"
-      title="Analyses en laboratoire"
-      subtitle="Retrouvez les échantillons qui vous sont attribués et saisissez les résultats paramètre par paramètre."
-      stats={[
-        { label: "Qui m'attendent", value: attribues, icon: ClipboardCheck, accent: "amber" },
-        { label: "En analyse", value: enAnalyse, icon: FlaskConical, accent: "blue" },
-        { label: "Anomalies", value: anomalies, icon: AlertTriangle, accent: "violet" },
-        { label: "Résultats saisis", value: saisis, icon: CheckCircle2, accent: "emerald" },
-      ]}
-      mission="Vous ne voyez que les échantillons qui vous sont attribués. Pour chacun, vous saisissez les résultats paramètre par paramètre — valeur, unité, seuil de référence et conformité — puis vous soumettez le tout à la validation qualité."
-      nextSteps={[
-        {
-          title: "Fiche de saisie des résultats",
-          description: "Une ligne par paramètre : valeur mesurée, unité, seuil, conformité, avec enregistrement progressif.",
-          phase: "Phase 2",
-        },
-        {
-          title: "Calcul automatique des résultats",
-          description: "Les résultats sont calculés à partir des saisies brutes, avec correction possible en cas d'erreur.",
-          phase: "Phase 2",
-        },
-        {
-          title: "Feuille de paillasse",
-          description: "Impression de la feuille de paillasse par date pour la saisie sur la paillasse.",
-          phase: "Phase 2",
-        },
-      ]}
-    />
+    <div>
+      <PageHeader
+        badge="Espace technicien"
+        title="Analyses en laboratoire"
+        subtitle="Saisissez les résultats paramètre par paramètre, puis soumettez-les à la validation qualité."
+      />
+
+      <section aria-label="Indicateurs" className="mb-8">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="Qui m'attendent" value={waiting} icon={ClipboardCheck} accent="amber" />
+          <StatCard label="En analyse" value={inProgress} icon={FlaskConical} accent="blue" />
+          <StatCard label="Anomalies" value={anomalies} icon={AlertTriangle} accent="violet" />
+          <StatCard label="Résultats soumis" value={submitted} icon={CheckCircle2} accent="emerald" />
+        </div>
+      </section>
+
+      <section id="analyses" aria-label="Mes analyses">
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 className="text-lg font-semibold text-slate-900">Mes analyses</h2>
+          <span className="text-sm text-slate-500">
+            {items.length} échantillon{items.length > 1 ? "s" : ""}
+          </span>
+        </div>
+        <WorkQueue items={items} />
+      </section>
+    </div>
   );
 }

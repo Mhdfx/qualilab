@@ -48,11 +48,14 @@ export async function POST(
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
 
-  const { conformity, conformityNote, technicianId } = (body ?? {}) as {
-    conformity?: unknown;
-    conformityNote?: unknown;
-    technicianId?: unknown;
-  };
+  const { conformity, conformityNote, technicianId, produit, numeroLot } =
+    (body ?? {}) as {
+      conformity?: unknown;
+      conformityNote?: unknown;
+      technicianId?: unknown;
+      produit?: unknown;
+      numeroLot?: unknown;
+    };
 
   if (typeof conformity !== "boolean") {
     return NextResponse.json(
@@ -111,6 +114,8 @@ export async function POST(
           receivedAt,
           conformity,
           conformityNote: note || null,
+          produit: typeof produit === "string" && produit.trim() ? produit.trim() : null,
+          numeroLot: typeof numeroLot === "string" && numeroLot.trim() ? numeroLot.trim() : null,
           technicianId: technician.id,
           assignedAt: receivedAt,
         },
@@ -136,6 +141,8 @@ export async function POST(
           controlCode: updated.controlCode,
           conformity,
           conformityNote: note || null,
+          produit: typeof produit === "string" && produit.trim() ? produit.trim() : null,
+          numeroLot: typeof numeroLot === "string" && numeroLot.trim() ? numeroLot.trim() : null,
           technicianId: technician.id,
           technicianName: technician.name,
         },
