@@ -49,6 +49,7 @@ export default async function ValidationDetailPage({
       client: { select: { name: true } },
       technician: { select: { name: true } },
       validatedBy: { select: { name: true } },
+      report: { select: { number: true, sentTo: true } },
       results: {
         select: {
           id: true,
@@ -214,6 +215,9 @@ export default async function ValidationDetailPage({
           validatedBy={sample.validatedBy?.name ?? null}
           validatedAt={sample.validatedAt ? formatDateTime(sample.validatedAt) : null}
           nonConformes={nonConformes}
+          reportNumber={sample.report?.number ?? null}
+          sentTo={sample.report?.sentTo ?? null}
+          emailLive={!!process.env.RESEND_API_KEY}
         />
       </div>
     </div>

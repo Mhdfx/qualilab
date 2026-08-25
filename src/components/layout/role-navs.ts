@@ -42,9 +42,9 @@ export const technicienNav: NavSection[] = [
     ],
   },
   {
-    title: "À venir",
+    title: "Documents",
     items: [
-      { label: "Feuille de paillasse", icon: FileText, disabled: true, badge: "Phase 3" },
+      { label: "Feuille de paillasse", href: "/api/bench-sheet", icon: FileText },
     ],
   },
 ];

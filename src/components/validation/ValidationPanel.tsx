@@ -9,6 +9,8 @@ import {
   CheckCircle2,
   Clock,
   Lock,
+  FileDown,
+  Send,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
@@ -22,6 +24,10 @@ type ValidationPanelProps = {
   validatedBy: string | null;
   validatedAt: string | null;
   nonConformes: number;
+  reportNumber: string | null;
+  sentTo: string | null;
+  /** False when no mail provider is configured yet — sends are recorded, not delivered. */
+  emailLive: boolean;
 };
 
 /**
@@ -38,6 +44,9 @@ export function ValidationPanel({
   validatedBy,
   validatedAt,
   nonConformes,
+  reportNumber,
+  sentTo,
+  emailLive,
 }: ValidationPanelProps) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -67,6 +76,27 @@ export function ValidationPanel({
       }
       router.refresh();
       if (action !== "validate") router.push("/validation");
+    } catch {
+      setError("Une erreur réseau est survenue. Réessayez.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function resend() {
+    if (busy) return;
+    setBusy("resend");
+    setError("");
+    try {
+      const response = await fetch(`/api/samples/${sampleId}/report/send`, {
+        method: "POST",
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error ?? "Envoi impossible.");
+        return;
+      }
+      router.refresh();
     } catch {
       setError("Une erreur réseau est survenue. Réessayez.");
     } finally {
@@ -148,10 +178,61 @@ export function ValidationPanel({
       )}
 
       {state === "APPROVED" ? (
-        <p className="mt-5 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
-          <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-          Échantillon <b>validé</b> — le rapport peut être émis.
-        </p>
+        <div className="mt-5">
+          <p className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
+            <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>
+              Échantillon <b>validé</b>
+              {reportNumber && (
+                <>
+                  {" "}— rapport <b>{reportNumber}</b>
+                </>
+              )}
+              .
+            </span>
+          </p>
+
+          {sentTo && (
+            <p className="mt-2 text-xs text-slate-500">
+              Dernier envoi à : {sentTo}
+            </p>
+          )}
+
+          {!emailLive && (
+            <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+              <b>Mode démonstration :</b> les emails sont enregistrés dans le
+              journal mais pas encore réellement envoyés — en attente de la
+              configuration du domaine.
+            </p>
+          )}
+
+          {reportNumber && (
+            <div className="mt-4 space-y-3">
+              <a
+                href={`/api/samples/${sampleId}/report`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+              >
+                <FileDown className="h-4 w-4" aria-hidden="true" />
+                Télécharger le rapport
+              </a>
+              <SecondaryButton
+                type="button"
+                onClick={() => resend()}
+                disabled={!!busy}
+                className="w-full"
+              >
+                <Send className="h-4 w-4" aria-hidden="true" />
+                {busy === "resend"
+                  ? "Envoi…"
+                  : sentTo
+                    ? "Renvoyer au client"
+                    : "Envoyer au client"}
+              </SecondaryButton>
+            </div>
+          )}
+        </div>
       ) : (
         <div className="mt-5 space-y-3">
           {canValidate && (

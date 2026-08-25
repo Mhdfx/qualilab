@@ -9,6 +9,7 @@ import {
 } from "@/lib/sample-status";
 import { generateReportNumber } from "@/lib/report-number";
 import { buildConclusion } from "@/lib/report-html";
+import { sendReport, sendContaminationAlerts } from "@/lib/report-dispatch";
 
 /**
  * Quality validation — the two approvals, and the rejection.
@@ -106,6 +107,27 @@ export async function POST(
     // still shows who actually signed it.
     const report = await createReportFor(sample.id);
 
+    // The client is served straight away: the report, then an alert if a
+    // sensitive parameter is over its limit. Neither may break the approval,
+    // which is already recorded — a failed send is visible in the journal and
+    // can be retried from the interface.
+    let dispatch: { report?: string; alerts?: number; error?: string } = {};
+    if (report) {
+      const sent = await sendReport(sample.id, session.id).catch((error) => {
+        console.error("[validation] report send failed", { error });
+        return { ok: false as const, error: "Envoi du rapport impossible." };
+      });
+      dispatch = sent.ok ? { report: sent.status } : { error: sent.error };
+
+      const alerts = await sendContaminationAlerts(sample.id, session.id).catch(
+        (error) => {
+          console.error("[validation] alert send failed", { error });
+          return { ok: false as const, error: "Envoi des alertes impossible." };
+        }
+      );
+      if (alerts.ok) dispatch.alerts = alerts.sent;
+    }
+
     await logAudit({
       actorId: session.id,
       action: "SAMPLE_APPROVED",
@@ -120,7 +142,7 @@ export async function POST(
       },
     });
 
-    return NextResponse.json({ ...updated, report });
+    return NextResponse.json({ ...updated, report, dispatch });
   }
 
   if (action === "reject") {

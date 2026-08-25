@@ -8,23 +8,26 @@
 
 ## ▶ NEXT ACTION
 
-**Phase 3 in progress.** The **official PDF report** is done and verified: the
-admin's approval creates the report record (`RAP-YYYY-NNNNN`) with the names
-frozen, and the PDF is rendered on demand by Chromium — branded, selectable
-text, multi-page, three signatures. Build + lint pass.
+**Phase 3 is code-complete and verified (2026-08-25).** Approval now produces
+the official PDF report, emails it to the client's address list, and fires a
+grouped contamination alert when a sensitive parameter is over its limit. The
+feuille de paillasse prints, and the admin's silent edit exists. Build + lint
+pass; browser-verified end to end (see `TESTPLAN.md` D1–D5).
 
-Next, in order:
-1. **Download button in the UI** — on the validation detail and, later, the
-   client 360 view. The route exists (`GET /api/samples/[id]/report`).
-2. **Automatic send** to the client's `ClientEmail` list (Resend) →
-   `RAPPORT_ENVOYE`, logged in `EmailLog`, resendable.
-   ⚠️ needs DNS access — see `NEEDEDINFO.md` item 2.
-3. **Contamination alerts** — grouped mail per client for sensitive parameters
-   over their limit. ⚠️ needs the official limits — `NEEDEDINFO.md` item 1.
-4. **Feuille de paillasse** (printable by date) and the admin's silent edit.
+**Two things are simulated until the lab answers — by design, not by omission:**
+- Emails are journalised as `SIMULE` instead of delivered, until
+  `RESEND_API_KEY` + DNS (`NEEDEDINFO` item 2). The screen says so.
+- The alert limits are provisional Moroccan (NM) values until the official
+  figures arrive (`NEEDEDINFO` item 1). Changing a limit needs no code.
 
-Items 1 and 4 are not blocked. Do those first, then 2 and 3 when the lab
-answers.
+Next: **Phase 4 — Clients, facturation liée, administration.**
+1. Clients: full CRUD + archive + **fiche 360°** (échantillons, rapports,
+   factures, paiements) + management of their email list.
+2. **Facture depuis les échantillons validés** — the analyses become invoice
+   lines at catalogue prices; the plumbing already exists from the prototype.
+   Includes the editable désignations the client asked for.
+3. Admin: users & roles, analysis parameters (**where the real norms get
+   entered**), service catalogue, company details, audit-log viewer.
 
 ---
 
@@ -85,19 +88,22 @@ answers.
 - [x] Audit on every transition; state machine enforced server-side
 - [x] **Demo:** sample travels `PRELEVE → VALIDE` ✅ verified end to end
 
-## Phase 3 — Reports & email
-- [x] **Server-side PDF report** ✅ 2026-08-25 — `playwright-core` drives a
-      browser already on the machine (no 150 MB download per environment);
-      `RAP-YYYY-NNNNN`; rendered on demand from the approval snapshot, so there
-      is no file to store or back up and a re-download is always identical
-- [ ] Download button in the UI (route exists)
-- [ ] Auto email on validation (`→ RAPPORT_ENVOYE`) + `EmailLog` + resend
-- [ ] **[client 18-08] Alertes de contamination automatiques** (E. coli /
-      Salmonelle / Listeria over limit → grouped mail to the client's address
-      list + lab in copy, Produit/Site/Date/Lot/Germe/Résultat/Limite table)
-- [ ] **[blocked-ish]** Resend needs DNS verification of
-      `qualilabinternational.com` — client must add the DNS records
-- [ ] **Demo:** validation emails a real PDF to the client
+## Phase 3 — Reports & email ✅ CODE-COMPLETE (2026-08-25)
+- [x] **Server-side PDF report** — `playwright-core` drives a browser already on
+      the machine; `RAP-YYYY-NNNNN`; rendered on demand from the approval
+      snapshot, so nothing to store or back up
+- [x] Download button on the validation screen
+- [x] **Auto email on approval** (`→ RAPPORT_ENVOYE`) + `EmailLog` + resend
+- [x] **Contamination alerts** — grouped per germ, client's address list + lab
+      in copy, Produit/Site/Date/Lot/Germe/Résultat/Limite table
+- [x] **Feuille de paillasse** printable by date, technician-scoped
+- [x] Admin silent report edit (deliberately unaudited, isolated in one route)
+- [x] Simulation mode: without a provider key, sends are journalised and the UI
+      says so — the whole chain is demonstrable today
+- [ ] 🔒 Real delivery — needs DNS (`NEEDEDINFO` item 2)
+- [ ] 🔒 Official limits — needs the lab's figures (`NEEDEDINFO` item 1)
+- [x] **Demo:** approving a contaminated sample produces the report, emails it
+      and raises the E. coli alert
 
 ## Phase 4 — Clients, invoice link, admin
 - [ ] Client CRUD + archive + 360° view
@@ -131,6 +137,16 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
+
+- **2026-08-25 · Claude Code** · **Phase 3 delivered.** Approval now produces
+  the official report (three signatures, selectable text, rebuilt on demand
+  from a frozen snapshot), emails it to the client's address list, and fires
+  the contamination alert — grouped per germ, lab in copy, reproducing the
+  model the client sent on 17/08. Verified with their own figures: 8,9.10²
+  against a limit of 1.10² on E. coli. Added the feuille de paillasse and the
+  admin's unaudited edit. Where the lab still owes us something (DNS, official
+  limits) the code is complete and runs in a clearly-labelled simulation mode
+  rather than being left unwritten. Next: Phase 4.
 
 - **2026-08-25 · Claude Code** · **Phase 2 · C3 delivered — double validation.
   Phase 2 is complete.** The two approvals the client confirmed are now

@@ -34,9 +34,16 @@
 | 4 | **Les méthodes et formules de calcul** par paramètre (facteur de dilution, unités de rendu…) | To compute results from raw bench readings automatically | Automatic calculation (manual entry works without it) |
 | 5 | **Un modèle de rapport d'analyse** que vous utilisez aujourd'hui (PDF ou Word) | To reproduce your layout, mentions légales and signature block exactly | Report template |
 | 6 | **Le texte de l'email** accompagnant un rapport (objet, message, signature) | Sent with every report | Email template |
-| 7 | **Un modèle de feuille de paillasse** | To print it the way the technicians already work | Bench sheet |
+| 7 | **Un modèle de feuille de paillasse** | Ours is built and printable — we want to compare it with the one your technicians already use | Bench sheet (working, to confirm) |
 | 8 | **Les adresses email par client** (qui reçoit les rapports, qui reçoit les alertes) | A client can have several recipients; alerts often go to the quality contact *and* the direction | Real sending |
 | 9 | **La liste des comptes utilisateurs** : nom, fonction, rôle | To create the real accounts and close the demo ones | Go-live |
+
+### 🟢 Built, waiting only on you to switch on
+
+| # | What | State |
+|---|---|---|
+| A | **Envoi réel des emails** | The full chain works and is journalised; every send is currently marked `SIMULE`. It becomes real the moment we have the DNS records (item 2) and the provider key |
+| B | **Limites des alertes** | Alerts fire correctly against provisional Moroccan (NM) limits. Replacing them with your official figures (item 1) needs no development |
 
 ### 🟡 Decisions we need from you (no document required)
 

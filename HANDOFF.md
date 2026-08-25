@@ -25,7 +25,7 @@
 | LIMS core — **saisie résultats** | bench sheet, automatic conformity, submit | ✅ **Phase 2 · C2 done** |
 | LIMS core — **validation** | double validation (validateur + admin), rejet motivé | ✅ **Phase 2 · C3 done** |
 | LIMS core — **rapport PDF** | official report, 3 signatures, on-demand render | ✅ **Phase 3 · started** |
-| LIMS core — email, alerts | auto send + contamination alerts | ❌ **Phase 3** (needs DNS + limits) |
+| LIMS core — **email, alertes** | auto send, grouped contamination alerts, bench sheet | ✅ **Phase 3 done** (delivery simulated until DNS) |
 | Infra | VPS + PM2 + `/api/health` + watchdog/autostart/backup scripts | ✅ **Working** (prototype) |
 
 **Bottom line:** the foundation (auth, roles, guards, data model, audit, state
@@ -47,6 +47,9 @@ src/
       samples/[id]/results/    ★ PUT save (RECU → EN_ANALYSE) · submit/ POST (→ RESULTATS_SAISIS)
       samples/[id]/validation/ ★ POST validate | approve (→ VALIDE) | reject (→ EN_ANALYSE)
       samples/[id]/report/     ★ GET — renders the official PDF on demand
+      samples/[id]/report/send/ POST — send or resend to the client
+      bench-sheet/             GET ?date= — printable feuille de paillasse
+      reports/[id]/admin-edit/ ⚠️ PATCH — admin edit, deliberately NOT audited
       clients/  parameters/  lab-services/   read endpoints
       invoices/  invoices/[id]/   invoice CRUD (COMPTABLE + ADMIN)
       health/                  liveness probe for PM2/watchdog
@@ -83,6 +86,10 @@ src/
     report-html.ts     ★ the official report as HTML + the auto conclusion
     report-number.ts   RAP-YYYY-NNNNN
     pdf.ts             ★ HTML → PDF via playwright-core (CHROMIUM_PATH)
+    email.ts           ★ sendEmail() + recipientsFor() — journalises every send
+    emails/templates.ts  the report mail and the contamination alert
+    report-dispatch.ts ★ what happens on approval: report, send, alerts
+    bench-sheet-html.ts  the printable worksheet
     invoice-number.ts / invoice-math.ts / invoice-types.ts / lab-services.ts / labels.ts
     number-to-words-fr.ts   amount-in-words (FR) for invoices
     download-invoice-pdf.ts  ⚠️ CLIENT-side screenshot PDF (invoice demo only)
@@ -175,6 +182,8 @@ Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 | The two-approval rule | `canValidateTechnically()` / `canApprove()` in `sample-status.ts` |
 | How a typed result is read / conformity computed | `src/lib/result-value.ts` |
 | The report's layout, wording or conclusion | `src/lib/report-html.ts` |
+| The email wording (report / alert) | `src/lib/emails/templates.ts` |
+| What is sent on approval | `src/lib/report-dispatch.ts` |
 | Which parameters raise a contamination alert | `AnalysisParameter.alertOnExceed` + `limitValue` (seeded in `prisma/seed.ts`) |
 | What gets audited | `logAudit()` calls + `src/lib/audit.ts` |
 | Add a DB field/table | `prisma/schema.prisma` → `npm run db:migrate` → client regenerates |
@@ -198,6 +207,8 @@ Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 | `AUTH_COOKIE_SECURE` | set `false` only for plain-HTTP testing | HTTPS in prod |
 | `NEXT_PUBLIC_DEMO_MODE` | `false` hides the demo-accounts panel on the login page | **Set to `false`** once the lab's real accounts exist |
 | `CHROMIUM_PATH` | browser used to render report PDFs | Optional. On the VPS: `apt install chromium` — the default paths are tried first |
+| `RESEND_API_KEY` | mail provider key | **Absent → sends are journalised as `SIMULE`, not delivered.** Needs the client's DNS first |
+| `EMAIL_FROM` | sender address | e.g. `Qualilab International <no-reply@qualilabinternational.com>` |
 
 **To add later:** `RESEND_API_KEY` + `EMAIL_FROM` (Phase 3 email), and any
 Playwright/Chromium path config for server-side PDF. Log new vars here **and** in
@@ -260,6 +271,10 @@ final hosting is TBD — **we build and test on our VPS for now.**
   sample read, go through `sampleSelectFor(role)` — a raw `findMany` would leak it.
 - **Open question for the lab:** a sample marked *non conforme* is still received
   and assigned today. Confirm whether it should instead be blocked from analysis.
+- ⚠️ **Emails are not really sent yet.** Without `RESEND_API_KEY` every send is
+  recorded in `EmailLog` with the status `SIMULE` and the UI says so. The whole
+  chain — recipients, subject, body, PDF attachment, journal, resend — is real;
+  only the last hop is missing. Setting the key and the DNS records turns it on.
 - ⚠️ **The seeded analysis limits are provisional.** `prisma/seed.ts` carries
   usual Moroccan (NM) criteria as defaults; only the E. coli figure (1.10² UFC/g)
   is confirmed, from the client's alert email. Replace them when the lab sends

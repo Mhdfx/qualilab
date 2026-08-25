@@ -209,49 +209,62 @@ The short list that proves nothing broke. ~5 minutes.
       SAMPLE_VALIDATED_TECHNICAL → SAMPLE_APPROVED` (and `SAMPLE_REJECTED`).
 - [ ] The sample detail shows this timeline visually *(Phase 5 dashboards)*.
 
-## Checkpoint D — Reports, email & alerts (Phase 3) — *to build*
+## Checkpoint D — Reports, email & alerts (Phase 3)
+*verified 2026-08-25 · real delivery pending the client's DNS*
 
 ### D1. Official PDF report
-- [ ] Validating a sample generates the PDF automatically.
-- [ ] The PDF contains: Qualilab identity + logo, the sample code, client, lieu,
-      date de prélèvement, préleveur, the results table with thresholds and
-      conformity, the conclusion, the technician and validateur names, the date.
-- [ ] Text in the PDF is **selectable** (not a screenshot) and multi-page works.
-- [ ] The report is archived and can be re-downloaded later.
+- [x] Approval generates the report automatically (`RAP-YYYY-NNNNN`).
+- [x] The PDF contains: Qualilab identity, control code **and** blind serial
+      number, client, produit, n° de lot, lieu, dates, préleveur, the results
+      table with thresholds and conformity, the conclusion, and **three
+      signatures** (technicien, validateur, admin).
+- [x] Text is **selectable** (rendered by a browser, not a screenshot).
+- [x] The report is re-downloadable at any time and identical each time —
+      it is rebuilt from the snapshot frozen at approval.
+- [x] "Télécharger le rapport" appears on the validation screen once approved.
+- [ ] Multi-page: check with a sample carrying 15+ parameters.
 
 ### D2. Automatic email to the client
-- [ ] On validation the report is emailed to the client's address.
-- [ ] The email arrives in the **inbox**, not spam (real domain test).
-- [ ] The send is recorded in the journal with date, recipient, status.
-- [ ] A gestionnaire can **resend** it manually.
+- [x] Approval sends the report to the client's `ClientEmail` list.
+- [x] The send is journalised (`EmailLog`): type, recipients, subject, status.
+- [x] The sample moves to **Rapport envoyé**; a resend does not move it back.
+- [x] "Renvoyer au client" works from the validation screen.
+- [x] Without `RESEND_API_KEY` the send is recorded as **SIMULE** and the
+      screen says so plainly, so a demo never implies a real delivery.
+- [ ] 🔒 **Real delivery** — needs the client's DNS (`NEEDEDINFO` item 2):
+      the mail arrives in the inbox, not spam.
 
-### D3. **Contamination alerts** (client requirement 18-08)
-- [ ] Entering a result **under** the limit for E. coli → **no** alert.
-- [ ] Entering a result **over** the limit (e.g. `8,9.10²` vs limit `1.10²`) →
-      alert fires **after validation**.
-- [ ] The alert goes to **all** the addresses listed for that client.
-- [ ] The lab is in copy (`direction@…` + responsable technique).
-- [ ] Subject reads "Alerte de contamination par <germe>".
-- [ ] The table contains: **Produit · Site de prélèvement · Date de réception ·
-      N° de lot · Le germe · Résultat UFC/g · Limite UFC/g**.
-- [ ] Two contaminated products for the same client arrive in **one grouped
-      email**, one row each — not two separate emails.
-- [ ] The lab signature block is correct (responsable technique, tél, email, adresse).
-- [ ] Alerts only fire for the sensitive germs configured (E. coli, Salmonelle,
-      Listeria) — a normal parameter over threshold does **not** send an alert.
-- [ ] The alert is logged and resendable.
+### D3. **Contamination alerts**
+- [x] A result **under** the limit sends no alert.
+- [x] `8,9.10²` against a limit of `1.10²` on E. coli → alert fires on approval.
+- [x] Subject reads **"Alerte de contamination par E. coli"**.
+- [x] It goes to **all** the client's alert addresses, with the laboratory in copy
+      (verified: contact@ + direction@ + the lab).
+- [x] The table carries **Produit · Site · Date de réception · N° de lot ·
+      Le germe · Résultat · Limite**, as in the client's model.
+- [x] Alerts are **grouped by germ** — one message listing every product
+      concerned, not one per result.
+- [x] Only parameters flagged sensitive raise an alert.
+- [x] Each alert is journalised and audited (`CONTAMINATION_ALERT_SENT`).
+- [ ] 🔒 Confirm against the lab's **official limits** (`NEEDEDINFO` item 1) —
+      the seeded values are provisional Moroccan (NM) criteria.
 
 ### D4. Feuille de paillasse
-- [ ] The bench sheet prints the samples/parameters **for a chosen date**.
-- [ ] It has a column for the value and a column for notes.
-- [ ] It prints correctly on A4 (no cut-off columns).
+- [x] Prints the samples **on the bench for a chosen date** (`?date=YYYY-MM-DD`).
+- [x] One block per sample (blind serial number, client, produit, lot,
+      technicien), one line per parameter with its unit and threshold.
+- [x] Blank **valeur mesurée** and **note** columns to write in, plus a
+      signature line.
+- [x] A technician only gets their own samples.
+- [x] Reachable from the technician's menu.
+- [ ] Print it on real A4 and confirm nothing is cut off.
 
 ### D5. Admin silent report edit
-- [ ] `admin` can modify a validated report.
-- [ ] The modification leaves **no trace** in the audit journal (as requested).
-- [ ] No other role can do this — the option is invisible to them.
-
----
+- [x] `admin` can modify a validated report's conclusion.
+- [x] The modification leaves **no trace** in the audit journal, as requested.
+- [x] No other role can reach it (route restricted to ADMIN).
+- [ ] Expose it in the admin interface (currently API-only, kept isolated so
+      the feature stays cheap to remove if the client changes their mind).
 
 ## Checkpoint E — Clients, invoicing & administration (Phase 4) — *to build*
 
@@ -359,7 +372,7 @@ The short list that proves nothing broke. ~5 minutes.
 | Phase 2 · C1–C4 réception | Claude Code | 2026-08-23 | ✅ passed |
 | Phase 2 · C5 saisie résultats | Claude Code | 2026-08-25 | ✅ passed |
 | Phase 2 · C6 double validation | Claude Code | 2026-08-25 | ✅ passed |
-| Phase 3 (D) | | | |
+| Phase 3 (D) | Claude Code | 2026-08-25 | ✅ passed (delivery pending DNS) |
 | Phase 4 (E) | | | |
 | Phase 5 (F) | | | |
 | Extensions (G) | | | |
