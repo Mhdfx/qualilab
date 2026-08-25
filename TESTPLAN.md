@@ -290,12 +290,29 @@ The short list that proves nothing broke. ~5 minutes.
 - [ ] Check the fiche on mobile with a client holding many samples.
 
 ### E2. Invoicing from validated samples
-- [ ] Selecting a client's validated samples generates the invoice lines
-      automatically, at catalogue prices.
-- [ ] Line labels (dénominations) can be edited before issuing.
-- [ ] Free lines can still be added (déplacement, urgence…).
-- [ ] Totals, VAT and the amount in words are correct.
-- [ ] Payment status can be changed and is reflected in the dashboards.
+*verified 2026-08-25*
+- [x] Choosing a client lists their **validated analyses not yet invoiced**,
+      with the number of analyses and the amount per sample.
+- [x] Selecting samples fills the invoice lines **at catalogue prices**
+      (verified: 5 lines, 1 650,00 DH HT → 1 980,00 DH TTC).
+- [x] The price follows the **domain**: E. coli costs one price on food and
+      another on water.
+- [x] An analysis missing from the catalogue is flagged **"prix à saisir"**
+      rather than silently invoiced at zero.
+- [x] A deactivated catalogue entry counts as missing.
+- [x] **The désignation of every line is editable** — the client's requirement.
+      Verified: an edited wording survives to the issued invoice.
+- [x] Picking a catalogue entry prefills wording and price; clearing the picker
+      does **not** wipe a wording that was edited on purpose.
+- [x] Free lines can still be typed by hand alongside billed analyses.
+- [x] A sample **cannot be invoiced twice**: once billed it leaves the list, and
+      a second attempt is refused (**409**, naming the sample).
+- [x] A sample belonging to another client is refused (**400**).
+- [x] A sample that is not validated is refused (**409**).
+- [ ] Invoice PDF is still the prototype's client-side screenshot — to move to
+      the server-side renderer like the analysis report.
+- [ ] The **comptable** cannot yet reach the invoice screens: they live under
+      `/admin`, although the API already allows COMPTABLE.
 
 ### E3. Administration
 - [ ] Admin creates a user, assigns a role, disables an account, resets a password.

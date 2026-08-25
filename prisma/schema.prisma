@@ -249,6 +249,7 @@ model Sample {
   parameters SampleParameter[]
   results    Result[]
   report     Report?
+  invoiceItems InvoiceItem[]
 
   @@index([status])
   @@index([technicianId])
@@ -383,8 +384,15 @@ model InvoiceItem {
   id          String  @id @default(cuid())
   invoiceId   String
   invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  /// The sample this line bills, when it came from an analysis rather than
+  /// being typed by hand. It is what stops a sample being invoiced twice.
+  sampleId    String?
+  sample      Sample? @relation(fields: [sampleId], references: [id], onDelete: SetNull)
   description String
   quantity    Float   @default(1)
   unitPrice   Decimal @default(0) @db.Decimal(12, 2)
   lineTotal   Decimal @default(0) @db.Decimal(12, 2)
+
+  @@index([invoiceId])
+  @@index([sampleId])
 }

@@ -52,6 +52,7 @@ src/
       reports/[id]/admin-edit/ ⚠️ PATCH — admin edit, deliberately NOT audited
       clients/                 GET (searchable) · POST (GESTIONNAIRE/ADMIN)
       clients/[id]/            GET · PATCH (edit, archive, recipient list)
+      clients/[id]/billable/   GET — validated analyses not yet invoiced
       parameters/  lab-services/   read endpoints
       invoices/  invoices/[id]/   invoice CRUD (COMPTABLE + ADMIN)
       health/                  liveness probe for PM2/watchdog
@@ -97,12 +98,13 @@ src/
     invoice-serialize.ts  shapes an invoice for the wire (Decimal → number)
     retry-unique.ts    retries a sequential-number collision
     client-validation.ts  ★ client + recipient-list rules (pure, tested)
+    billing.ts         ★ analyses → invoice lines at catalogue prices (pure, tested)
     invoice-number.ts / invoice-math.ts / invoice-types.ts / lab-services.ts / labels.ts
     number-to-words-fr.ts   amount-in-words (FR) for invoices
     download-invoice-pdf.ts  ⚠️ CLIENT-side screenshot PDF (invoice demo only)
   generated/prisma/    ★ generated Prisma client — DO NOT edit, gitignored
 prisma/
-  schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (12)
+  schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (13)
   ⚠️ the VPS needs a Chromium for the PDF: `apt install chromium`
 scripts/         VPS ops: deploy, wait-for-db, health-watchdog, setup-autostart, setup-database, start-production, vps-setup, check-db
 ```
@@ -193,6 +195,7 @@ Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 | What is sent on approval | `src/lib/report-dispatch.ts` |
 | How a growing list is paged | `src/lib/pagination.ts` (cursor, not page numbers) |
 | Client / ICE / email validation | `src/lib/client-validation.ts` |
+| How an analysis becomes an invoice line | `src/lib/billing.ts` |
 | How money crosses a boundary | `src/lib/money.ts` + `invoice-serialize.ts` |
 | Which parameters raise a contamination alert | `AnalysisParameter.alertOnExceed` + `limitValue` (seeded in `prisma/seed.ts`) |
 | What gets audited | `logAudit()` calls + `src/lib/audit.ts` |
@@ -292,6 +295,10 @@ report is rendered server-side, and there is no automated test suite.
 - ~~Role checks hardcoded per file~~ → **resolved:** everything now goes through
   `requireRole` / `requireApiRole`. Keep it that way; never re-introduce an
   inline `session.role === "..."` check in a page or route.
+- 🔴 **The comptable cannot reach the invoice screens.** They live under
+  `/admin` (ADMIN-only) while `/api/invoices` allows COMPTABLE — the role
+  exists to invoice. Needs its own route under `/comptabilite` reusing the
+  existing components.
 - **Invoice PDF is still a client-side screenshot** (flattened, single page, no
   selectable text) while the analysis report is rendered server-side by
   Chromium. The machinery to fix it exists — `lib/pdf.ts` + an HTML template

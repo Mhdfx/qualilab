@@ -8,21 +8,21 @@
 
 ## ▶ NEXT ACTION
 
-**Phase 4 · E1 (Clients) is complete and verified (2026-08-25).** Full CRUD,
-archive rather than delete, the multi-address recipient list the alerts depend
-on, and the fiche 360°. A test suite now exists (55 tests) and `npm test` is
-part of the definition of done.
+**Phase 4 · E2 (facturation depuis les échantillons validés) is complete and
+verified (2026-08-25).** A client's validated analyses become invoice lines at
+catalogue prices, the wording of every line is editable, and a sample can never
+be billed twice. 66 tests pass; build and lint clean.
 
-Next: **Phase 4 · E2 — Facture depuis les échantillons validés.**
-1. Pick a client's validated samples that are not yet invoiced; their analyses
-   become the lines, at catalogue prices.
-2. **Editable désignations** — the client asked to control how products and
-   reports are named on the invoice.
-3. Mark which samples an invoice covers, so none is billed twice.
-4. **Upgrade the invoice PDF to the server-side renderer** — it is still the
-   prototype's client-side screenshot while the report is rendered by Chromium.
-   `lib/pdf.ts` and the pattern in `report-html.ts` are ready; this is the right
-   moment, since invoicing is being touched anyway.
+Two things surfaced while testing and are the immediate next steps:
+
+1. 🔴 **The comptable cannot reach the invoice screens.** They live under
+   `/admin`, which is ADMIN-only, although `/api/invoices` already allows
+   COMPTABLE — the role exists precisely to invoice. Give invoicing its own
+   route under `/comptabilite` reusing the existing components
+   (`FacturesList`, `NouvelleFactureForm`, `FactureDetail`).
+2. 🟠 **The invoice PDF is still the prototype's client-side screenshot** while
+   the analysis report is rendered server-side. `lib/pdf.ts` and the pattern in
+   `report-html.ts` are ready; write `invoice-html.ts` and a download route.
 
 Then **E3 — Administration**: users & roles, analysis parameters (**where the
 real norm limits get entered** once the lab sends them), service catalogue,
@@ -114,7 +114,14 @@ company details, audit-log viewer.
   - [x] Multi-address recipient list (reports / alerts), which the sending depends on
   - [x] Archive rather than delete: samples, reports and invoices still refer to the client
   - [x] Search, empty states, and a warning when no address is registered
-- [ ] Invoice generated from validated samples (+ editable désignations)
+- [x] **Invoice generated from validated samples (+ editable désignations)** ✅ 2026-08-25
+  - [x] `billing.ts` — pure, tested: analyses → lines at catalogue prices, priced by domain
+  - [x] An unpriced analysis is flagged, never invoiced at zero
+  - [x] `InvoiceItem.sampleId` ties each line to its sample — what prevents double billing
+  - [x] Server-side guards: wrong client, not validated, already invoiced
+  - [x] The line désignation is a real editable field (it was a dropdown, so
+        picker-added lines could not even be submitted)
+- [ ] 🔴 Give the **comptable** access to the invoice screens (currently ADMIN-only routes)
 - [ ] **Upgrade the invoice PDF to server-side rendering** (still a screenshot)
 - [ ] Admin: users/roles, parameters, catalog, templates, company, audit viewer
 - [ ] **Demo:** configure everything + invoice from a validated sample
@@ -145,6 +152,17 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
+
+- **2026-08-25 · Claude Code** · **Phase 4 · E2 — invoicing from validated
+  analyses.** A client's validated samples now become invoice lines at
+  catalogue prices, priced by domain, with unpriced analyses flagged rather
+  than billed at zero. Each line records the sample it bills, which is what
+  makes double billing impossible — verified: the samples leave the list and a
+  second attempt is refused by name. Fixed a real defect found while testing:
+  the line désignation was a required dropdown, not a field, so lines added
+  from analyses could not be submitted and the client's requirement to control
+  the wording was unmet. Two gaps recorded for the next step: the comptable
+  cannot reach the invoice screens, and the invoice PDF is still a screenshot.
 
 - **2026-08-25 · Claude Code** · **Test suite, then Phase 4 · E1 — clients.**
   Added vitest and 55 tests over the rules that would be expensive to get

@@ -37,6 +37,8 @@ type IncomingItem = {
   description?: string;
   quantity?: number | string;
   unitPrice?: number | string;
+  /** Set when the line bills a validated analysis. */
+  sampleId?: string | null;
 };
 
 export async function POST(request: Request) {
@@ -67,6 +69,10 @@ export async function POST(request: Request) {
       description: (item.description ?? "").trim(),
       quantity: Number(item.quantity),
       unitPrice: Number(item.unitPrice),
+      // Present when the line came from a validated analysis rather than being
+      // typed by hand; it is what ties the invoice back to the sample.
+      sampleId:
+        typeof item.sampleId === "string" && item.sampleId ? item.sampleId : null,
     }));
 
     // An invoice is a legal document: a negative or nonsensical amount must be
@@ -110,6 +116,54 @@ export async function POST(request: Request) {
         { error: "Client introuvable." },
         { status: 404 }
       );
+    }
+
+    // Lines claiming to bill an analysis are checked against reality: the
+    // sample must belong to this client, have been validated, and not already
+    // appear on another invoice.
+    const sampleIds = Array.from(
+      new Set(billable.map((item) => item.sampleId).filter(Boolean) as string[])
+    );
+
+    if (sampleIds.length > 0) {
+      const samples = await prisma.sample.findMany({
+        where: { id: { in: sampleIds } },
+        select: {
+          id: true,
+          code: true,
+          clientId: true,
+          status: true,
+          invoiceItems: { select: { invoiceId: true }, take: 1 },
+        },
+      });
+
+      if (samples.length !== sampleIds.length) {
+        return NextResponse.json(
+          { error: "Un échantillon référencé est introuvable." },
+          { status: 400 }
+        );
+      }
+
+      for (const sample of samples) {
+        if (sample.clientId !== clientId) {
+          return NextResponse.json(
+            { error: `L'échantillon ${sample.code} appartient à un autre client.` },
+            { status: 400 }
+          );
+        }
+        if (sample.status !== "VALIDE" && sample.status !== "RAPPORT_ENVOYE") {
+          return NextResponse.json(
+            { error: `L'échantillon ${sample.code} n'est pas validé.` },
+            { status: 409 }
+          );
+        }
+        if (sample.invoiceItems.length > 0) {
+          return NextResponse.json(
+            { error: `L'échantillon ${sample.code} est déjà facturé.` },
+            { status: 409 }
+          );
+        }
+      }
     }
 
     // VAT is a percentage, not an arbitrary number.

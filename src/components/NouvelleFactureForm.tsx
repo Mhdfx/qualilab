@@ -23,6 +23,10 @@ import {
   type LabServiceOption,
 } from "@/lib/lab-services";
 import { computeInvoiceTotals, computeLineAmounts } from "@/lib/invoice-math";
+import {
+  BillableSamples,
+  type BillableLine,
+} from "@/components/invoices/BillableSamples";
 
 type ClientOption = {
   id: string;
@@ -35,6 +39,8 @@ type LineItem = {
   description: string;
   quantity: string;
   unitPrice: string;
+  /** Set when the line came from a validated analysis. */
+  sampleId?: string | null;
 };
 
 let lineCounter = 0;
@@ -47,6 +53,7 @@ function newLine(): LineItem {
     description: "",
     quantity: "1",
     unitPrice: "",
+    sampleId: null,
   };
 }
 
@@ -103,17 +110,21 @@ export function NouvelleFactureForm() {
     );
   }
 
+  /** Prefills a line from the catalogue. Clearing the picker leaves the line
+   *  alone: the wording may have been edited on purpose. */
   function selectService(key: string, serviceId: string) {
     const service = services.find((s) => s.id === serviceId);
     setItems((prev) =>
       prev.map((item) =>
         item.key === key
-          ? {
-              ...item,
-              serviceId,
-              description: service?.name ?? "",
-              unitPrice: service ? String(service.unitPrice) : "",
-            }
+          ? service
+            ? {
+                ...item,
+                serviceId,
+                description: service.name,
+                unitPrice: String(service.unitPrice),
+              }
+            : { ...item, serviceId: "" }
           : item
       )
     );
@@ -154,6 +165,7 @@ export function NouvelleFactureForm() {
             description: item.description,
             quantity: Number(item.quantity),
             unitPrice: Number(item.unitPrice) || 0,
+            sampleId: item.sampleId ?? null,
           })),
         }),
       });
@@ -253,6 +265,34 @@ export function NouvelleFactureForm() {
               <span />
             </div>
 
+            {/* Nothing forces the accountant to use this: they may still type
+                a line by hand, or edit anything pulled in from an analysis. */}
+            <div className="mb-4">
+              <BillableSamples
+                clientId={clientId}
+                onAdd={(lines: BillableLine[]) =>
+                  setItems((prev) => {
+                    const added = lines.map((line) => {
+                      lineCounter += 1;
+                      return {
+                        key: `line-${lineCounter}`,
+                        serviceId: "",
+                        description: line.description,
+                        quantity: String(line.quantity),
+                        unitPrice: line.unitPrice ? String(line.unitPrice) : "",
+                        sampleId: line.sampleId,
+                      };
+                    });
+                    // Drop the single blank line the form starts with.
+                    const existing = prev.filter(
+                      (item) => item.description.trim() || item.unitPrice.trim()
+                    );
+                    return [...existing, ...added];
+                  })
+                }
+              />
+            </div>
+
             {items.map((item) => {
               const qty = Number(item.quantity) || 0;
               const price = Number(item.unitPrice) || 0;
@@ -263,17 +303,32 @@ export function NouvelleFactureForm() {
                   key={item.key}
                   className="grid grid-cols-2 gap-3 rounded-xl border border-slate-100 bg-slate-50/50 p-3 sm:grid-cols-[1fr_5rem_8rem_8rem_2.5rem] sm:items-center sm:border-0 sm:bg-transparent sm:p-0"
                 >
-                  <div className="col-span-2 sm:col-span-1">
+                  <div className="col-span-2 space-y-1.5 sm:col-span-1">
+                    {/* The désignation is the line as the client will read it
+                        on the invoice, so it is always editable — the client
+                        asked for control over how products and reports are
+                        named. The catalogue below only prefills it. */}
+                    <input
+                      type="text"
+                      value={item.description}
+                      onChange={(e) =>
+                        updateItem(item.key, "description", e.target.value)
+                      }
+                      placeholder="Désignation de la ligne"
+                      aria-label="Désignation"
+                      className="input-field px-4 py-2.5"
+                      required
+                    />
                     <select
                       value={item.serviceId}
                       onChange={(e) => selectService(item.key, e.target.value)}
-                      className="input-field px-4 py-2.5"
-                      required
+                      aria-label="Reprendre une prestation du catalogue"
+                      className="input-field px-4 py-2 text-xs text-slate-600"
                     >
                       <option value="">
                         {services.length === 0
                           ? "Chargement des prestations…"
-                          : "Sélectionner une prestation…"}
+                          : "Reprendre une prestation du catalogue…"}
                       </option>
                       {LAB_SERVICE_CATEGORIES.map((category) => {
                         const categoryServices = servicesByCategory.get(category) ?? [];
