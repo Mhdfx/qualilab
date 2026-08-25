@@ -20,11 +20,37 @@ Internet ──HTTPS──▶ nginx (certbot) ──▶ app container :3000 ─�
   the prototype) for a bare-metal run — Docker is the recommended path because
   the same stack runs identically on any machine.
 
+## Fresh server (reset from scratch)
+
+As **root** on the newly reset VPS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Mhdfx/qualilab/master/scripts/provision-vps.sh -o provision.sh
+bash provision.sh
+```
+
+It installs Docker, nginx, certbot and the firewall (SSH + web only), creates
+the `qualilab` deploy user, and prints a **deploy key** to add to GitHub
+(repo → Settings → Deploy keys, read-only). Everything after runs as
+`qualilab`, never root.
+
+## Git as the pipeline
+
+The VPS pulls from GitHub with its read-only deploy key — no personal
+credentials on the server, and every deployment is exactly a commit:
+
+```
+push to master ──▶ ssh vps ──▶ git pull ──▶ docker compose up -d --build
+```
+
+Deploying IS pulling; rolling back IS checking out the previous commit. The
+two commands live in "Deploying an update" below.
+
 ## First deployment on the VPS
 
 ```bash
-# 1. Requirements: Docker + the compose plugin, nginx, certbot.
-git clone <repo> /opt/qualilab && cd /opt/qualilab
+# 1. As the deploy user (su - qualilab):
+git clone git@github.com:Mhdfx/qualilab.git /opt/qualilab && cd /opt/qualilab
 
 # 2. Secrets — never committed.
 cp .env.production.example .env

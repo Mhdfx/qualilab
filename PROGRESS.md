@@ -14,10 +14,16 @@ search), the production build with HSTS, the Docker image with Chromium, the
 compose stack, the backup/restore scripts and `DEPLOY.md` are all in place and
 verified locally.
 
+**Decided 2026-08-25: the VPS (185.217.126.53, currently serving the old
+prototype over plain HTTP) will be reset and deployed from scratch, with the
+GitHub repo as the pipeline** (VPS pulls with a read-only deploy key).
+`scripts/provision-vps.sh` prepares the fresh server; `DEPLOY.md` §"Fresh
+server" is the sequence for the session.
+
 **What remains needs things only the outside world can provide:**
-1. **The VPS**: first deploy per `DEPLOY.md`, certbot HTTPS, cron the backup,
-   one real restore (date it in DEPLOY.md), full TESTPLAN pass on the deployed
-   system.
+1. **The VPS session (tonight)**: run `provision-vps.sh` as root → add the
+   printed deploy key to GitHub → clone, fill `.env`, `compose up` → nginx +
+   certbot → cron the backup → one real restore → TESTPLAN pass.
 2. **The lab** (`NEEDEDINFO.md`): DNS + Resend key → flip real email on;
    official norm limits → enter in `/admin/parametres`; real ICE/RC/RIB + logo
    → enter in `/admin/entreprise`; legacy export → import; real user list →
