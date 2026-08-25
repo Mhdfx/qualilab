@@ -3,6 +3,7 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { generateSampleCode } from "@/lib/sample-code";
+import { retryOnDuplicate } from "@/lib/retry-unique";
 import { sampleSelectFor } from "@/lib/sample-select";
 import { pageParams, toPage } from "@/lib/pagination";
 import type { SampleType } from "@/generated/prisma/client";
@@ -52,11 +53,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const code = await generateSampleCode();
-
-    const sample = await prisma.sample.create({
+    const sample = await retryOnDuplicate(async () =>
+      prisma.sample.create({
       data: {
-        code,
+        code: await generateSampleCode(),
         clientId,
         userId: session.id,
         lieu,
@@ -69,7 +69,8 @@ export async function POST(request: Request) {
         },
       },
       select: sampleSelectFor(session.role),
-    });
+      })
+    );
 
     await logAudit({
       actorId: session.id,

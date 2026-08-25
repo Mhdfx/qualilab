@@ -246,6 +246,9 @@ final hosting is TBD — **we build and test on our VPS for now.**
 | 2026-08-18 | **Working method: build continuously, pause at the point of need** | We do not wait for every unknown up front. Build until a task genuinely requires missing information (norms, formulas, legacy files, equipment list), then stop, ask the lab for exactly that, and resume. Anything blocked goes to PROGRESS as `[!]` with what is needed |
 | 2026-08-25 | **Speed is a stated requirement** | The lab works in this tool all day. Targets and rules in `CODE_QUALITY.md` §4b; checks in `TESTPLAN.md`. Treat a slow screen as a defect |
 | 2026-08-25 | **No Redis for now** | At 1–10 concurrent users it would add a service to run, deploy, monitor and back up for no measurable gain: sessions live in MySQL and pages are server-rendered. **Revisit when** we add scheduled jobs (Phase 6/7 alerts) or if a measurement — not a hunch — shows a real bottleneck |
+| 2026-08-25 | **Money is `DECIMAL(12,2)`, never `Float`** | The prototype stored every amount as Float. An invoice is a legal document; floating point drifts. Prisma returns `Decimal` and JSON would serialise it as a string, so everything crossing a boundary goes through `toMoney()` / `serializeInvoice()` |
+| 2026-08-25 | **Sequential numbers retry on collision** | Invoice/sample numbers are read-then-incremented, so two users at the same instant pick the same one. The unique constraint is the real guard; `retryOnDuplicate()` turns the clash into a second attempt instead of a 500 |
+| 2026-08-25 | **Security headers + error boundaries added** | The system holds health data: no framing, no MIME sniffing, no referer leaking a sample id, HSTS in production. `error.tsx` / `not-found.tsx` replace Next's raw screens with something a technician can act on |
 | 2026-08-25 | **"Attente admin" is a derived state, not a seventh status** | The client's specification promises exactly six tracked statuses. The technical validation is recorded on the sample (`validatedById`), and the sample stays `RESULTATS_SAISIS` until the admin approves — so the two-step rule is enforced without changing the status model the client validated. Use `approvalState(sample)` to read it |
 | 2026-08-25 | **Containers at Phase 5, not before** | docker-compose (app + MySQL + volume), Next `output: "standalone"`, Chromium for the PDF, nginx for HTTPS. Gives a reproducible deploy; switching mid-build would cost time without changing a feature |
 | 2026-08-18 | **Client portal confirmed** (Phase 8): `CLIENT` accounts are **created/managed by the ADMIN** (no self-signup); each client sees the status and results/reports of their own samples only | Client answer. `CLIENT` role already reserved in `lib/roles.ts` |
@@ -253,13 +256,41 @@ final hosting is TBD — **we build and test on our VPS for now.**
 | 2026-07-27 | **Resend** for transactional email | Best deliverability; matches spec "service dédié" |
 | 2026-07-27 | UI via **installed design skills**, top-tier per screen | Client-facing pro tool; brand-consistent |
 
+## 8b. Audit of the inherited prototype (2026-08-25)
+
+The first prototype was built to demonstrate, not to run a laboratory. Before
+extending the invoicing in Phase 4 it was audited across backend, frontend and
+data. What was found and fixed:
+
+| Finding | Severity | Fixed |
+|---|---|---|
+| **All money stored as `Float`** (7 columns) | 🔴 an invoice is a legal document | → `DECIMAL(12,2)` + `toMoney()` at every boundary |
+| **No validation of amounts** — a negative unit price was accepted | 🔴 | Rejected with a named message; VAT clamped to 0–100 |
+| **`Invoice` had no index at all** | 🟠 would scan as invoices accumulate | `[clientId]`, `[status]`, `[createdAt]` |
+| **Unbounded lists** (`/api/samples`, `/api/invoices`) | 🟠 slows as data grows | Cursor pagination |
+| **Sequential numbering racy** | 🟠 a 500 on simultaneous creation | `retryOnDuplicate()` |
+| **No error boundary, no 404 page** | 🟠 raw Next error screen | French pages that offer a way out |
+| **No security headers** | 🟠 health data | Frame/sniff/referer/permissions + HSTS |
+| **Dead dependencies** (`bcryptjs`, `jose`, `html2canvas`) | 🟡 | Removed |
+
+Clean on the rest: no `any`, no stray `console.log`, no `@ts-ignore`, no dead
+nav links, all 10 screens render without error.
+
+**Still open** — see §9: the invoice PDF is a client-side screenshot while the
+report is rendered server-side, and there is no automated test suite.
+
 ## 9. Known debt / watch-outs
 
 - ~~Role checks hardcoded per file~~ → **resolved:** everything now goes through
   `requireRole` / `requireApiRole`. Keep it that way; never re-introduce an
   inline `session.role === "..."` check in a page or route.
-- Invoice PDF is a flattened client-side screenshot (no text, single page) — do
-  **not** reuse it for official analysis reports.
+- **Invoice PDF is still a client-side screenshot** (flattened, single page, no
+  selectable text) while the analysis report is rendered server-side by
+  Chromium. The machinery to fix it exists — `lib/pdf.ts` + an HTML template
+  like `report-html.ts`. Worth doing in Phase 4, when invoicing is touched.
+- **No automated tests.** Verification is manual, through `TESTPLAN.md`. Before
+  go-live the critical paths deserve real tests: the value parser, the money
+  math, the state machine, and the role guards.
 - Sample status still only ever reaches `PRELEVE` in practice — Phase 2 wires the
   transitions. The state machine (`canTransition`) already exists: **use it**,
   never write `status` directly.

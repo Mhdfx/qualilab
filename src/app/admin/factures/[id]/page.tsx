@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { toMoney } from "@/lib/money";
 import { FactureDetail } from "@/components/FactureDetail";
 import type { Invoice } from "@/lib/invoice-types";
 
@@ -28,10 +29,10 @@ export default async function FactureDetailPage({
     issueDate: invoice.issueDate.toISOString(),
     dueDate: invoice.dueDate ? invoice.dueDate.toISOString() : null,
     notes: invoice.notes,
-    taxRate: invoice.taxRate,
-    subtotal: invoice.subtotal,
-    taxAmount: invoice.taxAmount,
-    total: invoice.total,
+    taxRate: toMoney(invoice.taxRate),
+    subtotal: toMoney(invoice.subtotal),
+    taxAmount: toMoney(invoice.taxAmount),
+    total: toMoney(invoice.total),
     client: {
       id: invoice.client.id,
       name: invoice.client.name,
@@ -46,8 +47,8 @@ export default async function FactureDetailPage({
       id: item.id,
       description: item.description,
       quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      lineTotal: item.lineTotal,
+      unitPrice: toMoney(item.unitPrice),
+      lineTotal: toMoney(item.lineTotal),
     })),
   };
 

@@ -2,6 +2,7 @@ import { FileText, Clock, CheckCircle2, Wallet } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { RoleDashboard } from "@/components/RoleDashboard";
 import { formatCurrency } from "@/lib/labels";
+import { toMoney } from "@/lib/money";
 
 export default async function ComptabilitePage() {
   const [factures, enAttente, payees, encaisse] = await Promise.all([
@@ -23,7 +24,7 @@ export default async function ComptabilitePage() {
         { label: "Factures", value: factures, icon: FileText, accent: "brand" },
         { label: "En attente", value: enAttente, icon: Clock, accent: "amber" },
         { label: "Payées", value: payees, icon: CheckCircle2, accent: "emerald" },
-        { label: "Encaissé", value: formatCurrency(encaisse._sum.total ?? 0), icon: Wallet, accent: "blue" },
+        { label: "Encaissé", value: formatCurrency(toMoney(encaisse._sum.total)), icon: Wallet, accent: "blue" },
       ]}
       mission="Vous générez les factures à partir des échantillons validés d'un client : les analyses réalisées deviennent les lignes de facture, aux prix du catalogue. Vous suivez les statuts de paiement et exportez les factures en PDF."
       nextSteps={[

@@ -185,7 +185,8 @@ model LabService {
   id        String  @id @default(cuid())
   name      String
   category  String
-  unitPrice Float   @default(0)
+  /// Exact money — never Float. Read through `toMoney()`.
+  unitPrice Decimal @default(0) @db.Decimal(12, 2)
   active    Boolean @default(true)
 }
 
@@ -359,10 +360,11 @@ model Invoice {
   issueDate   DateTime      @default(now())
   dueDate     DateTime?
   notes       String?       @db.Text
-  taxRate     Float         @default(20)
-  subtotal    Float         @default(0)
-  taxAmount   Float         @default(0)
-  total       Float         @default(0)
+  /// Exact money — never Float. Read through `toMoney()`.
+  taxRate     Decimal       @default(20) @db.Decimal(5, 2)
+  subtotal    Decimal       @default(0) @db.Decimal(12, 2)
+  taxAmount   Decimal       @default(0) @db.Decimal(12, 2)
+  total       Decimal       @default(0) @db.Decimal(12, 2)
   items       InvoiceItem[]
   createdAt   DateTime      @default(now())
 
@@ -377,6 +379,6 @@ model InvoiceItem {
   invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   description String
   quantity    Float   @default(1)
-  unitPrice   Float   @default(0)
-  lineTotal   Float   @default(0)
+  unitPrice   Decimal @default(0) @db.Decimal(12, 2)
+  lineTotal   Decimal @default(0) @db.Decimal(12, 2)
 }

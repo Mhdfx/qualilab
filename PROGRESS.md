@@ -142,6 +142,16 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
 
+- **2026-08-25 · Claude Code** · **Audit of the inherited prototype before
+  extending it.** The demo code stored every amount as `Float`, accepted a
+  negative unit price, had no index on `Invoice`, generated sequential numbers
+  unsafely, showed Next's raw error screen, sent no security headers, and
+  carried three dead dependencies. All fixed and verified. Money is now
+  `DECIMAL(12,2)` with conversion at every boundary — the type checker found
+  each read site, and the JSON ones were handled explicitly since it cannot see
+  those. Remaining debt is written down: the invoice PDF is still a client-side
+  screenshot, and there are no automated tests.
+
 - **2026-08-25 · Claude Code** · **Performance pass so the system stays fast as
   the database grows.** Added cursor pagination to the two lists that grow
   without bound (samples, invoices) and the composite indexes matching how the

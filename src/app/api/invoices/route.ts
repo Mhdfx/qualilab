@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { pageParams, toPage } from "@/lib/pagination";
+import { serializeInvoice } from "@/lib/invoice-serialize";
+import { isValidAmount } from "@/lib/money";
+import { retryOnDuplicate } from "@/lib/retry-unique";
 import { generateInvoiceNumber } from "@/lib/invoice-number";
 import { computeInvoiceTotals } from "@/lib/invoice-math";
 
@@ -23,7 +26,11 @@ export async function GET(request: Request) {
     skip,
   });
 
-  return NextResponse.json(toPage(rows, take));
+  const page = toPage(rows, take);
+  return NextResponse.json({
+    ...page,
+    items: page.items.map(serializeInvoice),
+  });
 }
 
 type IncomingItem = {
@@ -56,15 +63,41 @@ export async function POST(request: Request) {
       );
     }
 
-    const cleanItems = (items ?? [])
-      .map((item) => ({
-        description: (item.description ?? "").trim(),
-        quantity: Number(item.quantity) || 0,
-        unitPrice: Number(item.unitPrice) || 0,
-      }))
-      .filter((item) => item.description && item.quantity > 0);
+    const cleanItems = (items ?? []).map((item) => ({
+      description: (item.description ?? "").trim(),
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPrice),
+    }));
 
-    if (cleanItems.length === 0) {
+    // An invoice is a legal document: a negative or nonsensical amount must be
+    // refused here, not quietly coerced to zero.
+    for (const item of cleanItems) {
+      if (!item.description) continue;
+      if (!isValidAmount(item.quantity) || item.quantity <= 0) {
+        return NextResponse.json(
+          { error: `Quantité invalide pour « ${item.description} ».` },
+          { status: 400 }
+        );
+      }
+      if (!isValidAmount(item.unitPrice)) {
+        return NextResponse.json(
+          { error: `Prix unitaire invalide pour « ${item.description} ».` },
+          { status: 400 }
+        );
+      }
+      if (item.quantity > 100000 || item.unitPrice > 10000000) {
+        return NextResponse.json(
+          { error: `Montant hors limites pour « ${item.description} ».` },
+          { status: 400 }
+        );
+      }
+    }
+
+    const billable = cleanItems.filter(
+      (item) => item.description && item.quantity > 0
+    );
+
+    if (billable.length === 0) {
       return NextResponse.json(
         { error: "Ajoutez au moins une ligne de prestation valide." },
         { status: 400 }
@@ -79,18 +112,20 @@ export async function POST(request: Request) {
       );
     }
 
-    const rate = Math.max(0, Number(taxRate) || 0);
-    const { subtotal, taxAmount, total } = computeInvoiceTotals(cleanItems, rate);
-    const itemsWithTotals = cleanItems.map((item) => ({
+    // VAT is a percentage, not an arbitrary number.
+    const rate = Math.min(100, Math.max(0, Number(taxRate) || 0));
+    const { subtotal, taxAmount, total } = computeInvoiceTotals(billable, rate);
+    const itemsWithTotals = billable.map((item) => ({
       ...item,
       lineTotal: Math.round(item.quantity * item.unitPrice * 100) / 100,
     }));
 
-    const number = await generateInvoiceNumber();
-
-    const invoice = await prisma.invoice.create({
+    // Two accountants invoicing at the same second would otherwise collide on
+    // the sequential number; the unique constraint catches it and we retry.
+    const invoice = await retryOnDuplicate(async () =>
+      prisma.invoice.create({
       data: {
-        number,
+        number: await generateInvoiceNumber(),
         clientId,
         createdById: session.id,
         status: invoiceStatus,
@@ -107,9 +142,10 @@ export async function POST(request: Request) {
         createdBy: { select: { id: true, name: true } },
         items: true,
       },
-    });
+      })
+    );
 
-    return NextResponse.json(invoice, { status: 201 });
+    return NextResponse.json(serializeInvoice(invoice), { status: 201 });
   } catch (error) {
     console.error("Invoice creation failed:", error);
     return NextResponse.json(

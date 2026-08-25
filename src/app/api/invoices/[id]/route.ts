@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { serializeInvoice } from "@/lib/invoice-serialize";
 
 export async function GET(
   _request: Request,
@@ -24,5 +25,5 @@ export async function GET(
     return NextResponse.json({ error: "Facture introuvable." }, { status: 404 });
   }
 
-  return NextResponse.json(invoice);
+  return NextResponse.json(serializeInvoice(invoice));
 }

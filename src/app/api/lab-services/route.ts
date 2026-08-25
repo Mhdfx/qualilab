@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { toMoney } from "@/lib/money";
 
 export async function GET() {
   const session = await requireApiRole();
@@ -11,5 +12,8 @@ export async function GET() {
     orderBy: [{ category: "asc" }, { name: "asc" }],
   });
 
-  return NextResponse.json(services);
+  // unitPrice is DECIMAL: hand the screens a number, not a string.
+  return NextResponse.json(
+    services.map((service) => ({ ...service, unitPrice: toMoney(service.unitPrice) }))
+  );
 }
