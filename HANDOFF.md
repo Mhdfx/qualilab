@@ -21,6 +21,8 @@
 | Data model | 13 tables incl. `Result`/`Report`/`AuditLog`/`EmailLog` | ✅ **Phase 1 done** |
 | Foundations | `logAudit()`, sample status state machine | ✅ **Phase 1 done** |
 | Clients | CRUD, archive, recipient lists, fiche 360° | ✅ **Phase 4 · E1 done** |
+| Facturation liée | invoices from validated analyses, server-side PDF | ✅ **Phase 4 · E2 done** |
+| Administration | users, parameters, catalogue, entreprise, journal | ✅ **Phase 4 · E3 done** |
 | LIMS core — **réception** | queue, verify, conformity, assignment, **blind numbering** | ✅ **Phase 2 · C1 done** |
 | LIMS core — **saisie résultats** | bench sheet, automatic conformity, submit | ✅ **Phase 2 · C2 done** |
 | LIMS core — **validation** | double validation (validateur + admin), rejet motivé | ✅ **Phase 2 · C3 done** |
@@ -53,9 +55,11 @@ src/
       clients/                 GET (searchable) · POST (GESTIONNAIRE/ADMIN)
       clients/[id]/            GET · PATCH (edit, archive, recipient list)
       clients/[id]/billable/   GET — validated analyses not yet invoiced
+      admin/users/ + [id]/     ★ accounts: create, role, disable (kicks now), reset
+      admin/company/           GET · PUT — the identity printed on documents
       parameters/              GET · POST (ADMIN) — where the norms are entered
       parameters/[id]/         PATCH (ADMIN) — audited with before/after
-      lab-services/            read endpoint
+      lab-services/ + [id]/    read · PATCH (label, price, active)
       invoices/  invoices/[id]/   invoice CRUD (COMPTABLE + ADMIN)
       invoices/[id]/pdf/       GET — the invoice rendered server-side
       health/                  liveness probe for PM2/watchdog
@@ -65,7 +69,7 @@ src/
     validation/                queue + [id] control view (two-step approval) ✅
     commercial/                client base + [id] fiche 360° + nouveau + [id]/modifier ✅
     comptabilite/              dashboard + factures (list/nouvelle/[id]) ✅
-    admin/                     dashboard + factures + parametres + journal
+    admin/                     dashboard + factures + parametres + utilisateurs + catalogue + entreprise + journal
   components/
     layout/  AdminShell, PreleveurShell, RoleShells.tsx (5 role shells),
              DashboardShell, Sidebar, admin-nav / preleveur-nav / role-navs.ts
@@ -84,7 +88,8 @@ src/
     sample-status.ts   ★ canTransition() state machine + status labels
     prisma.ts          Prisma client (MariaDB adapter, singleton)
     database-url.ts    parse DATABASE_URL → mariadb config
-    company.ts         ★ single source of truth for company/legal identity
+    company.ts         ★ CompanyInfo type + static defaults (safe for any bundle)
+    company-server.ts  ★ getCompany() — the DB row the admin edits, or the defaults
     sample-code.ts     ★ QL (field) · QLC (control, sequential) · SN (blind, crypto-random)
     sample-select.ts   ★ audience-scoped Prisma selects — hides numbering from the préleveur
     sample-access.ts   ★ loadAssignedSample() — a technician only touches their own samples
@@ -109,7 +114,7 @@ src/
     number-to-words-fr.ts   amount-in-words (FR) for invoices
   generated/prisma/    ★ generated Prisma client — DO NOT edit, gitignored
 prisma/
-  schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (13)
+  schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (14)
   ⚠️ the VPS needs a Chromium for the PDF: `apt install chromium`
 scripts/         VPS ops: deploy, wait-for-db, health-watchdog, setup-autostart, setup-database, start-production, vps-setup, check-db
 ```
@@ -182,7 +187,7 @@ Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 
 | I want to change… | Go to |
 |---|---|
-| Company name / ICE / RC / RIB / IBAN / bank | `src/lib/company.ts` (never hardcode elsewhere) |
+| Company name / ICE / RC / RIB / IBAN / bank | `/admin/entreprise` (DB row); defaults in `src/lib/company.ts` |
 | Sample numbering (field / control / blind serial) | `src/lib/sample-code.ts` |
 | What each role may SEE of a sample | `src/lib/sample-select.ts` (never hide fields in the UI only) |
 | Invoice number format | `src/lib/invoice-number.ts` |
@@ -295,6 +300,15 @@ nav links, all 10 screens render without error.
 
 **Still open** — see §9: the invoice PDF is a client-side screenshot while the
 report is rendered server-side, and there is no automated test suite.
+
+## 8c. A lesson written down (2026-08-25)
+
+Importing anything that touches Prisma from a **client** component drags the
+MySQL driver into the browser bundle and breaks the build with
+`Module not found: 'fs'`. The pattern: keep types + static data in a pure file
+(`company.ts`), put the query behind `import "server-only"`
+(`company-server.ts`). If a build fails that way, look for a client component
+importing a server module.
 
 ## 9. Known debt / watch-outs
 

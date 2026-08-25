@@ -4,7 +4,7 @@ import { renderPdf } from "./pdf";
 import { buildReportHtml, type ReportData } from "./report-html";
 import { sendEmail, recipientsFor } from "./email";
 import { reportEmail, alertEmail, type AlertRow } from "./emails/templates";
-import { COMPANY } from "./company";
+import { getCompany } from "./company-server";
 
 /**
  * What happens once a sample is approved: the client receives the report, and
@@ -109,11 +109,13 @@ export async function sendReport(sampleId: string, actorId: string | null) {
   const data = await loadReportData(sampleId);
   if (!data) return { ok: false as const, error: "Rapport indisponible." };
 
+  const company = await getCompany();
+
   let attachment;
   try {
     attachment = {
       filename: `${sample.report.number}.pdf`,
-      content: await renderPdf(buildReportHtml(data)),
+      content: await renderPdf(buildReportHtml(data, company)),
     };
   } catch (error) {
     console.error("[dispatch] could not render the report", { sampleId, error });
@@ -225,7 +227,7 @@ export async function sendContaminationAlerts(
   }
 
   // The laboratory is always in copy of an alert.
-  const cc = [COMPANY.email].filter(Boolean);
+  const cc = [(await getCompany()).email].filter(Boolean);
 
   // One message per germ, listing every product concerned.
   const byGerm = new Map<string, AlertRow[]>();

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { toMoney } from "@/lib/money";
 import { renderPdf } from "@/lib/pdf";
 import { buildInvoiceHtml, type InvoiceDocument } from "@/lib/invoice-html";
+import { getCompany } from "@/lib/company-server";
 
 /**
  * The invoice as a PDF, rendered server-side.
@@ -58,7 +59,7 @@ export async function GET(
   };
 
   try {
-    const pdf = await renderPdf(buildInvoiceHtml(document));
+    const pdf = await renderPdf(buildInvoiceHtml(document, await getCompany()));
 
     await logAudit({
       actorId: session.id,

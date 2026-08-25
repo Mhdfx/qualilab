@@ -396,3 +396,24 @@ model InvoiceItem {
   @@index([invoiceId])
   @@index([sampleId])
 }
+
+/// The laboratory's own identity — printed on every report, invoice and email.
+/// One row, edited by the admin, so changing the ICE or the RIB is data entry
+/// rather than a deployment. `lib/company.ts` keeps the fallback defaults.
+model CompanySettings {
+  id      String @id @default("company")
+  name    String
+  tagline String @db.Text
+  address String
+  city    String
+  phone   String
+  email   String
+  website String
+  ice     String
+  rc      String
+  bank    String
+  rib     String
+  iban    String
+  swift   String
+  updatedAt DateTime @updatedAt
+}

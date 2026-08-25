@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { buildReportHtml } from "@/lib/report-html";
 import { renderPdf } from "@/lib/pdf";
 import { loadReportData } from "@/lib/report-dispatch";
+import { getCompany } from "@/lib/company-server";
 
 /**
  * Downloads the official analysis report as a PDF.
@@ -45,7 +46,7 @@ export async function GET(
   }
 
   try {
-    const pdf = await renderPdf(buildReportHtml(data));
+    const pdf = await renderPdf(buildReportHtml(data, await getCompany()));
 
     await logAudit({
       actorId: session.id,

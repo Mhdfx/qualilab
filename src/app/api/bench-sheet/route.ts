@@ -3,6 +3,7 @@ import { requireApiRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { renderPdf } from "@/lib/pdf";
 import { buildBenchSheetHtml, type BenchSheetSample } from "@/lib/bench-sheet-html";
+import { getCompany } from "@/lib/company-server";
 
 /**
  * The printable bench sheet for a given day.
@@ -68,7 +69,7 @@ export async function GET(request: Request) {
   }));
 
   try {
-    const pdf = await renderPdf(buildBenchSheetHtml(start, samples));
+    const pdf = await renderPdf(buildBenchSheetHtml(start, samples, await getCompany()));
     const stamp = start.toISOString().slice(0, 10);
 
     return new NextResponse(new Uint8Array(pdf), {

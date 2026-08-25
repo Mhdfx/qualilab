@@ -8,25 +8,23 @@
 
 ## ▶ NEXT ACTION
 
-**Phase 4 · E3 part 1 delivered (2026-08-25): the parameters screen and the
-audit journal.** The lab's real norm limits now have a home — entering them is
-data entry on `/admin/parametres`, audited, with no code involved. A sensitive
-parameter cannot be saved without a limit, so the alert promise stays honest.
-76 tests pass.
+**PHASE 4 IS COMPLETE (2026-08-25).** The laboratory is autonomous on its
+configuration: clients and their recipient lists, invoicing from validated
+analyses with editable wording, user accounts, analysis parameters (where the
+official norms get entered), the service catalogue, the company identity, and
+the audit journal. 76 tests; build and lint clean; browser-verified end to end.
 
-Next, **E3 part 2 — users & catalogue**, which completes Phase 4:
-1. **Utilisateurs** (`/admin/utilisateurs`): list with role and status; create
-   an account (Better Auth admin plugin — `auth.api.createUser`), assign a
-   role, disable/enable (`banned`), reset a password. A disabled user must be
-   refused at login.
-2. **Catalogue** (`/admin/catalogue`): labels and prices per domain,
-   activate/deactivate — deactivated entries stop pricing new invoice lines
-   (billing.ts already treats them as missing).
-3. **Coordonnées de l'entreprise**: today `lib/company.ts` is code. Move the
-   values to a one-row table editable by the admin, read by report, invoice
-   and emails. (The real ICE/RC/RIB arrive with NEEDEDINFO item 3.)
+**This is the Phase 4 client demo:** configure everything without touching
+code, then invoice a validated sample.
 
-Then Phase 4 demo, and Phase 5 — production hardening.
+Next: **Phase 5 — production hardening.**
+1. Per-role dashboards + direction view (samples by status, delays, billed /
+   collected) + global search by code / client / status.
+2. Deployment: VPS, domain + HTTPS, `standalone` build, chromium, PM2 —
+   the scripts exist from the prototype and need revisiting.
+3. Daily DB backups + a tested restore.
+4. E2E pass of `TESTPLAN.md` on the production build.
+5. Legacy data import — waits on the lab's export (NEEDEDINFO item 18).
 
 ---
 
@@ -108,7 +106,7 @@ Then Phase 4 demo, and Phase 5 — production hardening.
       (`[status, receivedAt]`, `[technicianId, status]`, `[userId, createdAt]`),
       and the first indexes ever on `Invoice`
 
-## Phase 4 — Clients, invoice link, admin
+## Phase 4 — Clients, invoice link, admin ✅ COMPLETE (2026-08-25)
 - [x] **Client CRUD + archive + 360° view** ✅ 2026-08-25
   - [x] `client-validation.ts` — pure, tested rules shared by the API and the form
   - [x] Multi-address recipient list (reports / alerts), which the sending depends on
@@ -131,7 +129,15 @@ Then Phase 4 demo, and Phase 5 — production hardening.
   - [x] `parameter-validation.ts` — pure, tested; a sensitive parameter must carry a limit
   - [x] Parameter edits audited with before/after values
   - [x] Journal: last 200 actions in plain French, read-only
-- [ ] Admin: users & roles (Better Auth admin plugin), catalogue, company details
+- [x] **Admin: users, catalogue, entreprise** ✅ 2026-08-25 — Phase 4 complete
+  - [x] Accounts created through Better Auth; disable revokes sessions now;
+        self-modification blocked; all audited
+  - [x] Catalogue prices in French decimals; deactivation propagates to the
+        billable proposals
+  - [x] Company identity in DB (`CompanySettings`), editable, `getCompany()`
+        with static fallback — documents pick it up with no code change
+  - [x] `company.ts` split pure-data vs `company-server.ts` (DB) so client
+        bundles never drag the database driver
 - [ ] **Demo:** configure everything + invoice from a validated sample
 
 ## Phase 5 — Production hardening
@@ -160,6 +166,17 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
+
+- **2026-08-25 · Claude Code** · **E3 part 2 — Phase 4 complete.** Users:
+  accounts created through Better Auth's admin API, disabling revokes the
+  sessions immediately and the next login is refused, the admin cannot touch
+  their own account, everything audited. Catalogue: French-decimal prices,
+  deactivation propagates to the billable proposals. Entreprise: the printed
+  identity moved to the database with a static fallback — saving a new ICE is
+  data entry and the very next document carries it, verified. One build break
+  found and fixed properly: importing the DB accessor from a client component
+  dragged the mariadb driver into the browser bundle, so company.ts is now
+  pure data and company-server.ts (server-only) holds the query.
 
 - **2026-08-25 · Claude Code** · **E3 part 1 — the norms screen and the
   journal.** `/admin/parametres` is where the laboratory's real limits will be

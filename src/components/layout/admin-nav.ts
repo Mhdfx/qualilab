@@ -25,15 +25,16 @@ export const adminNav: NavSection[] = [
     title: "Gestion",
     items: [
       { label: "Clients", href: "/commercial", icon: Building2 },
-      { label: "Utilisateurs", icon: UserCog, disabled: true, badge: "Bientôt" },
+      { label: "Utilisateurs", href: "/admin/utilisateurs", icon: UserCog },
     ],
   },
   {
     title: "Système",
     items: [
       { label: "Paramètres d'analyse", href: "/admin/parametres", icon: Settings },
+      { label: "Catalogue", href: "/admin/catalogue", icon: Users },
+      { label: "Entreprise", href: "/admin/entreprise", icon: Building2 },
       { label: "Journal d'audit", href: "/admin/journal", icon: BarChart3 },
-      { label: "Catalogue", icon: Users, disabled: true, badge: "Bientôt" },
     ],
   },
 ];

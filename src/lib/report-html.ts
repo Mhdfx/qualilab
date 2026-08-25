@@ -1,4 +1,4 @@
-import { COMPANY } from "./company";
+import { COMPANY, type CompanyInfo } from "./company";
 import { SAMPLE_TYPE_LABELS, formatDateTime, formatDate } from "./labels";
 import type { SampleType } from "@/generated/prisma/client";
 
@@ -54,7 +54,10 @@ function show(value: string | null | undefined) {
   return value ? escapeHtml(value) : "—";
 }
 
-export function buildReportHtml(data: ReportData): string {
+export function buildReportHtml(
+  data: ReportData,
+  company: CompanyInfo = COMPANY
+): string {
   const nonConformes = data.results.filter((r) => r.conform === false).length;
 
   const rows = data.results
@@ -147,11 +150,11 @@ export function buildReportHtml(data: ReportData): string {
 <header>
   <div>
     <div class="brand">QUALILAB <span>INTERNATIONAL</span></div>
-    <div class="tagline">${escapeHtml(COMPANY.tagline)}</div>
+    <div class="tagline">${escapeHtml(company.tagline)}</div>
     <div class="identity">
-      ${escapeHtml(COMPANY.address)} · ${escapeHtml(COMPANY.city)}<br>
-      Tél. ${escapeHtml(COMPANY.phone)} · ${escapeHtml(COMPANY.email)}<br>
-      ICE ${escapeHtml(COMPANY.ice)} · RC ${escapeHtml(COMPANY.rc)}
+      ${escapeHtml(company.address)} · ${escapeHtml(company.city)}<br>
+      Tél. ${escapeHtml(company.phone)} · ${escapeHtml(company.email)}<br>
+      ICE ${escapeHtml(company.ice)} · RC ${escapeHtml(company.rc)}
     </div>
   </div>
   <div class="docmeta">
@@ -223,7 +226,7 @@ export function buildReportHtml(data: ReportData): string {
 </div>
 
 <footer>
-  ${escapeHtml(COMPANY.name)} — Rapport ${escapeHtml(data.number)} ·
+  ${escapeHtml(company.name)} — Rapport ${escapeHtml(data.number)} ·
   Ce rapport ne concerne que l'échantillon soumis à l'analyse.
   Reproduction interdite sauf en intégralité.
 </footer>

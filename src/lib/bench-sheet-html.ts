@@ -1,4 +1,4 @@
-import { COMPANY } from "./company";
+import { COMPANY, type CompanyInfo } from "./company";
 import { SAMPLE_TYPE_LABELS, formatDate } from "./labels";
 import type { SampleType } from "@/generated/prisma/client";
 
@@ -37,7 +37,8 @@ function show(value: string | null | undefined) {
 
 export function buildBenchSheetHtml(
   date: Date,
-  samples: BenchSheetSample[]
+  samples: BenchSheetSample[],
+  company: CompanyInfo = COMPANY
 ): string {
   const blocks = samples
     .map(
@@ -127,7 +128,7 @@ export function buildBenchSheetHtml(
 <header>
   <div>
     <div class="brand">QUALILAB <span>INTERNATIONAL</span></div>
-    <div class="sub">${escapeHtml(COMPANY.tagline)}</div>
+    <div class="sub">${escapeHtml(company.tagline)}</div>
   </div>
   <div class="doc">
     <div class="kind">Feuille de paillasse</div>

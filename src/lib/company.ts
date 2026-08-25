@@ -1,4 +1,11 @@
-export const COMPANY = {
+export type CompanyInfo = {
+  name: string; tagline: string; address: string; city: string; phone: string;
+  email: string; website: string; ice: string; rc: string; bank: string;
+  rib: string; iban: string; swift: string;
+};
+
+/** Fallback defaults — used until the admin saves the real identity. */
+export const COMPANY: CompanyInfo = {
   name: "Qualilab International",
   tagline: "Laboratoire d'analyses agroalimentaire, eaux & environnement de travail",
   address: "Zone Industrielle, Casablanca",
@@ -13,3 +20,9 @@ export const COMPANY = {
   iban: "MA64 1907 8021 2110 0001 2345 678",
   swift: "BCPOMAMC",
 };
+
+/**
+ * The identity to print on documents: the row the admin edits, or the
+ * defaults above when none has been saved yet. Reading it must never break a
+ * document, so any failure falls back to the defaults.
+ */

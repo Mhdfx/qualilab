@@ -1,4 +1,4 @@
-import { COMPANY } from "./company";
+import { COMPANY, type CompanyInfo } from "./company";
 import { formatDate } from "./labels";
 import { amountToFrenchWords } from "./number-to-words-fr";
 
@@ -57,7 +57,10 @@ function money(amount: number) {
   }).format(amount)} DH`;
 }
 
-export function buildInvoiceHtml(invoice: InvoiceDocument): string {
+export function buildInvoiceHtml(
+  invoice: InvoiceDocument,
+  company: CompanyInfo = COMPANY
+): string {
   const rows = invoice.items
     .map(
       (item) => `
@@ -139,9 +142,9 @@ export function buildInvoiceHtml(invoice: InvoiceDocument): string {
   <div>
     <div class="brand">QUALILAB <span>INTERNATIONAL</span></div>
     <div class="identity">
-      ${escapeHtml(COMPANY.address)} · ${escapeHtml(COMPANY.city)}<br>
-      Tél. ${escapeHtml(COMPANY.phone)} · ${escapeHtml(COMPANY.email)}<br>
-      ICE ${escapeHtml(COMPANY.ice)} · RC ${escapeHtml(COMPANY.rc)}
+      ${escapeHtml(company.address)} · ${escapeHtml(company.city)}<br>
+      Tél. ${escapeHtml(company.phone)} · ${escapeHtml(company.email)}<br>
+      ICE ${escapeHtml(company.ice)} · RC ${escapeHtml(company.rc)}
     </div>
   </div>
   <div class="docmeta">
@@ -167,10 +170,10 @@ export function buildInvoiceHtml(invoice: InvoiceDocument): string {
   </div>
   <div class="box">
     <h2>Émise par</h2>
-    <div class="name">${escapeHtml(COMPANY.name)}</div>
-    <div class="line">${escapeHtml(COMPANY.tagline)}</div>
-    <div class="line">${escapeHtml(COMPANY.address)}, ${escapeHtml(COMPANY.city)}</div>
-    <div class="line">ICE ${escapeHtml(COMPANY.ice)} · RC ${escapeHtml(COMPANY.rc)}</div>
+    <div class="name">${escapeHtml(company.name)}</div>
+    <div class="line">${escapeHtml(company.tagline)}</div>
+    <div class="line">${escapeHtml(company.address)}, ${escapeHtml(company.city)}</div>
+    <div class="line">ICE ${escapeHtml(company.ice)} · RC ${escapeHtml(company.rc)}</div>
   </div>
 </div>
 
@@ -212,17 +215,17 @@ ${invoice.notes ? `<p class="notes"><b>Observations :</b> ${escapeHtml(invoice.n
 
 <div class="payment">
   <h2>Modalités de règlement</h2>
-  <div class="row">Banque : <b>${escapeHtml(COMPANY.bank)}</b></div>
-  <div class="row">RIB : <b>${escapeHtml(COMPANY.rib)}</b></div>
-  <div class="row">IBAN : <b>${escapeHtml(COMPANY.iban)}</b> · SWIFT : <b>${escapeHtml(COMPANY.swift)}</b></div>
+  <div class="row">Banque : <b>${escapeHtml(company.bank)}</b></div>
+  <div class="row">RIB : <b>${escapeHtml(company.rib)}</b></div>
+  <div class="row">IBAN : <b>${escapeHtml(company.iban)}</b> · SWIFT : <b>${escapeHtml(company.swift)}</b></div>
   <div class="row" style="margin-top:5px">
     Règlement à réception de facture, sauf accord écrit contraire.
   </div>
 </div>
 
 <footer>
-  ${escapeHtml(COMPANY.name)} — Facture ${escapeHtml(invoice.number)} ·
-  ICE ${escapeHtml(COMPANY.ice)} · RC ${escapeHtml(COMPANY.rc)} · ${escapeHtml(COMPANY.website)}
+  ${escapeHtml(company.name)} — Facture ${escapeHtml(invoice.number)} ·
+  ICE ${escapeHtml(company.ice)} · RC ${escapeHtml(company.rc)} · ${escapeHtml(company.website)}
 </footer>
 </body>
 </html>`;

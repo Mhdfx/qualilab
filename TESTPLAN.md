@@ -346,12 +346,35 @@ The short list that proves nothing broke. ~5 minutes.
 - [x] Read-only: the interface offers no way to alter or delete an entry.
 - [ ] Admin-only access re-checked when the users screen lands.
 
-**Utilisateurs & catalogue — to build**
-- [ ] Admin creates an account, assigns a role, disables it, resets a password.
-- [ ] A disabled user can no longer log in.
-- [ ] Catalogue: labels and prices editable, entries can be deactivated;
-      deactivated ones no longer price new invoice lines.
-- [ ] Company details editable and reflected on report + invoice.
+**Utilisateurs (`/admin/utilisateurs`)** — *verified 2026-08-25*
+- [x] Admin creates an account (nom, identifiant, mot de passe initial, rôle)
+      through Better Auth — the new account logs in immediately.
+- [x] Bad inputs refused by name: identifiant too short / malformed, password
+      under 8 characters, duplicate identifiant (**409**).
+- [x] Role change from the list; **the admin cannot modify their own account**
+      (no self-demotion, no lab without an administrator).
+- [x] **Disabling kicks the user out now**: sessions revoked, and the next
+      login attempt is refused (**403**).
+- [x] Re-enabling restores access; password reset revokes sessions too.
+- [x] Every action audited (`USER_CREATED`, `USER_ROLE_CHANGED`,
+      `USER_DISABLED`, `USER_PASSWORD_RESET`).
+
+**Catalogue (`/admin/catalogue`)** — *verified 2026-08-25*
+- [x] Labels and prices editable per domain; a price typed `350,50` is read as
+      French decimal.
+- [x] **Deactivating an entry stops it pricing new invoice lines** — the
+      billable proposals flag those analyses "prix à saisir" instead.
+- [x] Reactivation restores pricing; changes audited with before/after.
+- [x] Invalid price (negative, non-numeric) refused.
+
+**Entreprise (`/admin/entreprise`)** — *verified 2026-08-25*
+- [x] The identity printed on documents is editable: raison sociale, adresse,
+      ICE, RC, banque, RIB, IBAN, SWIFT…
+- [x] Every field required — a half-empty identity can never reach a document.
+- [x] **Saved identity reaches the documents**: an invoice rendered after the
+      change carries the new ICE. Deleting the row falls back to the defaults.
+- [x] Changes audited with the list of modified fields.
+- [ ] Enter the real ICE/RC/RIB here when the lab sends them (NEEDEDINFO item 3).
 
 ---
 
@@ -436,6 +459,6 @@ The short list that proves nothing broke. ~5 minutes.
 | Phase 3 (D) | Claude Code | 2026-08-25 | ✅ passed (delivery pending DNS) |
 | Phase 4 · E1 clients | Claude Code | 2026-08-25 | ✅ passed |
 | Phase 4 · E2 facturation | Claude Code | 2026-08-25 | ✅ passed |
-| Phase 4 · E3 administration | | | |
+| Phase 4 · E3 administration | Claude Code | 2026-08-25 | ✅ passed |
 | Phase 5 (F) | | | |
 | Extensions (G) | | | |
