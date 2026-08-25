@@ -317,14 +317,41 @@ The short list that proves nothing broke. ~5 minutes.
       space they are rendered in, so nobody is bounced to an admin-only route.
 
 ### E3. Administration
-- [ ] Admin creates a user, assigns a role, disables an account, resets a password.
+*parameters + journal verified 2026-08-25 · users & catalogue to build*
+
+**Paramètres d'analyse (`/admin/parametres`)**
+- [x] Lists every parameter by domain with unit, displayed threshold, numeric
+      limit, and an **"alerte"** badge on sensitive germs.
+- [x] A banner says plainly that the current limits are **provisional Moroccan
+      norms**, and that editing them here is all it takes — no code.
+- [x] Admin can **edit** unit, threshold, limit and the sensitive flag; the
+      change is audited with before/after values.
+- [x] Admin can **create** a parameter; a duplicate name in the same domain is
+      refused (409).
+- [x] A **sensitive parameter without a limit is refused** with an explanation —
+      the alert it promises could never fire.
+- [x] A limit typed with a comma (`1,5`) is read correctly; empty means "no
+      limit defined".
+- [x] Only the admin: a validateur is redirected from the page and gets **403**
+      on the API.
+- [ ] After the lab sends its official limits, enter them here and re-run the
+      alert tests in D3.
+
+**Journal d'audit (`/admin/journal`)**
+- [x] Shows the last 200 actions, newest first, in plain French: who, what,
+      which reference, when.
+- [x] The chain of a sample reads end to end (réception → analyse → validation
+      → approbation → alerte → rapport).
+- [x] Parameter edits appear with the actor.
+- [x] Read-only: the interface offers no way to alter or delete an entry.
+- [ ] Admin-only access re-checked when the users screen lands.
+
+**Utilisateurs & catalogue — to build**
+- [ ] Admin creates an account, assigns a role, disables it, resets a password.
 - [ ] A disabled user can no longer log in.
-- [ ] Admin adds/edits an analysis parameter with its unit and threshold.
-- [ ] Admin flags a parameter as "sensitive" and sets its alert limit →
-      the alert behaviour follows the new setting.
-- [ ] Admin edits the service catalogue and prices → new invoices use them.
-- [ ] Admin edits the company details → they appear on the report and invoice.
-- [ ] Admin can consult the audit journal.
+- [ ] Catalogue: labels and prices editable, entries can be deactivated;
+      deactivated ones no longer price new invoice lines.
+- [ ] Company details editable and reflected on report + invoice.
 
 ---
 

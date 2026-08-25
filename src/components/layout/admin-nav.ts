@@ -24,16 +24,16 @@ export const adminNav: NavSection[] = [
   {
     title: "Gestion",
     items: [
-      { label: "Préleveurs", icon: Users, disabled: true, badge: "Bientôt" },
-      { label: "Clients", icon: Building2, disabled: true, badge: "Bientôt" },
+      { label: "Clients", href: "/commercial", icon: Building2 },
       { label: "Utilisateurs", icon: UserCog, disabled: true, badge: "Bientôt" },
     ],
   },
   {
     title: "Système",
     items: [
-      { label: "Statistiques", icon: BarChart3, disabled: true, badge: "Bientôt" },
-      { label: "Configuration", icon: Settings, disabled: true, badge: "Bientôt" },
+      { label: "Paramètres d'analyse", href: "/admin/parametres", icon: Settings },
+      { label: "Journal d'audit", href: "/admin/journal", icon: BarChart3 },
+      { label: "Catalogue", icon: Users, disabled: true, badge: "Bientôt" },
     ],
   },
 ];

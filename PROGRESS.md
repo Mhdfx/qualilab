@@ -8,23 +8,25 @@
 
 ## ▶ NEXT ACTION
 
-**Phase 4 · E1 + E2 complete, and both gaps they surfaced are fixed
-(2026-08-25).** The comptable now has their own invoice space, and the invoice
-is rendered server-side like the report — the screenshot machinery, and the two
-libraries behind it, are gone. 66 tests pass; build and lint clean.
+**Phase 4 · E3 part 1 delivered (2026-08-25): the parameters screen and the
+audit journal.** The lab's real norm limits now have a home — entering them is
+data entry on `/admin/parametres`, audited, with no code involved. A sensitive
+parameter cannot be saved without a limit, so the alert promise stays honest.
+76 tests pass.
 
-Next: **Phase 4 · E3 — Administration.**
-1. **Users & roles** — create an account, assign one of the roles, disable it,
-   reset a password. Better Auth's admin plugin is already configured.
-2. **Analysis parameters** — this is **where the real norm limits get entered**
-   once the lab sends them: unit, threshold, numeric limit, and the
-   "sensitive" flag that decides which germs raise a contamination alert.
-   Changing a limit here must need no code.
-3. **Service catalogue** — labels and prices, activate/deactivate.
-4. **Company details** — the identity printed on every report and invoice,
-   editable without touching `company.ts`.
-5. **Audit-log viewer** — read-only, filterable, the traceability promise made
-   visible.
+Next, **E3 part 2 — users & catalogue**, which completes Phase 4:
+1. **Utilisateurs** (`/admin/utilisateurs`): list with role and status; create
+   an account (Better Auth admin plugin — `auth.api.createUser`), assign a
+   role, disable/enable (`banned`), reset a password. A disabled user must be
+   refused at login.
+2. **Catalogue** (`/admin/catalogue`): labels and prices per domain,
+   activate/deactivate — deactivated entries stop pricing new invoice lines
+   (billing.ts already treats them as missing).
+3. **Coordonnées de l'entreprise**: today `lib/company.ts` is code. Move the
+   values to a one-row table editable by the admin, read by report, invoice
+   and emails. (The real ICE/RC/RIB arrive with NEEDEDINFO item 3.)
+
+Then Phase 4 demo, and Phase 5 — production hardening.
 
 ---
 
@@ -125,7 +127,11 @@ Next: **Phase 4 · E3 — Administration.**
       amount in words, RIB/IBAN, legal mentions; `html-to-image` and `jspdf`
       removed with the screenshot code
 - [ ] **Upgrade the invoice PDF to server-side rendering** (still a screenshot)
-- [ ] Admin: users/roles, parameters, catalog, templates, company, audit viewer
+- [x] **Admin: paramètres d'analyse + journal d'audit** ✅ 2026-08-25
+  - [x] `parameter-validation.ts` — pure, tested; a sensitive parameter must carry a limit
+  - [x] Parameter edits audited with before/after values
+  - [x] Journal: last 200 actions in plain French, read-only
+- [ ] Admin: users & roles (Better Auth admin plugin), catalogue, company details
 - [ ] **Demo:** configure everything + invoice from a validated sample
 
 ## Phase 5 — Production hardening
@@ -154,6 +160,15 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
+
+- **2026-08-25 · Claude Code** · **E3 part 1 — the norms screen and the
+  journal.** `/admin/parametres` is where the laboratory's real limits will be
+  entered: per-domain list, editing audited with before/after, provisional
+  values labelled as such on the screen itself. The rule that a sensitive
+  parameter must carry a limit is enforced and tested — without it the alert
+  it promises could never fire. `/admin/journal` shows the last 200 actions in
+  plain French, newest first, read-only. Both verified in the browser,
+  including the guards. Next: users & catalogue.
 
 - **2026-08-25 · Claude Code** · **Closed both gaps E2 surfaced.** The comptable
   now has their own invoice space rather than screens locked behind an

@@ -53,7 +53,9 @@ src/
       clients/                 GET (searchable) · POST (GESTIONNAIRE/ADMIN)
       clients/[id]/            GET · PATCH (edit, archive, recipient list)
       clients/[id]/billable/   GET — validated analyses not yet invoiced
-      parameters/  lab-services/   read endpoints
+      parameters/              GET · POST (ADMIN) — where the norms are entered
+      parameters/[id]/         PATCH (ADMIN) — audited with before/after
+      lab-services/            read endpoint
       invoices/  invoices/[id]/   invoice CRUD (COMPTABLE + ADMIN)
       invoices/[id]/pdf/       GET — the invoice rendered server-side
       health/                  liveness probe for PM2/watchdog
@@ -63,7 +65,7 @@ src/
     validation/                queue + [id] control view (two-step approval) ✅
     commercial/                client base + [id] fiche 360° + nouveau + [id]/modifier ✅
     comptabilite/              dashboard + factures (list/nouvelle/[id]) ✅
-    admin/                     role space: dashboard + factures (list/new/[id])
+    admin/                     dashboard + factures + parametres + journal
   components/
     layout/  AdminShell, PreleveurShell, RoleShells.tsx (5 role shells),
              DashboardShell, Sidebar, admin-nav / preleveur-nav / role-navs.ts
@@ -100,6 +102,7 @@ src/
     retry-unique.ts    retries a sequential-number collision
     client-validation.ts  ★ client + recipient-list rules (pure, tested)
     billing.ts         ★ analyses → invoice lines at catalogue prices (pure, tested)
+    parameter-validation.ts ★ the norms rules — a sensitive parameter needs a limit
     invoice-html.ts    ★ the invoice as a printable document
     invoice-paths.ts   useInvoiceBasePath() — invoice links follow the role's space
     invoice-number.ts / invoice-math.ts / invoice-types.ts / lab-services.ts / labels.ts
@@ -198,6 +201,7 @@ Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 | How a growing list is paged | `src/lib/pagination.ts` (cursor, not page numbers) |
 | Client / ICE / email validation | `src/lib/client-validation.ts` |
 | How an analysis becomes an invoice line | `src/lib/billing.ts` |
+| **Enter the lab's official norm limits** | `/admin/parametres` (data entry, audited — no code) |
 | How money crosses a boundary | `src/lib/money.ts` + `invoice-serialize.ts` |
 | Which parameters raise a contamination alert | `AnalysisParameter.alertOnExceed` + `limitValue` (seeded in `prisma/seed.ts`) |
 | What gets audited | `logAudit()` calls + `src/lib/audit.ts` |
@@ -327,6 +331,9 @@ report is rendered server-side, and there is no automated test suite.
   recorded in `EmailLog` with the status `SIMULE` and the UI says so. The whole
   chain — recipients, subject, body, PDF attachment, journal, resend — is real;
   only the last hop is missing. Setting the key and the DNS records turns it on.
+- ✅ The provisional limits now have their editing screen: entering the lab's
+  official values is data entry on `/admin/parametres`, audited. The seed only
+  matters for a fresh database.
 - ⚠️ **The seeded analysis limits are provisional.** `prisma/seed.ts` carries
   usual Moroccan (NM) criteria as defaults; only the E. coli figure (1.10² UFC/g)
   is confirmed, from the client's alert email. Replace them when the lab sends

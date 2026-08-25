@@ -60,7 +60,7 @@ le journal sans être réellement expédiés**, et l'interface l'indique clairem
 | # | What | State |
 |---|---|---|
 | A | **Envoi réel des emails** | The full chain works and is journalised; every send is currently marked `SIMULE`. It becomes real the moment we have the DNS records (item 2) and the provider key |
-| B | **Limites des alertes** | Alerts fire correctly against provisional Moroccan (NM) limits. Replacing them with your official figures (item 1) needs no development |
+| B | **Limites des alertes** | Alerts fire correctly against provisional Moroccan (NM) limits. **The editing screen exists** (`/admin/parametres`): entering your official figures (item 1) is data entry by the admin, audited, no development |
 
 ### 🟡 Decisions we need from you (no document required)
 
