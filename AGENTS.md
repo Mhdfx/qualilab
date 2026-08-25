@@ -47,7 +47,8 @@ should list all three. If it doesn't, you are in the wrong folder.
 | 4 | **PLAN.md** | The full phased roadmap + target data model |
 | 5 | **CODE_QUALITY.md** | The non-negotiable quality bar (front + back + all) |
 | 6 | **TESTPLAN.md** | The full browser test path, every phase. Tick what you verified; extend the phase section when you finish it |
-| 7 | `finalversion.md` | The exhaustive client-facing scope (reference) |
+| 7 | **NEEDEDINFO.md** | Everything still owed by the laboratory — add to it whenever a phase raises a question only they can answer |
+| 8 | `finalversion.md` | The exhaustive client-facing scope (reference) |
 
 If the graph exists (`graphify-out/`), use it to navigate structure instead of
 blind grepping.
@@ -147,6 +148,8 @@ Demo logins after seed (all password `password`): `pre1`, `recep1`, `tech1`,
    add a dated line to the Session Log.
 2. Update **HANDOFF.md** if state changed (new routes, models, env, decisions).
 3. Update **TESTPLAN.md**: tick what you verified in the browser.
+   Add any new question for the lab to **NEEDEDINFO.md** — never ask the user
+   to chase it immediately; it is batched and sent with the others.
 4. Ensure `npm run build` **and** `npm run lint` pass (or note explicitly in
    PROGRESS why they don't).
 5. Commit with a clear message. Never leave the repo in a half-broken state
@@ -163,6 +166,7 @@ if-changed / code-level source of truth.
 |---|---|
 | **PROGRESS.md** | tick the phase's items, mark the phase ✅ COMPLETE + date, move "▶ NEXT ACTION" to the next task, add a Session Log entry, list anything `[!]` blocked and what is needed to unblock it |
 | **TESTPLAN.md** | flesh out that phase's checkpoint with the real screens built, tick only what you saw working in a browser, fill the **Sign-off log** row (phase, who, date, result) |
+| **NEEDEDINFO.md** | add every question the phase raised that only the lab can answer — with why it is needed and what it blocks — and refresh the "ready to send" batch in §2. Move anything answered to the archive |
 | **HANDOFF.md** | §1 state table, §2 architecture map (new routes/files), §4 data model (new tables/fields), §5 "where do I change X", §6 env vars, §8 decision log (append-only), §9 debt/watch-outs, and bump the "Last updated" date |
 
 **B. Update only if that thing changed:**
