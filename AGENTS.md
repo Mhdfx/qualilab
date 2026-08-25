@@ -20,6 +20,23 @@ validation → official PDF report → automatic email to client → invoicing.
 - **Authoritative client scope:** `finalversion.xlsx` / `finalversion.md`
   (identical content). Do not invent scope beyond these.
 
+## 1b. ⚠️ Start the session in THIS folder
+
+Open your assistant with the working directory set to the project root:
+
+```
+C:\laragon\www\qualilab proto
+```
+
+Not a parent folder, and **not another project's worktree**. This repo shares
+its document names (`AGENTS.md`, `HANDOFF.md`, `PLAN.md`, `README.md`) with the
+other projects on this machine that follow the same convention, so a session
+rooted elsewhere will silently open — or edit — the wrong `HANDOFF.md`, and
+file links in the chat will point at the wrong project.
+
+Quick check before you start: `ls TESTPLAN.md PROGRESS.md CODE_QUALITY.md`
+should list all three. If it doesn't, you are in the wrong folder.
+
 ## 2. Reading order — do this before writing any code
 
 | Order | File | Read it for |
