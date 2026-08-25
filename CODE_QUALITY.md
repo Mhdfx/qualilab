@@ -122,11 +122,11 @@ rows. If it hesitates, it is not finished.
 
 ## 8. Verification before "done"
 1. `npm run lint` clean · `npm run build` passes.
-0. The screen responds instantly with realistic data (see §4b).
 2. Authorization verified server-side for every new/changed surface.
 3. The affected flow exercised end-to-end (real click-through or request).
 4. Loading/empty/error states checked.
-5. PROGRESS.md (and HANDOFF/PLAN if needed) updated; committed.
+5. The screen responds instantly with realistic data (see §4b).
+6. PROGRESS.md (and HANDOFF/PLAN if needed) updated; committed.
 
 > "Done" = demonstrated to meet all of the above. Not "should work." If a step
 > was skipped, say so plainly in PROGRESS.
