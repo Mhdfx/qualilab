@@ -8,27 +8,23 @@
 
 ## ▶ NEXT ACTION
 
-**Phase 2 is COMPLETE and verified (2026-08-25).** A sample now travels the
-whole circuit — `PRELEVE → RECU → EN_ANALYSE → RESULTATS_SAISIS → VALIDE` —
-with blind numbering, automatic conformity, double validation and a full audit
-chain. Build + lint pass; browser-tested (see `TESTPLAN.md` C1–C8).
+**Phase 3 in progress.** The **official PDF report** is done and verified: the
+admin's approval creates the report record (`RAP-YYYY-NNNNN`) with the names
+frozen, and the PDF is rendered on demand by Chromium — branded, selectable
+text, multi-page, three signatures. Build + lint pass.
 
-**This is the Phase 2 client demo:** log in as each role and walk one sample
-from the field to "Validé".
-
-Next: **Phase 3 — Rapports, emails et alertes.** In order:
-1. Server-side PDF report (Playwright + branded HTML), archived and
-   re-downloadable — triggered by the admin's final approval.
-2. Automatic send to the client's `ClientEmail` list (Resend) → `RAPPORT_ENVOYE`,
-   logged in `EmailLog`, resendable.
+Next, in order:
+1. **Download button in the UI** — on the validation detail and, later, the
+   client 360 view. The route exists (`GET /api/samples/[id]/report`).
+2. **Automatic send** to the client's `ClientEmail` list (Resend) →
+   `RAPPORT_ENVOYE`, logged in `EmailLog`, resendable.
+   ⚠️ needs DNS access — see `NEEDEDINFO.md` item 2.
 3. **Contamination alerts** — grouped mail per client for sensitive parameters
-   over their limit. The data is already in place: `numericValue`, `limitValue`,
-   `alertOnExceed`, `produit`, `numeroLot`, `ClientEmail`.
-4. Feuille de paillasse (printable by date) and the admin's silent report edit.
+   over their limit. ⚠️ needs the official limits — `NEEDEDINFO.md` item 1.
+4. **Feuille de paillasse** (printable by date) and the admin's silent edit.
 
-⚠️ **Two items must come from the lab before 3 can be finished:** the official
-norm limits per germ, and DNS access for `qualilabinternational.com` so Resend
-can send. Steps 1 and 4 are not blocked — start there.
+Items 1 and 4 are not blocked. Do those first, then 2 and 3 when the lab
+answers.
 
 ---
 
@@ -90,7 +86,11 @@ can send. Steps 1 and 4 are not blocked — start there.
 - [x] **Demo:** sample travels `PRELEVE → VALIDE` ✅ verified end to end
 
 ## Phase 3 — Reports & email
-- [ ] Server-side PDF report (Playwright, branded HTML) + archive + re-download
+- [x] **Server-side PDF report** ✅ 2026-08-25 — `playwright-core` drives a
+      browser already on the machine (no 150 MB download per environment);
+      `RAP-YYYY-NNNNN`; rendered on demand from the approval snapshot, so there
+      is no file to store or back up and a re-download is always identical
+- [ ] Download button in the UI (route exists)
 - [ ] Auto email on validation (`→ RAPPORT_ENVOYE`) + `EmailLog` + resend
 - [ ] **[client 18-08] Alertes de contamination automatiques** (E. coli /
       Salmonelle / Listeria over limit → grouped mail to the client's address

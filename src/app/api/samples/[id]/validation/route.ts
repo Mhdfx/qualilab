@@ -7,6 +7,8 @@ import {
   canTransition,
   canValidateTechnically,
 } from "@/lib/sample-status";
+import { generateReportNumber } from "@/lib/report-number";
+import { buildConclusion } from "@/lib/report-html";
 
 /**
  * Quality validation — the two approvals, and the rejection.
@@ -99,6 +101,11 @@ export async function POST(
       select: { id: true, code: true, status: true, approvedAt: true },
     });
 
+    // Approval is what makes the report official, so it is created here — with
+    // the names frozen as they stand today, so a report downloaded next year
+    // still shows who actually signed it.
+    const report = await createReportFor(sample.id);
+
     await logAudit({
       actorId: session.id,
       action: "SAMPLE_APPROVED",
@@ -109,10 +116,11 @@ export async function POST(
         to: "VALIDE",
         code: sample.code,
         step: "2/2",
+        reportNumber: report?.number ?? null,
       },
     });
 
-    return NextResponse.json(updated);
+    return NextResponse.json({ ...updated, report });
   }
 
   if (action === "reject") {
@@ -165,4 +173,56 @@ export async function POST(
   }
 
   return NextResponse.json({ error: "Action inconnue." }, { status: 400 });
+}
+
+/**
+ * Creates the report record for a freshly approved sample.
+ *
+ * The PDF itself is rendered on demand from this snapshot plus the results —
+ * there is no file to store, back up or lose, and a re-download is always
+ * identical to what was sent.
+ */
+async function createReportFor(sampleId: string) {
+  const existing = await prisma.report.findUnique({
+    where: { sampleId },
+    select: { id: true, number: true },
+  });
+  if (existing) return existing;
+
+  const sample = await prisma.sample.findUnique({
+    where: { id: sampleId },
+    select: {
+      validatedAt: true,
+      technician: { select: { name: true } },
+      validatedBy: { select: { name: true } },
+      results: {
+        select: { conform: true, parameter: { select: { name: true } } },
+      },
+    },
+  });
+  if (!sample) return null;
+
+  try {
+    return await prisma.report.create({
+      data: {
+        sampleId,
+        number: await generateReportNumber(),
+        conclusion: buildConclusion(
+          sample.results.map((r) => ({
+            conform: r.conform,
+            parameter: r.parameter.name,
+          }))
+        ),
+        technicianName: sample.technician?.name ?? null,
+        validatorName: sample.validatedBy?.name ?? null,
+        validatedAt: sample.validatedAt,
+      },
+      select: { id: true, number: true },
+    });
+  } catch (error) {
+    // A report must never block the approval itself — the sample is validated
+    // either way, and the report can be regenerated.
+    console.error("[validation] report creation failed", { sampleId, error });
+    return null;
+  }
 }

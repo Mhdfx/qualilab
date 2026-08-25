@@ -24,7 +24,8 @@
 | LIMS core — **réception** | queue, verify, conformity, assignment, **blind numbering** | ✅ **Phase 2 · C1 done** |
 | LIMS core — **saisie résultats** | bench sheet, automatic conformity, submit | ✅ **Phase 2 · C2 done** |
 | LIMS core — **validation** | double validation (validateur + admin), rejet motivé | ✅ **Phase 2 · C3 done** |
-| LIMS core — report, email | PDF, auto email, alerts | ❌ **Phase 3** |
+| LIMS core — **rapport PDF** | official report, 3 signatures, on-demand render | ✅ **Phase 3 · started** |
+| LIMS core — email, alerts | auto send + contamination alerts | ❌ **Phase 3** (needs DNS + limits) |
 | Infra | VPS + PM2 + `/api/health` + watchdog/autostart/backup scripts | ✅ **Working** (prototype) |
 
 **Bottom line:** the foundation (auth, roles, guards, data model, audit, state
@@ -45,6 +46,7 @@ src/
       samples/[id]/reception/  ★ PRELEVE → RECU: numbering, conformity, assignment
       samples/[id]/results/    ★ PUT save (RECU → EN_ANALYSE) · submit/ POST (→ RESULTATS_SAISIS)
       samples/[id]/validation/ ★ POST validate | approve (→ VALIDE) | reject (→ EN_ANALYSE)
+      samples/[id]/report/     ★ GET — renders the official PDF on demand
       clients/  parameters/  lab-services/   read endpoints
       invoices/  invoices/[id]/   invoice CRUD (COMPTABLE + ADMIN)
       health/                  liveness probe for PM2/watchdog
@@ -78,12 +80,16 @@ src/
     sample-select.ts   ★ audience-scoped Prisma selects — hides numbering from the préleveur
     sample-access.ts   ★ loadAssignedSample() — a technician only touches their own samples
     result-value.ts    ★ parses the lab's notation (8,9.10² / < 10 / Absence) + conformity
+    report-html.ts     ★ the official report as HTML + the auto conclusion
+    report-number.ts   RAP-YYYY-NNNNN
+    pdf.ts             ★ HTML → PDF via playwright-core (CHROMIUM_PATH)
     invoice-number.ts / invoice-math.ts / invoice-types.ts / lab-services.ts / labels.ts
     number-to-words-fr.ts   amount-in-words (FR) for invoices
     download-invoice-pdf.ts  ⚠️ CLIENT-side screenshot PDF (invoice demo only)
   generated/prisma/    ★ generated Prisma client — DO NOT edit, gitignored
 prisma/
   schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (8)
+  ⚠️ the VPS needs a Chromium for the PDF: `apt install chromium`
 scripts/         VPS ops: deploy, wait-for-db, health-watchdog, setup-autostart, setup-database, start-production, vps-setup, check-db
 ```
 
@@ -168,6 +174,7 @@ Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 | Who may move a sample to a status | `src/lib/sample-status.ts` (`TRANSITIONS`) |
 | The two-approval rule | `canValidateTechnically()` / `canApprove()` in `sample-status.ts` |
 | How a typed result is read / conformity computed | `src/lib/result-value.ts` |
+| The report's layout, wording or conclusion | `src/lib/report-html.ts` |
 | Which parameters raise a contamination alert | `AnalysisParameter.alertOnExceed` + `limitValue` (seeded in `prisma/seed.ts`) |
 | What gets audited | `logAudit()` calls + `src/lib/audit.ts` |
 | Add a DB field/table | `prisma/schema.prisma` → `npm run db:migrate` → client regenerates |
@@ -190,6 +197,7 @@ Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 | `PORT` | prod port (default 3000) | |
 | `AUTH_COOKIE_SECURE` | set `false` only for plain-HTTP testing | HTTPS in prod |
 | `NEXT_PUBLIC_DEMO_MODE` | `false` hides the demo-accounts panel on the login page | **Set to `false`** once the lab's real accounts exist |
+| `CHROMIUM_PATH` | browser used to render report PDFs | Optional. On the VPS: `apt install chromium` — the default paths are tried first |
 
 **To add later:** `RESEND_API_KEY` + `EMAIL_FROM` (Phase 3 email), and any
 Playwright/Chromium path config for server-side PDF. Log new vars here **and** in
