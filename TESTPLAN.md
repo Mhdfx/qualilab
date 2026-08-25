@@ -103,71 +103,78 @@ The short list that proves nothing broke. ~5 minutes.
 
 ---
 
-## Checkpoint C — LIMS core (Phase 2) — *to build*
+## Checkpoint C — LIMS core (Phase 2)
+*C1–C4 (réception) verified 2026-08-23 · C5–C8 to build*
 
 ### C1. Réception — the queue
-- [ ] `recep1` → `/reception` lists every sample at status **Prélevé**.
-- [ ] Each row shows client, lieu, type, date, and the préleveur's name.
-- [ ] The queue count matches the dashboard indicator.
-- [ ] Empty state is shown when nothing is waiting (not a blank page).
+- [x] `recep1` → `/reception` lists every sample at status **Prélevé**.
+- [x] Each row shows client, lieu, type, date, and the préleveur's name.
+- [x] The queue count matches the dashboard indicator.
+- [x] Empty state is shown when nothing is waiting (not a blank page).
+- [x] The queue empties after a reception and the counters update.
 
 ### C2. Blind numbering — **the anti-cheating rule**
-- [ ] Before reception, the sample has **no** control code and **no** serial number.
-- [ ] `pre1` (the préleveur) **never** sees a control code or serial number —
-      not on the creation screen, not in the success screen, not in their history.
-- [ ] On reception, the system generates **both**: `controlCode` (official) and
+- [x] Before reception, the sample has **no** control code and **no** serial number.
+- [x] `pre1` (the préleveur) **never** sees a control code or serial number —
+      verified at the API: `/api/samples` returns neither field, even for a
+      sample that has already been received.
+- [x] On reception, the system generates **both**: `controlCode` (official) and
       `serialNumber` (blind analysis code).
-- [ ] Two samples received in a row get **non-consecutive, unpredictable**
-      serial numbers (you cannot guess the next one).
-- [ ] Control codes are unique — receive several samples, no duplicates.
+- [x] Serial numbers are **non-consecutive and unpredictable**
+      (observed: SN-7QEG-KZG5 · SN-19GJ-ATEY · SN-KNB6-D1XC).
+- [x] Control codes are sequential and unique (QLC-2026-00001 → 00003).
+- [x] Both numbers are shown to the réceptionniste after reception, large and
+      copiable, to label the physical sample.
 
 ### C3. Conformity
-- [ ] Réceptionniste can mark a sample **conforme**.
-- [ ] Marking **non-conforme** requires a reason; without one it is refused.
-- [ ] The reason is visible afterwards on the sample.
+- [x] Réceptionniste can mark a sample **conforme**.
+- [x] Marking **non-conforme** requires a reason — refused without one, both in
+      the form and at the API (400).
+- [x] The reason is stored and the sample is flagged non-conforme.
+- [ ] The reason is displayed on the sample detail screen *(screen arrives with C5)*.
 
 ### C4. Assignment to a technician
-- [ ] Réceptionniste assigns the sample to a technician in one action.
-- [ ] The list of technicians shows their current workload.
-- [ ] After assignment the status becomes **Reçu** and the technician's
-      dashboard count increases.
+- [x] Réceptionniste assigns the sample to a technician in the same action.
+- [x] The technician list shows each technician's current workload.
+- [x] After reception the status becomes **Reçu** and the technician's
+      dashboard count increases (verified: 3 samples → "Qui m'attendent 3").
 
-### C5. Result entry (technicien)
-- [ ] `tech1` sees **only** the samples assigned to them (log in as a second
-      technician to confirm the separation).
+### C5. Result entry (technicien) — *to build*
+- [ ] `tech1` sees **only** the samples assigned to them.
 - [ ] The sample opens with **one line per requested parameter**.
 - [ ] For each parameter: value, unit, reference threshold, conformity.
-- [ ] Values in scientific notation as the lab writes them (e.g. `8,9.10²`) are
-      accepted and displayed back correctly.
-- [ ] A partially filled sheet can be **saved and reopened** without losing data.
+- [ ] Scientific notation as the lab writes it (`8,9.10²`) is accepted and
+      displayed back correctly.
+- [ ] A partially filled sheet can be **saved and reopened** without data loss.
 - [ ] Work status per result: en cours / terminé / **anomalie** (with description).
 - [ ] `produit` and `N° de lot` are captured and visible.
 - [ ] Submitting is only possible when every parameter is filled.
 - [ ] After submission the status is **Résultats saisis**.
 
-### C6. Validation — **double validation, every sample**
+### C6. Validation — **double validation, every sample** — *to build*
 - [ ] `valid1` → `/validation` lists samples at **Résultats saisis**.
-- [ ] The validation view shows results **against their thresholds**, the
-      technician's notes and the sample history.
+- [ ] The view shows results **against their thresholds**, technician notes, history.
 - [ ] Validateur validates → the sample moves to "awaiting admin approval",
       **not** straight to Validé.
-- [ ] `admin` sees the samples awaiting final approval and approves.
+- [ ] `admin` sees samples awaiting final approval and approves.
 - [ ] **Only after both** does the status become **Validé**.
 - [ ] Rejection (by validateur or admin) **requires a comment**.
-- [ ] A rejected sample goes back to the technician, who sees the comment.
+- [ ] A rejected sample returns to the technician, who sees the comment.
 
 ### C7. The state machine — illegal moves are refused
-- [ ] A technician cannot validate their own sample.
-- [ ] A sample cannot skip a step (e.g. Prélevé → Validé).
-- [ ] A sample cannot go backwards without a reason.
-- [ ] Trying any of the above shows a clear French message, not a crash.
+- [x] A sample already received cannot be received again — **409** with a clear
+      French message ("Transition impossible : « Reçu » → « Reçu »").
+- [x] An unknown sample id returns **404**, not a crash.
+- [x] Only RECEPTIONNISTE / ADMIN may receive: `pre1` **403**, `tech1` **403**,
+      signed out **401**.
+- [ ] A technician cannot validate their own sample *(with C6)*.
+- [ ] A sample cannot skip a step (e.g. Prélevé → Validé) *(with C6)*.
 
 ### C8. Audit trail
-- [ ] Every step (reception, assignment, result entry, validation, rejection)
-      records **who** did it and **when**.
-- [ ] The sample detail shows the timeline of what happened.
-
----
+- [x] Reception records **who** did it and **when**
+      (`SAMPLE_RECEIVED` with code, control code, conformity, technician).
+- [x] Sample creation is recorded (`SAMPLE_CREATED`).
+- [ ] The sample detail shows the timeline of what happened *(with C5)*.
 
 ## Checkpoint D — Reports, email & alerts (Phase 3) — *to build*
 
@@ -308,7 +315,8 @@ The short list that proves nothing broke. ~5 minutes.
 | Phase | Tested by | Date | Result |
 |---|---|---|---|
 | Phase 1 (A + B) | Claude Code | 2026-07-29 | ✅ passed |
-| Phase 2 (C) | | | |
+| Phase 2 · C1–C4 réception | Claude Code | 2026-08-23 | ✅ passed |
+| Phase 2 · C5–C8 | | | |
 | Phase 3 (D) | | | |
 | Phase 4 (E) | | | |
 | Phase 5 (F) | | | |

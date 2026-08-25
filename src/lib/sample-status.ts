@@ -1,5 +1,6 @@
 import type { SampleStatus } from "@/generated/prisma/enums";
 import type { Role } from "@/lib/roles";
+import { SAMPLE_STATUS_LABELS } from "@/lib/labels";
 
 /**
  * The sample lifecycle state machine.
@@ -82,15 +83,7 @@ export function nextStatus(current: SampleStatus): SampleStatus | null {
     : null;
 }
 
-export const SAMPLE_STATUS_LABELS: Record<SampleStatus, string> = {
-  PRELEVE: "Prélevé",
-  RECU: "Reçu",
-  EN_ANALYSE: "En analyse",
-  RESULTATS_SAISIS: "Résultats saisis",
-  VALIDE: "Validé",
-  RAPPORT_ENVOYE: "Rapport envoyé",
-};
-
+/** Display labels live in `labels.ts` — the single source of truth for wording. */
 export function statusLabel(status: SampleStatus) {
   return SAMPLE_STATUS_LABELS[status] ?? status;
 }

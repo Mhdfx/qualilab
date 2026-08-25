@@ -8,17 +8,19 @@
 
 ## ▶ NEXT ACTION
 
-**Phase 1 is complete and verified (2026-07-29).** Better Auth (username login),
-the central `requireRole()` guard, the 7 roles, the extended data model and the
-7 role dashboards are all live; build + lint pass; browser-tested (see
-`TESTPLAN.md` Checkpoints A & B).
+**Phase 2 · C1 (Réception & numérotation aveugle) is complete and verified
+(2026-08-23).** Queue, verify screen, conformity, technician assignment and the
+blind numbering all work end to end; build + lint pass; browser-tested (see
+`TESTPLAN.md` C1–C4, C7, C8).
 
-Next: **Phase 2, task 1 — Reception & conformity.** Build the `/reception`
-queue of samples at status `PRELEVE`, the quick-verify screen, conformity
-(with reason), assignment to a technician, and — per the client's 28-07 request
-— generate the official **control code + serial number at reception** (never
-visible to the préleveur). Use the `canTransition()` state machine for
-`PRELEVE → RECU` and call `logAudit()` on the change.
+Next: **Phase 2 · C2 — Saisie des résultats (technicien).** Add the schema the
+contamination alerts need (`Result.numericValue`, `AnalysisParameter.alertOnExceed`
++ `limitValue`, `Sample.produit` + `numeroLot`, `ClientEmail`, `EmailLog.type`),
+then build the per-parameter entry sheet: value / unit / threshold / conformity,
+work status incl. anomaly, save-in-progress, and submit
+(`RECU → EN_ANALYSE → RESULTATS_SAISIS`) through `canTransition()` + `logAudit()`.
+Accept scientific notation as the lab writes it (`8,9.10²`) and store it
+numerically.
 
 ---
 
@@ -53,11 +55,16 @@ visible to the préleveur). Use the `canTransition()` state machine for
 - [x] `npm run build` + `npm run lint` pass clean
 
 ## Phase 2 — LIMS core
-- [ ] Reception & conformity + assign to technician (`PRELEVE → RECU`)
+- [x] **Reception & conformity + assign to technician (`PRELEVE → RECU`)** ✅ 2026-08-23
+  - [x] Blind numbering: sequential `controlCode` + crypto-random `serialNumber`
+  - [x] `sample-select.ts` — numbering excluded from the préleveur's payload at the query
+  - [x] Reception API with state machine + audit + concurrency guards (P2025/P2002)
+  - [x] Queue, verify screen, conformity (+ motif), technician picker with workload
+  - [x] Success panel showing both numbers, copiable, for labelling the sample
 - [ ] **[alerts]** schema prep: `Result.numericValue`, `AnalysisParameter.alertOnExceed` + `limitValue`, `Sample.produit` + `numeroLot`, `ClientEmail` model, `EmailLog.type`
 - [ ] Technician result entry (per-parameter) + save-in-progress
 - [ ] Submit results (`EN_ANALYSE → RESULTATS_SAISIS`)
-- [ ] Validation / rejection (`→ VALIDE` or back to technician)
+- [ ] Validation / rejection (`→ VALIDE` or back to technician) — **double validation**
 - [ ] Audit on every transition; state machine enforced server-side
 - [ ] **Demo:** sample travels `PRELEVE → VALIDE`
 
@@ -103,6 +110,17 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 Newest first. One line per session: date · platform · what changed · next.
+
+- **2026-08-23 · Claude Code** · **Phase 2 · C1 delivered — réception.** Built
+  the blind numbering (sequential control code + crypto-random serial), the
+  reception queue, the verify screen, conformity with mandatory motif, and
+  technician assignment with workload. Closed a real leak found during the
+  analysis: `/api/samples` returned the raw row, so the préleveur would have
+  received the laboratory numbering — now every read goes through
+  `sample-select.ts`, which omits it at the query. Fixed a UX bug caught in the
+  browser (router.refresh destroyed the panel carrying the numbers) and
+  deduplicated `SAMPLE_STATUS_LABELS`. Build + lint green, browser-verified
+  end to end. Next: C2 result entry.
 
 - **2026-08-18 · Claude Code** · Expanded `TESTPLAN.md` into the complete
   browser test path for every phase (A–G + regression suite + cross-cutting +

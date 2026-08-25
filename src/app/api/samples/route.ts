@@ -3,6 +3,7 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { generateSampleCode } from "@/lib/sample-code";
+import { sampleSelectFor } from "@/lib/sample-select";
 import type { SampleType } from "@/generated/prisma/client";
 
 export async function GET() {
@@ -15,11 +16,8 @@ export async function GET() {
 
   const samples = await prisma.sample.findMany({
     where,
-    include: {
-      client: true,
-      user: { select: { id: true, name: true } },
-      parameters: { include: { parameter: true } },
-    },
+    // The préleveur's payload deliberately excludes the laboratory numbering.
+    select: sampleSelectFor(session.role),
     orderBy: { createdAt: "desc" },
   });
 
@@ -63,11 +61,7 @@ export async function POST(request: Request) {
           create: parameterIds.map((parameterId) => ({ parameterId })),
         },
       },
-      include: {
-        client: true,
-        user: { select: { id: true, name: true } },
-        parameters: { include: { parameter: true } },
-      },
+      select: sampleSelectFor(session.role),
     });
 
     await logAudit({

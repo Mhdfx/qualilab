@@ -29,8 +29,7 @@ export const receptionNav: NavSection[] = [
   {
     title: "À venir",
     items: [
-      { label: "Conformité", icon: ClipboardCheck, disabled: true, badge: "Phase 2" },
-      { label: "Historique", icon: History, disabled: true, badge: "Phase 2" },
+      { label: "Historique des réceptions", icon: History, disabled: true, badge: "Phase 2" },
     ],
   },
 ];
