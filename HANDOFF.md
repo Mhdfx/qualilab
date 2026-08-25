@@ -4,7 +4,7 @@
 > "where do I change X" map. Read after `AGENTS.md`. **Keep this current** — it
 > is what lets any AI on any platform continue without archaeology.
 >
-> Last updated: **2026-08-23** · Branch: `master` · Remote:
+> Last updated: **2026-08-25** · Branch: `master` · Remote:
 > `github.com/Mhdfx/qualilab.git`
 
 ---
@@ -31,11 +31,12 @@
 | Direction & recherche | direction view, DB-backed global search | ✅ **Phase 5 done** |
 | Infra | Docker image + compose, backups, `DEPLOY.md` — PM2 kept as fallback | ✅ **artifacts ready** (VPS deploy pending) |
 
-**Bottom line:** the foundation (auth, roles, guards, data model, audit, state
-machine, dashboards) is in place. What remains is the workflow itself —
-everything between *"sample arrives at the lab"* and *"report emailed to
-client"*. Full breakdown in `PLAN.md`; live tracker in `PROGRESS.md`; browser
-test path in `TESTPLAN.md`.
+**Bottom line:** the five core phases are code-complete. The whole circuit runs
+— field intake to report, alert and invoice — and the lab configures everything
+without code. What remains needs the outside world: the VPS (first deploy per
+`DEPLOY.md`, tested restore) and the laboratory (DNS, official limits, legal
+identity, legacy export — see `NEEDEDINFO.md`). Then recette and go-live.
+Extensions (Phases 6–8) come after. Tracker: `PROGRESS.md` · tests: `TESTPLAN.md`.
 
 ## 2. Architecture map
 
