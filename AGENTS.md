@@ -76,6 +76,9 @@ blind grepping.
 8. **Verify before "done".** Build + run + exercise the flow. Report failures
    honestly with output. "Done" means demonstrated, not assumed. Tick the
    matching items in `TESTPLAN.md` — only for what you actually saw working.
+   **Business rules get a unit test**: anything in `lib/` that decides a value,
+   a verdict, a permission or an amount ships with `*.test.ts` beside it.
+   `npm test` must pass before a commit.
 9. **Speed is a requirement.** The lab uses this all day between samples: every
    screen answers in under a second, every action acknowledges in under half a
    second. Server Components by default, parallel queries, no N+1, indexed
@@ -120,6 +123,9 @@ npm run dev              # local dev server (localhost:3000)
 npm run build            # prisma generate && next build
 npm run start            # production start (0.0.0.0:3000)
 npm run lint             # eslint
+npm test                 # vitest — the rules the lab depends on
+npm run test:watch       # vitest, watching
+npm run test:coverage    # coverage of src/lib
 npm run db:migrate       # prisma migrate dev  (create/apply migration, local)
 npm run db:migrate:deploy# prisma migrate deploy (apply on VPS)
 npm run db:seed          # seed demo data
@@ -150,8 +156,8 @@ Demo logins after seed (all password `password`): `pre1`, `recep1`, `tech1`,
 3. Update **TESTPLAN.md**: tick what you verified in the browser.
    Add any new question for the lab to **NEEDEDINFO.md** — never ask the user
    to chase it immediately; it is batched and sent with the others.
-4. Ensure `npm run build` **and** `npm run lint` pass (or note explicitly in
-   PROGRESS why they don't).
+4. Ensure `npm test`, `npm run build` **and** `npm run lint` pass (or note
+   explicitly in PROGRESS why they don't).
 5. Commit with a clear message. Never leave the repo in a half-broken state
    without a written note in PROGRESS.
 

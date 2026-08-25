@@ -103,6 +103,29 @@ reason. Treat a sluggish page like a bug and fix it before shipping.
 **Before calling a screen done:** open it with realistic data, not three demo
 rows. If it hesitates, it is not finished.
 
+## 4c. Tests
+
+**Every rule the laboratory depends on being right has a test.** Not coverage
+for its own sake — the things that would be expensive to get wrong:
+
+- **Reading a bench value** (`result-value.ts`) — a misread digit is a wrong
+  verdict on a food sample.
+- **Money** (`money.ts`, `invoice-math.ts`) — the invoice carries the lab's ICE
+  and RC.
+- **Who may move a sample, and when** (`sample-status.ts`) — the traceability
+  guarantee.
+
+Rules of thumb:
+- Logic that decides a value, a verdict, a permission or an amount lives in
+  `lib/` as a **pure function**, and ships with `*.test.ts` beside it.
+- A test states the behaviour, not the implementation: name it after what the
+  laboratory expects, so a failure reads as a broken promise.
+- When a bug is found, **write the test first**, then fix it.
+- Screens and routes are verified in a real browser through `TESTPLAN.md` —
+  unit tests do not replace that, they protect the rules underneath.
+
+`npm test` must pass before every commit.
+
 ## 5. Security & privacy (sensitive data)
 - **Never log secrets, tokens, passwords, or full personal records.**
 - **Never expose another role's or another préleveur's data** — scope every
