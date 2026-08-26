@@ -1,15 +1,15 @@
 -- AlterTable
-ALTER TABLE `analysisparameter` ADD COLUMN `alertOnExceed` BOOLEAN NOT NULL DEFAULT false,
+ALTER TABLE `AnalysisParameter` ADD COLUMN `alertOnExceed` BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN `limitValue` DOUBLE NULL;
 
 -- AlterTable
-ALTER TABLE `emaillog` ADD COLUMN `type` ENUM('RAPPORT', 'ALERTE_CONTAMINATION') NOT NULL DEFAULT 'RAPPORT';
+ALTER TABLE `EmailLog` ADD COLUMN `type` ENUM('RAPPORT', 'ALERTE_CONTAMINATION') NOT NULL DEFAULT 'RAPPORT';
 
 -- AlterTable
-ALTER TABLE `result` ADD COLUMN `numericValue` DOUBLE NULL;
+ALTER TABLE `Result` ADD COLUMN `numericValue` DOUBLE NULL;
 
 -- AlterTable
-ALTER TABLE `sample` ADD COLUMN `numeroLot` VARCHAR(191) NULL,
+ALTER TABLE `Sample` ADD COLUMN `numeroLot` VARCHAR(191) NULL,
     ADD COLUMN `produit` VARCHAR(191) NULL;
 
 -- CreateTable

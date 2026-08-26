@@ -1,6 +1,6 @@
 
 -- AlterTable
-ALTER TABLE `sample` ADD COLUMN `approvedAt` DATETIME(3) NULL,
+ALTER TABLE `Sample` ADD COLUMN `approvedAt` DATETIME(3) NULL,
     ADD COLUMN `approvedById` VARCHAR(191) NULL,
     ADD COLUMN `rejectedAt` DATETIME(3) NULL,
     ADD COLUMN `rejectedById` VARCHAR(191) NULL;

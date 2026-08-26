@@ -1,9 +1,9 @@
 -- AlterTable
-ALTER TABLE `analysisparameter` ADD COLUMN `threshold` VARCHAR(191) NULL,
+ALTER TABLE `AnalysisParameter` ADD COLUMN `threshold` VARCHAR(191) NULL,
     ADD COLUMN `unit` VARCHAR(191) NULL;
 
 -- AlterTable
-ALTER TABLE `sample` ADD COLUMN `assignedAt` DATETIME(3) NULL,
+ALTER TABLE `Sample` ADD COLUMN `assignedAt` DATETIME(3) NULL,
     ADD COLUMN `conformity` BOOLEAN NULL,
     ADD COLUMN `conformityNote` TEXT NULL,
     ADD COLUMN `controlCode` VARCHAR(191) NULL,
@@ -16,7 +16,7 @@ ALTER TABLE `sample` ADD COLUMN `assignedAt` DATETIME(3) NULL,
     ADD COLUMN `validatedById` VARCHAR(191) NULL;
 
 -- AlterTable
-ALTER TABLE `user` DROP COLUMN `password`,
+ALTER TABLE `User` DROP COLUMN `password`,
     ADD COLUMN `banExpires` DATETIME(3) NULL,
     ADD COLUMN `banReason` VARCHAR(191) NULL,
     ADD COLUMN `banned` BOOLEAN NULL DEFAULT false,
@@ -202,5 +202,5 @@ ALTER TABLE `EmailLog` ADD CONSTRAINT `EmailLog_reportId_fkey` FOREIGN KEY (`rep
 ALTER TABLE `AuditLog` ADD CONSTRAINT `AuditLog_actorId_fkey` FOREIGN KEY (`actorId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- RenameIndex
-ALTER TABLE `sample` RENAME INDEX `Sample_clientId_fkey` TO `Sample_clientId_idx`;
+ALTER TABLE `Sample` RENAME INDEX `Sample_clientId_fkey` TO `Sample_clientId_idx`;
 
