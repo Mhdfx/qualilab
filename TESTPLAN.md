@@ -431,8 +431,20 @@ The short list that proves nothing broke. ~5 minutes.
       `%PDF-` magic (Chromium in the image works).
 - [x] Firewall: SSH/80/443 only; app bound to 127.0.0.1; PM2 + native MySQL
       retired.
-- [ ] Full multi-role circuit réception → saisie → validation → approbation
-      → rapport on the live server (planned with Achraf — the recette dry run).
+- [x] **Full multi-role circuit on the live server** (2026-08-26): recep1
+      received QL-2026-00001 (conformity, produit, lot) → blind numbers
+      generated (QLC-2026-00001 / SN-03XP-7Q1W) and technician assigned →
+      tech1 entered `4,0.10²` / `8,9.10²` / `2,1.10³` (parser → 400/890/2100;
+      E. coli 890 vs limit 100 auto-flagged **Non conforme**) → submitted →
+      valid1 validated technically (name + timestamp recorded) → admin
+      approved → report **RAP-2026-00001** created, sample RAPPORT_ENVOYÉ.
+- [x] Report PDF renders on the live server (200, application/pdf, 59 KB).
+- [x] EmailLog after approval: `RAPPORT · SIMULE` + `ALERTE_CONTAMINATION ·
+      SIMULE` (E. coli) — the alert chain fires, held in simulation until
+      the Resend key exists.
+- [x] **Blind numbering verified end-to-end**: after the whole circuit, the
+      préleveur's pages contain zero occurrences of `QLC-` or `SN-` while
+      still showing the sample and its progress.
 
 ## Checkpoint G — Extensions (Phases 6–8) — *to build*
 
@@ -503,5 +515,6 @@ The short list that proves nothing broke. ~5 minutes.
 | Phase 4 · E3 administration | Claude Code | 2026-08-25 | ✅ passed |
 | Phase 5 · F1–F3 code portion | Claude Code | 2026-08-25 | ✅ passed (VPS steps pending) |
 | Phase 5 · F3 VPS deploy + backup/restore | Claude Code | 2026-08-26 | ✅ passed (HTTPS waits on domain) |
-| Phase 5 · F4 live smoke pass | Claude Code | 2026-08-26 | ✅ passed (full circuit = recette dry run) |
+| Phase 5 · F4 live smoke pass | Claude Code | 2026-08-26 | ✅ passed |
+| **Full circuit on production** | Claude Code | 2026-08-26 | ✅ passed — réception → saisie → double validation → rapport + alerte, all live |
 | Extensions (G) | | | |

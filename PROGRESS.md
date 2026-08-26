@@ -188,6 +188,15 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 
+- **2026-08-26 (bis) · Claude Code** · **Full circuit passed on production.**
+  Walked QL-2026-00001 through the entire live system: réception (blind
+  numbers QLC-2026-00001 / SN-03XP-7Q1W generated, technician assigned) →
+  saisie (`8,9.10²` parsed to 890, auto-flagged non-conform vs the 1.10²
+  E. coli limit) → technical validation (recorded with name/timestamp) →
+  admin approval → report RAP-2026-00001 + PDF renders (59 KB) → EmailLog
+  shows RAPPORT + ALERTE_CONTAMINATION both SIMULE → préleveur pages
+  contain zero QLC-/SN- strings. TESTPLAN F4 fully ticked. What's left is
+  no longer code: recette with the lab, domain→HTTPS, NEEDEDINFO items.
 - **2026-08-26 · Claude Code** · **DEPLOYED — the system is live on
   http://185.217.126.53.** Audited the VPS (Ubuntu 24.04, healthy) and kept
   it instead of reformatting; dumped the old prototype's demo DB, retired
