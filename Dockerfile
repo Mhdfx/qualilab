@@ -18,6 +18,14 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # The build needs no real database: pages are dynamic and query at runtime.
+# But page-data collection IMPORTS the route modules, and prisma.ts /
+# auth-server.ts read these env vars at import time — without values the
+# build dies on "Failed to collect page data". Placeholders only: nothing
+# connects during build, and the runtime container provides the real values.
+ENV DATABASE_URL="mysql://build:build@localhost:3306/build"
+ENV AUTH_SECRET="build-placeholder-not-a-secret"
+ENV BETTER_AUTH_URL="http://localhost:3000"
+ENV BETTER_AUTH_TRUSTED_ORIGINS="http://localhost:3000"
 ENV NEXT_TELEMETRY_DISABLED=1
 # NEXT_PUBLIC_* values are inlined into the client bundle AT BUILD TIME, so
 # the demo-accounts panel is controlled here (via compose build args), not by
