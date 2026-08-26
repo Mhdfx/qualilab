@@ -38,6 +38,9 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
       NEXT_PUBLIC_DEMO_MODE: ${NEXT_PUBLIC_DEMO_MODE:-false}
+      # Only for HTTP-without-domain serving; unset (default) keeps Secure
+      # cookies in production. See auth-server.ts advanced.useSecureCookies.
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-}
     ports:
       - "127.0.0.1:3000:3000"
     # Migrations run before the server starts, so a deploy is: pull, build, up.
