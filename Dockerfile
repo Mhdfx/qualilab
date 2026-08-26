@@ -59,6 +59,10 @@ COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 # prisma.config.ts imports dotenv/config; the standalone bundle doesn't
 # carry dotenv, and `migrate deploy` at boot dies without it.
 COPY --from=build /app/node_modules/dotenv ./node_modules/dotenv
+# Next's file tracing prunes playwright-core's non-required assets
+# (browsers.json), which its runtime reads — PDF rendering 500s without the
+# complete package.
+COPY --from=build /app/node_modules/playwright-core ./node_modules/playwright-core
 
 # Run as a non-root user: the container serves health data.
 RUN useradd --system --create-home qualilab
