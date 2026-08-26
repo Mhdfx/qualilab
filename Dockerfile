@@ -49,7 +49,9 @@ ENV CHROMIUM_PATH=/usr/bin/chromium
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
-# Migrations are applied at start-up (see docker-compose command).
+# Migrations run from the build stage (compose `migrate` service) — these
+# prisma copies remain for ad-hoc CLI use but the boot path no longer needs
+# them.
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./
 COPY --from=build /app/node_modules/prisma ./node_modules/prisma

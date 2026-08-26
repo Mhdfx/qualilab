@@ -24,6 +24,27 @@ services:
       timeout: 3s
       retries: 20
 
+# Migrations (and the one-time seed, see scripts/seed-docker.sh) run from
+  # the BUILD stage: the pruned runtime image lacks the Prisma CLI's full
+  # dependency tree (effect, dotenv, …) and the TypeScript sources. The stage
+  # is a byproduct of the app build, so this costs no extra build time.
+  migrate:
+    build:
+      context: .
+      target: build
+      args:
+        NEXT_PUBLIC_DEMO_MODE: ${NEXT_PUBLIC_DEMO_MODE:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "mysql://qualilab:${DB_PASSWORD}@db:3306/qualilab"
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL in .env}
+      BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:?set BETTER_AUTH_TRUSTED_ORIGINS in .env}
+    restart: "no"
+    command: node node_modules/prisma/build/index.js migrate deploy
+
   app:
     build:
       context: .
@@ -34,6 +55,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: "mysql://qualilab:${DB_PASSWORD}@db:3306/qualilab"
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
@@ -47,8 +70,8 @@ services:
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-}
     ports:
       - "127.0.0.1:3000:3000"
-    # Migrations run before the server starts, so a deploy is: pull, build, up.
-    command: sh -c "node node_modules/prisma/build/index.js migrate deploy && node server.js"
+    # Migrations already ran (migrate service above), so: just serve.
+    command: node server.js
 
 volumes:
   db-data:
