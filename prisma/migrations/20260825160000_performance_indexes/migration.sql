@@ -20,8 +20,8 @@ CREATE INDEX `Sample_userId_createdAt_idx` ON `Sample`(`userId`, `createdAt`);
 CREATE INDEX `Sample_createdAt_idx` ON `Sample`(`createdAt`);
 
 -- RenameIndex
-ALTER TABLE `invoice` RENAME INDEX `Invoice_clientId_fkey` TO `Invoice_clientId_idx`;
+ALTER TABLE `Invoice` RENAME INDEX `Invoice_clientId_fkey` TO `Invoice_clientId_idx`;
 
 -- RenameIndex
-ALTER TABLE `result` RENAME INDEX `Result_parameterId_fkey` TO `Result_parameterId_idx`;
+ALTER TABLE `Result` RENAME INDEX `Result_parameterId_fkey` TO `Result_parameterId_idx`;
 
