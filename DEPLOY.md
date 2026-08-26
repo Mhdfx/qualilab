@@ -99,7 +99,8 @@ are additive by policy (see CODE_QUALITY), so going back one version is safe.
   a dead disk must not take the database and its backups together.
 - **Test the restore once after setup** and note the date in this file:
   `./scripts/restore-db.sh /var/backups/qualilab/<dump>.sql.gz`
-  — Last tested restore: _(fill in on the VPS)_
+  — Last tested restore: **2026-08-26** (backup → restore → app healthy,
+  7 users intact — done during the first deployment)
 
 ## After every deploy — 5-minute check
 

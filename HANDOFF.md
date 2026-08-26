@@ -285,6 +285,10 @@ network, Chromium in-image, migrations on boot), nginx + certbot in front,
 | 2026-07-27 | **Resend** for transactional email | Best deliverability; matches spec "service dédié" |
 | 2026-07-27 | UI via **installed design skills**, top-tier per screen | Client-facing pro tool; brand-consistent |
 
+| 2026-08-26 | **Keep the VPS, don't reformat** | Audit showed Ubuntu 24.04.4, 4 CPU / 8 GB / 65 GB free — current and healthy. Retiring the PM2 prototype (archived to `/root/qualilab-old-prototype-archive`, DB dumped) + the Docker stack gives the "from scratch" hygiene without a reinstall. Port 3000 closed in ufw (the prototype exposed the app to the whole internet, bypassing nginx); native MySQL disabled — the stack brings its own |
+| 2026-08-26 | **Migrations and seed run from the BUILD stage** (compose `migrate` one-shot service; `scripts/seed-docker.sh`) | The pruned standalone runtime cannot host Prisma 7's CLI (needs `effect` etc.) nor the seed (imports `src/`); copying modules one by one is unwinnable. The build stage has everything and is a free byproduct of the app build. The app `depends_on` its completion, so "deploy = pull + up" still holds |
+| 2026-08-26 | **First-deploy portability fixes** (all found because the first VPS deploy actually failed on them) | (1) table-name casing normalized in ALL migrations — Windows MySQL is case-insensitive and hid lowercase refs, Linux errored 1146; (2) build-time env placeholders in the Dockerfile — page-data collection imports modules that read `DATABASE_URL`/auth vars at import; (3) full `playwright-core` copied into the runtime — tracing drops `browsers.json`, every PDF 500'd; (4) `AUTH_COOKIE_SECURE` passed through compose — HTTP login silently failed without it; (5) db healthcheck forced to TCP + migrate retries — MySQL's first-volume init passes a socket ping before TCP listens |
+
 ## 8b. Audit of the inherited prototype (2026-08-25)
 
 The first prototype was built to demonstrate, not to run a laboratory. Before

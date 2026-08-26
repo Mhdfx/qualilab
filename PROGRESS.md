@@ -8,27 +8,33 @@
 
 ## ▶ NEXT ACTION
 
-**Phase 5's code portion is complete (2026-08-25).** The direction view, the
-database-backed global search (blind numbering excluded from the préleveur's
-search), the production build with HSTS, the Docker image with Chromium, the
-compose stack, the backup/restore scripts and `DEPLOY.md` are all in place and
-verified locally.
+**THE SYSTEM IS DEPLOYED AND LIVE (2026-08-26): http://185.217.126.53**
 
-**Decided 2026-08-25: the VPS (185.217.126.53, currently serving the old
-prototype over plain HTTP) will be reset and deployed from scratch, with the
-GitHub repo as the pipeline** (VPS pulls with a read-only deploy key).
-`scripts/provision-vps.sh` prepares the fresh server; `DEPLOY.md` §"Fresh
-server" is the sequence for the session.
+The VPS was kept (Ubuntu 24.04, healthy) rather than reformatted; the PM2
+prototype was retired (archived to `/root/qualilab-old-prototype-archive`,
+its 0.3 MB demo DB dumped to `/root/` and `backups/` locally), and the
+Docker stack now runs it all: app on `127.0.0.1:3000` behind nginx, MySQL
+in its own container, firewall closed to SSH/80/443. Deployment = `git
+pull && docker compose up -d --build` as the `qualilab` user in
+`/opt/qualilab` (`scripts/vps-first-deploy.sh` did the first one and stays
+idempotent). Verified live: health, admin + réceptionniste login over HTTP,
+direction dashboard with seeded data, invoice PDF rendered by the in-image
+Chromium, backup cron installed, **restore tested for real** (2026-08-26).
+Demo mode is ON (panel visible) until the recette.
 
-**What remains needs things only the outside world can provide:**
-1. **The VPS session (tonight)**: run `provision-vps.sh` as root → add the
-   printed deploy key to GitHub → clone, fill `.env`, `compose up` → nginx +
-   certbot → cron the backup → one real restore → TESTPLAN pass.
-2. **The lab** (`NEEDEDINFO.md`): DNS + Resend key → flip real email on;
-   official norm limits → enter in `/admin/parametres`; real ICE/RC/RIB + logo
-   → enter in `/admin/entreprise`; legacy export → import; real user list →
-   create accounts, set `NEXT_PUBLIC_DEMO_MODE=false`.
-3. Then: **recette** with the lab's team, formation, go-live.
+**What remains:**
+1. **Full TESTPLAN pass on the live server** (the complete multi-role
+   sample circuit — réception → saisie → validation → approbation →
+   rapport) — ideally with Achraf driving, demo panel makes it easy.
+2. **Domain + HTTPS**: when the client confirms the domain, point DNS at
+   185.217.126.53, run certbot, set BETTER_AUTH_URL/TRUSTED_ORIGINS to the
+   https origin, drop AUTH_COOKIE_SECURE, rebuild. 15 minutes.
+3. **The lab** (`NEEDEDINFO.md`): DNS + Resend key → flip real email on;
+   official norm limits → enter in `/admin/parametres`; real ICE/RC/RIB +
+   logo → enter in `/admin/entreprise`; legacy export → import; real user
+   list → create accounts, rebuild with `NEXT_PUBLIC_DEMO_MODE=false`
+   (build arg — runtime env does not affect the panel).
+4. Then: **recette** with the lab's team, formation, go-live.
 
 Extensions (Phases 6–8: Achat/Stock, Qualité, Portail client) start after
 go-live, each with its own scoping — see PLAN.
@@ -181,6 +187,25 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 ---
 
 ## Session Log
+
+- **2026-08-26 · Claude Code** · **DEPLOYED — the system is live on
+  http://185.217.126.53.** Audited the VPS (Ubuntu 24.04, healthy) and kept
+  it instead of reformatting; dumped the old prototype's demo DB, retired
+  PM2 + native MySQL, archived the old app, closed port 3000. First Docker
+  deploy surfaced five real portability bugs, each fixed and pushed:
+  fresh-clone Dockerfile break (gitignored src/generated), build-time env
+  for page-data collection, table-name casing in ALL migrations (Windows
+  MySQL hid it), missing dotenv then the whole Prisma-CLI tree in the
+  runtime image (→ migrations + seed now run from the build stage via a
+  one-shot `migrate` compose service), pruned playwright-core missing
+  browsers.json (PDF 500). Also: `AUTH_COOKIE_SECURE` passed through
+  compose (HTTP login), TCP-forced db healthcheck + migrate retries
+  (first-volume init race), `NEXT_PUBLIC_DEMO_MODE` as build arg,
+  `scripts/vps-first-deploy.sh` (idempotent one-liner deploy) and
+  `scripts/seed-docker.sh`. Backup cron installed; **restore tested for
+  real**; live smoke pass green (health, HTTP login admin + réception,
+  dashboard, invoices, in-container PDF). Next: full circuit on the live
+  server with Achraf, then domain → HTTPS.
 Newest first. One line per session: date · platform · what changed · next.
 
 - **2026-08-25 · Claude Code** · **Phase 5 code portion.** Built the direction

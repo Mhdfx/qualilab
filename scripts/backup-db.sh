@@ -18,8 +18,11 @@ mkdir -p "$BACKUP_DIR"
 
 # Dockerised database (docker-compose.yml). For a bare-metal MySQL, replace
 # the docker exec with a plain mysqldump using ~/.my.cnf credentials.
+# --no-tablespaces: dumping tablespace metadata needs the PROCESS privilege
+# the app user rightly lacks; without the flag every run logs a scary
+# access-denied warning.
 docker compose exec -T db \
-  mysqldump --single-transaction --routines --triggers \
+  mysqldump --single-transaction --routines --triggers --no-tablespaces \
   -u qualilab -p"${DB_PASSWORD:?DB_PASSWORD not set}" qualilab \
   | gzip > "$BACKUP_DIR/qualilab_${STAMP}.sql.gz"
 

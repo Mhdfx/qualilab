@@ -379,7 +379,7 @@ The short list that proves nothing broke. ~5 minutes.
 ---
 
 ## Checkpoint F — Production readiness (Phase 5)
-*code portion verified 2026-08-25 · VPS portion waits for the server*
+*code portion verified 2026-08-25 · deployed live 2026-08-26 (F4)*
 
 ### F1. Direction view & global search
 - [x] `/admin` opens on the direction view: samples in the pipeline, average
@@ -410,10 +410,29 @@ The short list that proves nothing broke. ~5 minutes.
 - [x] `scripts/restore-db.sh` — destructive restore behind a typed confirmation.
 - [x] `DEPLOY.md` — first deploy, updates, rollback, the 5-minute post-deploy
       check.
-- [ ] 🔒 **On the VPS**: run the first deploy, HTTPS via certbot, cron the
-      backup, **perform one real restore and date it in DEPLOY.md**.
-- [ ] 🔒 Full `TESTPLAN` pass against the deployed system.
+- [x] **On the VPS**: first deploy done 2026-08-26 (`scripts/vps-first-deploy.sh`),
+      backup cron installed, **one real restore performed and dated in
+      DEPLOY.md**. HTTPS/certbot waits on the domain (NEEDEDINFO item 1).
+- [ ] 🔒 Full `TESTPLAN` pass against the deployed system (see F4 for the
+      smoke pass already done).
 - [ ] 🔒 Legacy data import — waits on the lab's export (NEEDEDINFO item 18).
+
+### F4. Live-server smoke pass — observed 2026-08-26 on http://185.217.126.53
+- [x] `/api/health` → `{status: ok, database: connected}` through nginx.
+- [x] Login **over plain HTTP** works (admin) — the `AUTH_COOKIE_SECURE`
+      pass-through fix proving itself; demo-accounts panel visible
+      (`NEXT_PUBLIC_DEMO_MODE=true`).
+- [x] Direction dashboard renders the seeded data (1 sample, 2 724,00 DH
+      facturé, statuses, domains).
+- [x] Réceptionniste login lands on ESPACE RÉCEPTION with QL-2026-00001
+      awaiting reception — role routing intact.
+- [x] `/admin/factures` lists both seeded invoices with correct totals.
+- [x] **Invoice PDF renders in-container**: 200, `application/pdf`, 56 KB,
+      `%PDF-` magic (Chromium in the image works).
+- [x] Firewall: SSH/80/443 only; app bound to 127.0.0.1; PM2 + native MySQL
+      retired.
+- [ ] Full multi-role circuit réception → saisie → validation → approbation
+      → rapport on the live server (planned with Achraf — the recette dry run).
 
 ## Checkpoint G — Extensions (Phases 6–8) — *to build*
 
@@ -483,4 +502,6 @@ The short list that proves nothing broke. ~5 minutes.
 | Phase 4 · E2 facturation | Claude Code | 2026-08-25 | ✅ passed |
 | Phase 4 · E3 administration | Claude Code | 2026-08-25 | ✅ passed |
 | Phase 5 · F1–F3 code portion | Claude Code | 2026-08-25 | ✅ passed (VPS steps pending) |
+| Phase 5 · F3 VPS deploy + backup/restore | Claude Code | 2026-08-26 | ✅ passed (HTTPS waits on domain) |
+| Phase 5 · F4 live smoke pass | Claude Code | 2026-08-26 | ✅ passed (full circuit = recette dry run) |
 | Extensions (G) | | | |
