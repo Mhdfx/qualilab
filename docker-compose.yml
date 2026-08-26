@@ -19,7 +19,11 @@ services:
     volumes:
       - db-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "qualilab", "-p${DB_PASSWORD}"]
+      # -h 127.0.0.1 forces TCP: during first-volume initialization MySQL's
+      # entrypoint runs a temporary server with networking disabled, and the
+      # socket ping reported healthy before the real server listened (P1001
+      # race hit on the first deploy).
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "qualilab", "-p${DB_PASSWORD}"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -43,7 +47,8 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL in .env}
       BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:?set BETTER_AUTH_TRUSTED_ORIGINS in .env}
     restart: "no"
-    command: node node_modules/prisma/build/index.js migrate deploy
+    # Retries absorb any remaining connect race the healthcheck misses.
+    command: sh -c "for i in 1 2 3 4 5 6; do node node_modules/prisma/build/index.js migrate deploy && exit 0; echo 'db not ready, retry in 5s'; sleep 5; done; exit 1"
 
   app:
     build:
