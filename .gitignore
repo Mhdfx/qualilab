@@ -24,6 +24,10 @@
 .DS_Store
 *.pem
 
+# database dumps kept locally, never in the (public) repo
+/backups/
+*.sql.gz
+
 # debug
 npm-debug.log*
 yarn-debug.log*

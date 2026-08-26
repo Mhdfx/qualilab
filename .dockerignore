@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.env
+.env.local
+.env.*.local
+backups
+*.sql.gz
+*.pdf
+*.xlsx
+npm-debug.log*
+coverage

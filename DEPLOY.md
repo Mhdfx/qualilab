@@ -66,9 +66,15 @@ curl -s localhost:3000/api/health   # → ok
 #    server { server_name app.qualilab.ma; location / { proxy_pass http://127.0.0.1:3000; ... } }
 certbot --nginx -d app.qualilab.ma
 
-# 5. Seed ONLY a fresh installation (wipes existing data):
-docker compose exec app sh -c "node node_modules/tsx/dist/cli.mjs prisma/seed.ts"
+# 5. Seed ONLY a fresh installation (wipes existing data). Runs from the
+#    build stage image — the pruned runtime image lacks the seed's imports:
+bash scripts/seed-docker.sh
 ```
+
+> **Fast path for the current server:** `scripts/vps-first-deploy.sh` does
+> everything above in one run (retire the PM2 prototype, Docker, deploy user,
+> clone, secrets, build, seed, backup cron) and is idempotent:
+> `curl -fsSL https://raw.githubusercontent.com/Mhdfx/qualilab/master/scripts/vps-first-deploy.sh | bash`
 
 ## Deploying an update
 
