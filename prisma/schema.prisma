@@ -87,6 +87,9 @@ model User {
   auditLogs        AuditLog[]
   purchaseInvoices PurchaseInvoice[] @relation("PurchaseInvoiceCreatedBy")
   stockMovements   StockMovement[]   @relation("StockMovementCreatedBy")
+  calibrations     CalibrationRecord[]  @relation("CalibrationCreatedBy")
+  temperatures     TemperatureReading[] @relation("TemperatureCreatedBy")
+  eilCampaigns     EilCampaign[]        @relation("EilCreatedBy")
 
   @@index([role])
 }
@@ -554,4 +557,103 @@ model StockMovement {
   createdAt   DateTime @default(now())
 
   @@index([itemId, createdAt])
+}
+
+// ————— Phase 7 · Système Qualité (métrologie, températures, EIL) —————
+
+/// A piece of laboratory equipment under quality control. Calibration and
+/// temperature monitoring are both optional per equipment: an incubator is
+/// calibrated AND monitored, a pipette only calibrated, a fridge only
+/// monitored.
+model Equipment {
+  id       String  @id @default(cuid())
+  name     String
+  /// Internal identification tag (E-001…), unique when present.
+  code     String? @unique
+  location String?
+  /// Calibration périodicity in months; null = this equipment is not
+  /// calibrated. The next due date derives from lastCalibratedAt + this.
+  calibrationFrequencyMonths Int?
+  lastCalibratedAt           DateTime?
+  /// Temperature monitoring bounds (°C); both null = not monitored.
+  tempMin  Float?
+  tempMax  Float?
+  archived Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  calibrations CalibrationRecord[]
+  temperatures TemperatureReading[]
+
+  @@index([archived, name])
+}
+
+enum CalibrationResult {
+  CONFORME
+  NON_CONFORME
+}
+
+/// One calibration/verification, as performed — the metrology register.
+model CalibrationRecord {
+  id          String    @id @default(cuid())
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id])
+  performedAt DateTime
+  /// The organisme that performed it.
+  provider    String?
+  /// Certificate number, for the auditor.
+  certificate String?
+  result      CalibrationResult @default(CONFORME)
+  notes       String?   @db.Text
+  createdById String?
+  createdBy   User?     @relation("CalibrationCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+
+  @@index([equipmentId, performedAt])
+}
+
+/// A temperature reading. The out-of-range verdict is stored at write time
+/// against the bounds of that day — changing the bounds later must not
+/// rewrite history.
+model TemperatureReading {
+  id          String    @id @default(cuid())
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id])
+  value       Float
+  readAt      DateTime  @default(now())
+  outOfRange  Boolean   @default(false)
+  note        String?
+  createdById String?
+  createdBy   User?     @relation("TemperatureCreatedBy", fields: [createdById], references: [id])
+
+  @@index([equipmentId, readAt])
+  @@index([outOfRange, readAt])
+}
+
+enum EilStatus {
+  PREVUE
+  EN_COURS
+  RESULTATS_RECUS
+  CLOTUREE
+}
+
+/// An interlaboratory proficiency campaign (essai interlaboratoire).
+model EilCampaign {
+  id        String    @id @default(cuid())
+  name      String
+  /// The organising body (LNCM, BIPEA…).
+  organizer String?
+  /// What is being tested (parameter, matrix, domain).
+  scope     String?
+  startDate  DateTime?
+  resultDate DateTime?
+  status     EilStatus @default(PREVUE)
+  /// The performance as reported (z-score…), free text.
+  outcome      String?
+  satisfactory Boolean?
+  notes        String?  @db.Text
+  createdById  String?
+  createdBy    User?    @relation("EilCreatedBy", fields: [createdById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([status, startDate])
 }

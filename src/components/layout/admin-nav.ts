@@ -10,6 +10,8 @@ import {
   FileUp,
   BarChart3,
   ShieldCheck,
+  Gauge,
+  Boxes,
 } from "lucide-react";
 import type { NavSection } from "./nav-types";
 
@@ -34,6 +36,8 @@ export const adminNav: NavSection[] = [
     title: "Système",
     items: [
       { label: "Paramètres d'analyse", href: "/admin/parametres", icon: Settings },
+      { label: "Système Qualité", href: "/qualite", icon: Gauge },
+      { label: "Achat & Stock", href: "/magasin", icon: Boxes },
       { label: "Catalogue", href: "/admin/catalogue", icon: Users },
       { label: "Réglages du circuit", href: "/admin/reglages", icon: SlidersHorizontal },
       { label: "Import de données", href: "/admin/import", icon: FileUp },

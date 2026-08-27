@@ -3,7 +3,6 @@ import {
   Inbox,
   FlaskConical,
   ShieldCheck,
-  FileCheck2,
   Building2,
   FileText,
   Wallet,
@@ -12,6 +11,9 @@ import {
   Boxes,
   Truck,
   ReceiptText,
+  Gauge,
+  Thermometer,
+  Award,
 } from "lucide-react";
 import type { NavSection } from "./nav-types";
 
@@ -61,9 +63,9 @@ export const validationNav: NavSection[] = [
     ],
   },
   {
-    title: "À venir",
+    title: "Qualité",
     items: [
-      { label: "Rapports validés", icon: FileCheck2, disabled: true, badge: "Phase 3" },
+      { label: "Système Qualité", href: "/qualite", icon: Gauge },
     ],
   },
 ];
@@ -98,6 +100,18 @@ export const magasinNav: NavSection[] = [
       { label: "Stock", href: "/magasin/stock", icon: Boxes },
       { label: "Fournisseurs", href: "/magasin/fournisseurs", icon: Truck },
       { label: "Factures fournisseurs", href: "/magasin/factures", icon: ReceiptText },
+    ],
+  },
+];
+
+export const qualiteNav: NavSection[] = [
+  {
+    title: "Menu principal",
+    items: [
+      { label: "Tableau de bord", href: "/qualite", icon: LayoutDashboard },
+      { label: "Métrologie", href: "/qualite/metrologie", icon: Gauge },
+      { label: "Températures", href: "/qualite/temperatures", icon: Thermometer },
+      { label: "EIL", href: "/qualite/eil", icon: Award },
     ],
   },
 ];

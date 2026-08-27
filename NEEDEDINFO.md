@@ -76,9 +76,9 @@ le journal sans être réellement expédiés**, et l'interface l'indique clairem
 
 | # | What we need | For |
 |---|---|---|
-| 13 | **Liste des équipements** à suivre en métrologie + calendrier d'étalonnage | Module Qualité |
-| 14 | **Quels équipements** font l'objet d'un relevé de température, et à quelle fréquence / quels seuils | Module Qualité |
-| 15 | **Périmètre des EIL** : quelles campagnes, quels organismes | Module Qualité |
+| 13 | **Liste des équipements** à suivre en métrologie + calendrier d'étalonnage | Module Qualité — **built 2026-08-27**: the register is data entry in `/qualite/metrologie` (périodicité par équipement, certificats) |
+| 14 | **Quels équipements** font l'objet d'un relevé de température, et à quelle fréquence / quels seuils | Module Qualité — **built 2026-08-27**: bounds per equipment, readings board with HORS PLAGE flags; their list = data entry |
+| 15 | **Périmètre des EIL** : quelles campagnes, quels organismes | Module Qualité — **built 2026-08-27**: campaign register in `/qualite/eil`; their campaigns = data entry |
 | 16 | **Niveau de détail du stock** : produits suivis, unités, gestion des lots et péremptions ? | Module Achat & Stock — **built 2026-08-27 (hidden)**: movements already carry optional lot + péremption, their answer selects what to fill |
 | 17 | **Liste des fournisseurs** et leurs conventions de paiement | Module Achat & Stock — **built 2026-08-27 (hidden)**: the list is data entry in `/magasin/fournisseurs` |
 | 18 | **Export de la base existante** (clients, rapports, factures) — format et accès | Reprise de données |

@@ -208,11 +208,17 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 - Provisional assumptions flagged: stock granularity carries optional
   lot/expiry per movement (NEEDEDINFO 16); supplier list = data entry (17).
 
-### Phase 7 — Système Qualité (Quality) *(later track)*
-- **Métrologie:** equipment register + calibration/verification schedule + records.
-- **EIL** (essais interlaboratoires / proficiency testing): campaign tracking.
-- **Contrôles/monitoring:** equipment temperature (fridge/incubator) logs +
-  out-of-range alerts.
+### Phase 7 — Système Qualité ✅ CODE-COMPLETE (2026-08-27)
+- **Métrologie:** equipment register + calibration schedule + records. ✅
+  (`calibrationDue()`: RETARD / BIENTOT ≤30 j / JAMAIS; records advance
+  `lastCalibratedAt` only when newer — back-dating never rewinds.)
+- **EIL:** campaign register (statut, organisme, portée, z-score, verdict). ✅
+- **Températures:** per-equipment bounds, daily readings board, out-of-range
+  stored at write time (bounds changes never rewrite history). ✅
+- Space `/qualite` for **VALIDATEUR + ADMIN** (linked from both menus);
+  temperature POST also open to TECHNICIEN for a future bench entry point.
+- Provisional until NEEDEDINFO 13–15: equipment list, périodicités, bornes
+  and EIL perimeter are data entry on the built screens.
 
 ### Phase 8 — Portail client & Réclamations *(later track)*
 - **Client portal [client 18-08 CONFIRMED]:** `CLIENT` accounts are

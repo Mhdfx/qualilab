@@ -465,11 +465,22 @@ The short list that proves nothing broke. ~5 minutes.
       (Payée le …, reversible via the reopen button).
 - [ ] 🔒 Re-verify as a real MAGASINIER account at reveal time.
 
-### G2. Qualité (Phase 7)
-- [ ] Equipment registered with its calibration schedule.
-- [ ] An overdue calibration is flagged.
-- [ ] Temperature reading recorded; an out-of-range value raises an alert.
-- [ ] EIL campaign tracked.
+### G2. Qualité (Phase 7) — verified in the browser 2026-08-27, as valid1
+- [x] The « Système Qualité » link appears in the validateur's and admin's
+      menus; `/qualite` is guarded VALIDATEUR/ADMIN.
+- [x] Equipment registered with schedule and bounds (Étuve 37 °C, E-001,
+      12 mois, [35;39]); a calibration record (LNM, cert C-2025-4411) set
+      the next due date → « Bientôt — dû le 10 sept. 2026 ».
+- [x] An unscheduled equipment (Réfrigérateur R2) shows no calibration
+      badge; a scheduled-but-never-calibrated one is flagged « jamais
+      étalonné » (unit-tested).
+- [x] Temperature readings on the board: 4,2 °C in range (green), then
+      9,5 °C → **HORS PLAGE** immediately, journalised
+      TEMPERATURE_OUT_OF_RANGE.
+- [x] EIL campaign created (BIPEA S2-2026) then updated to « Résultats
+      reçus » with z-score 0,8 · satisfaisant.
+- [x] The quality dashboard rolls it all up: 2 équipements, 1 étalonnage à
+      traiter, 1 excursion (7 j), 1 campagne ouverte.
 
 ### G3. Portail client & Réclamations (Phase 8)
 - [ ] Admin creates a client account (no self-signup possible).
@@ -577,5 +588,6 @@ Verified in the browser on the dev server, full circuit, on 2026-08-27.*
 | Phase 5 · F4 live smoke pass | Claude Code | 2026-08-26 | ✅ passed |
 | **Full circuit on production** | Claude Code | 2026-08-26 | ✅ passed — réception → saisie → double validation → rapport + alerte, all live |
 | Pack d'indépendance (H) | Claude Code | 2026-08-27 | ✅ passed — toggles, blocage/libération, alerte anticipée sans doublon, facteur, logo, import (dev server, circuit complet) |
-| Phase 6 · G1 Achat & Stock | Claude Code | 2026-08-27 | ✅ passed (hidden in prod; re-verify as MAGASINIER at reveal) |
-| Extensions (G2–G3) | | | |
+| Phase 6 · G1 Achat & Stock | Claude Code | 2026-08-27 | ✅ passed (now visible; magasin1 exists locally and on prod) |
+| Phase 7 · G2 Qualité | Claude Code | 2026-08-27 | ✅ passed — métrologie, températures hors plage, EIL, dashboard |
+| Extensions (G3) | | | |

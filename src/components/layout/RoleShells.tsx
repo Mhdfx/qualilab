@@ -8,6 +8,7 @@ import {
   commercialNav,
   comptabiliteNav,
   magasinNav,
+  qualiteNav,
 } from "./role-navs";
 
 /**
@@ -66,6 +67,14 @@ export function ComptabiliteShell({ userName, children }: ShellProps) {
 export function MagasinShell({ userName, children }: ShellProps) {
   return (
     <DashboardShell userName={userName} roleLabel="Achat & Stock" navSections={magasinNav}>
+      {children}
+    </DashboardShell>
+  );
+}
+
+export function QualiteShell({ userName, children }: ShellProps) {
+  return (
+    <DashboardShell userName={userName} roleLabel="Système Qualité" navSections={qualiteNav}>
       {children}
     </DashboardShell>
   );

@@ -197,6 +197,21 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 
+- **2026-08-27 (quater) · Claude Code** · **Phase 7 — Système Qualité,
+  built and deployed.** `/qualite` space (VALIDATEUR + ADMIN, linked from
+  both menus): métrologie (Equipment register, `calibrationDue()` judge —
+  RETARD / BIENTOT ≤30 j / JAMAIS, records advance lastCalibratedAt only
+  when newer), relevés de température (per-equipment bounds, verdict
+  stored at write time so bound changes never rewrite history, board with
+  live HORS PLAGE flags; POST also open to TECHNICIEN), EIL campaigns
+  (statuts, z-score, verdict), quality dashboard rolling up étalonnages à
+  traiter / excursions 7 j / campagnes ouvertes. Admin menu also gained
+  the Achat & Stock link (full-visibility parity). 4 tables, 5 audited
+  API routes, 16 new tests (128 total). Browser-verified as valid1: due
+  date 2025-09-10 +12 mois → « Bientôt — dû 10 sept. », 4,2 °C conforme
+  → 9,5 °C HORS PLAGE, BIPEA campaign to « Résultats reçus ·
+  satisfaisant », dashboard counts exact. Also: parity decision honoured
+  (magasin1 visible + created on prod, stale tech2 panel entry fixed).
 - **2026-08-27 (ter) · Claude Code** · **Phase 6 — Achat & Stock, built and
   deployed HIDDEN.** New MAGASINIER role (9th; auto-appears in the users
   screen, excluded from the demo panel), `/magasin` space (dashboard, stock,
