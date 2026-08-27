@@ -196,11 +196,17 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 > re-cost/replan. The client flagged Quality + Réclamations explicitly as a
 > *"volet plus tardif"* (later track).
 
-### Phase 6 — Achat & Stock (Purchasing & Inventory)
-- Supplier base + per-supplier **payment conventions**; **payment-due alerts**.
-- Stock/inventory tracking (items, levels, movements) with low-stock alerts.
+### Phase 6 — Achat & Stock ✅ CODE-COMPLETE (2026-08-27, hidden)
+- Supplier base + per-supplier **payment conventions**; **payment-due alerts**. ✅
+- Stock/inventory tracking (items, levels, movements) with low-stock alerts. ✅
 - **[client 18-08 CONFIRMED]** dedicated **`MAGASINIER`** role operates this
-  module (9th profile; add enum value + space at Phase 6).
+  module (9th profile). ✅ Role live in roles.ts + users screen.
+- **Kept invisible until Achraf prices/reveals it**: no admin nav entry, no
+  demo account — the module only exists at `/magasin` for MAGASINIER (and
+  ADMIN by URL). Revealing = create a MAGASINIER user in
+  `/admin/utilisateurs` (+ optional admin nav links).
+- Provisional assumptions flagged: stock granularity carries optional
+  lot/expiry per movement (NEEDEDINFO 16); supplier list = data entry (17).
 
 ### Phase 7 — Système Qualité (Quality) *(later track)*
 - **Métrologie:** equipment register + calibration/verification schedule + records.

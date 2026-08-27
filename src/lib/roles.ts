@@ -14,6 +14,7 @@ export const ROLES = [
   "COMPTABLE",
   "ADMIN",
   "CLIENT",
+  "MAGASINIER",
 ] as const;
 
 export type Role = (typeof ROLES)[number];
@@ -27,6 +28,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   COMPTABLE: "Comptable",
   ADMIN: "Administrateur",
   CLIENT: "Client",
+  MAGASINIER: "Magasinier",
 };
 
 /** Landing page for each role after login. */
@@ -39,6 +41,7 @@ export const ROLE_HOME: Record<Role, string> = {
   COMPTABLE: "/comptabilite",
   ADMIN: "/admin",
   CLIENT: "/portail",
+  MAGASINIER: "/magasin",
 };
 
 export function isRole(value: unknown): value is Role {

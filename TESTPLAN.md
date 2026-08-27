@@ -446,14 +446,24 @@ The short list that proves nothing broke. ~5 minutes.
       préleveur's pages contain zero occurrences of `QLC-` or `SN-` while
       still showing the sample and its progress.
 
-## Checkpoint G — Extensions (Phases 6–8) — *to build*
+## Checkpoint G — Extensions (Phases 6–8) — *G1 built 2026-08-27 (hidden)*
 
-### G1. Achat & Stock (Phase 6)
-- [ ] Magasinier logs into their own space.
-- [ ] Supplier created with its payment convention.
-- [ ] Stock item in/out movement updates the quantity.
-- [ ] Low-stock alert appears.
-- [ ] Supplier payment-due alert fires on the convention's terms.
+### G1. Achat & Stock (Phase 6) — verified in the browser 2026-08-27
+- [x] The `/magasin` space exists behind `requireRole("MAGASINIER","ADMIN")`
+      — verified as ADMIN; no admin-nav entry and no demo account, so the
+      module stays invisible until revealed (create a MAGASINIER user then).
+- [x] Supplier created with its payment convention (BioMérieux, 60 j); an
+      invoice recorded WITHOUT a due date got issueDate + 60 j automatically.
+- [x] Stock item created (seuil 10 boîtes) → ENTREE 25 (lot L-2408) → 25,
+      alert cleared → SORTIE 18 → 7, « sous le seuil » back. History lists
+      both movements with lot and author.
+- [x] Over-drain refused: SORTIE 100 on a stock of 7 → 400 « Stock
+      insuffisant : 7 en stock, sortie de 100 demandée. »
+- [x] Low-stock alert on the magasin dashboard (7 / seuil 10).
+- [x] Payment-due alerts: overdue invoice shows « En retard — 20 août » on
+      the dashboard and a red badge in the list; « Marquer payée » clears it
+      (Payée le …, reversible via the reopen button).
+- [ ] 🔒 Re-verify as a real MAGASINIER account at reveal time.
 
 ### G2. Qualité (Phase 7)
 - [ ] Equipment registered with its calibration schedule.
@@ -567,4 +577,5 @@ Verified in the browser on the dev server, full circuit, on 2026-08-27.*
 | Phase 5 · F4 live smoke pass | Claude Code | 2026-08-26 | ✅ passed |
 | **Full circuit on production** | Claude Code | 2026-08-26 | ✅ passed — réception → saisie → double validation → rapport + alerte, all live |
 | Pack d'indépendance (H) | Claude Code | 2026-08-27 | ✅ passed — toggles, blocage/libération, alerte anticipée sans doublon, facteur, logo, import (dev server, circuit complet) |
-| Extensions (G) | | | |
+| Phase 6 · G1 Achat & Stock | Claude Code | 2026-08-27 | ✅ passed (hidden in prod; re-verify as MAGASINIER at reveal) |
+| Extensions (G2–G3) | | | |

@@ -9,6 +9,9 @@ import {
   Wallet,
   History,
   BarChart3,
+  Boxes,
+  Truck,
+  ReceiptText,
 } from "lucide-react";
 import type { NavSection } from "./nav-types";
 
@@ -83,6 +86,18 @@ export const comptabiliteNav: NavSection[] = [
       { label: "Tableau de bord", href: "/comptabilite", icon: LayoutDashboard },
       { label: "Factures", href: "/comptabilite/factures", icon: FileText },
       { label: "Nouvelle facture", href: "/comptabilite/factures/nouvelle", icon: Wallet },
+    ],
+  },
+];
+
+export const magasinNav: NavSection[] = [
+  {
+    title: "Menu principal",
+    items: [
+      { label: "Tableau de bord", href: "/magasin", icon: LayoutDashboard },
+      { label: "Stock", href: "/magasin/stock", icon: Boxes },
+      { label: "Fournisseurs", href: "/magasin/fournisseurs", icon: Truck },
+      { label: "Factures fournisseurs", href: "/magasin/factures", icon: ReceiptText },
     ],
   },
 ];

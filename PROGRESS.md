@@ -197,6 +197,23 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 
+- **2026-08-27 (ter) · Claude Code** · **Phase 6 — Achat & Stock, built and
+  deployed HIDDEN.** New MAGASINIER role (9th; auto-appears in the users
+  screen, excluded from the demo panel), `/magasin` space (dashboard, stock,
+  fournisseurs, factures fournisseurs) behind
+  `requireRole("MAGASINIER","ADMIN")` with NO admin-nav entry — invisible
+  until Achraf prices/reveals it. Data model: Supplier (paymentTermDays),
+  PurchaseInvoice (dueDate defaulted from the convention, status A_PAYER/
+  PAYEE, [status,dueDate] index), StockItem (DECIMAL quantities, seuil),
+  StockMovement (ENTREE/SORTIE/AJUSTEMENT, optional lot+péremption). Rules:
+  quantity written ONLY by the movements route in a guarded transaction
+  (concurrency-safe, refuses negative stock); dueState() single judge of
+  lateness (RETARD / BIENTOT ≤7 j). 7 API routes, all audited; 17 new lib
+  tests (112 total). Browser-verified full circuit: supplier 60 j → invoice
+  without due date got +60 j; retard badge + dashboard alert; stock 0→25→7
+  with lot, low-stock alert on/off/on, over-drain refused; mark-paid
+  reversible. Migration casing-clean (new tables). Reveal = create a
+  MAGASINIER user in /admin/utilisateurs.
 - **2026-08-27 (bis) · Claude Code** · **Front & UX polish pass.** Sidebar:
   pinned brand/footer with a thin dark-friendly scrollbar (`.nav-scroll`)
   instead of the glaring native one, compact 38px items on desktop (44px

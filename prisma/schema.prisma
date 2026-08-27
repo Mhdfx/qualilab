@@ -16,6 +16,7 @@ enum Role {
   COMPTABLE
   ADMIN
   CLIENT
+  MAGASINIER
 }
 
 enum EmailType {
@@ -84,6 +85,8 @@ model User {
   rejectedSamples  Sample[]  @relation("SampleRejectedBy")
   enteredResults   Result[]
   auditLogs        AuditLog[]
+  purchaseInvoices PurchaseInvoice[] @relation("PurchaseInvoiceCreatedBy")
+  stockMovements   StockMovement[]   @relation("StockMovementCreatedBy")
 
   @@index([role])
 }
@@ -453,4 +456,102 @@ model LabSettings {
   /// validation (true) instead of after the admin approval (false).
   alertAfterTechnicalValidation Boolean @default(false)
   updatedAt DateTime @updatedAt
+}
+
+// ————— Phase 6 · Achat & Stock (module MAGASINIER) —————
+
+/// A supplier and its payment convention. Archived, never deleted — purchase
+/// invoices refer to it and the payment history must stay readable.
+model Supplier {
+  id      String  @id @default(cuid())
+  name    String  @unique
+  contact String?
+  email   String?
+  phone   String?
+  address String?
+  ice     String?
+  /// Payment convention: invoices are due N days after their issue date
+  /// (0 = comptant). Used to compute each invoice's dueDate by default.
+  paymentTermDays Int     @default(30)
+  notes           String? @db.Text
+  archived        Boolean @default(false)
+  createdAt       DateTime @default(now())
+
+  invoices PurchaseInvoice[]
+
+  @@index([archived, name])
+}
+
+enum PurchaseInvoiceStatus {
+  A_PAYER
+  PAYEE
+}
+
+/// A supplier invoice to pay — the source of the payment-due alerts.
+model PurchaseInvoice {
+  id         String   @id @default(cuid())
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  /// The supplier's own invoice number, unique per supplier.
+  number    String
+  label     String?
+  amount    Decimal  @db.Decimal(12, 2)
+  issueDate DateTime
+  /// Defaults to issueDate + the supplier's payment term; editable.
+  dueDate   DateTime
+  status    PurchaseInvoiceStatus @default(A_PAYER)
+  paidAt    DateTime?
+  createdById String?
+  createdBy   User?   @relation("PurchaseInvoiceCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([supplierId, number])
+  @@index([status, dueDate])
+}
+
+/// A stock article. The quantity is the aggregate the movements maintain —
+/// it is never edited directly, so the history always explains the level.
+model StockItem {
+  id       String @id @default(cuid())
+  name     String @unique
+  /// Free grouping the lab chooses (Milieux de culture, Réactifs, …).
+  category String?
+  /// Counting unit: boîte, flacon, L, kg, unité…
+  unit     String
+  quantity    Decimal @default(0) @db.Decimal(12, 2)
+  /// Low-stock alert threshold; 0 disables the alert for this article.
+  minQuantity Decimal @default(0) @db.Decimal(12, 2)
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  movements StockMovement[]
+
+  @@index([archived, name])
+}
+
+enum StockMovementType {
+  ENTREE
+  SORTIE
+  AJUSTEMENT
+}
+
+/// One stock movement. Lot and expiry are optional until the lab says how
+/// fine it tracks (NEEDEDINFO item 16) — recording them costs nothing and
+/// removing is easier than adding.
+model StockMovement {
+  id     String            @id @default(cuid())
+  itemId String
+  item   StockItem         @relation(fields: [itemId], references: [id])
+  type   StockMovementType
+  /// Always positive; the type carries the direction. For AJUSTEMENT it is
+  /// the absolute corrected quantity observed during the inventory.
+  quantity   Decimal   @db.Decimal(12, 2)
+  lot        String?
+  expiryDate DateTime?
+  note       String?   @db.Text
+  createdById String?
+  createdBy   User?   @relation("StockMovementCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([itemId, createdAt])
 }

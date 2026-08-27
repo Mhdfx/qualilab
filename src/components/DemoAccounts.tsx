@@ -29,7 +29,12 @@ const DEMO_ACCOUNTS: { username: string; role: Role; name: string }[] = [
 
 // Fails the build if a role ever loses its demo account.
 const COVERED = new Set(DEMO_ACCOUNTS.map((a) => a.role));
-const MISSING = ROLES.filter((role) => role !== "CLIENT" && !COVERED.has(role));
+// CLIENT (portal, Phase 8) and MAGASINIER (Achat & Stock, kept invisible
+// until the module is revealed to the client) deliberately have no demo
+// account on the login page.
+const MISSING = ROLES.filter(
+  (role) => role !== "CLIENT" && role !== "MAGASINIER" && !COVERED.has(role)
+);
 
 type DemoAccountsProps = {
   /** Fills the login form with the chosen account. */

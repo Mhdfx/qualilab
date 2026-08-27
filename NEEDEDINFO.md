@@ -79,8 +79,8 @@ le journal sans être réellement expédiés**, et l'interface l'indique clairem
 | 13 | **Liste des équipements** à suivre en métrologie + calendrier d'étalonnage | Module Qualité |
 | 14 | **Quels équipements** font l'objet d'un relevé de température, et à quelle fréquence / quels seuils | Module Qualité |
 | 15 | **Périmètre des EIL** : quelles campagnes, quels organismes | Module Qualité |
-| 16 | **Niveau de détail du stock** : produits suivis, unités, gestion des lots et péremptions ? | Module Achat & Stock |
-| 17 | **Liste des fournisseurs** et leurs conventions de paiement | Module Achat & Stock |
+| 16 | **Niveau de détail du stock** : produits suivis, unités, gestion des lots et péremptions ? | Module Achat & Stock — **built 2026-08-27 (hidden)**: movements already carry optional lot + péremption, their answer selects what to fill |
+| 17 | **Liste des fournisseurs** et leurs conventions de paiement | Module Achat & Stock — **built 2026-08-27 (hidden)**: the list is data entry in `/magasin/fournisseurs` |
 | 18 | **Export de la base existante** (clients, rapports, factures) — format et accès | Reprise de données |
 
 ---
