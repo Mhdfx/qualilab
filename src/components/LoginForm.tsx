@@ -55,7 +55,8 @@ export default function LoginForm() {
             Accédez à votre espace Qualilab International
           </p>
 
-          <form onSubmit={handleSubmit} className="space-y-5" autoComplete="off">
+          {/* Password managers are welcome: the staff logs in every day. */}
+          <form onSubmit={handleSubmit} className="space-y-5">
             <p className="text-center text-xs text-slate-400">
               Utilisez votre identifiant professionnel
             </p>
@@ -68,11 +69,12 @@ export default function LoginForm() {
               <input
                 id="login-username"
                 type="text"
-                name="qualilab-username"
+                name="username"
                 placeholder="Nom d'utilisateur"
+                aria-label="Nom d'utilisateur"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                autoComplete="off"
+                autoComplete="username"
                 autoCorrect="off"
                 autoCapitalize="off"
                 spellCheck={false}
@@ -89,11 +91,12 @@ export default function LoginForm() {
               <input
                 id="login-password"
                 type="password"
-                name="qualilab-password"
+                name="password"
                 placeholder="Mot de passe"
+                aria-label="Mot de passe"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="new-password"
+                autoComplete="current-password"
                 className="input-field w-full py-3.5 pl-12 pr-4 text-base sm:text-sm"
                 required
               />

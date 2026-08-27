@@ -3,6 +3,8 @@ import { getLabSettings } from "@/lib/lab-settings";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { LabSettingsForm } from "@/components/admin/LabSettingsForm";
 
+export const metadata = { title: "Réglages du circuit" };
+
 export default async function ReglagesPage() {
   await requireRole("ADMIN");
 

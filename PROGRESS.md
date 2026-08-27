@@ -197,6 +197,22 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 
+- **2026-08-27 (bis) · Claude Code** · **Front & UX polish pass.** Sidebar:
+  pinned brand/footer with a thin dark-friendly scrollbar (`.nav-scroll`)
+  instead of the glaring native one, compact 38px items on desktop (44px
+  kept on touch) — a 768px laptop now fits the admin menu without
+  scrolling; fixed the double-active nav ("Prélèvements" anchors to
+  `#prelevements` instead of duplicating `/admin`). Added `loading.tsx`
+  skeletons for all 7 role spaces (navigation shows the page's anatomy
+  instantly instead of freezing), per-page browser-tab titles via a
+  metadata template, smooth anchor scrolling with reduced-motion respected
+  globally, pointer cursors restored on buttons (Tailwind v4 preflight),
+  skip-link « Aller au contenu », focus rings on sidebar links, aria-label
+  on the icon-only logout, and the login form now welcomes password
+  managers (`autocomplete username/current-password` — it actively blocked
+  them). Dropped the never-used Poppins 300 weight. Verified in the
+  browser at 1280×660 and 375×812: zero horizontal overflow on every main
+  page, drawer intact. 95 tests, build+lint green.
 - **2026-08-27 · Claude Code** · **Pack d'indépendance — the code is
   finished.** New `LabSettings` singleton + `/admin/reglages` (ADMIN):
   decision n°10 as a real blocking flow (non-conform → received, numbered,

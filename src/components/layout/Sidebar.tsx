@@ -26,10 +26,10 @@ export function Sidebar({ sections, roleLabel, onNavigate, onClose }: SidebarPro
 
   return (
     <aside className="flex h-full w-full flex-col bg-gradient-to-b from-[#1a3a5c] to-[#0f2844] lg:w-64">
-      <div className="relative flex items-center justify-between gap-2 border-b border-white/10 px-4 py-5 lg:px-5">
+      <div className="relative flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-4 py-4 lg:px-5">
         <div className="min-w-0 flex-1">
           <BrandLogo variant="sidebar" />
-          <p className="mt-2.5 text-xs font-medium text-white/60">{roleLabel}</p>
+          <p className="mt-2 text-xs font-medium text-white/60">{roleLabel}</p>
         </div>
         {onClose && (
           <button
@@ -43,11 +43,11 @@ export function Sidebar({ sections, roleLabel, onNavigate, onClose }: SidebarPro
         )}
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4">
+      <nav className="nav-scroll flex-1 overflow-y-auto px-3 py-3">
         {sections.map((section, idx) => (
-          <div key={section.title ?? idx} className={idx > 0 ? "mt-6" : ""}>
+          <div key={section.title ?? idx} className={idx > 0 ? "mt-5" : ""}>
             {section.title && (
-              <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-white/35">
+              <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-white/35">
                 {section.title}
               </p>
             )}
@@ -60,7 +60,7 @@ export function Sidebar({ sections, roleLabel, onNavigate, onClose }: SidebarPro
                 if (item.disabled || !item.href) {
                   return (
                     <li key={item.label}>
-                      <span className="flex min-h-[44px] cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/30">
+                      <span className="flex min-h-[44px] cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/30 lg:min-h-[38px] lg:py-2">
                         <Icon className="h-4 w-4 shrink-0 opacity-50" />
                         <span className="flex-1">{item.label}</span>
                         {item.badge && (
@@ -78,7 +78,7 @@ export function Sidebar({ sections, roleLabel, onNavigate, onClose }: SidebarPro
                     <Link
                       href={item.href}
                       onClick={onNavigate}
-                      className={`flex min-h-[44px] items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-all ${
+                      className={`flex min-h-[44px] items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 lg:min-h-[38px] lg:py-2 ${
                         active
                           ? "border-l-[3px] border-white bg-white/12 pl-[9px] pr-3 text-white shadow-sm"
                           : "border-l-[3px] border-transparent px-3 text-white/65 hover:bg-white/8 hover:text-white"
@@ -95,7 +95,7 @@ export function Sidebar({ sections, roleLabel, onNavigate, onClose }: SidebarPro
         ))}
       </nav>
 
-      <div className="safe-bottom shrink-0 border-t border-white/10 px-4 py-4 lg:px-5">
+      <div className="safe-bottom shrink-0 border-t border-white/10 px-4 py-3 lg:px-5">
         <p className="text-xs font-medium leading-relaxed text-white/50">
           Qualilab International
         </p>

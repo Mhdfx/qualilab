@@ -4,6 +4,8 @@ import { toMoney } from "@/lib/money";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { CatalogueManager } from "@/components/admin/CatalogueManager";
 
+export const metadata = { title: "Catalogue" };
+
 export default async function CataloguePage() {
   await requireRole("ADMIN");
 

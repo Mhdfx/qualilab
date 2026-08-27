@@ -1,6 +1,8 @@
 import { requireRole } from "@/lib/auth";
 import { FacturesList } from "@/components/FacturesList";
 
+export const metadata = { title: "Factures" };
+
 /**
  * The comptable's invoice list.
  *

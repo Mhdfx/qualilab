@@ -2,6 +2,8 @@ import { requireRole } from "@/lib/auth";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ImportClients } from "@/components/admin/ImportClients";
 
+export const metadata = { title: "Import de données" };
+
 export default async function ImportPage() {
   await requireRole("ADMIN");
 

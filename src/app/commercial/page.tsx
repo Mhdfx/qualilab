@@ -4,6 +4,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { ClientList } from "@/components/clients/ClientList";
 
+export const metadata = { title: "Clients" };
+
 export default async function CommercialPage() {
   const [clients, echantillons, rapportsEnvoyes, factures] = await Promise.all([
     prisma.client.findMany({

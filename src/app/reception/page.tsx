@@ -11,6 +11,8 @@ import {
 } from "@/components/reception/BlockedSamples";
 import type { TechnicianOption } from "@/components/reception/ReceptionForm";
 
+export const metadata = { title: "Réception" };
+
 export default async function ReceptionPage() {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);

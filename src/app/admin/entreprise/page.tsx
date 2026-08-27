@@ -3,6 +3,8 @@ import { getCompany } from "@/lib/company-server";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { CompanyForm } from "@/components/admin/CompanyForm";
 
+export const metadata = { title: "Entreprise" };
+
 export default async function EntreprisePage() {
   await requireRole("ADMIN");
 

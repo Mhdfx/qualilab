@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { WorkQueue } from "@/components/technicien/WorkQueue";
 
+export const metadata = { title: "Analyses" };
+
 export default async function TechnicienPage() {
   const session = await requireRole("TECHNICIEN", "ADMIN");
 

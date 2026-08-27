@@ -6,6 +6,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import type { Role } from "@/lib/roles";
 
+export const metadata = { title: "Journal d'audit" };
+
 /**
  * The audit journal — the traceability promise made visible.
  *

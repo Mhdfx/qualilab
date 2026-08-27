@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ParametersManager } from "@/components/admin/ParametersManager";
 
+export const metadata = { title: "Paramètres d'analyse" };
+
 export default async function ParametresPage() {
   await requireRole("ADMIN");
 

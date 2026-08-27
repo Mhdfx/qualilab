@@ -4,12 +4,16 @@ import "./globals.css";
 
 const poppins = Poppins({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  // 300 was shipped but never used anywhere — one font file less to load.
+  weight: ["400", "500", "600", "700"],
   variable: "--font-poppins",
 });
 
 export const metadata: Metadata = {
-  title: "Qualilab International — LIMS",
+  title: {
+    default: "Qualilab International — LIMS",
+    template: "%s · Qualilab LIMS",
+  },
   description:
     "Système de gestion des prélèvements et analyses — Qualilab International",
   icons: {

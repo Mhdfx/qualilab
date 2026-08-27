@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { UsersManager } from "@/components/admin/UsersManager";
 
+export const metadata = { title: "Utilisateurs" };
+
 export default async function UtilisateursPage() {
   const session = await requireRole("ADMIN");
 

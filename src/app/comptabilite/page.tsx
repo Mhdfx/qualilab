@@ -4,6 +4,8 @@ import { RoleDashboard } from "@/components/RoleDashboard";
 import { formatCurrency } from "@/lib/labels";
 import { toMoney } from "@/lib/money";
 
+export const metadata = { title: "Comptabilité" };
+
 export default async function ComptabilitePage() {
   const [factures, enAttente, payees, encaisse] = await Promise.all([
     prisma.invoice.count(),

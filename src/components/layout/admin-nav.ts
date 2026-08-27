@@ -18,7 +18,7 @@ export const adminNav: NavSection[] = [
     title: "Menu principal",
     items: [
       { label: "Tableau de bord", href: "/admin", icon: LayoutDashboard },
-      { label: "Prélèvements", href: "/admin", icon: FlaskConical },
+      { label: "Prélèvements", href: "/admin#prelevements", icon: FlaskConical },
       { label: "Approbations", href: "/validation", icon: ShieldCheck },
       { label: "Factures", href: "/admin/factures", icon: FileText },
     ],

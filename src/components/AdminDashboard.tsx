@@ -65,7 +65,10 @@ export function AdminDashboard() {
         ))}
       </div>
 
-      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div
+        id="prelevements"
+        className="mb-5 flex scroll-mt-24 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+      >
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold text-slate-800">Tous les prélèvements</h2>
           {!loading && (

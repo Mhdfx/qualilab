@@ -4,6 +4,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { ValidationQueue } from "@/components/validation/ValidationQueue";
 
+export const metadata = { title: "Validation qualité" };
+
 export default async function ValidationPage() {
   const [items, valides, rapports, envoyes] = await Promise.all([
     prisma.sample.findMany({

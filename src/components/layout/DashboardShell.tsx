@@ -54,6 +54,12 @@ export function DashboardShell({
 
   return (
     <div className="app-bg flex min-h-screen">
+      <a
+        href="#contenu"
+        className="sr-only z-50 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+      >
+        Aller au contenu
+      </a>
       <div className="hidden lg:block">
         <div className="fixed inset-y-0 left-0 z-30">
           <Sidebar sections={navSections} roleLabel={roleLabel} />
@@ -109,6 +115,7 @@ export function DashboardShell({
             </div>
             <button
               onClick={handleLogout}
+              aria-label="Déconnexion"
               className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 sm:px-4"
             >
               <LogOut className="h-4 w-4" />
@@ -117,7 +124,9 @@ export function DashboardShell({
           </div>
         </header>
 
-        <main className="safe-bottom flex-1 p-3 sm:p-6 lg:p-8">{children}</main>
+        <main id="contenu" className="safe-bottom flex-1 p-3 sm:p-6 lg:p-8">
+          {children}
+        </main>
       </div>
     </div>
   );
