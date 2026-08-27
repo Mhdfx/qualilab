@@ -25,6 +25,13 @@ const DEMO_ACCOUNTS: { username: string; role: Role; name: string }[] = [
   { username: "commercial1", role: "GESTIONNAIRE", name: "Hicham Tazi" },
   { username: "compta1", role: "COMPTABLE", name: "Leila Fassi" },
   { username: "admin", role: "ADMIN", name: "Sara Mansouri" },
+  // DEV ONLY — the Magasinier module (Phase 6) stays invisible on the
+  // deployed server until it is revealed to the client: NODE_ENV is inlined
+  // at build time, so this entry exists on `next dev` and never in a
+  // production build.
+  ...(process.env.NODE_ENV === "development"
+    ? [{ username: "magasin1", role: "MAGASINIER" as Role, name: "Omar Benjelloun" }]
+    : []),
 ];
 
 // Fails the build if a role ever loses its demo account.
