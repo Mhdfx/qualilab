@@ -57,11 +57,13 @@ export async function PATCH(
         limitValue: existing.limitValue,
         alertOnExceed: existing.alertOnExceed,
         threshold: existing.threshold,
+        calcFactor: existing.calcFactor,
       },
       after: {
         limitValue: parameter.limitValue,
         alertOnExceed: parameter.alertOnExceed,
         threshold: parameter.threshold,
+        calcFactor: parameter.calcFactor,
       },
     },
   });

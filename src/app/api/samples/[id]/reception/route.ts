@@ -4,6 +4,7 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { generateReceptionNumbers } from "@/lib/sample-code";
 import { canTransition } from "@/lib/sample-status";
+import { getLabSettings } from "@/lib/lab-settings";
 
 /**
  * Reception of a sample at the laboratory: `PRELEVE → RECU`.
@@ -75,23 +76,33 @@ export async function POST(
     );
   }
 
-  if (typeof technicianId !== "string" || !technicianId) {
-    return NextResponse.json(
-      { error: "Veuillez attribuer l'échantillon à un technicien." },
-      { status: 400 }
-    );
-  }
+  // Pending client decision n°10 (LabSettings): when the lab blocks
+  // non-conform samples, this one is received — numbered, traced — but held
+  // unassigned until an ADMIN releases it to a technician.
+  const settings = await getLabSettings();
+  const blocked = settings.blockNonConformAtReception && !conformity;
 
-  const technician = await prisma.user.findUnique({
-    where: { id: technicianId },
-    select: { id: true, name: true, role: true, banned: true },
-  });
+  let technician: { id: string; name: string } | null = null;
+  if (!blocked) {
+    if (typeof technicianId !== "string" || !technicianId) {
+      return NextResponse.json(
+        { error: "Veuillez attribuer l'échantillon à un technicien." },
+        { status: 400 }
+      );
+    }
 
-  if (!technician || technician.role !== "TECHNICIEN" || technician.banned) {
-    return NextResponse.json(
-      { error: "Technicien invalide." },
-      { status: 400 }
-    );
+    const found = await prisma.user.findUnique({
+      where: { id: technicianId },
+      select: { id: true, name: true, role: true, banned: true },
+    });
+
+    if (!found || found.role !== "TECHNICIEN" || found.banned) {
+      return NextResponse.json(
+        { error: "Technicien invalide." },
+        { status: 400 }
+      );
+    }
+    technician = { id: found.id, name: found.name };
   }
 
   const receivedAt = new Date();
@@ -114,10 +125,11 @@ export async function POST(
           receivedAt,
           conformity,
           conformityNote: note || null,
+          analysisBlocked: blocked,
           produit: typeof produit === "string" && produit.trim() ? produit.trim() : null,
           numeroLot: typeof numeroLot === "string" && numeroLot.trim() ? numeroLot.trim() : null,
-          technicianId: technician.id,
-          assignedAt: receivedAt,
+          technicianId: technician?.id ?? null,
+          assignedAt: technician ? receivedAt : null,
         },
         select: {
           id: true,
@@ -126,6 +138,7 @@ export async function POST(
           serialNumber: true,
           status: true,
           conformity: true,
+          analysisBlocked: true,
         },
       });
 
@@ -141,10 +154,11 @@ export async function POST(
           controlCode: updated.controlCode,
           conformity,
           conformityNote: note || null,
+          analysisBlocked: blocked,
           produit: typeof produit === "string" && produit.trim() ? produit.trim() : null,
           numeroLot: typeof numeroLot === "string" && numeroLot.trim() ? numeroLot.trim() : null,
-          technicianId: technician.id,
-          technicianName: technician.name,
+          technicianId: technician?.id ?? null,
+          technicianName: technician?.name ?? null,
         },
       });
 

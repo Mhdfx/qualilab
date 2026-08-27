@@ -49,6 +49,7 @@ export default async function AnalysePage({
               unit: true,
               threshold: true,
               limitValue: true,
+              calcFactor: true,
             },
           },
         },
@@ -74,7 +75,11 @@ export default async function AnalysePage({
       unit: parameter.unit,
       threshold: parameter.threshold,
       limitValue: parameter.limitValue,
-      value: existing?.value ?? "",
+      calcFactor: parameter.calcFactor,
+      // When a factor transformed the entry, the bench reading (rawValue) is
+      // what the technician typed and re-edits; `value` holds the computed
+      // final figure.
+      value: existing?.rawValue ?? existing?.value ?? "",
       note: existing?.note ?? "",
       workStatus: existing?.workStatus ?? "EN_COURS",
       manualConform: existing?.conform ?? null,

@@ -183,6 +183,10 @@ model AnalysisParameter {
   /// exceeding the limit triggers an automatic contamination alert to the
   /// client once the result is validated. Configurable by the admin.
   alertOnExceed Boolean @default(false)
+  /// Multiplier applied to the technician's raw reading (dilution factor…) —
+  /// the generic calculation mechanism awaiting the lab's official formulas
+  /// (NEEDEDINFO item 6). 1 = the value entered is already final.
+  calcFactor Float @default(1)
   samples  SampleParameter[]
   results  Result[]
 }
@@ -223,6 +227,14 @@ model Sample {
   receivedAt      DateTime?
   conformity      Boolean?
   conformityNote  String?   @db.Text
+  /// Held at reception: non-conform while the lab's policy
+  /// (LabSettings.blockNonConformAtReception) blocks such samples. It stays
+  /// RECU and unassigned until an ADMIN releases it to a technician.
+  analysisBlocked Boolean   @default(false)
+  /// When the contamination alerts for this sample actually left — the guard
+  /// that stops the approval from re-sending what the technical validation
+  /// already dispatched (LabSettings.alertAfterTechnicalValidation).
+  alertsSentAt    DateTime?
   technicianId    String?
   technician      User?     @relation("SampleTechnician", fields: [technicianId], references: [id])
   assignedAt      DateTime?
@@ -270,10 +282,16 @@ model Result {
   parameterId String
   parameter   AnalysisParameter @relation(fields: [parameterId], references: [id])
 
-  /// The value exactly as the technician typed it (e.g. "8,9.10²").
+  /// The FINAL value, as printed on the report (e.g. "8,9.10²"). When the
+  /// parameter has a calcFactor it is computed from the raw reading;
+  /// otherwise it is exactly what the technician typed.
   value      String?
-  /// The same value parsed to a number. A contamination alert compares a result
-  /// to its limit, and a display string cannot be compared — so both are kept.
+  /// The bench reading as typed, kept when a calcFactor transformed it —
+  /// null means value IS the raw entry (factor 1, today's default).
+  rawValue   String?
+  /// The final value parsed to a number. A contamination alert compares a
+  /// result to its limit, and a display string cannot be compared — so both
+  /// are kept.
   numericValue Float?
   unit       String?
   threshold  String?
@@ -415,5 +433,24 @@ model CompanySettings {
   rib     String
   iban    String
   swift   String
+  /// Logo as a data URI (PNG/JPEG/SVG ≤ 300 KB), printed on the PDF
+  /// documents. The styled text brand is the fallback while it is absent —
+  /// the HD file from the lab (NEEDEDINFO item 5) just gets uploaded here.
+  logoData String? @db.LongText
+  updatedAt DateTime @updatedAt
+}
+
+/// Workflow policy the ADMIN controls — a single row (id "lab"). Each field
+/// encodes a client decision that is still pending (NEEDEDINFO §4): BOTH
+/// behaviours are built, the toggle picks one, so the answer costs zero code.
+model LabSettings {
+  id String @id @default("lab")
+  /// Decision n°10 — a sample declared non-conform at reception is analysed
+  /// anyway (false, today's behaviour) or held unassigned until an ADMIN
+  /// releases it to a technician (true).
+  blockNonConformAtReception Boolean @default(false)
+  /// Decision n°11 — contamination alerts leave right after the technical
+  /// validation (true) instead of after the admin approval (false).
+  alertAfterTechnicalValidation Boolean @default(false)
   updatedAt DateTime @updatedAt
 }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   FlaskConical,
   Clock,
@@ -25,7 +26,7 @@ export async function DirectionStats() {
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
 
-  const [byStatus, byType, delays, billed, collected, alertsThisMonth] =
+  const [byStatus, byType, delays, billed, collected, alertsThisMonth, blocked] =
     await Promise.all([
       prisma.sample.groupBy({ by: ["status"], _count: { _all: true } }),
       prisma.sample.groupBy({
@@ -50,6 +51,9 @@ export async function DirectionStats() {
           type: "ALERTE_CONTAMINATION",
           createdAt: { gte: monthStart },
         },
+      }),
+      prisma.sample.count({
+        where: { analysisBlocked: true, status: "RECU" },
       }),
     ]);
 
@@ -91,6 +95,22 @@ export async function DirectionStats() {
 
   return (
     <section aria-label="Vue direction" className="mb-8">
+      {blocked > 0 && (
+        <Link
+          href="/reception"
+          className="mb-4 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 transition hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>
+            <b>
+              {blocked} échantillon{blocked > 1 ? "s" : ""} bloqué
+              {blocked > 1 ? "s" : ""} en réception
+            </b>{" "}
+            (non-conformité) — votre libération est attendue pour lancer
+            l&apos;analyse.
+          </span>
+        </Link>
+      )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="En cours de traitement" value={inPipeline} icon={FlaskConical} accent="blue" />
         <StatCard label="Délai moyen (réception → validation)" value={turnaround} icon={Clock} accent="violet" />

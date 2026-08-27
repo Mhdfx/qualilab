@@ -200,6 +200,7 @@ export async function sendContaminationAlerts(
       lieu: true,
       receivedAt: true,
       clientId: true,
+      alertsSentAt: true,
       report: { select: { id: true } },
       results: {
         where: { conform: false, parameter: { alertOnExceed: true } },
@@ -216,6 +217,12 @@ export async function sendContaminationAlerts(
 
   if (!sample || sample.results.length === 0) {
     return { ok: true as const, sent: 0 };
+  }
+
+  // When LabSettings sends the alerts at the technical validation, the admin
+  // approval calls this again — one alert per contamination, never two.
+  if (sample.alertsSentAt) {
+    return { ok: true as const, sent: 0, alreadySentAt: sample.alertsSentAt };
   }
 
   const to = await recipientsFor(sample.clientId, "alerts");
@@ -251,6 +258,7 @@ export async function sendContaminationAlerts(
   }
 
   let sent = 0;
+  const dispatchedAt = new Date();
   for (const [germ, rows] of byGerm) {
     const { subject, html } = alertEmail(germ, rows);
     const result = await sendEmail({
@@ -276,6 +284,13 @@ export async function sendContaminationAlerts(
         to,
         status: result.status,
       },
+    });
+  }
+
+  if (sent > 0) {
+    await prisma.sample.update({
+      where: { id: sample.id },
+      data: { alertsSentAt: dispatchedAt },
     });
   }
 

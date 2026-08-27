@@ -22,6 +22,15 @@ direction dashboard with seeded data, invoice PDF rendered by the in-image
 Chromium, backup cron installed, **restore tested for real** (2026-08-26).
 Demo mode is ON (panel visible) until the recette.
 
+**2026-08-27 — the CODE IS FINISHED: pack d'indépendance delivered.** Every
+answer still awaited from the client is now a toggle or data entry:
+decisions n°10/n°11 are switches in `/admin/reglages` (blocking flow with
+admin release; early alerts with anti-duplicate guard), item 6 is the
+per-parameter *facteur de calcul*, item 5 the logo upload in
+`/admin/entreprise`, item 7 the `/admin/import` wizard
+(analyse → mapping → dry-run → commit). 95 tests, TESTPLAN checkpoint H
+passed in the browser (full circuit with blocking + factor + early alert).
+
 **What remains:**
 1. **Full TESTPLAN pass on the live server** (the complete multi-role
    sample circuit — réception → saisie → validation → approbation →
@@ -188,6 +197,23 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 
+- **2026-08-27 · Claude Code** · **Pack d'indépendance — the code is
+  finished.** New `LabSettings` singleton + `/admin/reglages` (ADMIN):
+  decision n°10 as a real blocking flow (non-conform → received, numbered,
+  unassigned; « Bloqués » section on /reception; ADMIN-only release =
+  assignment; amber banner on the direction view) and n°11 as early alerts
+  at technical validation guarded by `Sample.alertsSentAt` (browser-proven:
+  EmailLog +1 at validation, unchanged at approval). `calcFactor` on
+  AnalysisParameter: raw reading × factor = final value everywhere
+  (suggestion, saisie hint, report, alert); `Result.rawValue` keeps the
+  bench entry. Logo upload in `/admin/entreprise` (data URI ≤300 Ko,
+  double-validated) printed by all three PDF templates via shared
+  `brand-html.ts`. `/admin/import`: CSV parser + header-guessing mapping +
+  dry-run + audited create-only commit, reusing validateClient — verified
+  in the browser (1 created with recipient email, 1 invalid with
+  Excel-accurate line, 1 DB duplicate ignored). One migration
+  (casing-checked!), 95 tests, build+lint green, full circuit re-run with
+  blocking + factor + early alert. Local fixtures reset after testing.
 - **2026-08-26 (bis) · Claude Code** · **Full circuit passed on production.**
   Walked QL-2026-00001 through the entire live system: réception (blind
   numbers QLC-2026-00001 / SN-03XP-7Q1W generated, technician assigned) →

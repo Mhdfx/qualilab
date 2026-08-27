@@ -28,6 +28,7 @@ export async function loadAssignedSample(
               unit: true,
               threshold: true,
               limitValue: true,
+              calcFactor: true,
             },
           },
         },

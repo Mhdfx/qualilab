@@ -77,6 +77,22 @@ export function parseLabValue(raw: string): ParsedValue {
 }
 
 /**
+ * Applies a parameter's calculation factor (dilution…) to a parsed reading.
+ * Factor 1 — today's default for every parameter — leaves the reading
+ * untouched; an unreadable entry stays unreadable rather than becoming a
+ * guessed number. `Absence` and `< x` count as 0, and 0 times anything is
+ * still 0, so those readings survive any factor unchanged.
+ */
+export function applyCalcFactor(
+  parsed: ParsedValue,
+  factor: number
+): ParsedValue {
+  if (parsed.numeric === null) return parsed;
+  if (!Number.isFinite(factor) || factor <= 0) return parsed;
+  return { numeric: parsed.numeric * factor, kind: parsed.kind };
+}
+
+/**
  * Conformity suggested from the reading — a result is conform while it stays
  * at or below the parameter's limit. It is only a suggestion: the technician
  * confirms it, because a bench judgement can override the arithmetic.

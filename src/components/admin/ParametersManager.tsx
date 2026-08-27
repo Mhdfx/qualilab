@@ -15,6 +15,7 @@ export type ParameterRow = {
   threshold: string | null;
   limitValue: number | null;
   alertOnExceed: boolean;
+  calcFactor: number;
 };
 
 const DOMAINS: SampleType[] = ["ALIMENTAIRE", "EAU", "AMBIANCE"];
@@ -138,6 +139,15 @@ export function ParametersManager({ parameters }: { parameters: ParameterRow[] }
                               ) : (
                                 <span className="text-amber-700">non définie</span>
                               )}
+                              {row.calcFactor !== 1 && (
+                                <>
+                                  {" "}
+                                  · facteur{" "}
+                                  <span className="font-mono font-medium text-violet-700">
+                                    ×{row.calcFactor}
+                                  </span>
+                                </>
+                              )}
                             </p>
                           </div>
 
@@ -189,6 +199,9 @@ function ParameterForm({
       : ""
   );
   const [alertOnExceed, setAlertOnExceed] = useState(parameter?.alertOnExceed ?? false);
+  const [calcFactor, setCalcFactor] = useState(
+    parameter && parameter.calcFactor !== 1 ? String(parameter.calcFactor) : ""
+  );
   const [saving, setSaving] = useState(false);
 
   async function save() {
@@ -209,6 +222,7 @@ function ParameterForm({
             threshold,
             limitValue,
             alertOnExceed,
+            calcFactor,
           }),
         }
       );
@@ -253,6 +267,15 @@ function ParameterForm({
           placeholder="100"
           inputMode="decimal"
           hint="Sert au calcul de conformité"
+        />
+        <Field
+          id="p-factor"
+          label="Facteur de calcul"
+          value={calcFactor}
+          onChange={setCalcFactor}
+          placeholder="1"
+          inputMode="decimal"
+          hint="Multiplie la lecture brute (dilution) — vide = aucune transformation"
         />
       </div>
 

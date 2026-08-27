@@ -471,6 +471,55 @@ The short list that proves nothing broke. ~5 minutes.
 
 ---
 
+## Checkpoint H — Pack d'indépendance (2026-08-27)
+*Everything still awaited from the client became a toggle or data entry.
+Verified in the browser on the dev server, full circuit, on 2026-08-27.*
+
+### H1. Réglages du circuit (/admin/reglages — decisions n°10 & n°11)
+- [x] The two switches render with both behaviours explained; saving persists
+      (`GET /api/admin/lab-settings` reflects it) and is audited.
+- [x] **Blocking ON + non-conform reception**: the technician selector is
+      replaced by the hold notice; submitting numbers the sample
+      (QLC/SN generated) but assigns nobody; success panel says
+      « bloqué en attente de libération ».
+- [x] The blocked sample appears in « Bloqués — non-conformité » on
+      /reception: réceptionniste sees it read-only, ADMIN gets the
+      technician picker + « Libérer pour analyse ».
+- [x] Admin dashboard shows the amber banner linking to /reception while
+      anything is blocked.
+- [x] Release assigns the technician, clears the hold, and the sample flows
+      through the normal circuit afterwards.
+- [x] **Early alerts ON**: the contamination alert left at the TECHNICAL
+      validation (EmailLog +1 while the sample was still unapproved), and
+      the admin approval did NOT resend it (alert count unchanged, report
+      still sent). `alertsSentAt` is the guard.
+
+### H2. Facteur de calcul (item 6)
+- [x] `/admin/parametres` takes a per-parameter factor (rejects 0 and
+      negatives; empty = 1) and shows « facteur ×N » in the list.
+- [x] Saisie shows the badge and the live computed final value
+      (raw 50 ×10 → « Valeur finale : 5.10² UFC/g »); the conformity
+      suggestion uses the FINAL value (500 vs 100 → non conforme).
+- [x] Stored result: `value` = final (printed on the report),
+      `rawValue` = bench entry preserved, `numericValue` = 500.
+- [x] Report PDF renders with the computed value.
+
+### H3. Logo (item 5)
+- [x] `/admin/entreprise` uploads a logo (type/size checked twice — client
+      and server), previews it, removes it; report/invoice/bench-sheet
+      templates print it, styled text brand as fallback.
+
+### H4. Import de données (/admin/import — item 7 scaffolding)
+- [x] Analyse detects columns and guesses the mapping from real-world
+      headers (Raison sociale / ICE / E-mail / Téléphone).
+- [x] Dry-run classifies precisely: 1 to create, 1 invalid (missing name,
+      Excel-accurate line number), 1 duplicate against the existing DB —
+      nothing written.
+- [x] Commit creates the client with its ICE/phone AND registers its email
+      as report+alert recipient; `CLIENTS_IMPORTED` in the audit journal.
+- [ ] 🔒 Re-run against the lab's REAL export when it arrives (item 18) —
+      adapt the mapping, not the code.
+
 ## Cross-cutting — check once per phase
 
 ### Security
@@ -517,4 +566,5 @@ The short list that proves nothing broke. ~5 minutes.
 | Phase 5 · F3 VPS deploy + backup/restore | Claude Code | 2026-08-26 | ✅ passed (HTTPS waits on domain) |
 | Phase 5 · F4 live smoke pass | Claude Code | 2026-08-26 | ✅ passed |
 | **Full circuit on production** | Claude Code | 2026-08-26 | ✅ passed — réception → saisie → double validation → rapport + alerte, all live |
+| Pack d'indépendance (H) | Claude Code | 2026-08-27 | ✅ passed — toggles, blocage/libération, alerte anticipée sans doublon, facteur, logo, import (dev server, circuit complet) |
 | Extensions (G) | | | |

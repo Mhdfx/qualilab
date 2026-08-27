@@ -10,6 +10,7 @@ import {
 import { generateReportNumber } from "@/lib/report-number";
 import { buildConclusion } from "@/lib/report-html";
 import { sendReport, sendContaminationAlerts } from "@/lib/report-dispatch";
+import { getLabSettings } from "@/lib/lab-settings";
 
 /**
  * Quality validation — the two approvals, and the rejection.
@@ -83,7 +84,23 @@ export async function POST(
       metadata: { code: sample.code, step: "1/2" },
     });
 
-    return NextResponse.json({ ...updated, awaiting: "ADMIN" });
+    // Pending client decision n°11 (LabSettings): when the lab wants the
+    // contamination alerts out as soon as the technical validation lands,
+    // they leave here — the admin approval later finds alertsSentAt set and
+    // does not send them again. Never blocks the validation itself.
+    let dispatch: { alerts?: number; error?: string } | undefined;
+    const settings = await getLabSettings();
+    if (settings.alertAfterTechnicalValidation) {
+      const alerts = await sendContaminationAlerts(sample.id, session.id).catch(
+        (error) => {
+          console.error("[validation] alert send failed", { error });
+          return { ok: false as const, error: "Envoi des alertes impossible." };
+        }
+      );
+      dispatch = alerts.ok ? { alerts: alerts.sent } : { error: alerts.error };
+    }
+
+    return NextResponse.json({ ...updated, awaiting: "ADMIN", dispatch });
   }
 
   if (action === "approve") {

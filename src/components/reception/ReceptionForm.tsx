@@ -25,12 +25,15 @@ type ReceptionFormProps = {
   technicians: TechnicianOption[];
   initialProduit: string;
   initialNumeroLot: string;
+  /** LabSettings policy: non-conform samples are held instead of assigned. */
+  blockNonConform: boolean;
 };
 
 type Assigned = {
   controlCode: string;
   serialNumber: string;
   conformity: boolean;
+  blocked: boolean;
 };
 
 export function ReceptionForm({
@@ -39,6 +42,7 @@ export function ReceptionForm({
   technicians,
   initialProduit,
   initialNumeroLot,
+  blockNonConform,
 }: ReceptionFormProps) {
   const router = useRouter();
   const [produit, setProduit] = useState(initialProduit);
@@ -62,7 +66,8 @@ export function ReceptionForm({
       setError("Le motif est obligatoire pour une non-conformité.");
       return;
     }
-    if (!technicianId) {
+    const willBlock = blockNonConform && conformity === false;
+    if (!willBlock && !technicianId) {
       setError("Veuillez attribuer l'échantillon à un technicien.");
       return;
     }
@@ -77,7 +82,7 @@ export function ReceptionForm({
         body: JSON.stringify({
           conformity,
           conformityNote: conformityNote.trim(),
-          technicianId,
+          technicianId: willBlock ? undefined : technicianId,
           produit: produit.trim(),
           numeroLot: numeroLot.trim(),
         }),
@@ -98,6 +103,7 @@ export function ReceptionForm({
         controlCode: data.controlCode,
         serialNumber: data.serialNumber,
         conformity,
+        blocked: data.analysisBlocked === true,
       });
     } catch {
       setError("Une erreur réseau est survenue. Réessayez.");
@@ -109,6 +115,10 @@ export function ReceptionForm({
   if (assigned) {
     return <ReceptionSuccess sampleCode={sampleCode} assigned={assigned} />;
   }
+
+  // The lab's policy (LabSettings) can hold non-conform samples: no
+  // technician is chosen here — an ADMIN will release it later.
+  const willBlock = blockNonConform && conformity === false;
 
   return (
     <form onSubmit={handleSubmit} noValidate>
@@ -199,6 +209,17 @@ export function ReceptionForm({
           </div>
         )}
 
+        {willBlock ? (
+          <p className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>
+              Selon la politique du laboratoire, un échantillon non conforme est{" "}
+              <b>bloqué à la réception</b> : il sera numéroté et enregistré,
+              mais ne partira en analyse qu&apos;après libération par un
+              administrateur.
+            </span>
+          </p>
+        ) : (
         <div className="mt-4">
           <label
             htmlFor="technicianId"
@@ -230,6 +251,7 @@ export function ReceptionForm({
             </p>
           )}
         </div>
+        )}
 
         <div className="mt-4 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
           <ShieldCheck
@@ -255,7 +277,7 @@ export function ReceptionForm({
         <div className="mt-5 flex flex-col gap-3 sm:flex-row-reverse">
           <PrimaryButton
             type="submit"
-            disabled={submitting || technicians.length === 0}
+            disabled={submitting || (!willBlock && technicians.length === 0)}
             className="sm:flex-1"
           >
             {submitting ? "Réception en cours…" : "Valider la réception"}
@@ -341,7 +363,10 @@ function ReceptionSuccess({
         <div>
           <h2 className="font-semibold text-slate-900">Échantillon réceptionné</h2>
           <p className="text-sm text-slate-500">
-            {sampleCode} · attribué au technicien
+            {sampleCode} ·{" "}
+            {assigned.blocked
+              ? "bloqué en attente de libération"
+              : "attribué au technicien"}
           </p>
         </div>
       </div>
@@ -349,7 +374,12 @@ function ReceptionSuccess({
       {!assigned.conformity && (
         <p className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          Enregistré comme <b>non conforme</b> — le motif est joint au dossier.
+          <span>
+            Enregistré comme <b>non conforme</b> — le motif est joint au
+            dossier.
+            {assigned.blocked &&
+              " L'analyse est bloquée : un administrateur doit libérer l'échantillon."}
+          </span>
         </p>
       )}
 

@@ -4,7 +4,11 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { loadAssignedSample } from "@/lib/sample-access";
 import { canTransition } from "@/lib/sample-status";
-import { parseLabValue } from "@/lib/result-value";
+import {
+  applyCalcFactor,
+  formatLabValue,
+  parseLabValue,
+} from "@/lib/result-value";
 import type { ResultWorkStatus } from "@/generated/prisma/enums";
 
 const WORK_STATUSES: ResultWorkStatus[] = ["EN_COURS", "TERMINE", "ANOMALIE"];
@@ -69,6 +73,7 @@ export async function PUT(
   const entries: {
     parameterId: string;
     value: string | null;
+    rawValue: string | null;
     numericValue: number | null;
     unit: string | null;
     threshold: string | null;
@@ -101,12 +106,19 @@ export async function PUT(
       );
     }
 
-    // The value is stored as typed and as a number: the alert compares figures.
-    const parsed = value ? parseLabValue(value) : { numeric: null };
+    // The value is stored as typed and as a number: the alert compares
+    // figures. A calcFactor (dilution) turns the bench reading into the final
+    // value; the raw entry is kept alongside so nothing is lost.
+    const parsed = value
+      ? applyCalcFactor(parseLabValue(value), parameter.calcFactor)
+      : { numeric: null };
+    const transformed =
+      parameter.calcFactor !== 1 && value !== "" && parsed.numeric !== null;
 
     entries.push({
       parameterId,
-      value: value || null,
+      value: transformed ? formatLabValue(parsed.numeric!) : value || null,
+      rawValue: transformed ? value : null,
       numericValue: parsed.numeric,
       unit: parameter.unit,
       threshold: parameter.threshold,

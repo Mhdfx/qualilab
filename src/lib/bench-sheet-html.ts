@@ -1,4 +1,5 @@
 import { COMPANY, type CompanyInfo } from "./company";
+import { companyBrandHtml } from "./brand-html";
 import { SAMPLE_TYPE_LABELS, formatDate } from "./labels";
 import type { SampleType } from "@/generated/prisma/client";
 
@@ -99,6 +100,7 @@ export function buildBenchSheetHtml(
     border-bottom: 2px solid #1f3a4d; padding-bottom: 8px; margin-bottom: 12px; }
   .brand { font-size: 14pt; font-weight: 700; color: #1f3a4d; }
   .brand span { color: #b8860b; }
+  .brand-logo { height: 36px; max-width: 220px; object-fit: contain; display: block; }
   .sub { font-size: 8pt; color: #55707d; }
   .doc { text-align: right; font-size: 8.6pt; color: #55707d; }
   .doc .kind { font-size: 10.5pt; font-weight: 700; color: #1f3a4d;
@@ -127,7 +129,7 @@ export function buildBenchSheetHtml(
 <body>
 <header>
   <div>
-    <div class="brand">QUALILAB <span>INTERNATIONAL</span></div>
+    ${companyBrandHtml(company)}
     <div class="sub">${escapeHtml(company.tagline)}</div>
   </div>
   <div class="doc">

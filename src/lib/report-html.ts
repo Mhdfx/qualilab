@@ -1,4 +1,5 @@
 import { COMPANY, type CompanyInfo } from "./company";
+import { companyBrandHtml } from "./brand-html";
 import { SAMPLE_TYPE_LABELS, formatDateTime, formatDate } from "./labels";
 import type { SampleType } from "@/generated/prisma/client";
 
@@ -103,6 +104,7 @@ export function buildReportHtml(
     border-bottom: 2px solid #1f3a4d; padding: 12px 0 10px; margin-bottom: 14px; }
   .brand { font-size: 17pt; font-weight: 700; color: #1f3a4d; letter-spacing: .2px; }
   .brand span { color: #b8860b; }
+  .brand-logo { height: 44px; max-width: 250px; object-fit: contain; display: block; }
   .tagline { font-size: 7.6pt; color: #55707d; margin-top: 2px; max-width: 260px; }
   .identity { font-size: 7.4pt; color: #55707d; margin-top: 5px; line-height: 1.5; }
   .docmeta { text-align: right; font-size: 8.2pt; color: #55707d; line-height: 1.6; }
@@ -149,7 +151,7 @@ export function buildReportHtml(
 <div class="band"></div>
 <header>
   <div>
-    <div class="brand">QUALILAB <span>INTERNATIONAL</span></div>
+    ${companyBrandHtml(company)}
     <div class="tagline">${escapeHtml(company.tagline)}</div>
     <div class="identity">
       ${escapeHtml(company.address)} · ${escapeHtml(company.city)}<br>

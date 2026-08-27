@@ -2,6 +2,8 @@ export type CompanyInfo = {
   name: string; tagline: string; address: string; city: string; phone: string;
   email: string; website: string; ice: string; rc: string; bank: string;
   rib: string; iban: string; swift: string;
+  /** Logo as a data URI, printed on the PDFs; null = styled text brand. */
+  logoData: string | null;
 };
 
 /** Fallback defaults — used until the admin saves the real identity. */
@@ -19,6 +21,7 @@ export const COMPANY: CompanyInfo = {
   rib: "190 780 21211 0000123456 78",
   iban: "MA64 1907 8021 2110 0001 2345 678",
   swift: "BCPOMAMC",
+  logoData: null,
 };
 
 /**

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseLabValue, suggestConformity, formatLabValue } from "./result-value";
+import { applyCalcFactor, parseLabValue, suggestConformity, formatLabValue } from "./result-value";
 
 /**
  * Reading a bench value is the single most consequential function here: it
@@ -96,5 +96,48 @@ describe("formatLabValue", () => {
         value
       );
     }
+  });
+});
+
+/**
+ * The calculation factor (dilution) turns the bench reading into the final
+ * value — awaiting the lab's official formulas, the mechanism must already be
+ * exact: it decides what the report prints and what an alert compares.
+ */
+describe("applyCalcFactor", () => {
+  it("multiplies a plain reading by the factor", () => {
+    const parsed = parseLabValue("8,9.10²");
+    expect(applyCalcFactor(parsed, 10).numeric).toBe(8900);
+    expect(applyCalcFactor(parsed, 10).kind).toBe("number");
+  });
+
+  it("leaves the reading untouched at factor 1 — today's default", () => {
+    const parsed = parseLabValue("450");
+    expect(applyCalcFactor(parsed, 1)).toEqual(parsed);
+  });
+
+  it("keeps Absence and < detections at zero whatever the factor", () => {
+    expect(applyCalcFactor(parseLabValue("Absence"), 100).numeric).toBe(0);
+    expect(applyCalcFactor(parseLabValue("< 10"), 100).numeric).toBe(0);
+    expect(applyCalcFactor(parseLabValue("< 10"), 100).kind).toBe("below");
+  });
+
+  it("never turns an unreadable entry into a number", () => {
+    const parsed = parseLabValue("illisible???");
+    expect(applyCalcFactor(parsed, 10).numeric).toBeNull();
+  });
+
+  it("ignores a nonsensical factor rather than corrupting the value", () => {
+    const parsed = parseLabValue("100");
+    expect(applyCalcFactor(parsed, 0).numeric).toBe(100);
+    expect(applyCalcFactor(parsed, Number.NaN).numeric).toBe(100);
+    expect(applyCalcFactor(parsed, -5).numeric).toBe(100);
+  });
+
+  it("changes the conformity verdict exactly as a dilution would", () => {
+    // Raw 50 is under a limit of 100 — but at ×10 the final 500 is over it.
+    const parsed = parseLabValue("50");
+    expect(suggestConformity(parsed.numeric, 100)).toBe(true);
+    expect(suggestConformity(applyCalcFactor(parsed, 10).numeric, 100)).toBe(false);
   });
 });

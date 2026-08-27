@@ -45,12 +45,38 @@ export async function PUT(request: Request) {
     data[field] = value;
   }
 
+  // The logo is optional (NEEDEDINFO item 5 — the HD file is still awaited):
+  // a data URI to set it, null/"" to remove it, absent to leave it untouched.
+  let logoData: string | null | undefined = undefined;
+  if ("logoData" in input) {
+    const value = input.logoData;
+    if (value === null || value === "") {
+      logoData = null;
+    } else if (typeof value === "string") {
+      if (!/^data:image\/(png|jpe?g|svg\+xml|webp);base64,/.test(value)) {
+        return NextResponse.json(
+          { error: "Logo invalide — PNG, JPEG, SVG ou WebP attendu." },
+          { status: 400 }
+        );
+      }
+      if (value.length > 400_000) {
+        return NextResponse.json(
+          { error: "Logo trop lourd — 300 Ko maximum." },
+          { status: 400 }
+        );
+      }
+      logoData = value;
+    } else {
+      return NextResponse.json({ error: "Logo invalide." }, { status: 400 });
+    }
+  }
+
   const before = await getCompany();
 
   const saved = await prisma.companySettings.upsert({
     where: { id: "company" },
-    create: { id: "company", ...data },
-    update: data,
+    create: { id: "company", ...data, logoData: logoData ?? null },
+    update: { ...data, ...(logoData !== undefined ? { logoData } : {}) },
   });
 
   await logAudit({
@@ -59,7 +85,12 @@ export async function PUT(request: Request) {
     entity: "CompanySettings",
     entityId: "company",
     metadata: {
-      changed: FIELDS.filter((f) => before[f] !== data[f]),
+      changed: [
+        ...FIELDS.filter((f) => before[f] !== data[f]),
+        ...(logoData !== undefined && logoData !== before.logoData
+          ? ["logo"]
+          : []),
+      ],
     },
   });
 

@@ -96,3 +96,28 @@ describe("validateParameter", () => {
     if (result.ok) expect(result.value.alertOnExceed).toBe(false);
   });
 });
+
+describe("calcFactor", () => {
+  const valid = { name: "E. coli", category: "ALIMENTAIRE", limitValue: "100" };
+
+  it("defaults to 1 when the field is empty or absent", () => {
+    for (const calcFactor of [undefined, null, ""]) {
+      const result = validateParameter({ ...valid, calcFactor });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value.calcFactor).toBe(1);
+    }
+  });
+
+  it("accepts a decimal factor written with a comma", () => {
+    const result = validateParameter({ ...valid, calcFactor: "2,5" });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.calcFactor).toBe(2.5);
+  });
+
+  it("refuses zero and negative factors — they would zero or flip results", () => {
+    for (const calcFactor of ["0", "-10", "abc"]) {
+      const result = validateParameter({ ...valid, calcFactor });
+      expect(result.ok).toBe(false);
+    }
+  });
+});

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Building2, MapPin, Clock, User, FlaskConical } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { getLabSettings } from "@/lib/lab-settings";
 import { formatDateTime } from "@/lib/labels";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -19,7 +20,7 @@ export default async function ReceptionDetailPage({
 }) {
   const { id } = await params;
 
-  const [sample, technicians, workload] = await Promise.all([
+  const [sample, technicians, workload, settings] = await Promise.all([
     prisma.sample.findUnique({
       where: { id },
       select: {
@@ -49,6 +50,7 @@ export default async function ReceptionDetailPage({
       where: { status: { in: ["RECU", "EN_ANALYSE"] } },
       _count: { _all: true },
     }),
+    getLabSettings(),
   ]);
 
   if (!sample) notFound();
@@ -162,6 +164,7 @@ export default async function ReceptionDetailPage({
             technicians={technicianOptions}
             initialProduit={sample.produit ?? ""}
             initialNumeroLot={sample.numeroLot ?? ""}
+            blockNonConform={settings.blockNonConformAtReception}
           />
         )}
       </div>

@@ -18,6 +18,7 @@ export type ParameterInput = {
   threshold?: unknown;
   limitValue?: unknown;
   alertOnExceed?: unknown;
+  calcFactor?: unknown;
 };
 
 export type CleanParameter = {
@@ -27,6 +28,7 @@ export type CleanParameter = {
   threshold: string | null;
   limitValue: number | null;
   alertOnExceed: boolean;
+  calcFactor: number;
 };
 
 export type ParameterResult =
@@ -81,6 +83,17 @@ export function validateParameter(input: ParameterInput): ParameterResult {
     };
   }
 
+  // Calculation factor (dilution…): empty means 1 — the entry is final. A
+  // factor of 0 would silently zero every result, so it is refused.
+  const factor = parseLimit(input.calcFactor);
+  if (factor === "invalid" || factor === 0) {
+    return {
+      ok: false,
+      error:
+        "Le facteur de calcul doit être un nombre strictement positif (ou vide pour 1).",
+    };
+  }
+
   return {
     ok: true,
     value: {
@@ -90,6 +103,7 @@ export function validateParameter(input: ParameterInput): ParameterResult {
       threshold: text(input.threshold) || null,
       limitValue: limit,
       alertOnExceed,
+      calcFactor: factor ?? 1,
     },
   };
 }

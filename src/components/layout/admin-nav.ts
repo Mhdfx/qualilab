@@ -6,6 +6,8 @@ import {
   Building2,
   UserCog,
   Settings,
+  SlidersHorizontal,
+  FileUp,
   BarChart3,
   ShieldCheck,
 } from "lucide-react";
@@ -33,6 +35,8 @@ export const adminNav: NavSection[] = [
     items: [
       { label: "Paramètres d'analyse", href: "/admin/parametres", icon: Settings },
       { label: "Catalogue", href: "/admin/catalogue", icon: Users },
+      { label: "Réglages du circuit", href: "/admin/reglages", icon: SlidersHorizontal },
+      { label: "Import de données", href: "/admin/import", icon: FileUp },
       { label: "Entreprise", href: "/admin/entreprise", icon: Building2 },
       { label: "Journal d'audit", href: "/admin/journal", icon: BarChart3 },
     ],

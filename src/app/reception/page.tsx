@@ -1,32 +1,88 @@
 import { Inbox, ClipboardCheck, FlaskConical, CalendarClock } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+import { formatDateTime } from "@/lib/labels";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { ReceptionQueue } from "@/components/reception/ReceptionQueue";
+import {
+  BlockedSamples,
+  type BlockedSample,
+} from "@/components/reception/BlockedSamples";
+import type { TechnicianOption } from "@/components/reception/ReceptionForm";
 
 export default async function ReceptionPage() {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
-  const [pending, recusAujourdhui, enAnalyse, total] = await Promise.all([
-    prisma.sample.findMany({
-      where: { status: "PRELEVE" },
-      select: {
-        id: true,
-        code: true,
-        lieu: true,
-        type: true,
-        sampledAt: true,
-        client: { select: { name: true } },
-        user: { select: { name: true } },
-        parameters: { select: { parameter: { select: { name: true } } } },
-      },
-      orderBy: { sampledAt: "asc" },
-    }),
-    prisma.sample.count({ where: { receivedAt: { gte: startOfDay } } }),
-    prisma.sample.count({ where: { status: "EN_ANALYSE" } }),
-    prisma.sample.count(),
-  ]);
+  const [session, pending, blocked, recusAujourdhui, enAnalyse, total] =
+    await Promise.all([
+      getSession(),
+      prisma.sample.findMany({
+        where: { status: "PRELEVE" },
+        select: {
+          id: true,
+          code: true,
+          lieu: true,
+          type: true,
+          sampledAt: true,
+          client: { select: { name: true } },
+          user: { select: { name: true } },
+          parameters: { select: { parameter: { select: { name: true } } } },
+        },
+        orderBy: { sampledAt: "asc" },
+      }),
+      prisma.sample.findMany({
+        where: { analysisBlocked: true, status: "RECU" },
+        select: {
+          id: true,
+          controlCode: true,
+          produit: true,
+          conformityNote: true,
+          receivedAt: true,
+          client: { select: { name: true } },
+        },
+        orderBy: { receivedAt: "asc" },
+      }),
+      prisma.sample.count({ where: { receivedAt: { gte: startOfDay } } }),
+      prisma.sample.count({ where: { status: "EN_ANALYSE" } }),
+      prisma.sample.count(),
+    ]);
+
+  // The release control needs the technician list; only fetched when a
+  // blocked sample actually exists.
+  let technicianOptions: TechnicianOption[] = [];
+  if (blocked.length > 0) {
+    const [technicians, workload] = await Promise.all([
+      prisma.user.findMany({
+        where: { role: "TECHNICIEN", banned: { not: true } },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.sample.groupBy({
+        by: ["technicianId"],
+        where: { status: { in: ["RECU", "EN_ANALYSE"] } },
+        _count: { _all: true },
+      }),
+    ]);
+    const loadByTechnician = new Map(
+      workload.map((row) => [row.technicianId, row._count._all])
+    );
+    technicianOptions = technicians.map((technician) => ({
+      id: technician.id,
+      name: technician.name,
+      load: loadByTechnician.get(technician.id) ?? 0,
+    }));
+  }
+
+  const blockedSamples: BlockedSample[] = blocked.map((sample) => ({
+    id: sample.id,
+    controlCode: sample.controlCode,
+    clientName: sample.client.name,
+    produit: sample.produit,
+    conformityNote: sample.conformityNote,
+    receivedAt: sample.receivedAt ? formatDateTime(sample.receivedAt) : null,
+  }));
 
   return (
     <div>
@@ -56,6 +112,12 @@ export default async function ReceptionPage() {
         </div>
         <ReceptionQueue samples={pending} />
       </section>
+
+      <BlockedSamples
+        samples={blockedSamples}
+        technicians={technicianOptions}
+        canRelease={session?.role === "ADMIN"}
+      />
     </div>
   );
 }

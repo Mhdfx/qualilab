@@ -1,4 +1,5 @@
 import { COMPANY, type CompanyInfo } from "./company";
+import { companyBrandHtml } from "./brand-html";
 import { formatDate } from "./labels";
 import { amountToFrenchWords } from "./number-to-words-fr";
 
@@ -89,6 +90,7 @@ export function buildInvoiceHtml(
     border-bottom: 2px solid #1f3a4d; padding: 12px 0 10px; margin-bottom: 14px; }
   .brand { font-size: 17pt; font-weight: 700; color: #1f3a4d; }
   .brand span { color: #b8860b; }
+  .brand-logo { height: 42px; max-width: 240px; object-fit: contain; display: block; }
   .identity { font-size: 7.4pt; color: #55707d; margin-top: 5px; line-height: 1.5; }
   .docmeta { text-align: right; font-size: 8.4pt; color: #55707d; line-height: 1.6; }
   .docmeta .kind { font-size: 11pt; font-weight: 700; color: #1f3a4d;
@@ -140,7 +142,7 @@ export function buildInvoiceHtml(
 <div class="band"></div>
 <header>
   <div>
-    <div class="brand">QUALILAB <span>INTERNATIONAL</span></div>
+    ${companyBrandHtml(company)}
     <div class="identity">
       ${escapeHtml(company.address)} · ${escapeHtml(company.city)}<br>
       Tél. ${escapeHtml(company.phone)} · ${escapeHtml(company.email)}<br>

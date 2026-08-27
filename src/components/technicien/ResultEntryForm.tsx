@@ -12,7 +12,12 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
-import { parseLabValue, suggestConformity } from "@/lib/result-value";
+import {
+  applyCalcFactor,
+  formatLabValue,
+  parseLabValue,
+  suggestConformity,
+} from "@/lib/result-value";
 import type { ResultWorkStatus } from "@/generated/prisma/enums";
 
 export type ParameterLine = {
@@ -21,6 +26,8 @@ export type ParameterLine = {
   unit: string | null;
   threshold: string | null;
   limitValue: number | null;
+  /** Multiplier applied to the raw reading (dilution) — 1 means none. */
+  calcFactor: number;
   value: string;
   note: string;
   workStatus: ResultWorkStatus;
@@ -54,7 +61,11 @@ export function ResultEntryForm({
   const readings = useMemo(
     () =>
       lines.map((line) => {
-        const parsed = line.value ? parseLabValue(line.value) : null;
+        // The suggestion compares the FINAL value — raw reading × factor —
+        // exactly as the server will store it.
+        const parsed = line.value
+          ? applyCalcFactor(parseLabValue(line.value), line.calcFactor)
+          : null;
         const auto = parsed
           ? suggestConformity(parsed.numeric, line.limitValue)
           : null;
@@ -175,6 +186,11 @@ export function ResultEntryForm({
                   <p className="font-semibold text-slate-800">{line.name}</p>
                   <p className="text-xs text-slate-500">
                     Seuil : {line.threshold ?? "non défini"}
+                    {line.calcFactor !== 1 && (
+                      <span className="ml-2 rounded-full bg-violet-50 px-2 py-0.5 font-medium text-violet-700">
+                        Facteur ×{line.calcFactor}
+                      </span>
+                    )}
                   </p>
                 </div>
 
@@ -196,6 +212,18 @@ export function ResultEntryForm({
                       placeholder="Ex. : 8,9.10²  ·  < 10  ·  Absence"
                       className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50 disabled:text-slate-500"
                     />
+                    {line.calcFactor !== 1 &&
+                      reading.parsed?.numeric != null &&
+                      reading.parsed.numeric !== 0 && (
+                        <p className="mt-1 text-xs text-violet-700">
+                          Valeur finale (lecture ×{line.calcFactor}) :{" "}
+                          <b className="font-mono">
+                            {formatLabValue(reading.parsed.numeric)}
+                          </b>
+                          {line.unit ? ` ${line.unit}` : ""} — c&apos;est elle
+                          qui figure au rapport.
+                        </p>
+                      )}
                   </div>
 
                   <div>
