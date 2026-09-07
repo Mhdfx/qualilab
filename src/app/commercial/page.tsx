@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { Building2, FlaskConical, Send, FileText } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -7,6 +8,8 @@ import { ClientList } from "@/components/clients/ClientList";
 export const metadata = { title: "Clients" };
 
 export default async function CommercialPage() {
+  // Belt and braces with the layout guard: a page must be safe on its own.
+  await requireRole("GESTIONNAIRE", "ADMIN");
   const [clients, echantillons, rapportsEnvoyes, factures] = await Promise.all([
     prisma.client.findMany({
       select: {

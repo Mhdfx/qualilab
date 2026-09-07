@@ -36,8 +36,11 @@ the `qualilab` deploy user, and prints a **deploy key** to add to GitHub
 
 ## Git as the pipeline
 
-The VPS pulls from GitHub with its read-only deploy key — no personal
-credentials on the server, and every deployment is exactly a commit:
+The VPS pulls from GitHub — the repository is public today, so the current
+server clones anonymously over HTTPS (no credentials on the server at all);
+the read-only deploy key printed by `provision-vps.sh` is what to add the
+day the repository goes private. Either way every deployment is exactly a
+commit:
 
 ```
 push to master ──▶ ssh vps ──▶ git pull ──▶ docker compose up -d --build
@@ -90,8 +93,10 @@ are additive by policy (see CODE_QUALITY), so going back one version is safe.
 ## Backups — non-negotiable
 
 ```bash
-# /etc/cron.d/qualilab — daily at 02:00, as the deploy user:
-0 2 * * *  cd /opt/qualilab && DB_PASSWORD=... ./scripts/backup-db.sh
+# /etc/cron.d/qualilab-backup — installed by vps-first-deploy.sh. cron.d
+# lines carry the USER field; the job sources .env for DB_PASSWORD and logs
+# into the backup directory (writable by the deploy user):
+0 2 * * * qualilab bash -c 'cd /opt/qualilab && set -a && . ./.env && set +a && bash scripts/backup-db.sh' >> /var/backups/qualilab/backup.log 2>&1
 ```
 
 - 30 days retention, gzip-verified, refuses suspiciously small dumps.
@@ -101,6 +106,26 @@ are additive by policy (see CODE_QUALITY), so going back one version is safe.
   `./scripts/restore-db.sh /var/backups/qualilab/<dump>.sql.gz`
   — Last tested restore: **2026-08-26** (backup → restore → app healthy,
   7 users intact — done during the first deployment)
+
+## Go-live — closing the demonstration posture
+
+Until the recette the server deliberately runs in demo mode: the login page
+lists the demo accounts and they all share the password `password`. Hiding
+the panel (`NEXT_PUBLIC_DEMO_MODE=false`) is **cosmetic** — it does not
+disable the accounts. The day real users start, in this order:
+
+```bash
+# 1. The lab's admin creates the REAL accounts in /admin/utilisateurs
+#    (at least one real ADMIN — the next step refuses to run without it).
+# 2. Ban every demo account and revoke their sessions:
+bash scripts/disable-demo-accounts.sh
+# 3. Hide the panel and rebuild:
+sed -i 's/^NEXT_PUBLIC_DEMO_MODE=.*/NEXT_PUBLIC_DEMO_MODE=false/' .env
+docker compose up -d --build
+```
+
+`disable-demo-accounts.sh` is idempotent and refuses to lock the lab out:
+it exits with a clear message while no non-demo ADMIN exists.
 
 ## After every deploy — 5-minute check
 

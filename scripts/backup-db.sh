@@ -21,19 +21,30 @@ mkdir -p "$BACKUP_DIR"
 # --no-tablespaces: dumping tablespace metadata needs the PROCESS privilege
 # the app user rightly lacks; without the flag every run logs a scary
 # access-denied warning.
-docker compose exec -T db \
-  mysqldump --single-transaction --routines --triggers --no-tablespaces \
-  -u qualilab -p"${DB_PASSWORD:?DB_PASSWORD not set}" qualilab \
-  | gzip > "$BACKUP_DIR/qualilab_${STAMP}.sql.gz"
+FINAL="$BACKUP_DIR/qualilab_${STAMP}.sql.gz"
+TMP="$BACKUP_DIR/.qualilab_${STAMP}.partial.gz"
+trap 'rm -f "$TMP"' EXIT
 
-# Verify the dump is a valid gzip with content before trusting it.
-gzip -t "$BACKUP_DIR/qualilab_${STAMP}.sql.gz"
-SIZE=$(stat -c%s "$BACKUP_DIR/qualilab_${STAMP}.sql.gz")
+# Dump to a temporary file: a mysqldump that dies halfway (db container down,
+# connection lost) must never leave a truncated-but-valid gzip under the
+# final name for restore-db.sh to trust.
+docker compose exec -T db   mysqldump --single-transaction --routines --triggers --no-tablespaces   -u qualilab -p"${DB_PASSWORD:?DB_PASSWORD not set}" qualilab   | gzip > "$TMP"
+
+# Verify: valid gzip, real content, and mysqldump's own completion marker
+# on the last line — the proof the dump reached the end.
+gzip -t "$TMP"
+SIZE=$(stat -c%s "$TMP")
 if [ "$SIZE" -lt 1024 ]; then
   echo "backup suspiciously small (${SIZE} bytes) — investigate" >&2
   exit 1
 fi
+if ! gunzip -c "$TMP" | tail -c 300 | grep -q "Dump completed"; then
+  echo "backup incomplete: no 'Dump completed' marker — not kept" >&2
+  exit 1
+fi
+mv "$TMP" "$FINAL"
+trap - EXIT
 
 find "$BACKUP_DIR" -name "qualilab_*.sql.gz" -mtime "+${RETENTION_DAYS}" -delete
 
-echo "backup ok: qualilab_${STAMP}.sql.gz (${SIZE} bytes)"
+echo "backup ok: $(basename "$FINAL") (${SIZE} bytes)"

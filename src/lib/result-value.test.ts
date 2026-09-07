@@ -141,3 +141,15 @@ describe("applyCalcFactor", () => {
     expect(suggestConformity(applyCalcFactor(parsed, 10).numeric, 100)).toBe(false);
   });
 });
+
+describe("formatLabValue — mantissa carry", () => {
+  it("carries a mantissa that rounds to 10 into the exponent", () => {
+    expect(formatLabValue(995)).toBe("1.10³");
+    expect(formatLabValue(9950)).toBe("1.10⁴");
+  });
+
+  it("keeps ordinary readings unchanged", () => {
+    expect(formatLabValue(890)).toBe("8,9.10²");
+    expect(formatLabValue(100)).toBe("1.10²");
+  });
+});

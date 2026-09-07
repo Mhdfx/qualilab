@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { calibrationDue } from "@/lib/quality";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -9,6 +10,8 @@ import {
 export const metadata = { title: "Métrologie" };
 
 export default async function MetrologiePage() {
+  // Belt and braces with the layout guard: a page must be safe on its own.
+  await requireRole("VALIDATEUR", "ADMIN");
   const equipments = await prisma.equipment.findMany({
     where: { archived: false },
     orderBy: { name: "asc" },

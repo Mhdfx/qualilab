@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { ShieldCheck, ClipboardList, FileCheck2, Send } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -7,6 +8,8 @@ import { ValidationQueue } from "@/components/validation/ValidationQueue";
 export const metadata = { title: "Validation qualité" };
 
 export default async function ValidationPage() {
+  // Belt and braces with the layout guard: a page must be safe on its own.
+  await requireRole("VALIDATEUR", "ADMIN");
   const [items, valides, rapports, envoyes] = await Promise.all([
     prisma.sample.findMany({
       where: { status: "RESULTATS_SAISIS" },

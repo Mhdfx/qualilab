@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import {
   Boxes,
@@ -17,6 +18,8 @@ import { Card } from "@/components/ui/Card";
 export const metadata = { title: "Achat & Stock" };
 
 export default async function MagasinPage() {
+  // Belt and braces with the layout guard: a page must be safe on its own.
+  await requireRole("MAGASINIER", "ADMIN");
   const [items, unpaid] = await Promise.all([
     prisma.stockItem.findMany({
       where: { archived: false },

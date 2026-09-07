@@ -39,7 +39,9 @@ export async function POST(request: Request) {
   if (!TYPES.includes(type as MovementType)) {
     return NextResponse.json({ error: "Type de mouvement invalide." }, { status: 400 });
   }
-  const qty = Number(String(quantity ?? "").replace(",", "."));
+  // Two decimals, like the DECIMAL(12,2) column — the stored movement and
+  // the level delta must be the same figure.
+  const qty = Math.round(Number(String(quantity ?? "").replace(",", ".")) * 100) / 100;
   if (!Number.isFinite(qty)) {
     return NextResponse.json({ error: "Quantité illisible." }, { status: 400 });
   }
@@ -101,7 +103,7 @@ export async function POST(request: Request) {
 
       return NextResponse.json(
         {
-          movement,
+          movement: { ...movement, quantity: toMoney(movement.quantity) },
           item: {
             id: item.id,
             quantity: result.next,

@@ -5,7 +5,7 @@ import { useInvoiceBasePath } from "@/lib/invoice-paths";
 import { ArrowLeft, Download, Printer } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { formatCurrency } from "@/lib/labels";
-import { COMPANY } from "@/lib/company";
+import type { CompanyInfo } from "@/lib/company";
 import { computeInvoiceTotals } from "@/lib/invoice-math";
 import type { Invoice } from "@/lib/invoice-types";
 
@@ -20,9 +20,18 @@ function formatInvoiceDate(date: Date | string) {
   }).format(new Date(date));
 }
 
-const VAT_RATES = [20, 10, 5.5] as const;
-
-export function FactureDetail({ invoice }: { invoice: Invoice }) {
+export function FactureDetail({
+  invoice,
+  company,
+}: {
+  invoice: Invoice;
+  company: CompanyInfo;
+}) {
+  // The recap lists the standard rates plus whatever rate this invoice
+  // actually carries, so an unusual rate never prints an all-dash recap.
+  const vatRates = [invoice.taxRate, 20, 10, 5.5]
+    .filter((rate, index, all) => all.indexOf(rate) === index)
+    .sort((a, b) => b - a);
   const base = useInvoiceBasePath();
   function handlePrint() {
     window.print();
@@ -88,11 +97,11 @@ export function FactureDetail({ invoice }: { invoice: Invoice }) {
           className="mx-6 px-4 py-3 text-[11px] leading-relaxed text-slate-700"
           style={{ backgroundColor: INVOICE_BLUE_LIGHT }}
         >
-          <p className="font-bold text-slate-900">{COMPANY.name}</p>
-          <p>{COMPANY.address}</p>
-          <p>{COMPANY.city}</p>
-          <p>Tél : {COMPANY.phone}</p>
-          <p>{COMPANY.email}</p>
+          <p className="font-bold text-slate-900">{company.name}</p>
+          <p>{company.address}</p>
+          <p>{company.city}</p>
+          <p>Tél : {company.phone}</p>
+          <p>{company.email}</p>
         </div>
 
         {/* Métadonnées facture */}
@@ -191,7 +200,7 @@ export function FactureDetail({ invoice }: { invoice: Invoice }) {
                 </tr>
               </thead>
               <tbody>
-                {VAT_RATES.map((rate) => {
+                {vatRates.map((rate) => {
                   const active = Math.abs(rate - invoice.taxRate) < 0.01;
                   const rowHt = active ? subtotal : 0;
                   const rowVat = active ? taxAmount : 0;
@@ -267,15 +276,15 @@ export function FactureDetail({ invoice }: { invoice: Invoice }) {
           </div>
           <div>
             <p className="mb-1 font-bold text-slate-800">Coordonnées bancaires</p>
-            <p>{COMPANY.bank}</p>
+            <p>{company.bank}</p>
             <p>
-              IBAN : <span className="tabular-nums">{COMPANY.iban}</span>
+              IBAN : <span className="tabular-nums">{company.iban}</span>
             </p>
             <p>
-              BIC : <span className="tabular-nums">{COMPANY.swift}</span>
+              BIC : <span className="tabular-nums">{company.swift}</span>
             </p>
             <p>
-              RIB : <span className="tabular-nums">{COMPANY.rib}</span>
+              RIB : <span className="tabular-nums">{company.rib}</span>
             </p>
           </div>
         </div>

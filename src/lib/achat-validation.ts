@@ -34,7 +34,7 @@ export function validateSupplier(
 ): { ok: true; value: CleanSupplier } | { ok: false; error: string } {
   const name = text(input.name);
   if (!name) return { ok: false, error: "Le nom du fournisseur est obligatoire." };
-  if (name.length > 200) return { ok: false, error: "Le nom du fournisseur est trop long." };
+  if (name.length > 191) return { ok: false, error: "Le nom du fournisseur est trop long (191 caractères max)." };
 
   const email = text(input.email);
   if (email && !isEmail(email)) {
@@ -142,7 +142,7 @@ export function validateStockItem(
 ): { ok: true; value: CleanStockItem } | { ok: false; error: string } {
   const name = text(input.name);
   if (!name) return { ok: false, error: "Le nom de l'article est obligatoire." };
-  if (name.length > 200) return { ok: false, error: "Le nom de l'article est trop long." };
+  if (name.length > 191) return { ok: false, error: "Le nom de l'article est trop long (191 caractères max)." };
 
   const unit = text(input.unit);
   if (!unit) {

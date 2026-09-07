@@ -70,6 +70,8 @@ function EquipmentTempCard({
   const [saving, setSaving] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [flash, setFlash] = useState<null | { outOfRange: boolean; value: number }>(null);
+  // Counts saves, so the open history reloads even for a repeated value.
+  const [historyTick, setHistoryTick] = useState(0);
 
   async function save() {
     if (saving || !value.trim()) return;
@@ -87,6 +89,7 @@ function EquipmentTempCard({
         return;
       }
       setFlash({ outOfRange: data.outOfRange, value: data.value });
+      setHistoryTick((tick) => tick + 1);
       setValue("");
       setNote("");
       router.refresh();
@@ -175,7 +178,7 @@ function EquipmentTempCard({
         </button>
       </div>
 
-      {showHistory && <ReadingHistory equipmentId={equipment.id} refreshKey={flash?.value} />}
+      {showHistory && <ReadingHistory equipmentId={equipment.id} refreshKey={historyTick} />}
     </Card>
   );
 }

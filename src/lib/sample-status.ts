@@ -36,7 +36,9 @@ const TRANSITIONS: Transition[] = [
   // first — recorded on the sample, not as a status change — then the ADMIN
   // approves, and only that second step moves the sample to VALIDE.
   { from: "RESULTATS_SAISIS", to: "VALIDE", roles: ["ADMIN"] },
-  { from: "VALIDE", to: "RAPPORT_ENVOYE", roles: ["VALIDATEUR", "ADMIN"] },
+  // The first send is what moves the sample; the gestionnaire commercial
+  // may trigger it (client relationship), the validateur and admin too.
+  { from: "VALIDE", to: "RAPPORT_ENVOYE", roles: ["GESTIONNAIRE", "VALIDATEUR", "ADMIN"] },
   // Quality rejection — returns the sample to the technician, reason required.
   {
     from: "RESULTATS_SAISIS",
@@ -142,7 +144,8 @@ export function canValidateTechnically(
 /** Guards the admin's final approval, which is what sets the status to VALIDE. */
 export function canApprove(
   sample: { status: SampleStatus; validatedById: string | null },
-  role: Role
+  role: Role,
+  approverId?: string
 ): TransitionCheck {
   if (role !== "ADMIN") {
     return {
@@ -155,6 +158,16 @@ export function canApprove(
       ok: false,
       error:
         "La validation technique du validateur est requise avant l'approbation.",
+    };
+  }
+  // Two signatures means two people: whoever signed technically cannot
+  // also give the final approval (an ADMIN who validated lets another
+  // ADMIN approve).
+  if (approverId && sample.validatedById === approverId) {
+    return {
+      ok: false,
+      error:
+        "La double validation exige deux signataires différents : le validateur technique ne peut pas donner aussi l'approbation finale.",
     };
   }
   return canTransition(sample.status, "VALIDE", role);

@@ -16,6 +16,20 @@ export function FacturesList() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  // Aggregated by the database over every invoice — the list below is one
+  // page of 50 and must never be mistaken for the whole ledger.
+  const [totals, setTotals] = useState<{
+    count: number;
+    totalBilled: number;
+    thisMonth: number;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/invoices/stats")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => data && setTotals(data))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     // Paginated: the list shows the most recent page, not every invoice ever.
@@ -37,19 +51,12 @@ export function FacturesList() {
     );
   }, [invoices, search]);
 
-  const totalBilled = invoices.reduce((sum, inv) => sum + inv.total, 0);
-  const thisMonth = invoices.filter((inv) => {
-    const d = new Date(inv.issueDate);
-    const now = new Date();
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).length;
-
   const stats = [
-    { label: "Factures émises", value: invoices.length, icon: Receipt, accent: "brand" as const },
-    { label: "Ce mois-ci", value: thisMonth, icon: FileBarChart, accent: "blue" as const },
+    { label: "Factures émises", value: totals?.count ?? "…", icon: Receipt, accent: "brand" as const },
+    { label: "Ce mois-ci", value: totals?.thisMonth ?? "…", icon: FileBarChart, accent: "blue" as const },
     {
       label: "Montant total",
-      value: formatCurrency(totalBilled),
+      value: totals ? formatCurrency(totals.totalBilled) : "…",
       icon: Wallet,
       accent: "emerald" as const,
     },

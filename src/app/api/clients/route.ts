@@ -7,12 +7,21 @@ import { validateClient, validateClientEmails } from "@/lib/client-validation";
 /**
  * The client base.
  *
- * Everyone signed in may read it — a préleveur has to pick a client in the
+ * Every circuit role may read it — a préleveur has to pick a client in the
  * field — but only the gestionnaire commercial and the admin may change it.
- * Archived clients are hidden unless asked for, so the pickers stay short.
+ * The stock module and the future portal have no business here. Archived
+ * clients are hidden unless asked for, so the pickers stay short.
  */
 export async function GET(request: Request) {
-  const session = await requireApiRole();
+  const session = await requireApiRole(
+    "PRELEVEUR",
+    "RECEPTIONNISTE",
+    "TECHNICIEN",
+    "VALIDATEUR",
+    "GESTIONNAIRE",
+    "COMPTABLE",
+    "ADMIN"
+  );
   if (session instanceof NextResponse) return session;
 
   const params = new URL(request.url).searchParams;

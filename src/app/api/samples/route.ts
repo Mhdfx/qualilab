@@ -6,15 +6,40 @@ import { generateSampleCode } from "@/lib/sample-code";
 import { retryOnDuplicate } from "@/lib/retry-unique";
 import { sampleSelectFor } from "@/lib/sample-select";
 import { pageParams, toPage } from "@/lib/pagination";
+import { SAMPLE_TYPES } from "@/lib/parameter-validation";
 import type { SampleType } from "@/generated/prisma/client";
 
+/** The roles that work the sample circuit — stock and (future) portal do not. */
+const CIRCUIT_ROLES = [
+  "PRELEVEUR",
+  "RECEPTIONNISTE",
+  "TECHNICIEN",
+  "VALIDATEUR",
+  "GESTIONNAIRE",
+  "COMPTABLE",
+  "ADMIN",
+] as const;
+
+const STATUSES = [
+  "PRELEVE",
+  "RECU",
+  "EN_ANALYSE",
+  "RESULTATS_SAISIS",
+  "VALIDE",
+  "RAPPORT_ENVOYE",
+] as const;
+
 export async function GET(request: Request) {
-  const session = await requireApiRole();
+  const session = await requireApiRole(...CIRCUIT_ROLES);
   if (session instanceof NextResponse) return session;
 
   const params = new URL(request.url).searchParams;
   const q = params.get("q")?.trim();
-  const status = params.get("status");
+  const rawStatus = params.get("status");
+  if (rawStatus && !(STATUSES as readonly string[]).includes(rawStatus)) {
+    return NextResponse.json({ error: "Statut inconnu." }, { status: 400 });
+  }
+  const status = rawStatus as (typeof STATUSES)[number] | null;
 
   // A préleveur only ever sees their own field work; the lab roles see all.
   // The search runs in the database, not on the loaded page — otherwise a
@@ -39,7 +64,9 @@ export async function GET(request: Request) {
 
   const where = {
     ...(session.role === "PRELEVEUR" ? { userId: session.id } : {}),
-    ...(status ? { status: status as never } : {}),
+    // A technician's bench is their own: the list API mirrors sample-access.
+    ...(session.role === "TECHNICIEN" ? { technicianId: session.id } : {}),
+    ...(status ? { status } : {}),
     ...(q ? { OR: searchable } : {}),
   };
 
@@ -73,6 +100,9 @@ export async function POST(request: Request) {
       parameterIds: string[];
     };
 
+    if (type && !SAMPLE_TYPES.includes(type)) {
+      return NextResponse.json({ error: "Domaine d'analyse invalide." }, { status: 400 });
+    }
     if (!clientId || !lieu || !type || !parameterIds?.length) {
       return NextResponse.json(
         { error: "Veuillez remplir tous les champs obligatoires." },

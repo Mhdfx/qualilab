@@ -19,6 +19,7 @@ export async function loadAssignedSample(
       code: true,
       status: true,
       technicianId: true,
+      analysisBlocked: true,
       parameters: {
         select: {
           parameter: {
@@ -50,6 +51,20 @@ export async function loadAssignedSample(
       error: NextResponse.json(
         { error: "Cet échantillon ne vous est pas attribué." },
         { status: 403 }
+      ),
+    };
+  }
+
+  // Held at reception (LabSettings.blockNonConformAtReception): nobody —
+  // not even the ADMIN — analyses it until the release assigns a technician.
+  if (sample.analysisBlocked) {
+    return {
+      error: NextResponse.json(
+        {
+          error:
+            "Cet échantillon est bloqué en réception — un administrateur doit le libérer avant toute analyse.",
+        },
+        { status: 409 }
       ),
     };
   }

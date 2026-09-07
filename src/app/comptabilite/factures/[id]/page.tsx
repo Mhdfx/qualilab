@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { toMoney } from "@/lib/money";
+import { getCompany } from "@/lib/company-server";
 import { FactureDetail } from "@/components/FactureDetail";
 import type { Invoice } from "@/lib/invoice-types";
 
@@ -46,5 +47,5 @@ export default async function ComptaFactureDetailPage({
     })),
   };
 
-  return <FactureDetail invoice={data} />;
+  return <FactureDetail invoice={data} company={await getCompany()} />;
 }

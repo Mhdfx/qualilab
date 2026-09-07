@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { validateParameter } from "@/lib/parameter-validation";
+import { SAMPLE_TYPES, validateParameter } from "@/lib/parameter-validation";
 import type { SampleType } from "@/generated/prisma/client";
 
 export async function GET(request: Request) {
@@ -10,7 +10,11 @@ export async function GET(request: Request) {
   if (session instanceof NextResponse) return session;
 
   const { searchParams } = new URL(request.url);
-  const category = searchParams.get("category") as SampleType | null;
+  const rawCategory = searchParams.get("category");
+  if (rawCategory && !SAMPLE_TYPES.includes(rawCategory as SampleType)) {
+    return NextResponse.json({ error: "Domaine d'analyse invalide." }, { status: 400 });
+  }
+  const category = rawCategory as SampleType | null;
 
   const parameters = await prisma.analysisParameter.findMany({
     where: category ? { category } : undefined,

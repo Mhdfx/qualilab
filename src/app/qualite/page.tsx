@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import { Gauge, Thermometer, Award, AlertTriangle, CalendarClock } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -10,6 +11,8 @@ import { Card } from "@/components/ui/Card";
 export const metadata = { title: "Système Qualité" };
 
 export default async function QualitePage() {
+  // Belt and braces with the layout guard: a page must be safe on its own.
+  await requireRole("VALIDATEUR", "ADMIN");
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
 

@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/PageHeader";
 import {
@@ -8,6 +9,8 @@ import {
 export const metadata = { title: "Fournisseurs" };
 
 export default async function FournisseursPage() {
+  // Belt and braces with the layout guard: a page must be safe on its own.
+  await requireRole("MAGASINIER", "ADMIN");
   const suppliers = await prisma.supplier.findMany({
     orderBy: { name: "asc" },
     include: {

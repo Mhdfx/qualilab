@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { toMoney } from "@/lib/money";
 import { dueState } from "@/lib/stock";
@@ -10,6 +11,8 @@ import {
 export const metadata = { title: "Factures fournisseurs" };
 
 export default async function FacturesFournisseursPage() {
+  // Belt and braces with the layout guard: a page must be safe on its own.
+  await requireRole("MAGASINIER", "ADMIN");
   const [invoices, suppliers] = await Promise.all([
     prisma.purchaseInvoice.findMany({
       orderBy: [{ status: "asc" }, { dueDate: "asc" }],

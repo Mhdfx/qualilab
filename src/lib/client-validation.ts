@@ -48,7 +48,7 @@ export function validateClient(input: ClientInput): ValidationResult {
   if (!name) {
     return { ok: false, error: "La raison sociale est obligatoire." };
   }
-  if (name.length > 200) {
+  if (name.length > 191) {
     return { ok: false, error: "La raison sociale est trop longue." };
   }
 

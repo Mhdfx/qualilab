@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Building2, MapPin, Clock, User, FlaskConical } from "lucide-react";
@@ -18,6 +19,8 @@ export default async function ReceptionDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  // Belt and braces with the layout guard: a page must be safe on its own.
+  await requireRole("RECEPTIONNISTE", "ADMIN");
   const { id } = await params;
 
   const [sample, technicians, workload, settings] = await Promise.all([

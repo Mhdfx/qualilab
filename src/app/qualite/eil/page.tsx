@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EilManager, type EilRow } from "@/components/qualite/EilManager";
@@ -6,6 +7,8 @@ import type { EilStatusValue } from "@/lib/quality-validation";
 export const metadata = { title: "EIL" };
 
 export default async function EilPage() {
+  // Belt and braces with the layout guard: a page must be safe on its own.
+  await requireRole("VALIDATEUR", "ADMIN");
   const campaigns = await prisma.eilCampaign.findMany({
     orderBy: [{ status: "asc" }, { startDate: "desc" }],
     take: 100,

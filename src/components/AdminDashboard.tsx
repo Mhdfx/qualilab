@@ -16,6 +16,20 @@ export function AdminDashboard() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<SampleType | "ALL">("ALL");
   const [selected, setSelected] = useState<SampleRow | null>(null);
+  // Counted by the database over the whole table — the page below is only
+  // the 50 most recent rows and must never be mistaken for the total.
+  const [totals, setTotals] = useState<{
+    total: number;
+    byType: Record<string, number>;
+    activePreleveurs: number;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/samples/stats")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => data && setTotals(data))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     // The search runs in the database: a code typed here finds a sample from
@@ -38,14 +52,12 @@ export function AdminDashboard() {
     [samples, typeFilter]
   );
 
-  const preleveurCount = new Set(samples.map((s) => s.user?.name)).size;
-
   const stats = [
-    { label: "Prélèvements", value: samples.length, icon: FlaskConical, accent: "brand" as const },
-    { label: "Préleveurs actifs", value: preleveurCount, icon: Users, accent: "emerald" as const },
+    { label: "Prélèvements", value: totals?.total ?? "…", icon: FlaskConical, accent: "brand" as const },
+    { label: "Préleveurs actifs", value: totals?.activePreleveurs ?? "…", icon: Users, accent: "emerald" as const },
     {
       label: "Analyses eau",
-      value: samples.filter((s) => s.type === "EAU").length,
+      value: totals?.byType.EAU ?? "…",
       icon: Droplets,
       accent: "blue" as const,
     },

@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { FileText, Clock, CheckCircle2, Wallet } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { RoleDashboard } from "@/components/RoleDashboard";
@@ -7,6 +8,8 @@ import { toMoney } from "@/lib/money";
 export const metadata = { title: "Comptabilité" };
 
 export default async function ComptabilitePage() {
+  // Belt and braces with the layout guard: a page must be safe on its own.
+  await requireRole("COMPTABLE", "ADMIN");
   const [factures, enAttente, payees, encaisse] = await Promise.all([
     prisma.invoice.count(),
     prisma.invoice.count({ where: { status: "EN_ATTENTE" } }),

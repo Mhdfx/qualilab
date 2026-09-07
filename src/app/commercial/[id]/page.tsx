@@ -35,7 +35,7 @@ export default async function ClientDetailPage({
   await requireRole("GESTIONNAIRE", "ADMIN");
   const { id } = await params;
 
-  const [client, samples, invoices, paid] = await Promise.all([
+  const [client, samples, invoices, paid, billedAll] = await Promise.all([
     prisma.client.findUnique({
       where: { id },
       include: { emails: { orderBy: { email: "asc" } } },
@@ -71,11 +71,17 @@ export default async function ClientDetailPage({
       where: { clientId: id, status: "PAYEE" },
       _sum: { total: true },
     }),
+    // Both figures come from aggregates over ALL the client's invoices —
+    // the list on screen is only the 25 most recent.
+    prisma.invoice.aggregate({
+      where: { clientId: id },
+      _sum: { total: true },
+    }),
   ]);
 
   if (!client) notFound();
 
-  const billed = invoices.reduce((sum, invoice) => sum + toMoney(invoice.total), 0);
+  const billed = toMoney(billedAll._sum.total);
   const reports = samples.filter((sample) => sample.report).length;
 
   return (

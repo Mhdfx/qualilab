@@ -1,10 +1,12 @@
 import { prisma } from "./prisma";
 import { logAudit } from "./audit";
 import { renderPdf } from "./pdf";
-import { buildReportHtml, type ReportData } from "./report-html";
+import { buildConclusion, buildReportHtml, type ReportData } from "./report-html";
 import { sendEmail, recipientsFor } from "./email";
 import { reportEmail, alertEmail, type AlertRow } from "./emails/templates";
 import { getCompany } from "./company-server";
+import { generateReportNumber } from "./report-number";
+import { retryOnDuplicate } from "./retry-unique";
 
 /**
  * What happens once a sample is approved: the client receives the report, and
@@ -75,6 +77,59 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
 }
 
 /**
+ * Creates the report record for an approved sample — the names frozen as
+ * they stand today, so a report downloaded next year still shows who
+ * actually signed it. Idempotent: an existing report is returned as is.
+ * Number collisions (two approvals at the same instant) are retried; any
+ * other failure returns null and is logged, and `sendReport` retries the
+ * creation later so an approved sample can never stay report-less forever.
+ */
+export async function createReportFor(sampleId: string) {
+  const existing = await prisma.report.findUnique({
+    where: { sampleId },
+    select: { id: true, number: true },
+  });
+  if (existing) return existing;
+
+  const sample = await prisma.sample.findUnique({
+    where: { id: sampleId },
+    select: {
+      validatedAt: true,
+      technician: { select: { name: true } },
+      validatedBy: { select: { name: true } },
+      results: {
+        select: { conform: true, parameter: { select: { name: true } } },
+      },
+    },
+  });
+  if (!sample) return null;
+
+  try {
+    return await retryOnDuplicate(async () =>
+      prisma.report.create({
+        data: {
+          sampleId,
+          number: await generateReportNumber(),
+          conclusion: buildConclusion(
+            sample.results.map((r) => ({
+              conform: r.conform,
+              parameter: r.parameter.name,
+            }))
+          ),
+          technicianName: sample.technician?.name ?? null,
+          validatorName: sample.validatedBy?.name ?? null,
+          validatedAt: sample.validatedAt,
+        },
+        select: { id: true, number: true },
+      })
+    );
+  } catch (error) {
+    console.error("[report] creation failed", { sampleId, error });
+    return null;
+  }
+}
+
+/**
  * Sends the report to the client and marks the sample `RAPPORT_ENVOYE`.
  * Also used for a manual resend, which is why it is idempotent-friendly.
  */
@@ -94,7 +149,18 @@ export async function sendReport(sampleId: string, actorId: string | null) {
     },
   });
 
-  if (!sample?.report) {
+  if (!sample) {
+    return { ok: false as const, error: "Échantillon introuvable." };
+  }
+
+  // Self-healing: an approval whose report creation failed left a VALIDE
+  // sample without its official document — the send creates it now instead
+  // of failing forever.
+  let report = sample.report;
+  if (!report && (sample.status === "VALIDE" || sample.status === "RAPPORT_ENVOYE")) {
+    report = await createReportFor(sample.id);
+  }
+  if (!report) {
     return { ok: false as const, error: "Aucun rapport à envoyer." };
   }
 
@@ -114,7 +180,7 @@ export async function sendReport(sampleId: string, actorId: string | null) {
   let attachment;
   try {
     attachment = {
-      filename: `${sample.report.number}.pdf`,
+      filename: `${report.number}.pdf`,
       content: await renderPdf(buildReportHtml(data, company)),
     };
   } catch (error) {
@@ -125,7 +191,7 @@ export async function sendReport(sampleId: string, actorId: string | null) {
   const conform = !sample.results.some((result) => result.conform === false);
   const { subject, html } = reportEmail({
     clientName: sample.client.name,
-    reportNumber: sample.report.number,
+    reportNumber: report.number,
     produit: sample.produit,
     sampledAt: sample.sampledAt,
     conform,
@@ -136,7 +202,7 @@ export async function sendReport(sampleId: string, actorId: string | null) {
     subject,
     html,
     type: "RAPPORT",
-    reportId: sample.report.id,
+    reportId: report.id,
     attachments: [attachment],
   });
 
@@ -146,7 +212,7 @@ export async function sendReport(sampleId: string, actorId: string | null) {
 
   const sentAt = new Date();
   await prisma.report.update({
-    where: { id: sample.report.id },
+    where: { id: report.id },
     data: {
       sendStatus: result.status === "ENVOYE" ? "ENVOYE" : "NON_ENVOYE",
       sentAt,
@@ -166,10 +232,10 @@ export async function sendReport(sampleId: string, actorId: string | null) {
     actorId,
     action: "REPORT_SENT",
     entity: "Report",
-    entityId: sample.report.id,
+    entityId: report.id,
     metadata: {
       code: sample.code,
-      number: sample.report.number,
+      number: report.number,
       to,
       status: result.status,
     },
@@ -219,10 +285,22 @@ export async function sendContaminationAlerts(
     return { ok: true as const, sent: 0 };
   }
 
-  // When LabSettings sends the alerts at the technical validation, the admin
-  // approval calls this again — one alert per contamination, never two.
-  if (sample.alertsSentAt) {
-    return { ok: true as const, sent: 0, alreadySentAt: sample.alertsSentAt };
+  // Claim first, atomically: whoever flips alertsSentAt from null wins, a
+  // concurrent caller (early-alert validation racing the admin approval) sees
+  // zero rows and leaves — one alert per contamination, never two. If any
+  // germ fails below, the claim is released so the next call retries: a
+  // contamination alert that reached nobody is worse than a duplicate.
+  const dispatchedAt = new Date();
+  const claimed = await prisma.sample.updateMany({
+    where: { id: sample.id, alertsSentAt: null },
+    data: { alertsSentAt: dispatchedAt },
+  });
+  if (claimed.count === 0) {
+    return {
+      ok: true as const,
+      sent: 0,
+      alreadySentAt: sample.alertsSentAt ?? dispatchedAt,
+    };
   }
 
   const to = await recipientsFor(sample.clientId, "alerts");
@@ -258,7 +336,7 @@ export async function sendContaminationAlerts(
   }
 
   let sent = 0;
-  const dispatchedAt = new Date();
+  const failed: string[] = [];
   for (const [germ, rows] of byGerm) {
     const { subject, html } = alertEmail(germ, rows);
     const result = await sendEmail({
@@ -271,6 +349,7 @@ export async function sendContaminationAlerts(
     });
 
     if (result.status !== "ECHEC") sent += 1;
+    else failed.push(germ);
 
     await logAudit({
       actorId,
@@ -287,11 +366,17 @@ export async function sendContaminationAlerts(
     });
   }
 
-  if (sent > 0) {
+  if (failed.length > 0) {
+    // Release the claim: the journal keeps the ECHEC rows, and the next
+    // approval/resend attempts the whole batch again.
     await prisma.sample.update({
       where: { id: sample.id },
-      data: { alertsSentAt: dispatchedAt },
+      data: { alertsSentAt: null },
     });
+    return {
+      ok: false as const,
+      error: `Alerte de contamination non envoyée pour : ${failed.join(", ")} — à renvoyer.`,
+    };
   }
 
   return { ok: true as const, sent };

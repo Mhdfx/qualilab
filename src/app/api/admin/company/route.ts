@@ -53,7 +53,9 @@ export async function PUT(request: Request) {
     if (value === null || value === "") {
       logoData = null;
     } else if (typeof value === "string") {
-      if (!/^data:image\/(png|jpe?g|svg\+xml|webp);base64,/.test(value)) {
+      // Whole-string check: prefix AND a pure base64 body, so nothing in the
+      // value can ever close the <img src="…"> attribute in the PDF templates.
+      if (!/^data:image\/(png|jpe?g|svg\+xml|webp);base64,[A-Za-z0-9+/]+=*$/.test(value)) {
         return NextResponse.json(
           { error: "Logo invalide — PNG, JPEG, SVG ou WebP attendu." },
           { status: 400 }

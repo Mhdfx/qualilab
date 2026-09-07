@@ -266,7 +266,7 @@ The short list that proves nothing broke. ~5 minutes.
 - [ ] Expose it in the admin interface (currently API-only, kept isolated so
       the feature stays cheap to remove if the client changes their mind).
 
-## Checkpoint E — Clients, invoicing & administration (Phase 4) — *to build*
+## Checkpoint E — Clients, invoicing & administration (Phase 4)
 
 ### E1. Clients
 *verified 2026-08-25*
@@ -317,7 +317,7 @@ The short list that proves nothing broke. ~5 minutes.
       space they are rendered in, so nobody is bounced to an admin-only route.
 
 ### E3. Administration
-*parameters + journal verified 2026-08-25 · users & catalogue to build*
+*parameters + journal verified 2026-08-25 · users & catalogue verified in the Phase 4/5 passes*
 
 **Paramètres d'analyse (`/admin/parametres`)**
 - [x] Lists every parameter by domain with unit, displayed threshold, numeric
@@ -446,7 +446,7 @@ The short list that proves nothing broke. ~5 minutes.
       préleveur's pages contain zero occurrences of `QLC-` or `SN-` while
       still showing the sample and its progress.
 
-## Checkpoint G — Extensions (Phases 6–8) — *G1 built 2026-08-27 (hidden)*
+## Checkpoint G — Extensions (Phases 6–8) — *G1 + G2 built and verified 2026-08-27*
 
 ### G1. Achat & Stock (Phase 6) — verified in the browser 2026-08-27
 - [x] The `/magasin` space exists behind `requireRole("MAGASINIER","ADMIN")`
@@ -590,4 +590,26 @@ Verified in the browser on the dev server, full circuit, on 2026-08-27.*
 | Pack d'indépendance (H) | Claude Code | 2026-08-27 | ✅ passed — toggles, blocage/libération, alerte anticipée sans doublon, facteur, logo, import (dev server, circuit complet) |
 | Phase 6 · G1 Achat & Stock | Claude Code | 2026-08-27 | ✅ passed (now visible; magasin1 exists locally and on prod) |
 | Phase 7 · G2 Qualité | Claude Code | 2026-08-27 | ✅ passed — métrologie, températures hors plage, EIL, dashboard |
+| Audit round 1 (I) | Claude Code | 2026-09-07 | ✅ fixes verified (132 tests, build, lint, browser smoke); go-live shutdown to run at recette |
 | Extensions (G3) | | | |
+
+## Checkpoint I — Audit round 1 (2026-09-07)
+
+- [x] `GET /api/samples` / `GET /api/clients` refuse MAGASINIER; TECHNICIEN's
+      list is their bench only.
+- [x] Logo upload refuses a data URI with anything after the base64 body
+      (400); a clean PNG uploads and prints.
+- [x] Double validation: the same user cannot validate AND approve
+      (unit-tested; 409 on the API).
+- [x] Dashboard / factures / client 360 headline figures come from
+      `/api/samples/stats` and `/api/invoices/stats` (verified on the dev DB:
+      7 samples, 3 invoices, 4 704,00 DH — independent of the page).
+- [x] On-screen invoice shows the identity saved in /admin/entreprise
+      (verified: identity, IBAN, TVA recap).
+- [x] Every space page renders with its own `requireRole`; 132 tests,
+      build + lint green.
+- [ ] 🔒 Go-live: `scripts/disable-demo-accounts.sh` refuses until a real
+      ADMIN exists, then bans the 9 demo accounts; set
+      `NEXT_PUBLIC_DEMO_MODE=false`, rebuild, confirm demo logins fail.
+- [ ] Next 02:00 backup logs « backup ok » (temp-file path + completion
+      marker).

@@ -58,6 +58,14 @@ export async function POST(request: Request) {
 
     const invoiceStatus = status === "PAYEE" ? "PAYEE" : "EN_ATTENTE";
 
+    const due = dueDate ? new Date(dueDate) : null;
+    if (due && Number.isNaN(due.getTime())) {
+      return NextResponse.json(
+        { error: "Date d'échéance invalide." },
+        { status: 400 }
+      );
+    }
+
     if (!clientId) {
       return NextResponse.json(
         { error: "Veuillez sélectionner un client." },
@@ -68,7 +76,8 @@ export async function POST(request: Request) {
     const cleanItems = (items ?? []).map((item) => ({
       description: (item.description ?? "").trim(),
       quantity: Number(item.quantity),
-      unitPrice: Number(item.unitPrice),
+      // Centimes are the unit of money: a typed 12.345 is stored as 12.35.
+      unitPrice: Math.round(Number(item.unitPrice) * 100) / 100,
       // Present when the line came from a validated analysis rather than being
       // typed by hand; it is what ties the invoice back to the sample.
       sampleId:
@@ -79,6 +88,12 @@ export async function POST(request: Request) {
     // refused here, not quietly coerced to zero.
     for (const item of cleanItems) {
       if (!item.description) continue;
+      if (item.description.length > 191) {
+        return NextResponse.json(
+          { error: `Désignation trop longue (191 caractères max) : « ${item.description.slice(0, 40)}… ».` },
+          { status: 400 }
+        );
+      }
       if (!isValidAmount(item.quantity) || item.quantity <= 0) {
         return NextResponse.json(
           { error: `Quantité invalide pour « ${item.description} ».` },
@@ -167,7 +182,7 @@ export async function POST(request: Request) {
     }
 
     // VAT is a percentage, not an arbitrary number.
-    const rate = Math.min(100, Math.max(0, Number(taxRate) || 0));
+    const rate = Math.round(Math.min(100, Math.max(0, Number(taxRate) || 0)) * 100) / 100;
     const { subtotal, taxAmount, total } = computeInvoiceTotals(billable, rate);
     const itemsWithTotals = billable.map((item) => ({
       ...item,
@@ -183,7 +198,7 @@ export async function POST(request: Request) {
         clientId,
         createdById: session.id,
         status: invoiceStatus,
-        dueDate: dueDate ? new Date(dueDate) : null,
+        dueDate: due,
         notes: notes?.trim() || null,
         taxRate: rate,
         subtotal,

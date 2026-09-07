@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { toMoney } from "@/lib/money";
 import { isLowStock } from "@/lib/stock";
@@ -10,6 +11,8 @@ import {
 export const metadata = { title: "Stock" };
 
 export default async function StockPage() {
+  // Belt and braces with the layout guard: a page must be safe on its own.
+  await requireRole("MAGASINIER", "ADMIN");
   const items = await prisma.stockItem.findMany({
     where: { archived: false },
     orderBy: [{ category: "asc" }, { name: "asc" }],

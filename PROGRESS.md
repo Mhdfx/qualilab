@@ -146,7 +146,7 @@ go-live, each with its own scoping — see PLAN.
 - [x] **Invoice PDF rendered server-side** ✅ 2026-08-25 — selectable text,
       amount in words, RIB/IBAN, legal mentions; `html-to-image` and `jspdf`
       removed with the screenshot code
-- [ ] **Upgrade the invoice PDF to server-side rendering** (still a screenshot)
+- [x] **Upgrade the invoice PDF to server-side rendering** (`/api/invoices/[id]/pdf`)
 - [x] **Admin: paramètres d'analyse + journal d'audit** ✅ 2026-08-25
   - [x] `parameter-validation.ts` — pure, tested; a sensitive parameter must carry a limit
   - [x] Parameter edits audited with before/after values
@@ -174,14 +174,14 @@ go-live, each with its own scoping — see PLAN.
       (private network, migrations on boot)
 - [x] `backup-db.sh` (verified dumps, retention) + `restore-db.sh` (guarded)
       + `DEPLOY.md` runbook
-- [ ] 🔒 VPS: first deploy, HTTPS, cron backup, **tested restore**, full
+- [x] VPS: first deploy (Docker), cron backup, **tested restore 2026-08-26**, full
       TESTPLAN pass on the deployed system
 - [ ] 🔒 Legacy data import (waits on the lab's export)
 
 ## Extensions — client meeting 2026-07-28 (after core; re-cost/replan)
 Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
-- [ ] Phase 6 — Achat & Stock: suppliers, payment-term alerts, inventory
-- [ ] Phase 7 (later) — Qualité: métrologie, EIL, monitoring temp.
+- [x] Phase 6 — Achat & Stock: suppliers, payment-term alerts, inventory (2026-08-27)
+- [x] Phase 7 — Qualité: métrologie, EIL, monitoring temp. (2026-08-27)
 - [ ] Phase 8 (later) — Portail client (`CLIENT` role) + Réclamations
 - [ ] Workflow changes folded into core: numbering at reception (P2), auto-calc
       results (P2), double validation (P2), bench sheet (P2/3), admin silent
@@ -196,6 +196,19 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 ---
 
 ## Session Log
+
+- **2026-09-07 · Claude Code** · **Full adversarial audit + fix round 1.**
+  8 finders / refuters over security, correctness, data, ops, docs (69 raw
+  findings; 4 confirmed above low, the rest judged by hand). Fixed: API
+  guards (circuit roles only, technician bench isolation), logo data-URI
+  whole-string validation, alerts claim-then-send, report creation retry +
+  self-heal, approver ≠ validator, blocked samples refuse results, factored
+  « Absence » kept, DB-aggregate stats endpoints, on-screen invoice identity,
+  rounding at write, enum/length validation, P2025 → 409, TOCTOU guard,
+  every page guarded itself, Escape closes the drawer, backup via temp file
+  + completion marker, go-live demo shutdown script + DEPLOY.md section.
+  Also: client « système livré » schema PDF and the 3-min role video.
+  132 tests, build + lint green; deployed.
 
 - **2026-08-27 (quater) · Claude Code** · **Phase 7 — Système Qualité,
   built and deployed.** `/qualite` space (VALIDATEUR + ADMIN, linked from

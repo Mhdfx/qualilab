@@ -126,3 +126,19 @@ describe("the lifecycle itself", () => {
     expect(nextStatus("RAPPORT_ENVOYE")).toBeNull();
   });
 });
+
+describe("canApprove — two different signatories", () => {
+  const validated = {
+    status: "RESULTATS_SAISIS" as const,
+    validatedById: "user-validateur",
+  };
+
+  it("refuses the final approval from the person who signed technically", () => {
+    const check = canApprove(validated, "ADMIN", "user-validateur");
+    expect(check.ok).toBe(false);
+  });
+
+  it("accepts a different ADMIN as second signatory", () => {
+    expect(canApprove(validated, "ADMIN", "user-admin").ok).toBe(true);
+  });
+});

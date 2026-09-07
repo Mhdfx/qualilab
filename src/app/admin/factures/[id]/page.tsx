@@ -1,6 +1,8 @@
+import { requireRole } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { toMoney } from "@/lib/money";
+import { getCompany } from "@/lib/company-server";
 import { FactureDetail } from "@/components/FactureDetail";
 import type { Invoice } from "@/lib/invoice-types";
 
@@ -9,6 +11,8 @@ export default async function FactureDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  // Belt and braces with the layout guard: a page must be safe on its own.
+  await requireRole("ADMIN");
   const { id } = await params;
 
   const invoice = await prisma.invoice.findUnique({
@@ -52,5 +56,5 @@ export default async function FactureDetailPage({
     })),
   };
 
-  return <FactureDetail invoice={serialized} />;
+  return <FactureDetail invoice={serialized} company={await getCompany()} />;
 }

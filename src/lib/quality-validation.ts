@@ -28,7 +28,7 @@ export function validateEquipment(
 ): { ok: true; value: CleanEquipment } | { ok: false; error: string } {
   const name = text(input.name);
   if (!name) return { ok: false, error: "Le nom de l'équipement est obligatoire." };
-  if (name.length > 200) return { ok: false, error: "Le nom de l'équipement est trop long." };
+  if (name.length > 191) return { ok: false, error: "Le nom de l'équipement est trop long (191 caractères max)." };
 
   const frequency = numberOrNull(input.calibrationFrequencyMonths);
   if (

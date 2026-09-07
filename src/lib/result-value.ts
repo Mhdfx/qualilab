@@ -110,10 +110,16 @@ export function suggestConformity(
 /** Formats a number back into the lab's notation for display. */
 export function formatLabValue(numeric: number): string {
   if (numeric === 0) return "0";
-  const exponent = Math.floor(Math.log10(Math.abs(numeric)));
+  let exponent = Math.floor(Math.log10(Math.abs(numeric)));
   if (exponent < 2) return String(numeric);
 
-  const mantissa = numeric / 10 ** exponent;
+  // One decimal on the mantissa; when that rounds up to 10 (995 → 9,95 →
+  // "10,0"), carry into the exponent instead of printing "10,0.10²".
+  let mantissa = Math.round((numeric / 10 ** exponent) * 10) / 10;
+  if (mantissa >= 10) {
+    exponent += 1;
+    mantissa = Math.round((numeric / 10 ** exponent) * 10) / 10;
+  }
   const digits = ["⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"];
   const sup = String(exponent)
     .split("")
@@ -121,6 +127,6 @@ export function formatLabValue(numeric: number): string {
     .join("");
   const shown = Number.isInteger(mantissa)
     ? String(mantissa)
-    : mantissa.toFixed(1).replace(".", ",");
+    : String(mantissa).replace(".", ",");
   return `${shown}.10${sup}`;
 }

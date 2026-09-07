@@ -15,10 +15,10 @@
 |---|---|---|
 | Préleveur | Field intake (mobile 3-step, param by domain, history) | ✅ **Built & client-approved** |
 | Facturation | Manual invoice: catalog, `FAC-YYYY-NNNN`, 20% VAT, statuses, PDF export | ✅ **Built & client-approved** |
-| Auth | **Better Auth** (username + admin plugins), 7 roles + `CLIENT` | ✅ **Phase 1 done** |
+| Auth | **Better Auth** (username + admin plugins), **9 roles**: 7 core + `MAGASINIER` (Phase 6) + `CLIENT` (reserved, Phase 8) | ✅ **Phase 1 done** |
 | Authorization | Central `requireRole()` / `requireApiRole()` on every page + route | ✅ **Phase 1 done** |
 | Role spaces | 7 dashboards with live indicators | ✅ **Phase 1 done** |
-| Data model | 13 tables incl. `Result`/`Report`/`AuditLog`/`EmailLog` | ✅ **Phase 1 done** |
+| Data model | **26 tables** — LIMS core, invoicing, `CompanySettings`/`LabSettings`, Achat & Stock, Qualité | ✅ |
 | Foundations | `logAudit()`, sample status state machine | ✅ **Phase 1 done** |
 | Clients | CRUD, archive, recipient lists, fiche 360° | ✅ **Phase 4 · E1 done** |
 | Facturation liée | invoices from validated analyses, server-side PDF | ✅ **Phase 4 · E2 done** |
@@ -118,7 +118,7 @@ src/
     number-to-words-fr.ts   amount-in-words (FR) for invoices
   generated/prisma/    ★ generated Prisma client — DO NOT edit, gitignored
 prisma/
-  schema.prisma  ·  seed.ts (7 role users)  ·  migrations/ (14)
+  schema.prisma  ·  seed.ts (9 demo users)  ·  migrations/ (16)  ·  disable-demo-accounts.ts (go-live)
   ⚠️ the VPS needs a Chromium for the PDF: `apt install chromium`
 scripts/         VPS ops: deploy, wait-for-db, health-watchdog, setup-autostart, setup-database, start-production, vps-setup, check-db
 ```
@@ -183,7 +183,7 @@ wrong. Role → landing page mapping lives in `src/lib/roles.ts` (`ROLE_HOME`).
 `receivedAt` / `conformity` / `conformityNote`, `technicianId` / `assignedAt`,
 `validatedById` / `validatedAt` / `rejectionReason`.
 
-Enums: `Role`(7 + `CLIENT`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
+Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 `SampleStatus`(6) · `ResultWorkStatus`(EN_COURS|TERMINE|ANOMALIE) ·
 `ReportSendStatus` · `InvoiceStatus`.
 
@@ -292,6 +292,7 @@ network, Chromium in-image, migrations on boot), nginx + certbot in front,
 | 2026-08-27 | **Pack d'indépendance : every pending client answer became a toggle or data entry** | Decisions n°10/n°11 live in the `LabSettings` singleton (`/admin/reglages`) with BOTH behaviours implemented: non-conform blocking = received+numbered but unassigned until an ADMIN "release" (`/api/samples/[id]/release`, the technician queue never sees an unassigned sample); early alerts fire at technical validation with `Sample.alertsSentAt` as the anti-duplicate guard the approval respects. Item 6 = `AnalysisParameter.calcFactor` (raw reading × factor → `Result.value` final + `Result.rawValue` preserved; suggestion, saisie hint and report all use the final). Item 5 = `CompanySettings.logoData` data-URI (≤300 Ko, validated server-side) printed via the shared `brand-html.ts` in the three templates. Item 7 = `/admin/import` wizard (csv.ts parser, client-import.ts mapping+validation reusing validateClient, analyse→dry-run→commit, audited, create-only — never merges) |
 
 | 2026-08-27 | **Phase 6 (Achat & Stock) built ahead, deployed HIDDEN** | The client's remaining inputs are lists (suppliers, thresholds — NEEDEDINFO 16/17), not architecture, so waiting bought nothing. Commercial guard: the module has NO admin-nav entry and NO demo account — it exists only at `/magasin` for the new MAGASINIER role (ADMIN passes by URL), so Achraf can price it before revealing it (reveal = create a MAGASINIER user, optionally add admin nav links). Design rules: a StockItem's quantity is written ONLY by /api/stock/movements inside a transaction guarded by the level it read (concurrent movements retry, never lose updates; SORTIE below zero refused); PurchaseInvoice.dueDate defaults from the supplier's paymentTermDays and `dueState()` is the single lateness judge; recorded invoices are never edited — only their payment status moves | 
+| 2026-09-07 | **Full adversarial audit (8 finders + refuters) — round 1 fixed** | Confirmed and fixed: `/api/samples` and `/api/clients` were open to EVERY role (MAGASINIER/CLIENT could read the whole lab incl. blind numbers) → circuit roles only, TECHNICIEN sees only their bench on the list API; logo data-URI prefix-checked only (attribute breakout into every PDF) → whole-string base64 regex; a partially failed alert batch stamped `alertsSentAt` and silenced the rest forever → **claim-then-send** (atomic `updateMany` claim, also closes the validate/approve race; all-or-nothing stamp; claim released + error surfaced on failure); report creation failure unrecoverable → number collisions retried, `sendReport` self-heals a missing report; **double validation requires two different people** (`canApprove` refuses approverId === validatedById); blocked samples refuse results from anyone; factored « Absence »/« < x » kept as typed; headline figures from DB aggregates (`/api/samples/stats`, `/api/invoices/stats`) not the first page; on-screen invoice prints the saved identity; money/quantities rounded at write; enum/length inputs → 400 not 500; P2025 races → 409; every page carries its own `requireRole`; backups via temp file + « Dump completed » marker; **go-live demo-account shutdown** (`scripts/disable-demo-accounts.sh`, refuses without a real ADMIN) in DEPLOY.md — hiding the panel alone was cosmetic. Accepted: HTTP until the domain; LIKE search (documented); Better Auth remove-user exists but FK RESTRICT blocks deleting anyone with history |
 
 The first prototype was built to demonstrate, not to run a laboratory. Before
 extending the invoicing in Phase 4 it was audited across backend, frontend and

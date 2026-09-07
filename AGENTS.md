@@ -114,7 +114,7 @@ open `node_modules/next/dist/docs/` and confirm the current API.
 | PDF (reports) | **Server-side HTML→PDF via headless Chromium (Playwright)** — see PLAN. Keep client jsPDF only for the existing invoice demo |
 | Email | **Resend** (transactional) |
 | Styling | Tailwind CSS v4 + project design skills (top-tier per screen) |
-| Deploy | VPS + PM2 (`ecosystem.config.cjs`), `/api/health`, watchdog scripts |
+| Deploy | **Docker Compose** on the VPS (`Dockerfile` 3-stage + Chromium, `docker-compose.yml` with a one-shot `migrate` service, nginx in front), `/api/health`, git-as-pipeline (`DEPLOY.md`); PM2 files kept only as a bare-metal fallback |
 
 ## 6. Commands
 

@@ -108,12 +108,21 @@ export async function PUT(
 
     // The value is stored as typed and as a number: the alert compares
     // figures. A calcFactor (dilution) turns the bench reading into the final
-    // value; the raw entry is kept alongside so nothing is lost.
+    // value; the raw entry is kept alongside so nothing is lost. Only a
+    // genuine count is rewritten — « Absence » and « < 10 » stay as typed
+    // (their numeric 0 × factor is still 0), otherwise the report would print
+    // "0" where the technician wrote « Absence ».
+    if (value.length > 191) {
+      return NextResponse.json(
+        { error: `Valeur trop longue pour ${parameter.name} (191 caractères max).` },
+        { status: 400 }
+      );
+    }
     const parsed = value
       ? applyCalcFactor(parseLabValue(value), parameter.calcFactor)
-      : { numeric: null };
+      : { numeric: null, kind: "unreadable" as const };
     const transformed =
-      parameter.calcFactor !== 1 && value !== "" && parsed.numeric !== null;
+      parameter.calcFactor !== 1 && parsed.kind === "number" && parsed.numeric !== null;
 
     entries.push({
       parameterId,
@@ -159,10 +168,15 @@ export async function PUT(
   if (sample.status === "RECU") {
     const transition = canTransition("RECU", "EN_ANALYSE", session.role);
     if (transition.ok) {
-      await prisma.sample.update({
-        where: { id: sample.id },
-        data: { status: "EN_ANALYSE" },
-      });
+      await prisma.sample
+        .update({
+          where: { id: sample.id, status: "RECU" },
+          data: { status: "EN_ANALYSE" },
+        })
+        .catch((error) => {
+          // A concurrent save already moved it: nothing left to do.
+          if ((error as { code?: string }).code !== "P2025") throw error;
+        });
       status = "EN_ANALYSE";
 
       await logAudit({
