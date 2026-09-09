@@ -56,5 +56,7 @@ export default async function FactureDetailPage({
     })),
   };
 
-  return <FactureDetail invoice={serialized} company={await getCompany()} />;
+  return (
+    <FactureDetail invoice={serialized} company={await getCompany()} canSettle />
+  );
 }

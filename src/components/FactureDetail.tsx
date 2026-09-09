@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useInvoiceBasePath } from "@/lib/invoice-paths";
-import { ArrowLeft, Download, Printer } from "lucide-react";
+import { ArrowLeft, Download, Printer, BadgeCheck, Undo2 } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { formatCurrency } from "@/lib/labels";
 import type { CompanyInfo } from "@/lib/company";
@@ -23,10 +25,40 @@ function formatInvoiceDate(date: Date | string) {
 export function FactureDetail({
   invoice,
   company,
+  canSettle = false,
 }: {
   invoice: Invoice;
   company: CompanyInfo;
+  /** COMPTABLE and ADMIN record the settlement; the others only read it. */
+  canSettle?: boolean;
 }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const paid = invoice.status === "PAYEE";
+
+  async function setPaid(next: "PAYEE" | "EN_ATTENTE") {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/invoices/${invoice.id}/payment`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: next }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setError(data.error ?? "Le statut n'a pas pu être enregistré.");
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Une erreur réseau est survenue. Réessayez.");
+    } finally {
+      setBusy(false);
+    }
+  }
   // The recap lists the standard rates plus whatever rate this invoice
   // actually carries, so an unusual rate never prints an all-dash recap.
   const vatRates = [invoice.taxRate, 20, 10, 5.5]
@@ -53,7 +85,35 @@ export function FactureDetail({
           <ArrowLeft className="h-4 w-4" />
           Retour aux factures
         </Link>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+              paid
+                ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                : "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
+            }`}
+          >
+            {paid ? "Encaissée" : "En attente de règlement"}
+          </span>
+          {canSettle && (
+            <button
+              type="button"
+              onClick={() => setPaid(paid ? "EN_ATTENTE" : "PAYEE")}
+              disabled={busy}
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98] disabled:opacity-60"
+            >
+              {paid ? (
+                <Undo2 className="h-4 w-4" />
+              ) : (
+                <BadgeCheck className="h-4 w-4" />
+              )}
+              {busy
+                ? "Enregistrement…"
+                : paid
+                  ? "Rouvrir la facture"
+                  : "Marquer encaissée"}
+            </button>
+          )}
           <button
             type="button"
             onClick={handlePrint}
@@ -75,6 +135,15 @@ export function FactureDetail({
           </a>
         </div>
       </div>
+
+      {error && (
+        <p
+          role="alert"
+          className="no-print mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+        >
+          {error}
+        </p>
+      )}
 
       <div
         className="print-area invoice-sheet flex min-h-[277mm] flex-col overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-slate-200"

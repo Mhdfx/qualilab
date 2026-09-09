@@ -47,5 +47,5 @@ export default async function ComptaFactureDetailPage({
     })),
   };
 
-  return <FactureDetail invoice={data} company={await getCompany()} />;
+  return <FactureDetail invoice={data} company={await getCompany()} canSettle />;
 }
