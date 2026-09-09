@@ -197,6 +197,23 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 
+- **2026-09-09 · Claude Code** · **Recette navigateur du circuit complet en
+  production.** Parcours repris entièrement à la main dans le navigateur sur
+  http://185.217.126.53, en 1440×900, du prélèvement au rapport et à la
+  facture encaissée, un compte après l'autre (QL-2026-00014 →
+  QLC-2026-00010 / SN-M4N0-1Q4Q → RAP-2026-00004 → FAC-2026-0004). Tout le
+  circuit tient : garde-fous de saisie, conformité calculée en direct,
+  double validation, alerte de contamination, PDF, journal d'audit complet.
+  **Trois défauts visibles par le client trouvés et corrigés le jour même** :
+  les exposants au-delà de ³ disparaissaient des PDF (le conteneur n'a que
+  Liberation Sans, sans U+2074 — un seuil « 1.10⁴ UFC/g » s'imprimait
+  « 1.10 UFC/g ») → exposants convertis en `<sup>` + fonts-dejavu-core ; la
+  feuille de paillasse était datée de la veille toute la journée (minuit
+  local = 23 h UTC la veille) ; trois nombres non francisés (« 1030.00 DH »,
+  « 5.5 % », « 9.4 °C »). L'espace comptabilité annonçait encore en
+  « prochaines fonctionnalités » les écrans de la phase 4, livrés depuis.
+  Déployé et revérifié en production. Détail : TESTPLAN checkpoint K.
+
 - **2026-09-09 · Claude Code** · **Audit round 2 + recette de production
   avant la présentation client.** Second passage adversarial (5 relecteurs)
   lancé contre le commit du round 1 lui-même, puis 99 contrôles exécutés en

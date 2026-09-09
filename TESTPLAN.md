@@ -666,3 +666,70 @@ secondes.
 - [ ] 🔒 Go-live : `scripts/disable-demo-accounts.sh` puis
       `NEXT_PUBLIC_DEMO_MODE=false` + rebuild.
 - [ ] Copie hors site des sauvegardes (le VPS sauvegarde sur lui-même).
+
+## Checkpoint K — Recette navigateur en production (2026-09-09)
+
+Parcours refait entièrement à la main dans le navigateur sur
+http://185.217.126.53, en 1440×900, un compte après l'autre. Seules les
+lignes ci-dessous ont été **vues à l'écran** ; rien n'est coché sur la foi
+du code.
+
+- [x] Connexion : les 9 comptes de démonstration sont listés, un clic
+      remplit le formulaire, chaque rôle atterrit sur son espace
+      (préleveur, réception, technicien, validation, direction,
+      comptabilité, commercial, magasin).
+- [x] Préleveur : QL-2026-00014 créé en deux étapes ; la liste des
+      paramètres se recharge à chaque domaine (5 en alimentaire, 5 en eau,
+      5 en ambiance) ; formulaire incomplet refusé avec un message ;
+      récapitulatif fidèle ; écran de succès + suivi en 5 étapes.
+- [x] Aucun code de contrôle ni numéro de série nulle part chez le
+      préleveur (tableau de bord et écran de succès).
+- [x] Réception : file de 5 échantillons ; « Non conforme » réclame un
+      motif et refuse la validation sans lui ; réception conforme →
+      QLC-2026-00010 et SN-M4N0-1Q4Q affichés, technicien attribué avec
+      sa charge en cours (« Yassine Amrani — 3 en cours »).
+- [x] Technicien : paillasse par numéro de série ; conformité calculée en
+      direct à la saisie — « 4,5.10² » lu 450 contre une limite de 100
+      → non conforme, « Absence » reconnue comme telle ; enregistrement
+      intermédiaire puis soumission ; feuille de paillasse PDF (47 Ko).
+- [x] Validation : tableau résultat/seuil/conformité, germes sensibles
+      marqués ; renvoi au technicien sans motif refusé ; validation
+      technique signée et horodatée à l'heure de Casablanca ; le
+      validateur ne se voit pas proposer l'approbation finale.
+- [x] Direction : approbation → rapport RAP-2026-00004, envoi enregistré à
+      qualite@agromaroc.ma, alerte de contamination partie, bandeau « mode
+      démonstration » explicite ; la page reste sur l'échantillon avec le
+      rapport et le renvoi à portée.
+- [x] Rapport PDF (61 Ko) : en-tête laboratoire, client, échantillon,
+      traçabilité, tableau des résultats, conclusion nommant le germe non
+      conforme, trois signatures (technicien, validateur, direction).
+- [x] Journal d'audit : les onze actions du circuit, chacune avec son
+      auteur, son rôle et son heure locale.
+- [x] Comptabilité : le client sélectionné propose ses analyses validées ;
+      3 lignes reprises au tarif du catalogue ; TVA 20 % → 1 236,00 DH ;
+      FAC-2026-0004 générée, PDF (61 Ko), « Marquer encaissée » →
+      « Encaissée ».
+- [x] Commercial : fiche client 360 — 3 échantillons, 1 rapport, facturé
+      et encaissé à jour, destinataires par usage (rapports / alertes),
+      lien facture ouvrant bien le PDF pour ce rôle.
+- [x] Cloisonnement re-sondé en direct depuis le navigateur (gestionnaire) :
+      `/api/admin/users`, `/api/stock/items`, `/api/equipments` refusés,
+      `/admin` et `/qualite` redirigés.
+- [x] Achat & Stock : 4 articles, 1 sous le seuil, 3 factures fournisseurs,
+      échéances « en retard » / « bientôt » correctes.
+- [x] Système Qualité : 3 équipements, 2 étalonnages à traiter (retard et
+      bientôt), 1 excursion de température, 2 campagnes EIL.
+
+### Défauts trouvés par cette recette et corrigés le jour même
+
+- [x] **Exposants perdus dans les PDF** — le conteneur n'a que Liberation
+      Sans, sans U+2074 : un seuil « 1.10⁴ UFC/g » s'imprimait « 1.10 UFC/g »
+      sur le rapport du client. Exposants convertis en `<sup>`, plus
+      fonts-dejavu-core dans l'image.
+- [x] **Feuille de paillasse datée de la veille** toute la journée (minuit
+      à Casablanca = 23 h UTC la veille) : le jour vient désormais du fuseau
+      du laboratoire.
+- [x] **Nombres non francisés** à trois endroits : « 1030.00 DH » dans le
+      panneau des analyses à facturer, « 5.5 % » de TVA, « 9.4 °C ».
+- [x] **Espace comptabilité** : le bloc « prochaines fonctionnalités »
+      annonçait encore les trois écrans de la phase 4, livrés depuis.
