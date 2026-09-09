@@ -88,9 +88,17 @@ echo "  health OK"
 
 echo "== 7/8 Seed demo accounts (fresh database only) =="
 DBPASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
-USERS="$(sudo -u qualilab docker compose exec -T db \
-  mysql -u qualilab -p"$DBPASS" -N -e 'SELECT COUNT(*) FROM User' qualilab 2>/dev/null || echo 0)"
-if [ "${USERS:-0}" = "0" ]; then
+# A failed query must never be mistaken for an empty database: the seed wipes
+# the tables it recreates, so we stop here rather than guess.
+if ! USERS="$(sudo -u qualilab docker compose exec -T db \
+  mysql -u qualilab -p"$DBPASS" -N -e 'SELECT COUNT(*) FROM User' qualilab 2>/dev/null)"; then
+  echo "  could not count users (db not reachable?) — seed skipped, check: docker compose logs db" >&2
+  exit 1
+fi
+case "$USERS" in
+  ''|*[!0-9]*) echo "  unexpected user count '$USERS' — seed skipped" >&2; exit 1 ;;
+esac
+if [ "$USERS" = "0" ]; then
   sudo -u qualilab bash scripts/seed-docker.sh
 else
   echo "  $USERS users already present — seed skipped"

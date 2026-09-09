@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import type { MovementType } from "@/lib/stock";
+import { formatDayShort } from "@/lib/labels";
 
 /**
  * The stock screen: articles, their levels, and the movements that are the
@@ -433,7 +434,7 @@ function MovementHistory({ itemId }: { itemId: string }) {
           </span>
           <span className="text-xs text-slate-500">
             {movement.lot && `lot ${movement.lot} · `}
-            {new Date(movement.createdAt).toLocaleDateString("fr-FR")}
+            {formatDayShort(movement.createdAt)}
             {movement.createdBy && ` · ${movement.createdBy.name}`}
             {movement.note && ` · ${movement.note}`}
           </span>

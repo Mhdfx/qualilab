@@ -1,6 +1,6 @@
 import { Inbox, ClipboardCheck, FlaskConical, CalendarClock } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { formatDateTime } from "@/lib/labels";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
@@ -19,7 +19,8 @@ export default async function ReceptionPage() {
 
   const [session, pending, blocked, recusAujourdhui, enAnalyse, total] =
     await Promise.all([
-      getSession(),
+      // Belt and braces with the layout guard.
+      requireRole("RECEPTIONNISTE", "ADMIN"),
       prisma.sample.findMany({
         where: { status: "PRELEVE" },
         select: {

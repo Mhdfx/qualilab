@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import type { CalibrationState } from "@/lib/quality";
+import { formatDayShort } from "@/lib/labels";
 
 /**
  * The metrology register: each equipment, its calibration schedule, its
@@ -157,7 +158,7 @@ function EquipmentCard({
             {equipment.calibrationFrequencyMonths
               ? ` · étalonnage tous les ${equipment.calibrationFrequencyMonths} mois${
                   equipment.calibration.dueDate
-                    ? ` (prochain : ${new Date(equipment.calibration.dueDate).toLocaleDateString("fr-FR")})`
+                    ? ` (prochain : ${formatDayShort(equipment.calibration.dueDate)})`
                     : ""
                 }`
               : " · non étalonné"}
@@ -435,7 +436,7 @@ function CalibrationHistory({ equipmentId }: { equipmentId: string }) {
       {records.map((record) => (
         <li key={record.id} className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 text-sm">
           <span className={`font-medium ${record.result === "CONFORME" ? "text-emerald-700" : "text-rose-700"}`}>
-            {new Date(record.performedAt).toLocaleDateString("fr-FR")} ·{" "}
+            {formatDayShort(record.performedAt)} ·{" "}
             {record.result === "CONFORME" ? "Conforme" : "Non conforme"}
           </span>
           <span className="text-xs text-slate-500">

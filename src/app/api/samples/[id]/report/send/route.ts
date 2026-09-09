@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
-import { sendReport } from "@/lib/report-dispatch";
+import { sendContaminationAlerts, sendReport } from "@/lib/report-dispatch";
 
 /**
  * Sends — or resends — the report to the client.
@@ -23,5 +23,17 @@ export async function POST(
     return NextResponse.json({ error: result.error }, { status: 409 });
   }
 
-  return NextResponse.json(result);
+  // The alerts ride along: any batch that failed (or was skipped for lack of
+  // an address) at approval is retried here — already-sent ones are not
+  // repeated, the claim on the sample sees to that.
+  const alerts = await sendContaminationAlerts(id, session.id).catch((error) => {
+    console.error("[report/send] alert send failed", { error });
+    return { ok: false as const, error: "Envoi des alertes impossible." };
+  });
+
+  return NextResponse.json({
+    ...result,
+    alerts: alerts.ok ? alerts.sent : 0,
+    alertsError: alerts.ok ? undefined : alerts.error,
+  });
 }

@@ -69,6 +69,25 @@ describe("validateClient", () => {
   });
 });
 
+describe("validateClient — column widths", () => {
+  it("refuses a field longer than the column instead of crashing on insert", () => {
+    const long = "a".repeat(192);
+    for (const [field, message] of [
+      ["contact", "Le contact"],
+      ["phone", "Le téléphone"],
+      ["address", "L'adresse"],
+    ] as const) {
+      const result = validateClient({ name: "Labo test", [field]: long });
+      expect(result.ok, field).toBe(false);
+      if (!result.ok) expect(result.error).toContain(message);
+    }
+  });
+
+  it("accepts a field of exactly the column width", () => {
+    expect(validateClient({ name: "Labo test", address: "a".repeat(191) }).ok).toBe(true);
+  });
+});
+
 describe("validateClientEmails", () => {
   it("keeps a list and lowercases the addresses", () => {
     const result = validateClientEmails([

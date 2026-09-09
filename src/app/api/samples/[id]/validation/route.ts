@@ -205,20 +205,31 @@ export async function POST(
       return NextResponse.json({ error: check.error }, { status: 409 });
     }
 
-    const updated = await prisma.sample.update({
-      where: { id: sample.id, status: "RESULTATS_SAISIS" },
-      data: {
-        status: "EN_ANALYSE",
-        rejectionReason: motif,
-        rejectedById: session.id,
-        rejectedAt: now,
-        // The technical sign-off is cleared: the corrected results must be
-        // validated again from the start.
-        validatedById: null,
-        validatedAt: null,
-      },
-      select: { id: true, code: true, status: true },
-    });
+    let updated: { id: string; code: string; status: string };
+    try {
+      updated = await prisma.sample.update({
+        where: { id: sample.id, status: "RESULTATS_SAISIS" },
+        data: {
+          status: "EN_ANALYSE",
+          rejectionReason: motif,
+          rejectedById: session.id,
+          rejectedAt: now,
+          // The technical sign-off is cleared: the corrected results must be
+          // validated again from the start.
+          validatedById: null,
+          validatedAt: null,
+        },
+        select: { id: true, code: true, status: true },
+      });
+    } catch (error) {
+      if ((error as { code?: string }).code === "P2025") {
+        return NextResponse.json(
+          { error: "Cet échantillon vient de changer d'état : rechargez la page." },
+          { status: 409 }
+        );
+      }
+      throw error;
+    }
 
     await logAudit({
       actorId: session.id,

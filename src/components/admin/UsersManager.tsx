@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Ban, Check, KeyRound, Plus, RotateCcw, UserCog, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { ROLES, ROLE_LABELS, type Role } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, ROLE_LABELS, type Role } from "@/lib/roles";
 
 export type UserRow = {
   id: string;
@@ -130,7 +130,7 @@ export function UsersManager({
                       }
                       className="min-h-[36px] rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50 disabled:text-slate-400"
                     >
-                      {ROLES.map((role) => (
+                      {ASSIGNABLE_ROLES.map((role) => (
                         <option key={role} value={role}>
                           {ROLE_LABELS[role as Role]}
                         </option>
@@ -261,7 +261,7 @@ function CreateUserForm({
             onChange={(event) => setRole(event.target.value)}
             className="mt-1 min-h-[38px] w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           >
-            {ROLES.map((r) => (
+            {ASSIGNABLE_ROLES.map((r) => (
               <option key={r} value={r}>
                 {ROLE_LABELS[r as Role]}
               </option>

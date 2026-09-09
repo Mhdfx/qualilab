@@ -64,6 +64,10 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // refresh once a day
   },
+  // Accounts are disabled, never deleted: every signature in the circuit
+  // (validatedById, approvedById, audit actors…) points at a user row, and
+  // the admin plugin's hard delete would null them all. 404 on that path.
+  disabledPaths: ["/admin/remove-user"],
   advanced: {
     cookiePrefix: "qualilab",
     useSecureCookies:

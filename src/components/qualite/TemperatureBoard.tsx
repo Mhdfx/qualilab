@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { History, Thermometer } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { formatDayTime } from "@/lib/labels";
 
 /**
  * The daily readings board: one card per monitored equipment, quick entry,
@@ -125,12 +126,7 @@ function EquipmentTempCard({
             </p>
             <p className="text-xs text-slate-500">
               {last.outOfRange ? "HORS PLAGE — " : ""}
-              {new Date(last.readAt).toLocaleString("fr-FR", {
-                day: "2-digit",
-                month: "2-digit",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+              {formatDayTime(last.readAt)}
             </p>
           </div>
         ) : (
@@ -222,12 +218,7 @@ function ReadingHistory({
             {reading.value} °C{reading.outOfRange ? " — hors plage" : ""}
           </span>
           <span className="text-xs text-slate-500">
-            {new Date(reading.readAt).toLocaleString("fr-FR", {
-              day: "2-digit",
-              month: "2-digit",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+            {formatDayTime(reading.readAt)}
             {reading.createdBy && ` · ${reading.createdBy.name}`}
             {reading.note && ` · ${reading.note}`}
           </span>

@@ -63,6 +63,9 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
+      # The laboratory's wall clock: day cut-offs ("reçus aujourd'hui", bench
+      # sheet) and every printed timestamp follow it, not the container's UTC.
+      TZ: ${TZ:-Africa/Casablanca}
       DATABASE_URL: "mysql://qualilab:${DB_PASSWORD}@db:3306/qualilab"
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL in .env}

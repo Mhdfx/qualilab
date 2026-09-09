@@ -3,7 +3,7 @@ import { requireApiRole } from "@/lib/auth";
 import { auth } from "@/lib/auth-server";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { ROLES, type Role } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, type Role } from "@/lib/roles";
 
 /**
  * Managing one account: change its role, disable or re-enable it, reset its
@@ -50,7 +50,7 @@ export async function PATCH(
   };
 
   if (typeof role === "string") {
-    if (!ROLES.includes(role as Role)) {
+    if (!ASSIGNABLE_ROLES.includes(role as Role)) {
       return NextResponse.json({ error: "Rôle invalide." }, { status: 400 });
     }
     await prisma.user.update({ where: { id }, data: { role } });

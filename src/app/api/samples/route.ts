@@ -103,6 +103,12 @@ export async function POST(request: Request) {
     if (type && !SAMPLE_TYPES.includes(type)) {
       return NextResponse.json({ error: "Domaine d'analyse invalide." }, { status: 400 });
     }
+    if (typeof lieu === "string" && lieu.trim().length > 191) {
+      return NextResponse.json(
+        { error: "Le lieu de prélèvement est trop long (191 caractères maximum)." },
+        { status: 400 }
+      );
+    }
     if (!clientId || !lieu || !type || !parameterIds?.length) {
       return NextResponse.json(
         { error: "Veuillez remplir tous les champs obligatoires." },

@@ -77,6 +77,9 @@ export function Sidebar({ sections, roleLabel, onNavigate, onClose }: SidebarPro
                   <li key={item.label}>
                     <Link
                       href={item.href}
+                      // API links (PDFs) are documents: prefetching would
+                      // render a Chromium page on every view for nothing.
+                      prefetch={item.href.startsWith("/api/") ? false : undefined}
                       onClick={onNavigate}
                       className={`flex min-h-[44px] items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 lg:min-h-[38px] lg:py-2 ${
                         active

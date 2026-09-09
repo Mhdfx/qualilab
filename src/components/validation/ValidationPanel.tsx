@@ -28,6 +28,9 @@ type ValidationPanelProps = {
   sentTo: string | null;
   /** False when no mail provider is configured yet — sends are recorded, not delivered. */
   emailLive: boolean;
+  /** Who signed step 1 — the same person may not sign step 2. */
+  validatedById: string | null;
+  userId: string;
 };
 
 /**
@@ -47,10 +50,13 @@ export function ValidationPanel({
   reportNumber,
   sentTo,
   emailLive,
+  validatedById,
+  userId,
 }: ValidationPanelProps) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
 
@@ -63,6 +69,7 @@ export function ValidationPanel({
 
     setBusy(action);
     setError("");
+    setWarning("");
     try {
       const response = await fetch(`/api/samples/${sampleId}/validation`, {
         method: "POST",
@@ -75,7 +82,15 @@ export function ValidationPanel({
         return;
       }
       router.refresh();
-      if (action !== "validate") router.push("/validation");
+      // The decision is recorded even when a send failed: stay on the page
+      // and say so, the resend button retries the whole dispatch.
+      if (data.dispatch?.error) {
+        setWarning(`Décision enregistrée. ${data.dispatch.error}`);
+        return;
+      }
+      // Approval stays on the page: the report and the send controls are
+      // here, and the sample has just left the queue anyway.
+      if (action === "reject") router.push("/validation");
     } catch {
       setError("Une erreur réseau est survenue. Réessayez.");
     } finally {
@@ -87,6 +102,7 @@ export function ValidationPanel({
     if (busy) return;
     setBusy("resend");
     setError("");
+    setWarning("");
     try {
       const response = await fetch(`/api/samples/${sampleId}/report/send`, {
         method: "POST",
@@ -96,6 +112,7 @@ export function ValidationPanel({
         setError(data.error ?? "Envoi impossible.");
         return;
       }
+      if (data.alertsError) setWarning(`Rapport envoyé. ${data.alertsError}`);
       router.refresh();
     } catch {
       setError("Une erreur réseau est survenue. Réessayez.");
@@ -105,7 +122,8 @@ export function ValidationPanel({
   }
 
   const canValidate = state === "AWAITING_TECHNICAL" && (role === "VALIDATEUR" || role === "ADMIN");
-  const canApprove = state === "AWAITING_ADMIN" && role === "ADMIN";
+  const signedStepOne = validatedById !== null && validatedById === userId;
+  const canApprove = state === "AWAITING_ADMIN" && role === "ADMIN" && !signedStepOne;
   const canReject = state !== "APPROVED" && (role === "VALIDATEUR" || role === "ADMIN");
 
   return (
@@ -151,6 +169,15 @@ export function ValidationPanel({
           className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
         >
           {error}
+        </p>
+      )}
+
+      {warning && (
+        <p
+          role="status"
+          className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+        >
+          {warning}
         </p>
       )}
 
@@ -206,8 +233,8 @@ export function ValidationPanel({
             </p>
           )}
 
-          {reportNumber && (
-            <div className="mt-4 space-y-3">
+          <div className="mt-4 space-y-3">
+            {reportNumber && (
               <a
                 href={`/api/samples/${sampleId}/report`}
                 target="_blank"
@@ -217,21 +244,24 @@ export function ValidationPanel({
                 <FileDown className="h-4 w-4" aria-hidden="true" />
                 Télécharger le rapport
               </a>
-              <SecondaryButton
-                type="button"
-                onClick={() => resend()}
-                disabled={!!busy}
-                className="w-full"
-              >
-                <Send className="h-4 w-4" aria-hidden="true" />
-                {busy === "resend"
-                  ? "Envoi…"
+            )}
+            {/* Without a report number the send also (re)creates the report. */}
+            <SecondaryButton
+              type="button"
+              onClick={() => resend()}
+              disabled={!!busy}
+              className="w-full"
+            >
+              <Send className="h-4 w-4" aria-hidden="true" />
+              {busy === "resend"
+                ? "Envoi…"
+                : !reportNumber
+                  ? "Générer et envoyer le rapport"
                   : sentTo
                     ? "Renvoyer au client"
                     : "Envoyer au client"}
-              </SecondaryButton>
-            </div>
-          )}
+            </SecondaryButton>
+          </div>
         </div>
       ) : (
         <div className="mt-5 space-y-3">
@@ -257,6 +287,14 @@ export function ValidationPanel({
               <Stamp className="h-4 w-4" aria-hidden="true" />
               {busy === "approve" ? "Approbation…" : "Approuver définitivement"}
             </PrimaryButton>
+          )}
+
+          {state === "AWAITING_ADMIN" && role === "ADMIN" && signedStepOne && (
+            <p className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
+              <Lock className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+              Vous avez signé la validation technique : l&apos;approbation finale
+              revient à un autre administrateur.
+            </p>
           )}
 
           {state === "AWAITING_ADMIN" && role !== "ADMIN" && (

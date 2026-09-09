@@ -218,6 +218,8 @@ export default async function ValidationDetailPage({
           reportNumber={sample.report?.number ?? null}
           sentTo={sample.report?.sentTo ?? null}
           emailLive={!!process.env.RESEND_API_KEY}
+          validatedById={sample.validatedById}
+          userId={session.id}
         />
       </div>
     </div>

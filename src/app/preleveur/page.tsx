@@ -1,9 +1,10 @@
 import { PreleveurDashboard } from "@/components/PreleveurDashboard";
-import { getSession } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 
 export const metadata = { title: "Prélèvements" };
 
 export default async function PreleveurPage() {
-  const session = await getSession();
-  return <PreleveurDashboard userName={session!.name} />;
+  // Belt and braces with the layout guard.
+  const session = await requireRole("PRELEVEUR");
+  return <PreleveurDashboard userName={session.name} />;
 }

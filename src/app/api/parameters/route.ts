@@ -6,7 +6,16 @@ import { SAMPLE_TYPES, validateParameter } from "@/lib/parameter-validation";
 import type { SampleType } from "@/generated/prisma/client";
 
 export async function GET(request: Request) {
-  const session = await requireApiRole();
+  // The lab's own norms (limits, alert flags, factors): circuit roles only.
+  const session = await requireApiRole(
+    "PRELEVEUR",
+    "RECEPTIONNISTE",
+    "TECHNICIEN",
+    "VALIDATEUR",
+    "GESTIONNAIRE",
+    "COMPTABLE",
+    "ADMIN"
+  );
   if (session instanceof NextResponse) return session;
 
   const { searchParams } = new URL(request.url);

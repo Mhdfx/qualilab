@@ -38,6 +38,8 @@ FROM node:22-slim AS run
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# Laboratory wall clock (compose can override with TZ).
+ENV TZ=Africa/Casablanca
 
 # Chromium renders the reports, invoices and bench sheets.
 RUN apt-get update \

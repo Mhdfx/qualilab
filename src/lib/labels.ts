@@ -15,17 +15,50 @@ export const SAMPLE_STATUS_LABELS: Record<SampleStatus, string> = {
   RAPPORT_ENVOYE: "Rapport envoyé",
 };
 
+/**
+ * The laboratory's wall clock. Fixed on purpose: server and browser must
+ * format a timestamp identically or hydration mismatches. The container's TZ
+ * (docker-compose.yml) is set to the same zone so that day cut-offs — "reçus
+ * aujourd'hui", the bench sheet — land on the same day as the printed times.
+ */
+export const LAB_TIME_ZONE = "Africa/Casablanca";
+
 export function formatDateTime(date: Date | string) {
   return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: LAB_TIME_ZONE,
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(date));
 }
 
 export function formatDate(date: Date | string) {
-  return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" }).format(
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "medium",
+    timeZone: LAB_TIME_ZONE,
+  }).format(
     new Date(date)
   );
+}
+
+/** Short "jour/mois heure:minute" — the lab's own zone, client-safe. */
+export function formatDayTime(date: Date | string) {
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: LAB_TIME_ZONE,
+  }).format(typeof date === "string" ? new Date(date) : date);
+}
+
+/** Numeric "jj/mm/aaaa" — the lab's own zone, client-safe. */
+export function formatDayShort(date: Date | string) {
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: LAB_TIME_ZONE,
+  }).format(typeof date === "string" ? new Date(date) : date);
 }
 
 export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {

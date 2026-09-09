@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth-server";
 import { internalEmailFor } from "@/lib/auth-server";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { ROLES, type Role } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, type Role } from "@/lib/roles";
 
 /**
  * The laboratory's user accounts.
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  if (typeof role !== "string" || !ROLES.includes(role as Role)) {
+  if (typeof role !== "string" || !ASSIGNABLE_ROLES.includes(role as Role)) {
     return NextResponse.json({ error: "Rôle invalide." }, { status: 400 });
   }
 

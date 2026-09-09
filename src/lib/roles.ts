@@ -44,6 +44,15 @@ export const ROLE_HOME: Record<Role, string> = {
   MAGASINIER: "/magasin",
 };
 
+/**
+ * Roles an administrator can give to an account today. CLIENT is reserved for
+ * the client portal (Phase 8): its home page does not exist yet, so handing it
+ * out would only produce a dead end after login.
+ */
+export const ASSIGNABLE_ROLES: readonly Role[] = ROLES.filter(
+  (role) => role !== "CLIENT"
+);
+
 export function isRole(value: unknown): value is Role {
   return typeof value === "string" && (ROLES as readonly string[]).includes(value);
 }

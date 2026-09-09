@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { toMoney } from "@/lib/money";
 
 export async function GET() {
-  const session = await requireApiRole();
+  // The price list feeds the invoice form only.
+  const session = await requireApiRole("COMPTABLE", "GESTIONNAIRE", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const services = await prisma.labService.findMany({

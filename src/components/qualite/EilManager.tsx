@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { Award, Pencil } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { EIL_STATUSES, type EilStatusValue } from "@/lib/quality-validation";
+import { formatDayShort } from "@/lib/labels";
 
 /** EIL campaigns — the proficiency-testing register an auditor asks for. */
 
@@ -111,7 +112,7 @@ export function EilManager({ initialCampaigns }: { initialCampaigns: EilRow[] })
                       {campaign.organizer ?? "Organisme non renseigné"}
                       {campaign.scope && ` · ${campaign.scope}`}
                       {campaign.startDate &&
-                        ` · début ${new Date(campaign.startDate).toLocaleDateString("fr-FR")}`}
+                        ` · début ${formatDayShort(campaign.startDate)}`}
                       {campaign.outcome && ` · ${campaign.outcome}`}
                     </p>
                   </div>

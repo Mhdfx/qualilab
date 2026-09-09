@@ -62,6 +62,19 @@ export function validateClient(input: ClientInput): ValidationResult {
     return { ok: false, error: "L'ICE doit comporter 15 chiffres." };
   }
 
+  // Every column is VARCHAR(191): refuse politely rather than crash on insert.
+  const capped: [string, string][] = [
+    ["Le contact", text(input.contact)],
+    ["L'adresse email", email],
+    ["Le téléphone", text(input.phone)],
+    ["L'adresse", text(input.address)],
+  ];
+  for (const [label, value] of capped) {
+    if (value.length > 191) {
+      return { ok: false, error: `${label} est trop long (191 caractères maximum).` };
+    }
+  }
+
   return {
     ok: true,
     value: {

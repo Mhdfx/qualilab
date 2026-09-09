@@ -285,7 +285,20 @@ export async function sendContaminationAlerts(
     return { ok: true as const, sent: 0 };
   }
 
-  // Claim first, atomically: whoever flips alertsSentAt from null wins, a
+  // Nobody to write to: leave the sample unclaimed so the alert goes out as
+  // soon as the gestionnaire records an address and the next step retries.
+  const to = await recipientsFor(sample.clientId, "alerts");
+  if (to.length === 0) {
+    return {
+      ok: false as const,
+      error: "Aucune adresse d'alerte enregistrée pour ce client.",
+    };
+  }
+
+  // The laboratory is always in copy of an alert.
+  const cc = [(await getCompany()).email].filter(Boolean);
+
+  // Claim atomically: whoever flips alertsSentAt from null wins, a
   // concurrent caller (early-alert validation racing the admin approval) sees
   // zero rows and leaves — one alert per contamination, never two. If any
   // germ fails below, the claim is released so the next call retries: a
@@ -302,17 +315,11 @@ export async function sendContaminationAlerts(
       alreadySentAt: sample.alertsSentAt ?? dispatchedAt,
     };
   }
-
-  const to = await recipientsFor(sample.clientId, "alerts");
-  if (to.length === 0) {
-    return {
-      ok: false as const,
-      error: "Aucune adresse d'alerte enregistrée pour ce client.",
-    };
-  }
-
-  // The laboratory is always in copy of an alert.
-  const cc = [(await getCompany()).email].filter(Boolean);
+  const releaseClaim = () =>
+    prisma.sample.update({
+      where: { id: sample.id },
+      data: { alertsSentAt: null },
+    });
 
   // One message per germ, listing every product concerned.
   const byGerm = new Map<string, AlertRow[]>();
@@ -337,42 +344,46 @@ export async function sendContaminationAlerts(
 
   let sent = 0;
   const failed: string[] = [];
-  for (const [germ, rows] of byGerm) {
-    const { subject, html } = alertEmail(germ, rows);
-    const result = await sendEmail({
-      to,
-      cc,
-      subject,
-      html,
-      type: "ALERTE_CONTAMINATION",
-      reportId: sample.report?.id ?? null,
-    });
-
-    if (result.status !== "ECHEC") sent += 1;
-    else failed.push(germ);
-
-    await logAudit({
-      actorId,
-      action: "CONTAMINATION_ALERT_SENT",
-      entity: "Sample",
-      entityId: sample.id,
-      metadata: {
-        code: sample.code,
-        germe: germ,
-        produits: rows.map((row) => row.produit),
+  try {
+    for (const [germ, rows] of byGerm) {
+      const { subject, html } = alertEmail(germ, rows);
+      const result = await sendEmail({
         to,
-        status: result.status,
-      },
-    });
+        cc,
+        subject,
+        html,
+        type: "ALERTE_CONTAMINATION",
+        reportId: sample.report?.id ?? null,
+      });
+
+      if (result.status !== "ECHEC") sent += 1;
+      else failed.push(germ);
+
+      await logAudit({
+        actorId,
+        action: "CONTAMINATION_ALERT_SENT",
+        entity: "Sample",
+        entityId: sample.id,
+        metadata: {
+          code: sample.code,
+          germe: germ,
+          produits: rows.map((row) => row.produit),
+          to,
+          status: result.status,
+        },
+      });
+    }
+  } catch (error) {
+    // A crash between the claim and the sends must not leave the sample
+    // marked as alerted.
+    await releaseClaim().catch(() => undefined);
+    throw error;
   }
 
   if (failed.length > 0) {
     // Release the claim: the journal keeps the ECHEC rows, and the next
     // approval/resend attempts the whole batch again.
-    await prisma.sample.update({
-      where: { id: sample.id },
-      data: { alertsSentAt: null },
-    });
+    await releaseClaim();
     return {
       ok: false as const,
       error: `Alerte de contamination non envoyée pour : ${failed.join(", ")} — à renvoyer.`,

@@ -32,10 +32,15 @@ export default async function ClientDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireRole("GESTIONNAIRE", "ADMIN");
+  const session = await requireRole("GESTIONNAIRE", "ADMIN");
+  // The invoice screen lives in the admin space; the gestionnaire gets the
+  // PDF itself (its endpoint admits the role) instead of a silent bounce.
+  const invoiceHref = (id: string) =>
+    session.role === "ADMIN" ? `/admin/factures/${id}` : `/api/invoices/${id}/pdf`;
   const { id } = await params;
 
-  const [client, samples, invoices, paid, billedAll] = await Promise.all([
+  const [client, samples, invoices, paid, billedAll, sampleCount, reportCount] =
+    await Promise.all([
     prisma.client.findUnique({
       where: { id },
       include: { emails: { orderBy: { email: "asc" } } },
@@ -77,12 +82,13 @@ export default async function ClientDetailPage({
       where: { clientId: id },
       _sum: { total: true },
     }),
+    prisma.sample.count({ where: { clientId: id } }),
+    prisma.report.count({ where: { sample: { clientId: id } } }),
   ]);
 
   if (!client) notFound();
 
   const billed = toMoney(billedAll._sum.total);
-  const reports = samples.filter((sample) => sample.report).length;
 
   return (
     <div>
@@ -119,8 +125,8 @@ export default async function ClientDetailPage({
 
       <section aria-label="Indicateurs" className="mb-8">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Échantillons" value={samples.length} icon={FlaskConical} accent="blue" />
-          <StatCard label="Rapports" value={reports} icon={FileText} accent="emerald" />
+          <StatCard label="Échantillons" value={sampleCount} icon={FlaskConical} accent="blue" />
+          <StatCard label="Rapports" value={reportCount} icon={FileText} accent="emerald" />
           <StatCard label="Facturé" value={formatCurrency(billed)} icon={FileText} accent="brand" />
           <StatCard label="Encaissé" value={formatCurrency(toMoney(paid._sum.total))} icon={FileText} accent="violet" />
         </div>
@@ -228,7 +234,8 @@ export default async function ClientDetailPage({
                 {invoices.map((invoice) => (
                   <li key={invoice.id} className="flex items-center justify-between gap-3 py-2.5">
                     <Link
-                      href={`/admin/factures/${invoice.id}`}
+                      href={invoiceHref(invoice.id)}
+                      target={session.role === "ADMIN" ? undefined : "_blank"}
                       className="min-w-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                     >
                       <p className="font-mono text-sm font-semibold text-slate-900">
