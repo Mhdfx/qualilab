@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FlaskConical, Plus, RefreshCw } from "lucide-react";
-import { formatDate } from "@/lib/labels";
+import { formatCurrency, formatDate } from "@/lib/labels";
 import { SAMPLE_TYPE_LABELS } from "@/lib/labels";
 import type { SampleType } from "@/generated/prisma/client";
 
@@ -172,7 +172,7 @@ function BillableSamplesFor({
                   </span>
                 </span>
                 <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-700">
-                  {amount.toFixed(2)} DH
+                  {formatCurrency(amount)}
                 </span>
               </label>
             </li>
@@ -192,7 +192,7 @@ function BillableSamplesFor({
         <Plus className="h-4 w-4" aria-hidden="true" />
         {selectedLines.length === 0
           ? "Sélectionnez des échantillons"
-          : `Ajouter ${selectedLines.length} ligne${selectedLines.length > 1 ? "s" : ""} · ${selectedTotal.toFixed(2)} DH`}
+          : `Ajouter ${selectedLines.length} ligne${selectedLines.length > 1 ? "s" : ""} · ${formatCurrency(selectedTotal)}`}
       </button>
     </div>
   );

@@ -2,6 +2,7 @@ import { COMPANY, type CompanyInfo } from "./company";
 import { companyBrandHtml } from "./brand-html";
 import { SAMPLE_TYPE_LABELS, formatDateTime, formatDate } from "./labels";
 import type { SampleType } from "@/generated/prisma/client";
+import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
 
 /**
  * The official analysis report.
@@ -42,18 +43,6 @@ export type ReportData = {
   }[];
 };
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-/** `null` renders as an em dash rather than an empty cell. */
-function show(value: string | null | undefined) {
-  return value ? escapeHtml(value) : "—";
-}
 
 export function buildReportHtml(
   data: ReportData,
@@ -94,6 +83,7 @@ export function buildReportHtml(
   @page { size: A4; margin: 14mm 14mm 16mm; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
+  ${SUPERSCRIPT_CSS}
   body {
     font-family: "Segoe UI", Arial, sans-serif; color: #1b2a33;
     font-size: 10pt; line-height: 1.45;

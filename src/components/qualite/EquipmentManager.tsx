@@ -12,8 +12,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import type { CalibrationState } from "@/lib/quality";
-import { formatDayShort } from "@/lib/labels";
-
+import { formatDayShort, formatDecimal } from "@/lib/labels";
 /**
  * The metrology register: each equipment, its calibration schedule, its
  * records. The due badges come computed from the API so every screen
@@ -163,7 +162,7 @@ function EquipmentCard({
                 }`
               : " · non étalonné"}
             {equipment.tempMin !== null || equipment.tempMax !== null
-              ? ` · plage [${equipment.tempMin ?? "—"} ; ${equipment.tempMax ?? "—"}] °C`
+              ? ` · plage [${equipment.tempMin === null ? "—" : formatDecimal(equipment.tempMin)} ; ${equipment.tempMax === null ? "—" : formatDecimal(equipment.tempMax)}] °C`
               : ""}
           </p>
         </div>

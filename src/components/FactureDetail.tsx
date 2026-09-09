@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useInvoiceBasePath } from "@/lib/invoice-paths";
 import { ArrowLeft, Download, Printer, BadgeCheck, Undo2 } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
-import { formatCurrency } from "@/lib/labels";
+import { formatCurrency, formatDecimal } from "@/lib/labels";
 import type { CompanyInfo } from "@/lib/company";
 import { computeInvoiceTotals } from "@/lib/invoice-math";
 import type { Invoice } from "@/lib/invoice-types";
@@ -238,7 +238,7 @@ export function FactureDetail({
                     {formatCurrency(item.unitPrice)}
                   </td>
                   <td className="border-b border-slate-200 px-2 py-1.5 text-center tabular-nums text-slate-600">
-                    {invoice.taxRate}&nbsp;%
+                    {formatDecimal(invoice.taxRate)}&nbsp;%
                   </td>
                   <td className="border-b border-slate-200 px-2 py-1.5 text-right tabular-nums text-slate-700">
                     {formatCurrency(amounts.lineVat)}
@@ -280,7 +280,7 @@ export function FactureDetail({
                         {active ? formatCurrency(rowHt) : "—"}
                       </td>
                       <td className="px-2 py-1.5 text-center tabular-nums text-slate-600">
-                        {rate}&nbsp;%
+                        {formatDecimal(rate)}&nbsp;%
                       </td>
                       <td className="px-2 py-1.5 text-right tabular-nums text-slate-700">
                         {active ? formatCurrency(rowVat) : "—"}

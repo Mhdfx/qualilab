@@ -2,6 +2,7 @@ import { COMPANY, type CompanyInfo } from "./company";
 import { companyBrandHtml } from "./brand-html";
 import { SAMPLE_TYPE_LABELS, formatDate } from "./labels";
 import type { SampleType } from "@/generated/prisma/client";
+import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
 
 /**
  * Feuille de paillasse — the printable worksheet the technicians fill at the
@@ -24,17 +25,6 @@ export type BenchSheetSample = {
   parameters: { name: string; unit: string | null; threshold: string | null }[];
 };
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function show(value: string | null | undefined) {
-  return value ? escapeHtml(value) : "—";
-}
 
 export function buildBenchSheetHtml(
   date: Date,
@@ -94,6 +84,7 @@ export function buildBenchSheetHtml(
 <style>
   @page { size: A4; margin: 12mm; }
   * { box-sizing: border-box; }
+  ${SUPERSCRIPT_CSS}
   body { font-family: "Segoe UI", Arial, sans-serif; color: #1b2a33; font-size: 9.6pt;
     margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   header { display: flex; justify-content: space-between; align-items: flex-end;

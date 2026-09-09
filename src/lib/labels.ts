@@ -51,6 +51,20 @@ export function formatDayTime(date: Date | string) {
   }).format(typeof date === "string" ? new Date(date) : date);
 }
 
+/**
+ * "AAAA-MM-JJ" in the laboratory's zone — for file names and date inputs.
+ * Never derive this from `toISOString()`: a local midnight is the previous
+ * day in UTC, so the stamp would be one day behind for the whole day.
+ */
+export function formatIsoDay(date: Date | string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: LAB_TIME_ZONE,
+  }).format(typeof date === "string" ? new Date(date) : date);
+}
+
 /** Numeric "jj/mm/aaaa" — the lab's own zone, client-safe. */
 export function formatDayShort(date: Date | string) {
   return new Intl.DateTimeFormat("fr-FR", {
@@ -67,6 +81,17 @@ export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
 };
 
 export const CURRENCY = "DH";
+
+/**
+ * A plain number in French: comma for the decimal mark, thin space for the
+ * thousands. Used wherever a figure is shown outside a currency — a
+ * temperature, a VAT rate — so the whole interface reads the same way.
+ */
+export function formatDecimal(value: number | string, maxDigits = 1) {
+  const parsed = typeof value === "number" ? value : Number(String(value).replace(",", "."));
+  if (!Number.isFinite(parsed)) return String(value);
+  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: maxDigits }).format(parsed);
+}
 
 export function formatCurrency(amount: number) {
   const value = new Intl.NumberFormat("fr-FR", {

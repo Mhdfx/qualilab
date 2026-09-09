@@ -43,7 +43,7 @@ ENV TZ=Africa/Casablanca
 
 # Chromium renders the reports, invoices and bench sheets.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends chromium fonts-liberation \
+  && apt-get install -y --no-install-recommends chromium fonts-liberation fonts-dejavu-core \
   && rm -rf /var/lib/apt/lists/*
 ENV CHROMIUM_PATH=/usr/bin/chromium
 

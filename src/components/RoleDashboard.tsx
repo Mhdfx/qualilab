@@ -24,7 +24,8 @@ type RoleDashboardProps = {
   stats: Stat[];
   /** What this role will be able to do once the workflow screens land. */
   mission: string;
-  nextSteps: NextStep[];
+  /** Omitted once the space is complete — nothing left to announce. */
+  nextSteps?: NextStep[];
 };
 
 /**
@@ -42,6 +43,8 @@ export function RoleDashboard({
   mission,
   nextSteps,
 }: RoleDashboardProps) {
+  const steps = nextSteps ?? [];
+
   return (
     <div>
       <PageHeader badge={badge} title={title} subtitle={subtitle} />
@@ -61,19 +64,20 @@ export function RoleDashboard({
       </section>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <Card className="p-5 lg:col-span-1">
+        <Card className={`p-5 ${steps.length > 0 ? "lg:col-span-1" : "lg:col-span-3"}`}>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             Votre mission
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-slate-600">{mission}</p>
         </Card>
 
+        {steps.length > 0 && (
         <Card className="p-5 lg:col-span-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             Prochaines fonctionnalités de votre espace
           </h2>
           <ul className="mt-4 space-y-3">
-            {nextSteps.map((step) => (
+            {steps.map((step) => (
               <li
                 key={step.title}
                 className="flex items-start gap-3 rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5"
@@ -95,6 +99,7 @@ export function RoleDashboard({
             ))}
           </ul>
         </Card>
+        )}
       </div>
     </div>
   );

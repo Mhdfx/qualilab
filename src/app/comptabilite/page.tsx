@@ -32,23 +32,6 @@ export default async function ComptabilitePage() {
         { label: "Encaissé", value: formatCurrency(toMoney(encaisse._sum.total)), icon: Wallet, accent: "blue" },
       ]}
       mission="Vous générez les factures à partir des échantillons validés d'un client : les analyses réalisées deviennent les lignes de facture, aux prix du catalogue. Vous suivez les statuts de paiement et exportez les factures en PDF."
-      nextSteps={[
-        {
-          title: "Facture depuis les échantillons validés",
-          description: "Les analyses validées deviennent automatiquement les lignes de facture, au tarif du catalogue.",
-          phase: "Phase 4",
-        },
-        {
-          title: "Dénominations personnalisables",
-          description: "Maîtrise complète des libellés de produits et de rapports sur la facture.",
-          phase: "Phase 4",
-        },
-        {
-          title: "Suivi des paiements",
-          description: "Statuts de règlement par client et relances.",
-          phase: "Phase 4",
-        },
-      ]}
     />
   );
 }

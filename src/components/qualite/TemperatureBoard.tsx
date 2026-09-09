@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { History, Thermometer } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { formatDayTime } from "@/lib/labels";
-
+import { formatDayTime, formatDecimal } from "@/lib/labels";
 /**
  * The daily readings board: one card per monitored equipment, quick entry,
  * immediate in/out-of-range verdict. The verdict comes from the server —
@@ -112,7 +111,8 @@ function EquipmentTempCard({
           <p className="font-medium text-slate-800">{equipment.name}</p>
           <p className="mt-0.5 text-sm text-slate-500">
             {equipment.location ?? "Sans emplacement"} · plage [
-            {equipment.tempMin ?? "—"} ; {equipment.tempMax ?? "—"}] °C
+            {equipment.tempMin === null ? "—" : formatDecimal(equipment.tempMin)} ;{" "}
+            {equipment.tempMax === null ? "—" : formatDecimal(equipment.tempMax)}] °C
           </p>
         </div>
         {last ? (
@@ -122,7 +122,7 @@ function EquipmentTempCard({
                 last.outOfRange ? "text-rose-600" : "text-emerald-700"
               }`}
             >
-              {last.value} °C
+              {formatDecimal(last.value)} °C
             </p>
             <p className="text-xs text-slate-500">
               {last.outOfRange ? "HORS PLAGE — " : ""}
@@ -215,7 +215,7 @@ function ReadingHistory({
       {readings.map((reading) => (
         <li key={reading.id} className="flex items-center justify-between gap-2 px-3.5 py-2 text-sm">
           <span className={`font-semibold tabular-nums ${reading.outOfRange ? "text-rose-600" : "text-slate-700"}`}>
-            {reading.value} °C{reading.outOfRange ? " — hors plage" : ""}
+            {formatDecimal(reading.value)} °C{reading.outOfRange ? " — hors plage" : ""}
           </span>
           <span className="text-xs text-slate-500">
             {formatDayTime(reading.readAt)}

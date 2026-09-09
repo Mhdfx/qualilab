@@ -2,6 +2,7 @@ import { COMPANY, type CompanyInfo } from "./company";
 import { companyBrandHtml } from "./brand-html";
 import { formatDate } from "./labels";
 import { amountToFrenchWords } from "./number-to-words-fr";
+import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
 
 /**
  * The invoice as a printable document.
@@ -39,17 +40,6 @@ export type InvoiceDocument = {
   }[];
 };
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function show(value: string | null | undefined) {
-  return value ? escapeHtml(value) : "—";
-}
 
 function money(amount: number) {
   return `${new Intl.NumberFormat("fr-FR", {
@@ -83,6 +73,7 @@ export function buildInvoiceHtml(
   @page { size: A4; margin: 14mm 14mm 16mm; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
+  ${SUPERSCRIPT_CSS}
   body { font-family: "Segoe UI", Arial, sans-serif; color: #1b2a33; font-size: 10pt;
     line-height: 1.45; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .band { height: 5px; background: linear-gradient(90deg,#1f3a4d 0%,#2e5266 55%,#b8860b 100%); }

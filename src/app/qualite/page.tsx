@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Gauge, Thermometer, Award, AlertTriangle, CalendarClock } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { calibrationDue } from "@/lib/quality";
-import { formatDate, formatDateTime } from "@/lib/labels";
+import { formatDate, formatDateTime, formatDecimal } from "@/lib/labels";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
@@ -137,11 +137,12 @@ export default async function QualitePage() {
                     </p>
                     <p className="text-xs text-slate-500">
                       {formatDateTime(reading.readAt)} · plage [
-                      {reading.equipment.tempMin ?? "—"} ; {reading.equipment.tempMax ?? "—"}] °C
+                      {reading.equipment.tempMin === null ? "—" : formatDecimal(Number(reading.equipment.tempMin))} ;{" "}
+                      {reading.equipment.tempMax === null ? "—" : formatDecimal(Number(reading.equipment.tempMax))}] °C
                     </p>
                   </div>
                   <p className="shrink-0 text-sm font-bold tabular-nums text-rose-600">
-                    {reading.value} °C
+                    {formatDecimal(Number(reading.value))} °C
                   </p>
                 </li>
               ))}
