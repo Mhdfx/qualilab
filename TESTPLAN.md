@@ -591,6 +591,7 @@ Verified in the browser on the dev server, full circuit, on 2026-08-27.*
 | Phase 6 · G1 Achat & Stock | Claude Code | 2026-08-27 | ✅ passed (now visible; magasin1 exists locally and on prod) |
 | Phase 7 · G2 Qualité | Claude Code | 2026-08-27 | ✅ passed — métrologie, températures hors plage, EIL, dashboard |
 | Audit round 1 (I) | Claude Code | 2026-09-07 | ✅ fixes verified (132 tests, build, lint, browser smoke); go-live shutdown to run at recette |
+| Audit round 2 + recette production (J) | Claude Code | 2026-09-09 | ✅ passed — 99 contrôles en direct sur http://185.217.126.53 (2 circuits complets, 9 comptes, 25 pages, sondes d'habilitation), 137 tests, build + lint |
 | Extensions (G3) | | | |
 
 ## Checkpoint I — Audit round 1 (2026-09-07)
@@ -613,3 +614,55 @@ Verified in the browser on the dev server, full circuit, on 2026-08-27.*
       `NEXT_PUBLIC_DEMO_MODE=false`, rebuild, confirm demo logins fail.
 - [ ] Next 02:00 backup logs « backup ok » (temp-file path + completion
       marker).
+
+
+## Checkpoint J — Audit round 2 + recette de production (2026-09-09)
+
+Second passage adversarial (5 relecteurs) lancé **contre le commit du round
+1 lui-même**, puis recette exécutée sur le système déployé, la veille de la
+présentation client. Tout ce qui suit a été observé en direct sur
+http://185.217.126.53, pas déduit du code.
+
+**Comptes** — les 9 comptes de démonstration se connectent et arrivent sur
+leur espace. Better Auth limite les connexions rapprochées : trois réponses
+429 pendant la première passe, toutes vertes en espaçant. À savoir pendant
+la démonstration : ne pas enchaîner plus de trois connexions en dix
+secondes.
+
+- [x] Circuit complet n°1 (alimentaire, E. coli hors seuil) : prélèvement →
+      réception (QLC-2026-00002 / SN-VQZM-KKVK) → saisie → soumission →
+      validation technique (valid1) → approbation (admin) → rapport
+      RAP-2026-00002 + 1 alerte de contamination → PDF 58 Ko → feuille de
+      paillasse 48 Ko → facture FAC-2026-0003 → PDF 61 Ko.
+- [x] Circuit complet n°2 après correctifs (eau) : QLC-2026-00003, rapport
+      RAP-2026-00003, renvoi au client sans doublon d'alerte.
+- [x] Le préleveur ne voit jamais le code de contrôle ni le numéro de série
+      (payload de l'API vérifié) ; le sérial respecte l'alphabet Crockford.
+- [x] Un second technicien est refusé sur la paillasse d'un collègue (403)
+      et ne voit pas son échantillon dans sa liste.
+- [x] Le validateur ne peut pas approuver (409) ; une seconde validation
+      technique est refusée ; l'admin qui a signé l'étape 1 ne se voit plus
+      proposer l'approbation.
+- [x] Facturer deux fois le même échantillon est refusé (409).
+- [x] Habilitations sondées en direct : magasin1 → `/api/samples`,
+      `/api/clients`, `/api/parameters` refusés ; tech1 → `/api/invoices`,
+      `/api/lab-services` refusés ; pre1 → `/api/admin/users` refusé ;
+      compta1 → création de paramètre refusée.
+- [x] Le rôle CLIENT n'est plus attribuable tant que le portail n'existe pas
+      (400 à la création comme à la modification).
+- [x] La suppression définitive d'un compte est fermée (404) : signatures et
+      journal d'audit resteraient orphelins.
+- [x] Saisies trop longues (lieu, adresse client) : 400 avec message, plus
+      de 500.
+- [x] 25 pages des 8 espaces répondent 200 ; page la plus lente 718 ms
+      (/qualite), médiane ~170 ms.
+- [x] Mobile 375 px : aucun débordement horizontal sur la connexion, le
+      tableau de bord direction et le relevé de températures ; aucune erreur
+      console.
+- [x] Heure du laboratoire : le conteneur tourne en Africa/Casablanca, le
+      journal d'audit imprime l'heure locale.
+- [x] Encaissement d'une facture client (nouveau) : bouton « Marquer
+      encaissée », journalisé, l'indicateur « Encaissé » suit.
+- [ ] 🔒 Go-live : `scripts/disable-demo-accounts.sh` puis
+      `NEXT_PUBLIC_DEMO_MODE=false` + rebuild.
+- [ ] Copie hors site des sauvegardes (le VPS sauvegarde sur lui-même).

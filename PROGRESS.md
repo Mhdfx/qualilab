@@ -197,6 +197,36 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ## Session Log
 
+- **2026-09-09 · Claude Code** · **Audit round 2 + recette de production
+  avant la présentation client.** Second passage adversarial (5 relecteurs)
+  lancé contre le commit du round 1 lui-même, puis 99 contrôles exécutés en
+  direct sur http://185.217.126.53. **Une vraie régression trouvée et
+  corrigée** : la revendication d'alerte marquait `alertsSentAt` avant de
+  résoudre les destinataires, donc un client sans adresse d'alerte était
+  enregistré comme alerté à jamais — destinataires résolus d'abord, claim
+  relâchée sur exception, et `report/send` rejoue désormais les alertes.
+  Deux pièges de démonstration fermés : l'admin qui signe l'étape 1 ne se
+  voit plus proposer l'approbation (que l'API refusait de toute façon), et
+  le conteneur tournait en UTC — toutes les heures affichées avaient une
+  heure de retard → `TZ=Africa/Casablanca` + zone explicite dans les
+  formateurs (supprime au passage un écart d'hydratation sur
+  /qualite/temperatures). Aussi : rôle CLIENT non attribuable tant que le
+  portail n'existe pas, fiche client du gestionnaire qui renvoyait ses
+  factures dans l'espace admin, gardes de page sur réception et préleveur,
+  normes et tarifs fermés aux rôles qui ne les consomment pas, longueurs de
+  colonnes validées (400 au lieu de 500), `reject` en 409 sur course,
+  suppression définitive de compte fermée, feuille de paillasse plus
+  préchargée (c'était un rendu Chromium par affichage de page),
+  `restore-db.sh` qui recrée la base et rejoue les migrations,
+  `vps-first-deploy.sh` qui ne prend plus un échec de requête pour une base
+  vide. **Ajout fonctionnel** : l'encaissement d'une facture client
+  (`PATCH /api/invoices/[id]/payment`, COMPTABLE + ADMIN, journalisé) — le
+  cycle s'arrêtait à « émise » et « Encaissé » restait à zéro. Données de
+  démonstration créées en production : fournisseurs, stock avec alerte de
+  seuil, factures d'achat, équipements + étalonnages + températures dont une
+  hors plage, campagnes EIL, et une file d'échantillons à chaque étape du
+  circuit. 137 tests, build + lint, déployé.
+
 - **2026-09-07 · Claude Code** · **Full adversarial audit + fix round 1.**
   8 finders / refuters over security, correctness, data, ops, docs (69 raw
   findings; 4 confirmed above low, the rest judged by hand). Fixed: API

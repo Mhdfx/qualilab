@@ -127,6 +127,14 @@ docker compose up -d --build
 `disable-demo-accounts.sh` is idempotent and refuses to lock the lab out:
 it exits with a clear message while no non-demo ADMIN exists.
 
+## Restoring a dump
+
+`scripts/restore-db.sh <dump.sql.gz>` stops the app, **drops and recreates**
+the database, loads the dump, then replays the pending migrations and starts
+the app again. The recreation matters: a dump taken before a module existed
+would otherwise leave that module's tables behind with no migration record,
+and the next `docker compose up` would stop on « table already exists ».
+
 ## After every deploy — 5-minute check
 
 1. `/api/health` answers `ok`.
