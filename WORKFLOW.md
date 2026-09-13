@@ -290,11 +290,12 @@ opens a non-conformity is the existing `blockNonConformAtReception` switch
 | RECEPTIONNISTE | Nouveau dépôt | `/reception/nouveau-depot` | `POST /api/series` with `kind = DEPOT` |
 | RECEPTIONNISTE | Réception de la série | `/reception/series/[id]` (`/reception/[sampleId]` stays for the transition) | `POST /api/series/[id]/reception` (one transaction) |
 | RECEPTIONNISTE | Étiquettes | button on the received série | `GET /api/series/[id]/labels` (PDF, A4 3 × 8, Code128 via `bwip-js`) |
-| RECEPTIONNISTE | Protocole / bon PDF | — | `GET /api/series/[id]/document` (PDF, kind-aware) |
+| RECEPTIONNISTE, PRELEVEUR (own visit) | Protocole / bon PDF | links on the visit, the série reception and the deposit success | `GET /api/series/[id]/document` (PDF, kind-aware, cartouche + page numbers) |
 | all lab roles | Corriger la fiche | dialog on série / sample | `PATCH /api/samples/[id]/intake` |
 | RECEPTIONNISTE, ADMIN | Annuler | dialog | `POST /api/samples/[id]/cancel` |
 | TECHNICIEN, VALIDATEUR | lists grouped by série | `/technicien`, `/validation` | existing routes, `groupBy serie` |
-| ADMIN | Natures, profils, sites, lieux, produits, cartouches, compteurs | `/admin/...` | CRUD, audited |
+| ADMIN | Cartouches (Réf / version / dates) | `/admin/documents` | `GET/PUT /api/admin/documents`, audited |
+| ADMIN | Natures, profils, sites, lieux, produits, compteurs | `/admin/...` | CRUD, audited (slices 4–5) |
 
 Old routes (`POST /api/samples`, `POST /api/samples/[id]/reception`) keep
 working during slices 1–2 by creating a one-line série implicitly; they are
@@ -332,7 +333,7 @@ removed in slice 6.
 |---|---|---|---|
 | 1 | 1–2 | Schema + backfill; natures seeded; counters; `POST /api/series`; « Nouvelle visite » multi-line, phone first; « Mes visites » | A real visit of 6 mixed lines entered once on a phone; every field of the protocol has a home; 0 regression on the existing circuit; TESTPLAN L1 |
 | 2 | 3 | Grouped reception, rules engine, temperatures, N° de contrôle NNNNN/AA, labels PDF with barcodes | **Shipped 2026-09-13** — a série received in one transaction; a failing rule shows its message; labels print with letters; TESTPLAN L2 |
-| 3 | 4 | « Nouveau dépôt »; protocol and bon PDFs with the cartouche; `DocumentReference` admin | A walk-in deposit numbered at once; both PDFs match the paper layout; TESTPLAN L3 |
+| 3 | 4 | « Nouveau dépôt »; protocol and bon PDFs with the cartouche; `DocumentReference` admin | **Shipped 2026-09-13** — a walk-in deposit numbered at once; both PDFs match the paper layout; TESTPLAN L3 |
 | 4 | 5 | Profiles; `ClientPlace` / `ClientProduct` pickers with quasi-duplicate refusal; sampler kind; sites imported from the old database | No field typed twice on a second visit to the same site; TESTPLAN L4 |
 | 5 | 6 | The verbs Corriger / Annuler; lists grouped by série for technician and validation; `unitCount`; photo of the signed sheet; old routes removed | An intake error fixed with a trace; a cancelled sample leaves every queue; TESTPLAN L5 |
 | 6 | 7 | Recette with the lab on real visits; fixes; docs; demo data reseeded on the VPS | Sign-off of chantier 1 recorded in TESTPLAN and HANDOFF |

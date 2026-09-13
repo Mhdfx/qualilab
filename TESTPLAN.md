@@ -734,7 +734,7 @@ du code.
 - [x] **Espace comptabilité** : le bloc « prochaines fonctionnalités »
       annonçait encore les trois écrans de la phase 4, livrés depuis.
 
-## Checkpoint L — Phase 9, chantier 1 : circuit série (L1 and L2 verified 2026-09-13 on the dev server at 1440×900 and on the VPS after deploy; L3–L6 planned)
+## Checkpoint L — Phase 9, chantier 1 : circuit série (L1–L3 verified 2026-09-13 on the dev server at 1440×900 and on the VPS after deploy; L4–L6 planned)
 
 Tick only what was seen in the browser. One sub-checkpoint per slice of
 `WORKFLOW.md`.
@@ -759,9 +759,14 @@ Tick only what was seen in the browser. One sub-checkpoint per slice of
 - [x] `/admin/reglages` shows the seven thresholds + the kinds requiring a temperature; saving them answers « Réglages enregistrés » and the API returns the values.
 - [ ] Second click on « Valider la réception » (409) — not exercised in the browser; covered by the status re-check in the transaction (P2025 → 409) and `reception-input` tests.
 
-### L3 — Dépôt client et documents (slice 3)
-- [ ] « Nouveau dépôt » creates a série born RECU with sampler « client », numbered at once.
-- [ ] Protocol and bon PDFs carry the cartouche (Réf / version / dates / page) and the signature boxes; layouts match the paper forms.
+### L3 — Dépôt client et documents (slice 3) — dev server 2026-09-13, `recep1` / `admin` / `pre1`
+- [x] « Nouveau dépôt » (button on `/reception` + sidebar): client, « prélèvement effectué par » (client / service vétérinaire / autre), déposé par, avance 350 DH — espèces, one aliment line 250 g at 4 °C with its live checklist (« Quantité 250 g ≥ 100 g », « Température relevée : 4 °C »), technician; recap; save → **série 11/26 born RECU, N° de contrôle 9111/26**, bon + labels buttons (both 200).
+- [x] A deposit line under a blocking rule is forced « non conforme » with its motif (same widgets as the série reception); the API re-runs the rules (`POST /api/series` kind DEPOT).
+- [x] Bon de réception PDF (pdftotext): cartouche « PG05/EN04 · G · 05/01/2006 · 01/10/2024 », N° de série, date/heure, reçu par, client address/phone, the line with lot / quantity / T° / N° de contrôle / analyses, the seven rules with the lab's thresholds, « Avance 350,00 DH — Espèces / Reste », the two signature boxes, footer « Page 1 / 1 ».
+- [x] Protocole de prélèvement PDF of série 8/26: cartouche « PG04/EN01 · F », header (site, cadre, interlocuteur, prélevé le / fin, effectué par, arrivée, T°), the eight-line table (surface « 100 cm² » / « MAIN », lot, DLC P/E, quantity, lieu, T°p/T°a, remarks), analyses micro / physico-chimie per line, signature boxes; no N° de contrôle; printable from the préleveur's visit page and from the série reception.
+- [x] Blind rule: `pre1` gets 200 on their own protocol and 404 on a deposit's bon.
+- [x] `/admin/documents` lists the six documents with their cartouche (four seeded from the paper forms); editing « Rapport d'analyse » and saving answers « Cartouches enregistrés » and the API returns the new values; the bench sheet now prints « Réf. PG06/EN01 · version G ».
+- [x] **Production (185.217.126.53, after deploy):** `recep1` enters a deposit through the real form (Pastilla au poulet, 300 g, 5 °C, avance 200 DH — chèque) → **série 17/26 · N° de contrôle 15/26**, bon PDF and labels answer 200; `admin` sees the six cartouches at `/admin/documents` and the protocol of série 16/26 renders.
 
 ### L4 — Rien n'est tapé deux fois (slice 4)
 - [ ] A second visit to the same site proposes the same places and products; a quasi-duplicate is refused with the existing label.

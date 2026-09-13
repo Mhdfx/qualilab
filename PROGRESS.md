@@ -15,9 +15,12 @@ visites », visit detail with arrival panel, lab screens on N° de contrôle +
 N° de série). **Slice 2 shipped 2026-09-13** (reception queue by série, série screen
 with the seven acceptance rules computed live, `POST /api/series/[id]/reception`
 in one transaction, coded non-conformity motifs, thresholds in
-`/admin/reglages`, labels PDF with Code128). **Next: slice 3** — « Nouveau
-dépôt » (kind DEPOT, samples born RECU and numbered at once), protocol and
-bon PDFs with the quality cartouche, `DocumentReference` admin. Then 4–6.
+`/admin/reglages`, labels PDF with Code128). **Slice 3 shipped 2026-09-13** (« Nouveau dépôt » numbered and received in one
+transaction with the rules, protocole / bon PDFs with the cartouche and page
+numbers, `/admin/documents`). **Next: slice 4** — analysis profiles per
+nature / per client, `ClientPlace` / `ClientProduct` pickers with quasi-
+duplicate refusal, sampler kind on the visit, sites imported from the old
+database. Then 5–6.
 
 Why (2026-09-13): the client's feedback (« multiple things are missing, above
 all in the prélèvement ») was objectified against the old Firebird database
@@ -197,7 +200,7 @@ Spec: `WORKFLOW.md` (chantier 1). Summary and the five other chantiers:
 **Chantier 1 — circuit série (prélèvement → réception), 7 weeks**
 - [x] Slice 1 (2026-09-13, commits d5069cb + ba9e688) — schema `Serie` / `Site` / `AnalysisNature` / `AnalysisProfile` / `ClientPlace` / `ClientProduct` / `Counter` / `DocumentReference`, `Sample` additions, `ANNULE`; backfill one série per existing sample; 16 natures seeded with `lineKind` + `legacyType`; `src/lib/counters.ts` (NNNN/AA, NNNNN/AA, `SELECT … FOR UPDATE`) + tests; `POST /api/series` (transaction série + lines); « Nouvelle visite » multi-line phone first; « Mes visites »; old `POST /api/samples` creates a one-line série
 - [x] Slice 2 (2026-09-13) — reception queue by série; `POST /api/series/[id]/reception` (one transaction: N° de contrôle per line, temperatures, conformity + coded motif, technician by family); `src/lib/reception-rules.ts` + tests; labels PDF (Code128, one per unit)
-- [ ] Slice 3 — « Nouveau dépôt » (kind DEPOT, samplerKind CLIENT, samples born RECU); protocol and bon PDFs with the quality cartouche; `DocumentReference` admin
+- [x] Slice 3 (2026-09-13) — « Nouveau dépôt » (kind DEPOT, samplerKind CLIENT, samples born RECU); protocol and bon PDFs with the quality cartouche; `DocumentReference` admin
 - [ ] Slice 4 — analysis profiles per nature / per client; `ClientPlace` / `ClientProduct` pickers with quasi-duplicate refusal; sampler kind (Qualilab / client / service vétérinaire); sites imported from the old database
 - [ ] Slice 5 — verbs « Corriger la fiche » (`PATCH /api/samples/[id]/intake`) and « Annuler » (`ANNULE`, coded motif); technician and validation lists grouped by série; `unitCount` + unit letters on labels; photo of the signed protocol; old routes removed
 - [ ] Slice 6 — recette with the lab on real visits; fixes; docs; demo data reseeded on the VPS; sign-off in TESTPLAN L + HANDOFF
@@ -208,6 +211,20 @@ portail, bascule 4 w) — planned in `PLAN.md`, opened one at a time after
 chantier 1 is signed off.
 
 ## Session Log
+
+- **2026-09-13 · Claude Code** · **Phase 9 · chantier 1 · slice 3 shipped.**
+  `DepositForm` (`/reception/nouveau-depot`): the bon de réception at the
+  counter — sampler kind, déposé par, advance (amount + mode, new columns
+  on `Serie`), lines with temperature at arrival, live checklist, coded
+  conformity and technician; `validateSerie` / `createSerie` carry the
+  reception data of a DEPOT and the API re-runs the rules. Documents:
+  `document-html.ts` builds the protocole (PG04/EN01) and the bon
+  (PG05/EN04) like the paper, `GET /api/series/[id]/document` (préleveur:
+  own visit only), cartouche + « Page x / y » footer (`renderPdf` option),
+  bench sheet cartouche; `document-types.ts` / `document-reference.ts`,
+  `/admin/documents` + `PUT /api/admin/documents` (audited). Migration
+  `20260913230000_phase9_depot`. Browser-verified on the dev server (série
+  11/26 → 9111/26) and on the VPS; TESTPLAN L3.
 
 - **2026-09-13 · Claude Code** · **Phase 9 · chantier 1 · slice 2 shipped.**
   `reception-rules.ts` (the seven rules of the bon de réception, thresholds
