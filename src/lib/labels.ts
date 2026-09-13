@@ -13,7 +13,56 @@ export const SAMPLE_STATUS_LABELS: Record<SampleStatus, string> = {
   RESULTATS_SAISIS: "Résultats saisis",
   VALIDE: "Validé",
   RAPPORT_ENVOYE: "Rapport envoyé",
+  ANNULE: "Annulé",
 };
+
+// ---- Phase 9 · chantier 1 — the série and its lines ------------------------
+
+export const SERIE_KIND_LABELS = {
+  VISITE: "Visite",
+  DEPOT: "Dépôt au laboratoire",
+} as const;
+
+export const SAMPLER_KIND_LABELS = {
+  QUALILAB: "Technicien Qualilab",
+  CLIENT: "Prélèvement effectué par le client",
+  SERVICE_VETERINAIRE: "Prélèvement effectué par le service vétérinaire",
+  AUTRE: "Autre",
+} as const;
+
+export const CADRE_LABELS = {
+  AUTOCONTROLE: "Autocontrôle",
+  OFFICIEL: "Contrôle officiel",
+} as const;
+
+export const LINE_KIND_LABELS = {
+  ALIMENT: "Produit alimentaire",
+  SURFACE: "Surface",
+  MAINS: "Mains du personnel",
+  EAU: "Eau",
+  AIR: "Air",
+  AUTRE: "Autre",
+} as const;
+
+export const QUANTITY_UNIT_LABELS = {
+  UNITE: "unité(s)",
+  G: "g",
+  ML: "mL",
+  L: "L",
+} as const;
+
+export const HANDS_STATE_LABELS = {
+  LAVEES: "Mains lavées",
+  NON_LAVEES: "Mains non lavées",
+} as const;
+
+export const CANCEL_REASON_LABELS = {
+  NON_EXPLOITABLE: "Échantillon non exploitable",
+  QUANTITE_INSUFFISANTE: "Quantité insuffisante",
+  DOUBLON: "Doublon",
+  ANNULATION_CLIENT: "Annulation par le client",
+  AUTRE: "Autre",
+} as const;
 
 /**
  * The laboratory's wall clock. Fixed on purpose: server and browser must

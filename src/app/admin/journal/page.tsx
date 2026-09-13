@@ -18,6 +18,9 @@ export const metadata = { title: "Journal d'audit" };
 /** Plain French for each recorded action. */
 const ACTION_LABELS: Record<string, string> = {
   SAMPLE_CREATED: "Échantillon créé",
+  SERIE_CREATED: "Visite enregistrée",
+  DEPOT_CREATED: "Dépôt enregistré",
+  SERIE_UPDATED: "Visite complétée",
   SAMPLE_RECEIVED: "Échantillon réceptionné",
   SAMPLE_ANALYSIS_STARTED: "Analyse démarrée",
   RESULTS_SAVED: "Résultats enregistrés",

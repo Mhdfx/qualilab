@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { generateSampleCode } from "@/lib/sample-code";
-import { retryOnDuplicate } from "@/lib/retry-unique";
 import { sampleSelectFor } from "@/lib/sample-select";
+import { createSerie, SerieCreationError } from "@/lib/serie-create";
+import { validateSerie, type NatureRef } from "@/lib/serie-input";
 import { pageParams, toPage } from "@/lib/pagination";
 import { SAMPLE_TYPES } from "@/lib/parameter-validation";
 import type { SampleType } from "@/generated/prisma/client";
@@ -116,35 +116,60 @@ export async function POST(request: Request) {
       );
     }
 
-    const sample = await retryOnDuplicate(async () =>
-      prisma.sample.create({
-      data: {
-        code: await generateSampleCode(),
+    // Phase 9: a lone sample is a one-line visit. The old field form keeps
+    // working; the nature is the domain's default (MICRO_ALIMENTS, MICRO_EAUX,
+    // MICRO_SURFACES) until the multi-line form replaces this screen.
+    const natureCode = type === "EAU" ? "MICRO_EAUX" : type === "AMBIANCE" ? "MICRO_SURFACES" : "MICRO_ALIMENTS";
+    const nature = await prisma.analysisNature.findUnique({
+      where: { code: natureCode },
+      select: { id: true, defaultLineKind: true, active: true },
+    });
+    if (!nature) {
+      return NextResponse.json({ error: "Nature d'analyse introuvable." }, { status: 500 });
+    }
+    const natureMap = new Map<string, NatureRef>([[nature.id, nature]]);
+    const checked = validateSerie(
+      {
         clientId,
-        userId: session.id,
-        lieu,
-        type,
-        notes: notes || null,
-        sampledAt: new Date(),
-        status: "PRELEVE",
-        parameters: {
-          create: parameterIds.map((parameterId) => ({ parameterId })),
-        },
+        lines: [
+          {
+            natureId: nature.id,
+            lineKind: nature.defaultLineKind,
+            produit: nature.defaultLineKind === "ALIMENT" ? lieu : undefined,
+            surfaceLabel: nature.defaultLineKind === "SURFACE" ? lieu : undefined,
+            lieu,
+            remarks: notes || undefined,
+            parameterIds,
+          },
+        ],
       },
-      select: sampleSelectFor(session.role),
-      })
+      natureMap,
+      { kind: "VISITE" }
     );
+    if (!checked.ok) {
+      return NextResponse.json({ error: checked.error }, { status: 400 });
+    }
+
+    const created = await createSerie(checked.value, { id: session.id, role: session.role });
+    const sample = await prisma.sample.findUniqueOrThrow({
+      where: { id: created.sampleIds[0] },
+      select: sampleSelectFor(session.role),
+    });
 
     await logAudit({
       actorId: session.id,
       action: "SAMPLE_CREATED",
       entity: "Sample",
       entityId: sample.id,
-      metadata: { code: sample.code, type: sample.type, clientId },
+      metadata: { code: sample.code, type: sample.type, clientId, serie: created.serialNumber },
     });
 
     return NextResponse.json(sample, { status: 201 });
-  } catch {
+  } catch (error) {
+    if (error instanceof SerieCreationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("[samples] creation failed", { error });
     return NextResponse.json(
       { error: "Impossible de créer le prélèvement." },
       { status: 500 }

@@ -129,6 +129,11 @@ async function main() {
   await prisma.invoice.deleteMany();
   await prisma.sampleParameter.deleteMany();
   await prisma.sample.deleteMany();
+  await prisma.serie.deleteMany();
+  await prisma.clientPlace.deleteMany();
+  await prisma.clientProduct.deleteMany();
+  await prisma.analysisProfile.deleteMany();
+  await prisma.counter.deleteMany();
   await prisma.session.deleteMany();
   await prisma.account.deleteMany();
   await prisma.user.deleteMany();
@@ -194,16 +199,45 @@ async function main() {
     take: 3,
   });
 
+  // Phase 9: a sample is a line of a série. The demo visit is « 1/AA »,
+  // one food line; the counters restart with it.
+  const yy = String(year % 100).padStart(2, "0");
+  const nature = await prisma.analysisNature.findUniqueOrThrow({ where: { code: "MICRO_ALIMENTS" } });
+  const sampledAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+  const serie = await prisma.serie.create({
+    data: {
+      kind: "VISITE",
+      serialNumber: `1/${yy}`,
+      year,
+      clientId: client.id,
+      interlocutor: "Ahmed B.",
+      samplerKind: "QUALILAB",
+      samplerUserId: preleveur.id,
+      startedAt: sampledAt,
+      endedAt: new Date(sampledAt.getTime() + 30 * 60 * 1000),
+      createdById: preleveur.id,
+    },
+  });
+  await prisma.counter.create({ data: { kind: "SERIE", year, last: 1 } });
   const sample = await prisma.sample.create({
     data: {
-      code: `QL-${year}-00001`,
+      code: `1/${yy}-1`,
+      serieId: serie.id,
+      lineNumber: 1,
+      natureId: nature.id,
+      lineKind: "ALIMENT",
       clientId: client.id,
       userId: preleveur.id,
-      lieu: "Cuisine principale — Restaurant Le Palmier",
+      lieu: "Cuisine principale",
+      produit: "Salade composée",
+      quantity: 1,
+      quantityUnit: "UNITE",
+      productTemperature: 4,
+      ambientTemperature: 18,
       type: "ALIMENTAIRE",
-      notes: "Prélèvement effectué avant service du midi.",
+      remarks: "Prélèvement effectué avant service du midi.",
       status: "PRELEVE",
-      sampledAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      sampledAt,
     },
   });
 

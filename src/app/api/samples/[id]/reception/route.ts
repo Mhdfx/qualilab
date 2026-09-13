@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { generateReceptionNumbers } from "@/lib/sample-code";
+import { assignControlCode } from "@/lib/sample-code";
 import { canTransition } from "@/lib/sample-status";
 import { getLabSettings } from "@/lib/lab-settings";
 
@@ -11,9 +11,10 @@ import { getLabSettings } from "@/lib/lab-settings";
  *
  * This single action does four things that must succeed or fail together:
  * records who received it, states its conformity, assigns the technician, and
- * mints the official numbering (control code + blind serial number). The
- * numbering is created *here* and nowhere else — a sample carries no
- * laboratory number until it physically reaches the lab.
+ * draws the official N° de contrôle (« 20353/26 », yearly counter). The number
+ * is drawn *here*, inside the same transaction as the status change, and
+ * nowhere else — a sample carries no laboratory number until it physically
+ * reaches the lab.
  */
 export async function POST(
   request: Request,
@@ -49,14 +50,27 @@ export async function POST(
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
 
-  const { conformity, conformityNote, technicianId, produit, numeroLot } =
+  const { conformity, conformityNote, technicianId, produit, numeroLot, receptionTemperature } =
     (body ?? {}) as {
       conformity?: unknown;
       conformityNote?: unknown;
       technicianId?: unknown;
       produit?: unknown;
       numeroLot?: unknown;
+      receptionTemperature?: unknown;
     };
+
+  let temperature: number | null = null;
+  if (receptionTemperature !== undefined && receptionTemperature !== null && receptionTemperature !== "") {
+    const t = Number(String(receptionTemperature).replace(",", "."));
+    if (!Number.isFinite(t) || t < -80 || t > 300) {
+      return NextResponse.json(
+        { error: "La température à l'arrivée doit être un nombre plausible." },
+        { status: 400 }
+      );
+    }
+    temperature = Math.round(t * 10) / 10;
+  }
 
   if (typeof conformity !== "boolean") {
     return NextResponse.json(
@@ -106,40 +120,54 @@ export async function POST(
   }
 
   const receivedAt = new Date();
+  const cleanProduit = typeof produit === "string" && produit.trim() ? produit.trim() : null;
+  const cleanLot = typeof numeroLot === "string" && numeroLot.trim() ? numeroLot.trim() : null;
 
-  // Retry only guards against the improbable case of two receptions minting the
-  // same number concurrently; the unique constraints are the real safety net.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const numbers = await generateReceptionNumbers();
-
+  {
     try {
-      const updated = await prisma.sample.update({
-        // Re-checking the status here makes the write itself atomic against a
-        // second réceptionniste handling the same sample at the same moment.
-        where: { id: sample.id, status: "PRELEVE" },
-        data: {
-          controlCode: numbers.controlCode,
-          serialNumber: numbers.serialNumber,
-          status: "RECU",
-          receivedById: session.id,
-          receivedAt,
-          conformity,
-          conformityNote: note || null,
-          analysisBlocked: blocked,
-          produit: typeof produit === "string" && produit.trim() ? produit.trim() : null,
-          numeroLot: typeof numeroLot === "string" && numeroLot.trim() ? numeroLot.trim() : null,
-          technicianId: technician?.id ?? null,
-          assignedAt: technician ? receivedAt : null,
-        },
-        select: {
-          id: true,
-          code: true,
-          controlCode: true,
-          serialNumber: true,
-          status: true,
-          conformity: true,
-          analysisBlocked: true,
-        },
+      // One transaction: the counter row is locked until the sample is
+      // written, so two receptions can never share a N° de contrôle.
+      const updated = await prisma.$transaction(async (tx) => {
+        const controlCode = await assignControlCode(tx, receivedAt.getFullYear());
+        const row = await tx.sample.update({
+          // Re-checking the status here makes the write itself atomic against a
+          // second réceptionniste handling the same sample at the same moment.
+          where: { id: sample.id, status: "PRELEVE" },
+          data: {
+            controlCode,
+            status: "RECU",
+            receivedById: session.id,
+            receivedAt,
+            receptionTemperature: temperature,
+            conformity,
+            conformityNote: note || null,
+            analysisBlocked: blocked,
+            // The line already carries what the préleveur wrote; the
+            // réception only overwrites what it actually typed.
+            ...(cleanProduit ? { produit: cleanProduit } : {}),
+            ...(cleanLot ? { numeroLot: cleanLot } : {}),
+            technicianId: technician?.id ?? null,
+            assignedAt: technician ? receivedAt : null,
+          },
+          select: {
+            id: true,
+            code: true,
+            controlCode: true,
+            serialNumber: true,
+            status: true,
+            conformity: true,
+            analysisBlocked: true,
+            serieId: true,
+            produit: true,
+            numeroLot: true,
+          },
+        });
+        // The série is « received » from its first line onwards.
+        await tx.serie.updateMany({
+          where: { id: row.serieId, receivedAt: null },
+          data: { receivedById: session.id, receivedAt },
+        });
+        return row;
       });
 
       await logAudit({
@@ -155,8 +183,9 @@ export async function POST(
           conformity,
           conformityNote: note || null,
           analysisBlocked: blocked,
-          produit: typeof produit === "string" && produit.trim() ? produit.trim() : null,
-          numeroLot: typeof numeroLot === "string" && numeroLot.trim() ? numeroLot.trim() : null,
+          produit: updated.produit,
+          numeroLot: updated.numeroLot,
+          receptionTemperature: temperature,
           technicianId: technician?.id ?? null,
           technicianName: technician?.name ?? null,
         },
@@ -174,9 +203,6 @@ export async function POST(
         );
       }
 
-      // P2002: numbering collision — draw a new pair and try again.
-      if (code === "P2002" && attempt < 2) continue;
-
       console.error("[reception] failed to receive sample", {
         sampleId: sample.id,
         error,
@@ -187,9 +213,4 @@ export async function POST(
       );
     }
   }
-
-  return NextResponse.json(
-    { error: "Impossible d'attribuer un numéro unique. Réessayez." },
-    { status: 500 }
-  );
 }

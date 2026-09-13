@@ -8,6 +8,7 @@ const STATUS_STYLES: Record<SampleStatus, string> = {
   RESULTATS_SAISIS: "bg-orange-50 text-orange-700 ring-orange-200/60",
   VALIDE: "bg-emerald-50 text-emerald-700 ring-emerald-200/60",
   RAPPORT_ENVOYE: "bg-slate-100 text-slate-700 ring-slate-200/60",
+  ANNULE: "bg-slate-50 text-slate-500 ring-slate-200/60 line-through",
 };
 
 export function StatusBadge({ status }: { status: SampleStatus }) {

@@ -49,6 +49,64 @@ enum SampleStatus {
   RESULTATS_SAISIS
   VALIDE
   RAPPORT_ENVOYE
+  /// Terminal: taken out of every queue, report and invoice (Phase 9).
+  ANNULE
+}
+
+/// Phase 9 — the série (visite or dépôt) is the unit of work.
+enum SerieKind {
+  /// Filled on site by a préleveur (protocole de prélèvement).
+  VISITE
+  /// Samples brought to the counter by the client (bon de réception).
+  DEPOT
+}
+
+enum SamplerKind {
+  QUALILAB
+  CLIENT
+  SERVICE_VETERINAIRE
+  AUTRE
+}
+
+enum Cadre {
+  AUTOCONTROLE
+  OFFICIEL
+}
+
+/// What a sample line physically is — drives the fields shown on the form.
+enum LineKind {
+  ALIMENT
+  SURFACE
+  MAINS
+  EAU
+  AIR
+  AUTRE
+}
+
+enum QuantityUnit {
+  UNITE
+  G
+  ML
+  L
+}
+
+enum HandsState {
+  LAVEES
+  NON_LAVEES
+}
+
+enum Family {
+  MICRO
+  CHIMIE
+  AUTRE
+}
+
+enum CancelReason {
+  NON_EXPLOITABLE
+  QUANTITE_INSUFFISANTE
+  DOUBLON
+  ANNULATION_CLIENT
+  AUTRE
 }
 
 enum InvoiceStatus {
@@ -78,15 +136,19 @@ model User {
 
   samples          Sample[]
   invoices         Invoice[]
-  receivedSamples  Sample[]  @relation("SampleReceivedBy")
-  assignedSamples  Sample[]  @relation("SampleTechnician")
-  validatedSamples Sample[]  @relation("SampleValidatedBy")
-  approvedSamples  Sample[]  @relation("SampleApprovedBy")
-  rejectedSamples  Sample[]  @relation("SampleRejectedBy")
+  receivedSamples  Sample[]             @relation("SampleReceivedBy")
+  assignedSamples  Sample[]             @relation("SampleTechnician")
+  validatedSamples Sample[]             @relation("SampleValidatedBy")
+  approvedSamples  Sample[]             @relation("SampleApprovedBy")
+  rejectedSamples  Sample[]             @relation("SampleRejectedBy")
+  cancelledSamples Sample[]             @relation("SampleCancelledBy")
+  createdSeries    Serie[]              @relation("SerieCreatedBy")
+  sampledSeries    Serie[]              @relation("SerieSampler")
+  receivedSeries   Serie[]              @relation("SerieReceivedBy")
   enteredResults   Result[]
   auditLogs        AuditLog[]
-  purchaseInvoices PurchaseInvoice[] @relation("PurchaseInvoiceCreatedBy")
-  stockMovements   StockMovement[]   @relation("StockMovementCreatedBy")
+  purchaseInvoices PurchaseInvoice[]    @relation("PurchaseInvoiceCreatedBy")
+  stockMovements   StockMovement[]      @relation("StockMovementCreatedBy")
   calibrations     CalibrationRecord[]  @relation("CalibrationCreatedBy")
   temperatures     TemperatureReading[] @relation("TemperatureCreatedBy")
   eilCampaigns     EilCampaign[]        @relation("EilCreatedBy")
@@ -140,21 +202,26 @@ model Verification {
 }
 
 model Client {
-  id       String    @id @default(cuid())
-  name     String
-  contact  String?
+  id        String            @id @default(cuid())
+  name      String
+  contact   String?
   /// Primary address, kept for the existing screens.
-  email    String?
-  phone    String?
-  address  String?
-  ice      String?
+  email     String?
+  phone     String?
+  address   String?
+  ice       String?
   /// Clients are archived, never deleted: samples, reports and invoices refer
   /// to them and the laboratory's history must stay readable.
-  archived Boolean   @default(false)
-  createdAt DateTime @default(now())
-  emails   ClientEmail[]
-  samples  Sample[]
-  invoices Invoice[]
+  archived  Boolean           @default(false)
+  createdAt DateTime          @default(now())
+  emails    ClientEmail[]
+  samples   Sample[]
+  invoices  Invoice[]
+  sites     Site[]
+  series    Serie[]
+  places    ClientPlace[]
+  products  ClientProduct[]
+  profiles  AnalysisProfile[]
 
   @@index([archived, name])
 }
@@ -162,39 +229,44 @@ model Client {
 /// A client receives mail at several addresses: the client asked for reports
 /// and contamination alerts to reach a list, not a single contact.
 model ClientEmail {
-  id       String  @id @default(cuid())
-  clientId String
-  client   Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  email    String
-  label    String?
+  id         String  @id @default(cuid())
+  clientId   String
+  client     Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  email      String
+  label      String?
   /// Receives the analysis reports.
   forReports Boolean @default(true)
   /// Receives the contamination alerts.
   forAlerts  Boolean @default(true)
+  /// Phase 9: an address that belongs to one site of the client (reports by site).
+  siteId     String?
+  site       Site?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
 
   @@unique([clientId, email])
   @@index([clientId])
+  @@index([siteId])
 }
 
 model AnalysisParameter {
-  id       String            @id @default(cuid())
-  name     String
-  category SampleType
-  unit     String?
+  id             String                     @id @default(cuid())
+  name           String
+  category       SampleType
+  unit           String?
   /// Human-readable reference threshold shown to the technician.
-  threshold String?
+  threshold      String?
   /// Numeric limit used to decide conformity and to trigger alerts.
-  limitValue Float?
+  limitValue     Float?
   /// Sensitive microbiological parameters (E. coli, Salmonelle, Listeria):
   /// exceeding the limit triggers an automatic contamination alert to the
   /// client once the result is validated. Configurable by the admin.
-  alertOnExceed Boolean @default(false)
+  alertOnExceed  Boolean                    @default(false)
   /// Multiplier applied to the technician's raw reading (dilution factor…) —
   /// the generic calculation mechanism awaiting the lab's official formulas
   /// (NEEDEDINFO item 6). 1 = the value entered is already final.
-  calcFactor Float @default(1)
-  samples  SampleParameter[]
-  results  Result[]
+  calcFactor     Float                      @default(1)
+  samples        SampleParameter[]
+  results        Result[]
+  profileEntries AnalysisProfileParameter[]
 }
 
 model LabService {
@@ -207,25 +279,58 @@ model LabService {
 }
 
 model Sample {
-  id       String @id @default(cuid())
+  id           String  @id @default(cuid())
   /// Internal field reference, created by the préleveur.
-  code     String @unique
+  code         String  @unique
   /// Official numbering — assigned at RECEPTION only (client request 2026-07-28).
   /// Never visible to the préleveur.
   controlCode  String? @unique
   serialNumber String? @unique
 
-  clientId String     @map("clientId")
-  client   Client     @relation(fields: [clientId], references: [id])
-  userId   String
-  user     User       @relation(fields: [userId], references: [id])
-  lieu     String
+  clientId  String       @map("clientId")
+  client    Client       @relation(fields: [clientId], references: [id])
+  userId    String
+  user      User         @relation(fields: [userId], references: [id])
+  lieu      String
   /// Product sampled and its batch number — both appear in the alert email.
-  produit    String?
-  numeroLot  String?
-  type     SampleType
-  notes    String?    @db.Text
-  status   SampleStatus @default(PRELEVE)
+  produit   String?
+  numeroLot String?
+  /// Derived copy of `nature.legacyType` until chantier 2 retires it; keeps
+  /// every Phase 1–7 screen working.
+  type      SampleType
+  notes     String?      @db.Text
+  status    SampleStatus @default(PRELEVE)
+
+  // ---- Phase 9 · chantier 1: the line of a série -------------------------
+  serieId              String
+  serie                Serie          @relation(fields: [serieId], references: [id])
+  lineNumber           Int            @default(1)
+  natureId             String
+  nature               AnalysisNature @relation(fields: [natureId], references: [id])
+  lineKind             LineKind       @default(ALIMENT)
+  productId            String?
+  product              ClientProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  placeId              String?
+  place                ClientPlace?   @relation(fields: [placeId], references: [id], onDelete: SetNull)
+  productionDate       DateTime?      @db.Date
+  expiryDate           DateTime?      @db.Date
+  quantity             Decimal?       @db.Decimal(10, 2)
+  quantityUnit         QuantityUnit?
+  productTemperature   Float?
+  ambientTemperature   Float?
+  receptionTemperature Float?
+  surfaceLabel         String?
+  surfaceAreaCm2       Int?
+  personName           String?
+  personRole           String?
+  handsState           HandsState?
+  remarks              String?        @db.Text
+  /// Number of units read separately (n = 5 foods, n = 9 histamine).
+  unitCount            Int            @default(1)
+  cancelledAt          DateTime?
+  cancelledById        String?
+  cancelledBy          User?          @relation("SampleCancelledBy", fields: [cancelledById], references: [id])
+  cancelReason         CancelReason?
 
   // Workflow actors — each transition records who performed it.
   receivedById    String?
@@ -262,11 +367,11 @@ model Sample {
   rejectedBy      User?     @relation("SampleRejectedBy", fields: [rejectedById], references: [id])
   rejectedAt      DateTime?
 
-  sampledAt  DateTime          @default(now())
-  createdAt  DateTime          @default(now())
-  parameters SampleParameter[]
-  results    Result[]
-  report     Report?
+  sampledAt    DateTime          @default(now())
+  createdAt    DateTime          @default(now())
+  parameters   SampleParameter[]
+  results      Result[]
+  report       Report?
   invoiceItems InvoiceItem[]
 
   @@index([status])
@@ -278,6 +383,8 @@ model Sample {
   @@index([technicianId, status])
   @@index([userId, createdAt])
   @@index([createdAt])
+  @@index([serieId, lineNumber])
+  @@index([natureId])
 }
 
 /// One measured value per (sample, parameter), entered by a technician.
@@ -291,25 +398,25 @@ model Result {
   /// The FINAL value, as printed on the report (e.g. "8,9.10²"). When the
   /// parameter has a calcFactor it is computed from the raw reading;
   /// otherwise it is exactly what the technician typed.
-  value      String?
+  value        String?
   /// The bench reading as typed, kept when a calcFactor transformed it —
   /// null means value IS the raw entry (factor 1, today's default).
-  rawValue   String?
+  rawValue     String?
   /// The final value parsed to a number. A contamination alert compares a
   /// result to its limit, and a display string cannot be compared — so both
   /// are kept.
   numericValue Float?
-  unit       String?
-  threshold  String?
-  conform    Boolean?
-  workStatus ResultWorkStatus @default(EN_COURS)
-  note       String?          @db.Text
+  unit         String?
+  threshold    String?
+  conform      Boolean?
+  workStatus   ResultWorkStatus @default(EN_COURS)
+  note         String?          @db.Text
 
   enteredById String?
-  enteredBy   User?    @relation(fields: [enteredById], references: [id])
+  enteredBy   User?     @relation(fields: [enteredById], references: [id])
   enteredAt   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@unique([sampleId, parameterId])
   @@index([sampleId])
@@ -318,10 +425,10 @@ model Result {
 
 /// The official analysis report generated on validation.
 model Report {
-  id         String @id @default(cuid())
-  sampleId   String @unique
-  sample     Sample @relation(fields: [sampleId], references: [id], onDelete: Cascade)
-  number     String @unique
+  id         String  @id @default(cuid())
+  sampleId   String  @unique
+  sample     Sample  @relation(fields: [sampleId], references: [id], onDelete: Cascade)
+  number     String  @unique
   conclusion String? @db.Text
 
   technicianName String?
@@ -332,23 +439,23 @@ model Report {
   sentAt     DateTime?
   sentTo     String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
   emails    EmailLog[]
 }
 
 /// Delivery journal for report emails (date, recipient, status, resend).
 model EmailLog {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   reportId   String?
-  report     Report?  @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  report     Report?   @relation(fields: [reportId], references: [id], onDelete: SetNull)
   type       EmailType @default(RAPPORT)
   to         String
   subject    String
   status     String
   providerId String?
-  error      String?  @db.Text
-  createdAt  DateTime @default(now())
+  error      String?   @db.Text
+  createdAt  DateTime  @default(now())
 
   @@index([reportId])
   @@index([type, createdAt])
@@ -378,6 +485,169 @@ model SampleParameter {
   parameter   AnalysisParameter @relation(fields: [parameterId], references: [id])
 
   @@id([sampleId, parameterId])
+}
+
+// ───────────────────────── Phase 9 · chantier 1 — la série ─────────────────
+//
+// A série is one visit (protocole de prélèvement) or one walk-in deposit
+// (bon de réception): the laboratory's unit of work, numbered « NNNN/AA ».
+// It has NO status column — its state is derived from its samples.
+
+model Serie {
+  id                 String      @id @default(cuid())
+  kind               SerieKind
+  /// « 2780/26 » — yearly sequence (Counter SERIE), assigned at creation.
+  serialNumber       String      @unique
+  year               Int
+  clientId           String
+  client             Client      @relation(fields: [clientId], references: [id])
+  siteId             String?
+  site               Site?       @relation(fields: [siteId], references: [id])
+  interlocutor       String?
+  samplerKind        SamplerKind @default(QUALILAB)
+  samplerUserId      String?
+  samplerUser        User?       @relation("SerieSampler", fields: [samplerUserId], references: [id])
+  samplerName        String?
+  cadre              Cadre       @default(AUTOCONTROLE)
+  /// « N° de factures » on the paper: the client's own reference.
+  clientReference    String?
+  startedAt          DateTime
+  endedAt            DateTime?
+  arrivedAt          DateTime?
+  coolerTemperature  Float?
+  /// Photo of the signed paper protocol (data URI), taken on the phone.
+  signedProtocolData String?     @db.LongText
+  notes              String?     @db.Text
+  createdById        String
+  createdBy          User        @relation("SerieCreatedBy", fields: [createdById], references: [id])
+  createdAt          DateTime    @default(now())
+  receivedById       String?
+  receivedBy         User?       @relation("SerieReceivedBy", fields: [receivedById], references: [id])
+  receivedAt         DateTime?
+  samples            Sample[]
+
+  @@index([clientId, createdAt])
+  @@index([kind, createdAt])
+  @@index([createdById, createdAt])
+  @@index([year])
+}
+
+/// A client's sampling site (a restaurant of a chain, a plant…).
+model Site {
+  id       String        @id @default(cuid())
+  clientId String
+  client   Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  code     String?
+  name     String
+  address  String?
+  city     String?
+  phone    String?
+  contact  String?
+  active   Boolean       @default(true)
+  legacyId Int?          @unique
+  emails   ClientEmail[]
+  series   Serie[]
+  places   ClientPlace[]
+
+  @@unique([clientId, name])
+  @@index([clientId, active])
+}
+
+/// One of the laboratory's analysis natures (16 in use); drives the line form.
+model AnalysisNature {
+  id              String            @id @default(cuid())
+  code            String            @unique
+  label           String
+  labelEn         String?
+  family          Family
+  defaultLineKind LineKind
+  /// Which of today's three domains this nature maps to (Phase 1–7 screens).
+  legacyType      SampleType
+  minQuantity     Decimal?          @db.Decimal(10, 2)
+  minQuantityUnit QuantityUnit?
+  sortOrder       Int               @default(0)
+  active          Boolean           @default(true)
+  legacyId        Int?              @unique
+  samples         Sample[]
+  profiles        AnalysisProfile[]
+
+  @@index([active, sortOrder])
+}
+
+/// A set of parameters proposed in one click (« Micro aliments standard »).
+model AnalysisProfile {
+  id         String                     @id @default(cuid())
+  natureId   String
+  nature     AnalysisNature             @relation(fields: [natureId], references: [id])
+  clientId   String?
+  client     Client?                    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name       String
+  unitCount  Int                        @default(1)
+  active     Boolean                    @default(true)
+  sortOrder  Int                        @default(0)
+  parameters AnalysisProfileParameter[]
+
+  @@index([natureId, active])
+  @@index([clientId])
+}
+
+model AnalysisProfileParameter {
+  profileId   String
+  profile     AnalysisProfile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  parameterId String
+  parameter   AnalysisParameter @relation(fields: [parameterId], references: [id])
+
+  @@id([profileId, parameterId])
+}
+
+/// A client's memory of places (« Poste salades », « Chambre froide 1 »).
+model ClientPlace {
+  id              String   @id @default(cuid())
+  clientId        String
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  siteId          String?
+  site            Site?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  label           String
+  normalizedLabel String
+  active          Boolean  @default(true)
+  usageCount      Int      @default(0)
+  legacyId        Int?
+  samples         Sample[]
+
+  @@index([clientId, siteId, normalizedLabel])
+}
+
+/// A client's memory of product designations (« Salade Gaillardière »).
+model ClientProduct {
+  id              String   @id @default(cuid())
+  clientId        String
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  label           String
+  normalizedLabel String
+  active          Boolean  @default(true)
+  usageCount      Int      @default(0)
+  legacyId        Int?
+  samples         Sample[]
+
+  @@unique([clientId, normalizedLabel])
+}
+
+/// Yearly sequences (SERIE, CONTROLE…), locked in the writing transaction.
+model Counter {
+  kind String
+  year Int
+  last Int    @default(0)
+
+  @@id([kind, year])
+}
+
+/// The quality cartouche of each printed document (« Réf PG04/EN01 · Version F »).
+model DocumentReference {
+  docType   String    @id
+  reference String
+  version   String
+  createdOn DateTime? @db.Date
+  updatedOn DateTime? @db.Date
 }
 
 model Invoice {
@@ -425,24 +695,24 @@ model InvoiceItem {
 /// One row, edited by the admin, so changing the ICE or the RIB is data entry
 /// rather than a deployment. `lib/company.ts` keeps the fallback defaults.
 model CompanySettings {
-  id      String @id @default("company")
-  name    String
-  tagline String @db.Text
-  address String
-  city    String
-  phone   String
-  email   String
-  website String
-  ice     String
-  rc      String
-  bank    String
-  rib     String
-  iban    String
-  swift   String
+  id        String   @id @default("company")
+  name      String
+  tagline   String   @db.Text
+  address   String
+  city      String
+  phone     String
+  email     String
+  website   String
+  ice       String
+  rc        String
+  bank      String
+  rib       String
+  iban      String
+  swift     String
   /// Logo as a data URI (PNG/JPEG/SVG ≤ 300 KB), printed on the PDF
   /// documents. The styled text brand is the fallback while it is absent —
   /// the HD file from the lab (NEEDEDINFO item 5) just gets uploaded here.
-  logoData String? @db.LongText
+  logoData  String?  @db.LongText
   updatedAt DateTime @updatedAt
 }
 
@@ -450,15 +720,15 @@ model CompanySettings {
 /// encodes a client decision that is still pending (NEEDEDINFO §4): BOTH
 /// behaviours are built, the toggle picks one, so the answer costs zero code.
 model LabSettings {
-  id String @id @default("lab")
+  id                            String   @id @default("lab")
   /// Decision n°10 — a sample declared non-conform at reception is analysed
   /// anyway (false, today's behaviour) or held unassigned until an ADMIN
   /// releases it to a technician (true).
-  blockNonConformAtReception Boolean @default(false)
+  blockNonConformAtReception    Boolean  @default(false)
   /// Decision n°11 — contamination alerts leave right after the technical
   /// validation (true) instead of after the admin approval (false).
-  alertAfterTechnicalValidation Boolean @default(false)
-  updatedAt DateTime @updatedAt
+  alertAfterTechnicalValidation Boolean  @default(false)
+  updatedAt                     DateTime @updatedAt
 }
 
 // ————— Phase 6 · Achat & Stock (module MAGASINIER) —————
@@ -466,18 +736,18 @@ model LabSettings {
 /// A supplier and its payment convention. Archived, never deleted — purchase
 /// invoices refer to it and the payment history must stay readable.
 model Supplier {
-  id      String  @id @default(cuid())
-  name    String  @unique
-  contact String?
-  email   String?
-  phone   String?
-  address String?
-  ice     String?
+  id              String   @id @default(cuid())
+  name            String   @unique
+  contact         String?
+  email           String?
+  phone           String?
+  address         String?
+  ice             String?
   /// Payment convention: invoices are due N days after their issue date
   /// (0 = comptant). Used to compute each invoice's dueDate by default.
-  paymentTermDays Int     @default(30)
-  notes           String? @db.Text
-  archived        Boolean @default(false)
+  paymentTermDays Int      @default(30)
+  notes           String?  @db.Text
+  archived        Boolean  @default(false)
   createdAt       DateTime @default(now())
 
   invoices PurchaseInvoice[]
@@ -492,21 +762,21 @@ enum PurchaseInvoiceStatus {
 
 /// A supplier invoice to pay — the source of the payment-due alerts.
 model PurchaseInvoice {
-  id         String   @id @default(cuid())
-  supplierId String
-  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  id          String                @id @default(cuid())
+  supplierId  String
+  supplier    Supplier              @relation(fields: [supplierId], references: [id])
   /// The supplier's own invoice number, unique per supplier.
-  number    String
-  label     String?
-  amount    Decimal  @db.Decimal(12, 2)
-  issueDate DateTime
+  number      String
+  label       String?
+  amount      Decimal               @db.Decimal(12, 2)
+  issueDate   DateTime
   /// Defaults to issueDate + the supplier's payment term; editable.
-  dueDate   DateTime
-  status    PurchaseInvoiceStatus @default(A_PAYER)
-  paidAt    DateTime?
+  dueDate     DateTime
+  status      PurchaseInvoiceStatus @default(A_PAYER)
+  paidAt      DateTime?
   createdById String?
-  createdBy   User?   @relation("PurchaseInvoiceCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
+  createdBy   User?                 @relation("PurchaseInvoiceCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime              @default(now())
 
   @@unique([supplierId, number])
   @@index([status, dueDate])
@@ -515,17 +785,17 @@ model PurchaseInvoice {
 /// A stock article. The quantity is the aggregate the movements maintain —
 /// it is never edited directly, so the history always explains the level.
 model StockItem {
-  id       String @id @default(cuid())
-  name     String @unique
+  id          String   @id @default(cuid())
+  name        String   @unique
   /// Free grouping the lab chooses (Milieux de culture, Réactifs, …).
-  category String?
+  category    String?
   /// Counting unit: boîte, flacon, L, kg, unité…
-  unit     String
-  quantity    Decimal @default(0) @db.Decimal(12, 2)
+  unit        String
+  quantity    Decimal  @default(0) @db.Decimal(12, 2)
   /// Low-stock alert threshold; 0 disables the alert for this article.
-  minQuantity Decimal @default(0) @db.Decimal(12, 2)
-  archived  Boolean  @default(false)
-  createdAt DateTime @default(now())
+  minQuantity Decimal  @default(0) @db.Decimal(12, 2)
+  archived    Boolean  @default(false)
+  createdAt   DateTime @default(now())
 
   movements StockMovement[]
 
@@ -542,19 +812,19 @@ enum StockMovementType {
 /// fine it tracks (NEEDEDINFO item 16) — recording them costs nothing and
 /// removing is easier than adding.
 model StockMovement {
-  id     String            @id @default(cuid())
-  itemId String
-  item   StockItem         @relation(fields: [itemId], references: [id])
-  type   StockMovementType
+  id          String            @id @default(cuid())
+  itemId      String
+  item        StockItem         @relation(fields: [itemId], references: [id])
+  type        StockMovementType
   /// Always positive; the type carries the direction. For AJUSTEMENT it is
   /// the absolute corrected quantity observed during the inventory.
-  quantity   Decimal   @db.Decimal(12, 2)
-  lot        String?
-  expiryDate DateTime?
-  note       String?   @db.Text
+  quantity    Decimal           @db.Decimal(12, 2)
+  lot         String?
+  expiryDate  DateTime?
+  note        String?           @db.Text
   createdById String?
-  createdBy   User?   @relation("StockMovementCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
+  createdBy   User?             @relation("StockMovementCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime          @default(now())
 
   @@index([itemId, createdAt])
 }
@@ -566,20 +836,20 @@ model StockMovement {
 /// calibrated AND monitored, a pipette only calibrated, a fridge only
 /// monitored.
 model Equipment {
-  id       String  @id @default(cuid())
-  name     String
+  id                         String    @id @default(cuid())
+  name                       String
   /// Internal identification tag (E-001…), unique when present.
-  code     String? @unique
-  location String?
+  code                       String?   @unique
+  location                   String?
   /// Calibration périodicity in months; null = this equipment is not
   /// calibrated. The next due date derives from lastCalibratedAt + this.
   calibrationFrequencyMonths Int?
   lastCalibratedAt           DateTime?
   /// Temperature monitoring bounds (°C); both null = not monitored.
-  tempMin  Float?
-  tempMax  Float?
-  archived Boolean  @default(false)
-  createdAt DateTime @default(now())
+  tempMin                    Float?
+  tempMax                    Float?
+  archived                   Boolean   @default(false)
+  createdAt                  DateTime  @default(now())
 
   calibrations CalibrationRecord[]
   temperatures TemperatureReading[]
@@ -594,19 +864,19 @@ enum CalibrationResult {
 
 /// One calibration/verification, as performed — the metrology register.
 model CalibrationRecord {
-  id          String    @id @default(cuid())
+  id          String            @id @default(cuid())
   equipmentId String
-  equipment   Equipment @relation(fields: [equipmentId], references: [id])
+  equipment   Equipment         @relation(fields: [equipmentId], references: [id])
   performedAt DateTime
   /// The organisme that performed it.
   provider    String?
   /// Certificate number, for the auditor.
   certificate String?
   result      CalibrationResult @default(CONFORME)
-  notes       String?   @db.Text
+  notes       String?           @db.Text
   createdById String?
-  createdBy   User?     @relation("CalibrationCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime  @default(now())
+  createdBy   User?             @relation("CalibrationCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime          @default(now())
 
   @@index([equipmentId, performedAt])
 }
@@ -638,22 +908,22 @@ enum EilStatus {
 
 /// An interlaboratory proficiency campaign (essai interlaboratoire).
 model EilCampaign {
-  id        String    @id @default(cuid())
-  name      String
+  id           String    @id @default(cuid())
+  name         String
   /// The organising body (LNCM, BIPEA…).
-  organizer String?
+  organizer    String?
   /// What is being tested (parameter, matrix, domain).
-  scope     String?
-  startDate  DateTime?
-  resultDate DateTime?
-  status     EilStatus @default(PREVUE)
+  scope        String?
+  startDate    DateTime?
+  resultDate   DateTime?
+  status       EilStatus @default(PREVUE)
   /// The performance as reported (z-score…), free text.
   outcome      String?
   satisfactory Boolean?
-  notes        String?  @db.Text
+  notes        String?   @db.Text
   createdById  String?
-  createdBy    User?    @relation("EilCreatedBy", fields: [createdById], references: [id])
-  createdAt    DateTime @default(now())
+  createdBy    User?     @relation("EilCreatedBy", fields: [createdById], references: [id])
+  createdAt    DateTime  @default(now())
 
   @@index([status, startDate])
 }
