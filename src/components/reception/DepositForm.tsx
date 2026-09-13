@@ -43,7 +43,7 @@ import {
   type ProfileOption,
 } from "@/components/preleveur/visit-types";
 import { Checklist, ConformityChip } from "./reception-widgets";
-import type { TechnicianOption } from "./ReceptionForm";
+import type { TechnicianOption } from "./types";
 
 const subscribeNoop = () => () => {};
 

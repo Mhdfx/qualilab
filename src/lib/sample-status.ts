@@ -46,7 +46,25 @@ const TRANSITIONS: Transition[] = [
     roles: ["VALIDATEUR", "ADMIN"],
     requiresReason: true,
   },
+  // Phase 9 — « Annuler »: terminal, with a coded motif (the route checks
+  // it). The réception cancels before analysis, the admin at any point
+  // before approval; only an admin brings a cancelled sample back, to the
+  // step it had reached (received or not), with a written reason.
+  { from: "PRELEVE", to: "ANNULE", roles: ["RECEPTIONNISTE", "ADMIN"] },
+  { from: "RECU", to: "ANNULE", roles: ["RECEPTIONNISTE", "ADMIN"] },
+  { from: "EN_ANALYSE", to: "ANNULE", roles: ["ADMIN"] },
+  { from: "RESULTATS_SAISIS", to: "ANNULE", roles: ["ADMIN"] },
+  { from: "ANNULE", to: "PRELEVE", roles: ["ADMIN"], requiresReason: true },
+  { from: "ANNULE", to: "RECU", roles: ["ADMIN"], requiresReason: true },
 ];
+
+/** The statuses whose identification fields may still be corrected (before approval). */
+export const CORRECTABLE_STATUSES: SampleStatus[] = ["PRELEVE", "RECU", "EN_ANALYSE", "RESULTATS_SAISIS"];
+
+/** Where a reactivated sample goes back to: the reception step if it was numbered. */
+export function reactivationTarget(sample: { controlCode: string | null }): SampleStatus {
+  return sample.controlCode ? "RECU" : "PRELEVE";
+}
 
 export type TransitionCheck =
   | { ok: true }

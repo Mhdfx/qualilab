@@ -10,7 +10,7 @@ import {
   SerieReceptionForm,
   type ReceptionSerieData,
 } from "@/components/reception/SerieReceptionForm";
-import type { TechnicianOption } from "@/components/reception/ReceptionForm";
+import type { TechnicianOption } from "@/components/reception/types";
 
 export const metadata = { title: "Réception de la série" };
 
@@ -20,7 +20,7 @@ export default async function SerieReceptionPage({
   params: Promise<{ id: string }>;
 }) {
   // Belt and braces with the layout guard: a page must be safe on its own.
-  await requireRole("RECEPTIONNISTE", "ADMIN");
+  const session = await requireRole("RECEPTIONNISTE", "ADMIN");
   const { id } = await params;
 
   const [serie, technicians, workload, settings] = await Promise.all([
@@ -69,6 +69,7 @@ export default async function SerieReceptionPage({
         technicians={technicianOptions}
         thresholds={settings}
         blockNonConform={settings.blockNonConformAtReception}
+        role={session.role}
       />
     </div>
   );

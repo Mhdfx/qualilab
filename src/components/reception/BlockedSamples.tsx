@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Unlock } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import type { TechnicianOption } from "./ReceptionForm";
+import type { TechnicianOption } from "./types";
 
 export type BlockedSample = {
   id: string;

@@ -10,7 +10,7 @@ import {
   BlockedSamples,
   type BlockedSample,
 } from "@/components/reception/BlockedSamples";
-import type { TechnicianOption } from "@/components/reception/ReceptionForm";
+import type { TechnicianOption } from "@/components/reception/types";
 
 export const metadata = { title: "Réception" };
 

@@ -2,7 +2,7 @@ import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getLabSettings } from "@/lib/lab-settings";
 import { DepositForm } from "@/components/reception/DepositForm";
-import type { TechnicianOption } from "@/components/reception/ReceptionForm";
+import type { TechnicianOption } from "@/components/reception/types";
 
 export const metadata = { title: "Nouveau dépôt" };
 

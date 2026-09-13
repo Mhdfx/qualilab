@@ -14,16 +14,19 @@ import {
   Thermometer,
 } from "lucide-react";
 import type {
+  CancelReason,
   Family,
   HandsState,
   LineKind,
   NonConformityReason,
   QuantityUnit,
   SampleStatus,
+  SampleType,
   SamplerKind,
   SerieKind,
 } from "@/generated/prisma/enums";
 import {
+  CANCEL_REASON_LABELS,
   HANDS_STATE_LABELS,
   LINE_KIND_LABELS,
   NON_CONFORMITY_REASON_LABELS,
@@ -41,8 +44,10 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { fromLocalInput, toLocalInput } from "@/components/preleveur/visit-types";
-import type { TechnicianOption } from "./ReceptionForm";
+import type { TechnicianOption } from "./types";
 import { Checklist, ConformityChip } from "./reception-widgets";
+import { SampleVerbs, type VerbSample } from "@/components/samples/SampleVerbs";
+import type { Role } from "@/lib/roles";
 
 /**
  * Reception of a série in one screen — WORKFLOW.md §3.3.
@@ -58,6 +63,7 @@ export type ReceptionLineData = {
   code: string;
   lineNumber: number;
   lineKind: LineKind;
+  type: SampleType;
   status: SampleStatus;
   lieu: string;
   produit: string | null;
@@ -80,6 +86,7 @@ export type ReceptionLineData = {
   conformity: boolean | null;
   conformityReason: NonConformityReason | null;
   conformityNote: string | null;
+  cancelReason: CancelReason | null;
   nature: { id: string; code: string; label: string; family: Family };
   parameters: { parameter: { id: string; name: string; unit: string | null } }[];
   technician: { id: string; name: string } | null;
@@ -170,6 +177,33 @@ function numberOrNull(value: string) {
   return Number.isFinite(n) ? n : null;
 }
 
+/** What the verbs need of a line, as the API serialised it. */
+function verbSampleOf(line: ReceptionLineData, status: SampleStatus = line.status): VerbSample {
+  return {
+    id: line.id,
+    code: line.code,
+    controlCode: line.controlCode,
+    status,
+    type: line.type,
+    lineKind: line.lineKind,
+    produit: line.produit,
+    lieu: line.lieu,
+    numeroLot: line.numeroLot,
+    productionDate: line.productionDate,
+    expiryDate: line.expiryDate,
+    quantity: line.quantity,
+    quantityUnit: line.quantityUnit,
+    surfaceLabel: line.surfaceLabel,
+    surfaceAreaCm2: line.surfaceAreaCm2,
+    personName: line.personName,
+    personRole: line.personRole,
+    handsState: line.handsState,
+    remarks: line.remarks,
+    unitCount: line.unitCount,
+    parameterIds: line.parameters.map((p) => p.parameter.id),
+  };
+}
+
 function unitsLabel(unitCount: number) {
   if (unitCount <= 1) return "1 unité";
   return `${unitCount} unités (${unitLetter(1)}–${unitLetter(unitCount)})`;
@@ -180,11 +214,13 @@ export function SerieReceptionForm({
   technicians,
   thresholds,
   blockNonConform,
+  role,
 }: {
   serie: ReceptionSerieData;
   technicians: TechnicianOption[];
   thresholds: ReceptionThresholds;
   blockNonConform: boolean;
+  role: Role;
 }) {
   const router = useRouter();
   const pending = serie.samples.filter((s) => s.status === "PRELEVE");
@@ -320,6 +356,7 @@ export function SerieReceptionForm({
       <ReceivedSummary
         serie={serie}
         lines={received}
+        role={role}
         justReceived={result !== null}
         onBack={() => {
           router.refresh();
@@ -375,7 +412,10 @@ export function SerieReceptionForm({
                     </p>
                     {sample.remarks && <p className="mt-1 text-xs italic text-slate-500">{sample.remarks}</p>}
                   </div>
-                  <StatusBadge status={sample.status} />
+                  <div className="flex shrink-0 items-center gap-2">
+                    <SampleVerbs sample={verbSampleOf(sample)} role={role} compact />
+                    <StatusBadge status={sample.status} />
+                  </div>
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -656,15 +696,18 @@ export function SerieReceptionForm({
 function ReceivedSummary({
   serie,
   lines,
+  role,
   justReceived,
   onBack,
 }: {
   serie: ReceptionSerieData;
   lines: ReceivedLine[];
+  role: Role;
   justReceived: boolean;
   onBack: () => void;
 }) {
   const units = lines.reduce((n, l) => n + Math.max(1, l.unitCount), 0);
+  const byId = new Map(serie.samples.map((s) => [s.id, s]));
   return (
     <div>
       <PageHeader
@@ -695,7 +738,8 @@ function ReceivedSummary({
                 <th className="pb-2 pr-3 font-medium">N° de contrôle</th>
                 <th className="pb-2 pr-3 font-medium">Unités</th>
                 <th className="pb-2 pr-3 font-medium">Conformité</th>
-                <th className="pb-2 font-medium">Technicien</th>
+                <th className="pb-2 pr-3 font-medium">Technicien</th>
+                <th className="pb-2 font-medium"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -708,7 +752,12 @@ function ReceivedSummary({
                   <td className="py-2.5 pr-3 font-mono text-base font-bold text-slate-900">{line.controlCode ?? "—"}</td>
                   <td className="py-2.5 pr-3 text-slate-600">{unitsLabel(line.unitCount)}</td>
                   <td className="py-2.5 pr-3">
-                    {line.conformity === false ? (
+                    {!justReceived && byId.get(line.id)?.status === "ANNULE" ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
+                        Annulé
+                        {byId.get(line.id)?.cancelReason ? ` · ${CANCEL_REASON_LABELS[byId.get(line.id)!.cancelReason!]}` : ""}
+                      </span>
+                    ) : line.conformity === false ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
                         <AlertTriangle className="h-3 w-3" aria-hidden="true" />
                         {line.conformityReason ? NON_CONFORMITY_REASON_LABELS[line.conformityReason] : "Non conforme"}
@@ -721,7 +770,16 @@ function ReceivedSummary({
                       </span>
                     )}
                   </td>
-                  <td className="py-2.5 text-slate-700">{line.technician?.name ?? "—"}</td>
+                  <td className="py-2.5 pr-3 text-slate-700">{line.technician?.name ?? "—"}</td>
+                  <td className="py-2.5">
+                    {byId.get(line.id) && (
+                      <SampleVerbs
+                        sample={verbSampleOf(byId.get(line.id)!, justReceived ? "RECU" : byId.get(line.id)!.status)}
+                        role={role}
+                        compact
+                      />
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

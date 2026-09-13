@@ -13,6 +13,7 @@ import {
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { labReference } from "@/lib/sample-select";
+import { SampleVerbs } from "@/components/samples/SampleVerbs";
 import { formatDateTime } from "@/lib/labels";
 import { approvalState } from "@/lib/sample-status";
 import { Card } from "@/components/ui/Card";
@@ -40,6 +41,19 @@ export default async function ValidationDetailPage({
       lieu: true,
       produit: true,
       numeroLot: true,
+      lineKind: true,
+      productionDate: true,
+      expiryDate: true,
+      quantity: true,
+      quantityUnit: true,
+      surfaceLabel: true,
+      surfaceAreaCm2: true,
+      personName: true,
+      personRole: true,
+      handsState: true,
+      remarks: true,
+      unitCount: true,
+      parameters: { select: { parameterId: true } },
       conformity: true,
       conformityNote: true,
       rejectionReason: true,
@@ -167,9 +181,37 @@ export default async function ValidationDetailPage({
           </Card>
 
           <Card className="p-5">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Échantillon
-            </h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Échantillon
+              </h2>
+              <SampleVerbs
+                role={session.role}
+                sample={{
+                  id: sample.id,
+                  code: sample.code,
+                  controlCode: sample.controlCode,
+                  status: sample.status,
+                  type: sample.type,
+                  lineKind: sample.lineKind,
+                  produit: sample.produit,
+                  lieu: sample.lieu,
+                  numeroLot: sample.numeroLot,
+                  productionDate: sample.productionDate?.toISOString() ?? null,
+                  expiryDate: sample.expiryDate?.toISOString() ?? null,
+                  quantity: sample.quantity === null ? null : Number(sample.quantity),
+                  quantityUnit: sample.quantityUnit,
+                  surfaceLabel: sample.surfaceLabel,
+                  surfaceAreaCm2: sample.surfaceAreaCm2,
+                  personName: sample.personName,
+                  personRole: sample.personRole,
+                  handsState: sample.handsState,
+                  remarks: sample.remarks,
+                  unitCount: sample.unitCount,
+                  parameterIds: sample.parameters.map((p) => p.parameterId),
+                }}
+              />
+            </div>
             <dl className="mt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
               <Field icon={Hash} label="Code contrôle">
                 <span className="font-mono">{sample.controlCode ?? "—"}</span>

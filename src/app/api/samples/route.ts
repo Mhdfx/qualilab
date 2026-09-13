@@ -1,13 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
-import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { sampleSelectFor } from "@/lib/sample-select";
-import { createSerie, SerieCreationError } from "@/lib/serie-create";
-import { validateSerie, type NatureRef } from "@/lib/serie-input";
 import { pageParams, toPage } from "@/lib/pagination";
-import { SAMPLE_TYPES } from "@/lib/parameter-validation";
-import type { SampleType } from "@/generated/prisma/client";
 
 /** The roles that work the sample circuit — stock and (future) portal do not. */
 const CIRCUIT_ROLES = [
@@ -85,95 +80,4 @@ export async function GET(request: Request) {
   });
 
   return NextResponse.json(toPage(rows, take));
-}
-
-export async function POST(request: Request) {
-  const session = await requireApiRole("PRELEVEUR");
-  if (session instanceof NextResponse) return session;
-
-  try {
-    const body = await request.json();
-    const { clientId, lieu, type, notes, parameterIds } = body as {
-      clientId: string;
-      lieu: string;
-      type: SampleType;
-      notes?: string;
-      parameterIds: string[];
-    };
-
-    if (type && !SAMPLE_TYPES.includes(type)) {
-      return NextResponse.json({ error: "Domaine d'analyse invalide." }, { status: 400 });
-    }
-    if (typeof lieu === "string" && lieu.trim().length > 191) {
-      return NextResponse.json(
-        { error: "Le lieu de prélèvement est trop long (191 caractères maximum)." },
-        { status: 400 }
-      );
-    }
-    if (!clientId || !lieu || !type || !parameterIds?.length) {
-      return NextResponse.json(
-        { error: "Veuillez remplir tous les champs obligatoires." },
-        { status: 400 }
-      );
-    }
-
-    // Phase 9: a lone sample is a one-line visit. The old field form keeps
-    // working; the nature is the domain's default (MICRO_ALIMENTS, MICRO_EAUX,
-    // MICRO_SURFACES) until the multi-line form replaces this screen.
-    const natureCode = type === "EAU" ? "MICRO_EAUX" : type === "AMBIANCE" ? "MICRO_SURFACES" : "MICRO_ALIMENTS";
-    const nature = await prisma.analysisNature.findUnique({
-      where: { code: natureCode },
-      select: { id: true, defaultLineKind: true, active: true },
-    });
-    if (!nature) {
-      return NextResponse.json({ error: "Nature d'analyse introuvable." }, { status: 500 });
-    }
-    const natureMap = new Map<string, NatureRef>([[nature.id, nature]]);
-    const checked = validateSerie(
-      {
-        clientId,
-        lines: [
-          {
-            natureId: nature.id,
-            lineKind: nature.defaultLineKind,
-            produit: nature.defaultLineKind === "ALIMENT" ? lieu : undefined,
-            surfaceLabel: nature.defaultLineKind === "SURFACE" ? lieu : undefined,
-            lieu,
-            remarks: notes || undefined,
-            parameterIds,
-          },
-        ],
-      },
-      natureMap,
-      { kind: "VISITE" }
-    );
-    if (!checked.ok) {
-      return NextResponse.json({ error: checked.error }, { status: 400 });
-    }
-
-    const created = await createSerie(checked.value, { id: session.id, role: session.role });
-    const sample = await prisma.sample.findUniqueOrThrow({
-      where: { id: created.sampleIds[0] },
-      select: sampleSelectFor(session.role),
-    });
-
-    await logAudit({
-      actorId: session.id,
-      action: "SAMPLE_CREATED",
-      entity: "Sample",
-      entityId: sample.id,
-      metadata: { code: sample.code, type: sample.type, clientId, serie: created.serialNumber },
-    });
-
-    return NextResponse.json(sample, { status: 201 });
-  } catch (error) {
-    if (error instanceof SerieCreationError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-    console.error("[samples] creation failed", { error });
-    return NextResponse.json(
-      { error: "Impossible de créer le prélèvement." },
-      { status: 500 }
-    );
-  }
 }
