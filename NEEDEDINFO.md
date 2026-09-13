@@ -85,6 +85,35 @@ le journal sans être réellement expédiés**, et l'interface l'indique clairem
 
 ---
 
+## 1b. Questions issues de l'analyse du 13/09/2026 (ancienne base + formulaires papier)
+
+À poser au laboratoire avant d'ouvrir les chantiers de mise à niveau (PLAN.md,
+Phase 9). Numérotées Q1–Q20 ; les réponses deviennent des données ou des
+réglages, pas des développements.
+
+| # | Question | Ce que la réponse décide |
+|---|---|---|
+| Q1 | Le préleveur saisit-il le protocole sur site (téléphone) ou au retour depuis le papier ? La signature de l'interlocuteur reste-t-elle sur papier ? | Écran mobile vs desktop du protocole ; signature tactile ou non |
+| Q2 | Autres aires que 100 cm² pour les surfaces ? Le nom des employés prélevés figure-t-il sur le rapport ? | Champ aire ; protection des données |
+| Q3 | Une règle de recevabilité en défaut bloque-t-elle la réception ou ouvre-t-elle une non-conformité ? Bornes de chaîne du froid ? | Réglage LabSettings |
+| Q4 | Encaissez-vous des avances au comptoir, sous quelle forme ? | Bloc avance + reçu |
+| Q5 | Règle à trois classes : ≤ m / entre m et M / > M, ou < 3m / 3m–10m / > M ? Utilisez-vous c ? | Moteur de critères |
+| Q6 | Parmi les 634 types de produits, lesquels garder ? Quels clients ont des critères propres ? | Reprise du catalogue |
+| Q7 | Portée d'accréditation par paramètre et matrice ; mention à imprimer ; écriture des unités | Catalogue et rapport |
+| Q8 | Délais contractuels par famille de paramètres ; jours ouvrés | Échéances et retards |
+| Q9 | Deux boîtes lues ? Moyenne pondérée ISO 7218 ? Volume ensemencé par paramètre ? Seuil de détection imprimé ? | Calcul du résultat final |
+| Q10 | Imprimer les n valeurs ou seulement la conclusion ? Feuille papier conservée ou saisie sur tablette ? | Rapport et paillasse |
+| Q11 | Un paramètre non effectué est-il facturé ? | Facturation |
+| Q12 | Pourquoi 94 000 dévalidations dans l'ancien logiciel : corrections par lots ou résultats tardifs ajoutés après coup ? | Validation par paramètre ou par échantillon |
+| Q13 | Qui peut amender, forcer un verdict, annuler ? Le rapport amendé garde-t-il son numéro avec suffixe ? | Droits et numérotation |
+| Q14 | Fournir trois rapports réels récents, les modèles des grands comptes, le texte d'e-mail, les références/versions de tous les documents, le logo d'accréditation et les cachets | Maquette du rapport, cartouches |
+| Q15 | Signataires autorisés et délégués « par ordre », titre exact à imprimer | Comptes et signatures |
+| Q16 | Le forfait mensuel couvre-t-il un maximum d'échantillons ? Liste du mois sur la facture ? Causes des 264 avoirs de 2025 ? | Facturation forfaitaire |
+| Q17 | En janvier, la numérotation repart-elle à 1/27 ? Une facture annulée garde-t-elle son numéro ? | Compteurs |
+| Q18 | Que contient « N° de factures » sur le protocole ? | Référence client sur la visite |
+| Q19 | Date de bascule, durée de cohabitation avec l'ancien logiciel, sort des ≈ 8 000 dossiers en cours | Plan de bascule |
+| Q20 | Le partage des PDF contient-il tous les rapports depuis 2017 ? Années d'historique sur le portail ? Factures visibles sur le portail ? | Reprise de l'historique, portail |
+
 ## 2. Ready to send — current batch
 
 *Copy this into an email. Update the date when you send it.*

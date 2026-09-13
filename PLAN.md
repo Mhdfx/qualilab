@@ -230,6 +230,38 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 **Roles impact [settled]:** 9 profiles total — the 7 core roles + `CLIENT`
 (portal, already reserved in `lib/roles.ts`) + `MAGASINIER` (added at Phase 6).
 
+### Phase 9 — Mise à niveau métier *(analysis of 2026-09-13, after the client's feedback)*
+
+The legacy Firebird database (252 tables, restored and read) and the four
+paper forms the lab still fills by hand were compared with this codebase.
+Verdict: the technical base stands (auth, state machine, double validation,
+audit, PDFs, invoicing, stock, quality), but the core was modelled on a
+simplified picture of the lab. Five structural mismatches drive almost every
+client remark: one sample instead of one **visit** (≈ 7 samples of mixed
+natures per order), 3 sample types instead of **16 analysis natures**, a
+single limit instead of **m / M three-class criteria per product type**, one
+value per parameter instead of **one value per unit (n = 5, n = 9)**, and
+invented identifiers instead of the lab's **yearly sequences** (série
+NNNN/AA per visit, contrôle NNNNN/AA per sample).
+
+Six workstreams, in this order (≈ 31 weeks for one developer; the first is
+the client's stated priority):
+
+| # | Chantier | Weeks |
+|---|---|---|
+| 1 | Prélèvement et réception — visite/dépôt multi-lignes, sites, natures, champs par nature, réception groupée avec recevabilité, numérotation du labo, étiquettes code-barres, profils d'analyses, PDF protocole/bon | 7 |
+| 2 | Catalogue et critères — unités, méthodes, natures, types de produits, entrée paramètre × nature, critères m/M (n, c), échelles de conclusion, reprise des référentiels | 6 |
+| 3 | Analyse et résultats — résultats par unité, grille par série, lecture boîtes + dilution, opérateurs, qualitatif, non effectué, deux paillasses, feuille de paillasse au format du labo | 5 |
+| 4 | Validation, rapports, envoi — rapport enrichi et figé, cartouche qualité, amendement, correction vers réception, série, découplage approbation/envoi, destinataires par site | 5 |
+| 5 | Commercial et facturation — hiérarchie client/site, tarifs client, forfait mensuel, avoirs, numéro NNNN/AA, cycle brouillon → émise → annulée, règlements | 4 |
+| 6 | Reprise, portail, bascule — scripts de migration, portail client, cumul de rôles, identité légale, échéances | 4 |
+
+The full report (99 findings with evidence and proposed design, target
+sampling workflow, migration order, 20 questions for the lab) is kept
+outside the public repo: `Desktop\qualinalysenalyse-mise-a-niveau-qualilab.pdf`
+on the developer's machine. Nothing from Phases 1–7 is thrown away: the
+workstreams extend the model and the screens.
+
 ---
 
 ## Definition of Done (per phase)
