@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { ReceptionShell } from "@/components/layout/RoleShells";
+import { RoleShell } from "@/components/layout/RoleShell";
 
 export default async function ReceptionLayout({
   children,
@@ -8,5 +8,9 @@ export default async function ReceptionLayout({
 }) {
   const session = await requireRole("RECEPTIONNISTE", "ADMIN");
 
-  return <ReceptionShell userName={session.name}>{children}</ReceptionShell>;
+  return (
+    <RoleShell role={session.role} userName={session.name}>
+      {children}
+    </RoleShell>
+  );
 }

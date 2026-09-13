@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { PreleveurShell } from "@/components/layout/PreleveurShell";
+import { RoleShell } from "@/components/layout/RoleShell";
 
 export default async function PreleveurLayout({
   children,
@@ -8,5 +8,9 @@ export default async function PreleveurLayout({
 }) {
   const session = await requireRole("PRELEVEUR");
 
-  return <PreleveurShell userName={session.name}>{children}</PreleveurShell>;
+  return (
+    <RoleShell role={session.role} userName={session.name}>
+      {children}
+    </RoleShell>
+  );
 }

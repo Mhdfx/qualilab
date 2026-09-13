@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { CommercialShell } from "@/components/layout/RoleShells";
+import { RoleShell } from "@/components/layout/RoleShell";
 
 export default async function CommercialLayout({
   children,
@@ -8,5 +8,9 @@ export default async function CommercialLayout({
 }) {
   const session = await requireRole("GESTIONNAIRE", "ADMIN");
 
-  return <CommercialShell userName={session.name}>{children}</CommercialShell>;
+  return (
+    <RoleShell role={session.role} userName={session.name}>
+      {children}
+    </RoleShell>
+  );
 }

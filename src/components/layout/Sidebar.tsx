@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import type { NavSection } from "./nav-types";
+import { activeHref } from "./nav-active";
 
 type SidebarProps = {
   sections: NavSection[];
@@ -13,16 +14,11 @@ type SidebarProps = {
   onClose?: () => void;
 };
 
-function isActive(pathname: string, href: string) {
-  const path = href.split("#")[0];
-  if (path === "/preleveur" || path === "/admin") {
-    return pathname === path && !href.includes("#");
-  }
-  return pathname === path || pathname.startsWith(`${path}/`);
-}
-
 export function Sidebar({ sections, roleLabel, onNavigate, onClose }: SidebarProps) {
   const pathname = usePathname();
+  // Longest matching route prefix: on /reception/abc the administrator sees
+  // « Réception » lit in the administration menu, not a swapped sidebar.
+  const active = activeHref(pathname, sections);
 
   return (
     <aside className="flex h-full w-full flex-col bg-gradient-to-b from-[#1a3a5c] to-[#0f2844] lg:w-64">
@@ -54,8 +50,6 @@ export function Sidebar({ sections, roleLabel, onNavigate, onClose }: SidebarPro
             <ul className="space-y-0.5">
               {section.items.map((item) => {
                 const Icon = item.icon;
-                const active =
-                  item.href && !item.disabled && isActive(pathname, item.href);
 
                 if (item.disabled || !item.href) {
                   return (
@@ -73,6 +67,8 @@ export function Sidebar({ sections, roleLabel, onNavigate, onClose }: SidebarPro
                   );
                 }
 
+                const isActive = item.href === active;
+
                 return (
                   <li key={item.label}>
                     <Link
@@ -81,8 +77,9 @@ export function Sidebar({ sections, roleLabel, onNavigate, onClose }: SidebarPro
                       // render a Chromium page on every view for nothing.
                       prefetch={item.href.startsWith("/api/") ? false : undefined}
                       onClick={onNavigate}
+                      aria-current={isActive ? "page" : undefined}
                       className={`flex min-h-[44px] items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 lg:min-h-[38px] lg:py-2 ${
-                        active
+                        isActive
                           ? "border-l-[3px] border-white bg-white/12 pl-[9px] pr-3 text-white shadow-sm"
                           : "border-l-[3px] border-transparent px-3 text-white/65 hover:bg-white/8 hover:text-white"
                       }`}

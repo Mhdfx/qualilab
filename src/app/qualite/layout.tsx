@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { QualiteShell } from "@/components/layout/RoleShells";
+import { RoleShell } from "@/components/layout/RoleShell";
 
 export default async function QualiteLayout({
   children,
@@ -8,5 +8,9 @@ export default async function QualiteLayout({
 }) {
   const session = await requireRole("VALIDATEUR", "ADMIN");
 
-  return <QualiteShell userName={session.name}>{children}</QualiteShell>;
+  return (
+    <RoleShell role={session.role} userName={session.name}>
+      {children}
+    </RoleShell>
+  );
 }

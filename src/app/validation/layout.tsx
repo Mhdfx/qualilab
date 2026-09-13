@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { ValidationShell } from "@/components/layout/RoleShells";
+import { RoleShell } from "@/components/layout/RoleShell";
 
 export default async function ValidationLayout({
   children,
@@ -8,5 +8,9 @@ export default async function ValidationLayout({
 }) {
   const session = await requireRole("VALIDATEUR", "ADMIN");
 
-  return <ValidationShell userName={session.name}>{children}</ValidationShell>;
+  return (
+    <RoleShell role={session.role} userName={session.name}>
+      {children}
+    </RoleShell>
+  );
 }

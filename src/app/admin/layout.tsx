@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { AdminShell } from "@/components/layout/AdminShell";
+import { RoleShell } from "@/components/layout/RoleShell";
 
 export default async function AdminLayout({
   children,
@@ -8,5 +8,9 @@ export default async function AdminLayout({
 }) {
   const session = await requireRole("ADMIN");
 
-  return <AdminShell userName={session.name}>{children}</AdminShell>;
+  return (
+    <RoleShell role={session.role} userName={session.name}>
+      {children}
+    </RoleShell>
+  );
 }

@@ -18,8 +18,10 @@ import {
 import type { NavSection } from "./nav-types";
 
 /**
- * Navigation per role. Items for screens that arrive in a later phase are
- * listed as disabled so each profile can see where its workflow is heading.
+ * Navigation per role space, assembled per ROLE by nav-for-role.ts (a role
+ * with several spaces gets them merged into one menu). Items for screens
+ * that arrive in a later phase are listed as disabled so each profile can see
+ * where its workflow is heading.
  */
 
 export const receptionNav: NavSection[] = [
@@ -62,12 +64,6 @@ export const validationNav: NavSection[] = [
       { label: "À valider", href: "/validation#file", icon: ShieldCheck },
     ],
   },
-  {
-    title: "Qualité",
-    items: [
-      { label: "Système Qualité", href: "/qualite", icon: Gauge },
-    ],
-  },
 ];
 
 export const commercialNav: NavSection[] = [
@@ -104,11 +100,16 @@ export const magasinNav: NavSection[] = [
   },
 ];
 
+/**
+ * The quality system is never a sidebar of its own: it is a block inside the
+ * validateur menu (next to « Tableau de bord » of validation, hence the
+ * distinct label) and one link inside the administrator menu.
+ */
 export const qualiteNav: NavSection[] = [
   {
-    title: "Menu principal",
+    title: "Système qualité",
     items: [
-      { label: "Tableau de bord", href: "/qualite", icon: LayoutDashboard },
+      { label: "Vue d'ensemble", href: "/qualite", icon: LayoutDashboard },
       { label: "Métrologie", href: "/qualite/metrologie", icon: Gauge },
       { label: "Températures", href: "/qualite/temperatures", icon: Thermometer },
       { label: "EIL", href: "/qualite/eil", icon: Award },

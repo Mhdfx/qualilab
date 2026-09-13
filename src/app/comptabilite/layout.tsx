@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { ComptabiliteShell } from "@/components/layout/RoleShells";
+import { RoleShell } from "@/components/layout/RoleShell";
 
 export default async function ComptabiliteLayout({
   children,
@@ -8,5 +8,9 @@ export default async function ComptabiliteLayout({
 }) {
   const session = await requireRole("COMPTABLE", "ADMIN");
 
-  return <ComptabiliteShell userName={session.name}>{children}</ComptabiliteShell>;
+  return (
+    <RoleShell role={session.role} userName={session.name}>
+      {children}
+    </RoleShell>
+  );
 }

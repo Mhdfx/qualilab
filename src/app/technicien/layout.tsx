@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { TechnicienShell } from "@/components/layout/RoleShells";
+import { RoleShell } from "@/components/layout/RoleShell";
 
 export default async function TechnicienLayout({
   children,
@@ -8,5 +8,9 @@ export default async function TechnicienLayout({
 }) {
   const session = await requireRole("TECHNICIEN", "ADMIN");
 
-  return <TechnicienShell userName={session.name}>{children}</TechnicienShell>;
+  return (
+    <RoleShell role={session.role} userName={session.name}>
+      {children}
+    </RoleShell>
+  );
 }

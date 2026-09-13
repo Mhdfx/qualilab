@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { MagasinShell } from "@/components/layout/RoleShells";
+import { RoleShell } from "@/components/layout/RoleShell";
 
 export default async function MagasinLayout({
   children,
@@ -8,5 +8,9 @@ export default async function MagasinLayout({
 }) {
   const session = await requireRole("MAGASINIER", "ADMIN");
 
-  return <MagasinShell userName={session.name}>{children}</MagasinShell>;
+  return (
+    <RoleShell role={session.role} userName={session.name}>
+      {children}
+    </RoleShell>
+  );
 }

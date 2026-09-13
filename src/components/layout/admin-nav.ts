@@ -12,23 +12,39 @@ import {
   ShieldCheck,
   Gauge,
   Boxes,
+  Inbox,
+  Microscope,
+  Wallet,
 } from "lucide-react";
 import type { NavSection } from "./nav-types";
 
+/**
+ * The administrator is admitted to every space (each space layout allows
+ * ADMIN) and this is the only menu an administrator ever sees (see
+ * nav-for-role.ts), so every space root must be reachable from here.
+ */
 export const adminNav: NavSection[] = [
   {
     title: "Menu principal",
     items: [
       { label: "Tableau de bord", href: "/admin", icon: LayoutDashboard },
       { label: "Prélèvements", href: "/admin#prelevements", icon: FlaskConical },
-      { label: "Approbations", href: "/validation", icon: ShieldCheck },
       { label: "Factures", href: "/admin/factures", icon: FileText },
+    ],
+  },
+  {
+    title: "Circuit des échantillons",
+    items: [
+      { label: "Réception", href: "/reception", icon: Inbox },
+      { label: "Analyses", href: "/technicien", icon: Microscope },
+      { label: "Approbations", href: "/validation", icon: ShieldCheck },
     ],
   },
   {
     title: "Gestion",
     items: [
       { label: "Clients", href: "/commercial", icon: Building2 },
+      { label: "Comptabilité", href: "/comptabilite", icon: Wallet },
       { label: "Utilisateurs", href: "/admin/utilisateurs", icon: UserCog },
     ],
   },
