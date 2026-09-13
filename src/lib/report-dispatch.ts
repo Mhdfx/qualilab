@@ -22,7 +22,7 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
     where: { id: sampleId },
     select: {
       controlCode: true,
-      serialNumber: true,
+      serie: { select: { serialNumber: true } },
       produit: true,
       numeroLot: true,
       lieu: true,
@@ -51,7 +51,7 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
   return {
     number: sample.report.number,
     controlCode: sample.controlCode,
-    serialNumber: sample.serialNumber,
+    serialNumber: sample.serie.serialNumber,
     client: sample.client,
     produit: sample.produit,
     numeroLot: sample.numeroLot,

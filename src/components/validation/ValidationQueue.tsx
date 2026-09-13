@@ -2,14 +2,16 @@ import Link from "next/link";
 import { ArrowRight, ShieldCheck, AlertTriangle, Clock } from "lucide-react";
 import type { SampleType } from "@/generated/prisma/client";
 import { formatDate } from "@/lib/labels";
+import { labReference } from "@/lib/sample-select";
 import { approvalState, APPROVAL_LABELS } from "@/lib/sample-status";
 import { Card } from "@/components/ui/Card";
 import { TypeBadge } from "@/components/ui/TypeBadge";
 
 export type ValidationItem = {
   id: string;
-  serialNumber: string | null;
+  code: string;
   controlCode: string | null;
+  serie: { serialNumber: string };
   type: SampleType;
   validatedById: string | null;
   approvedById: string | null;
@@ -55,8 +57,9 @@ export function ValidationQueue({ items }: { items: ValidationItem[] }) {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-sm font-semibold text-slate-900">
-                      {item.serialNumber ?? "—"}
+                      {labReference(item)}
                     </span>
+                    <span className="text-xs text-slate-500">série {item.serie.serialNumber}</span>
                     <TypeBadge type={item.type} />
                     <span
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${

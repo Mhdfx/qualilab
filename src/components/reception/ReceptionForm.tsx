@@ -31,7 +31,7 @@ type ReceptionFormProps = {
 
 type Assigned = {
   controlCode: string;
-  serialNumber: string;
+  serieNumber: string;
   conformity: boolean;
   blocked: boolean;
 };
@@ -101,7 +101,7 @@ export function ReceptionForm({
       // refreshed when they navigate back.
       setAssigned({
         controlCode: data.controlCode,
-        serialNumber: data.serialNumber,
+        serieNumber: data.serie?.serialNumber ?? "—",
         conformity,
         blocked: data.analysisBlocked === true,
       });
@@ -259,9 +259,9 @@ export function ReceptionForm({
             aria-hidden="true"
           />
           <p>
-            La validation générera le <b>code contrôle</b> et le{" "}
-            <b>numéro de série</b> officiels. Ces numéros ne sont jamais visibles
-            par le préleveur.
+            La validation attribue le <b>code contrôle</b> officiel de
+            l&apos;échantillon — jamais visible par le préleveur. Le n° de série
+            de la visite, lui, est déjà connu sur le terrain.
           </p>
         </div>
 
@@ -388,7 +388,7 @@ function ReceptionSuccess({
       </p>
       <div className="mt-2 space-y-2.5">
         <NumberPlate label="Code contrôle" value={assigned.controlCode} />
-        <NumberPlate label="N° de série (analyse)" value={assigned.serialNumber} />
+        <NumberPlate label="N° de série" value={assigned.serieNumber} />
       </div>
 
       <div className="mt-5">

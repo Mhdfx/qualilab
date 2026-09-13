@@ -5,6 +5,7 @@ import { renderPdf } from "@/lib/pdf";
 import { buildBenchSheetHtml, type BenchSheetSample } from "@/lib/bench-sheet-html";
 import { getCompany } from "@/lib/company-server";
 import { formatIsoDay } from "@/lib/labels";
+import { labReference } from "@/lib/sample-select";
 
 /**
  * The printable bench sheet for a given day.
@@ -38,8 +39,9 @@ export async function GET(request: Request) {
       receivedAt: { gte: start, lt: end },
     },
     select: {
-      serialNumber: true,
+      code: true,
       controlCode: true,
+      serie: { select: { serialNumber: true } },
       type: true,
       produit: true,
       numeroLot: true,
@@ -55,8 +57,8 @@ export async function GET(request: Request) {
   });
 
   const samples: BenchSheetSample[] = rows.map((row) => ({
-    serialNumber: row.serialNumber,
-    controlCode: row.controlCode,
+    reference: labReference(row),
+    serieNumber: row.serie.serialNumber,
     type: row.type,
     produit: row.produit,
     numeroLot: row.numeroLot,

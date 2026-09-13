@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, AlertTriangle, Building2, Package, Hash, Calendar } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { labReference } from "@/lib/sample-select";
 import { formatDate } from "@/lib/labels";
 import { getDashboardPath } from "@/lib/roles";
 import { Card } from "@/components/ui/Card";
@@ -27,7 +28,6 @@ export default async function AnalysePage({
     select: {
       id: true,
       code: true,
-      serialNumber: true,
       controlCode: true,
       type: true,
       status: true,
@@ -40,6 +40,7 @@ export default async function AnalysePage({
       conformityNote: true,
       technicianId: true,
       client: { select: { name: true } },
+      serie: { select: { serialNumber: true } },
       parameters: {
         select: {
           parameter: {
@@ -100,7 +101,7 @@ export default async function AnalysePage({
 
       <PageHeader
         badge="Analyse"
-        title={sample.serialNumber ?? sample.code}
+        title={labReference(sample)}
         subtitle="Saisissez chaque paramètre. La conformité est calculée automatiquement à partir de la limite de référence."
       />
 
@@ -120,6 +121,9 @@ export default async function AnalysePage({
             <dl className="mt-4 space-y-3.5">
               <Field icon={Hash} label="Code contrôle">
                 <span className="font-mono">{sample.controlCode ?? "—"}</span>
+              </Field>
+              <Field icon={Hash} label="N° de série">
+                <span className="font-mono">{sample.serie.serialNumber}</span>
               </Field>
               <Field icon={Building2} label="Client">
                 {sample.client.name}

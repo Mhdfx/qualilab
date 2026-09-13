@@ -42,6 +42,10 @@ export async function GET(request: Request) {
         : {}),
     },
     orderBy: { name: "asc" },
+    // Phase 9: the préleveur picks the site from the client's list.
+    include: {
+      sites: { where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } },
+    },
   });
 
   return NextResponse.json(clients);

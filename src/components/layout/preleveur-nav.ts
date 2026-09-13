@@ -13,11 +13,11 @@ export const preleveurNav: NavSection[] = [
     items: [
       { label: "Tableau de bord", href: "/preleveur", icon: LayoutDashboard },
       {
-        label: "Nouveau prélèvement",
-        href: "/preleveur/nouveau",
+        label: "Nouvelle visite",
+        href: "/preleveur/nouvelle-visite",
         icon: PlusCircle,
       },
-      { label: "Mes prélèvements", href: "/preleveur#prelevements", icon: ClipboardList },
+      { label: "Mes visites", href: "/preleveur#visites", icon: ClipboardList },
     ],
   },
   {

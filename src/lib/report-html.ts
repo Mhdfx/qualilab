@@ -19,7 +19,8 @@ import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
 export type ReportData = {
   number: string;
   controlCode: string | null;
-  serialNumber: string | null;
+  /** The série (visite or dépôt) the sample belongs to. */
+  serialNumber: string;
   client: { name: string; address: string | null; ice: string | null };
   produit: string | null;
   numeroLot: string | null;
@@ -153,7 +154,7 @@ export function buildReportHtml(
     <div class="kind">Rapport d'analyse</div>
     N° <b>${escapeHtml(data.number)}</b><br>
     Code contrôle <b>${show(data.controlCode)}</b><br>
-    N° de série <b>${show(data.serialNumber)}</b><br>
+    N° de série <b>${escapeHtml(data.serialNumber)}</b><br>
     Édité le <b>${formatDate(new Date())}</b>
   </div>
 </header>

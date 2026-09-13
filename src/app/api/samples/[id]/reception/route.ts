@@ -153,7 +153,7 @@ export async function POST(
             id: true,
             code: true,
             controlCode: true,
-            serialNumber: true,
+            serie: { select: { serialNumber: true } },
             status: true,
             conformity: true,
             analysisBlocked: true,

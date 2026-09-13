@@ -50,6 +50,7 @@ export async function GET(request: Request) {
   // it, and the whole point of the blind numbering is that they cannot know.
   const searchable = [
     { code: { contains: q } },
+    { serie: { serialNumber: { contains: q } } },
     { produit: { contains: q } },
     { numeroLot: { contains: q } },
     { lieu: { contains: q } },

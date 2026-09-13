@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { labReference } from "@/lib/sample-select";
 import { formatDateTime } from "@/lib/labels";
 import { approvalState } from "@/lib/sample-status";
 import { Card } from "@/components/ui/Card";
@@ -33,7 +34,6 @@ export default async function ValidationDetailPage({
     select: {
       id: true,
       code: true,
-      serialNumber: true,
       controlCode: true,
       type: true,
       status: true,
@@ -47,6 +47,7 @@ export default async function ValidationDetailPage({
       validatedAt: true,
       approvedById: true,
       client: { select: { name: true } },
+      serie: { select: { serialNumber: true } },
       technician: { select: { name: true } },
       validatedBy: { select: { name: true } },
       report: { select: { number: true, sentTo: true } },
@@ -84,7 +85,7 @@ export default async function ValidationDetailPage({
 
       <PageHeader
         badge="Contrôle qualité"
-        title={sample.serialNumber ?? sample.code}
+        title={labReference(sample)}
         subtitle="Vérifiez chaque résultat face à son seuil avant de valider ou de renvoyer l'échantillon."
       />
 
@@ -172,6 +173,9 @@ export default async function ValidationDetailPage({
             <dl className="mt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
               <Field icon={Hash} label="Code contrôle">
                 <span className="font-mono">{sample.controlCode ?? "—"}</span>
+              </Field>
+              <Field icon={Hash} label="N° de série">
+                <span className="font-mono">{sample.serie.serialNumber}</span>
               </Field>
               <Field icon={Building2} label="Client">
                 {sample.client.name}

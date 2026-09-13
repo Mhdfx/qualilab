@@ -2,14 +2,16 @@ import Link from "next/link";
 import { ArrowRight, FlaskConical, AlertTriangle } from "lucide-react";
 import type { SampleStatus, SampleType } from "@/generated/prisma/client";
 import { formatDate } from "@/lib/labels";
+import { labReference } from "@/lib/sample-select";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
 
 export type WorkItem = {
   id: string;
-  serialNumber: string | null;
+  code: string;
   controlCode: string | null;
+  serie: { serialNumber: string };
   type: SampleType;
   status: SampleStatus;
   receivedAt: Date | null;
@@ -56,8 +58,9 @@ export function WorkQueue({ items }: { items: WorkItem[] }) {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-sm font-semibold text-slate-900">
-                      {item.serialNumber ?? "—"}
+                      {labReference(item)}
                     </span>
+                    <span className="text-xs text-slate-500">série {item.serie.serialNumber}</span>
                     <TypeBadge type={item.type} />
                     <StatusBadge status={item.status} />
                     {item.conformity === false && (

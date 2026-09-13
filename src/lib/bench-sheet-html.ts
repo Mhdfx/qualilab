@@ -15,8 +15,9 @@ import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
  */
 
 export type BenchSheetSample = {
-  serialNumber: string | null;
-  controlCode: string | null;
+  /** N° de contrôle once received, série line before that. */
+  reference: string;
+  serieNumber: string;
   type: SampleType;
   produit: string | null;
   numeroLot: string | null;
@@ -37,11 +38,11 @@ export function buildBenchSheetHtml(
     <section class="sample">
       <div class="head">
         <div>
-          <span class="serial">${show(sample.serialNumber)}</span>
+          <span class="serial">${escapeHtml(sample.reference)}</span>
           <span class="type">${escapeHtml(SAMPLE_TYPE_LABELS[sample.type])}</span>
         </div>
         <div class="meta">
-          ${show(sample.clientName)}
+          Série ${escapeHtml(sample.serieNumber)} · ${show(sample.clientName)}
           ${sample.produit ? ` · ${escapeHtml(sample.produit)}` : ""}
           ${sample.numeroLot ? ` · lot ${escapeHtml(sample.numeroLot)}` : ""}
           ${sample.technicianName ? ` · ${escapeHtml(sample.technicianName)}` : ""}

@@ -84,7 +84,7 @@ describe("activeHref", () => {
   });
 
   it("does not light the dashboard on a sibling route", () => {
-    expect(activeHref("/preleveur/nouveau", navFor("PRELEVEUR"))).toBe("/preleveur/nouveau");
+    expect(activeHref("/preleveur/nouvelle-visite", navFor("PRELEVEUR"))).toBe("/preleveur/nouvelle-visite");
     expect(activeHref("/qualite/metrologie", navFor("VALIDATEUR"))).toBe("/qualite/metrologie");
   });
 
