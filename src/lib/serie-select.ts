@@ -75,6 +75,7 @@ export const SERIE_LAB_SELECT = {
       controlCode: true,
       receptionTemperature: true,
       conformity: true,
+      conformityReason: true,
       conformityNote: true,
       technician: { select: { id: true, name: true } },
     },

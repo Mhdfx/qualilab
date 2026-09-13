@@ -22,6 +22,7 @@ const ACTION_LABELS: Record<string, string> = {
   DEPOT_CREATED: "Dépôt enregistré",
   SERIE_UPDATED: "Visite complétée",
   SAMPLE_RECEIVED: "Échantillon réceptionné",
+  SERIE_RECEIVED: "Série réceptionnée",
   SAMPLE_ANALYSIS_STARTED: "Analyse démarrée",
   RESULTS_SAVED: "Résultats enregistrés",
   RESULTS_SUBMITTED: "Résultats soumis à validation",

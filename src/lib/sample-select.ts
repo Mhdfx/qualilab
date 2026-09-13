@@ -71,6 +71,7 @@ export const SAMPLE_LAB_SELECT = {
   receivedBy: { select: { id: true, name: true } },
   receptionTemperature: true,
   conformity: true,
+  conformityReason: true,
   conformityNote: true,
   assignedAt: true,
   technician: { select: { id: true, name: true } },

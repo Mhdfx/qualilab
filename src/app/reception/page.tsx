@@ -1,10 +1,10 @@
-import { Inbox, ClipboardCheck, FlaskConical, CalendarClock } from "lucide-react";
+import { Inbox, ClipboardCheck, FlaskConical, Layers } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
 import { formatDateTime } from "@/lib/labels";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
-import { ReceptionQueue } from "@/components/reception/ReceptionQueue";
+import { SerieQueue, type QueueSerie } from "@/components/reception/SerieQueue";
 import {
   BlockedSamples,
   type BlockedSample,
@@ -17,40 +17,53 @@ export default async function ReceptionPage() {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
-  const [session, pending, blocked, recusAujourdhui, enAnalyse, total] =
-    await Promise.all([
-      // Belt and braces with the layout guard.
-      requireRole("RECEPTIONNISTE", "ADMIN"),
-      prisma.sample.findMany({
-        where: { status: "PRELEVE" },
-        select: {
-          id: true,
-          code: true,
-          lieu: true,
-          type: true,
-          sampledAt: true,
-          client: { select: { name: true } },
-          user: { select: { name: true } },
-          parameters: { select: { parameter: { select: { name: true } } } },
+  const [session, pending, blocked, recusAujourdhui, enAnalyse] = await Promise.all([
+    // Belt and braces with the layout guard.
+    requireRole("RECEPTIONNISTE", "ADMIN"),
+    // The queue is made of séries (WORKFLOW.md rule 1): a série waits as
+    // long as one of its lines is still PRELEVE.
+    prisma.serie.findMany({
+      where: { samples: { some: { status: "PRELEVE" } } },
+      select: {
+        id: true,
+        serialNumber: true,
+        kind: true,
+        startedAt: true,
+        arrivedAt: true,
+        coolerTemperature: true,
+        samplerKind: true,
+        samplerName: true,
+        client: { select: { name: true } },
+        site: { select: { name: true } },
+        samplerUser: { select: { name: true } },
+        samples: {
+          select: { id: true, status: true, nature: { select: { label: true } } },
+          orderBy: { lineNumber: "asc" },
         },
-        orderBy: { sampledAt: "asc" },
-      }),
-      prisma.sample.findMany({
-        where: { analysisBlocked: true, status: "RECU" },
-        select: {
-          id: true,
-          controlCode: true,
-          produit: true,
-          conformityNote: true,
-          receivedAt: true,
-          client: { select: { name: true } },
-        },
-        orderBy: { receivedAt: "asc" },
-      }),
-      prisma.sample.count({ where: { receivedAt: { gte: startOfDay } } }),
-      prisma.sample.count({ where: { status: "EN_ANALYSE" } }),
-      prisma.sample.count(),
-    ]);
+      },
+      orderBy: { startedAt: "asc" },
+      take: 100,
+    }),
+    prisma.sample.findMany({
+      where: { analysisBlocked: true, status: "RECU" },
+      select: {
+        id: true,
+        controlCode: true,
+        produit: true,
+        conformityNote: true,
+        receivedAt: true,
+        client: { select: { name: true } },
+      },
+      orderBy: { receivedAt: "asc" },
+    }),
+    prisma.sample.count({ where: { receivedAt: { gte: startOfDay } } }),
+    prisma.sample.count({ where: { status: "EN_ANALYSE" } }),
+  ]);
+
+  const pendingLines = pending.reduce(
+    (n, serie) => n + serie.samples.filter((s) => s.status === "PRELEVE").length,
+    0
+  );
 
   // The release control needs the technician list; only fetched when a
   // blocked sample actually exists.
@@ -91,29 +104,27 @@ export default async function ReceptionPage() {
     <div>
       <PageHeader
         badge="Espace réception"
-        title="Réception des échantillons"
-        subtitle="Vérifiez les échantillons à leur arrivée au laboratoire, contrôlez leur conformité et attribuez-les à un technicien."
+        title="Réception des séries"
+        subtitle="Une visite arrive dans une glacière et se réceptionne en une fois : températures, règles d'acceptation, numérotation et étiquettes."
       />
 
       <section aria-label="Indicateurs" className="mb-8">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="À réceptionner" value={pending.length} icon={Inbox} accent="amber" />
+          <StatCard label="Séries à réceptionner" value={pending.length} icon={Inbox} accent="amber" />
+          <StatCard label="Lignes en attente" value={pendingLines} icon={Layers} accent="brand" />
           <StatCard label="Reçus aujourd'hui" value={recusAujourdhui} icon={ClipboardCheck} accent="emerald" />
           <StatCard label="En analyse" value={enAnalyse} icon={FlaskConical} accent="blue" />
-          <StatCard label="Total échantillons" value={total} icon={CalendarClock} accent="brand" />
         </div>
       </section>
 
       <section id="file" aria-label="File d'attente">
         <div className="mb-3 flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">
-            En attente de réception
-          </h2>
+          <h2 className="text-lg font-semibold text-slate-900">En attente de réception</h2>
           <span className="text-sm text-slate-500">
-            {pending.length} échantillon{pending.length > 1 ? "s" : ""}
+            {pending.length} série{pending.length > 1 ? "s" : ""}
           </span>
         </div>
-        <ReceptionQueue samples={pending} />
+        <SerieQueue series={pending as QueueSerie[]} />
       </section>
 
       <BlockedSamples

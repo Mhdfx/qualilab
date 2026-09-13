@@ -56,6 +56,16 @@ export const HANDS_STATE_LABELS = {
   NON_LAVEES: "Mains non lavées",
 } as const;
 
+export const NON_CONFORMITY_REASON_LABELS = {
+  CHAINE_FROID: "Rupture de la chaîne du froid",
+  TEMPERATURE_MANQUANTE: "Température à l'arrivée non relevée",
+  QUANTITE_INSUFFISANTE: "Quantité insuffisante",
+  EMBALLAGE: "Emballage ou contenant non conforme",
+  DELAI: "Délai de transport dépassé",
+  IDENTIFICATION: "Identification incomplète",
+  AUTRE: "Autre motif",
+} as const;
+
 export const CANCEL_REASON_LABELS = {
   NON_EXPLOITABLE: "Échantillon non exploitable",
   QUANTITE_INSUFFISANTE: "Quantité insuffisante",
