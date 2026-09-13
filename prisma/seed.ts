@@ -183,6 +183,26 @@ async function main() {
     });
   }
 
+  // Phase 9: two generic profiles so the forms show the one-tap panels.
+  for (const profile of [
+    { name: "Micro aliments standard", code: "MICRO_ALIMENTS", unitCount: 5, category: "ALIMENTAIRE" as const },
+    { name: "Surfaces standard", code: "MICRO_SURFACES", unitCount: 1, category: "AMBIANCE" as const },
+  ]) {
+    const natureRow = await prisma.analysisNature.findUnique({ where: { code: profile.code }, select: { id: true } });
+    if (!natureRow) continue;
+    const already = await prisma.analysisProfile.findFirst({ where: { name: profile.name, clientId: null }, select: { id: true } });
+    if (already) continue;
+    const ids = await prisma.analysisParameter.findMany({ where: { category: profile.category }, select: { id: true }, take: 3 });
+    await prisma.analysisProfile.create({
+      data: {
+        name: profile.name,
+        natureId: natureRow.id,
+        unitCount: profile.unitCount,
+        parameters: { create: ids.map((p) => ({ parameterId: p.id })) },
+      },
+    });
+  }
+
   for (const service of labServices) {
     const id = serviceId(service.category, service.name);
     await prisma.labService.upsert({

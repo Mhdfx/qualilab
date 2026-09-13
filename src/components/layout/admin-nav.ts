@@ -15,6 +15,7 @@ import {
   Inbox,
   Microscope,
   Wallet,
+  ListChecks,
 } from "lucide-react";
 import type { NavSection } from "./nav-types";
 
@@ -52,6 +53,7 @@ export const adminNav: NavSection[] = [
     title: "Système",
     items: [
       { label: "Paramètres d'analyse", href: "/admin/parametres", icon: Settings },
+      { label: "Profils d'analyses", href: "/admin/profils", icon: ListChecks },
       { label: "Système Qualité", href: "/qualite", icon: Gauge },
       { label: "Achat & Stock", href: "/magasin", icon: Boxes },
       { label: "Catalogue", href: "/admin/catalogue", icon: Users },

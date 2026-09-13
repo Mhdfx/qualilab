@@ -21,6 +21,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
+import { SitesManager } from "@/components/commercial/SitesManager";
 
 /**
  * Fiche client 360° — everything the laboratory knows about one client on a
@@ -43,7 +44,10 @@ export default async function ClientDetailPage({
     await Promise.all([
     prisma.client.findUnique({
       where: { id },
-      include: { emails: { orderBy: { email: "asc" } } },
+      include: {
+        emails: { orderBy: { email: "asc" } },
+        sites: { orderBy: [{ active: "desc" }, { name: "asc" }] },
+      },
     }),
     prisma.sample.findMany({
       where: { clientId: id },
@@ -184,6 +188,8 @@ export default async function ClientDetailPage({
         </Card>
 
         <div className="space-y-5">
+          <SitesManager clientId={client.id} initial={client.sites} canEdit={!client.archived} />
+
           <Card className="p-5">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
               Échantillons récents

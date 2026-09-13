@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, CheckCircle2, ClipboardList, Clock, MapPin, Plus, User } from "lucide-react";
-import type { SampleType } from "@/generated/prisma/enums";
+import type { SampleType, SamplerKind } from "@/generated/prisma/enums";
 import { LINE_KIND_LABELS, formatDateTime } from "@/lib/labels";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -16,10 +16,13 @@ import {
   kindsFor,
   lineDesignation,
   toLocalInput,
+  mergeSuggestions,
+  type ClientMemory,
   type ClientOption,
   type LineDraft,
   type NatureOption,
   type ParameterOption,
+  type ProfileOption,
 } from "./visit-types";
 
 const subscribeNoop = () => () => {};
@@ -61,6 +64,10 @@ export function VisitForm() {
   const [startedAt, setStartedAt] = useState(() => toLocalInput(new Date()));
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([]);
+  const [samplerKind, setSamplerKind] = useState<SamplerKind>("QUALILAB");
+  const [samplerName, setSamplerName] = useState("");
+  const [profiles, setProfiles] = useState<ProfileOption[]>([]);
+  const [memory, setMemory] = useState<ClientMemory>({ places: [], products: [] });
 
   const ensureParameters = useCallback((type: SampleType | undefined) => {
     if (!type || requestedTypes.current.has(type)) return;
@@ -92,17 +99,47 @@ export function VisitForm() {
     });
   }, [ensureParameters]);
 
+  // The client's panels and memory: fetched when the client (or site) changes,
+  // so a second visit to the same site proposes the same places and products.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(clientId ? `/api/profiles?clientId=${clientId}` : "/api/profiles")
+      .then((r) => r.json())
+      .then((data: ProfileOption[]) => {
+        if (!cancelled) setProfiles(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {});
+    if (!clientId) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    fetch(`/api/clients/${clientId}/memory${siteId ? `?siteId=${siteId}` : ""}`)
+      .then((r) => r.json())
+      .then((data: { places?: { label: string }[]; products?: { label: string }[] }) => {
+        if (cancelled) return;
+        setMemory({
+          places: (data.places ?? []).map((p) => p.label),
+          products: (data.products ?? []).map((p) => p.label),
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId, siteId]);
+
   const selectedClient = clients.find((c) => c.id === clientId);
   const sites = selectedClient?.sites ?? [];
   const selectedSite = sites.find((s) => s.id === siteId);
 
   const placeSuggestions = useMemo(
-    () => [...new Set(lines.map((l) => l.lieu.trim()).filter(Boolean))],
-    [lines]
+    () => mergeSuggestions(memory.places, lines.map((l) => l.lieu)),
+    [memory.places, lines]
   );
   const productSuggestions = useMemo(
-    () => [...new Set(lines.map((l) => l.produit.trim()).filter(Boolean))],
-    [lines]
+    () => mergeSuggestions(memory.products, lines.map((l) => l.produit)),
+    [memory.products, lines]
   );
 
   function updateLine(key: string, patch: Partial<LineDraft>) {
@@ -151,6 +188,7 @@ export function VisitForm() {
   function validateStep1() {
     if (!clientId) return setStepError("Choisissez le client.");
     if (sites.length > 0 && !siteId) return setStepError("Choisissez le site de prélèvement.");
+    if (samplerKind !== "QUALILAB" && !samplerName.trim()) return setStepError("Indiquez qui a effectué le prélèvement.");
     for (const [i, line] of lines.entries()) {
       const n = i + 1;
       if (!line.natureId) return setStepError("Choisissez la nature d'analyse.", n);
@@ -183,6 +221,8 @@ export function VisitForm() {
           siteId: siteId || undefined,
           interlocutor,
           clientReference,
+          samplerKind,
+          samplerName: samplerKind === "QUALILAB" ? undefined : samplerName,
           startedAt: fromLocalInput(startedAt) ?? undefined,
           notes,
           lines: lines.map((line) => ({
@@ -277,6 +317,7 @@ export function VisitForm() {
                     onChange={(e) => {
                       setClientId(e.target.value);
                       setSiteId("");
+                      setMemory({ places: [], products: [] });
                     }}
                     className="input-field px-4"
                   >
@@ -335,6 +376,42 @@ export function VisitForm() {
               </div>
 
               <div>
+                <p className="section-title mb-2">
+                  <User className="h-4 w-4" />
+                  Prélèvement effectué par
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {(["QUALILAB", "SERVICE_VETERINAIRE", "AUTRE"] as SamplerKind[]).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setSamplerKind(k)}
+                      aria-pressed={samplerKind === k}
+                      className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition ${
+                        samplerKind === k
+                          ? "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20"
+                          : "border-slate-200 text-slate-600 hover:border-slate-300"
+                      }`}
+                    >
+                      {k === "QUALILAB" ? "Moi (Qualilab)" : k === "SERVICE_VETERINAIRE" ? "Service vétérinaire" : "Autre"}
+                    </button>
+                  ))}
+                </div>
+                {samplerKind !== "QUALILAB" && (
+                  <input
+                    type="text"
+                    value={samplerName}
+                    onChange={(e) => setSamplerName(e.target.value)}
+                    placeholder="Nom de la personne ayant prélevé"
+                    className="input-field mt-2 px-4"
+                  />
+                )}
+                {samplerKind === "SERVICE_VETERINAIRE" && (
+                  <p className="mt-1 text-xs text-slate-500">Cadre : contrôle officiel.</p>
+                )}
+              </div>
+
+              <div>
                 <label className="section-title mb-2">
                   <ClipboardList className="h-4 w-4" />
                   Référence client (bon de commande)
@@ -368,6 +445,7 @@ export function VisitForm() {
                   onRemove={() => removeLine(line.key)}
                   placeSuggestions={placeSuggestions}
                   productSuggestions={productSuggestions}
+                  profiles={profiles.filter((p) => p.natureId === line.natureId)}
                 />
               </div>
             );
@@ -413,6 +491,12 @@ export function VisitForm() {
             <div className="space-y-3 rounded-xl bg-slate-50 p-5 text-sm ring-1 ring-slate-100">
               <Row label="Client" value={selectedClient?.name ?? "—"} />
               {selectedSite && <Row label="Site" value={selectedSite.name} />}
+              {samplerKind !== "QUALILAB" && (
+                <Row
+                  label="Prélèvement effectué par"
+                  value={`${samplerKind === "SERVICE_VETERINAIRE" ? "Service vétérinaire" : "Autre"} — ${samplerName}`}
+                />
+              )}
               {interlocutor && <Row label="Interlocuteur" value={interlocutor} />}
               <Row label="Début" value={isMounted && startedAt ? formatDateTime(new Date(startedAt)) : "—"} />
               {clientReference && <Row label="Référence client" value={clientReference} />}

@@ -1,14 +1,16 @@
 "use client";
 
-import { Copy, Trash2 } from "lucide-react";
+import { Copy, ListChecks, Trash2 } from "lucide-react";
 import type { LineKind } from "@/generated/prisma/enums";
 import { HANDS_STATE_LABELS, LINE_KIND_LABELS, QUANTITY_UNIT_LABELS } from "@/lib/labels";
 import { Card } from "@/components/ui/Card";
+import { normalizeLabel } from "@/lib/serie-input";
 import {
   kindsFor,
   type LineDraft,
   type NatureOption,
   type ParameterOption,
+  type ProfileOption,
 } from "./visit-types";
 
 type LineEditorProps = {
@@ -25,9 +27,19 @@ type LineEditorProps = {
   /** Datalist suggestions from this client's memory. */
   placeSuggestions: string[];
   productSuggestions: string[];
+  /** The panels of this nature (client-specific first); empty = tick one by one. */
+  profiles?: ProfileOption[];
 };
 
 const UNIT_CHOICES = [1, 3, 5, 9];
+
+/** The spelling the memory already knows for what was typed, when it differs. */
+function knownTwin(value: string, suggestions: string[]) {
+  const key = normalizeLabel(value);
+  if (!key) return null;
+  const twin = suggestions.find((s) => normalizeLabel(s) === key);
+  return twin && twin !== value.trim() ? twin : null;
+}
 
 function Field({
   label,
@@ -70,6 +82,7 @@ export function LineEditor({
   onRemove,
   placeSuggestions,
   productSuggestions,
+  profiles = [],
 }: LineEditorProps) {
   const nature = natures.find((n) => n.id === line.natureId);
   const kinds = kindsFor(nature);
@@ -80,6 +93,21 @@ export function LineEditor({
   const micro = natures.filter((n) => n.family === "MICRO");
   const chimie = natures.filter((n) => n.family === "CHIMIE");
   const other = natures.filter((n) => n.family === "AUTRE");
+
+  const placeTwin = knownTwin(line.lieu, placeSuggestions);
+  const productTwin = knownTwin(line.produit, productSuggestions);
+
+  function applyProfile(profile: ProfileOption) {
+    onChange({
+      parameterIds: profile.parameterIds.filter((id) => parameters.some((p) => p.id === id)),
+      unitCount: profile.unitCount,
+    });
+  }
+
+  function isApplied(profile: ProfileOption) {
+    const ids = profile.parameterIds.filter((id) => parameters.some((p) => p.id === id));
+    return ids.length > 0 && ids.length === line.parameterIds.length && ids.every((id) => line.parameterIds.includes(id));
+  }
 
   function toggleParameter(id: string) {
     onChange({
@@ -257,6 +285,11 @@ export function LineEditor({
                 <option key={p} value={p} />
               ))}
             </datalist>
+            {productTwin && (
+              <p className="mt-1 text-xs text-amber-700">
+                Déjà connu sous « {productTwin} » — cette orthographe sera utilisée.
+              </p>
+            )}
           </Field>
         )}
 
@@ -332,6 +365,11 @@ export function LineEditor({
               <option key={p} value={p} />
             ))}
           </datalist>
+          {placeTwin && (
+            <p className="mt-1 text-xs text-amber-700">
+              Déjà connu sous « {placeTwin} » — cette orthographe sera utilisée.
+            </p>
+          )}
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
@@ -378,6 +416,37 @@ export function LineEditor({
           </div>
           <p className="mt-1 text-xs text-slate-500">5 pour la plupart des aliments, 9 pour l&apos;histamine.</p>
         </div>
+
+        {profiles.length > 0 && parameters.length > 0 && (
+          <div>
+            <p className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+              <ListChecks className="h-4 w-4 text-brand" aria-hidden="true" />
+              Profil d&apos;analyses
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {profiles.map((profile) => {
+                const applied = isApplied(profile);
+                return (
+                  <button
+                    key={profile.id}
+                    type="button"
+                    onClick={() => applyProfile(profile)}
+                    aria-pressed={applied}
+                    className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition ${
+                      applied
+                        ? "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20"
+                        : "border-slate-200 text-slate-600 hover:border-slate-300"
+                    }`}
+                  >
+                    {profile.name}
+                    {profile.clientId ? " · contrat" : ""}
+                    {profile.unitCount > 1 ? ` · n = ${profile.unitCount}` : ""}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div>
           <p className="mb-2 text-sm font-semibold text-slate-700">

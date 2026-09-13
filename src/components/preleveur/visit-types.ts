@@ -19,6 +19,23 @@ export type ClientOption = {
 
 export type ParameterOption = { id: string; name: string; unit?: string | null };
 
+/** A panel of analyses proposed in one tap (client-specific ones first). */
+export type ProfileOption = {
+  id: string;
+  name: string;
+  natureId: string;
+  clientId: string | null;
+  unitCount: number;
+  parameterIds: string[];
+};
+
+export type ClientMemory = { places: string[]; products: string[] };
+
+/** The forms' suggestions: the client's memory first, then what this visit already typed. */
+export function mergeSuggestions(memory: string[], typed: string[]) {
+  return [...new Set([...memory, ...typed.map((s) => s.trim()).filter(Boolean)])];
+}
+
 export type LineDraft = {
   key: string;
   natureId: string;

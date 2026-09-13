@@ -33,11 +33,14 @@ import {
   fromLocalInput,
   kindsFor,
   lineDesignation,
+  mergeSuggestions,
   toLocalInput,
+  type ClientMemory,
   type ClientOption,
   type LineDraft,
   type NatureOption,
   type ParameterOption,
+  type ProfileOption,
 } from "@/components/preleveur/visit-types";
 import { Checklist, ConformityChip } from "./reception-widgets";
 import type { TechnicianOption } from "./ReceptionForm";
@@ -141,6 +144,8 @@ export function DepositForm({
   const [advanceMode, setAdvanceMode] = useState<PaymentMode | "">("");
   const [lines, setLines] = useState<LineDraft[]>([]);
   const [intake, setIntake] = useState<Record<string, LineIntake>>({});
+  const [profiles, setProfiles] = useState<ProfileOption[]>([]);
+  const [memory, setMemory] = useState<ClientMemory>({ places: [], products: [] });
 
   const ensureParameters = useCallback((type: SampleType | undefined) => {
     if (!type || requestedTypes.current.has(type)) return;
@@ -172,16 +177,44 @@ export function DepositForm({
     });
   }, [ensureParameters]);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch(clientId ? `/api/profiles?clientId=${clientId}` : "/api/profiles")
+      .then((r) => r.json())
+      .then((data: ProfileOption[]) => {
+        if (!cancelled) setProfiles(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {});
+    if (!clientId) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    fetch(`/api/clients/${clientId}/memory${siteId ? `?siteId=${siteId}` : ""}`)
+      .then((r) => r.json())
+      .then((data: { places?: { label: string }[]; products?: { label: string }[] }) => {
+        if (cancelled) return;
+        setMemory({
+          places: (data.places ?? []).map((p) => p.label),
+          products: (data.products ?? []).map((p) => p.label),
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId, siteId]);
+
   const selectedClient = clients.find((c) => c.id === clientId);
   const sites = selectedClient?.sites ?? [];
 
   const productSuggestions = useMemo(
-    () => [...new Set(lines.map((l) => l.produit.trim()).filter(Boolean))],
-    [lines]
+    () => mergeSuggestions(memory.products, lines.map((l) => l.produit)),
+    [memory.products, lines]
   );
   const placeSuggestions = useMemo(
-    () => [...new Set(lines.map((l) => l.lieu.trim()).filter(Boolean))],
-    [lines]
+    () => mergeSuggestions(memory.places, lines.map((l) => l.lieu)),
+    [memory.places, lines]
   );
 
   function intakeOf(key: string): LineIntake {
@@ -466,6 +499,7 @@ export function DepositForm({
                     onChange={(e) => {
                       setClientId(e.target.value);
                       setSiteId("");
+                      setMemory({ places: [], products: [] });
                     }}
                     className="input-field px-4"
                   >
@@ -616,6 +650,7 @@ export function DepositForm({
                   onRemove={() => removeLine(line.key)}
                   placeSuggestions={placeSuggestions}
                   productSuggestions={productSuggestions}
+                  profiles={profiles.filter((p) => p.natureId === line.natureId)}
                 />
                 <Card className="p-4 sm:p-6">
                   <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">

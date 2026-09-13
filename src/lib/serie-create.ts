@@ -38,25 +38,31 @@ export class SerieCreationError extends Error {
   }
 }
 
-async function resolveProduct(tx: Prisma.TransactionClient, clientId: string, label: string) {
+/**
+ * The memory row for a label — and the label the memory already knows: a
+ * quasi-duplicate (« poste salades », « Poste  Salades ») resolves to the
+ * existing row and takes its spelling, so the history stays comparable.
+ */
+type Resolved = { id: string; label: string } | null;
+
+async function resolveProduct(tx: Prisma.TransactionClient, clientId: string, label: string): Promise<Resolved> {
   const normalizedLabel = normalizeLabel(label);
   if (!normalizedLabel) return null;
   const existing = await tx.clientProduct.findUnique({
     where: { clientId_normalizedLabel: { clientId, normalizedLabel } },
-    select: { id: true },
+    select: { id: true, label: true },
   });
   if (existing) {
     await tx.clientProduct.update({
       where: { id: existing.id },
       data: { usageCount: { increment: 1 }, active: true },
     });
-    return existing.id;
+    return existing;
   }
-  const created = await tx.clientProduct.create({
+  return tx.clientProduct.create({
     data: { clientId, label, normalizedLabel, usageCount: 1 },
-    select: { id: true },
+    select: { id: true, label: true },
   });
-  return created.id;
 }
 
 async function resolvePlace(
@@ -64,25 +70,27 @@ async function resolvePlace(
   clientId: string,
   siteId: string | null,
   label: string
-) {
+): Promise<Resolved> {
   const normalizedLabel = normalizeLabel(label);
   if (!normalizedLabel) return null;
+  // The site's own place first; a place recorded without a site (older
+  // visits, deposits) belongs to the whole client and is reused as is.
   const existing = await tx.clientPlace.findFirst({
-    where: { clientId, siteId, normalizedLabel },
-    select: { id: true },
+    where: { clientId, normalizedLabel, OR: [{ siteId }, { siteId: null }] },
+    select: { id: true, label: true },
+    orderBy: { siteId: "desc" },
   });
   if (existing) {
     await tx.clientPlace.update({
       where: { id: existing.id },
       data: { usageCount: { increment: 1 }, active: true },
     });
-    return existing.id;
+    return existing;
   }
-  const created = await tx.clientPlace.create({
+  return tx.clientPlace.create({
     data: { clientId, siteId, label, normalizedLabel, usageCount: 1 },
-    select: { id: true },
+    select: { id: true, label: true },
   });
-  return created.id;
 }
 
 export async function createSerie(
@@ -180,8 +188,9 @@ export async function createSerie(
       for (const [index, line] of input.lines.entries()) {
         const lineNumber = index + 1;
         const nature = natureById.get(line.natureId)!;
-        const productId = line.produit ? await resolveProduct(tx, client.id, line.produit) : null;
-        const placeId = await resolvePlace(tx, client.id, siteId, line.lieu);
+        const product = line.produit ? await resolveProduct(tx, client.id, line.produit) : null;
+        const place = await resolvePlace(tx, client.id, siteId, line.lieu);
+        const produit = product?.label ?? line.produit;
         const controlCode = isDeposit ? (await nextNumber(tx, "CONTROLE", year)).formatted : null;
         const held = isDeposit && blockNonConform && !line.conformity;
         const technicianId = isDeposit && !held ? line.technicianId : null;
@@ -196,10 +205,10 @@ export async function createSerie(
             natureId: line.natureId,
             lineKind: line.lineKind,
             type: nature.legacyType,
-            lieu: line.lieu,
-            placeId,
-            productId,
-            produit: line.produit ?? line.surfaceLabel ?? line.personName,
+            lieu: place?.label ?? line.lieu,
+            placeId: place?.id ?? null,
+            productId: product?.id ?? null,
+            produit: produit ?? line.surfaceLabel ?? line.personName,
             numeroLot: line.numeroLot,
             productionDate: line.productionDate,
             expiryDate: line.expiryDate,
