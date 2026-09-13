@@ -121,3 +121,72 @@ describe("validateSerie — the visit as a whole", () => {
     ).toMatchObject({ ok: false });
   });
 });
+
+describe("validateSerie — the deposit at the counter", () => {
+  const deposit = {
+    clientId: "c1",
+    samplerKind: "CLIENT",
+    interlocutor: "M. Alaoui",
+    advanceAmount: "350",
+    advanceMode: "ESPECES",
+    lines: [
+      { ...aliment, lieu: "", quantity: "250", quantityUnit: "G", receptionTemperature: "4,04", technicianId: "t1" },
+      {
+        natureId: "eaux",
+        produit: "Eau du réseau",
+        quantity: "0,5",
+        quantityUnit: "L",
+        receptionTemperature: "12",
+        parameterIds: ["p9"],
+        conformity: false,
+        conformityReason: "QUANTITE_INSUFFISANTE",
+        technicianId: "t1",
+      },
+    ],
+  };
+
+  it("defaults the sampler to the client, the place to the counter, and carries the reception data", () => {
+    const result = validateSerie(deposit, natures, { kind: "DEPOT" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.samplerKind).toBe("CLIENT");
+    expect(result.value.advanceAmount).toBe(350);
+    expect(result.value.advanceMode).toBe("ESPECES");
+    expect(result.value.lines[0]).toMatchObject({
+      lieu: "Dépôt au laboratoire",
+      receptionTemperature: 4,
+      conformity: true,
+      conformityReason: null,
+      technicianId: "t1",
+    });
+    expect(result.value.lines[1]).toMatchObject({ conformity: false, conformityReason: "QUANTITE_INSUFFISANTE" });
+  });
+
+  it("needs a motif for a non-conform line and a mode for an advance", () => {
+    const noReason = validateSerie(
+      { ...deposit, lines: [{ ...deposit.lines[1], conformityReason: undefined }] },
+      natures,
+      { kind: "DEPOT" }
+    );
+    expect(noReason).toMatchObject({ ok: false, line: 1 });
+    const noMode = validateSerie({ ...deposit, advanceMode: undefined }, natures, { kind: "DEPOT" });
+    expect(noMode).toMatchObject({ ok: false, error: "Indiquez le mode de paiement de l'avance." });
+    const zero = validateSerie({ ...deposit, advanceAmount: "0", advanceMode: undefined }, natures, { kind: "DEPOT" });
+    expect(zero.ok).toBe(true);
+    if (zero.ok) expect(zero.value.advanceAmount).toBeNull();
+  });
+
+  it("ignores reception data on a visit", () => {
+    const visit = validateSerie(
+      { ...deposit, lines: deposit.lines.map((l) => ({ ...l, lieu: "Comptoir" })) },
+      natures,
+      { kind: "VISITE" }
+    );
+    expect(visit.ok).toBe(true);
+    if (visit.ok) {
+      expect(visit.value.samplerKind).toBe("CLIENT");
+      expect(visit.value.advanceAmount).toBeNull();
+      expect(visit.value.lines[1]).toMatchObject({ conformity: true, conformityReason: null, technicianId: null });
+    }
+  });
+});

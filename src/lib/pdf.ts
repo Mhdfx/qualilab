@@ -54,7 +54,17 @@ async function getBrowser(): Promise<Browser> {
   return browserPromise;
 }
 
-export async function renderPdf(html: string): Promise<Buffer> {
+export type PdfOptions = {
+  /**
+   * Footer HTML for every page (Chromium's header/footer template): use
+   * `<span class="pageNumber"></span>` / `<span class="totalPages"></span>`
+   * for « Page 1 / 3 » — the cartouche of the quality documents needs it.
+   */
+  footer?: string;
+  margin?: { top: string; bottom: string; left: string; right: string };
+};
+
+export async function renderPdf(html: string, options: PdfOptions = {}): Promise<Buffer> {
   const browser = await getBrowser();
   const page = await browser.newPage();
 
@@ -63,7 +73,14 @@ export async function renderPdf(html: string): Promise<Buffer> {
     return await page.pdf({
       format: "A4",
       printBackground: true,
-      margin: { top: "14mm", bottom: "16mm", left: "14mm", right: "14mm" },
+      margin: options.margin ?? { top: "14mm", bottom: "16mm", left: "14mm", right: "14mm" },
+      ...(options.footer
+        ? {
+            displayHeaderFooter: true,
+            headerTemplate: "<span></span>",
+            footerTemplate: options.footer,
+          }
+        : {}),
     });
   } finally {
     await page.close();

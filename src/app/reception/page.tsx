@@ -1,4 +1,5 @@
-import { Inbox, ClipboardCheck, FlaskConical, Layers } from "lucide-react";
+import { Inbox, ClipboardCheck, FlaskConical, Layers, PackagePlus } from "lucide-react";
+import { PrimaryLink } from "@/components/PrimaryButton";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
 import { formatDateTime } from "@/lib/labels";
@@ -106,6 +107,12 @@ export default async function ReceptionPage() {
         badge="Espace réception"
         title="Réception des séries"
         subtitle="Une visite arrive dans une glacière et se réceptionne en une fois : températures, règles d'acceptation, numérotation et étiquettes."
+        action={
+          <PrimaryLink href="/reception/nouveau-depot" className="shadow-lg shadow-black/20">
+            <PackagePlus className="h-4 w-4" aria-hidden="true" />
+            Nouveau dépôt
+          </PrimaryLink>
+        }
       />
 
       <section aria-label="Indicateurs" className="mb-8">

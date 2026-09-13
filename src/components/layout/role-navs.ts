@@ -14,6 +14,7 @@ import {
   Gauge,
   Thermometer,
   Award,
+  PackagePlus,
 } from "lucide-react";
 import type { NavSection } from "./nav-types";
 
@@ -30,6 +31,7 @@ export const receptionNav: NavSection[] = [
     items: [
       { label: "Tableau de bord", href: "/reception", icon: LayoutDashboard },
       { label: "À réceptionner", href: "/reception#file", icon: Inbox },
+      { label: "Nouveau dépôt", href: "/reception/nouveau-depot", icon: PackagePlus },
     ],
   },
   {

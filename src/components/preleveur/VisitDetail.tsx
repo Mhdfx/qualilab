@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Camera, CheckCircle2, Thermometer } from "lucide-react";
+import { ArrowLeft, Camera, CheckCircle2, FileText, Thermometer } from "lucide-react";
 import type { LineKind, SampleStatus } from "@/generated/prisma/enums";
 import { LINE_KIND_LABELS, SAMPLER_KIND_LABELS, formatDateTime } from "@/lib/labels";
 import { SERIE_STATUS_LABELS, type SerieProgress, type SerieStatus } from "@/lib/series";
@@ -126,7 +126,18 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
       <div className="grid gap-5 lg:grid-cols-5">
         <div className="space-y-5 lg:col-span-3">
           <Card className="p-5">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">La visite</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">La visite</h2>
+              <Link
+                href={`/api/series/${visit.id}/document`}
+                target="_blank"
+                rel="noopener"
+                className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-brand transition hover:bg-brand-light/60"
+              >
+                <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+                Protocole (PDF)
+              </Link>
+            </div>
             <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
               <Info label="Prélevé par">
                 {visit.samplerKind === "QUALILAB" ? visit.samplerUser?.name ?? "—" : SAMPLER_KIND_LABELS[visit.samplerKind]}

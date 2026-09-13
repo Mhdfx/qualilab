@@ -109,6 +109,14 @@ enum CancelReason {
   AUTRE
 }
 
+/// How an advance is paid at the counter (bon de réception « Avance »).
+enum PaymentMode {
+  ESPECES
+  CHEQUE
+  VIREMENT
+  CARTE
+}
+
 /// Coded motif of a non-conformity declared at reception (bon de réception rules).
 enum NonConformityReason {
   CHAINE_FROID
@@ -507,21 +515,21 @@ model SampleParameter {
 // It has NO status column — its state is derived from its samples.
 
 model Serie {
-  id                 String      @id @default(cuid())
+  id                 String       @id @default(cuid())
   kind               SerieKind
   /// « 2780/26 » — yearly sequence (Counter SERIE), assigned at creation.
-  serialNumber       String      @unique
+  serialNumber       String       @unique
   year               Int
   clientId           String
-  client             Client      @relation(fields: [clientId], references: [id])
+  client             Client       @relation(fields: [clientId], references: [id])
   siteId             String?
-  site               Site?       @relation(fields: [siteId], references: [id])
+  site               Site?        @relation(fields: [siteId], references: [id])
   interlocutor       String?
-  samplerKind        SamplerKind @default(QUALILAB)
+  samplerKind        SamplerKind  @default(QUALILAB)
   samplerUserId      String?
-  samplerUser        User?       @relation("SerieSampler", fields: [samplerUserId], references: [id])
+  samplerUser        User?        @relation("SerieSampler", fields: [samplerUserId], references: [id])
   samplerName        String?
-  cadre              Cadre       @default(AUTOCONTROLE)
+  cadre              Cadre        @default(AUTOCONTROLE)
   /// « N° de factures » on the paper: the client's own reference.
   clientReference    String?
   startedAt          DateTime
@@ -529,13 +537,16 @@ model Serie {
   arrivedAt          DateTime?
   coolerTemperature  Float?
   /// Photo of the signed paper protocol (data URI), taken on the phone.
-  signedProtocolData String?     @db.LongText
-  notes              String?     @db.Text
+  signedProtocolData String?      @db.LongText
+  /// Deposit at the counter: advance cashed on the bon de réception (Q4).
+  advanceAmount      Decimal?     @db.Decimal(12, 2)
+  advanceMode        PaymentMode?
+  notes              String?      @db.Text
   createdById        String
-  createdBy          User        @relation("SerieCreatedBy", fields: [createdById], references: [id])
-  createdAt          DateTime    @default(now())
+  createdBy          User         @relation("SerieCreatedBy", fields: [createdById], references: [id])
+  createdAt          DateTime     @default(now())
   receivedById       String?
-  receivedBy         User?       @relation("SerieReceivedBy", fields: [receivedById], references: [id])
+  receivedBy         User?        @relation("SerieReceivedBy", fields: [receivedById], references: [id])
   receivedAt         DateTime?
   samples            Sample[]
 

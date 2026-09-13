@@ -58,6 +58,7 @@ export const adminNav: NavSection[] = [
       { label: "Réglages du circuit", href: "/admin/reglages", icon: SlidersHorizontal },
       { label: "Import de données", href: "/admin/import", icon: FileUp },
       { label: "Entreprise", href: "/admin/entreprise", icon: Building2 },
+      { label: "Documents qualité", href: "/admin/documents", icon: FileText },
       { label: "Journal d'audit", href: "/admin/journal", icon: BarChart3 },
     ],
   },

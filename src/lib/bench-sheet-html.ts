@@ -1,4 +1,5 @@
 import { COMPANY, type CompanyInfo } from "./company";
+import type { DocumentRef } from "./document-types";
 import { companyBrandHtml } from "./brand-html";
 import { SAMPLE_TYPE_LABELS, formatDate } from "./labels";
 import type { SampleType } from "@/generated/prisma/client";
@@ -30,7 +31,8 @@ export type BenchSheetSample = {
 export function buildBenchSheetHtml(
   date: Date,
   samples: BenchSheetSample[],
-  company: CompanyInfo = COMPANY
+  company: CompanyInfo = COMPANY,
+  reference?: DocumentRef
 ): string {
   const blocks = samples
     .map(
@@ -126,6 +128,7 @@ export function buildBenchSheetHtml(
   </div>
   <div class="doc">
     <div class="kind">Feuille de paillasse</div>
+    ${reference?.reference ? `Réf. <b>${escapeHtml(reference.reference)}</b> · version <b>${escapeHtml(reference.version)}</b><br>` : ""}
     Date : <b>${formatDate(date)}</b><br>
     ${samples.length} échantillon${samples.length > 1 ? "s" : ""}
   </div>

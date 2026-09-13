@@ -9,9 +9,9 @@ import {
   CheckCircle2,
   Clock,
   Printer,
+  FileText,
   ShieldCheck,
   Thermometer,
-  XCircle,
 } from "lucide-react";
 import type {
   Family,
@@ -34,12 +34,7 @@ import {
   formatDateTime,
   formatDecimal,
 } from "@/lib/labels";
-import {
-  evaluateReception,
-  proposedConformity,
-  type Check,
-  type ReceptionThresholds,
-} from "@/lib/reception-rules";
+import { evaluateReception, proposedConformity, type ReceptionThresholds } from "@/lib/reception-rules";
 import { unitLetter } from "@/lib/series";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -47,6 +42,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { fromLocalInput, toLocalInput } from "@/components/preleveur/visit-types";
 import type { TechnicianOption } from "./ReceptionForm";
+import { Checklist, ConformityChip } from "./reception-widgets";
 
 /**
  * Reception of a série in one screen — WORKFLOW.md §3.3.
@@ -584,6 +580,15 @@ export function SerieReceptionForm({
               />
               <p className="mt-1 text-xs text-slate-500">Pré-remplit la température de chaque ligne.</p>
             </div>
+            <Link
+              href={`/api/series/${serie.id}/document`}
+              target="_blank"
+              rel="noopener"
+              className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline"
+            >
+              <FileText className="h-4 w-4" aria-hidden="true" />
+              Voir le protocole de prélèvement (PDF)
+            </Link>
             <div className="mt-3">
               <label htmlFor="allTech" className="block text-sm font-medium text-slate-700">
                 Technicien pour toutes les lignes
@@ -641,65 +646,6 @@ export function SerieReceptionForm({
         </div>
       </div>
     </div>
-  );
-}
-
-function Checklist({ checks }: { checks: Check[] }) {
-  if (checks.length === 0) {
-    return (
-      <p className="mt-3 text-xs text-slate-400">Aucune règle de quantité ou de température pour ce type de ligne.</p>
-    );
-  }
-  return (
-    <ul className="mt-3 space-y-1">
-      {checks.map((check) => {
-        const tone =
-          check.level === "BLOQUANT"
-            ? "text-rose-700"
-            : check.level === "AVERTISSEMENT"
-              ? "text-amber-700"
-              : "text-emerald-700";
-        const Icon = check.level === "BLOQUANT" ? XCircle : check.level === "AVERTISSEMENT" ? AlertTriangle : CheckCircle2;
-        return (
-          <li key={check.rule} className={`flex items-start gap-2 text-sm ${tone}`}>
-            <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <span>{check.message}</span>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-function ConformityChip({
-  active,
-  disabled,
-  tone,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  disabled: boolean;
-  tone: "ok" | "warn";
-  label: string;
-  onClick: () => void;
-}) {
-  const activeStyle =
-    tone === "ok"
-      ? "border-emerald-400 bg-emerald-50 text-emerald-800"
-      : "border-amber-400 bg-amber-50 text-amber-800";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-pressed={active}
-      className={`min-h-[44px] rounded-xl border px-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
-        active ? activeStyle : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-      }`}
-    >
-      {label}
-    </button>
   );
 }
 
@@ -791,6 +737,15 @@ function ReceivedSummary({
           >
             <Printer className="h-4 w-4" aria-hidden="true" />
             Imprimer les étiquettes
+          </Link>
+          <Link
+            href={`/api/series/${serie.id}/document`}
+            target="_blank"
+            rel="noopener"
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+          >
+            <FileText className="h-4 w-4" aria-hidden="true" />
+            {serie.kind === "DEPOT" ? "Bon de réception (PDF)" : "Protocole de prélèvement (PDF)"}
           </Link>
           <SecondaryButton type="button" onClick={onBack}>
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />

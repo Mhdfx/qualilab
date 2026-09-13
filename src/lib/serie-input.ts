@@ -2,6 +2,8 @@ import type {
   Cadre,
   HandsState,
   LineKind,
+  NonConformityReason,
+  PaymentMode,
   QuantityUnit,
   SamplerKind,
   SerieKind,
@@ -9,12 +11,16 @@ import type {
 
 /**
  * Validating a série (visite or dépôt) and its lines — pure, shared by the
- * API and, later, the forms.
+ * API and the forms.
  *
  * The rules mirror the paper protocole de prélèvement: an aliment line
  * carries a lot, dates and a quantity; a surface line an area; a mains line a
  * person; temperatures and remarks are allowed on every kind. Anything the
  * kind does not use is dropped, never silently stored.
+ *
+ * A dépôt (bon de réception) is received on the spot, so its lines also
+ * carry what the reception of a visit records later: temperature at
+ * arrival, conformity with a coded motif, technician.
  */
 
 export const LINE_KINDS: LineKind[] = ["ALIMENT", "SURFACE", "MAINS", "EAU", "AIR", "AUTRE"];
@@ -23,6 +29,16 @@ export const HANDS_STATES: HandsState[] = ["LAVEES", "NON_LAVEES"];
 export const SAMPLER_KINDS: SamplerKind[] = ["QUALILAB", "CLIENT", "SERVICE_VETERINAIRE", "AUTRE"];
 export const SERIE_KINDS: SerieKind[] = ["VISITE", "DEPOT"];
 export const CADRES: Cadre[] = ["AUTOCONTROLE", "OFFICIEL"];
+export const PAYMENT_MODES: PaymentMode[] = ["ESPECES", "CHEQUE", "VIREMENT", "CARTE"];
+export const NON_CONFORMITY_REASONS: NonConformityReason[] = [
+  "CHAINE_FROID",
+  "TEMPERATURE_MANQUANTE",
+  "QUANTITE_INSUFFISANTE",
+  "EMBALLAGE",
+  "DELAI",
+  "IDENTIFICATION",
+  "AUTRE",
+];
 
 export const MAX_LINES = 200;
 const TEXT = 191;
@@ -50,6 +66,11 @@ export type CleanLine = {
   remarks: string | null;
   unitCount: number;
   parameterIds: string[];
+  /** Reception data — meaningful for a dépôt only; defaults for a visit. */
+  conformity: boolean;
+  conformityReason: NonConformityReason | null;
+  conformityNote: string | null;
+  technicianId: string | null;
 };
 
 export type CleanSerie = {
@@ -65,6 +86,8 @@ export type CleanSerie = {
   endedAt: Date | null;
   arrivedAt: Date | null;
   coolerTemperature: number | null;
+  advanceAmount: number | null;
+  advanceMode: PaymentMode | null;
   notes: string | null;
   lines: CleanLine[];
 };
@@ -117,11 +140,13 @@ export function normalizeLabel(label: string) {
 export function validateLine(
   raw: unknown,
   index: number,
-  natures: Map<string, NatureRef>
+  natures: Map<string, NatureRef>,
+  options: { kind: SerieKind } = { kind: "VISITE" }
 ): { ok: true; value: CleanLine } | { ok: false; error: string; line: number } {
   const line = index + 1;
   const fail = (error: string) => ({ ok: false as const, error, line });
   const input = (raw ?? {}) as Record<string, unknown>;
+  const deposit = options.kind === "DEPOT";
 
   const natureId = text(input.natureId);
   const nature = natures.get(natureId);
@@ -129,7 +154,8 @@ export function validateLine(
 
   const lineKind = oneOf(input.lineKind, LINE_KINDS) ?? nature.defaultLineKind;
 
-  const lieu = text(input.lieu);
+  // A deposit has no sampling place: the counter is the place.
+  const lieu = text(input.lieu) || (deposit ? "Dépôt au laboratoire" : "");
   if (!lieu) return fail("Indiquez le lieu / la section du prélèvement.");
   if (tooLong(input.lieu)) return fail("Le lieu est trop long (191 caractères maximum).");
 
@@ -199,6 +225,27 @@ export function validateLine(
   const parameterIds = [...new Set(ids.filter((v): v is string => typeof v === "string" && v.length > 0))];
   if (parameterIds.length === 0) return fail("Choisissez au moins une analyse.");
 
+  // ---- Reception data of a deposit line ------------------------------------
+  let conformity = true;
+  let conformityReason: NonConformityReason | null = null;
+  let conformityNote: string | null = null;
+  let technicianId: string | null = null;
+  if (deposit) {
+    if (input.conformity !== undefined && typeof input.conformity !== "boolean") {
+      return fail("Indiquez la conformité de la ligne.");
+    }
+    conformity = input.conformity !== false;
+    if (!conformity) {
+      const reason = oneOf(input.conformityReason, NON_CONFORMITY_REASONS);
+      if (!reason) return fail("Choisissez le motif de non-conformité.");
+      conformityReason = reason;
+      const note = text(input.conformityNote, 2000);
+      if (reason === "AUTRE" && !note) return fail("Précisez le motif « autre ».");
+      conformityNote = note || null;
+    }
+    technicianId = text(input.technicianId) || null;
+  }
+
   return {
     ok: true,
     value: {
@@ -213,7 +260,8 @@ export function validateLine(
       quantityUnit,
       productTemperature: productTemperature as number | null,
       ambientTemperature: ambientTemperature as number | null,
-      receptionTemperature: receptionTemperature as number | null,
+      receptionTemperature:
+        receptionTemperature === null ? null : Math.round((receptionTemperature as number) * 10) / 10,
       surfaceLabel: lineKind === "SURFACE" ? surfaceLabel : null,
       surfaceAreaCm2,
       personName: lineKind === "MAINS" ? personName : null,
@@ -222,6 +270,10 @@ export function validateLine(
       remarks: text(input.remarks, 2000) || null,
       unitCount: unitCount as number,
       parameterIds,
+      conformity,
+      conformityReason,
+      conformityNote,
+      technicianId,
     },
   };
 }
@@ -233,15 +285,15 @@ export function validateSerie(
 ): SerieValidation {
   const input = (raw ?? {}) as Record<string, unknown>;
   const fail = (error: string) => ({ ok: false as const, error });
+  const deposit = options.kind === "DEPOT";
 
   const clientId = text(input.clientId);
   if (!clientId) return fail("Choisissez le client.");
   const siteId = text(input.siteId) || null;
 
-  const samplerKind =
-    options.kind === "DEPOT"
-      ? (oneOf(input.samplerKind, SAMPLER_KINDS) ?? "CLIENT")
-      : (oneOf(input.samplerKind, SAMPLER_KINDS) ?? "QUALILAB");
+  const samplerKind = deposit
+    ? (oneOf(input.samplerKind, SAMPLER_KINDS) ?? "CLIENT")
+    : (oneOf(input.samplerKind, SAMPLER_KINDS) ?? "QUALILAB");
   const samplerName = text(input.samplerName) || null;
   if ((samplerKind === "SERVICE_VETERINAIRE" || samplerKind === "AUTRE") && !samplerName) {
     return fail("Indiquez qui a effectué le prélèvement.");
@@ -271,6 +323,21 @@ export function validateSerie(
     return fail("La température à l'arrivée doit être un nombre plausible.");
   }
 
+  // Advance cashed at the counter — a deposit only.
+  let advanceAmount: number | null = null;
+  let advanceMode: PaymentMode | null = null;
+  if (deposit) {
+    const amount = numberOrNull(input.advanceAmount);
+    if (amount === "invalid" || (amount !== null && (amount < 0 || amount > 10_000_000))) {
+      return fail("L'avance doit être un montant positif.");
+    }
+    advanceAmount = amount === null || amount === 0 ? null : Math.round(amount * 100) / 100;
+    if (advanceAmount !== null) {
+      advanceMode = oneOf(input.advanceMode, PAYMENT_MODES);
+      if (!advanceMode) return fail("Indiquez le mode de paiement de l'avance.");
+    }
+  }
+
   for (const [key, label] of [
     ["interlocutor", "L'interlocuteur"],
     ["clientReference", "La référence client"],
@@ -284,7 +351,7 @@ export function validateSerie(
 
   const lines: CleanLine[] = [];
   for (let i = 0; i < rawLines.length; i += 1) {
-    const checked = validateLine(rawLines[i], i, natures);
+    const checked = validateLine(rawLines[i], i, natures, options);
     if (!checked.ok) return { ok: false, error: checked.error, line: checked.line };
     lines.push(checked.value);
   }
@@ -304,6 +371,8 @@ export function validateSerie(
       endedAt,
       arrivedAt,
       coolerTemperature: coolerTemperature as number | null,
+      advanceAmount,
+      advanceMode,
       notes: text(input.notes, 2000) || null,
       lines,
     },

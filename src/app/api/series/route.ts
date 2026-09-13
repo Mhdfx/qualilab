@@ -3,6 +3,8 @@ import type { Prisma, SampleStatus } from "@/generated/prisma/client";
 import { requireApiRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { pageParams, toPage } from "@/lib/pagination";
+import { getLabSettings } from "@/lib/lab-settings";
+import { evaluateReception } from "@/lib/reception-rules";
 import { createSerie, SerieCreationError } from "@/lib/serie-create";
 import { validateSerie, type NatureRef } from "@/lib/serie-input";
 import { serieSelectFor, serializeSerie } from "@/lib/serie-select";
@@ -126,8 +128,54 @@ export async function POST(request: Request) {
     );
   }
 
+  // A deposit is received on the spot: the acceptance rules run here, as
+  // they do for a visit at reception — a blocking rule cannot be declared
+  // conform whatever the form sent.
+  let blockNonConform = false;
+  if (kind === "DEPOT") {
+    const settings = await getLabSettings();
+    blockNonConform = settings.blockNonConformAtReception;
+    const [families, parameters] = await Promise.all([
+      prisma.analysisNature.findMany({
+        where: { id: { in: [...new Set(checked.value.lines.map((l) => l.natureId))] } },
+        select: { id: true, family: true },
+      }),
+      prisma.analysisParameter.findMany({
+        where: { id: { in: [...new Set(checked.value.lines.flatMap((l) => l.parameterIds))] } },
+        select: { id: true, name: true },
+      }),
+    ]);
+    const familyOf = new Map(families.map((n) => [n.id, n.family]));
+    const nameOf = new Map(parameters.map((p) => [p.id, p.name]));
+    for (const [index, line] of checked.value.lines.entries()) {
+      const checks = evaluateReception(
+        {
+          lineKind: line.lineKind,
+          family: familyOf.get(line.natureId) ?? "AUTRE",
+          parameterNames: line.parameterIds.map((id) => nameOf.get(id) ?? ""),
+          quantity: line.quantity,
+          quantityUnit: line.quantityUnit,
+          receptionTemperature: line.receptionTemperature,
+          unitCount: line.unitCount,
+        },
+        settings
+      );
+      const blocking = checks.find((c) => c.level === "BLOQUANT");
+      if (blocking && line.conformity) {
+        return NextResponse.json(
+          { error: `${blocking.message} La ligne ne peut pas être déclarée conforme.`, line: index + 1 },
+          { status: 400 }
+        );
+      }
+    }
+  }
+
   try {
-    const created = await createSerie(checked.value, { id: session.id, role: session.role });
+    const created = await createSerie(
+      checked.value,
+      { id: session.id, role: session.role },
+      { blockNonConform }
+    );
     const serie = await prisma.serie.findUniqueOrThrow({
       where: { id: created.id },
       select: serieSelectFor(session.role),

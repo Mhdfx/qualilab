@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { renderPdf } from "@/lib/pdf";
 import { buildBenchSheetHtml, type BenchSheetSample } from "@/lib/bench-sheet-html";
 import { getCompany } from "@/lib/company-server";
+import { getDocumentReference } from "@/lib/document-reference";
 import { formatIsoDay } from "@/lib/labels";
 import { labReference } from "@/lib/sample-select";
 
@@ -72,7 +73,8 @@ export async function GET(request: Request) {
   }));
 
   try {
-    const pdf = await renderPdf(buildBenchSheetHtml(start, samples, await getCompany()));
+    const [company, reference] = await Promise.all([getCompany(), getDocumentReference("FEUILLE_PAILLASSE")]);
+    const pdf = await renderPdf(buildBenchSheetHtml(start, samples, company, reference));
     const stamp = formatIsoDay(start);
 
     return new NextResponse(new Uint8Array(pdf), {
