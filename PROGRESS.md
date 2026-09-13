@@ -9,8 +9,12 @@
 ## ▶ NEXT ACTION
 
 **PHASE 9 — CHANTIER 1 : LE CIRCUIT SÉRIE (prélèvement → réception).**
-Spec: **`WORKFLOW.md`**. Start with **slice 1** (schema + backfill, natures,
-counters, `POST /api/series`, « Nouvelle visite » multi-line, « Mes visites »).
+Spec: **`WORKFLOW.md`**. **Slice 1 shipped 2026-09-13** (schema + backfill,
+natures, counters, `POST /api/series`, « Nouvelle visite » multi-line, « Mes
+visites », visit detail with arrival panel, lab screens on N° de contrôle +
+N° de série). **Next: slice 2** — reception queue by série,
+`POST /api/series/[id]/reception` (one transaction for every line),
+`reception-rules.ts`, labels PDF. Then slices 3–6 in order.
 
 Why (2026-09-13): the client's feedback (« multiple things are missing, above
 all in the prélèvement ») was objectified against the old Firebird database
@@ -24,8 +28,12 @@ first (7 weeks) is the workflow. Restore point: tag **`v1.0-avant-phase-9`**
 + dump `qualilab_avant-phase-9.sql.gz` on the VPS (DEPLOY.md « Point de
 retour »).
 
-**The system in production stays live and unchanged until slice 1 ships**
-(http://185.217.126.53, tag `v1.0-avant-phase-9` = deployed code + docs).
+**Production runs slice 1 since 2026-09-13** (http://185.217.126.53 —
+migration `20260913200000_phase9_serie` applied by the `migrate` service,
+backfill checked from the browser: séries 1/26 … 15/26 backfilled and listed
+for `pre1`, 16 natures, série 16/26 created through `POST /api/series` and
+received as code contrôle 13/26). Restore point unchanged:
+tag `v1.0-avant-phase-9` + the VPS dump.
 
 **What remains outside the chantier:** domain + HTTPS (15 min once the
 domain exists), the lab's answers to `NEEDEDINFO.md` Q1–Q20 (none blocks
@@ -184,7 +192,7 @@ Spec: `WORKFLOW.md` (chantier 1). Summary and the five other chantiers:
 `PLAN.md` Phase 9. Questions for the lab: `NEEDEDINFO.md` Q1–Q20.
 
 **Chantier 1 — circuit série (prélèvement → réception), 7 weeks**
-- [ ] Slice 1 — schema `Serie` / `Site` / `AnalysisNature` / `AnalysisProfile` / `ClientPlace` / `ClientProduct` / `Counter` / `DocumentReference`, `Sample` additions, `ANNULE`; backfill one série per existing sample; 16 natures seeded with `lineKind` + `legacyType`; `src/lib/counters.ts` (NNNN/AA, NNNNN/AA, `SELECT … FOR UPDATE`) + tests; `POST /api/series` (transaction série + lines); « Nouvelle visite » multi-line phone first; « Mes visites »; old `POST /api/samples` creates a one-line série
+- [x] Slice 1 (2026-09-13, commits d5069cb + ba9e688) — schema `Serie` / `Site` / `AnalysisNature` / `AnalysisProfile` / `ClientPlace` / `ClientProduct` / `Counter` / `DocumentReference`, `Sample` additions, `ANNULE`; backfill one série per existing sample; 16 natures seeded with `lineKind` + `legacyType`; `src/lib/counters.ts` (NNNN/AA, NNNNN/AA, `SELECT … FOR UPDATE`) + tests; `POST /api/series` (transaction série + lines); « Nouvelle visite » multi-line phone first; « Mes visites »; old `POST /api/samples` creates a one-line série
 - [ ] Slice 2 — reception queue by série; `POST /api/series/[id]/reception` (one transaction: N° de contrôle per line, temperatures, conformity + coded motif, technician by family); `src/lib/reception-rules.ts` + tests; labels PDF (Code128, one per unit)
 - [ ] Slice 3 — « Nouveau dépôt » (kind DEPOT, samplerKind CLIENT, samples born RECU); protocol and bon PDFs with the quality cartouche; `DocumentReference` admin
 - [ ] Slice 4 — analysis profiles per nature / per client; `ClientPlace` / `ClientProduct` pickers with quasi-duplicate refusal; sampler kind (Qualilab / client / service vétérinaire); sites imported from the old database
@@ -197,6 +205,18 @@ portail, bascule 4 w) — planned in `PLAN.md`, opened one at a time after
 chantier 1 is signed off.
 
 ## Session Log
+
+- **2026-09-13 · Claude Code** · **Phase 9 · chantier 1 · slice 1 shipped.**
+  Schema + additive migration with backfill (one série per existing sample,
+  16 natures, counters seeded), `counters.ts` / `series.ts` / `serie-input.ts`
+  / `serie-create.ts`, routes `/api/natures`, `/api/series` (+ `[id]`),
+  legacy `POST /api/samples` kept as a one-line série, reception drawing
+  NNNNN/AA. Préleveur: « Nouvelle visite » multi-line, « Mes visites »,
+  visit detail with « Arrivée au laboratoire ». Every lab screen and PDF now
+  prints the N° de contrôle + the série number (the random serial is gone).
+  Sidebar bug (wrong role nav after a click) fixed by `RoleShell` +
+  `navFor(role)`. Browser-verified end to end on the dev server (série 9/26 →
+  9103/26 → RAP-2026-00004) then deployed; TESTPLAN L1.
 
 - **2026-09-13 · Claude Code** · **Analyse de l'ancienne base + formulaires papier → Phase 9.**
   Firebird `DBQLabo.fbk` restored in Docker (`qlabo-fb`), 252 tables read;

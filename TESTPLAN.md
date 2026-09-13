@@ -734,17 +734,22 @@ du code.
 - [x] **Espace comptabilité** : le bloc « prochaines fonctionnalités »
       annonçait encore les trois écrans de la phase 4, livrés depuis.
 
-## Checkpoint L — Phase 9, chantier 1 : circuit série (planned, nothing ticked yet)
+## Checkpoint L — Phase 9, chantier 1 : circuit série (L1 verified 2026-09-13 on the dev server at 1440×900 and again on the VPS after deploy; L2–L6 planned)
 
 Tick only what was seen in the browser. One sub-checkpoint per slice of
 `WORKFLOW.md`.
 
-### L1 — Nouvelle visite (slice 1)
-- [ ] Header once: client → site cascade, interlocuteur, préleveur pre-filled, start time editable, cadre derived.
-- [ ] Six lines of mixed natures on one visit (aliment, surface 100 cm², mains lavées, eau…) — the fields shown change with the nature; temperatures optional on every kind; quantity « 01 » in `UNITE`.
-- [ ] The visit gets a N° de série NNNN/AA at creation; the préleveur never sees a N° de contrôle (API payload checked).
-- [ ] « Mes visites » lists séries with the progress of each sample; an old single-sample creation still works (one-line série).
-- [ ] Existing circuit unchanged on backfilled samples (réception → rapport → facture on a pre-phase-9 sample).
+### L1 — Nouvelle visite (slice 1) — dev server 2026-09-13, `pre1` / `recep1` / `tech2` / `valid1` / `admin`
+- [x] Header once: client → site cascade, interlocuteur, préleveur pre-filled, start time editable (série **9/26**, Restaurant Le Palmier, created through the real form).
+- [ ] Cadre derived — not on the préleveur form (lab-side field, `PATCH /api/series/[id]`), to observe in L2.
+- [~] Lines of mixed natures on one visit — observed with **two** lines (aliment « Suprême de poulet » lot LOT-0913, mains « Hamza Bassou » under MICRO_SURFACES): the fields shown change with the nature and the kind chips (SURFACE / MAINS), temperatures optional, unit count chips. Six-line mix and quantity « 01 » in `UNITE` not yet exercised.
+- [x] The visit gets a N° de série NNNN/AA at creation (9/26 shown on the success screen and on « Mes visites »); the préleveur never sees a N° de contrôle — `/api/series/[id]` and `/api/samples?q=9/26` payloads checked as `pre1`: no `controlCode`, no `receivedBy`, no « 9103 ».
+- [x] « Mes visites » lists séries with the progress of each sample (« 2 échantillons · 1 en cours · 1 terminé », status « En cours » derived).
+- [x] Visit detail: « Arrivée au laboratoire » panel saves fin / arrivée / T° glacière (chronology enforced: an end before the start is refused with the French message).
+- [ ] Old single-sample creation (`POST /api/samples` → one-line série) — covered by `serie-input` / `serie-create` tests, not yet observed in a browser.
+- [x] Lab screens identify the sample by its N° de contrôle and show the série: réception success (« Code contrôle 9103/26 · N° de série 9/26 »), technician list + sheet, validation list + control view (« 9103/26 · série 9/26 »), bench sheet PDF (`9104/26 AMBIANCE · Série 9/26 · …`), report PDF RAP-2026-00004 (« Code contrôle 9103/26 · N° de série 9/26 »).
+- [~] Existing circuit on a backfilled sample: QL-2026-00001 (pre-phase-9) received → « 9105/26 · N° de série 1/26 » (backfilled série). Rapport and facture on a backfilled sample not yet observed.
+- [x] **Production (185.217.126.53, after deploy):** `pre1` sees the 15 backfilled séries (1/26 … 15/26) with derived statuses; série **16/26** created (2 lines: aliment + surface) with no `controlCode` in the payload; `recep1` receives 16/26-1 → « Code contrôle 13/26 · N° de série 16/26 »; `tech2` list shows « 13/26 · série 16/26 » with the technician sidebar.
 
 ### L2 — Réception groupée (slice 2)
 - [ ] The queue lists séries, not samples; the série screen shows every line.

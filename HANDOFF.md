@@ -30,7 +30,7 @@
 | LIMS core — **email, alertes** | auto send, grouped contamination alerts, bench sheet | ✅ **Phase 3 done** (delivery simulated until DNS) |
 | Direction & recherche | direction view, DB-backed global search | ✅ **Phase 5 done** |
 | Infra | Docker image + compose, backups, `DEPLOY.md` — PM2 kept as fallback | ✅ **live on the VPS since 2026-08-26** |
-| **Phase 9 — chantier 1 : circuit série** | visite / dépôt multi-lignes, 16 natures, réception groupée, numérotation NNNN/AA + NNNNN/AA, étiquettes, profils, verbes de correction — spec **`WORKFLOW.md`** | ◀ **NEXT** (restore point `v1.0-avant-phase-9`) |
+| **Phase 9 — chantier 1 : circuit série** | visite / dépôt multi-lignes, 16 natures, réception groupée, numérotation NNNN/AA + NNNNN/AA, étiquettes, profils, verbes de correction — spec **`WORKFLOW.md`** | ◀ **IN PROGRESS — slice 1 live 2026-09-13** (série + natures + counters + « Nouvelle visite » / « Mes visites » + N° de contrôle everywhere); slices 2–6 next (restore point `v1.0-avant-phase-9`) |
 
 **Bottom line:** the five core phases are code-complete. The whole circuit runs
 — field intake to report, alert and invoice — and the lab configures everything
@@ -83,8 +83,11 @@ src/
     comptabilite/              dashboard + factures (list/nouvelle/[id]) ✅
     admin/                     dashboard + factures + parametres + utilisateurs + catalogue + entreprise + journal
   components/
-    layout/  AdminShell, PreleveurShell, RoleShells.tsx (5 role shells),
-             DashboardShell, Sidebar, admin-nav / preleveur-nav / role-navs.ts
+    layout/  RoleShell (one shell for every role: `navFor(role)` picks the
+             nav, `activeHref` = longest matching prefix), DashboardShell,
+             Sidebar, admin-nav / preleveur-nav / role-navs.ts
+    preleveur/  VisitForm (header + LineEditor per line + recap), VisitDetail
+                (arrival panel), visit-types.ts (line kinds, designation)
     ui/      Card, StatCard, StatusBadge, TypeBadge, StepIndicator, PageHeader, LoadingState
     RoleDashboard.tsx          shared role landing page (stats + mission + next steps)
     admin/      ParametersManager, UsersManager, CatalogueManager, CompanyForm,
