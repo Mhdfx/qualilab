@@ -12,9 +12,12 @@
 Spec: **`WORKFLOW.md`**. **Slice 1 shipped 2026-09-13** (schema + backfill,
 natures, counters, `POST /api/series`, « Nouvelle visite » multi-line, « Mes
 visites », visit detail with arrival panel, lab screens on N° de contrôle +
-N° de série). **Next: slice 2** — reception queue by série,
-`POST /api/series/[id]/reception` (one transaction for every line),
-`reception-rules.ts`, labels PDF. Then slices 3–6 in order.
+N° de série). **Slice 2 shipped 2026-09-13** (reception queue by série, série screen
+with the seven acceptance rules computed live, `POST /api/series/[id]/reception`
+in one transaction, coded non-conformity motifs, thresholds in
+`/admin/reglages`, labels PDF with Code128). **Next: slice 3** — « Nouveau
+dépôt » (kind DEPOT, samples born RECU and numbered at once), protocol and
+bon PDFs with the quality cartouche, `DocumentReference` admin. Then 4–6.
 
 Why (2026-09-13): the client's feedback (« multiple things are missing, above
 all in the prélèvement ») was objectified against the old Firebird database
@@ -193,7 +196,7 @@ Spec: `WORKFLOW.md` (chantier 1). Summary and the five other chantiers:
 
 **Chantier 1 — circuit série (prélèvement → réception), 7 weeks**
 - [x] Slice 1 (2026-09-13, commits d5069cb + ba9e688) — schema `Serie` / `Site` / `AnalysisNature` / `AnalysisProfile` / `ClientPlace` / `ClientProduct` / `Counter` / `DocumentReference`, `Sample` additions, `ANNULE`; backfill one série per existing sample; 16 natures seeded with `lineKind` + `legacyType`; `src/lib/counters.ts` (NNNN/AA, NNNNN/AA, `SELECT … FOR UPDATE`) + tests; `POST /api/series` (transaction série + lines); « Nouvelle visite » multi-line phone first; « Mes visites »; old `POST /api/samples` creates a one-line série
-- [ ] Slice 2 — reception queue by série; `POST /api/series/[id]/reception` (one transaction: N° de contrôle per line, temperatures, conformity + coded motif, technician by family); `src/lib/reception-rules.ts` + tests; labels PDF (Code128, one per unit)
+- [x] Slice 2 (2026-09-13) — reception queue by série; `POST /api/series/[id]/reception` (one transaction: N° de contrôle per line, temperatures, conformity + coded motif, technician by family); `src/lib/reception-rules.ts` + tests; labels PDF (Code128, one per unit)
 - [ ] Slice 3 — « Nouveau dépôt » (kind DEPOT, samplerKind CLIENT, samples born RECU); protocol and bon PDFs with the quality cartouche; `DocumentReference` admin
 - [ ] Slice 4 — analysis profiles per nature / per client; `ClientPlace` / `ClientProduct` pickers with quasi-duplicate refusal; sampler kind (Qualilab / client / service vétérinaire); sites imported from the old database
 - [ ] Slice 5 — verbs « Corriger la fiche » (`PATCH /api/samples/[id]/intake`) and « Annuler » (`ANNULE`, coded motif); technician and validation lists grouped by série; `unitCount` + unit letters on labels; photo of the signed protocol; old routes removed
@@ -205,6 +208,19 @@ portail, bascule 4 w) — planned in `PLAN.md`, opened one at a time after
 chantier 1 is signed off.
 
 ## Session Log
+
+- **2026-09-13 · Claude Code** · **Phase 9 · chantier 1 · slice 2 shipped.**
+  `reception-rules.ts` (the seven rules of the bon de réception, thresholds
+  in `LabSettings`, defaults = the paper form) + `reception-input.ts`, both
+  pure and tested; `POST /api/series/[id]/reception` numbers every line in
+  one transaction (coded motif `conformityReason`, technician per line,
+  série arrival + cooler temperature); `/reception` lists séries;
+  `/reception/series/[id]` = live checklist per line, forced non-conformity
+  under a blocking rule, read-only summary once received; labels PDF
+  (`/api/series/[id]/labels`, A4 3 × 8, Code128 via `bwip-js`, one label per
+  unit with its letter); `/admin/reglages` edits the thresholds. Migration
+  `20260913220000_phase9_reception` (additive). Browser-verified on the dev
+  server (séries 8/26 and 10/26) and on the VPS; TESTPLAN L2.
 
 - **2026-09-13 · Claude Code** · **Phase 9 · chantier 1 · slice 1 shipped.**
   Schema + additive migration with backfill (one série per existing sample,

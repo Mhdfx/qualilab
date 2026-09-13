@@ -734,7 +734,7 @@ du code.
 - [x] **Espace comptabilité** : le bloc « prochaines fonctionnalités »
       annonçait encore les trois écrans de la phase 4, livrés depuis.
 
-## Checkpoint L — Phase 9, chantier 1 : circuit série (L1 verified 2026-09-13 on the dev server at 1440×900 and again on the VPS after deploy; L2–L6 planned)
+## Checkpoint L — Phase 9, chantier 1 : circuit série (L1 and L2 verified 2026-09-13 on the dev server at 1440×900 and on the VPS after deploy; L3–L6 planned)
 
 Tick only what was seen in the browser. One sub-checkpoint per slice of
 `WORKFLOW.md`.
@@ -751,11 +751,13 @@ Tick only what was seen in the browser. One sub-checkpoint per slice of
 - [~] Existing circuit on a backfilled sample: QL-2026-00001 (pre-phase-9) received → « 9105/26 · N° de série 1/26 » (backfilled série). Rapport and facture on a backfilled sample not yet observed.
 - [x] **Production (185.217.126.53, after deploy):** `pre1` sees the 15 backfilled séries (1/26 … 15/26) with derived statuses; série **16/26** created (2 lines: aliment + surface) with no `controlCode` in the payload; `recep1` receives 16/26-1 → « Code contrôle 13/26 · N° de série 16/26 »; `tech2` list shows « 13/26 · série 16/26 » with the technician sidebar.
 
-### L2 — Réception groupée (slice 2)
-- [ ] The queue lists séries, not samples; the série screen shows every line.
-- [ ] A line under the minimum quantity shows the rule's message; temperature missing on an aliment blocks or opens a non-conformity per the switch.
-- [ ] « Valider la réception » numbers every line NNNNN/AA in one transaction; a second click cannot receive twice (409).
-- [ ] Labels PDF: one per unit, letters A…E, barcode of the N° de contrôle.
+### L2 — Réception groupée (slice 2) — dev server 2026-09-13, `recep1` / `admin`
+- [x] The queue lists séries, not samples (« 8/26 · Visite · 3 lignes à réceptionner · arrivée 18:24 · 1,5 °C »); the série screen shows every line with what the préleveur wrote (lot, DLC, T°p/T°a, units, analyses) and the cooler pre-fills each line's temperature.
+- [x] Rules computed live: « Quantité non renseignée — minimum 100 g » (warning), « Volume 0,5 L < 1 L requis » and « Température à l'arrivée obligatoire pour un produit alimentaire » (blocking → « Conforme » disabled, motif pre-set: TEMPERATURE_MANQUANTE / QUANTITE_INSUFFISANTE); typing the cooler temperature lifts the temperature block (série 10/26).
+- [x] « Valider la réception » numbers every line in one transaction (série 8/26 → 9106/26, 9107/26, 9108/26, technician on each; série 10/26 → line 1 conform, line 2 non conform « Quantité insuffisante »); the received série re-opens as a read-only summary; the queue empties; `/api/series/[id]/labels` on a série not yet received answers 409.
+- [x] Labels PDF: 7 labels for 5 + 1 + 1 units on one A4 sheet, « 9106/26 A … E », nature, date, product, client, série number (pdftotext).
+- [x] `/admin/reglages` shows the seven thresholds + the kinds requiring a temperature; saving them answers « Réglages enregistrés » and the API returns the values.
+- [ ] Second click on « Valider la réception » (409) — not exercised in the browser; covered by the status re-check in the transaction (P2025 → 409) and `reception-input` tests.
 
 ### L3 — Dépôt client et documents (slice 3)
 - [ ] « Nouveau dépôt » creates a série born RECU with sampler « client », numbered at once.
