@@ -20,10 +20,14 @@ transaction with the rules, protocole / bon PDFs with the cartouche and page
 numbers, `/admin/documents`). **Slice 4 shipped 2026-09-13** (profiles in one tap, client memory with
 « déjà connu sous » canonical spelling, sampler kind on the visit, sites on
 the client fiche — the legacy sites import waits for the client import of
-chantier 6). **Next: slice 5** — the verbs « Corriger la fiche » and
-« Annuler » (coded motif, `ANNULE` out of every queue), technician and
-validation lists grouped by série, photo of the signed protocol from the
-phone (exists), old routes removed. Then 6 (recette).
+chantier 6). **Slice 5 shipped 2026-09-13** (verbs Corriger / Annuler / Réactiver with
+audit, lists grouped by série, old routes removed). **Chantier 1 is
+code-complete; what remains is slice 6 — the recette with the laboratory**:
+three real visits and one real deposit entered by the lab's own staff on
+the VPS, fixes, demo data reseeded, sign-off recorded in TESTPLAN L6 and
+HANDOFF. It needs the lab (a session with the préleveur and the réception),
+not code. Meanwhile the NEEDEDINFO answers (Q1–Q4, Q18) can refine the
+defaults, and chantier 2 (catalogue & critères) can be opened.
 
 Why (2026-09-13): the client's feedback (« multiple things are missing, above
 all in the prélèvement ») was objectified against the old Firebird database
@@ -205,8 +209,8 @@ Spec: `WORKFLOW.md` (chantier 1). Summary and the five other chantiers:
 - [x] Slice 2 (2026-09-13) — reception queue by série; `POST /api/series/[id]/reception` (one transaction: N° de contrôle per line, temperatures, conformity + coded motif, technician by family); `src/lib/reception-rules.ts` + tests; labels PDF (Code128, one per unit)
 - [x] Slice 3 (2026-09-13) — « Nouveau dépôt » (kind DEPOT, samplerKind CLIENT, samples born RECU); protocol and bon PDFs with the quality cartouche; `DocumentReference` admin
 - [x] Slice 4 (2026-09-13) — analysis profiles per nature / per client; `ClientPlace` / `ClientProduct` pickers with quasi-duplicate refusal; sampler kind (Qualilab / client / service vétérinaire); sites imported from the old database
-- [ ] Slice 5 — verbs « Corriger la fiche » (`PATCH /api/samples/[id]/intake`) and « Annuler » (`ANNULE`, coded motif); technician and validation lists grouped by série; `unitCount` + unit letters on labels; photo of the signed protocol; old routes removed
-- [ ] Slice 6 — recette with the lab on real visits; fixes; docs; demo data reseeded on the VPS; sign-off in TESTPLAN L + HANDOFF
+- [x] Slice 5 (2026-09-13) — verbs « Corriger la fiche » (`PATCH /api/samples/[id]/intake`) and « Annuler » (`ANNULE`, coded motif); technician and validation lists grouped by série; `unitCount` + unit letters on labels; photo of the signed protocol; old routes removed
+- [ ] Slice 6 — recette with the lab on real visits (needs the lab's session); fixes; demo data reseeded on the VPS; sign-off in TESTPLAN L6 + HANDOFF
 
 **Chantiers 2–6** (catalogue & critères 6 w · analyse & résultats 5 w ·
 validation, rapports, envoi 5 w · commercial & facturation 4 w · reprise,
@@ -214,6 +218,19 @@ portail, bascule 4 w) — planned in `PLAN.md`, opened one at a time after
 chantier 1 is signed off.
 
 ## Session Log
+
+- **2026-09-13 · Claude Code** · **Phase 9 · chantier 1 · slice 5 shipped.**
+  `sample-status.ts` gains the ANNULE transitions (+ `CORRECTABLE_STATUSES`,
+  `reactivationTarget`); `intake-input.ts` (pure, tested) re-applies the
+  protocol's line rules to a correction and keeps only real changes;
+  routes `PATCH /api/samples/[id]/intake`, `POST …/cancel`, `POST
+  …/reactivate` (all audited); `SampleVerbs` dialogs on the série reception
+  page and the validation view; `serie-groups.ts` groups the technician and
+  validation queues by série; old routes and components deleted
+  (`POST /api/samples`, `…/reception`, `/reception/[id]`, `/preleveur/nouveau`,
+  `ReceptionForm`, `PrelevementSuccess`); `TechnicianOption` moved to
+  `reception/types.ts`. Browser-verified on the dev server and on the VPS;
+  TESTPLAN L5.
 
 - **2026-09-13 · Claude Code** · **Phase 9 · chantier 1 · slice 4 shipped.**
   `profile-input.ts` / `site-input.ts` (pure, tested); `/api/profiles`

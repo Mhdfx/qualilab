@@ -291,8 +291,9 @@ opens a non-conformity is the existing `blockNonConformAtReception` switch
 | RECEPTIONNISTE | Réception de la série | `/reception/series/[id]` (`/reception/[sampleId]` stays for the transition) | `POST /api/series/[id]/reception` (one transaction) |
 | RECEPTIONNISTE | Étiquettes | button on the received série | `GET /api/series/[id]/labels` (PDF, A4 3 × 8, Code128 via `bwip-js`) |
 | RECEPTIONNISTE, PRELEVEUR (own visit) | Protocole / bon PDF | links on the visit, the série reception and the deposit success | `GET /api/series/[id]/document` (PDF, kind-aware, cartouche + page numbers) |
-| all lab roles | Corriger la fiche | dialog on série / sample | `PATCH /api/samples/[id]/intake` |
-| RECEPTIONNISTE, ADMIN | Annuler | dialog | `POST /api/samples/[id]/cancel` |
+| RECEPTIONNISTE, VALIDATEUR, ADMIN | Corriger la fiche | `SampleVerbs` dialog on the série reception page and the validation view | `PATCH /api/samples/[id]/intake` (reason, before/after audited; new analyses → results emptied, back to EN_ANALYSE) |
+| RECEPTIONNISTE (before analysis), ADMIN | Annuler | same dialog, coded motif | `POST /api/samples/[id]/cancel` (`ANNULE`, terminal) |
+| ADMIN | Réactiver | same dialog, written reason | `POST /api/samples/[id]/reactivate` (back to RECU or PRELEVE) |
 | TECHNICIEN, VALIDATEUR | lists grouped by série | `/technicien`, `/validation` | existing routes, `groupBy serie` |
 | ADMIN | Cartouches (Réf / version / dates) | `/admin/documents` | `GET/PUT /api/admin/documents`, audited |
 | ADMIN | Profils d'analyses (per nature, optionally per client) | `/admin/profils` | `GET/POST /api/profiles`, `PATCH /api/profiles/[id]`, audited |
@@ -300,9 +301,9 @@ opens a non-conformity is the existing `blockNonConformAtReception` switch
 | forms | Client memory (places per site, products) | datalists + « déjà connu sous » hint | `GET /api/clients/[id]/memory?siteId=` |
 | ADMIN | Natures, lieux, produits, compteurs | `/admin/...` | later (chantier 2 / 6) |
 
-Old routes (`POST /api/samples`, `POST /api/samples/[id]/reception`) keep
-working during slices 1–2 by creating a one-line série implicitly; they are
-removed in slice 6.
+The old routes (`POST /api/samples`, `POST /api/samples/[id]/reception`,
+`/reception/[sampleId]`, `/preleveur/nouveau`) were removed in slice 5;
+`GET /api/samples` (lists, search) stays.
 
 ## 8. The four verbs
 
@@ -338,7 +339,7 @@ removed in slice 6.
 | 2 | 3 | Grouped reception, rules engine, temperatures, N° de contrôle NNNNN/AA, labels PDF with barcodes | **Shipped 2026-09-13** — a série received in one transaction; a failing rule shows its message; labels print with letters; TESTPLAN L2 |
 | 3 | 4 | « Nouveau dépôt »; protocol and bon PDFs with the cartouche; `DocumentReference` admin | **Shipped 2026-09-13** — a walk-in deposit numbered at once; both PDFs match the paper layout; TESTPLAN L3 |
 | 4 | 5 | Profiles; `ClientPlace` / `ClientProduct` pickers with quasi-duplicate refusal; sampler kind; sites imported from the old database | **Shipped 2026-09-13** (sites created on the client fiche; the legacy import waits for the client import of chantier 6) — no field typed twice on a second visit to the same site; TESTPLAN L4 |
-| 5 | 6 | The verbs Corriger / Annuler; lists grouped by série for technician and validation; `unitCount`; photo of the signed sheet; old routes removed | An intake error fixed with a trace; a cancelled sample leaves every queue; TESTPLAN L5 |
+| 5 | 6 | The verbs Corriger / Annuler; lists grouped by série for technician and validation; `unitCount`; photo of the signed sheet; old routes removed | **Shipped 2026-09-13** — an intake error fixed with a trace; a cancelled sample leaves every queue; TESTPLAN L5 |
 | 6 | 7 | Recette with the lab on real visits; fixes; docs; demo data reseeded on the VPS | Sign-off of chantier 1 recorded in TESTPLAN and HANDOFF |
 
 Tests: `src/lib/counters.test.ts`, `src/lib/reception-rules.test.ts`,

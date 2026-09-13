@@ -734,7 +734,7 @@ du code.
 - [x] **Espace comptabilité** : le bloc « prochaines fonctionnalités »
       annonçait encore les trois écrans de la phase 4, livrés depuis.
 
-## Checkpoint L — Phase 9, chantier 1 : circuit série (L1–L4 verified 2026-09-13 on the dev server at 1440×900 and on the VPS after deploy; L5–L6 planned)
+## Checkpoint L — Phase 9, chantier 1 : circuit série (L1–L5 verified 2026-09-13 on the dev server at 1440×900 and on the VPS after deploy; L6 = recette with the laboratory, pending)
 
 Tick only what was seen in the browser. One sub-checkpoint per slice of
 `WORKFLOW.md`.
@@ -776,10 +776,14 @@ Tick only what was seen in the browser. One sub-checkpoint per slice of
 - [ ] Sites imported from the old database — deferred to the reprise (chantier 6): the legacy sites hang off legacy clients, which are imported together at go-live.
 - [x] **Production (185.217.126.53, after deploy):** `admin` creates « Micro aliments standard » (n = 5) and the site « Cuisine centrale » (API 201, listed at `/admin/profils`); `pre1`'s « Nouvelle visite » shows the site in the cascade, the profile chip and the client's memory (« Pastilla au poulet », « Tajine de poulet », « Cuisine chaude »…).
 
-### L5 — Corrections (slice 5)
-- [ ] « Corriger la fiche » edits lot / DLC / place with a before-after audit line; refused once approved.
-- [ ] « Annuler » with a coded motif removes the sample from every queue, the report and the billable list; reactivation by ADMIN only.
-- [ ] Technician and validation lists grouped by série; a photo of the signed protocol attached from the phone.
+### L5 — Corrections (slice 5) — dev server 2026-09-13, `recep1` / `admin` / `tech2` / `valid1`
+- [x] « Corriger la fiche » on the série reception page (9107/26): the dialog shows the fields of the kind (surface, area, lieu, remarks), asks a reason, saves « Poste salades — planche verte » (API confirms; audit `SAMPLE_INTAKE_CORRECTED` with before/after). Refused once approved (`CORRECTABLE_STATUSES`) — enforced in the route.
+- [x] « Annuler » (9108/26, motif « Doublon ») → status ANNULE, the line shows « Annulé · Doublon » in the série summary, the technician's bench no longer lists it (`tech2`: séries 9/26, 8/26 with 2 samples left, 11/26); the billable and report queries only take VALIDE / RAPPORT_ENVOYE.
+- [x] « Réactiver » (`admin`, written reason) → 9108/26 back to RECU with its N° de contrôle, cancel fields cleared.
+- [x] Technician and validation lists grouped by série (« Série 8/26 · Restaurant Le Palmier · 2 échantillons »); the validation view shows « Corriger la fiche » to `valid1` and no « Annuler » (the state machine keeps cancellation for the réception and the admin).
+- [x] Old routes removed: `/reception/<sampleId>` → 404, `POST /api/samples` → 405.
+- [x] Photo of the signed protocol from the phone — exists since slice 1 (visit detail, `signedProtocolData`).
+- [x] **Production (185.217.126.53, after deploy):** `/reception/<sampleId>` → 404, `POST /api/samples` → 405; `recep1` corrects the lot of 13/26 (série 16/26) from the série page (« L-0913-B », API confirms); `tech2`'s bench is grouped by série (8/26, 4/26, 5/26, 16/26, 17/26).
 
 ### L6 — Recette (slice 6)
 - [ ] Three real visits and one real deposit entered by the lab's own staff; sign-off row filled below.
