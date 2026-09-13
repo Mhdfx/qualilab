@@ -8,45 +8,28 @@
 
 ## ▶ NEXT ACTION
 
-**THE SYSTEM IS DEPLOYED AND LIVE (2026-08-26): http://185.217.126.53**
+**PHASE 9 — CHANTIER 1 : LE CIRCUIT SÉRIE (prélèvement → réception).**
+Spec: **`WORKFLOW.md`**. Start with **slice 1** (schema + backfill, natures,
+counters, `POST /api/series`, « Nouvelle visite » multi-line, « Mes visites »).
 
-The VPS was kept (Ubuntu 24.04, healthy) rather than reformatted; the PM2
-prototype was retired (archived to `/root/qualilab-old-prototype-archive`,
-its 0.3 MB demo DB dumped to `/root/` and `backups/` locally), and the
-Docker stack now runs it all: app on `127.0.0.1:3000` behind nginx, MySQL
-in its own container, firewall closed to SSH/80/443. Deployment = `git
-pull && docker compose up -d --build` as the `qualilab` user in
-`/opt/qualilab` (`scripts/vps-first-deploy.sh` did the first one and stays
-idempotent). Verified live: health, admin + réceptionniste login over HTTP,
-direction dashboard with seeded data, invoice PDF rendered by the in-image
-Chromium, backup cron installed, **restore tested for real** (2026-08-26).
-Demo mode is ON (panel visible) until the recette.
+Why (2026-09-13): the client's feedback (« multiple things are missing, above
+all in the prélèvement ») was objectified against the old Firebird database
+(252 tables, restored) and the four paper forms the lab still fills by hand.
+The technical base stands; the business core was modelled on a simplified
+picture: one sample instead of one **visit** (≈ 7 samples of mixed natures
+per série), 3 types instead of **16 natures**, a single limit instead of
+**m / M criteria**, one value instead of **one per unit**, invented ids
+instead of the lab's **yearly sequences**. Six workstreams, ≈ 31 weeks; the
+first (7 weeks) is the workflow. Restore point: tag **`v1.0-avant-phase-9`**
++ dump `qualilab_avant-phase-9.sql.gz` on the VPS (DEPLOY.md « Point de
+retour »).
 
-**2026-08-27 — the CODE IS FINISHED: pack d'indépendance delivered.** Every
-answer still awaited from the client is now a toggle or data entry:
-decisions n°10/n°11 are switches in `/admin/reglages` (blocking flow with
-admin release; early alerts with anti-duplicate guard), item 6 is the
-per-parameter *facteur de calcul*, item 5 the logo upload in
-`/admin/entreprise`, item 7 the `/admin/import` wizard
-(analyse → mapping → dry-run → commit). 95 tests, TESTPLAN checkpoint H
-passed in the browser (full circuit with blocking + factor + early alert).
+**The system in production stays live and unchanged until slice 1 ships**
+(http://185.217.126.53, tag `v1.0-avant-phase-9` = deployed code + docs).
 
-**What remains:**
-1. **Full TESTPLAN pass on the live server** (the complete multi-role
-   sample circuit — réception → saisie → validation → approbation →
-   rapport) — ideally with Achraf driving, demo panel makes it easy.
-2. **Domain + HTTPS**: when the client confirms the domain, point DNS at
-   185.217.126.53, run certbot, set BETTER_AUTH_URL/TRUSTED_ORIGINS to the
-   https origin, drop AUTH_COOKIE_SECURE, rebuild. 15 minutes.
-3. **The lab** (`NEEDEDINFO.md`): DNS + Resend key → flip real email on;
-   official norm limits → enter in `/admin/parametres`; real ICE/RC/RIB +
-   logo → enter in `/admin/entreprise`; legacy export → import; real user
-   list → create accounts, rebuild with `NEXT_PUBLIC_DEMO_MODE=false`
-   (build arg — runtime env does not affect the panel).
-4. Then: **recette** with the lab's team, formation, go-live.
-
-Extensions (Phases 6–8: Achat/Stock, Qualité, Portail client) start after
-go-live, each with its own scoping — see PLAN.
+**What remains outside the chantier:** domain + HTTPS (15 min once the
+domain exists), the lab's answers to `NEEDEDINFO.md` Q1–Q20 (none blocks
+slice 1), demo accounts closed at go-live.
 
 ---
 
@@ -195,7 +178,33 @@ Detail in PLAN "Extension modules"; scope note in HANDOFF §10.
 
 ---
 
+## Phase 9 — Mise à niveau métier (analysis 2026-09-13) ◀ IN PROGRESS
+
+Spec: `WORKFLOW.md` (chantier 1). Summary and the five other chantiers:
+`PLAN.md` Phase 9. Questions for the lab: `NEEDEDINFO.md` Q1–Q20.
+
+**Chantier 1 — circuit série (prélèvement → réception), 7 weeks**
+- [ ] Slice 1 — schema `Serie` / `Site` / `AnalysisNature` / `AnalysisProfile` / `ClientPlace` / `ClientProduct` / `Counter` / `DocumentReference`, `Sample` additions, `ANNULE`; backfill one série per existing sample; 16 natures seeded with `lineKind` + `legacyType`; `src/lib/counters.ts` (NNNN/AA, NNNNN/AA, `SELECT … FOR UPDATE`) + tests; `POST /api/series` (transaction série + lines); « Nouvelle visite » multi-line phone first; « Mes visites »; old `POST /api/samples` creates a one-line série
+- [ ] Slice 2 — reception queue by série; `POST /api/series/[id]/reception` (one transaction: N° de contrôle per line, temperatures, conformity + coded motif, technician by family); `src/lib/reception-rules.ts` + tests; labels PDF (Code128, one per unit)
+- [ ] Slice 3 — « Nouveau dépôt » (kind DEPOT, samplerKind CLIENT, samples born RECU); protocol and bon PDFs with the quality cartouche; `DocumentReference` admin
+- [ ] Slice 4 — analysis profiles per nature / per client; `ClientPlace` / `ClientProduct` pickers with quasi-duplicate refusal; sampler kind (Qualilab / client / service vétérinaire); sites imported from the old database
+- [ ] Slice 5 — verbs « Corriger la fiche » (`PATCH /api/samples/[id]/intake`) and « Annuler » (`ANNULE`, coded motif); technician and validation lists grouped by série; `unitCount` + unit letters on labels; photo of the signed protocol; old routes removed
+- [ ] Slice 6 — recette with the lab on real visits; fixes; docs; demo data reseeded on the VPS; sign-off in TESTPLAN L + HANDOFF
+
+**Chantiers 2–6** (catalogue & critères 6 w · analyse & résultats 5 w ·
+validation, rapports, envoi 5 w · commercial & facturation 4 w · reprise,
+portail, bascule 4 w) — planned in `PLAN.md`, opened one at a time after
+chantier 1 is signed off.
+
 ## Session Log
+
+- **2026-09-13 · Claude Code** · **Analyse de l'ancienne base + formulaires papier → Phase 9.**
+  Firebird `DBQLabo.fbk` restored in Docker (`qlabo-fb`), 252 tables read;
+  four paper forms transcribed; 100 findings in 6 areas (workflow multi-agent,
+  2 verifier passes completed); French report (28 p.) delivered outside the
+  repo. Repo: `WORKFLOW.md` (chantier 1 spec), PLAN Phase 9, NEEDEDINFO
+  Q1–Q20, DEPLOY « Point de retour », AGENTS §3b. Restore point: tag
+  `v1.0-avant-phase-9` + VPS dump `qualilab_avant-phase-9.sql.gz`.
 
 - **2026-09-09 · Claude Code** · **Recette navigateur du circuit complet en
   production.** Parcours repris entièrement à la main dans le navigateur sur

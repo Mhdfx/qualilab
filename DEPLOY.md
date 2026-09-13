@@ -135,6 +135,31 @@ the app again. The recreation matters: a dump taken before a module existed
 would otherwise leave that module's tables behind with no migration record,
 and the next `docker compose up` would stop on « table already exists ».
 
+## Point de retour — avant la phase 9 (2026-09-13)
+
+Phase 9 changes the core model (série, natures, numbering). Before it
+started, the version in production was frozen so the laboratory can go back
+if the new circuit is not what they want:
+
+- **Code:** git tag `v1.0-avant-phase-9` = branch `stable/v1.0-avant-phase-9`
+  (commit `271b7a3`, deployed code identical to `0e2d493` plus docs).
+- **Database:** `/var/backups/qualilab/qualilab_avant-phase-9.sql.gz` on the
+  VPS (taken 2026-09-13 18:51, outside the 30-day rotation — do not delete).
+
+To roll back (as root, on the VPS):
+
+```bash
+cd /opt/qualilab
+sudo -u qualilab git fetch --tags
+sudo -u qualilab git checkout v1.0-avant-phase-9
+sudo -u qualilab docker compose up -d --build          # rebuilds the old image
+DB_PASSWORD=... bash scripts/restore-db.sh /var/backups/qualilab/qualilab_avant-phase-9.sql.gz
+```
+
+The restore recreates the database from the dump, so the Phase 9 tables
+disappear with it; `migrate deploy` then finds nothing pending on the old
+code. To resume Phase 9 later: `git checkout master` and redeploy.
+
 ## After every deploy — 5-minute check
 
 1. `/api/health` answers `ok`.

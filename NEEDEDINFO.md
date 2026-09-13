@@ -114,6 +114,14 @@ réglages, pas des développements.
 | Q19 | Date de bascule, durée de cohabitation avec l'ancien logiciel, sort des ≈ 8 000 dossiers en cours | Plan de bascule |
 | Q20 | Le partage des PDF contient-il tous les rapports depuis 2017 ? Années d'historique sur le portail ? Factures visibles sur le portail ? | Reprise de l'historique, portail |
 
+Précisions du 13/09 tirées de la lecture du protocole rempli (elles sont
+prises comme défauts dans `WORKFLOW.md`, à confirmer avec Q1–Q4) : les
+températures sont saisissables sur toute nature (une main prélevée porte
+« T°p 25 °C ») ; la quantité du protocole est un nombre d'unités (« 01 »),
+les grammes et litres servent au bon de réception et aux règles de
+recevabilité ; la signature de l'interlocuteur reste sur papier, le
+préleveur photographie la feuille signée depuis le téléphone.
+
 ## 2. Ready to send — current batch
 
 *Copy this into an email. Update the date when you send it.*

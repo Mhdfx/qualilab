@@ -45,6 +45,7 @@ should list all three. If it doesn't, you are in the wrong folder.
 | 2 | **HANDOFF.md** | Current state, architecture map, "where do I change X" |
 | 3 | **PROGRESS.md** | What's done / in progress / next — the live tracker |
 | 4 | **PLAN.md** | The full phased roadmap + target data model |
+| 4b | **WORKFLOW.md** | Phase 9, chantier 1: the série-based circuit — design rules, model delta, slices. Read before touching `Sample`, préleveur or réception |
 | 5 | **CODE_QUALITY.md** | The non-negotiable quality bar (front + back + all) |
 | 6 | **TESTPLAN.md** | The full browser test path, every phase. Tick what you verified; extend the phase section when you finish it |
 | 7 | **NEEDEDINFO.md** | Everything still owed by the laboratory — add to it whenever a phase raises a question only they can answer |
@@ -89,6 +90,25 @@ blind grepping.
    input from the lab (norm limits, calculation formulas, legacy data files,
    equipment list), stop there, mark it `[!]` in PROGRESS with exactly what is
    needed, finish everything else in the phase, and tell the user.
+
+## 3b. Phase 9 conventions (chantier série) — in force since 2026-09-13
+
+1. **The série is the unit of work, the sample the unit of analysis.** A
+   série has **no status column**: derive it from its samples. Never add a
+   second state machine.
+2. **Nature-driven forms.** New sample fields are shown by `lineKind`, never
+   by hard-coded nature names.
+3. **Picked or derived, never typed twice.** Sites, places, products,
+   profiles, numbers, cadre, dates: lists, counters, derivations. Free text
+   only in remarks and in the creation of a list entry.
+4. **One transaction per step.** Creating a série, receiving a série: one
+   Prisma `$transaction`, counters locked inside it (`src/lib/counters.ts`).
+5. **Four verbs only** after reception: Corriger la fiche, Renvoyer au
+   technicien, Annuler, Amender — each with a reason and `logAudit()`.
+6. **Additive migrations with backfill**; old routes stay alive until the
+   slice that removes them; Capitalized table names, hand-checked.
+7. **Every slice ships**: tests green, browser-verified, deployed, TESTPLAN L
+   ticked. Restore point before any destructive step: a tag + a labelled dump.
 
 ## 4. Framework warning — this is NOT the Next.js you know
 

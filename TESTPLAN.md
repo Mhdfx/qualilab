@@ -733,3 +733,38 @@ du code.
       panneau des analyses à facturer, « 5.5 % » de TVA, « 9.4 °C ».
 - [x] **Espace comptabilité** : le bloc « prochaines fonctionnalités »
       annonçait encore les trois écrans de la phase 4, livrés depuis.
+
+## Checkpoint L — Phase 9, chantier 1 : circuit série (planned, nothing ticked yet)
+
+Tick only what was seen in the browser. One sub-checkpoint per slice of
+`WORKFLOW.md`.
+
+### L1 — Nouvelle visite (slice 1)
+- [ ] Header once: client → site cascade, interlocuteur, préleveur pre-filled, start time editable, cadre derived.
+- [ ] Six lines of mixed natures on one visit (aliment, surface 100 cm², mains lavées, eau…) — the fields shown change with the nature; temperatures optional on every kind; quantity « 01 » in `UNITE`.
+- [ ] The visit gets a N° de série NNNN/AA at creation; the préleveur never sees a N° de contrôle (API payload checked).
+- [ ] « Mes visites » lists séries with the progress of each sample; an old single-sample creation still works (one-line série).
+- [ ] Existing circuit unchanged on backfilled samples (réception → rapport → facture on a pre-phase-9 sample).
+
+### L2 — Réception groupée (slice 2)
+- [ ] The queue lists séries, not samples; the série screen shows every line.
+- [ ] A line under the minimum quantity shows the rule's message; temperature missing on an aliment blocks or opens a non-conformity per the switch.
+- [ ] « Valider la réception » numbers every line NNNNN/AA in one transaction; a second click cannot receive twice (409).
+- [ ] Labels PDF: one per unit, letters A…E, barcode of the N° de contrôle.
+
+### L3 — Dépôt client et documents (slice 3)
+- [ ] « Nouveau dépôt » creates a série born RECU with sampler « client », numbered at once.
+- [ ] Protocol and bon PDFs carry the cartouche (Réf / version / dates / page) and the signature boxes; layouts match the paper forms.
+
+### L4 — Rien n'est tapé deux fois (slice 4)
+- [ ] A second visit to the same site proposes the same places and products; a quasi-duplicate is refused with the existing label.
+- [ ] A profile pre-ticks the parameters of a nature; the client's contractual profile is proposed first.
+- [ ] Sites imported from the old database appear in the cascade.
+
+### L5 — Corrections (slice 5)
+- [ ] « Corriger la fiche » edits lot / DLC / place with a before-after audit line; refused once approved.
+- [ ] « Annuler » with a coded motif removes the sample from every queue, the report and the billable list; reactivation by ADMIN only.
+- [ ] Technician and validation lists grouped by série; a photo of the signed protocol attached from the phone.
+
+### L6 — Recette (slice 6)
+- [ ] Three real visits and one real deposit entered by the lab's own staff; sign-off row filled below.

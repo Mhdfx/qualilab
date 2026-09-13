@@ -16,6 +16,7 @@ Any developer or AI assistant (Claude, Codex, Cursor) must read, in order:
 2. **[HANDOFF.md](HANDOFF.md)** — current state, architecture, "where do I change X"
 3. **[PROGRESS.md](PROGRESS.md)** — live tracker: done / in progress / next
 4. **[PLAN.md](PLAN.md)** — phased production roadmap + target data model
+5. **[WORKFLOW.md](WORKFLOW.md)** — Phase 9, chantier 1: the série-based prélèvement → réception circuit (design rules, model delta, slices)
 5. **[CODE_QUALITY.md](CODE_QUALITY.md)** — the non-negotiable quality bar
 6. `finalversion.xlsx` / `finalversion.md` — authoritative client scope
 

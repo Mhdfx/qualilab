@@ -13,13 +13,15 @@ One web app, three blocks (LIMS · Facturation · Module préleveur), **7 roles*
 invoices generated from validated samples, full admin configuration, complete
 audit trail — running on the VPS with HTTPS + daily backups.
 
-## Where we are (2026-08-25)
+## Where we are (2026-09-13)
 
-Phases 1 to 3 are delivered and verified: a sample travels the whole circuit,
-the report is produced and sent, and a contamination alert fires when a
-sensitive parameter is over its limit. Two things run in a clearly-labelled
-simulation until the laboratory answers — real email delivery (needs DNS) and
-the official norm limits — both tracked in `NEEDEDINFO.md`. Phase 4 is next.
+Phases 1 to 7 are delivered, audited twice and live on the VPS
+(http://185.217.126.53). After the client's review (« multiple things are
+missing, above all in the prélèvement »), the old database and the paper
+forms were analysed on 2026-09-13: **Phase 9** below re-plans the business
+core in six workstreams. **Chantier 1 — the workflow — is next**, specified
+in `WORKFLOW.md`. Real email delivery and the official limits still wait for
+the laboratory (`NEEDEDINFO.md`). Restore point: tag `v1.0-avant-phase-9`.
 
 ## The sample lifecycle (the spine of the whole system)
 
@@ -164,7 +166,7 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
   changes his mind.
 - **Demo:** validating a sample emails the client a real PDF; it's re-sendable.
 
-### Phase 4 — Clients, invoice link, administration ◀ NEXT
+### Phase 4 — Clients, invoice link, administration ✅ DELIVERED 2026-08-25
 - **Clients:** full CRUD + archive + **360° view** (samples, reports, invoices,
   payments); reserved to gestionnaire + admin.
 - **Invoicing from validated samples:** validated analyses become invoice lines
@@ -177,7 +179,7 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 - **Demo:** lab is autonomous — configure everything, invoice from a validated
   sample.
 
-### Phase 5 — Production hardening
+### Phase 5 — Production hardening ✅ DELIVERED 2026-08-26 (live on the VPS)
 - Per-role dashboards + **direction view** (samples by status, avg lead time,
   activity by domain, billed/collected) + global search.
 - Domain + HTTPS, **daily DB backups** + tested restore, security pass.
@@ -230,7 +232,7 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 **Roles impact [settled]:** 9 profiles total — the 7 core roles + `CLIENT`
 (portal, already reserved in `lib/roles.ts`) + `MAGASINIER` (added at Phase 6).
 
-### Phase 9 — Mise à niveau métier *(analysis of 2026-09-13, after the client's feedback)*
+### Phase 9 — Mise à niveau métier ◀ NEXT *(analysis of 2026-09-13, after the client's feedback)*
 
 The legacy Firebird database (252 tables, restored and read) and the four
 paper forms the lab still fills by hand were compared with this codebase.
@@ -261,6 +263,12 @@ sampling workflow, migration order, 20 questions for the lab) is kept
 outside the public repo: `Desktop\qualinalysenalyse-mise-a-niveau-qualilab.pdf`
 on the developer's machine. Nothing from Phases 1–7 is thrown away: the
 workstreams extend the model and the screens.
+
+**Chantier 1 is specified in `WORKFLOW.md`** (design rules, target circuit,
+Prisma delta, numbering, acceptance-rules engine, screens and routes, the
+four correction verbs, backfill strategy, six deployable slices, field
+mapping of the two paper forms). The other five chantiers get their own spec
+when opened, one at a time, each starting from a tagged restore point.
 
 ---
 
