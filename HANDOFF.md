@@ -30,7 +30,7 @@
 | LIMS core — **email, alertes** | auto send, grouped contamination alerts, bench sheet | ✅ **Phase 3 done** (delivery simulated until DNS) |
 | Direction & recherche | direction view, DB-backed global search | ✅ **Phase 5 done** |
 | Infra | Docker image + compose, backups, `DEPLOY.md` — PM2 kept as fallback | ✅ **live on the VPS since 2026-08-26** |
-| **Phase 9 — chantier 1 : circuit série** | visite / dépôt multi-lignes, 16 natures, réception groupée, numérotation NNNN/AA + NNNNN/AA, étiquettes, profils, verbes de correction — spec **`WORKFLOW.md`** | ◀ **IN PROGRESS — slices 1–3 live 2026-09-13** (série + natures + counters + « Nouvelle visite » / « Mes visites » + N° de contrôle everywhere; grouped reception with the seven acceptance rules, coded motifs, labels PDF; « Nouveau dépôt », protocole / bon PDFs with the quality cartouche, `/admin/documents`); slices 4–6 next (restore point `v1.0-avant-phase-9`) |
+| **Phase 9 — chantier 1 : circuit série** | visite / dépôt multi-lignes, 16 natures, réception groupée, numérotation NNNN/AA + NNNNN/AA, étiquettes, profils, verbes de correction — spec **`WORKFLOW.md`** | ◀ **IN PROGRESS — slices 1–4 live 2026-09-13** (série + natures + counters + « Nouvelle visite » / « Mes visites » + N° de contrôle everywhere; grouped reception with the seven acceptance rules, coded motifs, labels PDF; « Nouveau dépôt », protocole / bon PDFs with the quality cartouche, `/admin/documents`; profiles, client memory, sites, sampler kind); slices 5–6 next (restore point `v1.0-avant-phase-9`) |
 
 **Bottom line:** the five core phases are code-complete. The whole circuit runs
 — field intake to report, alert and invoice — and the lab configures everything
@@ -90,8 +90,10 @@ src/
                 (arrival panel), visit-types.ts (line kinds, designation)
     ui/      Card, StatCard, StatusBadge, TypeBadge, StepIndicator, PageHeader, LoadingState
     RoleDashboard.tsx          shared role landing page (stats + mission + next steps)
-    admin/      ParametersManager, UsersManager, CatalogueManager, CompanyForm,
+    admin/      ParametersManager, ProfilesManager, DocumentReferencesForm,
+                LabSettingsForm, UsersManager, CatalogueManager, CompanyForm,
                 DirectionStats (the direction view)
+    commercial/ SitesManager (a client's sampling sites, on the fiche)
     reception/  SerieQueue (séries waiting), SerieReceptionForm (live rules,
                 one transaction, labels), DepositForm (bon de réception at the
                 counter), reception-widgets, ReceptionForm (legacy per-sample page)

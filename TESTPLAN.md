@@ -734,7 +734,7 @@ du code.
 - [x] **Espace comptabilité** : le bloc « prochaines fonctionnalités »
       annonçait encore les trois écrans de la phase 4, livrés depuis.
 
-## Checkpoint L — Phase 9, chantier 1 : circuit série (L1–L3 verified 2026-09-13 on the dev server at 1440×900 and on the VPS after deploy; L4–L6 planned)
+## Checkpoint L — Phase 9, chantier 1 : circuit série (L1–L4 verified 2026-09-13 on the dev server at 1440×900 and on the VPS after deploy; L5–L6 planned)
 
 Tick only what was seen in the browser. One sub-checkpoint per slice of
 `WORKFLOW.md`.
@@ -768,10 +768,13 @@ Tick only what was seen in the browser. One sub-checkpoint per slice of
 - [x] `/admin/documents` lists the six documents with their cartouche (four seeded from the paper forms); editing « Rapport d'analyse » and saving answers « Cartouches enregistrés » and the API returns the new values; the bench sheet now prints « Réf. PG06/EN01 · version G ».
 - [x] **Production (185.217.126.53, after deploy):** `recep1` enters a deposit through the real form (Pastilla au poulet, 300 g, 5 °C, avance 200 DH — chèque) → **série 17/26 · N° de contrôle 15/26**, bon PDF and labels answer 200; `admin` sees the six cartouches at `/admin/documents` and the protocol of série 16/26 renders.
 
-### L4 — Rien n'est tapé deux fois (slice 4)
-- [ ] A second visit to the same site proposes the same places and products; a quasi-duplicate is refused with the existing label.
-- [ ] A profile pre-ticks the parameters of a nature; the client's contractual profile is proposed first.
-- [ ] Sites imported from the old database appear in the cascade.
+### L4 — Rien n'est tapé deux fois (slice 4) — dev server 2026-09-13, `admin` / `pre1`
+- [x] A second visit to the same client proposes its places and products (datalists fed by `/api/clients/[id]/memory`: « Poste salades », « Chef cuisine », « Chambre froide », « Salade Gaillardière », « Tajine de poulet »…); typing « poste salades » shows « Déjà connu sous « Poste salades » — cette orthographe sera utilisée »; the saved line takes the memory's spelling of the product (série 13/26 via the API: « salade gaillardière » → « Salade Gaillardière »); places are memorised per site, a client-wide place being reused when the site has none of that name.
+- [x] `/admin/profils`: « Micro aliments standard » (n = 5, Coliformes totaux + E. coli) created for Microbiologie des aliments; on the visit form the chip « Micro aliments standard · n = 5 » ticks both analyses and sets n = 5 in one tap. Client-specific profiles are listed first by the API (`clientId` desc) — not exercised with a contractual client yet.
+- [x] Sites: « Cuisine centrale » added on the client fiche (« Sites de prélèvement » card, gestionnaire / admin) and proposed in the visit's client → site cascade; the série records it.
+- [x] « Prélèvement effectué par » on the visit: Service vétérinaire + name → the série carries samplerKind SERVICE_VETERINAIRE, the name and cadre OFFICIEL.
+- [ ] Sites imported from the old database — deferred to the reprise (chantier 6): the legacy sites hang off legacy clients, which are imported together at go-live.
+- [x] **Production (185.217.126.53, after deploy):** `admin` creates « Micro aliments standard » (n = 5) and the site « Cuisine centrale » (API 201, listed at `/admin/profils`); `pre1`'s « Nouvelle visite » shows the site in the cascade, the profile chip and the client's memory (« Pastilla au poulet », « Tajine de poulet », « Cuisine chaude »…).
 
 ### L5 — Corrections (slice 5)
 - [ ] « Corriger la fiche » edits lot / DLC / place with a before-after audit line; refused once approved.

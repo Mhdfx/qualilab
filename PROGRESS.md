@@ -17,10 +17,13 @@ with the seven acceptance rules computed live, `POST /api/series/[id]/reception`
 in one transaction, coded non-conformity motifs, thresholds in
 `/admin/reglages`, labels PDF with Code128). **Slice 3 shipped 2026-09-13** (« Nouveau dépôt » numbered and received in one
 transaction with the rules, protocole / bon PDFs with the cartouche and page
-numbers, `/admin/documents`). **Next: slice 4** — analysis profiles per
-nature / per client, `ClientPlace` / `ClientProduct` pickers with quasi-
-duplicate refusal, sampler kind on the visit, sites imported from the old
-database. Then 5–6.
+numbers, `/admin/documents`). **Slice 4 shipped 2026-09-13** (profiles in one tap, client memory with
+« déjà connu sous » canonical spelling, sampler kind on the visit, sites on
+the client fiche — the legacy sites import waits for the client import of
+chantier 6). **Next: slice 5** — the verbs « Corriger la fiche » and
+« Annuler » (coded motif, `ANNULE` out of every queue), technician and
+validation lists grouped by série, photo of the signed protocol from the
+phone (exists), old routes removed. Then 6 (recette).
 
 Why (2026-09-13): the client's feedback (« multiple things are missing, above
 all in the prélèvement ») was objectified against the old Firebird database
@@ -201,7 +204,7 @@ Spec: `WORKFLOW.md` (chantier 1). Summary and the five other chantiers:
 - [x] Slice 1 (2026-09-13, commits d5069cb + ba9e688) — schema `Serie` / `Site` / `AnalysisNature` / `AnalysisProfile` / `ClientPlace` / `ClientProduct` / `Counter` / `DocumentReference`, `Sample` additions, `ANNULE`; backfill one série per existing sample; 16 natures seeded with `lineKind` + `legacyType`; `src/lib/counters.ts` (NNNN/AA, NNNNN/AA, `SELECT … FOR UPDATE`) + tests; `POST /api/series` (transaction série + lines); « Nouvelle visite » multi-line phone first; « Mes visites »; old `POST /api/samples` creates a one-line série
 - [x] Slice 2 (2026-09-13) — reception queue by série; `POST /api/series/[id]/reception` (one transaction: N° de contrôle per line, temperatures, conformity + coded motif, technician by family); `src/lib/reception-rules.ts` + tests; labels PDF (Code128, one per unit)
 - [x] Slice 3 (2026-09-13) — « Nouveau dépôt » (kind DEPOT, samplerKind CLIENT, samples born RECU); protocol and bon PDFs with the quality cartouche; `DocumentReference` admin
-- [ ] Slice 4 — analysis profiles per nature / per client; `ClientPlace` / `ClientProduct` pickers with quasi-duplicate refusal; sampler kind (Qualilab / client / service vétérinaire); sites imported from the old database
+- [x] Slice 4 (2026-09-13) — analysis profiles per nature / per client; `ClientPlace` / `ClientProduct` pickers with quasi-duplicate refusal; sampler kind (Qualilab / client / service vétérinaire); sites imported from the old database
 - [ ] Slice 5 — verbs « Corriger la fiche » (`PATCH /api/samples/[id]/intake`) and « Annuler » (`ANNULE`, coded motif); technician and validation lists grouped by série; `unitCount` + unit letters on labels; photo of the signed protocol; old routes removed
 - [ ] Slice 6 — recette with the lab on real visits; fixes; docs; demo data reseeded on the VPS; sign-off in TESTPLAN L + HANDOFF
 
@@ -211,6 +214,18 @@ portail, bascule 4 w) — planned in `PLAN.md`, opened one at a time after
 chantier 1 is signed off.
 
 ## Session Log
+
+- **2026-09-13 · Claude Code** · **Phase 9 · chantier 1 · slice 4 shipped.**
+  `profile-input.ts` / `site-input.ts` (pure, tested); `/api/profiles`
+  (+ `[id]`), `/api/clients/[id]/sites` (+ `[siteId]`),
+  `/api/clients/[id]/memory`; `ProfilesManager` at `/admin/profils`,
+  `SitesManager` on the client fiche; `LineEditor` shows the nature's
+  profiles as chips (one tap = analyses + n) and the « déjà connu sous »
+  hint; `createSerie` stores the memory's canonical spelling of a place or
+  product; the visit form carries « prélèvement effectué par » (cadre
+  derived). Seed: two generic profiles. Legacy sites import deferred to the
+  reprise. Browser-verified on the dev server (série 12/26) and on the VPS;
+  TESTPLAN L4.
 
 - **2026-09-13 · Claude Code** · **Phase 9 · chantier 1 · slice 3 shipped.**
   `DepositForm` (`/reception/nouveau-depot`): the bon de réception at the

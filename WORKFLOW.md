@@ -295,7 +295,10 @@ opens a non-conformity is the existing `blockNonConformAtReception` switch
 | RECEPTIONNISTE, ADMIN | Annuler | dialog | `POST /api/samples/[id]/cancel` |
 | TECHNICIEN, VALIDATEUR | lists grouped by série | `/technicien`, `/validation` | existing routes, `groupBy serie` |
 | ADMIN | Cartouches (Réf / version / dates) | `/admin/documents` | `GET/PUT /api/admin/documents`, audited |
-| ADMIN | Natures, profils, sites, lieux, produits, compteurs | `/admin/...` | CRUD, audited (slices 4–5) |
+| ADMIN | Profils d'analyses (per nature, optionally per client) | `/admin/profils` | `GET/POST /api/profiles`, `PATCH /api/profiles/[id]`, audited |
+| GESTIONNAIRE, ADMIN | Sites of a client | client fiche `/commercial/[id]` | `GET/POST /api/clients/[id]/sites`, `PATCH …/sites/[siteId]`, audited |
+| forms | Client memory (places per site, products) | datalists + « déjà connu sous » hint | `GET /api/clients/[id]/memory?siteId=` |
+| ADMIN | Natures, lieux, produits, compteurs | `/admin/...` | later (chantier 2 / 6) |
 
 Old routes (`POST /api/samples`, `POST /api/samples/[id]/reception`) keep
 working during slices 1–2 by creating a one-line série implicitly; they are
@@ -334,7 +337,7 @@ removed in slice 6.
 | 1 | 1–2 | Schema + backfill; natures seeded; counters; `POST /api/series`; « Nouvelle visite » multi-line, phone first; « Mes visites » | A real visit of 6 mixed lines entered once on a phone; every field of the protocol has a home; 0 regression on the existing circuit; TESTPLAN L1 |
 | 2 | 3 | Grouped reception, rules engine, temperatures, N° de contrôle NNNNN/AA, labels PDF with barcodes | **Shipped 2026-09-13** — a série received in one transaction; a failing rule shows its message; labels print with letters; TESTPLAN L2 |
 | 3 | 4 | « Nouveau dépôt »; protocol and bon PDFs with the cartouche; `DocumentReference` admin | **Shipped 2026-09-13** — a walk-in deposit numbered at once; both PDFs match the paper layout; TESTPLAN L3 |
-| 4 | 5 | Profiles; `ClientPlace` / `ClientProduct` pickers with quasi-duplicate refusal; sampler kind; sites imported from the old database | No field typed twice on a second visit to the same site; TESTPLAN L4 |
+| 4 | 5 | Profiles; `ClientPlace` / `ClientProduct` pickers with quasi-duplicate refusal; sampler kind; sites imported from the old database | **Shipped 2026-09-13** (sites created on the client fiche; the legacy import waits for the client import of chantier 6) — no field typed twice on a second visit to the same site; TESTPLAN L4 |
 | 5 | 6 | The verbs Corriger / Annuler; lists grouped by série for technician and validation; `unitCount`; photo of the signed sheet; old routes removed | An intake error fixed with a trace; a cancelled sample leaves every queue; TESTPLAN L5 |
 | 6 | 7 | Recette with the lab on real visits; fixes; docs; demo data reseeded on the VPS | Sign-off of chantier 1 recorded in TESTPLAN and HANDOFF |
 
