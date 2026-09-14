@@ -74,6 +74,32 @@ export function kindsFor(nature: NatureOption | undefined): LineKind[] {
   return [nature.defaultLineKind];
 }
 
+/** The nature a line's type calls for (WORKFLOW.md §13): the paper's
+ * « Surface prélevée » column exists on every line, so surfaces and hands
+ * go to Microbiologie des surfaces, water to eaux, air to air, food to
+ * aliments — unless the current nature already fits the type. */
+const NATURE_FOR_KIND: Record<LineKind, string> = {
+  ALIMENT: "MICRO_ALIMENTS",
+  SURFACE: "MICRO_SURFACES",
+  MAINS: "MICRO_SURFACES",
+  EAU: "MICRO_EAUX",
+  AIR: "MICRO_AIR",
+  AUTRE: "",
+};
+
+export function natureForKind(
+  natures: NatureOption[],
+  kind: LineKind,
+  current?: NatureOption
+): NatureOption | undefined {
+  if (current && kindsFor(current).includes(kind)) return current;
+  return (
+    natures.find((n) => n.code === NATURE_FOR_KIND[kind]) ??
+    natures.find((n) => n.defaultLineKind === kind) ??
+    current
+  );
+}
+
 export function emptyLine(nature: NatureOption | undefined, previous?: LineDraft): LineDraft {
   const kind = nature?.defaultLineKind ?? "ALIMENT";
   return {

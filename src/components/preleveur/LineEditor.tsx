@@ -5,8 +5,8 @@ import type { LineKind } from "@/generated/prisma/enums";
 import { HANDS_STATE_LABELS, LINE_KIND_LABELS, QUANTITY_UNIT_LABELS } from "@/lib/labels";
 import { Card } from "@/components/ui/Card";
 import { normalizeLabel } from "@/lib/serie-input";
+import { MAX_UNITS } from "@/lib/series";
 import {
-  kindsFor,
   type LineDraft,
   type NatureOption,
   type ParameterOption,
@@ -22,6 +22,8 @@ type LineEditorProps = {
   canRemove: boolean;
   onChange: (patch: Partial<LineDraft>) => void;
   onNatureChange: (natureId: string) => void;
+  /** The type comes first; the form derives the nature from it (WORKFLOW.md §13). */
+  onKindChange?: (kind: LineKind) => void;
   onDuplicate: () => void;
   onRemove: () => void;
   /** Datalist suggestions from this client's memory. */
@@ -32,6 +34,7 @@ type LineEditorProps = {
 };
 
 const UNIT_CHOICES = [1, 3, 5, 9];
+const KINDS: LineKind[] = ["ALIMENT", "SURFACE", "MAINS", "EAU", "AIR", "AUTRE"];
 
 /** The spelling the memory already knows for what was typed, when it differs. */
 function knownTwin(value: string, suggestions: string[]) {
@@ -78,6 +81,7 @@ export function LineEditor({
   canRemove,
   onChange,
   onNatureChange,
+  onKindChange,
   onDuplicate,
   onRemove,
   placeSuggestions,
@@ -85,7 +89,6 @@ export function LineEditor({
   profiles = [],
 }: LineEditorProps) {
   const nature = natures.find((n) => n.id === line.natureId);
-  const kinds = kindsFor(nature);
   const kind: LineKind = line.lineKind;
   const listId = `places-${line.key}`;
   const productListId = `products-${line.key}`;
@@ -150,7 +153,28 @@ export function LineEditor({
       </div>
 
       <div className="space-y-4">
-        <Field label="Nature d'analyse" required>
+        <div>
+          <p className="mb-1.5 text-sm font-semibold text-slate-700">Type de prélèvement</p>
+          <div className="flex flex-wrap gap-2">
+            {KINDS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => (onKindChange ? onKindChange(k) : onChange({ lineKind: k }))}
+                aria-pressed={kind === k}
+                className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition ${
+                  kind === k
+                    ? "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20"
+                    : "border-slate-200 text-slate-600 hover:border-slate-300"
+                }`}
+              >
+                {LINE_KIND_LABELS[k]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <Field label="Nature d'analyse" required hint="Déduite du type ; modifiable.">
           <select
             value={line.natureId}
             onChange={(e) => onNatureChange(e.target.value)}
@@ -176,29 +200,6 @@ export function LineEditor({
             )}
           </select>
         </Field>
-
-        {kinds.length > 1 && (
-          <div>
-            <p className="mb-1.5 text-sm font-semibold text-slate-700">Type de prélèvement</p>
-            <div className="flex flex-wrap gap-2">
-              {kinds.map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => onChange({ lineKind: k })}
-                  aria-pressed={kind === k}
-                  className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition ${
-                    kind === k
-                      ? "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20"
-                      : "border-slate-200 text-slate-600 hover:border-slate-300"
-                  }`}
-                >
-                  {LINE_KIND_LABELS[k]}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
 
         {kind === "SURFACE" && (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -413,6 +414,24 @@ export function LineEditor({
                 {n}
               </button>
             ))}
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <label htmlFor={`n-${line.key}`} className="text-xs text-slate-500">
+              ou saisir (1 à {MAX_UNITS}) :
+            </label>
+            <input
+              id={`n-${line.key}`}
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={MAX_UNITS}
+              value={line.unitCount}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (Number.isInteger(n) && n >= 1 && n <= MAX_UNITS) onChange({ unitCount: n });
+              }}
+              className="input-field w-24 px-3"
+            />
           </div>
           <p className="mt-1 text-xs text-slate-500">5 pour la plupart des aliments, 9 pour l&apos;histamine.</p>
         </div>

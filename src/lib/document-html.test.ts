@@ -13,6 +13,9 @@ const base: SerieDocumentData = {
   interlocutor: "Karim",
   samplerKind: "QUALILAB",
   samplerName: "Aymane Labi",
+  samplerFunction: "Préleveur",
+  analysesMicro: true,
+  analysesChimie: false,
   receivedByName: "Salma Idrissi",
   startedAt: new Date("2026-09-03T12:00:00"),
   endedAt: new Date("2026-09-03T12:30:00"),
@@ -97,7 +100,9 @@ describe("buildProtocolHtml — PG04/EN01", () => {
 
   it("never carries a N° de contrôle and keeps the two analysis columns", () => {
     expect(html).not.toContain("N° de contrôle");
-    expect(html).toContain("Analyses microbiologiques");
+    expect(html).toContain('<span class="box checked"></span>Analyses microbiologiques');
+    expect(html).toContain('<span class="box"></span>Analyses physico-chimiques');
+    expect(html).toContain("Fonction : Préleveur");
     expect(html).toContain("Coliformes totaux, E. coli");
     expect(html).toContain("Signature et cachet de l'interlocuteur");
   });

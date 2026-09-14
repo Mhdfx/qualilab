@@ -8,6 +8,7 @@ import type {
   SamplerKind,
   SerieKind,
 } from "@/generated/prisma/enums";
+import { MAX_UNITS } from "./series";
 
 /**
  * Validating a série (visite or dépôt) and its lines — pure, shared by the
@@ -79,6 +80,8 @@ export type CleanSerie = {
   siteId: string | null;
   interlocutor: string | null;
   samplerKind: SamplerKind;
+  /** The Qualilab préleveur the visit is attributed to; null = the actor. */
+  samplerUserId: string | null;
   samplerName: string | null;
   cadre: Cadre;
   clientReference: string | null;
@@ -88,6 +91,9 @@ export type CleanSerie = {
   coolerTemperature: number | null;
   advanceAmount: number | null;
   advanceMode: PaymentMode | null;
+  /** « Analyses à effectuer » boxes; null = derive from the lines' natures. */
+  analysesMicro: boolean | null;
+  analysesChimie: boolean | null;
   notes: string | null;
   lines: CleanLine[];
 };
@@ -217,8 +223,8 @@ export function validateLine(
 
   const unitCountRaw = numberOrNull(input.unitCount);
   const unitCount = unitCountRaw === null ? 1 : unitCountRaw;
-  if (unitCount === "invalid" || !Number.isInteger(unitCount) || unitCount < 1 || unitCount > 26) {
-    return fail("Le nombre d'unités doit être un entier entre 1 et 26.");
+  if (unitCount === "invalid" || !Number.isInteger(unitCount) || unitCount < 1 || unitCount > MAX_UNITS) {
+    return fail(`Le nombre d'unités doit être un entier entre 1 et ${MAX_UNITS}.`);
   }
 
   const ids = Array.isArray(input.parameterIds) ? input.parameterIds : [];
@@ -298,6 +304,9 @@ export function validateSerie(
   if ((samplerKind === "SERVICE_VETERINAIRE" || samplerKind === "AUTRE") && !samplerName) {
     return fail("Indiquez qui a effectué le prélèvement.");
   }
+  const samplerUserId = samplerKind === "QUALILAB" ? text(input.samplerUserId) || null : null;
+  const analysesMicro = typeof input.analysesMicro === "boolean" ? input.analysesMicro : null;
+  const analysesChimie = typeof input.analysesChimie === "boolean" ? input.analysesChimie : null;
 
   // The cadre is derived from who samples; the réception may override it later.
   const cadre: Cadre =
@@ -314,6 +323,8 @@ export function validateSerie(
   const arrivedAt = dateOrNull(input.arrivedAt);
   if (endedAt === "invalid") return fail("L'heure de fin n'est pas valide.");
   if (arrivedAt === "invalid") return fail("L'heure d'arrivée n'est pas valide.");
+  if (endedAt && endedAt.getTime() > now + 5 * 60 * 1000) return fail("L'heure de fin est dans le futur.");
+  if (arrivedAt && arrivedAt.getTime() > now + 5 * 60 * 1000) return fail("L'heure d'arrivée est dans le futur.");
   if (endedAt && endedAt < startedAt) return fail("L'heure de fin précède le début du prélèvement.");
   if (arrivedAt && endedAt && arrivedAt < endedAt) return fail("L'arrivée au laboratoire précède la fin du prélèvement.");
   if (arrivedAt && !endedAt && arrivedAt < startedAt) return fail("L'arrivée au laboratoire précède le prélèvement.");
@@ -364,6 +375,7 @@ export function validateSerie(
       siteId,
       interlocutor: text(input.interlocutor) || null,
       samplerKind,
+      samplerUserId,
       samplerName,
       cadre,
       clientReference: text(input.clientReference) || null,
@@ -373,6 +385,8 @@ export function validateSerie(
       coolerTemperature: coolerTemperature as number | null,
       advanceAmount,
       advanceMode,
+      analysesMicro,
+      analysesChimie,
       notes: text(input.notes, 2000) || null,
       lines,
     },

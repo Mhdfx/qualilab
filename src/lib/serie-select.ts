@@ -55,6 +55,8 @@ const SERIE_COMMON = {
   endedAt: true,
   arrivedAt: true,
   coolerTemperature: true,
+  analysesMicro: true,
+  analysesChimie: true,
   notes: true,
   createdAt: true,
   createdBy: { select: { id: true, name: true } },

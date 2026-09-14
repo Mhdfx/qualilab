@@ -6,6 +6,7 @@ import { getCompany } from "@/lib/company-server";
 import { getDocumentReference } from "@/lib/document-reference";
 import { getLabSettings } from "@/lib/lab-settings";
 import { HANDS_STATE_LABELS } from "@/lib/labels";
+import { ROLE_LABELS, type Role } from "@/lib/roles";
 import {
   buildBonHtml,
   buildProtocolHtml,
@@ -53,11 +54,13 @@ export async function GET(
       coolerTemperature: true,
       advanceAmount: true,
       advanceMode: true,
+      analysesMicro: true,
+      analysesChimie: true,
       notes: true,
       createdById: true,
       client: { select: { name: true, address: true, phone: true } },
       site: { select: { name: true } },
-      samplerUser: { select: { name: true } },
+      samplerUser: { select: { name: true, role: true } },
       receivedBy: { select: { name: true } },
       samples: {
         select: {
@@ -149,6 +152,12 @@ export async function GET(
     interlocutor: serie.interlocutor,
     samplerKind: serie.samplerKind,
     samplerName: serie.samplerKind === "QUALILAB" ? serie.samplerUser?.name ?? null : serie.samplerName,
+    samplerFunction:
+      serie.samplerKind === "QUALILAB" && serie.samplerUser
+        ? ROLE_LABELS[serie.samplerUser.role as Role] ?? serie.samplerUser.role
+        : null,
+    analysesMicro: serie.analysesMicro,
+    analysesChimie: serie.analysesChimie,
     receivedByName: serie.receivedBy?.name ?? null,
     startedAt: serie.startedAt,
     endedAt: serie.endedAt,

@@ -2,9 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, CheckCircle2, ClipboardList, Clock, MapPin, Plus, User } from "lucide-react";
-import type { SampleType, SamplerKind } from "@/generated/prisma/enums";
-import { LINE_KIND_LABELS, formatDateTime } from "@/lib/labels";
+import {
+  Building2,
+  CheckCircle2,
+  ClipboardList,
+  Clock,
+  FlaskConical,
+  Hash,
+  MapPin,
+  Plus,
+  Thermometer,
+  User,
+} from "lucide-react";
+import type { LineKind, SampleType, SamplerKind } from "@/generated/prisma/enums";
+import { CADRE_LABELS, LINE_KIND_LABELS, formatDateTime } from "@/lib/labels";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StepIndicator } from "@/components/ui/StepIndicator";
@@ -13,10 +24,10 @@ import { LineEditor } from "./LineEditor";
 import {
   emptyLine,
   fromLocalInput,
-  kindsFor,
   lineDesignation,
-  toLocalInput,
   mergeSuggestions,
+  natureForKind,
+  toLocalInput,
   type ClientMemory,
   type ClientOption,
   type LineDraft,
@@ -36,19 +47,25 @@ type CreatedSerie = {
   samples: { code: string; lineNumber: number; lineKind: LineDraft["lineKind"]; produit: string | null; surfaceLabel: string | null; personName: string | null; lieu: string }[];
 };
 
+type Preleveur = { id: string; name: string };
+
 /**
- * The protocole de prélèvement, as the préleveur fills it on site: a header
- * once, then one line per sample — up to N lines of different natures — and
- * a recap before the single save. Everything the paper form carries has a
- * field here; nothing has to be typed twice.
+ * The protocole de prélèvement, as the préleveur fills it on site — laid
+ * out like the paper sheet (WORKFLOW.md §13): the header in the paper's
+ * order, one line per sample with the line's type first, the two
+ * « Analyses à effectuer » boxes at the foot, a recap before the single
+ * save. Everything the paper carries has a field here; what is not known
+ * on site (end, arrival, temperature) stays optional and can be completed
+ * on the visit page.
  */
-export function VisitForm() {
+export function VisitForm({ me }: { me: Preleveur }) {
   const router = useRouter();
   const isMounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [natures, setNatures] = useState<NatureOption[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
+  const [preleveurs, setPreleveurs] = useState<Preleveur[]>([me]);
   const [parametersByType, setParametersByType] = useState<Partial<Record<SampleType, ParameterOption[]>>>({});
   const [loadingTypes, setLoadingTypes] = useState<Set<SampleType>>(new Set());
   const requestedTypes = useRef<Set<SampleType>>(new Set());
@@ -57,15 +74,24 @@ export function VisitForm() {
   const [errorLine, setErrorLine] = useState<number | null>(null);
   const [created, setCreated] = useState<CreatedSerie | null>(null);
 
+  // ---- the header, in the paper's order --------------------------------------
   const [clientId, setClientId] = useState("");
   const [siteId, setSiteId] = useState("");
+  const [newSiteName, setNewSiteName] = useState<string | null>(null);
+  const [creatingSite, setCreatingSite] = useState(false);
   const [interlocutor, setInterlocutor] = useState("");
-  const [clientReference, setClientReference] = useState("");
   const [startedAt, setStartedAt] = useState(() => toLocalInput(new Date()));
+  const [endedAt, setEndedAt] = useState("");
+  const [samplerKind, setSamplerKind] = useState<SamplerKind>("QUALILAB");
+  const [samplerUserId, setSamplerUserId] = useState(me.id);
+  const [samplerName, setSamplerName] = useState("");
+  const [arrivedAt, setArrivedAt] = useState("");
+  const [cooler, setCooler] = useState("");
+  const [clientReference, setClientReference] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([]);
-  const [samplerKind, setSamplerKind] = useState<SamplerKind>("QUALILAB");
-  const [samplerName, setSamplerName] = useState("");
+  // The two boxes at the foot: null = follow the lines, boolean = the préleveur's own tick.
+  const [analysesChoice, setAnalysesChoice] = useState<{ micro: boolean | null; chimie: boolean | null }>({ micro: null, chimie: null });
   const [profiles, setProfiles] = useState<ProfileOption[]>([]);
   const [memory, setMemory] = useState<ClientMemory>({ places: [], products: [] });
 
@@ -91,9 +117,11 @@ export function VisitForm() {
     Promise.all([
       fetch("/api/natures").then((r) => r.json()),
       fetch("/api/clients").then((r) => r.json()),
-    ]).then(([n, c]: [NatureOption[], ClientOption[]]) => {
+      fetch("/api/preleveurs").then((r) => r.json()),
+    ]).then(([n, c, p]: [NatureOption[], ClientOption[], Preleveur[]]) => {
       setNatures(n);
       setClients(c);
+      if (Array.isArray(p) && p.length > 0) setPreleveurs(p);
       setLines((prev) => (prev.length ? prev : [emptyLine(n[0])]));
       ensureParameters(n[0]?.legacyType);
     });
@@ -132,6 +160,7 @@ export function VisitForm() {
   const selectedClient = clients.find((c) => c.id === clientId);
   const sites = selectedClient?.sites ?? [];
   const selectedSite = sites.find((s) => s.id === siteId);
+  const cadre = samplerKind === "SERVICE_VETERINAIRE" ? "OFFICIEL" : "AUTOCONTROLE";
 
   const placeSuggestions = useMemo(
     () => mergeSuggestions(memory.places, lines.map((l) => l.lieu)),
@@ -141,6 +170,14 @@ export function VisitForm() {
     () => mergeSuggestions(memory.products, lines.map((l) => l.produit)),
     [memory.products, lines]
   );
+
+  // The boxes follow the lines' natures until the préleveur ticks them by hand.
+  const derived = useMemo(() => {
+    const families = new Set(lines.map((l) => natures.find((n) => n.id === l.natureId)?.family));
+    return { micro: families.has("MICRO"), chimie: families.has("CHIMIE") };
+  }, [lines, natures]);
+  const analysesMicro = analysesChoice.micro ?? derived.micro;
+  const analysesChimie = analysesChoice.chimie ?? derived.chimie;
 
   function updateLine(key: string, patch: Partial<LineDraft>) {
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -152,14 +189,33 @@ export function VisitForm() {
     setLines((prev) =>
       prev.map((l) => {
         if (l.key !== key) return l;
-        const kinds = kindsFor(nature);
+        const previous = natures.find((n) => n.id === l.natureId);
         return {
           ...l,
           natureId,
-          lineKind: kinds.includes(l.lineKind) ? l.lineKind : (nature?.defaultLineKind ?? "ALIMENT"),
-          // The parameter list depends on the nature: start again.
-          parameterIds: [],
-          quantityUnit: nature?.defaultLineKind === "EAU" ? "L" : l.quantityUnit,
+          // The parameter list depends on the domain: start again when it changes.
+          parameterIds: previous?.legacyType === nature?.legacyType ? l.parameterIds : [],
+        };
+      })
+    );
+  }
+
+  /** The line's type comes first; the nature follows it (still changeable). */
+  function changeKind(key: string, kind: LineKind) {
+    const line = lines.find((l) => l.key === key);
+    const current = natures.find((n) => n.id === line?.natureId);
+    const target = natureForKind(natures, kind, current);
+    ensureParameters(target?.legacyType);
+    setLines((prev) =>
+      prev.map((l) => {
+        if (l.key !== key) return l;
+        const sameDomain = current?.legacyType === target?.legacyType;
+        return {
+          ...l,
+          lineKind: kind,
+          natureId: target?.id ?? l.natureId,
+          parameterIds: sameDomain ? l.parameterIds : [],
+          quantityUnit: kind === "EAU" ? "L" : l.quantityUnit === "L" ? "UNITE" : l.quantityUnit,
         };
       })
     );
@@ -185,10 +241,43 @@ export function VisitForm() {
     setLines((prev) => (prev.length > 1 ? prev.filter((l) => l.key !== key) : prev));
   }
 
+  async function createSite() {
+    const name = (newSiteName ?? "").trim();
+    if (!clientId || !name) return setStepError("Indiquez le nom du site.");
+    setCreatingSite(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/clients/${clientId}/sites`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) return setStepError(data.error ?? "Impossible de créer le site.");
+      setClients((prev) =>
+        prev.map((c) => (c.id === clientId ? { ...c, sites: [...(c.sites ?? []), { id: data.id, name: data.name }] } : c))
+      );
+      setSiteId(data.id);
+      setNewSiteName(null);
+    } catch {
+      setStepError("Une erreur réseau est survenue. Réessayez.");
+    } finally {
+      setCreatingSite(false);
+    }
+  }
+
+  function setStepError(message: string, line: number | null = null) {
+    setError(message);
+    setErrorLine(line);
+    return false;
+  }
+
   function validateStep1() {
     if (!clientId) return setStepError("Choisissez le client.");
-    if (sites.length > 0 && !siteId) return setStepError("Choisissez le site de prélèvement.");
+    if (samplerKind === "QUALILAB" && !samplerUserId) return setStepError("Indiquez qui a effectué le prélèvement.");
     if (samplerKind !== "QUALILAB" && !samplerName.trim()) return setStepError("Indiquez qui a effectué le prélèvement.");
+    if (endedAt && startedAt && new Date(endedAt) < new Date(startedAt)) return setStepError("L'heure de fin précède le début du prélèvement.");
+    if (arrivedAt && endedAt && new Date(arrivedAt) < new Date(endedAt)) return setStepError("L'arrivée au laboratoire précède la fin du prélèvement.");
     for (const [i, line] of lines.entries()) {
       const n = i + 1;
       if (!line.natureId) return setStepError("Choisissez la nature d'analyse.", n);
@@ -201,12 +290,6 @@ export function VisitForm() {
     setError("");
     setErrorLine(null);
     return true;
-  }
-
-  function setStepError(message: string, line: number | null = null) {
-    setError(message);
-    setErrorLine(line);
-    return false;
   }
 
   async function handleConfirm() {
@@ -222,8 +305,14 @@ export function VisitForm() {
           interlocutor,
           clientReference,
           samplerKind,
+          samplerUserId: samplerKind === "QUALILAB" ? samplerUserId : undefined,
           samplerName: samplerKind === "QUALILAB" ? undefined : samplerName,
           startedAt: fromLocalInput(startedAt) ?? undefined,
+          endedAt: fromLocalInput(endedAt) ?? undefined,
+          arrivedAt: fromLocalInput(arrivedAt) ?? undefined,
+          coolerTemperature: cooler || undefined,
+          analysesMicro,
+          analysesChimie,
           notes,
           lines: lines.map((line) => ({
             ...Object.fromEntries(Object.entries(line).filter(([k]) => k !== "key")),
@@ -246,6 +335,11 @@ export function VisitForm() {
       setLoading(false);
     }
   }
+
+  const samplerLabel =
+    samplerKind === "QUALILAB"
+      ? preleveurs.find((p) => p.id === samplerUserId)?.name ?? me.name
+      : `${samplerKind === "SERVICE_VETERINAIRE" ? "Service vétérinaire" : "Autre"} — ${samplerName}`;
 
   if (step === 3 && created) {
     return (
@@ -280,7 +374,7 @@ export function VisitForm() {
               Retour au tableau de bord
             </SecondaryButton>
             <PrimaryButton type="button" onClick={() => router.push(`/preleveur/visites/${created.id}`)} className="min-h-[48px] flex-1">
-              Compléter l&apos;arrivée au laboratoire
+              Ouvrir la visite (protocole PDF, arrivée)
             </PrimaryButton>
           </div>
         </Card>
@@ -304,10 +398,16 @@ export function VisitForm() {
       {step === 1 && (
         <div className="space-y-5">
           <Card className="p-4 sm:p-6">
-            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">La visite</h2>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">La visite</h2>
+              <div className="inline-flex items-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-1.5 text-xs text-slate-500">
+                <Hash className="h-3.5 w-3.5" aria-hidden="true" />
+                N° de série : <span className="font-mono font-semibold text-slate-700">attribué à l&apos;enregistrement</span>
+              </div>
+            </div>
             <div className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className={sites.length > 0 ? "" : "sm:col-span-2"}>
+                <div>
                   <label className="section-title mb-2">
                     <Building2 className="h-4 w-4" />
                     Client
@@ -317,6 +417,7 @@ export function VisitForm() {
                     onChange={(e) => {
                       setClientId(e.target.value);
                       setSiteId("");
+                      setNewSiteName(null);
                       setMemory({ places: [], products: [] });
                     }}
                     className="input-field px-4"
@@ -327,20 +428,58 @@ export function VisitForm() {
                     ))}
                   </select>
                 </div>
-                {sites.length > 0 && (
-                  <div>
-                    <label className="section-title mb-2">
-                      <MapPin className="h-4 w-4" />
-                      Site de prélèvement
-                    </label>
-                    <select value={siteId} onChange={(e) => setSiteId(e.target.value)} className="input-field px-4">
-                      <option value="">Sélectionner un site</option>
+                <div>
+                  <label className="section-title mb-2">
+                    <MapPin className="h-4 w-4" />
+                    Site de prélèvement
+                  </label>
+                  {newSiteName === null ? (
+                    <select
+                      value={siteId}
+                      disabled={!clientId}
+                      onChange={(e) => {
+                        if (e.target.value === "__new__") {
+                          setNewSiteName("");
+                        } else {
+                          setSiteId(e.target.value);
+                        }
+                      }}
+                      className="input-field px-4"
+                    >
+                      <option value="">Siège (adresse du client)</option>
                       {sites.map((s) => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
+                      <option value="__new__">+ Nouveau site…</option>
                     </select>
-                  </div>
-                )}
+                  ) : (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newSiteName}
+                        onChange={(e) => setNewSiteName(e.target.value)}
+                        placeholder="Nom du site (ex. : Cuisine centrale)"
+                        className="input-field px-4"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={createSite}
+                        disabled={creatingSite}
+                        className="inline-flex shrink-0 items-center rounded-xl bg-brand px-3 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        {creatingSite ? "…" : "Créer"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewSiteName(null)}
+                        className="inline-flex shrink-0 items-center rounded-xl border border-slate-300 px-3 text-sm text-slate-600"
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -358,9 +497,20 @@ export function VisitForm() {
                   />
                 </div>
                 <div>
+                  <p className="section-title mb-2">
+                    <ClipboardList className="h-4 w-4" />
+                    Cadre
+                  </p>
+                  <div className="input-field flex items-center px-4 text-slate-700">{CADRE_LABELS[cadre]}</div>
+                  <p className="mt-1 text-xs text-slate-500">Déduit de qui prélève ; la réception peut le changer.</p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
                   <label className="section-title mb-2">
                     <Clock className="h-4 w-4" />
-                    Début du prélèvement
+                    Prélevé le … à …
                   </label>
                   {isMounted ? (
                     <input
@@ -372,6 +522,23 @@ export function VisitForm() {
                   ) : (
                     <div className="input-field px-4" aria-hidden="true" />
                   )}
+                </div>
+                <div>
+                  <label className="section-title mb-2">
+                    <Clock className="h-4 w-4" />
+                    Heure de fin
+                  </label>
+                  {isMounted ? (
+                    <input
+                      type="datetime-local"
+                      value={endedAt}
+                      onChange={(e) => setEndedAt(e.target.value)}
+                      className="input-field px-4"
+                    />
+                  ) : (
+                    <div className="input-field px-4" aria-hidden="true" />
+                  )}
+                  <p className="mt-1 text-xs text-slate-500">Facultatif sur place ; complétable ensuite.</p>
                 </div>
               </div>
 
@@ -393,11 +560,25 @@ export function VisitForm() {
                           : "border-slate-200 text-slate-600 hover:border-slate-300"
                       }`}
                     >
-                      {k === "QUALILAB" ? "Moi (Qualilab)" : k === "SERVICE_VETERINAIRE" ? "Service vétérinaire" : "Autre"}
+                      {k === "QUALILAB" ? "Qualilab" : k === "SERVICE_VETERINAIRE" ? "Service vétérinaire" : "Autre"}
                     </button>
                   ))}
                 </div>
-                {samplerKind !== "QUALILAB" && (
+                {samplerKind === "QUALILAB" ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <select
+                      value={samplerUserId}
+                      onChange={(e) => setSamplerUserId(e.target.value)}
+                      aria-label="Préleveur"
+                      className="input-field max-w-xs px-4"
+                    >
+                      {preleveurs.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}{p.id === me.id ? " (moi)" : ""}</option>
+                      ))}
+                    </select>
+                    <span className="text-xs text-slate-500">Fonction : Préleveur</span>
+                  </div>
+                ) : (
                   <input
                     type="text"
                     value={samplerName}
@@ -406,15 +587,46 @@ export function VisitForm() {
                     className="input-field mt-2 px-4"
                   />
                 )}
-                {samplerKind === "SERVICE_VETERINAIRE" && (
-                  <p className="mt-1 text-xs text-slate-500">Cadre : contrôle officiel.</p>
-                )}
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="section-title mb-2">
+                    <Clock className="h-4 w-4" />
+                    Arrivé au laboratoire le … à …
+                  </label>
+                  {isMounted ? (
+                    <input
+                      type="datetime-local"
+                      value={arrivedAt}
+                      onChange={(e) => setArrivedAt(e.target.value)}
+                      className="input-field px-4"
+                    />
+                  ) : (
+                    <div className="input-field px-4" aria-hidden="true" />
+                  )}
+                </div>
+                <div>
+                  <label className="section-title mb-2">
+                    <Thermometer className="h-4 w-4" />
+                    Température à l&apos;arrivée (°C)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={cooler}
+                    onChange={(e) => setCooler(e.target.value)}
+                    placeholder="Ex. : 1"
+                    className="input-field px-4"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Glacière à l&apos;arrivée ; la réception la reprend.</p>
+                </div>
               </div>
 
               <div>
                 <label className="section-title mb-2">
                   <ClipboardList className="h-4 w-4" />
-                  Référence client (bon de commande)
+                  N° de factures / référence client
                 </label>
                 <input
                   type="text"
@@ -441,6 +653,7 @@ export function VisitForm() {
                   canRemove={lines.length > 1}
                   onChange={(patch) => updateLine(line.key, patch)}
                   onNatureChange={(id) => changeNature(line.key, id)}
+                  onKindChange={(kind) => changeKind(line.key, kind)}
                   onDuplicate={() => duplicateLine(line.key)}
                   onRemove={() => removeLine(line.key)}
                   placeSuggestions={placeSuggestions}
@@ -455,6 +668,39 @@ export function VisitForm() {
             <Plus className="h-4 w-4" />
             Ajouter une ligne
           </SecondaryButton>
+
+          <Card className="p-4 sm:p-6">
+            <p className="section-title mb-2">
+              <FlaskConical className="h-4 w-4" />
+              Analyses à effectuer
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {(
+                [
+                  { key: "micro", label: "Analyses microbiologiques", checked: analysesMicro },
+                  { key: "chimie", label: "Analyses physico-chimiques", checked: analysesChimie },
+                ] as const
+              ).map((box) => (
+                <label
+                  key={box.key}
+                  className={`flex min-h-[48px] cursor-pointer items-center gap-3 rounded-xl border px-4 text-sm font-medium transition ${
+                    box.checked ? "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20" : "border-slate-200 text-slate-700"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={box.checked}
+                    onChange={(e) => setAnalysesChoice((c) => ({ ...c, [box.key]: e.target.checked }))}
+                    className="h-4 w-4 accent-brand"
+                  />
+                  {box.label}
+                </label>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Cochées d&apos;après les lignes ; une case cochée sans ligne correspondante est signalée à la réception.
+            </p>
+          </Card>
 
           <Card className="p-4 sm:p-6">
             <label className="mb-2 block text-sm font-semibold text-slate-700">Notes de visite (optionnel)</label>
@@ -490,16 +736,19 @@ export function VisitForm() {
             <h2 className="text-lg font-semibold text-slate-900">Récapitulatif</h2>
             <div className="space-y-3 rounded-xl bg-slate-50 p-5 text-sm ring-1 ring-slate-100">
               <Row label="Client" value={selectedClient?.name ?? "—"} />
-              {selectedSite && <Row label="Site" value={selectedSite.name} />}
-              {samplerKind !== "QUALILAB" && (
-                <Row
-                  label="Prélèvement effectué par"
-                  value={`${samplerKind === "SERVICE_VETERINAIRE" ? "Service vétérinaire" : "Autre"} — ${samplerName}`}
-                />
-              )}
+              <Row label="Site de prélèvement" value={selectedSite?.name ?? "Siège"} />
+              <Row label="Cadre" value={CADRE_LABELS[cadre]} />
               {interlocutor && <Row label="Interlocuteur" value={interlocutor} />}
-              <Row label="Début" value={isMounted && startedAt ? formatDateTime(new Date(startedAt)) : "—"} />
-              {clientReference && <Row label="Référence client" value={clientReference} />}
+              <Row label="Prélevé le" value={isMounted && startedAt ? formatDateTime(new Date(startedAt)) : "—"} />
+              <Row label="Heure de fin" value={isMounted && endedAt ? formatDateTime(new Date(endedAt)) : "—"} />
+              <Row label="Prélèvement effectué par" value={samplerLabel} />
+              <Row label="Arrivée au laboratoire" value={isMounted && arrivedAt ? formatDateTime(new Date(arrivedAt)) : "—"} />
+              <Row label="T° à l'arrivée" value={cooler ? `${cooler} °C` : "—"} />
+              {clientReference && <Row label="N° de factures" value={clientReference} />}
+              <Row
+                label="Analyses à effectuer"
+                value={[analysesMicro ? "microbiologiques" : "", analysesChimie ? "physico-chimiques" : ""].filter(Boolean).join(" · ") || "—"}
+              />
             </div>
             <ul className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-100">
               {lines.map((line, i) => {

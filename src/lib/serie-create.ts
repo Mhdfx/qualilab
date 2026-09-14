@@ -104,18 +104,17 @@ export async function createSerie(
   });
   if (!client || client.archived) throw new SerieCreationError("Client introuvable ou archivé.", 404);
 
+  // « Siège » (no site) is always a valid answer on the paper, whatever the
+  // client's other sites (WORKFLOW.md §13, point 2).
   const siteId = input.siteId;
   if (siteId && !client.sites.some((s) => s.id === siteId)) {
     throw new SerieCreationError("Ce site n'appartient pas à ce client.");
-  }
-  if (!siteId && client.sites.length > 0 && input.kind === "VISITE") {
-    throw new SerieCreationError("Choisissez le site de prélèvement de ce client.");
   }
 
   const natureIds = [...new Set(input.lines.map((l) => l.natureId))];
   const natures = await prisma.analysisNature.findMany({
     where: { id: { in: natureIds }, active: true },
-    select: { id: true, legacyType: true },
+    select: { id: true, legacyType: true, family: true },
   });
   const natureById = new Map(natures.map((n) => [n.id, n]));
   for (const line of input.lines) {
@@ -133,6 +132,27 @@ export async function createSerie(
 
   const isDeposit = input.kind === "DEPOT";
   const blockNonConform = options.blockNonConform === true;
+
+  // « Prélèvement effectué par »: the logged-in account unless the visit is
+  // attributed to a colleague (shared tablet, sheet keyed in later).
+  let samplerUserId: string | null = null;
+  if (input.samplerKind === "QUALILAB") {
+    samplerUserId = input.samplerUserId ?? actor.id;
+    if (samplerUserId !== actor.id) {
+      const preleveur = await prisma.user.findUnique({
+        where: { id: samplerUserId },
+        select: { id: true, role: true, banned: true },
+      });
+      if (!preleveur || preleveur.banned || preleveur.role !== "PRELEVEUR") {
+        throw new SerieCreationError("Préleveur invalide.");
+      }
+    }
+  }
+
+  // The two boxes of the paper: ticked as sent, or derived from the lines.
+  const families = new Set(input.lines.map((l) => natureById.get(l.natureId)!.family));
+  const analysesMicro = input.analysesMicro ?? families.has("MICRO");
+  const analysesChimie = input.analysesChimie ?? families.has("CHIMIE");
 
   // A deposit's lines go straight to a technician (unless held): every one
   // named must exist and be active — one query for all.
@@ -166,7 +186,7 @@ export async function createSerie(
           siteId,
           interlocutor: input.interlocutor,
           samplerKind: input.samplerKind,
-          samplerUserId: input.samplerKind === "QUALILAB" ? actor.id : null,
+          samplerUserId,
           samplerName: input.samplerKind === "QUALILAB" ? null : input.samplerName,
           cadre: input.cadre,
           clientReference: input.clientReference,
@@ -176,6 +196,8 @@ export async function createSerie(
           coolerTemperature: input.coolerTemperature,
           advanceAmount: isDeposit ? input.advanceAmount : null,
           advanceMode: isDeposit ? input.advanceMode : null,
+          analysesMicro,
+          analysesChimie,
           notes: input.notes,
           createdById: actor.id,
           receivedById: isDeposit ? actor.id : null,
@@ -258,6 +280,9 @@ export async function createSerie(
       siteId,
       lines: input.lines.length,
       samplerKind: input.samplerKind,
+      samplerUserId,
+      analysesMicro,
+      analysesChimie,
       ...(isDeposit
         ? {
             nonConform: input.lines.filter((l) => !l.conformity).length,

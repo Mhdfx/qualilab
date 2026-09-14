@@ -107,6 +107,8 @@ export type ReceptionSerieData = {
   endedAt: string | null;
   arrivedAt: string | null;
   coolerTemperature: number | null;
+  analysesMicro: boolean;
+  analysesChimie: boolean;
   notes: string | null;
   receivedAt: string | null;
   samples: ReceptionLineData[];
@@ -254,6 +256,16 @@ export function SerieReceptionForm({
   const [result, setResult] = useState<ReceivedLine[] | null>(null);
 
   const byId = useMemo(() => new Map(serie.samples.map((s) => [s.id, s])), [serie.samples]);
+
+  // A box ticked on the protocol without a line of that family: the lab
+  // has to add the analyses — say so where the série is received.
+  const missingFamilies = useMemo(() => {
+    const families = new Set(serie.samples.filter((s) => s.status !== "ANNULE").map((s) => s.nature.family));
+    const missing: string[] = [];
+    if (serie.analysesMicro && !families.has("MICRO")) missing.push("analyses microbiologiques");
+    if (serie.analysesChimie && !families.has("CHIMIE")) missing.push("analyses physico-chimiques");
+    return missing;
+  }, [serie.samples, serie.analysesMicro, serie.analysesChimie]);
 
   // The cooler's temperature pre-fills every line the réceptionniste has not
   // measured separately — one reading, eight lines.
@@ -581,7 +593,19 @@ export function SerieReceptionForm({
                   <dd className="text-right font-medium text-slate-800">{serie.interlocutor}</dd>
                 </div>
               )}
+              <div className="flex justify-between gap-3">
+                <dt className="text-slate-400">Analyses à effectuer</dt>
+                <dd className="text-right font-medium text-slate-800">
+                  {[serie.analysesMicro ? "micro" : "", serie.analysesChimie ? "physico-chimie" : ""].filter(Boolean).join(" · ") || "—"}
+                </dd>
+              </div>
             </dl>
+            {missingFamilies.length > 0 && (
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Demandé sur le protocole sans ligne correspondante : {missingFamilies.join(" et ")} — à programmer
+                (« Corriger la fiche » sur une ligne, ou une ligne à ajouter par le préleveur).
+              </p>
+            )}
 
             <div className="mt-4">
               <label htmlFor="arrivedAt" className="block text-sm font-medium text-slate-700">

@@ -28,6 +28,8 @@ export type VisitData = {
   endedAt: string | null;
   arrivedAt: string | null;
   coolerTemperature: number | null;
+  analysesMicro: boolean;
+  analysesChimie: boolean;
   notes: string | null;
   status: SerieStatus;
   progress: SerieProgress;
@@ -149,7 +151,12 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
               <Info label="T° à l'arrivée">
                 {visit.coolerTemperature === null ? "—" : `${String(visit.coolerTemperature).replace(".", ",")} °C`}
               </Info>
-              {visit.clientReference && <Info label="Référence client">{visit.clientReference}</Info>}
+              {visit.clientReference && <Info label="N° de factures">{visit.clientReference}</Info>}
+              <Info label="Analyses à effectuer">
+                {[visit.analysesMicro ? "microbiologiques" : "", visit.analysesChimie ? "physico-chimiques" : ""]
+                  .filter(Boolean)
+                  .join(" · ") || "—"}
+              </Info>
             </dl>
             {visit.notes && <p className="mt-3 text-sm text-slate-600">{visit.notes}</p>}
           </Card>

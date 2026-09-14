@@ -68,6 +68,10 @@ export type SerieDocumentData = {
   interlocutor: string | null;
   samplerKind: SamplerKind;
   samplerName: string | null;
+  /** « Fonction » next to « effectué par » — the account's role on a Qualilab visit. */
+  samplerFunction: string | null;
+  analysesMicro: boolean;
+  analysesChimie: boolean;
   receivedByName: string | null;
   startedAt: Date;
   endedAt: Date | null;
@@ -157,6 +161,13 @@ const BASE_CSS = `
   .sig .role { font-size: 7.4pt; text-transform: uppercase; letter-spacing: .5px; color: #7d929c; font-weight: 600; }
   .notes { font-size: 8.4pt; color: #55707d; margin-bottom: 8px; }
   .nc { color: #a5203a; font-weight: 600; }
+  .tick { margin-left: 10px; font-size: 8.6pt; text-transform: none; letter-spacing: 0; color: #1b2a33; font-weight: 600; }
+  /* Boxes drawn in CSS, not glyphs: every PDF renderer shows them the same. */
+  .box { position: relative; display: inline-block; width: 10px; height: 10px; margin-right: 4px;
+    vertical-align: -1px; border: 1.2px solid #1f3a4d; border-radius: 1px; background: #fff; }
+  .box.checked { background: #1f3a4d; }
+  .box.checked::after { content: ""; position: absolute; left: 2.6px; top: 0; width: 3px; height: 6px;
+    border: solid #fff; border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); }
 `;
 
 function quantityText(quantity: number | null, unit: QuantityUnit | null) {
@@ -253,7 +264,9 @@ ${headerHtml(company, "Protocole de prélèvement", data.reference)}
   <div class="f"><span class="k">Prélevé le :</span> <b>${formatDayTime(data.startedAt)}</b>${
     data.endedAt ? ` <span class="small">— fin ${formatDayTime(data.endedAt)}</span>` : ""
   }</div>
-  <div class="f"><span class="k">Prélèvement effectué par :</span> <b>${escapeHtml(samplerText(data))}</b></div>
+  <div class="f"><span class="k">Prélèvement effectué par :</span> <b>${escapeHtml(samplerText(data))}</b>${
+    data.samplerFunction ? ` <span class="small">— Fonction : ${escapeHtml(data.samplerFunction)}</span>` : ""
+  }</div>
   <div class="f"><span class="k">Arrivé au laboratoire :</span> <b>${data.arrivedAt ? formatDayTime(data.arrivedAt) : "……/……/…… à ……h……"}</b></div>
   <div class="f"><span class="k">T° à l'arrivée :</span> <b>${data.coolerTemperature !== null ? temperatureText(data.coolerTemperature) : "…… °C"}</b></div>
 </div>
@@ -266,7 +279,9 @@ ${headerHtml(company, "Protocole de prélèvement", data.reference)}
   <tbody>${rows}${padRows(8 - data.lines.length, 9, data.lines.length + 1)}</tbody>
 </table>
 
-<h2 class="small" style="margin:0 0 4px;text-transform:uppercase;letter-spacing:.5px">Analyses à effectuer</h2>
+<h2 class="small" style="margin:0 0 4px;text-transform:uppercase;letter-spacing:.5px">Analyses à effectuer :
+  <span class="tick"><span class="box${data.analysesMicro ? " checked" : ""}"></span>Analyses microbiologiques</span>
+  <span class="tick"><span class="box${data.analysesChimie ? " checked" : ""}"></span>Analyses physico-chimiques</span></h2>
 ${analysesHtml(data.lines)}
 ${data.notes ? `<p class="notes">${escapeHtml(data.notes)}</p>` : ""}
 

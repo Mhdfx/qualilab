@@ -541,6 +541,10 @@ model Serie {
   /// Deposit at the counter: advance cashed on the bon de réception (Q4).
   advanceAmount      Decimal?     @db.Decimal(12, 2)
   advanceMode        PaymentMode?
+  /// The two boxes at the foot of the paper protocol, « Analyses à effectuer »
+  /// (pre-ticked from the lines' natures, editable — WORKFLOW.md §13).
+  analysesMicro      Boolean      @default(false)
+  analysesChimie     Boolean      @default(false)
   notes              String?      @db.Text
   createdById        String
   createdBy          User         @relation("SerieCreatedBy", fields: [createdById], references: [id])

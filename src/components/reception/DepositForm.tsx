@@ -14,7 +14,7 @@ import {
   User,
   Wallet,
 } from "lucide-react";
-import type { NonConformityReason, PaymentMode, SampleType, SamplerKind } from "@/generated/prisma/enums";
+import type { LineKind, NonConformityReason, PaymentMode, SampleType, SamplerKind } from "@/generated/prisma/enums";
 import {
   LINE_KIND_LABELS,
   NON_CONFORMITY_REASON_LABELS,
@@ -34,6 +34,7 @@ import {
   kindsFor,
   lineDesignation,
   mergeSuggestions,
+  natureForKind,
   toLocalInput,
   type ClientMemory,
   type ClientOption,
@@ -245,6 +246,27 @@ export function DepositForm({
           lineKind,
           parameterIds: [],
           quantityUnit: lineKind === "EAU" ? "L" : l.quantityUnit === "L" ? "G" : l.quantityUnit,
+        };
+      })
+    );
+  }
+
+  /** The line's type comes first; the nature follows it (still changeable). */
+  function changeKind(key: string, kind: LineKind) {
+    const line = lines.find((l) => l.key === key);
+    const current = natures.find((n) => n.id === line?.natureId);
+    const target = natureForKind(natures, kind, current);
+    ensureParameters(target?.legacyType);
+    setLines((prev) =>
+      prev.map((l) => {
+        if (l.key !== key) return l;
+        const sameDomain = current?.legacyType === target?.legacyType;
+        return {
+          ...l,
+          lineKind: kind,
+          natureId: target?.id ?? l.natureId,
+          parameterIds: sameDomain ? l.parameterIds : [],
+          quantityUnit: kind === "EAU" ? "L" : l.quantityUnit === "L" ? "G" : l.quantityUnit,
         };
       })
     );
@@ -646,6 +668,7 @@ export function DepositForm({
                   canRemove={lines.length > 1}
                   onChange={(patch) => updateLine(line.key, patch)}
                   onNatureChange={(id) => changeNature(line.key, id)}
+                  onKindChange={(kind) => changeKind(line.key, kind)}
                   onDuplicate={() => duplicateLine(line.key)}
                   onRemove={() => removeLine(line.key)}
                   placeSuggestions={placeSuggestions}

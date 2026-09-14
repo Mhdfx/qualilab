@@ -64,12 +64,25 @@ export function serieStatus(samples: { status: SampleStatus }[]): SerieStatus {
   return "A_RECEPTIONNER";
 }
 
-/** Unit letters printed on labels and bench sheets: A…Z for units 1…26. */
+/** The most units one sample may carry (the laboratory's own ceiling, 14/09). */
+export const MAX_UNITS = 50;
+
+/**
+ * Unit labels printed on labels and bench sheets: A…Z for units 1…26, then
+ * AA, AB… — the bench sheet keeps its letters whatever n is.
+ */
 export function unitLetter(index: number) {
-  if (!Number.isInteger(index) || index < 1 || index > 26) {
+  if (!Number.isInteger(index) || index < 1 || index > 702) {
     throw new Error(`Indice d'unité hors limites : ${index}`);
   }
-  return String.fromCharCode(64 + index);
+  let n = index;
+  let label = "";
+  while (n > 0) {
+    const rest = (n - 1) % 26;
+    label = String.fromCharCode(65 + rest) + label;
+    n = Math.floor((n - 1) / 26);
+  }
+  return label;
 }
 
 /** Line reference the préleveur sees: « 2780/26 · ligne 3 ». */

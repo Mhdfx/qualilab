@@ -36,7 +36,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireApiRole("GESTIONNAIRE", "ADMIN");
+  // The préleveur may create the site they are standing on (WORKFLOW.md §13).
+  const session = await requireApiRole("PRELEVEUR", "RECEPTIONNISTE", "GESTIONNAIRE", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;

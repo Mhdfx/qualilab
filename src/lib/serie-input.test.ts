@@ -77,10 +77,12 @@ describe("validateLine — the paper line, field by field", () => {
     expect(validateLine({ ...aliment, parameterIds: [] }, 0, natures)).toMatchObject({ ok: false, error: "Choisissez au moins une analyse." });
   });
 
-  it("keeps the unit count within the letters of the alphabet", () => {
+  it("keeps the unit count within the laboratory's ceiling of fifty", () => {
     expect(validateLine({ ...aliment, unitCount: 9 }, 0, natures)).toMatchObject({ ok: true });
+    expect(validateLine({ ...aliment, unitCount: 50 }, 0, natures)).toMatchObject({ ok: true });
     expect(validateLine({ ...aliment, unitCount: 0 }, 0, natures)).toMatchObject({ ok: false });
-    expect(validateLine({ ...aliment, unitCount: 27 }, 0, natures)).toMatchObject({ ok: false });
+    expect(validateLine({ ...aliment, unitCount: 51 }, 0, natures)).toMatchObject({ ok: false });
+    expect(validateLine({ ...aliment, unitCount: 2.5 }, 0, natures)).toMatchObject({ ok: false });
   });
 });
 
@@ -119,6 +121,18 @@ describe("validateSerie — the visit as a whole", () => {
     expect(
       validateSerie({ ...visit, startedAt: start.toISOString(), endedAt: new Date(start.getTime() - 60_000).toISOString() }, natures, { kind: "VISITE" })
     ).toMatchObject({ ok: false });
+  });
+});
+
+describe("validateSerie — the end of the visit typed on site", () => {
+  it("refuses an end or an arrival in the future, like the reception does", () => {
+    const soon = new Date(Date.now() + 2 * 3600 * 1000).toISOString();
+    const visit = { clientId: "c1", lines: [{ ...aliment }] };
+    expect(validateSerie({ ...visit, endedAt: soon }, natures, { kind: "VISITE" })).toMatchObject({ ok: false, error: "L'heure de fin est dans le futur." });
+    expect(validateSerie({ ...visit, arrivedAt: soon }, natures, { kind: "VISITE" })).toMatchObject({ ok: false, error: "L'heure d'arrivée est dans le futur." });
+    const past = new Date(Date.now() - 3600 * 1000).toISOString();
+    const earlier = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+    expect(validateSerie({ ...visit, startedAt: earlier, endedAt: past, arrivedAt: past, coolerTemperature: "1" }, natures, { kind: "VISITE" })).toMatchObject({ ok: true });
   });
 });
 
