@@ -74,21 +74,35 @@ numbering towards the préleveur, alerts, the PDF pipeline, invoicing hooks.
 
 ### 3.1 Protocole de prélèvement (préleveur, on site, phone first)
 
-1. **Header, once**: client (search), site (list of the client's sites,
-   « Siège » when none), interlocuteur, préleveur (the account, pre-filled),
-   `startedAt` (now, editable), client reference (« N° de factures » on the
+1. **Header, once — in the paper's order (§13)**: N° de série slot (drawn at
+   save, shown from then on), client (search), site (always shown — « Siège »
+   when the client has none, a new site may be created from the form),
+   cadre (derived, shown), interlocuteur, « prélevé le … à … » `startedAt`
+   (now, editable) **and « heure de fin » `endedAt`**, « effectué par »
+   (a Qualilab préleveur picked from the accounts — the logged-in one by
+   default — or the service vétérinaire / other with a name) with the
+   function, **« arrivé le … à … » `arrivedAt` and « T° à l'arrivée »
+   `coolerTemperature` (optional on the form, completed later on the visit
+   page or at reception)**, client reference (« N° de factures » on the
    paper). `cadre` is derived: SERVICE_VETERINAIRE → OFFICIEL, else
    AUTOCONTROLE; the réception may change it.
 2. **Lines** (« + Ajouter une ligne », « Dupliquer la ligne », no limit):
-   nature → fields by `lineKind`; désignation from `ClientProduct` (create if
-   absent); lieu / section from `ClientPlace` of the site (create if absent,
-   quasi-duplicate refused); N° du lot; DLC production / expiration (dates);
-   quantité + unité (`UNITE` by default on the field form: the paper says
-   « 01 »); T°p / T°a; remarques; number of units `unitCount` (1 by default,
-   5 or 9 proposed by the profile); analyses by **profile** of the nature,
+   **the type of the line comes first** (Produit / Surface / Mains / Eau /
+   Air — the paper's « Surface prélevée » column exists on every line, §13
+   point 7), the nature is derived from it (surface, mains → Microbiologie
+   des surfaces; eau → eaux; produit → aliments; changeable); fields by
+   `lineKind`; désignation from `ClientProduct` (create if absent); lieu /
+   section from `ClientPlace` of the site (create if absent, quasi-duplicate
+   refused); N° du lot; DLC production / expiration (dates); quantité + unité
+   (`UNITE` by default on the field form: the paper says « 01 »); T°p / T°a;
+   remarques; number of units `unitCount` (1 by default, 5 or 9 proposed by
+   the profile, **any value 1–50**); analyses by **profile** of the nature,
    adjustable per line, the last profile used for this client proposed first.
-3. **End of visit**: `endedAt`; then on arrival `arrivedAt` and
-   `coolerTemperature`. The protocol PDF (cartouche PG04/EN01) prints for the
+3. **End of the sheet**: the two boxes « Analyses à effectuer :
+   microbiologiques / physico-chimiques » (§13 point 9), pre-ticked from the
+   lines' natures, editable. Then `endedAt`, `arrivedAt` and
+   `coolerTemperature` may be completed on the visit page if they were not
+   typed on the form. The protocol PDF (cartouche PG04/EN01) prints for the
    interlocutor's signature; the préleveur may attach a **photo of the signed
    sheet** to the série (one tap). Tactile signature is a later option (Q1).
 4. The préleveur sees the **N° de série** of the visit (it is on the signed
@@ -340,6 +354,7 @@ The old routes (`POST /api/samples`, `POST /api/samples/[id]/reception`,
 | 3 | 4 | « Nouveau dépôt »; protocol and bon PDFs with the cartouche; `DocumentReference` admin | **Shipped 2026-09-13** — a walk-in deposit numbered at once; both PDFs match the paper layout; TESTPLAN L3 |
 | 4 | 5 | Profiles; `ClientPlace` / `ClientProduct` pickers with quasi-duplicate refusal; sampler kind; sites imported from the old database | **Shipped 2026-09-13** (sites created on the client fiche; the legacy import waits for the client import of chantier 6) — no field typed twice on a second visit to the same site; TESTPLAN L4 |
 | 5 | 6 | The verbs Corriger / Annuler; lists grouped by série for technician and validation; `unitCount`; photo of the signed sheet; old routes removed | **Shipped 2026-09-13** — an intake error fixed with a trace; a cancelled sample leaves every queue; TESTPLAN L5 |
+| 1b | 6 | **Retour du laboratoire (14/09) — the form must read like the paper (§13)**: every header field on the one screen (N° de série slot, site always shown, heure de fin, effectué par + fonction, arrivée date/heure, T° à l'arrivée), the line type first with « Surface prélevée » on every line, `unitCount` up to 50 with unit labels beyond Z, the two « Analyses à effectuer » boxes on the série and the PDF | The lab's préleveur fills a real protocol on the phone without missing a field they have on paper; TESTPLAN L1b |
 | 6 | 7 | Recette with the lab on real visits; fixes; docs; demo data reseeded on the VPS | Sign-off of chantier 1 recorded in TESTPLAN and HANDOFF |
 
 Tests: `src/lib/counters.test.ts`, `src/lib/reception-rules.test.ts`,
@@ -395,5 +410,41 @@ transaction touches at most 135 rows.
 
 Q1 (phone on site or paper first), Q2 (surface areas, employee names on the
 report), Q3 (block or non-conformity; cold-chain bounds), Q4 (advances),
-Q18 (« N° de factures » meaning) in `NEEDEDINFO.md`. None blocks slice 1:
-the defaults above are the paper form's own values.
+Q18 (« N° de factures » meaning), and since 14/09 Q21–Q24 (§13) in
+`NEEDEDINFO.md`. None blocks slice 1b: the defaults below are the paper
+form's own values.
+
+## 13. Retour du laboratoire (14/09/2026) — the form must read like the paper
+
+After slices 1–5 went live, the laboratory reviewed the « Nouvelle visite »
+screen against the protocole de prélèvement it fills by hand and listed
+nine points. Verdict: **nothing in the data model is missing** — every one
+of the nine has a column, a rule and a place on the protocol PDF — but the
+entry screen split the sheet in two (the visit form, then a second panel
+for the end-of-visit fields) and let the nature drive the line, so the
+préleveur does not find the fields where the paper has them. Slice 1b puts
+the whole sheet on one screen, in the paper's order.
+
+| # | Their point | Today | Gap | Slice 1b |
+|---|---|---|---|---|
+| 1 | N° de série | Drawn automatically at save (yearly sequence), shown on the success screen, « Mes visites », the visit page and the PDF — never typed | Not visible while filling: the paper shows it in the header from the first line | A « N° de série » slot in the header (« attribué à l'enregistrement »), the number displayed in the header once saved; Q21 asks whether they want it reserved when the visit opens |
+| 2 | Site de prélèvement | Client → site cascade; sites created on the client fiche (`SitesManager`); printed on the PDF | The field is hidden when the client has no site yet — most clients today, since the old sites are not imported — so it looks absent | Always show « Site de prélèvement » (« Siège » by default), let the préleveur add a site from the form (same memory/duplicate rule as places), import the legacy sites with the clients (chantier 6) or earlier via `/admin/import` |
+| 3 | Heure de fin | `endedAt` exists; editable on the visit page (« Arrivée au laboratoire » panel), printed on the PDF | Not on the creation form | « Prélevé le … à … » and « Heure de fin » side by side in the header (optional) |
+| 4 | Effectué par | Chips « Moi (Qualilab) / Service vétérinaire / Autre » + name (slice 4); the PDF prints the account name | The Qualilab préleveur is always the logged-in account (shared tablet, colleague not possible), the name is not displayed on the form, no « Fonction » | « Prélèvement effectué par » = a PRELEVEUR account picked from the list (the logged-in one pre-selected) or vétérinaire / autre with a name; « Fonction » printed from the account (Q22 on a job title per account) |
+| 5 | Date et heure d'arrivée | `arrivedAt` on the visit page and at reception; PDF | Not on the creation form | « Arrivé le … à … » in the header (optional); the reception keeps the last word |
+| 6 | Température à l'arrivée | `coolerTemperature` on the visit page and at reception (pre-fills every line); PDF | Not on the creation form | « T° à l'arrivée » next to the arrival time (optional) |
+| 7 | « Surface prélevée » on a Microbiologie des aliments line | The surface / hands fields exist but appear only under the nature « Microbiologie des surfaces » (the nature drives the line) | On the paper « Surface prélevée » is a column of every line and the sheet does not choose a nature per line; under the default nature the field is nowhere | The line **type** first (Produit / Surface / Mains / Eau / Air) on every line, the nature derived from it (still changeable); « Surface prélevée » (100 cm² / MAIN) present whenever the type says so — no schema change, `validateLine` already accepts any kind |
+| 8 | Nombre d'unités jusqu'à 50 | Chips 1 / 3 / 5 / 9, limit 26 (unit letters A–Z on labels and bench sheets) | 50 needed | Free number 1–50 (chips stay as shortcuts), validation raised to 50, unit labels A…Z then AA, AB… (Q23), labels sheet paginates |
+| 9 | « Analyses à effectuer : microbiologiques / physico-chimiques » boxes at the end | Analyses ticked per line (profiles); the PDF prints the two columns from the lines | No boxes on the form; the paper has them per visit | Two boxes at the end of the form, pre-ticked from the lines' natures, editable, stored on the série (`Serie.analysesMicro`, `Serie.analysesChimie`), printed as boxes on the PDF; a box ticked without a matching line is flagged at reception (Q24) |
+
+Data model delta of slice 1b (additive): `Serie.analysesMicro Boolean
+@default(false)`, `Serie.analysesChimie Boolean @default(false)`;
+`unitCount` accepted up to 50; `unitLetter()` extended beyond 26
+(A…Z, AA…AX). No new table. The visit page keeps its panel (end of visit,
+arrival, photo) for what was not typed on site; the reception keeps
+overriding arrival and temperature.
+
+Definition of done: a préleveur enters the two real protocols the lab
+photographed for the analysis (six lines, three natures, « 01 » quantities,
+« MAIN » and « 100 cm² » surfaces, end and arrival times, 1 °C) on the phone
+without leaving the form, and the PDF matches the paper field for field.

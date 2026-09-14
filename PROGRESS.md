@@ -21,13 +21,25 @@ numbers, `/admin/documents`). **Slice 4 shipped 2026-09-13** (profiles in one ta
 « déjà connu sous » canonical spelling, sampler kind on the visit, sites on
 the client fiche — the legacy sites import waits for the client import of
 chantier 6). **Slice 5 shipped 2026-09-13** (verbs Corriger / Annuler / Réactiver with
-audit, lists grouped by série, old routes removed). **Chantier 1 is
-code-complete; what remains is slice 6 — the recette with the laboratory**:
-three real visits and one real deposit entered by the lab's own staff on
-the VPS, fixes, demo data reseeded, sign-off recorded in TESTPLAN L6 and
-HANDOFF. It needs the lab (a session with the préleveur and the réception),
-not code. Meanwhile the NEEDEDINFO answers (Q1–Q4, Q18) can refine the
-defaults, and chantier 2 (catalogue & critères) can be opened.
+audit, lists grouped by série, old routes removed).
+
+**NEXT: slice 1b — « le protocole tel quel » (the lab's feedback of
+2026-09-14, `WORKFLOW.md` §13).** The laboratory compared « Nouvelle
+visite » with the paper protocol and listed nine points (N° de série, site,
+heure de fin, effectué par, arrivée date/heure, T° à l'arrivée, « surface
+prélevée » on a food line, n up to 50, the two « analyses à effectuer »
+boxes). Analysis: every point already has its column, its rule and its
+place on the PDF; what is missing is on the **screen** — the sheet was split
+in two (form, then the visit page) and the nature drove the line. Slice 1b:
+one screen in the paper's order (all header fields on the form, optional
+end-of-visit fields), the line type first with « Surface prélevée » on
+every line, `unitCount` 1–50 with labels beyond Z, `Serie.analysesMicro` /
+`analysesChimie` boxes saved and printed. Additive migration, ≈ 1 week,
+tested with the two real protocols photographed on 13/09 (TESTPLAN L1b).
+Decisions asked from the lab: NEEDEDINFO Q21–Q24 (none blocks the work —
+defaults = the paper). Then **slice 6, the recette** with the lab's staff
+(three real visits + one deposit, sign-off in TESTPLAN L6 and HANDOFF), and
+chantier 2 (catalogue & critères) opens.
 
 Why (2026-09-13): the client's feedback (« multiple things are missing, above
 all in the prélèvement ») was objectified against the old Firebird database
@@ -210,6 +222,7 @@ Spec: `WORKFLOW.md` (chantier 1). Summary and the five other chantiers:
 - [x] Slice 3 (2026-09-13) — « Nouveau dépôt » (kind DEPOT, samplerKind CLIENT, samples born RECU); protocol and bon PDFs with the quality cartouche; `DocumentReference` admin
 - [x] Slice 4 (2026-09-13) — analysis profiles per nature / per client; `ClientPlace` / `ClientProduct` pickers with quasi-duplicate refusal; sampler kind (Qualilab / client / service vétérinaire); sites imported from the old database
 - [x] Slice 5 (2026-09-13) — verbs « Corriger la fiche » (`PATCH /api/samples/[id]/intake`) and « Annuler » (`ANNULE`, coded motif); technician and validation lists grouped by série; `unitCount` + unit letters on labels; photo of the signed protocol; old routes removed
+- [ ] Slice 1b (retour labo 14/09, `WORKFLOW.md` §13) — the form reads like the paper: header complete on one screen (N° de série slot, site always shown + creatable, heure de fin, effectué par = PRELEVEUR account or vétérinaire / autre, arrivée date/heure, T° à l'arrivée), line type first with « Surface prélevée » on every line, `unitCount` ≤ 50 + `unitLetter` beyond Z, `Serie.analysesMicro` / `analysesChimie` boxes (form + PDF + reception flag); migration `phase9_protocole`; TESTPLAN L1b
 - [ ] Slice 6 — recette with the lab on real visits (needs the lab's session); fixes; demo data reseeded on the VPS; sign-off in TESTPLAN L6 + HANDOFF
 
 **Chantiers 2–6** (catalogue & critères 6 w · analyse & résultats 5 w ·
@@ -218,6 +231,17 @@ portail, bascule 4 w) — planned in `PLAN.md`, opened one at a time after
 chantier 1 is signed off.
 
 ## Session Log
+
+- **2026-09-14 · Claude Code** · **Retour du laboratoire sur « Nouvelle
+  visite » → slice 1b planned (docs only, no code).** Nine points checked
+  one by one against the form, the visit page and the protocol PDF
+  (`WORKFLOW.md` §13): all nine exist in the model and on the PDF; six are
+  screen placement (end-of-visit fields on a second panel, site hidden when
+  the client has none, N° de série only after save), two are rules (n ≤ 26
+  → 50; « Surface prélevée » only under the surfaces nature), one is a
+  missing série-level pair of boxes (analyses à effectuer). Spec, TESTPLAN
+  L1b, NEEDEDINFO Q21–Q24, PROGRESS next action updated; the recette (slice
+  6) follows slice 1b.
 
 - **2026-09-13 · Claude Code** · **Phase 9 · chantier 1 · slice 5 shipped.**
   `sample-status.ts` gains the ANNULE transitions (+ `CORRECTABLE_STATUSES`,

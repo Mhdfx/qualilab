@@ -734,7 +734,7 @@ du code.
 - [x] **Espace comptabilité** : le bloc « prochaines fonctionnalités »
       annonçait encore les trois écrans de la phase 4, livrés depuis.
 
-## Checkpoint L — Phase 9, chantier 1 : circuit série (L1–L5 verified 2026-09-13 on the dev server at 1440×900 and on the VPS after deploy; L6 = recette with the laboratory, pending)
+## Checkpoint L — Phase 9, chantier 1 : circuit série (L1–L5 verified 2026-09-13 on the dev server at 1440×900 and on the VPS after deploy; L1b = the lab's feedback of 14/09, planned; L6 = recette with the laboratory, pending)
 
 Tick only what was seen in the browser. One sub-checkpoint per slice of
 `WORKFLOW.md`.
@@ -784,6 +784,14 @@ Tick only what was seen in the browser. One sub-checkpoint per slice of
 - [x] Old routes removed: `/reception/<sampleId>` → 404, `POST /api/samples` → 405.
 - [x] Photo of the signed protocol from the phone — exists since slice 1 (visit detail, `signedProtocolData`).
 - [x] **Production (185.217.126.53, after deploy):** `/reception/<sampleId>` → 404, `POST /api/samples` → 405; `recep1` corrects the lot of 13/26 (série 16/26) from the série page (« L-0913-B », API confirms); `tech2`'s bench is grouped by série (8/26, 4/26, 5/26, 16/26, 17/26).
+
+### L1b — Le protocole tel quel (retour du laboratoire 14/09 — WORKFLOW.md §13)
+- [ ] The header shows, in the paper's order: N° de série slot, client, site (always, « Siège » by default, a new site creatable from the form), cadre, interlocuteur, prélevé le … à … + heure de fin, effectué par (a PRELEVEUR account or vétérinaire / autre + name) with the function, arrivé le … à …, T° à l'arrivée, N° de factures.
+- [ ] Every line starts with its type (Produit / Surface / Mains / Eau / Air); « Surface prélevée » (100 cm² / MAIN) is available on a line whatever the nature; the nature follows the type and stays changeable.
+- [ ] Nombre d'unités accepts any value 1–50; a line with n = 30 prints 30 labels lettered A…Z, AA…AD, and the bench sheet / labels stay readable.
+- [ ] The two « Analyses à effectuer » boxes at the end of the form are pre-ticked from the lines, editable, saved on the série and printed as boxes on the protocol PDF; a box ticked with no matching line is visible at reception.
+- [ ] The two real protocols photographed on 13/09 (Gaillardière: 6 lines, MS / MP lines, « 01 », 1 °C, 12h00–12h30, arrivée 14h30) are entered on a phone without leaving the form; the PDF matches the paper field for field.
+- [ ] The visit page still completes what was not typed on site (end, arrival, temperature, photo) and the reception still overrides arrival and temperature.
 
 ### L6 — Recette (slice 6)
 - [ ] Three real visits and one real deposit entered by the lab's own staff; sign-off row filled below.

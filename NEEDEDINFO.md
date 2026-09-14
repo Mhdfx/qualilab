@@ -113,6 +113,16 @@ réglages, pas des développements.
 | Q18 | Que contient « N° de factures » sur le protocole ? | Référence client sur la visite |
 | Q19 | Date de bascule, durée de cohabitation avec l'ancien logiciel, sort des ≈ 8 000 dossiers en cours | Plan de bascule |
 | Q20 | Le partage des PDF contient-il tous les rapports depuis 2017 ? Années d'historique sur le portail ? Factures visibles sur le portail ? | Reprise de l'historique, portail |
+| Q21 | Le N° de série doit-il être **réservé dès l'ouverture** de la visite sur le téléphone (il apparaît alors avant l'enregistrement, mais une visite abandonnée consomme un numéro) ou **attribué à l'enregistrement** (affiché ensuite, aucun trou dans la séquence) ? | Formulaire « Nouvelle visite » (retour du 14/09, point 1) |
+| Q22 | Sur le protocole, « Prélèvement effectué par … Fonction … » : la fonction est-elle celle du compte (Préleveur, Technicien…) ou un intitulé libre par personne (ex. « Technicienne préleveuse ») ? Un préleveur peut-il saisir une visite au nom d'un collègue (tablette partagée) ? | Comptes, formulaire (retour du 14/09, point 4) |
+| Q23 | Au-delà de 26 unités, comment nommer les unités sur les étiquettes et la feuille de paillasse : lettres AA, AB… ou numéros 01…50 ? Un même échantillon de 50 unités est-il courant (histamine, autre) ? | Étiquettes, paillasse (retour du 14/09, point 8) |
+| Q24 | Les cases « Analyses à effectuer : microbiologiques / physico-chimiques » en bas du protocole : cocher « physico-chimie » sans ligne physico-chimique signifie-t-il que la réception ajoute les analyses, ou qu'une ligne doit exister ? Qui décide du panel physico-chimique quand il n'est pas au catalogue ? | Formulaire, réception (retour du 14/09, point 9) |
+
+Retour du laboratoire du 14/09 sur l'écran « Nouvelle visite » (neuf points,
+analysés dans `WORKFLOW.md` §13, traités par la tranche 1b) : tout existe
+dans les données et sur le PDF, mais le formulaire doit reprendre le
+protocole papier champ par champ, sur un seul écran ; Q21–Q24 fixent les
+quatre choix qui restent au laboratoire.
 
 Précisions du 13/09 tirées de la lecture du protocole rempli (elles sont
 prises comme défauts dans `WORKFLOW.md`, à confirmer avec Q1–Q4) : les
