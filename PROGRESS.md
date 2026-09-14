@@ -222,12 +222,33 @@ Spec: `WORKFLOW.md` (chantier 1). Summary and the five other chantiers:
 - [x] Slice 1b (2026-09-14, retour labo 14/09, `WORKFLOW.md` §13) — the form reads like the paper: header complete on one screen (N° de série slot, site always shown + creatable, heure de fin, effectué par = PRELEVEUR account or vétérinaire / autre, arrivée date/heure, T° à l'arrivée), line type first with « Surface prélevée » on every line, `unitCount` ≤ 50 + `unitLetter` beyond Z, `Serie.analysesMicro` / `analysesChimie` boxes (form + PDF + reception flag); migration `phase9_protocole`; TESTPLAN L1b
 - [ ] Slice 6 — recette with the lab on real visits (needs the lab's session); fixes; demo data reseeded on the VPS; sign-off in TESTPLAN L6 + HANDOFF
 
-**Chantiers 2–6** (catalogue & critères 6 w · analyse & résultats 5 w ·
-validation, rapports, envoi 5 w · commercial & facturation 4 w · reprise,
-portail, bascule 4 w) — planned in `PLAN.md`, opened one at a time after
-chantier 1 is signed off.
+**Chantier 2 — catalogue & critères (6 w) — spec written 2026-09-14:
+`CRITERES.md`**, from the lab's criteria workbook (131 product types, 1 101
+criteria, n = 5, 3-class m/M plans, absence tests, two norm versions per
+parameter). Slices: (1) schema + import with dry run + admin screens for
+types / criteria / norms; (2) product type on the line + type profiles;
+(3) results per unit + `interpretation.ts`; (4) verdicts on validation and
+report; (5) recette. Opens after chantier 1's recette; Q25–Q29 asked,
+Q28–Q29 block slices 3–4 only.
+- [ ] Chantier 2 · slice 1 — schema (`ProductType`, `Norm`, `NormVersion`, `Criterion`, `ConclusionScale`), alias table, `scripts/import-criteres.ts` (dry run), admin screens
+- [ ] Chantier 2 · slices 2–5 — product type on the line, per-unit results grid, interpretation engine, report with criteria, recette
+
+**Chantiers 3–6** (analyse & résultats 5 w · validation, rapports, envoi
+5 w · commercial & facturation 4 w — the old software's seven invoice
+layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
+in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+- **2026-09-14 · Claude Code** · **Chantier 2 specified from the lab's
+  criteria workbook (`CRITERES.md`, docs only).** The file « critère
+  d'interprétation des résultats » (1 493 rows) parsed outside the repo:
+  131 product types (35 client-named), 1 101 criteria, 62 parameter labels
+  (aliases), 44 norms with old + new versions side by side, n = 5
+  everywhere, c ∈ {∅,1,2,3}, « 1.102 » notation, absence / M-only / m-only
+  / 3-class plans. Also a photo of the old software's invoice report picker
+  (seven layouts) filed under chantier 5. PLAN, NEEDEDINFO (Q25–Q30),
+  HANDOFF updated.
 
 - **2026-09-14 · Claude Code** · **Phase 9 · chantier 1 · slice 1b
   shipped — « le protocole tel quel ».** `VisitForm` rewritten in the

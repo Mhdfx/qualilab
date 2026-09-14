@@ -252,10 +252,10 @@ the client's stated priority):
 | # | Chantier | Weeks |
 |---|---|---|
 | 1 | Prélèvement et réception — visite/dépôt multi-lignes, sites, natures, champs par nature, réception groupée avec recevabilité, numérotation du labo, étiquettes code-barres, profils d'analyses, PDF protocole/bon | 7 |
-| 2 | Catalogue et critères — unités, méthodes, natures, types de produits, entrée paramètre × nature, critères m/M (n, c), échelles de conclusion, reprise des référentiels | 6 |
+| 2 | Catalogue et critères — unités, méthodes, natures, types de produits, entrée paramètre × nature, critères m/M (n, c), échelles de conclusion, reprise des référentiels — **spec `CRITERES.md` (14/09), input = the lab's criteria workbook: 131 product types, 1 101 criteria, n = 5, 3-class plans, dated norm versions** | 6 |
 | 3 | Analyse et résultats — résultats par unité, grille par série, lecture boîtes + dilution, opérateurs, qualitatif, non effectué, deux paillasses, feuille de paillasse au format du labo | 5 |
 | 4 | Validation, rapports, envoi — rapport enrichi et figé, cartouche qualité, amendement, correction vers réception, série, découplage approbation/envoi, destinataires par site | 5 |
-| 5 | Commercial et facturation — hiérarchie client/site, tarifs client, forfait mensuel, avoirs, numéro NNNN/AA, cycle brouillon → émise → annulée, règlements | 4 |
+| 5 | Commercial et facturation — hiérarchie client/site, tarifs client, forfait mensuel, avoirs, numéro NNNN/AA, cycle brouillon → émise → annulée, règlements — the old software prints **seven invoice layouts** (par paramètres groupés, par paramètres groupés et produit, par paramètres par produit, par échantillon, par échantillon et nom de produit, sites au forfait, forfaits) with « avec remise » and « forfaits / mois » options, columns échéance / montant réglé / reliquat (photo of 14/09, Q30) | 4 |
 | 6 | Reprise, portail, bascule — scripts de migration, portail client, cumul de rôles, identité légale, échéances | 4 |
 
 The full report (99 findings with evidence and proposed design, target
@@ -267,8 +267,11 @@ workstreams extend the model and the screens.
 **Chantier 1 is specified in `WORKFLOW.md`** (design rules, target circuit,
 Prisma delta, numbering, acceptance-rules engine, screens and routes, the
 four correction verbs, backfill strategy, six deployable slices, field
-mapping of the two paper forms). The other five chantiers get their own spec
-when opened, one at a time, each starting from a tagged restore point.
+mapping of the two paper forms). **Chantier 2 is specified in `CRITERES.md`**
+(what the criteria workbook says, six design rules, Prisma delta, the pure
+interpretation engine, the import script, screens, five slices, Q25–Q29).
+The other chantiers get their own spec when opened, one at a time, each
+starting from a tagged restore point.
 
 ---
 
