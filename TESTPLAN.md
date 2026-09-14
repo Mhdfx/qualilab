@@ -734,7 +734,7 @@ du code.
 - [x] **Espace comptabilité** : le bloc « prochaines fonctionnalités »
       annonçait encore les trois écrans de la phase 4, livrés depuis.
 
-## Checkpoint L — Phase 9, chantier 1 : circuit série (L1–L5 verified 2026-09-13 on the dev server at 1440×900 and on the VPS after deploy; L1b = the lab's feedback of 14/09, planned; L6 = recette with the laboratory, pending)
+## Checkpoint L — Phase 9, chantier 1 : circuit série (L1–L5 verified 2026-09-13, L1b verified 2026-09-14, all on the dev server at 1440×900 and on the VPS after deploy; L6 = recette with the laboratory, pending)
 
 Tick only what was seen in the browser. One sub-checkpoint per slice of
 `WORKFLOW.md`.
@@ -785,13 +785,14 @@ Tick only what was seen in the browser. One sub-checkpoint per slice of
 - [x] Photo of the signed protocol from the phone — exists since slice 1 (visit detail, `signedProtocolData`).
 - [x] **Production (185.217.126.53, after deploy):** `/reception/<sampleId>` → 404, `POST /api/samples` → 405; `recep1` corrects the lot of 13/26 (série 16/26) from the série page (« L-0913-B », API confirms); `tech2`'s bench is grouped by série (8/26, 4/26, 5/26, 16/26, 17/26).
 
-### L1b — Le protocole tel quel (retour du laboratoire 14/09 — WORKFLOW.md §13)
-- [ ] The header shows, in the paper's order: N° de série slot, client, site (always, « Siège » by default, a new site creatable from the form), cadre, interlocuteur, prélevé le … à … + heure de fin, effectué par (a PRELEVEUR account or vétérinaire / autre + name) with the function, arrivé le … à …, T° à l'arrivée, N° de factures.
-- [ ] Every line starts with its type (Produit / Surface / Mains / Eau / Air); « Surface prélevée » (100 cm² / MAIN) is available on a line whatever the nature; the nature follows the type and stays changeable.
-- [ ] Nombre d'unités accepts any value 1–50; a line with n = 30 prints 30 labels lettered A…Z, AA…AD, and the bench sheet / labels stay readable.
-- [ ] The two « Analyses à effectuer » boxes at the end of the form are pre-ticked from the lines, editable, saved on the série and printed as boxes on the protocol PDF; a box ticked with no matching line is visible at reception.
-- [ ] The two real protocols photographed on 13/09 (Gaillardière: 6 lines, MS / MP lines, « 01 », 1 °C, 12h00–12h30, arrivée 14h30) are entered on a phone without leaving the form; the PDF matches the paper field for field.
-- [ ] The visit page still completes what was not typed on site (end, arrival, temperature, photo) and the reception still overrides arrival and temperature.
+### L1b — Le protocole tel quel (retour du laboratoire 14/09 — WORKFLOW.md §13) — dev server 2026-09-14, `pre1` / `recep1`
+- [x] The header shows, in the paper's order: N° de série slot (« attribué à l'enregistrement »), client, site (always shown — « Siège (adresse du client) » by default; « + Nouveau site… » created « Speedy Grill » inline and selected it), cadre (derived, shown), interlocuteur, prélevé le … à … + heure de fin, effectué par (« Karim Benali (moi) » picked from the PRELEVEUR accounts, « Fonction : Préleveur »; vétérinaire / autre with a name), arrivé le … à …, T° à l'arrivée, N° de factures — read in that order from the labels of the page.
+- [x] Every line starts with its type (Produit alimentaire / Surface / Mains du personnel / Eau / Air / Autre): choosing « Mains du personnel » on line 2 and « Surface » on line 3 switched their nature to Microbiologie des surfaces and showed the person / « Surface prélevée » + « Aire (100 cm²) » fields; the nature select stays editable.
+- [x] Nombre d'unités: the number input accepted 30 on line 3 (chips 1/3/5/9 kept); the recap and the série page print « 30 unités (A–AD) »; after reception the sheet holds 36 labels (5 + 1 + 30) on two A4 pages, « 9114/26 AA » … « 9114/26 AD » among them (pdftotext); the validator refuses 51 (unit test).
+- [x] The two « Analyses à effectuer » boxes at the end of the form were pre-ticked from the lines (micro), editable, saved on série 14/26 (`analysesMicro: true`, `analysesChimie: false`) and printed as boxes on the protocol PDF (« ANALYSES À EFFECTUER : [x] Analyses microbiologiques [ ] Analyses physico-chimiques », drawn in CSS); série 15/26 created with « physico-chimie » ticked and no chimie line shows at reception « Demandé sur le protocole sans ligne correspondante : analyses physico-chimiques — à programmer ».
+- [~] The Gaillardière protocol entered on one screen: 3 of its 6 lines (Salade Gaillardière « 01 » T°p 1 / T°a 2 with the profile in one tap, MP Hamza Bassou — Chef cuisine, mains lavées, T°p 25, MS Planche verte 100 cm²), fin, arrivée and 1 °C typed on the form → série **14/26**, the protocol PDF prints them field for field (site « Speedy Grill », « Prélevé le … — fin … », « Arrivé au laboratoire », « T° à l'arrivée : 1 °C », « Fonction : Préleveur », MAIN / 100 cm² / n = 30). Entered from the desktop pane, not a phone; the three remaining lines (Suprême de poulet, Zaalouk, Plan travail) are the same kinds.
+- [x] The visit page still completes what was not typed on site (end, arrival, temperature, photo) and the reception still overrides arrival and temperature: the série page came pre-filled with the form's fin / arrivée / 1 °C on every line; an arrival typed in the future is refused (« L'heure d'arrivée est dans le futur ») both on the form and at reception; « Maintenant » then « Valider la réception » numbered the three lines 9112/26 – 9114/26.
+- [x] **Production (185.217.126.53, after deploy):** the migration backfilled the boxes of the existing séries (14/26, 15/26, 16/26 → micro ticked); `pre1`'s « Nouvelle visite » shows the header in the paper's order, the six type chips, « Siège » + « Nouveau site… », the n input and the pre-ticked boxes; série **18/26** created with « Siège », fin / arrivée / 1 °C, a 30-unit surface line and both boxes, its protocol PDF renders (200); `GET /api/preleveurs` lists the préleveur accounts.
 
 ### L6 — Recette (slice 6)
 - [ ] Three real visits and one real deposit entered by the lab's own staff; sign-off row filled below.

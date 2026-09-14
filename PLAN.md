@@ -232,7 +232,7 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 **Roles impact [settled]:** 9 profiles total — the 7 core roles + `CLIENT`
 (portal, already reserved in `lib/roles.ts`) + `MAGASINIER` (added at Phase 6).
 
-### Phase 9 — Mise à niveau métier ◀ IN PROGRESS — chantier 1 slices 1–5 live 2026-09-13; slice 1b (the lab's feedback of 14/09, `WORKFLOW.md` §13) then the recette *(analysis of 2026-09-13, after the client's feedback)*
+### Phase 9 — Mise à niveau métier ◀ IN PROGRESS — chantier 1 slices 1–5 live 2026-09-13 and slice 1b (the lab's feedback of 14/09) live 2026-09-14; the recette with the lab closes it *(analysis of 2026-09-13, after the client's feedback)*
 
 The legacy Firebird database (252 tables, restored and read) and the four
 paper forms the lab still fills by hand were compared with this codebase.

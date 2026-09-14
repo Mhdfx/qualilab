@@ -354,7 +354,7 @@ The old routes (`POST /api/samples`, `POST /api/samples/[id]/reception`,
 | 3 | 4 | « Nouveau dépôt »; protocol and bon PDFs with the cartouche; `DocumentReference` admin | **Shipped 2026-09-13** — a walk-in deposit numbered at once; both PDFs match the paper layout; TESTPLAN L3 |
 | 4 | 5 | Profiles; `ClientPlace` / `ClientProduct` pickers with quasi-duplicate refusal; sampler kind; sites imported from the old database | **Shipped 2026-09-13** (sites created on the client fiche; the legacy import waits for the client import of chantier 6) — no field typed twice on a second visit to the same site; TESTPLAN L4 |
 | 5 | 6 | The verbs Corriger / Annuler; lists grouped by série for technician and validation; `unitCount`; photo of the signed sheet; old routes removed | **Shipped 2026-09-13** — an intake error fixed with a trace; a cancelled sample leaves every queue; TESTPLAN L5 |
-| 1b | 6 | **Retour du laboratoire (14/09) — the form must read like the paper (§13)**: every header field on the one screen (N° de série slot, site always shown, heure de fin, effectué par + fonction, arrivée date/heure, T° à l'arrivée), the line type first with « Surface prélevée » on every line, `unitCount` up to 50 with unit labels beyond Z, the two « Analyses à effectuer » boxes on the série and the PDF | The lab's préleveur fills a real protocol on the phone without missing a field they have on paper; TESTPLAN L1b |
+| 1b | 6 | **Retour du laboratoire (14/09) — the form must read like the paper (§13)**: every header field on the one screen (N° de série slot, site always shown, heure de fin, effectué par + fonction, arrivée date/heure, T° à l'arrivée), the line type first with « Surface prélevée » on every line, `unitCount` up to 50 with unit labels beyond Z, the two « Analyses à effectuer » boxes on the série and the PDF | **Shipped 2026-09-14** — the Gaillardière protocol entered on one screen (série 14/26, site created inline, MAIN / 100 cm² lines by type, n = 30, boxes); TESTPLAN L1b |
 | 6 | 7 | Recette with the lab on real visits; fixes; docs; demo data reseeded on the VPS | Sign-off of chantier 1 recorded in TESTPLAN and HANDOFF |
 
 Tests: `src/lib/counters.test.ts`, `src/lib/reception-rules.test.ts`,
@@ -437,10 +437,14 @@ the whole sheet on one screen, in the paper's order.
 | 8 | Nombre d'unités jusqu'à 50 | Chips 1 / 3 / 5 / 9, limit 26 (unit letters A–Z on labels and bench sheets) | 50 needed | Free number 1–50 (chips stay as shortcuts), validation raised to 50, unit labels A…Z then AA, AB… (Q23), labels sheet paginates |
 | 9 | « Analyses à effectuer : microbiologiques / physico-chimiques » boxes at the end | Analyses ticked per line (profiles); the PDF prints the two columns from the lines | No boxes on the form; the paper has them per visit | Two boxes at the end of the form, pre-ticked from the lines' natures, editable, stored on the série (`Serie.analysesMicro`, `Serie.analysesChimie`), printed as boxes on the PDF; a box ticked without a matching line is flagged at reception (Q24) |
 
-Data model delta of slice 1b (additive): `Serie.analysesMicro Boolean
+Data model delta of slice 1b (additive, migration `20260914100000_phase9_protocole`, boxes backfilled from the lines' natures): `Serie.analysesMicro Boolean
 @default(false)`, `Serie.analysesChimie Boolean @default(false)`;
-`unitCount` accepted up to 50; `unitLetter()` extended beyond 26
-(A…Z, AA…AX). No new table. The visit page keeps its panel (end of visit,
+`unitCount` accepted up to 50 (`MAX_UNITS`); `unitLetter()` extended beyond 26
+(A…Z, AA…AX). No new table. Also: « Siège » (no site) is accepted on a visit
+whatever the client's sites; a préleveur may create a site from the form
+(`POST /api/clients/[id]/sites` admits PRELEVEUR); `GET /api/preleveurs`
+lists the accounts a visit may be attributed to (`Serie.samplerUserId`);
+an end or arrival typed in the future is refused like at reception. The visit page keeps its panel (end of visit,
 arrival, photo) for what was not typed on site; the reception keeps
 overriding arrival and temperature.
 
