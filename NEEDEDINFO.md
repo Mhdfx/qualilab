@@ -122,6 +122,10 @@ réglages, pas des développements.
 | Q27 | Les 131 types du fichier sont-ils la liste complète et à jour (l'ancienne base en compte 634) ? À quel client appartient chacun des 35 types nommés d'après un client ? | Catalogue des types de produits |
 | Q28 | Les mots exacts du rapport pour Satisfaisant / Acceptable / Non satisfaisant, et le rapport imprime-t-il les cinq valeurs ou seulement le verdict (cf. Q10) ? | Échelle de conclusion, rapport |
 | Q29 | Règle de passage de la lecture brute (« 0(-1) », dilution) à la valeur finale et au « < seuil » (cf. Q9) ; comment sont lues les deux boîtes B1/B2 ? | Résultats par unité |
+| Q25 → **implémenté par défaut** (18/09) : « 1.102 » = 1·10², « 1.5.106 » = 1,5·10⁶ ; les deux « 1.8 » sont **refusés à l'import** et listés à l'écran ; m et M sans c ⇒ aucune tolérance. Le laboratoire tranche, puis corrige le classeur ou la grille. | | |
+| Q26 → **implémenté par défaut** (18/09) : la version la plus récente de chaque norme est « en vigueur » ; l'ancienne reste en base. `/admin/normes` permet d'en changer et de dater. Le rapport imprime la version sous laquelle le résultat a été lu. | | |
+| Q28 → **implémenté par défaut** (18/09) : quatre phrases modifiables dans `/admin/reglages` → Échelle de conclusion ; le rapport imprime les cinq lectures A…E **et** le verdict. | | |
+| Q29 → **implémenté par défaut** (18/09) : « 3(-2) » = 3 × 10² = 300, « 0(-1) » = « < 10 », « < x » compte comme 0, le facteur de dilution du paramètre multiplie la lecture. | | |
 | Q30 | Facturation : parmi les sept modèles d'impression de l'ancien logiciel (par paramètres groupés, par paramètres et produit, par paramètres par produit, par échantillon, par échantillon et nom de produit, sites au forfait, forfaits), lesquels sont utilisés et pour quels clients ? Un PDF de chacun ; sens de « avec remise », « forfaits / mois », « INTSTAT » | Facturation (chantier 5) |
 
 Retour du laboratoire du 14/09 sur l'écran « Nouvelle visite » (neuf points,

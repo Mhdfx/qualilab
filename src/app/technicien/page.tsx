@@ -27,7 +27,7 @@ export default async function TechnicienPage() {
         client: { select: { name: true } },
         serie: { select: { serialNumber: true } },
         parameters: { select: { parameter: { select: { id: true } } } },
-        results: { select: { value: true, workStatus: true } },
+        results: { select: { value: true, workStatus: true, interpretation: true } },
       },
       orderBy: { receivedAt: "asc" },
     }),

@@ -197,11 +197,31 @@ type or with `unitCount = 1` (n = 1 plan).
 
 | # | Weeks | Content | Definition of done |
 |---|---|---|---|
-| 1 | 1–2 | Schema + migration; `Norm` / `NormVersion` / `ProductType` / `Criterion` / `ConclusionScale`; alias table; `scripts/import-criteres.ts` with dry run; admin screens for types, criteria, norms | The workbook imported on the dev database with 0 refused rows besides the ones the lab must settle (Q25); the admin edits a criterion without code |
-| 2 | 3 | Product type on the line (préleveur, deposit, « Corriger la fiche »), the type's parameters as the line's default profile, client-specific types first | A visit line picks « Salades avec source protéique » and gets its parameters ticked |
-| 3 | 4 | `ResultUnit` + bench grid per unit + `interpretation.ts` (tests) + live verdict | A sample with n = 5 read on the bench, the verdict changes as values are typed |
-| 4 | 5 | Validation with verdicts, report with criteria columns, norm version and conclusion sentence; contamination alerts driven by the verdict | A report matches the lab's own layout for a 3-class case, an absence case and an M-only case |
-| 5 | 6 | Recette on real product types with the lab; old `limitValue` path retired where a criterion exists; docs; sign-off | TESTPLAN checkpoint M signed |
+| 1 ✅ | 1–2 | Schema + migration; `Norm` / `NormVersion` / `ProductType` / `Criterion` / `ConclusionScale`; alias table; `scripts/import-criteres.ts` with dry run; admin screens for types, criteria, norms | The workbook imported on the dev database with 0 refused rows besides the ones the lab must settle (Q25); the admin edits a criterion without code |
+| 2 ✅ | 3 | Product type on the line (préleveur, deposit, « Corriger la fiche »), the type's parameters as the line's default profile, client-specific types first | A visit line picks « Salades avec source protéique » and gets its parameters ticked |
+| 3 ✅ | 4 | `ResultUnit` + bench grid per unit + `interpretation.ts` (tests) + live verdict | A sample with n = 5 read on the bench, the verdict changes as values are typed |
+| 4 ✅ | 5 | Validation with verdicts, report with criteria columns, norm version and conclusion sentence; contamination alerts driven by the verdict | A report matches the lab's own layout for a 3-class case, an absence case and an M-only case |
+| 5 ◀ | 6 | Recette on real product types with the lab; old `limitValue` path retired where a criterion exists; docs; sign-off | TESTPLAN checkpoint M signed |
+
+### What was actually shipped (2026-09-18)
+
+Slices 1–4 are code-complete and verified on the dev server (TESTPLAN
+checkpoint M). Differences from the plan above, all deliberate:
+
+- the import is **an admin screen**, not `scripts/import-criteres.ts`: the
+  laboratory must be able to re-import a corrected workbook itself, and the
+  same endpoint serves the dry run and the commit;
+- the germ matching lives in `AnalysisParameter.aliases` (one spelling per
+  line) plus a key that folds « Recherche de/des », the mass suffix, the
+  « -1 / -2 » of two norm rows and the incubation temperature — the workbook
+  writes one germ up to four ways;
+- a germ **without** a criterion keeps the old `limitValue` path on the same
+  sample; the sample's verdict then folds that boolean in, so a report can
+  never conclude « conforme » above a line printed « Non conforme »
+  (`sampleVerdict` in `src/lib/interpretation.ts`);
+- changing the product type, the number of units or the analyses through
+  « Corriger la fiche » deletes the results: a verdict read under other
+  criteria must not reach the report.
 
 ## 8. Open questions (NEEDEDINFO Q25–Q29)
 

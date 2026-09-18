@@ -52,3 +52,10 @@ next-env.d.ts
 finalversion.md
 *.xlsx
 .claude/launch.json
+
+# Client documents and deliverables kept out of the public repo
+*.pdf
+*.mp4
+*.tex
+*.png
+/deploy101/

@@ -571,6 +571,45 @@ Verified in the browser on the dev server, full circuit, on 2026-08-27.*
 
 ---
 
+## Checkpoint M — Phase 9, chantier 2 : critères d'interprétation (dev server 2026-09-18 at 1440×900, `admin` / `valid1`; production after deploy)
+
+Tick only what was seen in the browser or in an API/PDF answer of the
+running server. Spec: `CRITERES.md`.
+
+### M1 — Le catalogue et l'import du classeur — dev server 2026-09-18, `admin`
+- [x] `/admin/import` shows two sections; « Critères d'interprétation (classeur Excel) » accepts the .xlsx and the analysis reads the real workbook: **1 075 lignes, 131 types de produits, 44 normes (versions), 1 075 critères importables, 24 doublons signalés, 2 lignes refusées** (les deux « 1.8 » de CEREALES POUR ENFANTS — Q25).
+- [x] Nothing is written before « Importer »: the analysis leaves the catalogue empty, the commit creates **131 types, 38 paramètres, 39 normes (44 versions), 1 075 critères**.
+- [x] Re-running the same import writes nothing (« 0 créé, 0 mis à jour », 131 types « connus », 1 075 critères « déjà en base ») — the import is idempotent.
+- [x] Germs are matched through the parameters' aliases: « Recherche des Salmonella », « Escherichia coli », « Coliformes à 30°C », « Recherche de Listeria monocytogenes » fall on the catalogue's Salmonelles / E. coli / Coliformes totaux / Listeria; 38 unknown germs are created in microbiologie alimentaire with the workbook's other spellings as aliases.
+- [x] `/admin/types-produits` lists the 131 types with their criteria count, the search filters them (« salades » → 2), the Catalogue / Par client / Inactifs filters count correctly.
+- [x] `/admin/types-produits/[id]` shows the grid of « SALADES AVEC SOURCE PROTEIQUE »: 9 criteria, one line per norm version (NM ISO 4833-1:2023 « en vigueur » and :2014, NM ISO 6579-1:2021 and :2017, NM ISO 6888-1:2022 and :2019), limits in the lab's notation (m = 1.10², M = 1.10⁴), « Absence exigée » for Salmonelles and Listeria.
+- [x] Editing a criterion saves and reloads from the server (« 9 critères enregistrés. », c changed 1 → 0 → 1 and read back each time).
+- [x] `/admin/normes` lists the 38 norms with their dated versions; ticking « En vigueur » on another version moves it (NM ISO 4833-1: 2014 in force, then 2023 again) and no norm ever keeps two.
+- [x] `/admin/reglages` carries « Échelle de conclusion des rapports » with the four verdicts; saving answers « Échelle enregistrée. ».
+- [x] Admin navigation shows « Types de produits & critères » and « Normes »; the journal labels the new actions.
+
+### M2 — Le type de produit sur la ligne — dev server 2026-09-18, `admin`
+- [x] A deposit line of kind « Aliment » carries the product type (« SALADES AVEC SOURCE PROTEIQUE »), stores it on the sample and the bench reads it back (« 6 critères · n = 5 »).
+- [x] The picker adds the type's germs to what is already ticked and raises n; it never removes an analysis the préleveur asked for.
+- [ ] The picker on `/preleveur/nouvelle-visite` and in « Corriger la fiche » — built and type-checked, exercised through the deposit path only.
+
+### M3 — La paillasse par unité — dev server 2026-09-18, `admin`
+- [x] A sample with a product type shows one grid per germ, A…E for n = 5, with the criterion and its norm version above (« m = 10 · M = 1.10² ufc/g · c = 1 · NM ISO 16649-2:2007 »).
+- [x] The verdict appears as the units are typed: « < 10 · 50 · < 10 · < 10 · < 10 » → **Acceptable — 1 unité entre m = 10 et M = 1.10² (c = 1)**.
+- [x] The six germs of the test sample gave the six expected verdicts: Micro-organismes SATISFAISANT, E. coli ACCEPTABLE, Staphylocoques NON_SATISFAISANT (1 unité > M), Salmonelles / Listeria SATISFAISANT (absence ×5), Clostridium SATISFAISANT.
+- [x] Submitting is refused while a grid is incomplete (INCOMPLET) and accepted once every unit is read.
+- [ ] A germ without a criterion on the same sample (single-value path) — covered by the engine's tests and the mixed-sample conclusion rule, not yet observed in a browser.
+
+### M4 — Validation et rapport — dev server 2026-09-18, `valid1` / `admin`
+- [x] `/validation/[id]` shows the sample's verdict in the header (**Non satisfaisant**), and per germ: the readings A…E, the criterion, its norm version and the verdict.
+- [x] The two signatures still apply (the technical validator may not approve: 409 « deux signataires différents »); `valid1` validates, `admin` approves, the report is created (RAP-2026-00005).
+- [x] Report PDF (pdftotext): columns « CRITÈRE (m · M · c) » and « VERDICT », the readings A…E under each result, the norm version under each criterion, the header « Type de produit · 5 unités analysées », conclusion « Les résultats obtenus ne sont pas conformes aux critères microbiologiques applicables au produit analysé. » from the scale.
+- [ ] Contamination alert carrying the criterion instead of the old threshold — code path changed, not observed (no mail provider on dev).
+
+### M5 — Production
+- [ ] Workbook imported on the VPS through `/admin/import` (dry run, then commit).
+- [ ] The same screens verified on http://185.217.126.53 after deploy.
+
 ## Sign-off log
 
 | Phase | Tested by | Date | Result |

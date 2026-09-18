@@ -51,6 +51,12 @@ const ACTION_LABELS: Record<string, string> = {
   CLIENT_RESTORED: "Client réactivé",
   PARAMETER_CREATED: "Paramètre créé",
   PARAMETER_UPDATED: "Paramètre modifié",
+  CRITERIA_IMPORTED: "Critères importés",
+  PRODUCT_TYPE_CREATED: "Type de produit créé",
+  PRODUCT_TYPE_UPDATED: "Type de produit modifié",
+  CRITERIA_UPDATED: "Critères modifiés",
+  NORM_UPDATED: "Norme modifiée",
+  CONCLUSION_SCALE_UPDATED: "Échelle de conclusion modifiée",
 };
 
 export default async function JournalPage() {

@@ -8,6 +8,16 @@
 
 ## ▶ NEXT ACTION
 
+**PHASE 9 — CHANTIER 2 : CRITÈRES D'INTERPRÉTATION — code complete 2026-09-18.**
+Spec: **`CRITERES.md`**. The catalogue (types de produits × germe × version de
+norme), the workbook import, the bench per unit, the verdicts on validation and
+on the report are built, tested and verified in the browser (TESTPLAN checkpoint
+M1–M4). **Next: import the workbook on production through `/admin/import` and
+run M5**, then the recette with the laboratory (M6 + chantier 1's L6) and the
+answers to NEEDEDINFO Q25–Q29.
+
+## ▶ PREVIOUS ACTION
+
 **PHASE 9 — CHANTIER 1 : LE CIRCUIT SÉRIE (prélèvement → réception).**
 Spec: **`WORKFLOW.md`**. **Slice 1 shipped 2026-09-13** (schema + backfill,
 natures, counters, `POST /api/series`, « Nouvelle visite » multi-line, « Mes
@@ -239,6 +249,26 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+- **2026-09-18 · Claude Code** · **Phase 9 chantier 2 delivered** (spec
+  `CRITERES.md`): criteria are data now. New tables `ProductType`, `Norm`,
+  `NormVersion`, `Criterion`, `ConclusionScale`, `ResultUnit` (+ `Sample.
+  productTypeId`, `Result.normVersionId/interpretation`, `Report.
+  interpretation`, `AnalysisParameter.aliases`), two additive migrations.
+  Pure engine `src/lib/interpretation.ts` (3-class plans n/c/m/M, absence,
+  m-only, M-only, dilutions, INCOMPLET) and workbook parser
+  `src/lib/criteria-import.ts`, both tested. `POST /api/admin/import/criteres`
+  (exceljs, analyse → commit, idempotent) with its section on `/admin/import`;
+  admin screens `/admin/types-produits`, `/admin/types-produits/[id]`,
+  `/admin/normes`, conclusion scale on `/admin/reglages`. Product type on the
+  line (préleveur, dépôt, « Corriger la fiche »), bench grid per unit with the
+  live verdict, verdicts on `/validation/[id]`, report with the criterion, its
+  norm version, the readings A…E and the scale's conclusion. The lab's real
+  workbook imports on dev: 1 075 criteria, 131 product types, 44 norm
+  versions, 2 refused rows (the two « 1.8 » of Q25). Adversarial review of the
+  diff: 3 confirmed defects fixed (mixed sample verdict, alert threshold,
+  stale results after a correction) plus 12 triaged findings. 251 tests, lint
+  and build green. Next: production import + recette.
 
 - **2026-09-14 · Claude Code** · **Chantier 2 specified from the lab's
   criteria workbook (`CRITERES.md`, docs only).** The file « critère

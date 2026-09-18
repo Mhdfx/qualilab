@@ -30,6 +30,7 @@
 | LIMS core — **email, alertes** | auto send, grouped contamination alerts, bench sheet | ✅ **Phase 3 done** (delivery simulated until DNS) |
 | Direction & recherche | direction view, DB-backed global search | ✅ **Phase 5 done** |
 | Infra | Docker image + compose, backups, `DEPLOY.md` — PM2 kept as fallback | ✅ **live on the VPS since 2026-08-26** |
+| **Phase 9 — chantier 2 : critères d'interprétation** | types de produits × germe × version de norme, import du classeur, lecture par unité, verdicts satisfaisant / acceptable / non satisfaisant, rapport avec le critère et sa norme — spec **`CRITERES.md`** | ◀ **code complete 2026-09-18** (1 075 critères et 131 types importés sur dev; slices 1–4 vérifiées au navigateur, TESTPLAN M1–M4); reste l'import en production et la recette avec le laboratoire |
 | **Phase 9 — chantier 1 : circuit série** | visite / dépôt multi-lignes, 16 natures, réception groupée, numérotation NNNN/AA + NNNNN/AA, étiquettes, profils, verbes de correction — spec **`WORKFLOW.md`** | ◀ **slices 1–5 live 2026-09-13, slice 1b (the lab's feedback of 14/09: the visit form reads like the paper) live 2026-09-14; slice 6 = recette with the lab** (série + natures + counters + « Nouvelle visite » / « Mes visites » + N° de contrôle everywhere; grouped reception with the seven acceptance rules, coded motifs, labels PDF; « Nouveau dépôt », protocole / bon PDFs with the quality cartouche, `/admin/documents`; profiles, client memory, sites, sampler kind; verbs Corriger / Annuler / Réactiver, queues by série, old routes gone); the recette with the laboratory closes the chantier (restore point `v1.0-avant-phase-9`) |
 
 **Bottom line:** the five core phases are code-complete. The whole circuit runs
@@ -211,6 +212,11 @@ Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|E
 |---|---|
 | Company name / ICE / RC / RIB / IBAN / bank | `/admin/entreprise` (DB row); defaults in `src/lib/company.ts` |
 | Sample numbering (field / control / blind serial) | `src/lib/sample-code.ts` |
+| How a result is judged (n, c, m, M, absence, dilutions) | `src/lib/interpretation.ts` — pure, tested; the bench, the validation screen and the report all call it |
+| The criteria themselves (a limit, a norm version, a germ) | `/admin/types-produits/[id]` — data, no code; `/admin/normes` for the versions |
+| The words printed under « Conclusion » | `/admin/reglages` → Échelle de conclusion (table `ConclusionScale`) |
+| How the criteria workbook is read | `src/lib/criteria-import.ts` (pure parser) + `POST /api/admin/import/criteres` |
+| Which germ a workbook label means | the parameter's « Autres libellés » on `/admin/parametres` (`AnalysisParameter.aliases`) |
 | What each role may SEE of a sample | `src/lib/sample-select.ts` (never hide fields in the UI only) |
 | Invoice number format | `src/lib/invoice-number.ts` |
 | VAT / invoice totals math | `src/lib/invoice-math.ts` |

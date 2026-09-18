@@ -19,6 +19,7 @@ export type ParameterInput = {
   limitValue?: unknown;
   alertOnExceed?: unknown;
   calcFactor?: unknown;
+  aliases?: unknown;
 };
 
 export type CleanParameter = {
@@ -29,6 +30,8 @@ export type CleanParameter = {
   limitValue: number | null;
   alertOnExceed: boolean;
   calcFactor: number;
+  /** Other spellings of the germ (one per line) — the criteria import matches them. */
+  aliases: string | null;
 };
 
 export type ParameterResult =
@@ -94,6 +97,14 @@ export function validateParameter(input: ParameterInput): ParameterResult {
     };
   }
 
+  const aliases = text(input.aliases)
+    .split(/\r?\n/)
+    .map((a) => a.trim())
+    .filter(Boolean);
+  if (aliases.some((a) => a.length > 191) || aliases.length > 30) {
+    return { ok: false, error: "Alias trop long ou trop nombreux (30 lignes de 191 caractères max)." };
+  }
+
   return {
     ok: true,
     value: {
@@ -104,6 +115,7 @@ export function validateParameter(input: ParameterInput): ParameterResult {
       limitValue: limit,
       alertOnExceed,
       calcFactor: factor ?? 1,
+      aliases: aliases.length > 0 ? aliases.join("\n") : null,
     },
   };
 }

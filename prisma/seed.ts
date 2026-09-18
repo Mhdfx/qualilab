@@ -74,10 +74,10 @@ async function seedUsers() {
  */
 const parameters = [
   // Alimentaire
-  { name: "Salmonelles", category: "ALIMENTAIRE" as const, unit: "/25 g", threshold: "Absence /25 g", limitValue: 0, alertOnExceed: true },
-  { name: "Listeria", category: "ALIMENTAIRE" as const, unit: "UFC/g", threshold: "Absence /25 g", limitValue: 0, alertOnExceed: true },
-  { name: "E. coli", category: "ALIMENTAIRE" as const, unit: "UFC/g", threshold: "1.10² UFC/g", limitValue: 100, alertOnExceed: true },
-  { name: "Coliformes totaux", category: "ALIMENTAIRE" as const, unit: "UFC/g", threshold: "1.10³ UFC/g", limitValue: 1000, alertOnExceed: false },
+  { name: "Salmonelles", category: "ALIMENTAIRE" as const, unit: "/25 g", threshold: "Absence /25 g", limitValue: 0, alertOnExceed: true, aliases: "Recherche des Salmonella\nSalmonella" },
+  { name: "Listeria", category: "ALIMENTAIRE" as const, unit: "UFC/g", threshold: "Absence /25 g", limitValue: 0, alertOnExceed: true, aliases: "Listeria monocytogenes\nRecherche de Listeria monocytogenes" },
+  { name: "E. coli", category: "ALIMENTAIRE" as const, unit: "UFC/g", threshold: "1.10² UFC/g", limitValue: 100, alertOnExceed: true, aliases: "Escherichia coli\nEscherichia-coli βglucoronidase positives à 44 °C" },
+  { name: "Coliformes totaux", category: "ALIMENTAIRE" as const, unit: "UFC/g", threshold: "1.10³ UFC/g", limitValue: 1000, alertOnExceed: false, aliases: "Coliformes à 30°C\nColiformes" },
   { name: "Levures & moisissures", category: "ALIMENTAIRE" as const, unit: "UFC/g", threshold: "1.10⁴ UFC/g", limitValue: 10000, alertOnExceed: false },
   // Eau
   { name: "Coliformes totaux", category: "EAU" as const, unit: "UFC/100 mL", threshold: "Absence /100 mL", limitValue: 0, alertOnExceed: false },

@@ -204,3 +204,16 @@ describe("validateSerie — the deposit at the counter", () => {
     }
   });
 });
+
+describe("the line's product type", () => {
+  it("is kept on a food line and dropped on the others", () => {
+    const withType = validateLine({ ...aliment, productTypeId: "pt1" }, 0, natures);
+    expect(withType).toMatchObject({ ok: true, value: { productTypeId: "pt1" } });
+    const surface = validateLine(
+      { natureId: "surfaces", surfaceLabel: "Planche verte", lieu: "Poste salades", parameterIds: ["p1"], productTypeId: "pt1" },
+      0,
+      natures
+    );
+    expect(surface).toMatchObject({ ok: true, value: { productTypeId: null } });
+  });
+});

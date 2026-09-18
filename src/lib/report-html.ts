@@ -1,7 +1,9 @@
 import { COMPANY, type CompanyInfo } from "./company";
 import { companyBrandHtml } from "./brand-html";
 import { SAMPLE_TYPE_LABELS, formatDateTime, formatDate } from "./labels";
-import type { SampleType } from "@/generated/prisma/client";
+import type { Interpretation, SampleType } from "@/generated/prisma/client";
+import { INTERPRETATION_LABELS } from "./interpretation";
+import { unitLetter } from "./series";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
 
 /**
@@ -34,6 +36,10 @@ export type ReportData = {
   approverName: string | null;
   validatedAt: Date | null;
   conclusion: string;
+  /** The sample's verdict under its criteria (CRITERES.md); null = the old conform/non-conform reading. */
+  interpretation: Interpretation | null;
+  productType: string | null;
+  unitCount: number;
   results: {
     parameter: string;
     value: string | null;
@@ -41,7 +47,18 @@ export type ReportData = {
     threshold: string | null;
     conform: boolean | null;
     note: string | null;
+    /** The criterion's verdict and the readings per unit, when a plan applied. */
+    interpretation: Interpretation | null;
+    norm: string | null;
+    units: string[];
   }[];
+};
+
+const VERDICT_CLASS: Record<Interpretation, string> = {
+  SATISFAISANT: "ok",
+  ACCEPTABLE: "mid",
+  NON_SATISFAISANT: "no",
+  INCOMPLET: "",
 };
 
 
@@ -50,6 +67,8 @@ export function buildReportHtml(
   company: CompanyInfo = COMPANY
 ): string {
   const nonConformes = data.results.filter((r) => r.conform === false).length;
+  const alert = nonConformes > 0 || data.interpretation === "NON_SATISFAISANT";
+  const withCriteria = data.results.some((r) => r.interpretation !== null);
 
   const rows = data.results
     .map(
@@ -59,16 +78,30 @@ export function buildReportHtml(
           ${show(result.parameter)}
           ${result.note ? `<span class="note">${escapeHtml(result.note)}</span>` : ""}
         </td>
-        <td class="mono">${show(result.value)}</td>
+        <td class="mono">
+          ${show(result.value)}
+          ${
+            result.units.length > 0
+              ? `<span class="units">${result.units
+                  .map((u, i) => `<span><b>${unitLetter(i + 1)}</b> ${show(u)}</span>`)
+                  .join("")}</span>`
+              : ""
+          }
+        </td>
         <td>${show(result.unit)}</td>
-        <td>${show(result.threshold)}</td>
+        <td>
+          ${show(result.threshold)}
+          ${result.norm ? `<span class="note">${escapeHtml(result.norm)}</span>` : ""}
+        </td>
         <td class="verdict">
           ${
-            result.conform === true
-              ? '<span class="ok">Conforme</span>'
-              : result.conform === false
-                ? '<span class="no">Non conforme</span>'
-                : "—"
+            result.interpretation
+              ? `<span class="${VERDICT_CLASS[result.interpretation]}">${INTERPRETATION_LABELS[result.interpretation]}</span>`
+              : result.conform === true
+                ? '<span class="ok">Conforme</span>'
+                : result.conform === false
+                  ? '<span class="no">Non conforme</span>'
+                  : "—"
           }
         </td>
       </tr>`
@@ -122,6 +155,10 @@ export function buildReportHtml(
   .note { display: block; font-weight: 400; font-size: 8pt; color: #55707d; margin-top: 1px; }
   .verdict .ok { color: #2f6b3a; font-weight: 700; }
   .verdict .no { color: #a5203a; font-weight: 700; }
+  .units { display: block; margin-top: 2px; font-size: 7.4pt; color: #445; }
+  .units span { display: inline-block; margin-right: 6px; }
+  .units b { color: #889; font-weight: 600; }
+  .mid { color: #9a6700; font-weight: 700; }
   .conclusion { border: 1px solid #d9e3e8; border-left: 4px solid #b8860b;
     border-radius: 4px; padding: 9px 12px; margin-bottom: 14px; page-break-inside: avoid; }
   .conclusion h2 { font-size: 7.6pt; text-transform: uppercase; letter-spacing: .5px;
@@ -179,6 +216,7 @@ export function buildReportHtml(
     <div class="row"><span class="k">Prélevé le</span><span class="v">${formatDateTime(data.sampledAt)}</span></div>
     <div class="row"><span class="k">Reçu le</span><span class="v">${data.receivedAt ? formatDateTime(data.receivedAt) : "—"}</span></div>
     <div class="row"><span class="k">Préleveur</span><span class="v">${show(data.preleveur)}</span></div>
+    ${data.productType ? `<div class="row"><span class="k">Type de produit</span><span class="v">${escapeHtml(data.productType)} · ${data.unitCount} unité${data.unitCount > 1 ? "s" : ""} analysée${data.unitCount > 1 ? "s" : ""}</span></div>` : ""}
   </div>
 </div>
 
@@ -188,8 +226,8 @@ export function buildReportHtml(
       <th style="width:32%">Paramètre</th>
       <th style="width:16%">Résultat</th>
       <th style="width:14%">Unité</th>
-      <th style="width:22%">Seuil de référence</th>
-      <th style="width:16%">Conformité</th>
+      <th style="width:22%">${withCriteria ? "Critère (m · M · c)" : "Seuil de référence"}</th>
+      <th style="width:16%">${withCriteria ? "Verdict" : "Conformité"}</th>
     </tr>
   </thead>
   <tbody>${rows}</tbody>
@@ -197,7 +235,7 @@ export function buildReportHtml(
 
 <div class="conclusion">
   <h2>Conclusion</h2>
-  <p${nonConformes > 0 ? ' class="alert"' : ""}>${escapeHtml(data.conclusion)}</p>
+  <p${alert ? ' class="alert"' : ""}>${escapeHtml(data.conclusion)}</p>
 </div>
 
 <div class="signatures">

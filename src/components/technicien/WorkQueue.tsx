@@ -19,7 +19,7 @@ export type WorkItem = {
   client: { name: string };
   serie: { serialNumber: string };
   parameters: { parameter: { id: string } }[];
-  results: { value: string | null; workStatus: string }[];
+  results: { value: string | null; workStatus: string; interpretation: string | null }[];
 };
 
 /** The samples on this technician's bench, grouped by série, oldest first. */
@@ -55,8 +55,9 @@ export function WorkQueue({ items }: { items: WorkItem[] }) {
           <ul className="space-y-3">
             {group.items.map((item) => {
               const total = item.parameters.length;
+              // A germ read per unit only counts once every unit is read.
               const done = item.results.filter(
-                (r) => r.value && r.workStatus !== "EN_COURS"
+                (r) => r.value && r.workStatus !== "EN_COURS" && r.interpretation !== "INCOMPLET"
               ).length;
 
               return (

@@ -88,6 +88,7 @@ export type ReceptionLineData = {
   conformityNote: string | null;
   cancelReason: CancelReason | null;
   nature: { id: string; code: string; label: string; family: Family };
+  productType: { id: string; name: string } | null;
   parameters: { parameter: { id: string; name: string; unit: string | null } }[];
   technician: { id: string; name: string } | null;
 };
@@ -180,8 +181,10 @@ function numberOrNull(value: string) {
 }
 
 /** What the verbs need of a line, as the API serialised it. */
-function verbSampleOf(line: ReceptionLineData, status: SampleStatus = line.status): VerbSample {
+function verbSampleOf(line: ReceptionLineData, clientId: string, status: SampleStatus = line.status): VerbSample {
   return {
+    clientId,
+    productTypeId: line.productType?.id ?? null,
     id: line.id,
     code: line.code,
     controlCode: line.controlCode,
@@ -425,7 +428,7 @@ export function SerieReceptionForm({
                     {sample.remarks && <p className="mt-1 text-xs italic text-slate-500">{sample.remarks}</p>}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <SampleVerbs sample={verbSampleOf(sample)} role={role} compact />
+                    <SampleVerbs sample={verbSampleOf(sample, serie.client.id)} role={role} compact />
                     <StatusBadge status={sample.status} />
                   </div>
                 </div>
@@ -798,7 +801,7 @@ function ReceivedSummary({
                   <td className="py-2.5">
                     {byId.get(line.id) && (
                       <SampleVerbs
-                        sample={verbSampleOf(byId.get(line.id)!, justReceived ? "RECU" : byId.get(line.id)!.status)}
+                        sample={verbSampleOf(byId.get(line.id)!, serie.client.id, justReceived ? "RECU" : byId.get(line.id)!.status)}
                         role={role}
                         compact
                       />

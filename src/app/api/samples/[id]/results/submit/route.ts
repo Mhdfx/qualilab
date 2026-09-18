@@ -10,7 +10,9 @@ import { canTransition } from "@/lib/sample-status";
  * `EN_ANALYSE → RESULTATS_SAISIS`.
  *
  * A sheet can only leave the bench once every requested parameter has been
- * answered — a missing line would reach the validateur as a silent gap.
+ * answered — a missing line would reach the validateur as a silent gap. A
+ * germ read per unit (CRITERES.md) must have every unit read: an
+ * « Incomplet » verdict stays on the bench.
  */
 export async function POST(
   _request: Request,
@@ -40,6 +42,7 @@ export async function POST(
       value: true,
       workStatus: true,
       conform: true,
+      interpretation: true,
       parameter: { select: { name: true } },
     },
   });
@@ -49,7 +52,7 @@ export async function POST(
 
   for (const { parameter } of sample.parameters) {
     const result = byParameter.get(parameter.id);
-    if (!result?.value || result.workStatus === "EN_COURS") {
+    if (!result?.value || result.workStatus === "EN_COURS" || result.interpretation === "INCOMPLET") {
       missing.push(parameter.name);
     }
   }
@@ -82,6 +85,7 @@ export async function POST(
       parameters: sample.parameters.length,
       anomalies: results.filter((r) => r.workStatus === "ANOMALIE").length,
       nonConformes: results.filter((r) => r.conform === false).length,
+      nonSatisfaisants: results.filter((r) => r.interpretation === "NON_SATISFAISANT").length,
     },
   });
 

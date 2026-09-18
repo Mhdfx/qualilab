@@ -16,6 +16,7 @@ export type ParameterRow = {
   limitValue: number | null;
   alertOnExceed: boolean;
   calcFactor: number;
+  aliases: string | null;
 };
 
 const DOMAINS: SampleType[] = ["ALIMENTAIRE", "EAU", "AMBIANCE"];
@@ -202,6 +203,7 @@ function ParameterForm({
   const [calcFactor, setCalcFactor] = useState(
     parameter && parameter.calcFactor !== 1 ? String(parameter.calcFactor) : ""
   );
+  const [aliases, setAliases] = useState(parameter?.aliases ?? "");
   const [saving, setSaving] = useState(false);
 
   async function save() {
@@ -223,6 +225,7 @@ function ParameterForm({
             limitValue,
             alertOnExceed,
             calcFactor,
+            aliases,
           }),
         }
       );
@@ -277,6 +280,23 @@ function ParameterForm({
           inputMode="decimal"
           hint="Multiplie la lecture brute (dilution) — vide = aucune transformation"
         />
+      </div>
+
+      <div className="mt-3">
+        <label htmlFor="p-aliases" className="block text-xs font-medium text-slate-600">
+          Autres libellés (un par ligne)
+        </label>
+        <textarea
+          id="p-aliases"
+          value={aliases}
+          onChange={(event) => setAliases(event.target.value)}
+          rows={2}
+          placeholder={"Recherche de Salmonella /25g\nSalmonella spp"}
+          className="input-field mt-1 resize-y px-3 py-2 text-sm"
+        />
+        <p className="mt-1 text-xs text-slate-500">
+          Les orthographes du classeur des critères qui désignent ce germe — l&apos;import les reconnaît.
+        </p>
       </div>
 
       <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-lg bg-white p-2.5 ring-1 ring-slate-200">

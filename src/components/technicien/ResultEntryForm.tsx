@@ -12,12 +12,15 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
+import { VerdictBadge } from "@/components/samples/VerdictBadge";
 import {
   applyCalcFactor,
   formatLabValue,
   parseLabValue,
   suggestConformity,
 } from "@/lib/result-value";
+import { applyUnitFactor, interpret, parseUnitReading, type Plan, type Verdict as PlanVerdict } from "@/lib/interpretation";
+import { unitLetter } from "@/lib/series";
 import type { ResultWorkStatus } from "@/generated/prisma/enums";
 
 export type ParameterLine = {
@@ -33,6 +36,12 @@ export type ParameterLine = {
   workStatus: ResultWorkStatus;
   /** Only used when the value cannot be read as a number. */
   manualConform: boolean | null;
+  /** The criterion of the sample's product type (CRITERES.md): null = single value. */
+  plan: Plan | null;
+  planLabel: string | null;
+  normLabel: string | null;
+  /** One reading per unit (length = plan.n) when a plan applies. */
+  units: string[];
 };
 
 type ResultEntryFormProps = {
@@ -47,6 +56,18 @@ const WORK_STATUS_LABELS: Record<ResultWorkStatus, string> = {
   ANOMALIE: "Anomalie",
 };
 
+const INPUT =
+  "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50 disabled:text-slate-500";
+
+type Reading = {
+  parsed: ReturnType<typeof parseLabValue> | null;
+  conform: boolean | null;
+  needsManual: boolean;
+  /** The engine's verdict for a germ read per unit. */
+  verdict: PlanVerdict | null;
+  typedUnits: number;
+};
+
 export function ResultEntryForm({
   sampleId,
   canEdit,
@@ -58,9 +79,17 @@ export function ResultEntryForm({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  const readings = useMemo(
+  const readings = useMemo<Reading[]>(
     () =>
       lines.map((line) => {
+        if (line.plan) {
+          // The same engine and the same dilution the server will apply, so
+          // the verdict shown while typing is the verdict stored.
+          const units = line.units.map((u) => applyUnitFactor(parseUnitReading(u), line.calcFactor));
+          const typedUnits = units.filter((u) => u.kind !== "empty").length;
+          const verdict = typedUnits > 0 ? interpret(line.plan, units) : null;
+          return { parsed: null, conform: null, needsManual: false, verdict, typedUnits };
+        }
         // The suggestion compares the FINAL value — raw reading × factor —
         // exactly as the server will store it.
         const parsed = line.value
@@ -73,15 +102,19 @@ export function ResultEntryForm({
           parsed,
           conform: auto ?? line.manualConform,
           needsManual: !!line.value && parsed?.numeric === null,
+          verdict: null,
+          typedUnits: 0,
         };
       }),
     [lines]
   );
 
-  const completed = lines.filter(
-    (line, index) => line.value && line.workStatus !== "EN_COURS" &&
-      !(readings[index].needsManual && readings[index].conform === null)
-  ).length;
+  const completed = lines.filter((line, index) => {
+    if (line.workStatus === "EN_COURS") return false;
+    const reading = readings[index];
+    if (line.plan) return reading.verdict !== null && reading.verdict.verdict !== "INCOMPLET";
+    return !!line.value && !(reading.needsManual && reading.conform === null);
+  }).length;
   const allComplete = completed === lines.length && lines.length > 0;
 
   function update(index: number, patch: Partial<ParameterLine>) {
@@ -92,14 +125,30 @@ export function ResultEntryForm({
     setNotice("");
   }
 
+  function updateUnit(index: number, unitIndex: number, value: string) {
+    const line = lines[index];
+    const units = [...line.units];
+    units[unitIndex] = value;
+    update(index, { units });
+  }
+
   function payload() {
-    return lines.map((line, index) => ({
-      parameterId: line.parameterId,
-      value: line.value,
-      note: line.note,
-      workStatus: line.workStatus,
-      conform: readings[index].conform,
-    }));
+    return lines.map((line, index) =>
+      line.plan
+        ? {
+            parameterId: line.parameterId,
+            units: line.units,
+            note: line.note,
+            workStatus: line.workStatus,
+          }
+        : {
+            parameterId: line.parameterId,
+            value: line.value,
+            note: line.note,
+            workStatus: line.workStatus,
+            conform: readings[index].conform,
+          }
+    );
   }
 
   async function save(then?: () => Promise<void>) {
@@ -185,46 +234,83 @@ export function ResultEntryForm({
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <p className="font-semibold text-slate-800">{line.name}</p>
                   <p className="text-xs text-slate-500">
-                    Seuil : {line.threshold ?? "non défini"}
-                    {line.calcFactor !== 1 && (
-                      <span className="ml-2 rounded-full bg-violet-50 px-2 py-0.5 font-medium text-violet-700">
-                        Facteur ×{line.calcFactor}
-                      </span>
+                    {line.plan ? (
+                      <>
+                        Critère : <span className="font-mono text-slate-700">{line.planLabel}</span>
+                        {line.normLabel && <span className="ml-2 text-slate-400">{line.normLabel}</span>}
+                        {line.calcFactor !== 1 && (
+                          <span className="ml-2 rounded-full bg-violet-50 px-2 py-0.5 font-medium text-violet-700">
+                            Facteur ×{line.calcFactor}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <>Seuil : {line.threshold ?? "non défini"}</>
                     )}
                   </p>
                 </div>
 
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-                  <div>
-                    <label
-                      htmlFor={`value-${line.parameterId}`}
-                      className="block text-xs font-medium text-slate-600"
-                    >
-                      Valeur mesurée {line.unit && `(${line.unit})`}
-                    </label>
-                    <input
-                      id={`value-${line.parameterId}`}
-                      type="text"
-                      inputMode="text"
-                      value={line.value}
-                      onChange={(e) => update(index, { value: e.target.value })}
-                      disabled={!canEdit}
-                      placeholder="Ex. : 8,9.10²  ·  < 10  ·  Absence"
-                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50 disabled:text-slate-500"
-                    />
-                    {line.calcFactor !== 1 &&
-                      reading.parsed?.numeric != null &&
-                      reading.parsed.numeric !== 0 && (
-                        <p className="mt-1 text-xs text-violet-700">
-                          Valeur finale (lecture ×{line.calcFactor}) :{" "}
-                          <b className="font-mono">
-                            {formatLabValue(reading.parsed.numeric)}
-                          </b>
-                          {line.unit ? ` ${line.unit}` : ""} — c&apos;est elle
-                          qui figure au rapport.
-                        </p>
-                      )}
-                  </div>
+                  {line.plan ? (
+                    <fieldset>
+                      <legend className="block text-xs font-medium text-slate-600">
+                        Lecture par unité {line.unit && `(${line.unit})`} — n = {line.plan.n}
+                      </legend>
+                      <div
+                        className="mt-1 grid gap-2"
+                        style={{ gridTemplateColumns: `repeat(${Math.min(line.plan.n, 5)}, minmax(0, 1fr))` }}
+                      >
+                        {line.units.map((unit, unitIndex) => (
+                          <label key={unitIndex} className="block">
+                            <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              {unitLetter(unitIndex + 1)}
+                            </span>
+                            <input
+                              type="text"
+                              inputMode="text"
+                              aria-label={`${line.name} — unité ${unitLetter(unitIndex + 1)}`}
+                              value={unit}
+                              onChange={(e) => updateUnit(index, unitIndex, e.target.value)}
+                              disabled={!canEdit}
+                              placeholder={line.plan?.mKind === "ABSENCE" ? "Absence" : "1,2.10²"}
+                              className={INPUT}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  ) : (
+                    <div>
+                      <label
+                        htmlFor={`value-${line.parameterId}`}
+                        className="block text-xs font-medium text-slate-600"
+                      >
+                        Valeur mesurée {line.unit && `(${line.unit})`}
+                      </label>
+                      <input
+                        id={`value-${line.parameterId}`}
+                        type="text"
+                        inputMode="text"
+                        value={line.value}
+                        onChange={(e) => update(index, { value: e.target.value })}
+                        disabled={!canEdit}
+                        placeholder="Ex. : 8,9.10²  ·  < 10  ·  Absence"
+                        className={INPUT}
+                      />
+                      {line.calcFactor !== 1 &&
+                        reading.parsed?.numeric != null &&
+                        reading.parsed.numeric !== 0 && (
+                          <p className="mt-1 text-xs text-violet-700">
+                            Valeur finale (lecture ×{line.calcFactor}) :{" "}
+                            <b className="font-mono">
+                              {formatLabValue(reading.parsed.numeric)}
+                            </b>
+                            {line.unit ? ` ${line.unit}` : ""} — c&apos;est elle
+                            qui figure au rapport.
+                          </p>
+                        )}
+                    </div>
+                  )}
 
                   <div>
                     <label
@@ -255,13 +341,22 @@ export function ResultEntryForm({
                   </div>
                 </div>
 
-                <Verdict
-                  reading={reading}
-                  limitValue={line.limitValue}
-                  unit={line.unit}
-                  canEdit={canEdit}
-                  onManual={(conform) => update(index, { manualConform: conform })}
-                />
+                {line.plan ? (
+                  reading.verdict && (
+                    <p className="mt-2.5 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                      <VerdictBadge verdict={reading.verdict.verdict} />
+                      <span>{reading.verdict.reason}</span>
+                    </p>
+                  )
+                ) : (
+                  <Verdict
+                    reading={reading}
+                    limitValue={line.limitValue}
+                    unit={line.unit}
+                    canEdit={canEdit}
+                    onManual={(conform) => update(index, { manualConform: conform })}
+                  />
+                )}
 
                 {(line.workStatus === "ANOMALIE" || line.note) && (
                   <div className="mt-3">
@@ -357,11 +452,7 @@ function Verdict({
   canEdit,
   onManual,
 }: {
-  reading: {
-    parsed: ReturnType<typeof parseLabValue> | null;
-    conform: boolean | null;
-    needsManual: boolean;
-  };
+  reading: Reading;
   limitValue: number | null;
   unit: string | null;
   canEdit: boolean;

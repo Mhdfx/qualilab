@@ -121,3 +121,11 @@ describe("calcFactor", () => {
     }
   });
 });
+
+describe("aliases", () => {
+  it("keeps one alias per line, trimmed, and none when empty", () => {
+    const ok = validateParameter({ name: "Salmonella", category: "ALIMENTAIRE", aliases: " Recherche de Salmonella /25g \n\nSalmonella spp " });
+    expect(ok).toMatchObject({ ok: true, value: { aliases: "Recherche de Salmonella /25g\nSalmonella spp" } });
+    expect(validateParameter({ name: "Salmonella", category: "ALIMENTAIRE", aliases: "" })).toMatchObject({ ok: true, value: { aliases: null } });
+  });
+});

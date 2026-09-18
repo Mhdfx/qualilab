@@ -10,6 +10,7 @@ import {
   type LineDraft,
   type NatureOption,
   type ParameterOption,
+  type ProductTypeOption,
   type ProfileOption,
 } from "./visit-types";
 
@@ -31,6 +32,8 @@ type LineEditorProps = {
   productSuggestions: string[];
   /** The panels of this nature (client-specific first); empty = tick one by one. */
   profiles?: ProfileOption[];
+  /** The catalogue's product types (the client's own first) — a food line picks one and inherits its germs and its n. */
+  productTypes?: ProductTypeOption[];
 };
 
 const UNIT_CHOICES = [1, 3, 5, 9];
@@ -87,6 +90,7 @@ export function LineEditor({
   placeSuggestions,
   productSuggestions,
   profiles = [],
+  productTypes = [],
 }: LineEditorProps) {
   const nature = natures.find((n) => n.id === line.natureId);
   const kind: LineKind = line.lineKind;
@@ -104,6 +108,30 @@ export function LineEditor({
     onChange({
       parameterIds: profile.parameterIds.filter((id) => parameters.some((p) => p.id === id)),
       unitCount: profile.unitCount,
+    });
+  }
+
+  const selectedType = productTypes.find((t) => t.id === line.productTypeId);
+  const clientTypes = productTypes.filter((t) => t.clientId);
+  const catalogueTypes = productTypes.filter((t) => !t.clientId);
+
+  /**
+   * Picking a type ADDS its germs to what is already ticked and raises n to
+   * what its criteria need — never removes an analysis the préleveur asked
+   * for. « Aucun » only detaches the type.
+   */
+  function applyProductType(id: string) {
+    const type = productTypes.find((t) => t.id === id);
+    if (!type) return onChange({ productTypeId: "" });
+    const ids = type.parameterIds.filter((pid) => parameters.some((p) => p.id === pid));
+    onChange({
+      productTypeId: id,
+      ...(ids.length > 0
+        ? {
+            parameterIds: [...new Set([...line.parameterIds, ...ids])],
+            unitCount: Math.min(MAX_UNITS, Math.max(line.unitCount, type.unitCount)),
+          }
+        : {}),
     });
   }
 
@@ -291,6 +319,39 @@ export function LineEditor({
                 Déjà connu sous « {productTwin} » — cette orthographe sera utilisée.
               </p>
             )}
+          </Field>
+        )}
+
+        {kind === "ALIMENT" && productTypes.length > 0 && (
+          <Field
+            label="Type de produit"
+            hint={
+              selectedType
+                ? selectedType.criteriaCount > 0
+                  ? `Le rapport interprétera ce produit selon ses ${selectedType.criteriaCount} critère${selectedType.criteriaCount > 1 ? "s" : ""} ; ses germes ont été ajoutés aux analyses ci-dessous.`
+                  : "Aucun critère enregistré pour ce type : lecture en valeur simple."
+                : "Le type de produit apporte les critères d'interprétation du rapport (facultatif)."
+            }
+          >
+            <select
+              value={line.productTypeId}
+              onChange={(e) => applyProductType(e.target.value)}
+              className="input-field px-4"
+            >
+              <option value="">— aucun —</option>
+              {clientTypes.length > 0 && (
+                <optgroup label="Types du client">
+                  {clientTypes.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label="Catalogue">
+                {catalogueTypes.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </optgroup>
+            </select>
           </Field>
         )}
 

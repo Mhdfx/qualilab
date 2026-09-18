@@ -25,6 +25,7 @@ export type IntakeFields = {
   handsState: HandsState | null;
   remarks: string | null;
   unitCount: number;
+  productTypeId: string | null;
 };
 
 export type IntakeCurrent = IntakeFields & { lineKind: LineKind; parameterIds: string[] };
@@ -58,6 +59,7 @@ const FIELDS: (keyof IntakeFields)[] = [
   "handsState",
   "remarks",
   "unitCount",
+  "productTypeId",
 ];
 
 /** « AAAA-MM-JJ » in local time — a DLC is a day, never an instant. */
@@ -93,6 +95,7 @@ function currentAsRaw(current: IntakeCurrent): Record<string, unknown> {
     handsState: current.handsState ?? "",
     remarks: current.remarks ?? "",
     unitCount: current.unitCount,
+    productTypeId: current.productTypeId ?? "",
     parameterIds: current.parameterIds,
   };
 }

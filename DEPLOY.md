@@ -90,6 +90,23 @@ curl -s localhost:3000/api/health
 Rollback: `git checkout <previous-tag>` and the same two commands. Migrations
 are additive by policy (see CODE_QUALITY), so going back one version is safe.
 
+## The criteria workbook (chantier 2)
+
+The interpretation criteria are **data**, not code: the deploy ships the
+screens, the laboratory's workbook fills them. After a deploy that brings
+chantier 2 for the first time:
+
+1. sign in as an administrator on http://185.217.126.53/admin/import;
+2. « Choisir le classeur .xlsx » → **Analyser**: read the counts (types,
+   normes, critères) and the refused rows before anything is written;
+3. leave « Créer les germes inconnus comme paramètres » ticked unless the
+   laboratory wants to name them itself first;
+4. **Importer**. Running the same file again writes nothing new — the import
+   matches on the type's name, the germ (name or alias) and the norm version.
+
+Nothing else is needed: `/admin/types-produits` then edits a criterion
+without a deployment.
+
 ## Backups — non-negotiable
 
 ```bash

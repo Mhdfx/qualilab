@@ -41,6 +41,7 @@ import {
   type LineDraft,
   type NatureOption,
   type ParameterOption,
+  type ProductTypeOption,
   type ProfileOption,
 } from "@/components/preleveur/visit-types";
 import { Checklist, ConformityChip } from "./reception-widgets";
@@ -146,6 +147,7 @@ export function DepositForm({
   const [lines, setLines] = useState<LineDraft[]>([]);
   const [intake, setIntake] = useState<Record<string, LineIntake>>({});
   const [profiles, setProfiles] = useState<ProfileOption[]>([]);
+  const [productTypes, setProductTypes] = useState<ProductTypeOption[]>([]);
   const [memory, setMemory] = useState<ClientMemory>({ places: [], products: [] });
 
   const ensureParameters = useCallback((type: SampleType | undefined) => {
@@ -184,6 +186,12 @@ export function DepositForm({
       .then((r) => r.json())
       .then((data: ProfileOption[]) => {
         if (!cancelled) setProfiles(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {});
+    fetch(clientId ? `/api/product-types?clientId=${clientId}` : "/api/product-types")
+      .then((r) => r.json())
+      .then((data: ProductTypeOption[]) => {
+        if (!cancelled) setProductTypes(Array.isArray(data) ? data : []);
       })
       .catch(() => {});
     if (!clientId) {
@@ -522,6 +530,8 @@ export function DepositForm({
                       setClientId(e.target.value);
                       setSiteId("");
                       setMemory({ places: [], products: [] });
+                      // A type of the previous client must not stay on a line.
+                      setLines((prev) => prev.map((l) => (l.productTypeId ? { ...l, productTypeId: "" } : l)));
                     }}
                     className="input-field px-4"
                   >
@@ -674,6 +684,7 @@ export function DepositForm({
                   placeSuggestions={placeSuggestions}
                   productSuggestions={productSuggestions}
                   profiles={profiles.filter((p) => p.natureId === line.natureId)}
+                  productTypes={productTypes}
                 />
                 <Card className="p-4 sm:p-6">
                   <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">

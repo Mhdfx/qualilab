@@ -130,6 +130,16 @@ export async function createSerie(
     throw new SerieCreationError("Une des analyses demandées n'existe pas.");
   }
 
+  // A product type is the catalogue's or the client's own — never another client's.
+  const productTypeIds = [...new Set(input.lines.map((l) => l.productTypeId).filter((v): v is string => v !== null))];
+  if (productTypeIds.length > 0) {
+    const types = await prisma.productType.findMany({
+      where: { id: { in: productTypeIds }, active: true, OR: [{ clientId: null }, { clientId: input.clientId }] },
+      select: { id: true },
+    });
+    if (types.length !== productTypeIds.length) throw new SerieCreationError("Un des types de produit n'existe pas.");
+  }
+
   const isDeposit = input.kind === "DEPOT";
   const blockNonConform = options.blockNonConform === true;
 
@@ -246,6 +256,7 @@ export async function createSerie(
             handsState: line.handsState,
             remarks: line.remarks,
             unitCount: line.unitCount,
+            productTypeId: line.productTypeId,
             sampledAt: input.startedAt,
             status: isDeposit ? "RECU" : "PRELEVE",
             controlCode,

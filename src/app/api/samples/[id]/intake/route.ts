@@ -27,6 +27,8 @@ const INTAKE_SELECT = {
   handsState: true,
   remarks: true,
   unitCount: true,
+  productTypeId: true,
+  clientId: true,
   validatedById: true,
   parameters: { select: { parameterId: true } },
 } as const;
@@ -79,6 +81,7 @@ export async function PATCH(
     handsState: sample.handsState,
     remarks: sample.remarks,
     unitCount: sample.unitCount,
+    productTypeId: sample.productTypeId,
     parameterIds: sample.parameters.map((p) => p.parameterId),
   };
 
@@ -92,15 +95,28 @@ export async function PATCH(
       return NextResponse.json({ error: "Une des analyses demandées n'existe pas." }, { status: 400 });
     }
   }
+  if (changes.productTypeId) {
+    const type = await prisma.productType.findFirst({
+      where: { id: changes.productTypeId, active: true, OR: [{ clientId: null }, { clientId: sample.clientId }] },
+      select: { id: true },
+    });
+    if (!type) return NextResponse.json({ error: "Type de produit inconnu pour ce client." }, { status: 400 });
+  }
 
   // A new parameter list means the bench starts again: results go, the
   // technical validation too, and the sample returns to EN_ANALYSE if it
-  // had left it.
-  const backToBench = parameterIds !== null && sample.status === "RESULTATS_SAISIS";
+  // had left it. Changing the product type or the number of units changes
+  // the criteria the readings were judged against, so those results go too
+  // — a stale verdict must never reach the report (CRITERES.md §6).
+  const criteriaChanged = changes.productTypeId !== undefined || changes.unitCount !== undefined;
+  const resetResults = parameterIds !== null || criteriaChanged;
+  const backToBench = resetResults && sample.status === "RESULTATS_SAISIS";
 
   const updated = await prisma.$transaction(async (tx) => {
-    if (parameterIds) {
+    if (resetResults) {
       await tx.result.deleteMany({ where: { sampleId: id } });
+    }
+    if (parameterIds) {
       await tx.sampleParameter.deleteMany({ where: { sampleId: id } });
       await tx.sampleParameter.createMany({ data: parameterIds.map((parameterId) => ({ sampleId: id, parameterId })) });
     }
@@ -126,6 +142,7 @@ export async function PATCH(
       before: Object.fromEntries(Object.keys(changes).map((k) => [k, current[k as keyof typeof current]])),
       after: changes,
       parameterIds: parameterIds ? { before: current.parameterIds, after: parameterIds } : undefined,
+      resetResults,
       backToBench,
     },
   });

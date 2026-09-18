@@ -29,6 +29,17 @@ export type ProfileOption = {
   parameterIds: string[];
 };
 
+/** A product type of the catalogue (CRITERES.md): its germs and its n. */
+export type ProductTypeOption = {
+  id: string;
+  name: string;
+  clientId: string | null;
+  clientName: string | null;
+  criteriaCount: number;
+  parameterIds: string[];
+  unitCount: number;
+};
+
 export type ClientMemory = { places: string[]; products: string[] };
 
 /** The forms' suggestions: the client's memory first, then what this visit already typed. */
@@ -41,6 +52,7 @@ export type LineDraft = {
   natureId: string;
   lineKind: LineKind;
   produit: string;
+  productTypeId: string;
   lieu: string;
   numeroLot: string;
   productionDate: string;
@@ -107,6 +119,7 @@ export function emptyLine(nature: NatureOption | undefined, previous?: LineDraft
     natureId: nature?.id ?? "",
     lineKind: kind,
     produit: "",
+    productTypeId: "",
     lieu: previous?.lieu ?? "",
     numeroLot: "",
     productionDate: "",

@@ -28,6 +28,7 @@
     "bwip-js": "^4.11.4",
     "date-fns": "^4.4.0",
     "dotenv": "^17.4.2",
+    "exceljs": "^4.4.0",
     "lucide-react": "^1.21.0",
     "mariadb": "^3.5.3",
     "next": "16.2.9",

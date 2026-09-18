@@ -44,6 +44,9 @@ export type VerbSample = {
   remarks: string | null;
   unitCount: number;
   parameterIds: string[];
+  /** The catalogue's product type, changeable until approval (CRITERES.md). */
+  productTypeId: string | null;
+  clientId: string;
 };
 
 const REASONS = Object.keys(CANCEL_REASON_LABELS) as CancelReason[];
@@ -171,12 +174,28 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
     handsState: (sample.handsState ?? "") as HandsState | "",
     remarks: sample.remarks ?? "",
     unitCount: sample.unitCount,
+    productTypeId: sample.productTypeId ?? "",
   });
   const [parameterIds, setParameterIds] = useState<string[]>(sample.parameterIds);
+  const [productTypes, setProductTypes] = useState<{ id: string; name: string; clientId: string | null }[]>([]);
   const [options, setOptions] = useState<{ id: string; name: string }[] | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (kind !== "ALIMENT") return;
+    let cancelled = false;
+    fetch(`/api/product-types?clientId=${sample.clientId}`)
+      .then((r) => r.json())
+      .then((data: { id: string; name: string; clientId: string | null }[]) => {
+        if (!cancelled) setProductTypes(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [kind, sample.clientId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -225,6 +244,26 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
       <form onSubmit={submit} noValidate>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {(kind === "ALIMENT" || kind === "EAU" || kind === "AIR" || kind === "AUTRE") && input("produit", "Désignation")}
+          {kind === "ALIMENT" && (
+            <div>
+              <label htmlFor="correct-product-type" className="block text-xs font-medium text-slate-600">Type de produit (critères)</label>
+              <select id="correct-product-type" value={values.productTypeId} onChange={(e) => set("productTypeId", e.target.value)} className="input-field mt-1 px-3">
+                <option value="">— aucun —</option>
+                {productTypes.some((t) => t.clientId) && (
+                  <optgroup label="Types du client">
+                    {productTypes.filter((t) => t.clientId).map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="Catalogue">
+                  {productTypes.filter((t) => !t.clientId).map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+          )}
           {kind === "SURFACE" && input("surfaceLabel", "Surface prélevée")}
           {kind === "SURFACE" && input("surfaceAreaCm2", "Aire (cm²)", "number")}
           {kind === "MAINS" && input("personName", "Personne")}

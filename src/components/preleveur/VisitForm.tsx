@@ -33,6 +33,7 @@ import {
   type LineDraft,
   type NatureOption,
   type ParameterOption,
+  type ProductTypeOption,
   type ProfileOption,
 } from "./visit-types";
 
@@ -93,6 +94,7 @@ export function VisitForm({ me }: { me: Preleveur }) {
   // The two boxes at the foot: null = follow the lines, boolean = the préleveur's own tick.
   const [analysesChoice, setAnalysesChoice] = useState<{ micro: boolean | null; chimie: boolean | null }>({ micro: null, chimie: null });
   const [profiles, setProfiles] = useState<ProfileOption[]>([]);
+  const [productTypes, setProductTypes] = useState<ProductTypeOption[]>([]);
   const [memory, setMemory] = useState<ClientMemory>({ places: [], products: [] });
 
   const ensureParameters = useCallback((type: SampleType | undefined) => {
@@ -135,6 +137,12 @@ export function VisitForm({ me }: { me: Preleveur }) {
       .then((r) => r.json())
       .then((data: ProfileOption[]) => {
         if (!cancelled) setProfiles(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {});
+    fetch(clientId ? `/api/product-types?clientId=${clientId}` : "/api/product-types")
+      .then((r) => r.json())
+      .then((data: ProductTypeOption[]) => {
+        if (!cancelled) setProductTypes(Array.isArray(data) ? data : []);
       })
       .catch(() => {});
     if (!clientId) {
@@ -419,6 +427,8 @@ export function VisitForm({ me }: { me: Preleveur }) {
                       setSiteId("");
                       setNewSiteName(null);
                       setMemory({ places: [], products: [] });
+                      // A type of the previous client must not stay on a line.
+                      setLines((prev) => prev.map((l) => (l.productTypeId ? { ...l, productTypeId: "" } : l)));
                     }}
                     className="input-field px-4"
                   >
@@ -659,6 +669,7 @@ export function VisitForm({ me }: { me: Preleveur }) {
                   placeSuggestions={placeSuggestions}
                   productSuggestions={productSuggestions}
                   profiles={profiles.filter((p) => p.natureId === line.natureId)}
+                  productTypes={productTypes}
                 />
               </div>
             );

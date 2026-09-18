@@ -4,6 +4,7 @@ import { ArrowLeft, AlertTriangle, Building2, Package, Hash, Calendar } from "lu
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { labReference } from "@/lib/sample-select";
+import { loadBenchPlans } from "@/lib/bench-plan";
 import { formatDate } from "@/lib/labels";
 import { getDashboardPath } from "@/lib/roles";
 import { Card } from "@/components/ui/Card";
@@ -55,11 +56,12 @@ export default async function AnalysePage({
           },
         },
       },
-      results: true,
+      results: { include: { units: { orderBy: { unitIndex: "asc" } } } },
     },
   });
 
   if (!sample) notFound();
+  const bench = await loadBenchPlans(sample.id);
 
   // A technician may only open their own bench work.
   if (session.role === "TECHNICIEN" && sample.technicianId !== session.id) {
@@ -70,7 +72,15 @@ export default async function AnalysePage({
 
   const lines: ParameterLine[] = sample.parameters.map(({ parameter }) => {
     const existing = resultByParameter.get(parameter.id);
+    const plan = bench.plans.get(parameter.id) ?? null;
+    const units = plan
+      ? Array.from({ length: plan.plan.n }, (_, i) => existing?.units.find((u) => u.unitIndex === i + 1)?.rawValue ?? "")
+      : [];
     return {
+      plan: plan?.plan ?? null,
+      planLabel: plan?.label ?? null,
+      normLabel: plan?.normLabel ?? null,
+      units,
       parameterId: parameter.id,
       name: parameter.name,
       unit: parameter.unit,
@@ -102,7 +112,7 @@ export default async function AnalysePage({
       <PageHeader
         badge="Analyse"
         title={labReference(sample)}
-        subtitle="Saisissez chaque paramètre. La conformité est calculée automatiquement à partir de la limite de référence."
+        subtitle={bench.plans.size > 0 ? "Lisez chaque unité : le verdict (satisfaisant, acceptable, non satisfaisant) suit le plan n, c, m, M du type de produit." : "Saisissez chaque paramètre. La conformité est calculée automatiquement à partir de la limite de référence."}
       />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px_1fr]">
@@ -130,6 +140,18 @@ export default async function AnalysePage({
               </Field>
               <Field icon={Package} label="Produit">
                 {sample.produit ?? <span className="text-slate-400">Non renseigné</span>}
+              </Field>
+              <Field icon={Package} label="Type de produit">
+                {bench.productType ? (
+                  <>
+                    {bench.productType.name}
+                    <span className="ml-1.5 text-xs font-normal text-slate-500">
+                      {bench.plans.size} critère{bench.plans.size > 1 ? "s" : ""} · n = {bench.unitCount}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-slate-400">Aucun — lecture simple</span>
+                )}
               </Field>
               <Field icon={Hash} label="N° de lot">
                 {sample.numeroLot ?? <span className="text-slate-400">Non renseigné</span>}

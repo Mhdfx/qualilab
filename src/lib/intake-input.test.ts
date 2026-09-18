@@ -19,6 +19,7 @@ const current: IntakeCurrent = {
   handsState: null,
   remarks: null,
   unitCount: 5,
+  productTypeId: null,
   parameterIds: ["p1", "p2"],
 };
 

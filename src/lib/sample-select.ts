@@ -44,6 +44,7 @@ const COMMON = {
   client: { select: { id: true, name: true } },
   user: { select: { id: true, name: true } },
   nature: { select: { id: true, code: true, label: true, family: true } },
+  productType: { select: { id: true, name: true } },
   serie: {
     select: {
       id: true,

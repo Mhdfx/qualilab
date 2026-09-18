@@ -33,6 +33,7 @@ const LINE_COMMON = {
   unitCount: true,
   cancelReason: true,
   nature: { select: { id: true, code: true, label: true, family: true } },
+  productType: { select: { id: true, name: true } },
   parameters: {
     select: { parameter: { select: { id: true, name: true, unit: true } } },
   },

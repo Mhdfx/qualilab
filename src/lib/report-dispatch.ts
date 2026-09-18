@@ -2,6 +2,7 @@ import { prisma } from "./prisma";
 import { logAudit } from "./audit";
 import { renderPdf } from "./pdf";
 import { buildConclusion, buildReportHtml, type ReportData } from "./report-html";
+import { legacyFailures, sampleVerdict, unitStoredDisplay } from "./interpretation";
 import { sendEmail, recipientsFor } from "./email";
 import { reportEmail, alertEmail, type AlertRow } from "./emails/templates";
 import { getCompany } from "./company-server";
@@ -32,6 +33,8 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
       user: { select: { name: true } },
       approvedBy: { select: { name: true } },
       client: { select: { name: true, address: true, ice: true } },
+      productType: { select: { name: true } },
+      unitCount: true,
       report: true,
       results: {
         select: {
@@ -40,6 +43,9 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
           threshold: true,
           conform: true,
           note: true,
+          interpretation: true,
+          normVersion: { select: { label: true } },
+          units: { select: { rawValue: true, value: true, detected: true }, orderBy: { unitIndex: "asc" } },
           parameter: { select: { name: true } },
         },
       },
@@ -65,6 +71,9 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
     approverName: sample.approvedBy?.name ?? null,
     validatedAt: sample.report.validatedAt,
     conclusion: sample.report.conclusion ?? "",
+    interpretation: sample.report.interpretation,
+    productType: sample.productType?.name ?? null,
+    unitCount: sample.unitCount,
     results: sample.results.map((result) => ({
       parameter: result.parameter.name,
       value: result.value,
@@ -72,6 +81,9 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
       threshold: result.threshold,
       conform: result.conform,
       note: result.note,
+      interpretation: result.interpretation,
+      norm: result.normVersion?.label ?? null,
+      units: result.units.map(unitStoredDisplay),
     })),
   };
 }
@@ -98,11 +110,32 @@ export async function createReportFor(sampleId: string) {
       technician: { select: { name: true } },
       validatedBy: { select: { name: true } },
       results: {
-        select: { conform: true, parameter: { select: { name: true } } },
+        select: { conform: true, interpretation: true, parameter: { select: { name: true } } },
       },
     },
   });
   if (!sample) return null;
+
+  // Under criteria the conclusion is the scale's sentence for the worst
+  // verdict (CRITERES.md §2 rule 5); otherwise the historical wording. A
+  // germ still judged on its old limit is named after the sentence, so the
+  // conclusion can never say « conforme » above a non-conform line.
+  const verdict = sampleVerdict(sample.results);
+  const scale = verdict ? await prisma.conclusionScale.findUnique({ where: { interpretation: verdict } }) : null;
+  const legacy = legacyFailures(sample.results).map((r) => r.parameter.name);
+  const historical = buildConclusion(
+    sample.results.map((r) => ({ conform: r.conform, parameter: r.parameter.name }))
+  );
+  const conclusion = scale
+    ? [
+        scale.sentence,
+        legacy.length > 0
+          ? `Paramètres hors des limites de référence : ${legacy.join(", ")}. Une action corrective est recommandée.`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : historical;
 
   try {
     return await retryOnDuplicate(async () =>
@@ -110,12 +143,8 @@ export async function createReportFor(sampleId: string) {
         data: {
           sampleId,
           number: await generateReportNumber(),
-          conclusion: buildConclusion(
-            sample.results.map((r) => ({
-              conform: r.conform,
-              parameter: r.parameter.name,
-            }))
-          ),
+          conclusion,
+          interpretation: verdict,
           technicianName: sample.technician?.name ?? null,
           validatorName: sample.validatedBy?.name ?? null,
           validatedAt: sample.validatedAt,
@@ -273,6 +302,7 @@ export async function sendContaminationAlerts(
         select: {
           value: true,
           unit: true,
+          threshold: true,
           parameter: {
             select: { name: true, limitValue: true, unit: true, threshold: true },
           },
@@ -333,7 +363,10 @@ export async function sendContaminationAlerts(
       numeroLot: sample.numeroLot,
       germe: germ,
       resultat: `${result.value ?? "—"}${unit ? ` ${unit}` : ""}`,
+      // The criterion the verdict came from when there is one (stored on the
+      // result), otherwise the parameter's catalogue threshold.
       limite:
+        result.threshold ??
         result.parameter.threshold ??
         (result.parameter.limitValue !== null
           ? `${result.parameter.limitValue}${unit ? ` ${unit}` : ""}`

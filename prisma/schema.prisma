@@ -117,6 +117,21 @@ enum PaymentMode {
   CARTE
 }
 
+/// Chantier 2 — how the « m » limit of a criterion reads (CRITERES.md §1).
+enum LimitKind {
+  VALUE
+  ABSENCE
+  UNSPECIFIED
+}
+
+/// Chantier 2 — the verdict of a 3-class plan, per parameter and per sample.
+enum Interpretation {
+  SATISFAISANT
+  ACCEPTABLE
+  NON_SATISFAISANT
+  INCOMPLET
+}
+
 /// Coded motif of a non-conformity declared at reception (bon de réception rules).
 enum NonConformityReason {
   CHAINE_FROID
@@ -221,26 +236,27 @@ model Verification {
 }
 
 model Client {
-  id        String            @id @default(cuid())
-  name      String
-  contact   String?
+  id           String            @id @default(cuid())
+  name         String
+  contact      String?
   /// Primary address, kept for the existing screens.
-  email     String?
-  phone     String?
-  address   String?
-  ice       String?
+  email        String?
+  phone        String?
+  address      String?
+  ice          String?
   /// Clients are archived, never deleted: samples, reports and invoices refer
   /// to them and the laboratory's history must stay readable.
-  archived  Boolean           @default(false)
-  createdAt DateTime          @default(now())
-  emails    ClientEmail[]
-  samples   Sample[]
-  invoices  Invoice[]
-  sites     Site[]
-  series    Serie[]
-  places    ClientPlace[]
-  products  ClientProduct[]
-  profiles  AnalysisProfile[]
+  archived     Boolean           @default(false)
+  createdAt    DateTime          @default(now())
+  emails       ClientEmail[]
+  samples      Sample[]
+  invoices     Invoice[]
+  sites        Site[]
+  series       Serie[]
+  places       ClientPlace[]
+  products     ClientProduct[]
+  profiles     AnalysisProfile[]
+  productTypes ProductType[]
 
   @@index([archived, name])
 }
@@ -286,6 +302,9 @@ model AnalysisParameter {
   samples        SampleParameter[]
   results        Result[]
   profileEntries AnalysisProfileParameter[]
+  /// Chantier 2 — spelling variants of the workbook, one per line.
+  aliases        String?                    @db.Text
+  criteria       Criterion[]
 }
 
 model LabService {
@@ -346,6 +365,9 @@ model Sample {
   remarks              String?        @db.Text
   /// Number of units read separately (n = 5 foods, n = 9 histamine).
   unitCount            Int            @default(1)
+  /// Chantier 2 — the product type whose criteria interpret the results.
+  productTypeId        String?
+  productType          ProductType?   @relation(fields: [productTypeId], references: [id], onDelete: SetNull)
   cancelledAt          DateTime?
   cancelledById        String?
   cancelledBy          User?          @relation("SampleCancelledBy", fields: [cancelledById], references: [id])
@@ -419,19 +441,25 @@ model Result {
   /// The FINAL value, as printed on the report (e.g. "8,9.10²"). When the
   /// parameter has a calcFactor it is computed from the raw reading;
   /// otherwise it is exactly what the technician typed.
-  value        String?
+  value          String?
   /// The bench reading as typed, kept when a calcFactor transformed it —
   /// null means value IS the raw entry (factor 1, today's default).
-  rawValue     String?
+  rawValue       String?
   /// The final value parsed to a number. A contamination alert compares a
   /// result to its limit, and a display string cannot be compared — so both
   /// are kept.
-  numericValue Float?
-  unit         String?
-  threshold    String?
-  conform      Boolean?
-  workStatus   ResultWorkStatus @default(EN_COURS)
-  note         String?          @db.Text
+  numericValue   Float?
+  unit           String?
+  threshold      String?
+  conform        Boolean?
+  workStatus     ResultWorkStatus @default(EN_COURS)
+  note           String?          @db.Text
+  /// Chantier 2 — the norm version the result was read under, its verdict
+  /// and the readings per unit (n = 5…).
+  normVersionId  String?
+  normVersion    NormVersion?     @relation(fields: [normVersionId], references: [id], onDelete: SetNull)
+  interpretation Interpretation?
+  units          ResultUnit[]
 
   enteredById String?
   enteredBy   User?     @relation(fields: [enteredById], references: [id])
@@ -446,11 +474,13 @@ model Result {
 
 /// The official analysis report generated on validation.
 model Report {
-  id         String  @id @default(cuid())
-  sampleId   String  @unique
-  sample     Sample  @relation(fields: [sampleId], references: [id], onDelete: Cascade)
-  number     String  @unique
-  conclusion String? @db.Text
+  id             String          @id @default(cuid())
+  sampleId       String          @unique
+  sample         Sample          @relation(fields: [sampleId], references: [id], onDelete: Cascade)
+  number         String          @unique
+  conclusion     String?         @db.Text
+  /// Chantier 2 — the sample's verdict frozen with the report.
+  interpretation Interpretation?
 
   technicianName String?
   validatorName  String?
@@ -676,6 +706,100 @@ model DocumentReference {
   version   String
   createdOn DateTime? @db.Date
   updatedOn DateTime? @db.Date
+}
+
+// ---- Chantier 2 · catalogue and criteria (CRITERES.md §3) ------------------
+
+model ProductType {
+  id             String      @id @default(cuid())
+  name           String
+  normalizedName String
+  family         Family      @default(MICRO)
+  /// A client's own product (35 of the 131 types of the workbook).
+  clientId       String?
+  client         Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  active         Boolean     @default(true)
+  legacyId       Int?        @unique
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  criteria       Criterion[]
+  samples        Sample[]
+
+  @@index([normalizedName])
+  @@index([clientId, active])
+}
+
+model Norm {
+  id       String        @id @default(cuid())
+  /// « NM ISO 6579-1 », « NM ISO 4833-1 », « calcul »…
+  code     String        @unique
+  versions NormVersion[]
+}
+
+model NormVersion {
+  id            String      @id @default(cuid())
+  normId        String
+  norm          Norm        @relation(fields: [normId], references: [id], onDelete: Cascade)
+  /// « 2021 » — empty for undated methods.
+  version       String
+  /// As printed on the report: « NM ISO 6579 - 1:2021 ».
+  label         String
+  effectiveFrom DateTime?   @db.Date
+  supersededOn  DateTime?   @db.Date
+  /// The version in force today (one per norm).
+  current       Boolean     @default(false)
+  criteria      Criterion[]
+  results       Result[]
+
+  @@unique([normId, version])
+}
+
+model Criterion {
+  id            String            @id @default(cuid())
+  productTypeId String
+  productType   ProductType       @relation(fields: [productTypeId], references: [id], onDelete: Cascade)
+  parameterId   String
+  parameter     AnalysisParameter @relation(fields: [parameterId], references: [id])
+  normVersionId String?
+  normVersion   NormVersion?      @relation(fields: [normVersionId], references: [id], onDelete: SetNull)
+  /// « ufc/g », « /25g » — the unit of this criterion, not only of the parameter.
+  unit          String?
+  n             Int               @default(5)
+  /// Null = 2-class plan.
+  c             Int?
+  mKind         LimitKind         @default(VALUE)
+  m             Float?
+  /// The ceiling; null = m only.
+  bigM          Float?
+  active        Boolean           @default(true)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([productTypeId, parameterId])
+  @@index([parameterId])
+}
+
+/// The words printed for each verdict — edited by the admin.
+model ConclusionScale {
+  interpretation Interpretation @id
+  label          String
+  sentence       String         @db.Text
+}
+
+/// One reading per unit (A, B, C…) of a result read under a plan n > 1.
+model ResultUnit {
+  id        String   @id @default(cuid())
+  resultId  String
+  result    Result   @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  unitIndex Int
+  /// As typed on the bench: « 0(-1) », « < 10 », « 1,2.10² », « Absence ».
+  rawValue  String
+  /// The derived count, null for an absence or below detection.
+  value     Float?
+  /// Absence tests: detected or not.
+  detected  Boolean?
+
+  @@unique([resultId, unitIndex])
 }
 
 model Invoice {

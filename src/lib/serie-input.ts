@@ -67,6 +67,8 @@ export type CleanLine = {
   remarks: string | null;
   unitCount: number;
   parameterIds: string[];
+  /** The catalogue's product type (CRITERES.md) — the criteria come from it. */
+  productTypeId: string | null;
   /** Reception data — meaningful for a dépôt only; defaults for a visit. */
   conformity: boolean;
   conformityReason: NonConformityReason | null;
@@ -276,6 +278,9 @@ export function validateLine(
       remarks: text(input.remarks, 2000) || null,
       unitCount: unitCount as number,
       parameterIds,
+      // Criteria are written for a food product: a surface or a pair of
+      // hands never carries one.
+      productTypeId: lineKind === "ALIMENT" ? text(input.productTypeId) || null : null,
       conformity,
       conformityReason,
       conformityNote,

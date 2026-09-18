@@ -16,6 +16,8 @@ import {
   Microscope,
   Wallet,
   ListChecks,
+  Tags,
+  BookOpen,
 } from "lucide-react";
 import type { NavSection } from "./nav-types";
 
@@ -54,6 +56,8 @@ export const adminNav: NavSection[] = [
     items: [
       { label: "Paramètres d'analyse", href: "/admin/parametres", icon: Settings },
       { label: "Profils d'analyses", href: "/admin/profils", icon: ListChecks },
+      { label: "Types de produits & critères", href: "/admin/types-produits", icon: Tags },
+      { label: "Normes", href: "/admin/normes", icon: BookOpen },
       { label: "Système Qualité", href: "/qualite", icon: Gauge },
       { label: "Achat & Stock", href: "/magasin", icon: Boxes },
       { label: "Catalogue", href: "/admin/catalogue", icon: Users },
