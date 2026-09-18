@@ -124,6 +124,9 @@ export async function PATCH(
       where: { id },
       data: {
         ...changes,
+        // The readings are gone: the contamination alert of the previous
+        // ones must not silence the alert of the new ones.
+        ...(resetResults ? { alertsSentAt: null } : {}),
         ...(backToBench ? { status: "EN_ANALYSE", validatedById: null, validatedAt: null } : {}),
       },
       select: INTAKE_SELECT,

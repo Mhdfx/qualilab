@@ -24,6 +24,8 @@ type ValidationPanelProps = {
   validatedBy: string | null;
   validatedAt: string | null;
   nonConformes: number;
+  /** Non-conform results on a germ flagged « sensible » — the only ones that alert. */
+  alertables: number;
   reportNumber: string | null;
   sentTo: string | null;
   /** False when no mail provider is configured yet — sends are recorded, not delivered. */
@@ -47,6 +49,7 @@ export function ValidationPanel({
   validatedBy,
   validatedAt,
   nonConformes,
+  alertables,
   reportNumber,
   sentTo,
   emailLive,
@@ -158,8 +161,10 @@ export function ValidationPanel({
       {nonConformes > 0 && state !== "APPROVED" && (
         <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
           <b>{nonConformes} résultat{nonConformes > 1 ? "s" : ""} non conforme
-          {nonConformes > 1 ? "s" : ""}.</b> Une alerte de contamination sera
-          envoyée au client après approbation.
+          {nonConformes > 1 ? "s" : ""}.</b>{" "}
+          {alertables > 0
+            ? "Une alerte de contamination sera envoyée au client après approbation."
+            : "Aucun paramètre sensible n'est dépassé : le rapport partira sans alerte de contamination."}
         </p>
       )}
 

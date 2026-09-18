@@ -51,6 +51,7 @@ export default async function ReceptionPage() {
         id: true,
         controlCode: true,
         produit: true,
+        conformityReason: true,
         conformityNote: true,
         receivedAt: true,
         client: { select: { name: true } },
@@ -97,6 +98,7 @@ export default async function ReceptionPage() {
     controlCode: sample.controlCode,
     clientName: sample.client.name,
     produit: sample.produit,
+    conformityReason: sample.conformityReason,
     conformityNote: sample.conformityNote,
     receivedAt: sample.receivedAt ? formatDateTime(sample.receivedAt) : null,
   }));

@@ -591,20 +591,20 @@ running server. Spec: `CRITERES.md`.
 ### M2 — Le type de produit sur la ligne — dev server 2026-09-18, `admin`
 - [x] A deposit line of kind « Aliment » carries the product type (« SALADES AVEC SOURCE PROTEIQUE »), stores it on the sample and the bench reads it back (« 6 critères · n = 5 »).
 - [x] The picker adds the type's germs to what is already ticked and raises n; it never removes an analysis the préleveur asked for.
-- [ ] The picker on `/preleveur/nouvelle-visite` and in « Corriger la fiche » — built and type-checked, exercised through the deposit path only.
+- [x] The picker on `/preleveur/nouvelle-visite` (2026-09-18, `pre1`): choosing « SALADES AVEC SOURCE PROTEIQUE » ticks its 6 germs, raises n from 1 to 5 and explains itself (« Le rapport interprétera ce produit selon ses 9 critères… »); the visite **19/26** is stored with the type, n = 5 and 6 germs. « Corriger la fiche » exercised through the API: changing the product type deletes the 6 results and their 30 unit readings and sends the sample back to EN_ANALYSE.
 
 ### M3 — La paillasse par unité — dev server 2026-09-18, `admin`
 - [x] A sample with a product type shows one grid per germ, A…E for n = 5, with the criterion and its norm version above (« m = 10 · M = 1.10² ufc/g · c = 1 · NM ISO 16649-2:2007 »).
 - [x] The verdict appears as the units are typed: « < 10 · 50 · < 10 · < 10 · < 10 » → **Acceptable — 1 unité entre m = 10 et M = 1.10² (c = 1)**.
 - [x] The six germs of the test sample gave the six expected verdicts: Micro-organismes SATISFAISANT, E. coli ACCEPTABLE, Staphylocoques NON_SATISFAISANT (1 unité > M), Salmonelles / Listeria SATISFAISANT (absence ×5), Clostridium SATISFAISANT.
 - [x] Submitting is refused while a grid is incomplete (INCOMPLET) and accepted once every unit is read.
-- [ ] A germ without a criterion on the same sample (single-value path) — covered by the engine's tests and the mixed-sample conclusion rule, not yet observed in a browser.
+- [x] A germ without a criterion (2026-09-18, série **18/26**): line 1 read per unit against its criteria, lines 2 and 3 (surface, mains) read as single values on the same série — three reports, the first with « CRITÈRE (m · M · c) » and « VERDICT », the other two with « SEUIL DE RÉFÉRENCE » and « CONFORMITÉ ».
 
 ### M4 — Validation et rapport — dev server 2026-09-18, `valid1` / `admin`
 - [x] `/validation/[id]` shows the sample's verdict in the header (**Non satisfaisant**), and per germ: the readings A…E, the criterion, its norm version and the verdict.
 - [x] The two signatures still apply (the technical validator may not approve: 409 « deux signataires différents »); `valid1` validates, `admin` approves, the report is created (RAP-2026-00005).
 - [x] Report PDF (pdftotext): columns « CRITÈRE (m · M · c) » and « VERDICT », the readings A…E under each result, the norm version under each criterion, the header « Type de produit · 5 unités analysées », conclusion « Les résultats obtenus ne sont pas conformes aux critères microbiologiques applicables au produit analysé. » from the scale.
-- [ ] Contamination alert carrying the criterion instead of the old threshold — code path changed, not observed (no mail provider on dev).
+- [x] Contamination alert on a criteria sample (2026-09-18): Salmonelles read « présence » on 18/26-1 → `CONTAMINATION_ALERT_SENT` for the client's two alert addresses, status SIMULÉ (no mail provider on dev).
 
 ### M5 — Production (http://185.217.126.53, deployed 2026-09-18)
 - [x] Workbook imported on the VPS: dry run first (1 075 lignes, 131 types, 43 versions de normes, 2 refusées), then commit — **131 types, 38 paramètres, 38 normes (43 versions), 1 075 critères** créés; re-running it writes nothing.
@@ -612,6 +612,39 @@ running server. Spec: `CRITERES.md`.
 - [x] Full circuit on production: dépôt **18/26** « Salade composée test » with the product type → bench read per unit through the API → verdicts ACCEPTABLE / SATISFAISANT / NON_SATISFAISANT → `valid1` validates, `admin` approves → report **RAP-2026-xxxxx** with the criteria columns, the readings A…E, the norm versions and the scale's conclusion (« Les résultats obtenus ne sont pas conformes… »).
 - [x] `/validation/[id]` on production shows the sample verdict « Non satisfaisant » and each germ's verdict beside its criterion.
 - [ ] Recette with the laboratory on its own product types (M6, with chantier 1's L6).
+
+## Checkpoint N — Recette du circuit complet après chantier 2 (dev server 2026-09-18, `pre1` / `recep1` / `tech1` / `valid1` / `admin` / `compta1`)
+
+One série carried through every desk, plus an adversarial audit of the whole
+circuit (8 lenses, 24 findings triaged).
+
+- [x] **Prélèvement** : visite de 3 lignes (aliment avec type de produit, surface, mains) créée par `pre1` — n° de série **18/26**, aucun `controlCode` dans la charge utile du préleveur.
+- [x] **Réception** : la série est réceptionnée en une fois → 9117/26, 9118/26, 9119/26, technicien attribué ; refus correct quand le technicien manque (« Ligne 1 : attribuez un technicien »).
+- [x] **Étiquettes** : PDF de 7 étiquettes (5 unités + 1 + 1), 3 colonnes de 70 mm sur la pleine largeur A4, code-barres Code128 lisible.
+- [x] **Protocole / bon de réception** : PDF rendus et **relus à l'image** — un défaut de style a été trouvé et corrigé (voir ci-dessous).
+- [x] **Paillasse** : grille par unité sur la ligne à critères, valeur simple sur les deux autres ; soumission acceptée une fois les cinq unités lues.
+- [x] **Validation** : `valid1` signe techniquement, `admin` approuve (la double signature refuse le même signataire) ; 3 rapports PDF produits.
+- [x] **Alerte** : alerte de contamination déclenchée sur la ligne à critères.
+- [x] **Facture** : facture FAC-2026-0004 émise depuis les analyses validées (970 DH HT, TVA 194, total 1 164) et son PDF ; l'émission est désormais tracée au journal.
+- [x] **Écrans** : files réception / analyses / approbations, catalogue des types, grille de critères, normes, réglages — rendus à 1440×900 ; catalogue et grille vérifiés aussi en 768 px (la grille défile dans son cadre, la page ne défile pas).
+
+### Défauts trouvés par cette recette et corrigés le jour même
+1. **Protocole et bon de réception cassés** (régression du 14/09) : la classe `.box` servait à la fois aux panneaux d'information et aux cases à cocher « Analyses à effectuer » ; la règle des cases écrasait les panneaux, les listes d'analyses et les cadres de signature s'effondraient sur deux pages. Cases renommées `.case`, documents re-rendus et relus à l'image.
+2. **Rapport et alerte imprimaient le critère du catalogue** au lieu du plan appliqué (n plafonné aux unités réellement prélevées).
+3. **La valeur de synthèse imprimait la notation de paillasse** (« 0(-1) ») au lieu de « < 10 ».
+4. **Une alerte de contamination ne repartait jamais** après un retour en paillasse (`alertsSentAt` jamais remis à zéro).
+5. **Le panneau de validation promettait une alerte** pour tout résultat non conforme, alors que seuls les paramètres sensibles en déclenchent une.
+6. **L'émission d'une facture n'était pas tracée** au journal d'audit, contrairement aux autres écritures d'argent.
+7. **Destinataires longs** : `EmailLog.to` et `Report.sentTo` (191 caractères) pouvaient faire échouer l'écriture *après* l'envoi du mail — tronqués désormais.
+8. **Une ligne de dépôt sans technicien** partait en RECU invisible de toutes les files : elle est maintenant retenue dans « Échantillons bloqués », d'où on l'attribue.
+9. **Ré-import du classeur** : un type de produit rattaché à un client était recréé en double ; l'appariement couvre désormais tous les types.
+10. **Lignes annulées** : elles restent imprimées sur le protocole et le bon, marquées « Ligne annulée » ; la liste des échantillons bloqués affiche le motif codé et non plus seulement la précision libre.
+
+11. **La signature technique survivait à une annulation** : la validation du validateur est portée par l'échantillon, pas par un statut ; annuler puis réactiver la rendait donc réutilisable pour approuver d'autres résultats. Vérifié : signature présente avant l'annulation, absente après la réactivation.
+12. **Une analyse facturée à 0 DH** consommait l'échantillon en silence : refusée désormais (« Tarif manquant pour … »), tandis qu'une ligne manuelle offerte reste possible. Le catalogue de démonstration nommait « Listeria monocytogenes » là où le paramètre s'appelle « Listeria » : la facturation ne pouvait jamais le tarifer.
+13. **Une ligne qui cesse d'être un aliment** gardait son n° de lot et sa quantité ; à la réception, « unité(s) » du terrain était pris pour un poids et la première règle d'acceptation ne pouvait pas passer.
+
+Écartés après vérification : la marge de 14 mm supposée sur les étiquettes (le PDF rendu occupe bien la pleine feuille), et trois constats dont le rendu ou le code montrait l'inverse.
 
 ## Sign-off log
 

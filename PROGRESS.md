@@ -251,6 +251,21 @@ in `PLAN.md`, opened one at a time.
 
 ## Session Log
 
+- **2026-09-18 · Claude Code (soir)** · **Recette du circuit complet + audit
+  adverse.** Une série menée de bout en bout sur le serveur de développement
+  (visite 3 lignes → réception → paillasse par unité et valeur simple →
+  validation à deux signatures → 3 rapports → alerte → facture), plus un audit
+  multi-agents du circuit entier (8 angles, 24 constats triés). **Dix défauts
+  réels corrigés**, dont une régression qui cassait le protocole et le bon de
+  réception depuis le 14/09 (collision de la classe CSS `.box`), le critère
+  imprimé au lieu du plan appliqué, l'alerte qui ne repartait jamais après un
+  retour en paillasse, l'émission de facture non tracée, deux colonnes de 191
+  caractères qui pouvaient faire échouer une écriture après l'envoi du mail,
+  une ligne de dépôt sans technicien invisible de toutes les files, et le
+  ré-import qui dupliquait un type de produit rattaché à un client. Quatre
+  constats écartés après vérification au rendu. TESTPLAN checkpoint N.
+  251 tests, lint et build verts.
+
 - **2026-09-18 · Claude Code** · **Phase 9 chantier 2 delivered** (spec
   `CRITERES.md`): criteria are data now. New tables `ProductType`, `Norm`,
   `NormVersion`, `Criterion`, `ConclusionScale`, `ResultUnit` (+ `Sample.

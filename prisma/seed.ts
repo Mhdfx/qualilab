@@ -95,7 +95,8 @@ const parameters = [
 
 const labServices = [
   { name: "Salmonelles", category: "ALIMENTAIRE", unitPrice: 450 },
-  { name: "Listeria monocytogenes", category: "ALIMENTAIRE", unitPrice: 480 },
+  // The billing matches a service to a parameter by name: « Listeria » here too.
+  { name: "Listeria", category: "ALIMENTAIRE", unitPrice: 480 },
   { name: "E. coli", category: "ALIMENTAIRE", unitPrice: 320 },
   { name: "Coliformes totaux", category: "ALIMENTAIRE", unitPrice: 280 },
   { name: "Levures & moisissures", category: "ALIMENTAIRE", unitPrice: 260 },

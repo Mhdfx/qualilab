@@ -105,6 +105,7 @@ export async function GET(
 
   const isDeposit = serie.kind === "DEPOT";
   const lines: DocumentLine[] = serie.samples.map((s) => ({
+    cancelled: s.status === "ANNULE",
     lineNumber: s.lineNumber,
     lineKind: s.lineKind,
     designation:

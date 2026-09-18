@@ -34,6 +34,8 @@ import { DEFAULT_THRESHOLDS, type ReceptionThresholds } from "./reception-rules"
  */
 
 export type DocumentLine = {
+  /** A line cancelled after the fact still prints, marked — the paper keeps the trail. */
+  cancelled?: boolean;
   lineNumber: number;
   lineKind: LineKind;
   designation: string;
@@ -162,11 +164,13 @@ const BASE_CSS = `
   .notes { font-size: 8.4pt; color: #55707d; margin-bottom: 8px; }
   .nc { color: #a5203a; font-weight: 600; }
   .tick { margin-left: 10px; font-size: 8.6pt; text-transform: none; letter-spacing: 0; color: #1b2a33; font-weight: 600; }
-  /* Boxes drawn in CSS, not glyphs: every PDF renderer shows them the same. */
-  .box { position: relative; display: inline-block; width: 10px; height: 10px; margin-right: 4px;
+  /* Checkboxes drawn in CSS, not glyphs: every PDF renderer shows them the
+     same. Named « case » and not « box »: « .box » is the information panel
+     above, and one class for two shapes collapsed those panels. */
+  .case { position: relative; display: inline-block; width: 10px; height: 10px; margin-right: 4px;
     vertical-align: -1px; border: 1.2px solid #1f3a4d; border-radius: 1px; background: #fff; }
-  .box.checked { background: #1f3a4d; }
-  .box.checked::after { content: ""; position: absolute; left: 2.6px; top: 0; width: 3px; height: 6px;
+  .case.checked { background: #1f3a4d; }
+  .case.checked::after { content: ""; position: absolute; left: 2.6px; top: 0; width: 3px; height: 6px;
     border: solid #fff; border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); }
 `;
 
@@ -240,7 +244,7 @@ export function buildProtocolHtml(data: SerieDocumentData, company: CompanyInfo 
         <td>${l.productTemperature !== null ? `T°p ${temperatureText(l.productTemperature)}` : ""}${
           l.productTemperature !== null && l.ambientTemperature !== null ? "<br>" : ""
         }${l.ambientTemperature !== null ? `T°a ${temperatureText(l.ambientTemperature)}` : ""}</td>
-        <td>${show(l.remarks)}</td>
+        <td>${l.cancelled ? `<span class="nc">Ligne annulée</span>${l.remarks ? " · " : ""}` : ""}${show(l.remarks)}</td>
       </tr>`
     )
     .join("");
@@ -280,8 +284,8 @@ ${headerHtml(company, "Protocole de prélèvement", data.reference)}
 </table>
 
 <h2 class="small" style="margin:0 0 4px;text-transform:uppercase;letter-spacing:.5px">Analyses à effectuer :
-  <span class="tick"><span class="box${data.analysesMicro ? " checked" : ""}"></span>Analyses microbiologiques</span>
-  <span class="tick"><span class="box${data.analysesChimie ? " checked" : ""}"></span>Analyses physico-chimiques</span></h2>
+  <span class="tick"><span class="case${data.analysesMicro ? " checked" : ""}"></span>Analyses microbiologiques</span>
+  <span class="tick"><span class="case${data.analysesChimie ? " checked" : ""}"></span>Analyses physico-chimiques</span></h2>
 ${analysesHtml(data.lines)}
 ${data.notes ? `<p class="notes">${escapeHtml(data.notes)}</p>` : ""}
 

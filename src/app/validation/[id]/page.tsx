@@ -96,6 +96,8 @@ export default async function ValidationDetailPage({
 
   const state = approvalState(sample);
   const nonConformes = sample.results.filter((r) => r.conform === false).length;
+  // Only a sensitive germ over its limit raises a contamination alert.
+  const alertables = sample.results.filter((r) => r.conform === false && r.parameter.alertOnExceed).length;
   const verdict = sampleVerdict(sample.results);
 
   return (
@@ -295,6 +297,7 @@ export default async function ValidationDetailPage({
           validatedBy={sample.validatedBy?.name ?? null}
           validatedAt={sample.validatedAt ? formatDateTime(sample.validatedAt) : null}
           nonConformes={nonConformes}
+          alertables={alertables}
           reportNumber={sample.report?.number ?? null}
           sentTo={sample.report?.sentTo ?? null}
           emailLive={!!process.env.RESEND_API_KEY}

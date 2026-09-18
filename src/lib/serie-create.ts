@@ -224,7 +224,12 @@ export async function createSerie(
         const place = await resolvePlace(tx, client.id, siteId, line.lieu);
         const produit = product?.label ?? line.produit;
         const controlCode = isDeposit ? (await nextNumber(tx, "CONTROLE", year)).formatted : null;
-        const held = isDeposit && blockNonConform && !line.conformity;
+        // Held: a non-conform line when the laboratory blocks them, and any
+        // line that reaches the bench without a technician — an unassigned
+        // sample would sit in no queue at all. Both are released from
+        // « Échantillons bloqués », which assigns a technician.
+        const held =
+          isDeposit && ((blockNonConform && !line.conformity) || line.technicianId === null);
         const technicianId = isDeposit && !held ? line.technicianId : null;
 
         const sample = await tx.sample.create({

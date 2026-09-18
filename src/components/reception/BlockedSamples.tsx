@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Unlock } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { NON_CONFORMITY_REASON_LABELS } from "@/lib/labels";
 import type { TechnicianOption } from "./types";
 
 export type BlockedSample = {
@@ -11,6 +12,7 @@ export type BlockedSample = {
   controlCode: string | null;
   clientName: string;
   produit: string | null;
+  conformityReason: keyof typeof NON_CONFORMITY_REASON_LABELS | null;
   conformityNote: string | null;
   receivedAt: string | null;
 };
@@ -110,6 +112,11 @@ function BlockedRow({
             {sample.clientName}
             {sample.produit ? ` · ${sample.produit}` : ""}
           </p>
+          {sample.conformityReason && (
+            <p className="mt-1 text-sm font-medium text-amber-900">
+              {NON_CONFORMITY_REASON_LABELS[sample.conformityReason]}
+            </p>
+          )}
           {sample.conformityNote && (
             <p className="mt-1 text-sm text-amber-800">
               Motif : {sample.conformityNote}

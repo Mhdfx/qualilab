@@ -244,10 +244,18 @@ export function SerieReceptionForm({
       temperature:
         serie.coolerTemperature === null ? "" : String(serie.coolerTemperature).replace(".", ","),
       temperatureTouched: false,
-      quantity: s.quantity === null ? "" : String(s.quantity).replace(".", ","),
-      // A line never weighed on site is weighed here: grams for food, litres for water.
+      // A line never weighed on site is weighed here: grams for food, litres
+      // for water. « Unité(s) » is what the paper form carries by default
+      // (« 01 »), never a weight — the field is left empty so the counter
+      // types what the scale reads, in a unit the acceptance rules can use.
+      quantity:
+        s.quantity === null || s.quantityUnit === "UNITE" ? "" : String(s.quantity).replace(".", ","),
       quantityUnit:
-        s.quantity !== null && s.quantityUnit ? s.quantityUnit : s.lineKind === "EAU" ? "L" : "G",
+        s.quantity !== null && s.quantityUnit && s.quantityUnit !== "UNITE"
+          ? s.quantityUnit
+          : s.lineKind === "EAU"
+            ? "L"
+            : "G",
       conformityChoice: null,
       reason: "",
       note: "",

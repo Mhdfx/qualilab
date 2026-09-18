@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { pageParams, toPage } from "@/lib/pagination";
 import { serializeInvoice } from "@/lib/invoice-serialize";
@@ -97,6 +98,17 @@ export async function POST(request: Request) {
       if (!isValidAmount(item.quantity) || item.quantity <= 0) {
         return NextResponse.json(
           { error: `Quantité invalide pour « ${item.description} ».` },
+          { status: 400 }
+        );
+      }
+      // A line that bills an analysis at 0 consumes the sample for good: the
+      // catalogue price is missing (the screen badges « prix à saisir »), and
+      // a silent zero would never be noticed on the invoice.
+      if (item.sampleId && item.unitPrice <= 0) {
+        return NextResponse.json(
+          {
+            error: `Tarif manquant pour « ${item.description} ». Saisissez le prix de cette analyse (ou complétez le catalogue) avant d'émettre la facture.`,
+          },
           { status: 400 }
         );
       }
@@ -213,6 +225,22 @@ export async function POST(request: Request) {
       },
       })
     );
+
+    // A money document: who issued it, for whom and for how much.
+    await logAudit({
+      actorId: session.id,
+      action: "INVOICE_CREATED",
+      entity: "Invoice",
+      entityId: invoice.id,
+      metadata: {
+        number: invoice.number,
+        client: invoice.client.name,
+        total,
+        lines: itemsWithTotals.length,
+        samples: sampleIds.length,
+        status: invoiceStatus,
+      },
+    });
 
     return NextResponse.json(serializeInvoice(invoice), { status: 201 });
   } catch (error) {

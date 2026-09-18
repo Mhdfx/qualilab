@@ -40,6 +40,7 @@ const ACTION_LABELS: Record<string, string> = {
   REPORT_SENT: "Rapport envoyé",
   REPORT_DOWNLOADED: "Rapport téléchargé",
   CONTAMINATION_ALERT_SENT: "Alerte de contamination envoyée",
+  INVOICE_CREATED: "Facture émise",
   INVOICE_DOWNLOADED: "Facture téléchargée",
   INVOICE_PAID: "Facture encaissée",
   INVOICE_REOPENED: "Facture rouverte",

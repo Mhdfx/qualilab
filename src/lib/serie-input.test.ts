@@ -217,3 +217,16 @@ describe("the line's product type", () => {
     expect(surface).toMatchObject({ ok: true, value: { productTypeId: null } });
   });
 });
+
+describe("what a line of another kind must not keep", () => {
+  it("drops the lot and the quantity when the line is a surface or hands", () => {
+    const surface = validateLine(
+      { natureId: "surfaces", surfaceLabel: "Planche verte", lieu: "Poste", parameterIds: ["p1"], numeroLot: "L2609-4", quantity: "1", quantityUnit: "UNITE" },
+      0,
+      natures
+    );
+    expect(surface).toMatchObject({ ok: true, value: { numeroLot: null, quantity: null, quantityUnit: null } });
+    const food = validateLine({ ...aliment, numeroLot: "L2609-4", quantity: "500", quantityUnit: "G" }, 0, natures);
+    expect(food).toMatchObject({ ok: true, value: { numeroLot: "L2609-4", quantity: 500, quantityUnit: "G" } });
+  });
+});

@@ -115,6 +115,8 @@ describe("the helpers the screens share", () => {
     expect(summariseReadings(read("Absence", "Absence"))).toEqual({ value: "Absence", numeric: 0 });
     expect(summariseReadings(read("Absence", "Présence"))).toEqual({ value: "Présence", numeric: null });
     expect(summariseReadings(read("< 10", "0(-1)"))).toEqual({ value: "< 10", numeric: 0 });
+    // The bench shorthand never reaches the report: « 0(-2) » prints « < 1.10² ».
+    expect(summariseReadings(read("0(-2)"))).toEqual({ value: "< 1.10²", numeric: 0 });
     expect(summariseReadings(read("", "??"))).toEqual({ value: null, numeric: null });
   });
 

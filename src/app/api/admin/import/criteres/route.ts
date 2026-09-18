@@ -77,11 +77,26 @@ export async function POST(request: Request) {
   // ---- match against the catalogue ------------------------------------------
   const [index, existingTypes, norms, criteria] = await Promise.all([
     loadParameterIndex(),
-    prisma.productType.findMany({ where: { clientId: null }, select: { id: true, normalizedName: true } }),
+    prisma.productType.findMany({ select: { id: true, normalizedName: true, clientId: true } }),
     prisma.norm.findMany({ select: { id: true, code: true, versions: { select: { id: true, version: true, current: true } } } }),
     prisma.criterion.findMany({ select: { id: true, productTypeId: true, parameterId: true, normVersionId: true, unit: true, n: true, c: true, mKind: true, m: true, bigM: true } }),
   ]);
-  const typeByKey = new Map(existingTypes.map((t) => [t.normalizedName, t.id]));
+  // A type the laboratory attached to one of its clients is still the same
+  // type: matching only the common catalogue would import it again as a
+  // duplicate at every re-import. The common one wins when both exist; an
+  // ambiguous name owned by several clients is left alone and a common type
+  // is created for it.
+  const typeByKey = new Map<string, string>();
+  for (const t of existingTypes.filter((t) => t.clientId === null)) typeByKey.set(t.normalizedName, t.id);
+  const ownedCount = new Map<string, number>();
+  for (const t of existingTypes.filter((t) => t.clientId !== null)) {
+    ownedCount.set(t.normalizedName, (ownedCount.get(t.normalizedName) ?? 0) + 1);
+  }
+  for (const t of existingTypes.filter((t) => t.clientId !== null)) {
+    if (!typeByKey.has(t.normalizedName) && ownedCount.get(t.normalizedName) === 1) {
+      typeByKey.set(t.normalizedName, t.id);
+    }
+  }
   const normByCode = new Map(norms.map((n) => [n.code, n]));
   const versionKey = (normId: string, version: string) => `${normId}|${version}`;
   const versionByKey = new Map(norms.flatMap((n) => n.versions.map((v) => [versionKey(n.id, v.version), v.id] as const)));

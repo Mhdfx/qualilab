@@ -56,7 +56,9 @@ export async function sendEmail(input: SendEmailInput): Promise<SendResult> {
       data: {
         reportId: input.reportId ?? null,
         type: input.type,
-        to: [...recipients, ...(input.cc ?? [])].join(", "),
+        // The column holds 191 characters: a long recipient list is
+        // recorded truncated rather than losing the whole log line.
+        to: [...recipients, ...(input.cc ?? [])].join(", ").slice(0, 191),
         subject: input.subject,
         status: result.status,
         providerId: result.providerId,

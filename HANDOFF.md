@@ -214,6 +214,7 @@ Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|E
 | Sample numbering (field / control / blind serial) | `src/lib/sample-code.ts` |
 | How a result is judged (n, c, m, M, absence, dilutions) | `src/lib/interpretation.ts` — pure, tested; the bench, the validation screen and the report all call it |
 | The criteria themselves (a limit, a norm version, a germ) | `/admin/types-produits/[id]` — data, no code; `/admin/normes` for the versions |
+| The conclusion of ONE report, after the fact | `PATCH /api/reports/[id]/admin-edit` exists (ADMIN, deliberately unaudited at the client's request) but **no screen calls it yet** — the button remains to be added |
 | The words printed under « Conclusion » | `/admin/reglages` → Échelle de conclusion (table `ConclusionScale`) |
 | How the criteria workbook is read | `src/lib/criteria-import.ts` (pure parser) + `POST /api/admin/import/criteres` |
 | Which germ a workbook label means | the parameter's « Autres libellés » on `/admin/parametres` (`AnalysisParameter.aliases`) |

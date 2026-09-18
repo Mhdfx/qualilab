@@ -245,7 +245,9 @@ export async function sendReport(sampleId: string, actorId: string | null) {
     data: {
       sendStatus: result.status === "ENVOYE" ? "ENVOYE" : "NON_ENVOYE",
       sentAt,
-      sentTo: to.join(", "),
+      // The column holds 191 characters and the mail has already left:
+      // a long recipient list is recorded truncated, never lost.
+      sentTo: to.join(", ").slice(0, 191),
     },
   });
 

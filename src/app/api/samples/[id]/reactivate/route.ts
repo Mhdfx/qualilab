@@ -38,7 +38,19 @@ export async function POST(
   try {
     const updated = await prisma.sample.update({
       where: { id, status: "ANNULE" },
-      data: { status: target, cancelledAt: null, cancelledById: null, cancelReason: null },
+      // The technical validation belonged to the results that were cancelled:
+      // it is dropped with them, otherwise the next batch could be approved
+      // on a signature nobody gave for it (the signature lives on the sample,
+      // not on a status — see sample-status.ts).
+      data: {
+        status: target,
+        cancelledAt: null,
+        cancelledById: null,
+        cancelReason: null,
+        validatedById: null,
+        validatedAt: null,
+        alertsSentAt: null,
+      },
       select: { id: true, code: true, controlCode: true, status: true },
     });
 

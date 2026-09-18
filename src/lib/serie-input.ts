@@ -222,6 +222,7 @@ export function validateLine(
   }
 
   const handsState = lineKind === "MAINS" ? oneOf(input.handsState, HANDS_STATES) : null;
+  const weighed = lineKind !== "SURFACE" && lineKind !== "MAINS";
 
   const unitCountRaw = numberOrNull(input.unitCount);
   const unitCount = unitCountRaw === null ? 1 : unitCountRaw;
@@ -261,11 +262,13 @@ export function validateLine(
       lineKind,
       produit: lineKind === "ALIMENT" || lineKind === "EAU" || lineKind === "AIR" || lineKind === "AUTRE" ? produit : null,
       lieu,
-      numeroLot: text(input.numeroLot) || null,
+      numeroLot: lineKind === "ALIMENT" ? text(input.numeroLot) || null : null,
       productionDate: lineKind === "ALIMENT" ? productionDate : null,
       expiryDate: lineKind === "ALIMENT" ? expiryDate : null,
-      quantity: quantity as number | null,
-      quantityUnit,
+      // A surface or a pair of hands is not weighed: the quantity goes with
+      // the lot when the line changes kind.
+      quantity: weighed ? (quantity as number | null) : null,
+      quantityUnit: weighed ? quantityUnit : null,
       productTemperature: productTemperature as number | null,
       ambientTemperature: ambientTemperature as number | null,
       receptionTemperature:

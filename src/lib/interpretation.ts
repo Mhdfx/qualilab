@@ -197,7 +197,8 @@ export function summariseReadings(readings: UnitReading[]): { value: string | nu
   const counts = usable.filter((r) => r.value !== null);
   const max = counts.reduce<UnitReading | null>((best, r) => (best === null || (r.value ?? 0) > (best.value ?? 0) ? r : best), null);
   if (!max) return { value: null, numeric: null };
-  return { value: max.kind === "count" ? fmt(max.value ?? 0) : unitDisplay(max), numeric: max.value };
+  // Printed the way the report prints a unit: « < 10 », never « 0(-1) ».
+  return { value: unitStoredDisplay({ rawValue: max.raw, value: max.value, detected: max.detected }), numeric: max.value };
 }
 
 type CriterionLike = Plan & { normVersion: { current: boolean; version: string } | null };

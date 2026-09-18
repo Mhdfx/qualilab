@@ -218,6 +218,8 @@ export async function POST(
           // validated again from the start.
           validatedById: null,
           validatedAt: null,
+          // Sent back to the bench: the next results deserve their own alert.
+          alertsSentAt: null,
         },
         select: { id: true, code: true, status: true },
       });

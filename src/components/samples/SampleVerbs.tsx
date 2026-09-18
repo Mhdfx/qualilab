@@ -177,7 +177,7 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
     productTypeId: sample.productTypeId ?? "",
   });
   const [parameterIds, setParameterIds] = useState<string[]>(sample.parameterIds);
-  const [productTypes, setProductTypes] = useState<{ id: string; name: string; clientId: string | null }[]>([]);
+  const [productTypes, setProductTypes] = useState<{ id: string; name: string; clientId: string | null; unitCount: number }[]>([]);
   const [options, setOptions] = useState<{ id: string; name: string }[] | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -188,7 +188,7 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
     let cancelled = false;
     fetch(`/api/product-types?clientId=${sample.clientId}`)
       .then((r) => r.json())
-      .then((data: { id: string; name: string; clientId: string | null }[]) => {
+      .then((data: { id: string; name: string; clientId: string | null; unitCount: number }[]) => {
         if (!cancelled) setProductTypes(Array.isArray(data) ? data : []);
       })
       .catch(() => {});
@@ -247,7 +247,18 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
           {kind === "ALIMENT" && (
             <div>
               <label htmlFor="correct-product-type" className="block text-xs font-medium text-slate-600">Type de produit (critères)</label>
-              <select id="correct-product-type" value={values.productTypeId} onChange={(e) => set("productTypeId", e.target.value)} className="input-field mt-1 px-3">
+              <select
+                id="correct-product-type"
+                value={values.productTypeId}
+                onChange={(e) => {
+                  const type = productTypes.find((t) => t.id === e.target.value);
+                  set("productTypeId", e.target.value);
+                  // The criteria of this type need their units: never judge a
+                  // 5-unit plan on the single unit the line carried before.
+                  if (type && type.unitCount > values.unitCount) set("unitCount", type.unitCount);
+                }}
+                className="input-field mt-1 px-3"
+              >
                 <option value="">— aucun —</option>
                 {productTypes.some((t) => t.clientId) && (
                   <optgroup label="Types du client">

@@ -66,11 +66,14 @@ export async function loadBenchPlans(sampleId: string): Promise<BenchPlans> {
     const criterion = pickCriterion(list);
     if (!criterion) continue;
     const nominal: Plan = { n: criterion.n, c: criterion.c, mKind: criterion.mKind, m: criterion.m, bigM: criterion.bigM };
+    // The label is the plan APPLIED (n capped to the units taken, c with it):
+    // the report must print the criterion the verdict actually came from.
+    const applied = effectivePlan(nominal, sample.unitCount);
     plans.set(parameterId, {
       parameterId,
-      plan: effectivePlan(nominal, sample.unitCount),
+      plan: applied,
       nominalN: criterion.n,
-      label: planLabel({ ...nominal, unit: criterion.unit }),
+      label: planLabel({ ...applied, unit: criterion.unit }),
       unit: criterion.unit,
       normVersionId: criterion.normVersionId,
       normLabel: criterion.normVersion?.label ?? null,
