@@ -12,9 +12,10 @@
 Spec: **`CRITERES.md`**. The catalogue (types de produits × germe × version de
 norme), the workbook import, the bench per unit, the verdicts on validation and
 on the report are built, tested and verified in the browser (TESTPLAN checkpoint
-M1–M4). **Next: import the workbook on production through `/admin/import` and
-run M5**, then the recette with the laboratory (M6 + chantier 1's L6) and the
-answers to NEEDEDINFO Q25–Q29.
+M1–M4). Deployed and imported on production the same day (TESTPLAN M5: 131 types, 1 075
+critères, circuit complet vérifié sur le VPS). **Next: the recette with the
+laboratory** (TESTPLAN M6 + chantier 1's L6) and the answers to NEEDEDINFO
+Q25–Q29 — the code applies a documented default for each of them meanwhile.
 
 ## ▶ PREVIOUS ACTION
 

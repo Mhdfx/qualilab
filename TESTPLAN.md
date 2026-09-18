@@ -606,9 +606,12 @@ running server. Spec: `CRITERES.md`.
 - [x] Report PDF (pdftotext): columns « CRITÈRE (m · M · c) » and « VERDICT », the readings A…E under each result, the norm version under each criterion, the header « Type de produit · 5 unités analysées », conclusion « Les résultats obtenus ne sont pas conformes aux critères microbiologiques applicables au produit analysé. » from the scale.
 - [ ] Contamination alert carrying the criterion instead of the old threshold — code path changed, not observed (no mail provider on dev).
 
-### M5 — Production
-- [ ] Workbook imported on the VPS through `/admin/import` (dry run, then commit).
-- [ ] The same screens verified on http://185.217.126.53 after deploy.
+### M5 — Production (http://185.217.126.53, deployed 2026-09-18)
+- [x] Workbook imported on the VPS: dry run first (1 075 lignes, 131 types, 43 versions de normes, 2 refusées), then commit — **131 types, 38 paramètres, 38 normes (43 versions), 1 075 critères** créés; re-running it writes nothing.
+- [x] `/admin/types-produits` lists the 131 types with their criteria counts; `/admin/normes` shows the 38 norms, the six with two dated versions (NM ISO 4833-1, 4833-2, 6579-1, 6888-1, 7932, 21527-2) keeping one « en vigueur »; `/admin/reglages` carries the four conclusion sentences; `/admin/import` shows the workbook section.
+- [x] Full circuit on production: dépôt **18/26** « Salade composée test » with the product type → bench read per unit through the API → verdicts ACCEPTABLE / SATISFAISANT / NON_SATISFAISANT → `valid1` validates, `admin` approves → report **RAP-2026-xxxxx** with the criteria columns, the readings A…E, the norm versions and the scale's conclusion (« Les résultats obtenus ne sont pas conformes… »).
+- [x] `/validation/[id]` on production shows the sample verdict « Non satisfaisant » and each germ's verdict beside its criterion.
+- [ ] Recette with the laboratory on its own product types (M6, with chantier 1's L6).
 
 ## Sign-off log
 
