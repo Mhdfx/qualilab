@@ -668,8 +668,10 @@ déjà satisfaite ; les deux autres ont été livrées.
 ### O3 — « Manque remarque par ligne » → déjà en place
 - [x] Champ « Remarques / composition » au bas de chaque ligne, sur la visite comme sur le dépôt ; imprimé dans la colonne REMARQUES / COMPOSITIONS du protocole (« Produit posé sur le plan inox » sur la visite 22/26). Rien à ajouter.
 
-### O4 — Production
-- [ ] Les mêmes vérifications sur http://185.217.126.53 après déploiement.
+### O4 — Production (http://185.217.126.53, déployé le 19/09)
+- [x] Visite **20/26** créée en production avec « Contrôle officiel » et une ligne aliment portant « Plan de travail inox », 50 cm² et sa remarque.
+- [x] Protocole PDF de production relu à l'image : « Cadre : Contrôle officiel », colonne SURFACE PRÉLEVÉE « Plan de travail inox · 50 cm² », colonne REMARQUES « Produit posé sur le plan inox ».
+- [x] Le préleveur corrige le cadre de sa visite non réceptionnée (200, valeur relue en base).
 
 ## Sign-off log
 
