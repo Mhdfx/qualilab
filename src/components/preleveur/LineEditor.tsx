@@ -229,28 +229,36 @@ export function LineEditor({
           </select>
         </Field>
 
-        {kind === "SURFACE" && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Surface prélevée" required>
-              <input
-                type="text"
-                value={line.surfaceLabel}
-                onChange={(e) => onChange({ surfaceLabel: e.target.value })}
-                placeholder="Ex. : Planche verte, plan de travail"
-                className="input-field px-4"
-              />
-            </Field>
-            <Field label="Aire prélevée (cm²)">
-              <input
-                type="number"
-                inputMode="numeric"
-                min={1}
-                value={line.surfaceAreaCm2}
-                onChange={(e) => onChange({ surfaceAreaCm2: e.target.value })}
-                className="input-field px-4"
-              />
-            </Field>
-          </div>
+        {/* La colonne « Surface prélevée » du protocole existe sur chaque
+            ligne : obligatoire sur une ligne Surface, facultative ailleurs.
+            Sauf sur une ligne Mains, où le protocole imprime « MAIN ». */}
+        {kind !== "MAINS" && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Surface prélevée"
+            required={kind === "SURFACE"}
+            hint={kind === "SURFACE" ? undefined : "Facultatif — la colonne « Surface prélevée » du protocole."}
+          >
+            <input
+              type="text"
+              value={line.surfaceLabel}
+              onChange={(e) => onChange({ surfaceLabel: e.target.value })}
+              placeholder="Ex. : Planche verte, plan de travail"
+              className="input-field px-4"
+            />
+          </Field>
+          <Field label="Aire prélevée (cm²)">
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              value={line.surfaceAreaCm2}
+              onChange={(e) => onChange({ surfaceAreaCm2: e.target.value })}
+              placeholder={kind === "SURFACE" ? "100" : "Facultatif"}
+              className="input-field px-4"
+            />
+          </Field>
+        </div>
         )}
 
         {kind === "MAINS" && (

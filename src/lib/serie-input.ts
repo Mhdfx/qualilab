@@ -212,14 +212,16 @@ export function validateLine(
     }
   }
 
-  let surfaceAreaCm2: number | null = null;
-  if (lineKind === "SURFACE") {
-    const area = numberOrNull(input.surfaceAreaCm2);
-    if (area === "invalid" || (area !== null && (!Number.isInteger(area) || area <= 0 || area > 100000))) {
-      return fail("L'aire prélevée doit être un nombre entier de cm².");
-    }
-    surfaceAreaCm2 = area ?? 100;
+  // « Surface prélevée » est une colonne du protocole papier, disponible sur
+  // n'importe quelle ligne (retour du laboratoire du 19/09) : une ligne
+  // aliment peut porter la surface sur laquelle le produit était posé.
+  // Obligatoire seulement sur une ligne Surface, où l'aire vaut 100 cm² par
+  // défaut ; ailleurs l'aire reste vide tant qu'elle n'est pas saisie.
+  const area = numberOrNull(input.surfaceAreaCm2);
+  if (area === "invalid" || (area !== null && (!Number.isInteger(area) || area <= 0 || area > 100000))) {
+    return fail("L'aire prélevée doit être un nombre entier de cm².");
   }
+  const surfaceAreaCm2 = lineKind === "SURFACE" ? area ?? 100 : area;
 
   const handsState = lineKind === "MAINS" ? oneOf(input.handsState, HANDS_STATES) : null;
   const weighed = lineKind !== "SURFACE" && lineKind !== "MAINS";
@@ -273,7 +275,7 @@ export function validateLine(
       ambientTemperature: ambientTemperature as number | null,
       receptionTemperature:
         receptionTemperature === null ? null : Math.round((receptionTemperature as number) * 10) / 10,
-      surfaceLabel: lineKind === "SURFACE" ? surfaceLabel : null,
+      surfaceLabel,
       surfaceAreaCm2,
       personName: lineKind === "MAINS" ? personName : null,
       personRole: lineKind === "MAINS" ? text(input.personRole) || null : null,

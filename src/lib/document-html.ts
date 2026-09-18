@@ -383,9 +383,18 @@ ${data.notes ? `<p class="notes">${escapeHtml(data.notes)}</p>` : ""}
 }
 
 /** The « Surface prélevée » column of the paper: the area or « MAIN ». */
-export function surfaceText(line: { lineKind: LineKind; surfaceAreaCm2: number | null }) {
+export function surfaceText(line: {
+  lineKind: LineKind;
+  surfaceLabel?: string | null;
+  surfaceAreaCm2: number | null;
+}) {
+  // Une ligne Surface porte déjà son libellé en désignation : la colonne
+  // montre l'aire. Ailleurs, elle montre ce que le préleveur a écrit.
   if (line.lineKind === "SURFACE") return line.surfaceAreaCm2 ? `${line.surfaceAreaCm2} cm²` : "Surface";
   if (line.lineKind === "MAINS") return "MAIN";
-  return null;
+  const label = line.surfaceLabel?.trim() || null;
+  const area = line.surfaceAreaCm2 ? `${line.surfaceAreaCm2} cm²` : null;
+  if (label && area) return `${label} · ${area}`;
+  return label ?? area;
 }
 

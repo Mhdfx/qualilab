@@ -147,5 +147,9 @@ describe("surfaceText", () => {
     expect(surfaceText({ lineKind: "SURFACE", surfaceAreaCm2: 100 })).toBe("100 cm²");
     expect(surfaceText({ lineKind: "MAINS", surfaceAreaCm2: null })).toBe("MAIN");
     expect(surfaceText({ lineKind: "ALIMENT", surfaceAreaCm2: null })).toBeNull();
+    // Retour du 19/09 : la colonne se remplit sur n'importe quelle ligne.
+    expect(surfaceText({ lineKind: "ALIMENT", surfaceLabel: "Plan de travail", surfaceAreaCm2: null })).toBe("Plan de travail");
+    expect(surfaceText({ lineKind: "ALIMENT", surfaceLabel: "Plan de travail", surfaceAreaCm2: 50 })).toBe("Plan de travail · 50 cm²");
+    expect(surfaceText({ lineKind: "EAU", surfaceLabel: null, surfaceAreaCm2: 25 })).toBe("25 cm²");
   });
 });

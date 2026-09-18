@@ -230,3 +230,50 @@ describe("what a line of another kind must not keep", () => {
     expect(food).toMatchObject({ ok: true, value: { numeroLot: "L2609-4", quantity: 500, quantityUnit: "G" } });
   });
 });
+
+describe("« Surface prélevée », colonne du protocole (retour du 19/09)", () => {
+  it("garde la surface et son aire sur une ligne aliment", () => {
+    const r = validateLine({ ...aliment, surfaceLabel: "Plan de travail inox", surfaceAreaCm2: "50" }, 0, natures);
+    expect(r).toMatchObject({ ok: true, value: { surfaceLabel: "Plan de travail inox", surfaceAreaCm2: 50 } });
+  });
+
+  it("n'invente pas d'aire hors d'une ligne surface, et la met à 100 cm² sur une ligne surface", () => {
+    expect(validateLine({ ...aliment, surfaceLabel: "Étagère" }, 0, natures)).toMatchObject({
+      ok: true,
+      value: { surfaceAreaCm2: null },
+    });
+    expect(
+      validateLine({ natureId: "surfaces", surfaceLabel: "Planche verte", lieu: "Poste", parameterIds: ["p1"] }, 0, natures)
+    ).toMatchObject({ ok: true, value: { surfaceAreaCm2: 100 } });
+  });
+
+  it("exige toujours la surface sur une ligne surface", () => {
+    expect(validateLine({ natureId: "surfaces", lieu: "Poste", parameterIds: ["p1"] }, 0, natures)).toMatchObject({
+      ok: false,
+      error: "Indiquez la surface prélevée.",
+    });
+  });
+});
+
+describe("le cadre de la série (retour du 19/09)", () => {
+  it("suit qui prélève par défaut, et suit le choix quand il est envoyé", () => {
+    const base = { clientId: "c1", samplerKind: "QUALILAB", lines: [aliment] };
+    expect(validateSerie(base, natures, { kind: "VISITE" })).toMatchObject({ ok: true, value: { cadre: "AUTOCONTROLE" } });
+    expect(validateSerie({ ...base, cadre: "OFFICIEL" }, natures, { kind: "VISITE" })).toMatchObject({ ok: true, value: { cadre: "OFFICIEL" } });
+    expect(validateSerie({ ...base, samplerKind: "SERVICE_VETERINAIRE", samplerName: "DPV" }, natures, { kind: "VISITE" })).toMatchObject({
+      ok: true,
+      value: { cadre: "OFFICIEL" },
+    });
+  });
+});
+
+describe("la désignation ne se prend pas une surface (audit 19/09)", () => {
+  it("garde la personne sur une ligne mains même si une surface est saisie", () => {
+    const mains = validateLine(
+      { natureId: "surfaces", lineKind: "MAINS", personName: "Hamza B.", handsState: "LAVEES", lieu: "Cuisine", parameterIds: ["p1"], surfaceLabel: "Plan inox" },
+      0,
+      natures
+    );
+    expect(mains).toMatchObject({ ok: true, value: { personName: "Hamza B.", surfaceLabel: "Plan inox" } });
+  });
+});

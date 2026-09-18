@@ -646,6 +646,31 @@ circuit (8 lenses, 24 findings triaged).
 
 Écartés après vérification : la marge de 14 mm supposée sur les étiquettes (le PDF rendu occupe bien la pleine feuille), et trois constats dont le rendu ou le code montrait l'inverse.
 
+## Checkpoint O — Retour du laboratoire du 19/09 (dev server 2026-09-19 à 1440×900, `pre1` / `recep1` / `admin` ; production après déploiement)
+
+Trois remarques du laboratoire sur « Nouvelle visite ». La troisième était
+déjà satisfaite ; les deux autres ont été livrées.
+
+### O1 — « Cadre n'est pas modifiable » → livré
+- [x] Deux puces **Autocontrôle / Contrôle officiel** sur « Nouvelle visite » et sur « Nouveau dépôt », proposées d'après « Prélèvement effectué par » et modifiables ; changer le préleveur rend la main à la déduction.
+- [x] Visite **22/26** créée avec « Contrôle officiel » : le récapitulatif, la base et le protocole PDF portent bien le cadre choisi.
+- [x] Le préleveur corrige le cadre depuis sa visite tant que le laboratoire n'a pas réceptionné (200) ; après réception c'est refusé (« La série est réceptionnée : le laboratoire seul peut changer le cadre. ») et les puces sont verrouillées à l'écran, tandis que l'administrateur, lui, peut encore (200).
+- [x] Enregistrer le panneau d'arrivée d'une série déjà réceptionnée reste possible : le cadre n'est envoyé que s'il change.
+- [x] Le changement est tracé au journal avec la valeur avant / après ; le cadre figure aussi dans l'audit de création.
+
+### O2 — « Manque Surface prélevée par ligne » → livré
+- [x] « Surface prélevée » et « Aire prélevée (cm²) » sur **chaque type de ligne** sauf Mains (où la colonne du protocole imprime « MAIN ») ; obligatoire seulement sur une ligne Surface.
+- [x] Ligne aliment de la visite 22/26 : « Plan de travail inox », 50 cm² — stockés, et imprimés « Plan de travail inox · 50 cm² » dans la colonne SURFACE PRÉLEVÉE du protocole (relu à l'image).
+- [x] L'aire de 100 cm² est proposée en entrant sur une ligne Surface et retirée en en sortant, sur les deux formulaires.
+- [x] « Corriger la fiche » ouvre la surface et l'aire sur n'importe quelle ligne.
+- [x] La désignation de l'échantillon ne se prend plus la surface : une ligne mains garde le nom de la personne (test + base).
+
+### O3 — « Manque remarque par ligne » → déjà en place
+- [x] Champ « Remarques / composition » au bas de chaque ligne, sur la visite comme sur le dépôt ; imprimé dans la colonne REMARQUES / COMPOSITIONS du protocole (« Produit posé sur le plan inox » sur la visite 22/26). Rien à ajouter.
+
+### O4 — Production
+- [ ] Les mêmes vérifications sur http://185.217.126.53 après déploiement.
+
 ## Sign-off log
 
 | Phase | Tested by | Date | Result |

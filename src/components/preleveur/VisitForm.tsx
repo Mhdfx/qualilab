@@ -14,7 +14,7 @@ import {
   Thermometer,
   User,
 } from "lucide-react";
-import type { LineKind, SampleType, SamplerKind } from "@/generated/prisma/enums";
+import type { Cadre, LineKind, SampleType, SamplerKind } from "@/generated/prisma/enums";
 import { CADRE_LABELS, LINE_KIND_LABELS, formatDateTime } from "@/lib/labels";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -93,6 +93,8 @@ export function VisitForm({ me }: { me: Preleveur }) {
   const [lines, setLines] = useState<LineDraft[]>([]);
   // The two boxes at the foot: null = follow the lines, boolean = the préleveur's own tick.
   const [analysesChoice, setAnalysesChoice] = useState<{ micro: boolean | null; chimie: boolean | null }>({ micro: null, chimie: null });
+  // null = suit la déduction ; une valeur = le choix du préleveur.
+  const [cadreChoice, setCadreChoice] = useState<Cadre | null>(null);
   const [profiles, setProfiles] = useState<ProfileOption[]>([]);
   const [productTypes, setProductTypes] = useState<ProductTypeOption[]>([]);
   const [memory, setMemory] = useState<ClientMemory>({ places: [], products: [] });
@@ -168,7 +170,10 @@ export function VisitForm({ me }: { me: Preleveur }) {
   const selectedClient = clients.find((c) => c.id === clientId);
   const sites = selectedClient?.sites ?? [];
   const selectedSite = sites.find((s) => s.id === siteId);
-  const cadre = samplerKind === "SERVICE_VETERINAIRE" ? "OFFICIEL" : "AUTOCONTROLE";
+  // Déduit de qui prélève, mais le préleveur tranche : un prélèvement
+  // Qualilab peut entrer dans un contrôle officiel (retour du 19/09).
+  const derivedCadre: Cadre = samplerKind === "SERVICE_VETERINAIRE" ? "OFFICIEL" : "AUTOCONTROLE";
+  const cadre: Cadre = cadreChoice ?? derivedCadre;
 
   const placeSuggestions = useMemo(
     () => mergeSuggestions(memory.places, lines.map((l) => l.lieu)),
@@ -224,6 +229,14 @@ export function VisitForm({ me }: { me: Preleveur }) {
           natureId: target?.id ?? l.natureId,
           parameterIds: sameDomain ? l.parameterIds : [],
           quantityUnit: kind === "EAU" ? "L" : l.quantityUnit === "L" ? "UNITE" : l.quantityUnit,
+          // L'aire de 100 cm² est la valeur d'usage d'une ligne surface : on
+          // la propose en y entrant, on la retire en en sortant.
+          surfaceAreaCm2:
+            kind === "SURFACE"
+              ? l.surfaceAreaCm2 || "100"
+              : l.surfaceAreaCm2 === "100"
+                ? ""
+                : l.surfaceAreaCm2,
         };
       })
     );
@@ -315,6 +328,7 @@ export function VisitForm({ me }: { me: Preleveur }) {
           samplerKind,
           samplerUserId: samplerKind === "QUALILAB" ? samplerUserId : undefined,
           samplerName: samplerKind === "QUALILAB" ? undefined : samplerName,
+          cadre,
           startedAt: fromLocalInput(startedAt) ?? undefined,
           endedAt: fromLocalInput(endedAt) ?? undefined,
           arrivedAt: fromLocalInput(arrivedAt) ?? undefined,
@@ -511,8 +525,24 @@ export function VisitForm({ me }: { me: Preleveur }) {
                     <ClipboardList className="h-4 w-4" />
                     Cadre
                   </p>
-                  <div className="input-field flex items-center px-4 text-slate-700">{CADRE_LABELS[cadre]}</div>
-                  <p className="mt-1 text-xs text-slate-500">Déduit de qui prélève ; la réception peut le changer.</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(["AUTOCONTROLE", "OFFICIEL"] as const).map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setCadreChoice(c)}
+                        aria-pressed={cadre === c}
+                        className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition ${
+                          cadre === c
+                            ? "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20"
+                            : "border-slate-200 text-slate-600 hover:border-slate-300"
+                        }`}
+                      >
+                        {CADRE_LABELS[c]}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">Proposé d&apos;après qui prélève ; modifiable.</p>
                 </div>
               </div>
 
@@ -562,7 +592,11 @@ export function VisitForm({ me }: { me: Preleveur }) {
                     <button
                       key={k}
                       type="button"
-                      onClick={() => setSamplerKind(k)}
+                      onClick={() => {
+                        setSamplerKind(k);
+                        // Le cadre redevient celui que ce préleveur implique.
+                        setCadreChoice(null);
+                      }}
                       aria-pressed={samplerKind === k}
                       className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition ${
                         samplerKind === k

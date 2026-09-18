@@ -54,7 +54,7 @@ export async function PATCH(
   const { id } = await params;
   const serie = await prisma.serie.findUnique({
     where: { id },
-    select: { id: true, createdById: true, startedAt: true, endedAt: true, arrivedAt: true, serialNumber: true },
+    select: { id: true, createdById: true, cadre: true, startedAt: true, endedAt: true, arrivedAt: true, receivedAt: true, serialNumber: true },
   });
   if (!serie || (session.role === "PRELEVEUR" && serie.createdById !== session.id)) {
     return NextResponse.json({ error: "Série introuvable." }, { status: 404 });
@@ -118,8 +118,13 @@ export async function PATCH(
     } else data.signedProtocolData = v;
   }
 
-  if (session.role !== "PRELEVEUR" && input.cadre !== undefined) {
+  // Le cadre se corrige : par le préleveur tant que la série n'est pas
+  // réceptionnée, par le laboratoire ensuite (retour du 19/09).
+  if (input.cadre !== undefined && input.cadre !== serie.cadre) {
     if (input.cadre !== "AUTOCONTROLE" && input.cadre !== "OFFICIEL") return fail("Cadre invalide.");
+    if (session.role === "PRELEVEUR" && serie.receivedAt) {
+      return fail("La série est réceptionnée : le laboratoire seul peut changer le cadre.");
+    }
     data.cadre = input.cadre;
   }
 
@@ -139,6 +144,9 @@ export async function PATCH(
     metadata: {
       serialNumber: serie.serialNumber,
       fields: Object.keys(data).filter((k) => k !== "signedProtocolData"),
+      // Autocontrôle ou contrôle officiel : ce que porte la série change ce
+      // que vaut le rapport, la valeur avant/après est écrite en clair.
+      cadre: "cadre" in data ? { avant: serie.cadre, apres: data.cadre } : undefined,
       photo: "signedProtocolData" in data ? (data.signedProtocolData ? "ajoutée" : "retirée") : undefined,
     },
   });

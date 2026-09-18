@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Camera, CheckCircle2, FileText, Thermometer } from "lucide-react";
 import type { LineKind, SampleStatus } from "@/generated/prisma/enums";
-import { LINE_KIND_LABELS, SAMPLER_KIND_LABELS, formatDateTime } from "@/lib/labels";
+import { CADRE_LABELS, LINE_KIND_LABELS, SAMPLER_KIND_LABELS, formatDateTime } from "@/lib/labels";
 import { SERIE_STATUS_LABELS, type SerieProgress, type SerieStatus } from "@/lib/series";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -23,6 +23,8 @@ export type VisitData = {
   samplerKind: keyof typeof SAMPLER_KIND_LABELS;
   samplerUser: { id: string; name: string } | null;
   samplerName: string | null;
+  cadre: keyof typeof CADRE_LABELS;
+  receivedAt: string | null;
   clientReference: string | null;
   startedAt: string;
   endedAt: string | null;
@@ -69,6 +71,9 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
   const [endedAt, setEndedAt] = useState(initial.endedAt ? toLocalInput(new Date(initial.endedAt)) : "");
   const [arrivedAt, setArrivedAt] = useState(initial.arrivedAt ? toLocalInput(new Date(initial.arrivedAt)) : "");
   const [cooler, setCooler] = useState(initial.coolerTemperature === null ? "" : String(initial.coolerTemperature));
+  const [cadre, setCadre] = useState(initial.cadre);
+  // Une fois la série réceptionnée, le cadre appartient au laboratoire.
+  const cadreLocked = Boolean(visit.receivedAt);
   const [photo, setPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -84,6 +89,9 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
         endedAt: fromLocalInput(endedAt),
         arrivedAt: fromLocalInput(arrivedAt),
         coolerTemperature: cooler,
+        // Envoyé seulement s'il change : une série réceptionnée refuserait
+        // l'écriture et le reste du panneau serait perdu avec elle.
+        ...(cadre !== visit.cadre ? { cadre } : {}),
       };
       if (photo) body.signedProtocolData = photo;
       const res = await fetch(`/api/series/${visit.id}`, {
@@ -207,6 +215,32 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
               <div>
                 <label htmlFor="arrivedAt" className="mb-1.5 block text-sm font-semibold text-slate-700">Arrivée au laboratoire</label>
                 <input id="arrivedAt" type="datetime-local" value={arrivedAt} onChange={(e) => setArrivedAt(e.target.value)} className="input-field px-3" />
+              </div>
+              <div>
+                <p className="mb-1.5 block text-sm font-semibold text-slate-700">Cadre</p>
+                <div className="flex flex-wrap gap-2">
+                  {(["AUTOCONTROLE", "OFFICIEL"] as const).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCadre(c)}
+                      disabled={cadreLocked}
+                      aria-pressed={cadre === c}
+                      className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition ${
+                        cadre === c
+                          ? "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20"
+                          : "border-slate-200 text-slate-600 hover:border-slate-300"
+                      } ${cadreLocked ? "cursor-not-allowed opacity-60" : ""}`}
+                    >
+                      {CADRE_LABELS[c]}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  {cadreLocked
+                    ? "La série est réceptionnée : le laboratoire seul peut encore changer le cadre."
+                    : "Modifiable tant que le laboratoire n'a pas réceptionné la série."}
+                </p>
               </div>
               <div>
                 <label htmlFor="cooler" className="mb-1.5 block text-sm font-semibold text-slate-700">Température à l&apos;arrivée (°C)</label>

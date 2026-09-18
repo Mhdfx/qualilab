@@ -251,6 +251,18 @@ in `PLAN.md`, opened one at a time.
 
 ## Session Log
 
+- **2026-09-19 · Claude Code** · **Retour du laboratoire du 19/09** (trois
+  remarques sur « Nouvelle visite »). « Manque remarque par ligne » était déjà
+  livré. Les deux autres le sont désormais : le **cadre** se choisit sur la
+  visite et sur le dépôt (proposé d'après qui prélève, modifiable, verrouillé
+  après réception, tracé au journal), et « **Surface prélevée** » avec son aire
+  existe sur chaque type de ligne sauf Mains, obligatoire seulement sur une
+  ligne Surface, imprimée dans la colonne du protocole. Audit adverse du diff :
+  trois constats confirmés corrigés — la désignation d'une ligne mains que la
+  surface écrasait, la sauvegarde du panneau d'arrivée qu'un cadre inchangé
+  faisait échouer après réception, et le champ surface promis sur une ligne
+  mains. TESTPLAN checkpoint O. 257 tests, lint et build verts.
+
 - **2026-09-18 · Claude Code (soir)** · **Recette du circuit complet + audit
   adverse.** Une série menée de bout en bout sur le serveur de développement
   (visite 3 lignes → réception → paillasse par unité et valeur simple →

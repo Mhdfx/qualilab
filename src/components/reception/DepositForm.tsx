@@ -14,8 +14,9 @@ import {
   User,
   Wallet,
 } from "lucide-react";
-import type { LineKind, NonConformityReason, PaymentMode, SampleType, SamplerKind } from "@/generated/prisma/enums";
+import type { Cadre, LineKind, NonConformityReason, PaymentMode, SampleType, SamplerKind } from "@/generated/prisma/enums";
 import {
+  CADRE_LABELS,
   LINE_KIND_LABELS,
   NON_CONFORMITY_REASON_LABELS,
   SAMPLER_KIND_LABELS,
@@ -137,6 +138,9 @@ export function DepositForm({
   const [clientId, setClientId] = useState("");
   const [siteId, setSiteId] = useState("");
   const [samplerKind, setSamplerKind] = useState<SamplerKind>("CLIENT");
+  // null = suit la déduction (service vétérinaire ⇒ officiel).
+  const [cadreChoice, setCadreChoice] = useState<Cadre | null>(null);
+  const cadre: Cadre = cadreChoice ?? (samplerKind === "SERVICE_VETERINAIRE" ? "OFFICIEL" : "AUTOCONTROLE");
   const [samplerName, setSamplerName] = useState("");
   const [interlocutor, setInterlocutor] = useState("");
   const [clientReference, setClientReference] = useState("");
@@ -275,6 +279,14 @@ export function DepositForm({
           natureId: target?.id ?? l.natureId,
           parameterIds: sameDomain ? l.parameterIds : [],
           quantityUnit: kind === "EAU" ? "L" : l.quantityUnit === "L" ? "G" : l.quantityUnit,
+          // L'aire de 100 cm² est la valeur d'usage d'une ligne surface : on
+          // la propose en y entrant, on la retire en en sortant.
+          surfaceAreaCm2:
+            kind === "SURFACE"
+              ? l.surfaceAreaCm2 || "100"
+              : l.surfaceAreaCm2 === "100"
+                ? ""
+                : l.surfaceAreaCm2,
         };
       })
     );
@@ -368,6 +380,7 @@ export function DepositForm({
           clientId,
           siteId: siteId || undefined,
           samplerKind,
+          cadre,
           samplerName: samplerKind === "CLIENT" ? undefined : samplerName,
           interlocutor,
           clientReference,
@@ -564,7 +577,11 @@ export function DepositForm({
                     <button
                       key={k}
                       type="button"
-                      onClick={() => setSamplerKind(k)}
+                      onClick={() => {
+                        setSamplerKind(k);
+                        // Le cadre redevient celui que ce préleveur implique.
+                        setCadreChoice(null);
+                      }}
                       aria-pressed={samplerKind === k}
                       className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition ${
                         samplerKind === k
@@ -585,6 +602,27 @@ export function DepositForm({
                     className="input-field mt-2 px-4"
                   />
                 )}
+                <p className="section-title mb-2 mt-4">
+                  <ClipboardList className="h-4 w-4" />
+                  Cadre
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {(["AUTOCONTROLE", "OFFICIEL"] as const).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCadreChoice(c)}
+                      aria-pressed={cadre === c}
+                      className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition ${
+                        cadre === c
+                          ? "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20"
+                          : "border-slate-200 text-slate-600 hover:border-slate-300"
+                      }`}
+                    >
+                      {CADRE_LABELS[c]}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -828,6 +866,7 @@ export function DepositForm({
             <div className="space-y-3 rounded-xl bg-slate-50 p-5 text-sm ring-1 ring-slate-100">
               <Row label="Client" value={selectedClient?.name ?? "—"} />
               <Row label="Prélèvement" value={samplerKind === "CLIENT" ? "Par le client" : `${SAMPLER_KIND_LABELS[samplerKind]} — ${samplerName}`} />
+              <Row label="Cadre" value={CADRE_LABELS[cadre]} />
               {interlocutor && <Row label="Déposé par" value={interlocutor} />}
               <Row label="Prélevé le" value={isMounted && startedAt ? formatDateTime(new Date(startedAt)) : "—"} />
               {clientReference && <Row label="Référence client" value={clientReference} />}

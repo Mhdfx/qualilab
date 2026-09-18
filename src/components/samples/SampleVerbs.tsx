@@ -275,8 +275,8 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
               </select>
             </div>
           )}
-          {kind === "SURFACE" && input("surfaceLabel", "Surface prélevée")}
-          {kind === "SURFACE" && input("surfaceAreaCm2", "Aire (cm²)", "number")}
+          {input("surfaceLabel", "Surface prélevée")}
+          {input("surfaceAreaCm2", "Aire (cm²)", "number")}
           {kind === "MAINS" && input("personName", "Personne")}
           {kind === "MAINS" && input("personRole", "Fonction")}
           {kind === "ALIMENT" && input("numeroLot", "N° du lot")}

@@ -245,7 +245,16 @@ export async function createSerie(
             lieu: place?.label ?? line.lieu,
             placeId: place?.id ?? null,
             productId: product?.id ?? null,
-            produit: produit ?? line.surfaceLabel ?? line.personName,
+            // La désignation suit le type de ligne : une surface saisie sur
+            // une ligne mains ou aliment (colonne du protocole) ne remplace
+            // jamais la personne ni le produit.
+            produit:
+              produit ??
+              (line.lineKind === "SURFACE"
+                ? line.surfaceLabel
+                : line.lineKind === "MAINS"
+                  ? line.personName
+                  : line.surfaceLabel),
             numeroLot: line.numeroLot,
             productionDate: line.productionDate,
             expiryDate: line.expiryDate,
@@ -297,6 +306,7 @@ export async function createSerie(
       lines: input.lines.length,
       samplerKind: input.samplerKind,
       samplerUserId,
+      cadre: input.cadre,
       analysesMicro,
       analysesChimie,
       ...(isDeposit

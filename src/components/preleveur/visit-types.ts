@@ -129,7 +129,8 @@ export function emptyLine(nature: NatureOption | undefined, previous?: LineDraft
     productTemperature: "",
     ambientTemperature: previous?.ambientTemperature ?? "",
     surfaceLabel: "",
-    surfaceAreaCm2: "100",
+    // L'aire n'a de valeur par défaut que sur une ligne Surface.
+    surfaceAreaCm2: kind === "SURFACE" ? "100" : "",
     personName: "",
     personRole: "",
     handsState: "",
