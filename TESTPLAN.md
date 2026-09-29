@@ -673,6 +673,40 @@ déjà satisfaite ; les deux autres ont été livrées.
 - [x] Protocole PDF de production relu à l'image : « Cadre : Contrôle officiel », colonne SURFACE PRÉLEVÉE « Plan de travail inox · 50 cm² », colonne REMARQUES « Produit posé sur le plan inox ».
 - [x] Le préleveur corrige le cadre de sa visite non réceptionnée (200, valeur relue en base).
 
+## Checkpoint P — Retour du laboratoire du 29/09 (spec `RETOUR-LABO-29-09.md`) — à faire
+
+One box per point of the spec; ticked only when observed in the browser at
+1440×900, on the dev server and then in production.
+
+### P-A — Le correcteur
+- [ ] « Salde composée » tapé sur une ligne propose « Salade composée » ; un clic l'accepte ; un produit vraiment nouveau reste possible.
+- [ ] Même chose sur « Lieu / section ».
+- [ ] Créer un type de produit proche d'un type existant affiche le quasi-doublon et demande confirmation.
+- [ ] La mémoire d'un client est chargée depuis l'ancien logiciel (import analysé puis confirmé, ré-import sans doublon).
+
+### P-B — Le moteur
+- [ ] m = M avec c = 1 : une unité au-dessus reste conforme, deux la rendent non conforme (selon Q31).
+- [ ] Un échantillon lu sur une unité pour un plan n = 5 n'a pas de verdict officiel.
+- [ ] Histamine n = 9 lue R1 … R9 en mg/kg, sans type de produit.
+- [ ] Une ligne à 60 unités s'enregistre, s'étiquette et se lit.
+
+### P-C — Le rapport
+- [ ] Tableau « Réglementation en vigueur » avec la croix dans la bonne colonne.
+- [ ] Colonnes Paramètres, Méthode, Unité, R1 … Rn, Critères m / M avec n et c ; « Non spécifié » ; « Absence » et « Non détecté ».
+- [ ] Le cas le plus lourd tient sur une page.
+
+### P-D — E-mails
+- [ ] L'e-mail du rapport porte le tableau récapitulatif et la conclusion, officielle ou non officielle.
+- [ ] L'alerte part à la validation technique.
+
+### P-E — Réception et comptes
+- [ ] Une ligne non conforme : « Analyser malgré tout » ou « Détruire », tracé au journal.
+- [ ] Le préleveur ne peut plus saisir au nom d'un collègue, ni à l'écran ni par l'API.
+
+### P-F — Recherche et export
+- [ ] Recherche par client, période, type d'analyse et état.
+- [ ] Résumé d'un client sur une période, exporté en Excel avec les colonnes de leur modèle.
+
 ## Sign-off log
 
 | Phase | Tested by | Date | Result |

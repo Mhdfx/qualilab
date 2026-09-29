@@ -8,6 +8,19 @@
 
 ## ▶ NEXT ACTION
 
+**RETOUR DU LABORATOIRE DU 29/09 — planned, spec `RETOUR-LABO-29-09.md`.**
+The laboratory answered the fourteen questions of 19/09 and added two
+requests (per-client Excel summary, search by client / date / analysis
+type); they also report that the designation corrector « n'est pas encore
+actif ». Seven slices A → G (≈ 2,5 weeks). **Start with slice A**, the
+corrector: « vouliez-vous dire … ? » on designation, place and product
+types, and the client memory loaded from the old software. Slice B's rule
+of c waits on **Q31**; Q31–Q37 are in NEEDEDINFO and in a one-page PDF for
+the laboratory (`clarifications-laboratoire-29-septembre-2026.pdf`, outside
+the repo).
+
+## ▶ PREVIOUS ACTION (chantier 2)
+
 **PHASE 9 — CHANTIER 2 : CRITÈRES D'INTERPRÉTATION — code complete 2026-09-18.**
 Spec: **`CRITERES.md`**. The catalogue (types de produits × germe × version de
 norme), the workbook import, the bench per unit, the verdicts on validation and
@@ -250,6 +263,22 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+- **2026-09-29 · Claude Code** · **Réponses du laboratoire du 29/09 —
+  analyse et plan, pas de code.** Leur document répond aux quatorze
+  questions du 19/09 : six points sont déjà conformes (notation, lignes
+  « 1.8 », dernière version de norme, dilution, N° de série à
+  l'enregistrement, non-conformité seulement sur le bon), sept demandent une
+  modification (rapport au modèle du labo avec R1 … Rn et tableau de
+  conclusion sur une page, pas de verdict officiel sous le n du plan,
+  lecture par répétition pour tout paramètre, aucune limite d'unités, plus
+  de saisie pour un collègue, destruction au cas par cas, alerte après
+  validation technique), cinq sont nouveaux (tableau récapitulatif dans
+  l'e-mail, texte de réglementation par type, résumé Excel par client,
+  recherche par client / date / type, vrai correcteur). Diagnostic du
+  correcteur : il n'accepte que des orthographes identiques et sa mémoire
+  est presque vide en production. Spec `RETOUR-LABO-29-09.md`, PLAN,
+  NEEDEDINFO Q31–Q37 et archive des réponses, TESTPLAN checkpoint P.
 
 - **2026-09-19 · Claude Code** · **Retour du laboratoire du 19/09** (trois
   remarques sur « Nouvelle visite »). « Manque remarque par ligne » était déjà

@@ -126,6 +126,13 @@ réglages, pas des développements.
 | Q26 → **implémenté par défaut** (18/09) : la version la plus récente de chaque norme est « en vigueur » ; l'ancienne reste en base. `/admin/normes` permet d'en changer et de dater. Le rapport imprime la version sous laquelle le résultat a été lu. | | |
 | Q28 → **implémenté par défaut** (18/09) : quatre phrases modifiables dans `/admin/reglages` → Échelle de conclusion ; le rapport imprime les cinq lectures A…E **et** le verdict. | | |
 | Q29 → **implémenté par défaut** (18/09) : « 3(-2) » = 3 × 10² = 300, « 0(-1) » = « < 10 », « < x » compte comme 0, le facteur de dilution du paramètre multiplie la lecture. | | |
+| Q31 | **La règle de c.** Votre exemple dit « n = 5, c = 2, deux unités au-dessus ⇒ non conforme ». La lecture réglementaire est l'inverse : c = 2 tolère deux unités, c'est la troisième qui rend non conforme. Votre rapport montre d'ailleurs m = M = 1.10² avec c = 1, ce qui n'a de sens que si c tolère des unités au-dessus. Laquelle appliquer ? Et quand c tolère une unité au-dessus d'une limite unique, le résultat s'affiche-t-il « acceptable » ou « satisfaisant » ? | 🔴 Moteur d'interprétation (`RETOUR-LABO-29-09.md`, tranche B) |
+| Q32 | Le texte « Réglementation en vigueur » à imprimer en tête du rapport, pour chaque famille de produits. Nous avons l'arrêté n° 624-04 du 8 avril 2004 pour les denrées animales et d'origine animale | Rapport, tranche C |
+| Q33 | Les « types de produits » sont les 131 blocs de votre classeur de critères (« Salades avec source protéique », « Charcuterie cuite »…) : chaque ligne de prélèvement en choisit un, qui donne les critères du rapport. Cette liste est-elle complète ? Préférez-vous un autre mot (catégorie, famille de produits) ? | Catalogue, tranche A |
+| Q34 | Trente-cinq blocs de votre classeur portent le nom d'un client. Un tel type doit-il être proposé uniquement pour ce client ? Nous vous enverrons la liste pour que vous indiquiez le client de chacun | Catalogue |
+| Q35 | Un échantillon « détruit » à la réception est-il facturé ? Le client en est-il informé automatiquement ? | Réception, facturation, tranche E |
+| Q36 | Les répétitions sont nommées R1 … Rn sur le rapport. Les étiquettes et la paillasse doivent-elles aussi passer de A, B, C à R1, R2, R3 ? | Étiquettes, paillasse, tranche B |
+| Q37 | Dans votre export Excel, « N° BC » correspond-il au N° de série (N° dossier) du logiciel ? | Export, tranche F |
 | Q30 | Facturation : parmi les sept modèles d'impression de l'ancien logiciel (par paramètres groupés, par paramètres et produit, par paramètres par produit, par échantillon, par échantillon et nom de produit, sites au forfait, forfaits), lesquels sont utilisés et pour quels clients ? Un PDF de chacun ; sens de « avec remise », « forfaits / mois », « INTSTAT » | Facturation (chantier 5) |
 
 Retour du laboratoire du 14/09 sur l'écran « Nouvelle visite » (neuf points,
@@ -214,3 +221,17 @@ Bien cordialement,
 | 2026-08-18 | Qui gère le stock | Un profil dédié — rôle `MAGASINIER` |
 | 2026-08-18 | Journal interne sur la modification admin d'un rapport | Non, pas de trace |
 | 2026-08-18 | Gestion des comptes du portail client | Créés et gérés par l'administrateur |
+| 2026-09-29 | Q25 — notation des limites | « 1.102 » = 1·10², « 1.5.106 » = 1,5·10⁶ ; les deux « 1.8 » : « vous pouvez enlever cette catégorie de critère » (déjà écartées à l'import) |
+| 2026-09-29 | Q25 — m et M sans c | Un critère sans m/M est une seule valeur à ne pas dépasser ; c = nombre de répétitions tolérées au-dessus de la limite. L'exemple donné contredit la lecture réglementaire → Q31 |
+| 2026-09-29 | Q10 — moins d'unités que le plan | Pas d'interprétation sur le rapport ; interprétation non officielle dans le corps de l'e-mail (acceptable entre m et M) |
+| 2026-09-29 | Q26 — versions de norme | Toujours la dernière ; modifier une norme ne touche pas les anciens rapports (déjà le cas) |
+| 2026-09-29 | Q27 — les 131 types | Question non comprise → Q33 ; ils veulent ajouter / retirer des types facilement, avec un correcteur contre les doublons |
+| 2026-09-29 | Q28 — mots de la conclusion | Un tableau Satisfaisant (< m) / Acceptable (m < X < M) / Non satisfaisant (> M) sous le texte de la réglementation en vigueur ; toujours une page par échantillon |
+| 2026-09-29 | Q10 — imprimer chaque unité | Oui : une colonne par répétition, R1 … Rn |
+| 2026-09-29 | Q29 — dilution | « 3(-2) » = 300, « 0(-1) » = « < 10 », le facteur du paramètre multiplie la lecture (déjà le cas) |
+| 2026-09-29 | Q23 — au-delà de 26 unités | Possible et peut-être courant : aucune limite |
+| 2026-09-29 | Q21 — N° de série | Attribué à l'enregistrement, jamais visible du préleveur avant (déjà le cas) |
+| 2026-09-29 | Q22 — comptes des préleveurs | Un compte par préleveur, pas de partage, pour la traçabilité : pas de saisie au nom d'un collègue |
+| 2026-09-29 | Non-conforme à réception | Au cas par cas : analysé malgré tout ou détruit ; mention sur le bon de réception seulement |
+| 2026-09-29 | Moment de l'alerte | Après la validation technique, bien avant l'approbation finale, au format de leur exemple |
+| 2026-09-29 | *Nouveau* — exploitation | Résumé par client sur une période, exportable en Excel ; recherche par client, date, type d'analyse |

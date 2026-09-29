@@ -452,3 +452,13 @@ Definition of done: a préleveur enters the two real protocols the lab
 photographed for the analysis (six lines, three natures, « 01 » quantities,
 « MAIN » and « 100 cm² » surfaces, end and arrival times, 1 °C) on the phone
 without leaving the form, and the PDF matches the paper field for field.
+
+## 14. Retour du laboratoire (29/09/2026)
+
+Three rules of this spec change — see `RETOUR-LABO-29-09.md`, slices A, B
+and E: the unit ceiling of 50 goes (no limit), a non-conform line at
+reception is decided case by case (« analyser malgré tout » or
+« détruire ») instead of by the global switch, and a sampler can no longer
+enter a visit in a colleague's name (one account per person). The
+designation corrector gains a tolerance to typing errors and a memory
+loaded from the old software.

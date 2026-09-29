@@ -273,6 +273,25 @@ interpretation engine, the import script, screens, five slices, Q25–Q29).
 The other chantiers get their own spec when opened, one at a time, each
 starting from a tagged restore point.
 
+**The laboratory's answers of 29/09 are specified in `RETOUR-LABO-29-09.md`**
+— the next work, ahead of the remaining chantiers. It pulls forward the
+parts of chantiers 3 and 4 the laboratory will see first in the recette, and
+adds two requests that belong to no chantier yet. Seven slices, each
+deployed and verified in the browser:
+
+| Slice | Content | Days |
+|---|---|---|
+| A | The designation corrector: « vouliez-vous dire … ? » on designation, place and product types; the client memory loaded from the old software | 2 |
+| B | Interpretation engine: the rule of c on a single limit (after Q31), no official verdict below the plan's n, per-repetition reading for every parameter, no unit limit, R1 … Rn | 2 |
+| C | The report on the laboratory's model: « Réglementation en vigueur » header table, R1 … Rn and « Méthode » columns, m / M with n and c, one page per sample | 3 |
+| D | The report e-mail with its summary table and unofficial conclusion; the alert after technical validation | 1 |
+| E | Reception case by case (analysed anyway or destroyed); one account per sampler, no entry in a colleague's name | 1 |
+| F | Search by client, period, analysis type and state; per-client summary over a period with an Excel export | 2 |
+| G | Recette (TESTPLAN checkpoint P) and documents | 1 |
+
+Only slice B's first rule waits on an answer (Q31, the rule of c); the rest
+can start now.
+
 ---
 
 ## Definition of Done (per phase)

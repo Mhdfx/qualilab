@@ -223,6 +223,11 @@ checkpoint M). Differences from the plan above, all deliberate:
   « Corriger la fiche » deletes the results: a verdict read under other
   criteria must not reach the report.
 
+> **29/09 — superseded in part.** The laboratory's answers change three
+> engine rules (the rule of c on a single limit, no official verdict below
+> the plan's n, per-repetition reading for every parameter) and the report
+> layout. See `RETOUR-LABO-29-09.md`, which wins where the two differ.
+
 ## 8. Open questions (NEEDEDINFO Q25–Q29)
 
 Q25 the m / M notation and the two « 1.8 »; Q26 which norm version is in
