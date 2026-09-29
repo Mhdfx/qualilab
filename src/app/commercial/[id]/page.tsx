@@ -22,6 +22,9 @@ import { StatCard } from "@/components/ui/StatCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
 import { SitesManager } from "@/components/commercial/SitesManager";
+import { ClientSummary } from "@/components/commercial/ClientSummary";
+import { parseSampleSearch } from "@/lib/sample-search";
+import { searchSamples } from "@/lib/sample-search-server";
 
 /**
  * Fiche client 360° — everything the laboratory knows about one client on a
@@ -30,8 +33,10 @@ import { SitesManager } from "@/components/commercial/SitesManager";
  */
 export default async function ClientDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const session = await requireRole("GESTIONNAIRE", "ADMIN");
   // The invoice screen lives in the admin space; the gestionnaire gets the
@@ -40,7 +45,18 @@ export default async function ClientDetailPage({
     session.role === "ADMIN" ? `/admin/factures/${id}` : `/api/invoices/${id}/pdf`;
   const { id } = await params;
 
-  const [client, samples, invoices, paid, billedAll, sampleCount, reportCount] =
+  // The summary's period (slice F): the current month by default.
+  const raw = await searchParams;
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const summaryParams = new URLSearchParams({
+    client: id,
+    du: typeof raw.du === "string" ? raw.du : `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`,
+    au: typeof raw.au === "string" ? raw.au : `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+  });
+  const summarySearch = parseSampleSearch(summaryParams);
+
+  const [client, samples, invoices, paid, billedAll, sampleCount, reportCount, summary] =
     await Promise.all([
     prisma.client.findUnique({
       where: { id },
@@ -88,6 +104,7 @@ export default async function ClientDetailPage({
     }),
     prisma.sample.count({ where: { clientId: id } }),
     prisma.report.count({ where: { sample: { clientId: id } } }),
+    searchSamples(summarySearch, { take: 5000 }),
   ]);
 
   if (!client) notFound();
@@ -188,6 +205,8 @@ export default async function ClientDetailPage({
         </Card>
 
         <div className="space-y-5">
+          <ClientSummary search={summarySearch} rows={summary.rows} total={summary.total} />
+
           <SitesManager clientId={client.id} initial={client.sites} canEdit={!client.archived} />
 
           <Card className="p-5">

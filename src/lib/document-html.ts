@@ -36,6 +36,8 @@ import { DEFAULT_THRESHOLDS, type ReceptionThresholds } from "./reception-rules"
 export type DocumentLine = {
   /** A line cancelled after the fact still prints, marked — the paper keeps the trail. */
   cancelled?: boolean;
+  /** Non-conform at reception and destroyed (slice E): said as such. */
+  destroyed?: boolean;
   lineNumber: number;
   lineKind: LineKind;
   designation: string;
@@ -244,7 +246,7 @@ export function buildProtocolHtml(data: SerieDocumentData, company: CompanyInfo 
         <td>${l.productTemperature !== null ? `T°p ${temperatureText(l.productTemperature)}` : ""}${
           l.productTemperature !== null && l.ambientTemperature !== null ? "<br>" : ""
         }${l.ambientTemperature !== null ? `T°a ${temperatureText(l.ambientTemperature)}` : ""}</td>
-        <td>${l.cancelled ? `<span class="nc">Ligne annulée</span>${l.remarks ? " · " : ""}` : ""}${show(l.remarks)}</td>
+        <td>${l.cancelled ? `<span class="nc">${l.destroyed ? "Détruite à réception" : "Ligne annulée"}</span>${l.remarks ? " · " : ""}` : ""}${show(l.remarks)}</td>
       </tr>`
     )
     .join("");

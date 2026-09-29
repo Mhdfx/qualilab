@@ -5,6 +5,8 @@ import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { CriteriaGrid } from "@/components/admin/CriteriaGrid";
+import { RegulationEditor } from "@/components/admin/RegulationEditor";
+import { getLabSettings } from "@/lib/lab-settings";
 
 export const metadata = { title: "Critères d'un type de produit" };
 
@@ -12,7 +14,7 @@ export default async function ProductTypeDetailPage({ params }: { params: Promis
   await requireRole("ADMIN");
   const { id } = await params;
 
-  const [type, parameters, norms, clients] = await Promise.all([
+  const [type, parameters, norms, clients, settings] = await Promise.all([
     prisma.productType.findUnique({
       where: { id },
       select: {
@@ -21,6 +23,7 @@ export default async function ProductTypeDetailPage({ params }: { params: Promis
         family: true,
         clientId: true,
         active: true,
+        regulation: true,
         criteria: {
           select: { id: true, parameterId: true, normVersionId: true, unit: true, n: true, c: true, mKind: true, m: true, bigM: true, active: true },
           orderBy: [{ parameter: { name: "asc" } }, { normVersion: { version: "desc" } }],
@@ -33,6 +36,7 @@ export default async function ProductTypeDetailPage({ params }: { params: Promis
       orderBy: { code: "asc" },
     }),
     prisma.client.findMany({ where: { archived: false }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    getLabSettings(),
   ]);
   if (!type) notFound();
 
@@ -49,6 +53,11 @@ export default async function ProductTypeDetailPage({ params }: { params: Promis
         badge="Configuration"
         title={type.name}
         subtitle="Les critères d'interprétation de ce type : un germe, une version de norme, le plan n / c et les limites m / M. Une ligne par version quand l'ancienne et la nouvelle coexistent."
+      />
+      <RegulationEditor
+        typeId={type.id}
+        initial={type.regulation}
+        familyDefault={type.family === "CHIMIE" ? settings.regulationChimie : settings.regulationMicro}
       />
       <CriteriaGrid
         type={{ id: type.id, name: type.name, family: type.family, clientId: type.clientId, active: type.active }}

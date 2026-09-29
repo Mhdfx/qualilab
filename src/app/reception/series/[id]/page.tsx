@@ -68,7 +68,6 @@ export default async function SerieReceptionPage({
         serie={data}
         technicians={technicianOptions}
         thresholds={settings}
-        blockNonConform={settings.blockNonConformAtReception}
         role={session.role}
       />
     </div>

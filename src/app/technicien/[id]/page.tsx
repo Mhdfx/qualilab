@@ -73,10 +73,14 @@ export default async function AnalysePage({
   const lines: ParameterLine[] = sample.parameters.map(({ parameter }) => {
     const existing = resultByParameter.get(parameter.id);
     const plan = bench.plans.get(parameter.id) ?? null;
-    const units = plan
-      ? Array.from({ length: plan.plan.n }, (_, i) => existing?.units.find((u) => u.unitIndex === i + 1)?.rawValue ?? "")
+    // One reading per unit taken (R1 … Rn) for a germ with a criterion, and
+    // for every parameter once the sampler took several units.
+    const perUnit = plan !== null || bench.unitCount > 1;
+    const units = perUnit
+      ? Array.from({ length: Math.max(1, bench.unitCount) }, (_, i) => existing?.units.find((u) => u.unitIndex === i + 1)?.rawValue ?? "")
       : [];
     return {
+      perUnit,
       plan: plan?.plan ?? null,
       planLabel: plan?.label ?? null,
       normLabel: plan?.normLabel ?? null,
@@ -112,7 +116,7 @@ export default async function AnalysePage({
       <PageHeader
         badge="Analyse"
         title={labReference(sample)}
-        subtitle={bench.plans.size > 0 ? "Lisez chaque unité : le verdict (satisfaisant, acceptable, non satisfaisant) suit le plan n, c, m, M du type de produit." : "Saisissez chaque paramètre. La conformité est calculée automatiquement à partir de la limite de référence."}
+        subtitle={bench.plans.size > 0 ? "Lisez chaque répétition (R1 … Rn) : le verdict (satisfaisant, acceptable, non satisfaisant) suit le plan n, c, m, M du type de produit." : bench.unitCount > 1 ? "Lisez chaque répétition (R1 … Rn) : la valeur retenue est la plus défavorable, comparée à la limite de référence." : "Saisissez chaque paramètre. La conformité est calculée automatiquement à partir de la limite de référence."}
       />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px_1fr]">

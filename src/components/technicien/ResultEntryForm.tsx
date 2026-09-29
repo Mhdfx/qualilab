@@ -19,8 +19,8 @@ import {
   parseLabValue,
   suggestConformity,
 } from "@/lib/result-value";
-import { applyUnitFactor, interpret, parseUnitReading, type Plan, type Verdict as PlanVerdict } from "@/lib/interpretation";
-import { unitLetter } from "@/lib/series";
+import { applyUnitFactor, hasLimit, judgeUnits, parseUnitReading, summariseReadings, type Plan, type Verdict as PlanVerdict } from "@/lib/interpretation";
+import { repetitionLabel, unitLetter } from "@/lib/series";
 import type { ResultWorkStatus } from "@/generated/prisma/enums";
 
 export type ParameterLine = {
@@ -36,11 +36,13 @@ export type ParameterLine = {
   workStatus: ResultWorkStatus;
   /** Only used when the value cannot be read as a number. */
   manualConform: boolean | null;
-  /** The criterion of the sample's product type (CRITERES.md): null = single value. */
+  /** Read per unit (R1 … Rn) rather than as one value. */
+  perUnit: boolean;
+  /** The criterion of the sample's product type (CRITERES.md): null = none. */
   plan: Plan | null;
   planLabel: string | null;
   normLabel: string | null;
-  /** One reading per unit (length = plan.n) when a plan applies. */
+  /** One reading per unit taken when `perUnit`. */
   units: string[];
 };
 
@@ -63,8 +65,10 @@ type Reading = {
   parsed: ReturnType<typeof parseLabValue> | null;
   conform: boolean | null;
   needsManual: boolean;
-  /** The engine's verdict for a germ read per unit. */
+  /** The engine's verdict for a germ read per unit against its criterion. */
   verdict: PlanVerdict | null;
+  /** True when that verdict is only indicative (fewer units than the plan's n). */
+  indicative: boolean;
   typedUnits: number;
 };
 
@@ -82,13 +86,28 @@ export function ResultEntryForm({
   const readings = useMemo<Reading[]>(
     () =>
       lines.map((line) => {
-        if (line.plan) {
+        if (line.perUnit) {
           // The same engine and the same dilution the server will apply, so
           // the verdict shown while typing is the verdict stored.
           const units = line.units.map((u) => applyUnitFactor(parseUnitReading(u), line.calcFactor));
           const typedUnits = units.filter((u) => u.kind !== "empty").length;
-          const verdict = typedUnits > 0 ? interpret(line.plan, units) : null;
-          return { parsed: null, conform: null, needsManual: false, verdict, typedUnits };
+          if (line.plan) {
+            const judged = typedUnits > 0 ? judgeUnits(line.plan, units) : null;
+            const verdict = judged ? judged.official ?? judged.informal : null;
+            return { parsed: null, conform: null, needsManual: false, verdict, indicative: !!judged && !judged.official, typedUnits };
+          }
+          // No criterion: the worst unit against the parameter's limit.
+          const summary = summariseReadings(units);
+          const parsed = summary.value ? { ...parseLabValue(summary.value), numeric: summary.numeric } : null;
+          const auto = parsed ? suggestConformity(parsed.numeric, line.limitValue) : null;
+          return {
+            parsed,
+            conform: auto ?? line.manualConform,
+            needsManual: typedUnits > 0 && parsed?.numeric == null,
+            verdict: null,
+            indicative: false,
+            typedUnits,
+          };
         }
         // The suggestion compares the FINAL value — raw reading × factor —
         // exactly as the server will store it.
@@ -103,6 +122,7 @@ export function ResultEntryForm({
           conform: auto ?? line.manualConform,
           needsManual: !!line.value && parsed?.numeric === null,
           verdict: null,
+          indicative: false,
           typedUnits: 0,
         };
       }),
@@ -112,7 +132,11 @@ export function ResultEntryForm({
   const completed = lines.filter((line, index) => {
     if (line.workStatus === "EN_COURS") return false;
     const reading = readings[index];
+    if (line.perUnit && reading.typedUnits < line.units.length) return false;
+    // A « Non spécifié » criterion gives no verdict: read is enough.
+    if (line.plan && !hasLimit(line.plan)) return reading.verdict?.verdict !== "INCOMPLET";
     if (line.plan) return reading.verdict !== null && reading.verdict.verdict !== "INCOMPLET";
+    if (line.perUnit) return !(reading.needsManual && reading.conform === null);
     return !!line.value && !(reading.needsManual && reading.conform === null);
   }).length;
   const allComplete = completed === lines.length && lines.length > 0;
@@ -134,12 +158,13 @@ export function ResultEntryForm({
 
   function payload() {
     return lines.map((line, index) =>
-      line.plan
+      line.perUnit
         ? {
             parameterId: line.parameterId,
             units: line.units,
             note: line.note,
             workStatus: line.workStatus,
+            conform: line.plan ? undefined : readings[index].conform,
           }
         : {
             parameterId: line.parameterId,
@@ -251,28 +276,32 @@ export function ResultEntryForm({
                 </div>
 
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-                  {line.plan ? (
+                  {line.perUnit ? (
                     <fieldset>
                       <legend className="block text-xs font-medium text-slate-600">
-                        Lecture par unité {line.unit && `(${line.unit})`} — n = {line.plan.n}
+                        Lecture par répétition {line.unit && `(${line.unit})`} — {line.units.length} unité{line.units.length > 1 ? "s" : ""}
+                        {line.plan && line.plan.n !== line.units.length && (
+                          <span className="ml-1 text-slate-500">· plan n = {line.plan.n}</span>
+                        )}
                       </legend>
                       <div
                         className="mt-1 grid gap-2"
-                        style={{ gridTemplateColumns: `repeat(${Math.min(line.plan.n, 5)}, minmax(0, 1fr))` }}
+                        style={{ gridTemplateColumns: `repeat(${Math.min(line.units.length, 5)}, minmax(0, 1fr))` }}
                       >
                         {line.units.map((unit, unitIndex) => (
                           <label key={unitIndex} className="block">
+                            {/* R1 on the report, the label's letter on the tube (Q36). */}
                             <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                              {unitLetter(unitIndex + 1)}
+                              {repetitionLabel(unitIndex + 1)} <span className="font-normal text-slate-400">· {unitLetter(unitIndex + 1)}</span>
                             </span>
                             <input
                               type="text"
                               inputMode="text"
-                              aria-label={`${line.name} — unité ${unitLetter(unitIndex + 1)}`}
+                              aria-label={`${line.name} — ${repetitionLabel(unitIndex + 1)} (unité ${unitLetter(unitIndex + 1)})`}
                               value={unit}
                               onChange={(e) => updateUnit(index, unitIndex, e.target.value)}
                               disabled={!canEdit}
-                              placeholder={line.plan?.mKind === "ABSENCE" ? "Absence" : "1,2.10²"}
+                              placeholder={line.plan?.mKind === "ABSENCE" ? "Absence" : line.plan ? "1,2.10²" : "Valeur"}
                               className={INPUT}
                             />
                           </label>
@@ -341,9 +370,18 @@ export function ResultEntryForm({
                   </div>
                 </div>
 
-                {line.plan ? (
+                {line.plan && !hasLimit(line.plan) ? (
+                  <p className="mt-2.5 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    Critère « non spécifié » : le résultat figure au rapport sans verdict.
+                  </p>
+                ) : line.plan ? (
                   reading.verdict && (
                     <p className="mt-2.5 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                      {reading.indicative && (
+                        <span className="rounded-full bg-sky-50 px-2 py-0.5 font-semibold text-sky-700 ring-1 ring-sky-200">
+                          Indicatif — pas de verdict au rapport
+                        </span>
+                      )}
                       <VerdictBadge verdict={reading.verdict.verdict} />
                       <span>{reading.verdict.reason}</span>
                     </p>

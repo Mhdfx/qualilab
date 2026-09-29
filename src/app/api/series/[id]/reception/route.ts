@@ -12,7 +12,9 @@ import { assignControlCode } from "@/lib/sample-code";
  * One button, one transaction: every line still `PRELEVE` gets its
  * N° de contrôle (yearly counter, locked), its temperature, quantity,
  * conformity with a coded motif and its technician; the série records who
- * received it and when. Either every line is received or none is — two
+ * received it and when. A non-conform line the réceptionniste destroys is
+ * received and numbered too (it prints on the bon de réception), then
+ * cancelled in the same transaction with the motif DETRUIT_A_RECEPTION. Either every line is received or none is — two
  * réceptionnistes on the same série cannot half-number it (P2025 → 409).
  */
 export async function POST(
@@ -78,9 +80,9 @@ export async function POST(
     unitCount: s.unitCount,
   }));
 
-  const validation = validateReception(body, candidates, settings, {
-    blockNonConform: settings.blockNonConformAtReception,
-  });
+  // The old global switch (blockNonConformAtReception) is retired: each
+  // non-conform line is analysed or destroyed, case by case (slice E).
+  const validation = validateReception(body, candidates, settings);
   if (!validation.ok) {
     return NextResponse.json(
       { error: validation.error, lineNumber: validation.lineNumber ?? null },
@@ -133,9 +135,12 @@ export async function POST(
                 conformity: line.conformity,
                 conformityReason: line.conformityReason,
                 conformityNote: line.conformityNote,
-                analysisBlocked: line.analysisBlocked,
+                analysisBlocked: false,
                 technicianId: line.technicianId,
                 assignedAt: line.technicianId ? receivedAt : null,
+                ...(line.destroy
+                  ? { status: "ANNULE" as const, cancelledAt: receivedAt, cancelledById: session.id, cancelReason: "DETRUIT_A_RECEPTION" as const }
+                  : {}),
               },
               select: {
                 id: true,
@@ -151,6 +156,8 @@ export async function POST(
                 personName: true,
                 nature: { select: { label: true } },
                 technician: { select: { id: true, name: true } },
+                status: true,
+                cancelReason: true,
               },
             })
           );
@@ -193,7 +200,7 @@ export async function POST(
             conformity: line.conformity,
             conformityReason: line.conformityReason,
             conformityNote: line.conformityNote,
-            analysisBlocked: line.analysisBlocked,
+            destroyed: line.destroy,
             receptionTemperature: line.receptionTemperature,
             quantity: line.quantity,
             quantityUnit: line.quantityUnit,
@@ -203,6 +210,26 @@ export async function POST(
           },
         })
       ),
+      // A destroyed line is a cancellation like any other: its own entry.
+      ...input.lines
+        .filter((line) => line.destroy)
+        .map((line) =>
+          logAudit({
+            actorId: session.id,
+            action: "SAMPLE_CANCELLED",
+            entity: "Sample",
+            entityId: line.sampleId,
+            metadata: {
+              from: "RECU",
+              to: "ANNULE",
+              code: rows.find((r) => r.id === line.sampleId)?.code ?? null,
+              controlCode: rows.find((r) => r.id === line.sampleId)?.controlCode ?? null,
+              serialNumber: serie.serialNumber,
+              reason: "DETRUIT_A_RECEPTION",
+              note: line.conformityNote,
+            },
+          })
+        ),
       logAudit({
         actorId: session.id,
         action: "SERIE_RECEIVED",
@@ -212,6 +239,7 @@ export async function POST(
           serialNumber: serie.serialNumber,
           lines: rows.length,
           controlCodes: rows.map((r) => r.controlCode),
+          destroyed: input.lines.filter((l) => l.destroy).map((l) => l.lineNumber),
           arrivedAt: input.arrivedAt,
           coolerTemperature: input.coolerTemperature,
         },

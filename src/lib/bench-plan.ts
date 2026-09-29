@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "./prisma";
-import { effectivePlan, pickCriterion, planLabel, type Plan } from "./interpretation";
+import { pickCriterion, planLabel, type Plan } from "./interpretation";
 
 /**
  * The criteria a sample is judged against, one per germ: the bench grid,
@@ -9,10 +9,9 @@ import { effectivePlan, pickCriterion, planLabel, type Plan } from "./interpreta
  */
 export type BenchPlan = {
   parameterId: string;
-  /** The plan applied to this sample (n capped by the units taken). */
+  /** The criterion as written in the catalogue (n = 5…); `judgeUnits`
+   *  applies it to the units the sampler took. */
   plan: Plan;
-  /** The criterion as written in the catalogue (n = 5…). */
-  nominalN: number;
   label: string;
   unit: string | null;
   normVersionId: string | null;
@@ -65,15 +64,11 @@ export async function loadBenchPlans(sampleId: string): Promise<BenchPlans> {
   for (const [parameterId, list] of byParameter) {
     const criterion = pickCriterion(list);
     if (!criterion) continue;
-    const nominal: Plan = { n: criterion.n, c: criterion.c, mKind: criterion.mKind, m: criterion.m, bigM: criterion.bigM };
-    // The label is the plan APPLIED (n capped to the units taken, c with it):
-    // the report must print the criterion the verdict actually came from.
-    const applied = effectivePlan(nominal, sample.unitCount);
+    const plan: Plan = { n: criterion.n, c: criterion.c, mKind: criterion.mKind, m: criterion.m, bigM: criterion.bigM };
     plans.set(parameterId, {
       parameterId,
-      plan: applied,
-      nominalN: criterion.n,
-      label: planLabel({ ...applied, unit: criterion.unit }),
+      plan,
+      label: planLabel({ ...plan, unit: criterion.unit }),
       unit: criterion.unit,
       normVersionId: criterion.normVersionId,
       normLabel: criterion.normVersion?.label ?? null,

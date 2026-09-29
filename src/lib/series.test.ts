@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_UNITS, lineReference, serieProgress, serieStatus, unitLetter } from "./series";
+import { MAX_UNITS, lineReference, repetitionLabel, serieProgress, serieStatus, unitLetter } from "./series";
 
 const s = (...statuses: string[]) =>
   statuses.map((status) => ({ status: status as never }));
@@ -36,16 +36,17 @@ describe("série status — derived from its samples, never stored", () => {
 });
 
 describe("unit letters and line references", () => {
-  it("names units A, B, C… like the bench sheet, then AA, AB… up to the lab's fifty", () => {
+  it("names units A, B, C… like the bench sheet, then AA, AB…, AAA… with no limit", () => {
     expect([1, 2, 5, 9].map(unitLetter)).toEqual(["A", "B", "E", "I"]);
     expect([26, 27, 28, 50, 52].map(unitLetter)).toEqual(["Z", "AA", "AB", "AX", "AZ"]);
-    expect(MAX_UNITS).toBe(50);
+    expect([702, 703, 999].map(unitLetter)).toEqual(["ZZ", "AAA", "ALK"]);
+    expect(MAX_UNITS).toBe(999);
+    expect(repetitionLabel(9)).toBe("R9");
   });
 
   it("refuses an impossible unit index", () => {
     expect(() => unitLetter(0)).toThrow();
     expect(() => unitLetter(1.5)).toThrow();
-    expect(() => unitLetter(703)).toThrow();
   });
 
   it("writes the line reference the préleveur sees", () => {

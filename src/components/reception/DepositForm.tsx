@@ -57,6 +57,8 @@ type LineIntake = {
   reason: NonConformityReason | "";
   note: string;
   technicianId: string;
+  /** Non-conform only: « Détruire » instead of « Analyser malgré tout ». */
+  destroy: boolean;
 };
 
 type CreatedDeposit = {
@@ -114,11 +116,9 @@ function depositLine(nature: NatureOption | undefined, previous?: LineDraft): Li
 export function DepositForm({
   technicians,
   thresholds,
-  blockNonConform,
 }: {
   technicians: TechnicianOption[];
   thresholds: ReceptionThresholds;
-  blockNonConform: boolean;
 }) {
   const router = useRouter();
   const isMounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
@@ -231,7 +231,7 @@ export function DepositForm({
   );
 
   function intakeOf(key: string): LineIntake {
-    return intake[key] ?? { temperature: "", conformityChoice: null, reason: "", note: "", technicianId: defaultTechnician };
+    return intake[key] ?? { temperature: "", conformityChoice: null, reason: "", note: "", technicianId: defaultTechnician, destroy: false };
   }
 
   function updateIntake(key: string, patch: Partial<LineIntake>) {
@@ -336,7 +336,8 @@ export function DepositForm({
     const proposal = proposedConformity(checks);
     const conformity = proposal.forced ? false : (extra.conformityChoice ?? proposal.conformity);
     const reason: NonConformityReason | "" = conformity ? "" : extra.reason || proposal.reason || "";
-    return { nature, names, extra, checks, proposal, conformity, reason };
+    const destroy = !conformity && extra.destroy;
+    return { nature, names, extra, checks, proposal, conformity, reason, destroy };
   }
 
   function setStepError(message: string, line: number | null = null) {
@@ -358,10 +359,10 @@ export function DepositForm({
       if (line.lineKind === "SURFACE" && !line.surfaceLabel.trim()) return setStepError("Indiquez la surface prélevée.", n);
       if (line.lineKind === "MAINS" && !line.personName.trim()) return setStepError("Indiquez la personne prélevée.", n);
       if (line.parameterIds.length === 0) return setStepError("Choisissez au moins une analyse.", n);
-      const { conformity, reason, extra } = evaluate(line);
+      const { conformity, reason, extra, destroy } = evaluate(line);
       if (!conformity && !reason) return setStepError("Choisissez le motif de non-conformité.", n);
       if (!conformity && reason === "AUTRE" && !extra.note.trim()) return setStepError("Précisez le motif « autre ».", n);
-      if (!(blockNonConform && !conformity) && !extra.technicianId) return setStepError("Attribuez un technicien.", n);
+      if (!destroy && !extra.technicianId) return setStepError("Attribuez un technicien.", n);
     }
     setError("");
     setErrorLine(null);
@@ -389,7 +390,7 @@ export function DepositForm({
           advanceAmount: advanceAmount || undefined,
           advanceMode: advanceMode || undefined,
           lines: lines.map((line) => {
-            const { conformity, reason, extra } = evaluate(line);
+            const { conformity, reason, extra, destroy } = evaluate(line);
             return {
               ...Object.fromEntries(Object.entries(line).filter(([k]) => k !== "key")),
               handsState: line.handsState || undefined,
@@ -397,7 +398,8 @@ export function DepositForm({
               conformity,
               conformityReason: conformity ? undefined : reason,
               conformityNote: extra.note,
-              technicianId: blockNonConform && !conformity ? undefined : extra.technicianId,
+              decision: destroy ? "DETRUIRE" : "ANALYSER",
+              technicianId: destroy ? undefined : extra.technicianId,
             };
           }),
         }),
@@ -703,7 +705,7 @@ export function DepositForm({
           </Card>
 
           {lines.map((line, index) => {
-            const { nature, checks, proposal, conformity, reason, extra } = evaluate(line);
+            const { nature, checks, proposal, conformity, reason, extra, destroy } = evaluate(line);
             const type = nature?.legacyType;
             return (
               <div key={line.key} className={errorLine === index + 1 ? "space-y-3 rounded-2xl ring-2 ring-rose-300" : "space-y-3"}>
@@ -745,7 +747,7 @@ export function DepositForm({
                         className="input-field px-4"
                       />
                     </div>
-                    {!(blockNonConform && !conformity) && (
+                    {!destroy && (
                       <div>
                         <label htmlFor={`tech-${line.key}`} className="mb-1.5 block text-sm font-semibold text-slate-700">
                           Technicien <span className="text-rose-600">*</span>
@@ -813,10 +815,20 @@ export function DepositForm({
                       </div>
                     </div>
                   )}
-                  {blockNonConform && !conformity && (
-                    <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  {!conformity && (
+                    <fieldset className="mt-3">
+                      <legend className="text-sm font-semibold text-slate-700">Décision pour cette ligne</legend>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <ConformityChip active={!destroy} disabled={false} tone="ok" label="Analyser malgré tout" onClick={() => updateIntake(line.key, { destroy: false })} />
+                        <ConformityChip active={destroy} disabled={false} tone="warn" label="Détruire" onClick={() => updateIntake(line.key, { destroy: true })} />
+                      </div>
+                    </fieldset>
+                  )}
+                  {destroy && (
+                    <p className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                      Ligne bloquée à la réception : numérotée, mais analysée seulement après libération par un administrateur.
+                      Ligne détruite : numérotée et imprimée sur le bon de réception avec sa non-conformité, puis annulée
+                      (motif « Détruit à réception »). Aucune analyse, rien n&apos;est facturé.
                     </p>
                   )}
                 </Card>
@@ -876,7 +888,7 @@ export function DepositForm({
             </div>
             <ul className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-100">
               {lines.map((line, i) => {
-                const { nature, names, conformity, reason, extra } = evaluate(line);
+                const { nature, names, conformity, reason, extra, destroy } = evaluate(line);
                 const technician = technicians.find((t) => t.id === extra.technicianId);
                 return (
                   <li key={line.key} className="px-4 py-3">
@@ -899,6 +911,7 @@ export function DepositForm({
                         }`}
                       >
                         {conformity ? "Conforme" : reason ? NON_CONFORMITY_REASON_LABELS[reason] : "Non conforme"}
+                        {destroy ? " · à détruire" : ""}
                       </span>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1.5">

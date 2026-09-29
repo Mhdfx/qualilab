@@ -38,8 +38,7 @@ const good = {
   ],
 };
 
-const validate = (raw: unknown, blockNonConform = false) =>
-  validateReception(raw, candidates, DEFAULT_THRESHOLDS, { blockNonConform });
+const validate = (raw: unknown) => validateReception(raw, candidates, DEFAULT_THRESHOLDS);
 
 describe("validateReception", () => {
   it("accepts a complete série and rounds the temperatures", () => {
@@ -53,11 +52,11 @@ describe("validateReception", () => {
       [2, null, null, null],
     ]);
     expect(result.value.lines[0].checks.map((c) => c.level)).toEqual(["OK", "OK"]);
-    expect(result.value.lines[1].analysisBlocked).toBe(false);
+    expect(result.value.lines[1].destroy).toBe(false);
   });
 
   it("refuses a série already received and a line sent twice or missing", () => {
-    const received = validateReception(good, candidates.map((c) => ({ ...c, status: "RECU" })), DEFAULT_THRESHOLDS, { blockNonConform: false });
+    const received = validateReception(good, candidates.map((c) => ({ ...c, status: "RECU" })), DEFAULT_THRESHOLDS);
     expect(received).toMatchObject({ ok: false, error: "Cette série est déjà réceptionnée." });
 
     const twice = validate({ ...good, lines: [good.lines[0], good.lines[0], good.lines[1]] });
@@ -114,14 +113,21 @@ describe("validateReception", () => {
     if (ok.ok) expect(ok.value.lines[0]).toMatchObject({ conformityReason: "AUTRE", conformityNote: "Sachet percé" });
   });
 
-  it("holds a non-conform line unassigned when the lab blocks them, otherwise requires a technician", () => {
+  it("decides a non-conform line case by case: analysed with a technician, or destroyed", () => {
     const line = { ...good.lines[0], conformity: false, conformityReason: "EMBALLAGE", technicianId: "" };
-    const analysed = validate({ ...good, lines: [line, good.lines[1]] }, false);
+    // Analysed anyway (the default) still needs its technician.
+    const analysed = validate({ ...good, lines: [line, good.lines[1]] });
     expect(analysed).toMatchObject({ ok: false, lineNumber: 1 });
+    const withTech = validate({ ...good, lines: [{ ...line, decision: "ANALYSER", technicianId: "t1" }, good.lines[1]] });
+    expect(withTech.ok && withTech.value.lines[0]).toMatchObject({ destroy: false, technicianId: "t1" });
 
-    const held = validate({ ...good, lines: [line, good.lines[1]] }, true);
-    expect(held.ok).toBe(true);
-    if (held.ok) expect(held.value.lines[0]).toMatchObject({ analysisBlocked: true, technicianId: null });
+    // Destroyed: no technician, whatever the browser sent.
+    const destroyed = validate({ ...good, lines: [{ ...line, decision: "DETRUIRE", technicianId: "t1" }, good.lines[1]] });
+    expect(destroyed.ok && destroyed.value.lines[0]).toMatchObject({ destroy: true, technicianId: null });
+
+    // A conform line cannot be destroyed; an unknown decision is refused.
+    expect(validate({ ...good, lines: [{ ...good.lines[0], decision: "DETRUIRE" }, good.lines[1]] })).toMatchObject({ ok: false, lineNumber: 1 });
+    expect(validate({ ...good, lines: [{ ...line, decision: "BLOQUER" }, good.lines[1]] })).toMatchObject({ ok: false, lineNumber: 1 });
   });
 
   it("rejects implausible numbers and a quantity without unit", () => {

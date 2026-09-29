@@ -15,6 +15,7 @@ import {
   Thermometer,
   Award,
   PackagePlus,
+  Search,
 } from "lucide-react";
 import type { NavSection } from "./nav-types";
 
@@ -32,6 +33,7 @@ export const receptionNav: NavSection[] = [
       { label: "Tableau de bord", href: "/reception", icon: LayoutDashboard },
       { label: "À réceptionner", href: "/reception#file", icon: Inbox },
       { label: "Nouveau dépôt", href: "/reception/nouveau-depot", icon: PackagePlus },
+      { label: "Recherche des analyses", href: "/recherche", icon: Search },
     ],
   },
   {
@@ -48,6 +50,7 @@ export const technicienNav: NavSection[] = [
     items: [
       { label: "Tableau de bord", href: "/technicien", icon: LayoutDashboard },
       { label: "Mes analyses", href: "/technicien#analyses", icon: FlaskConical },
+      { label: "Recherche des analyses", href: "/recherche", icon: Search },
     ],
   },
   {
@@ -64,6 +67,7 @@ export const validationNav: NavSection[] = [
     items: [
       { label: "Tableau de bord", href: "/validation", icon: LayoutDashboard },
       { label: "À valider", href: "/validation#file", icon: ShieldCheck },
+      { label: "Recherche des analyses", href: "/recherche", icon: Search },
     ],
   },
 ];
@@ -75,6 +79,7 @@ export const commercialNav: NavSection[] = [
       { label: "Tableau de bord", href: "/commercial", icon: LayoutDashboard },
       { label: "Clients", href: "/commercial#clients", icon: Building2 },
       { label: "Nouveau client", href: "/commercial/nouveau", icon: BarChart3 },
+      { label: "Recherche des analyses", href: "/recherche", icon: Search },
     ],
   },
 ];
@@ -86,6 +91,7 @@ export const comptabiliteNav: NavSection[] = [
       { label: "Tableau de bord", href: "/comptabilite", icon: LayoutDashboard },
       { label: "Factures", href: "/comptabilite/factures", icon: FileText },
       { label: "Nouvelle facture", href: "/comptabilite/factures/nouvelle", icon: Wallet },
+      { label: "Recherche des analyses", href: "/recherche", icon: Search },
     ],
   },
 ];

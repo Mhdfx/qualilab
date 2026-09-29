@@ -71,6 +71,8 @@ export const CANCEL_REASON_LABELS = {
   QUANTITE_INSUFFISANTE: "Quantité insuffisante",
   DOUBLON: "Doublon",
   ANNULATION_CLIENT: "Annulation par le client",
+  /** Only set by the reception's « Détruire » (RETOUR-LABO-29-09.md, slice E). */
+  DETRUIT_A_RECEPTION: "Détruit à réception",
   AUTRE: "Autre",
 } as const;
 

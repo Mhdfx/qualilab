@@ -131,10 +131,8 @@ export async function POST(request: Request) {
   // A deposit is received on the spot: the acceptance rules run here, as
   // they do for a visit at reception — a blocking rule cannot be declared
   // conform whatever the form sent.
-  let blockNonConform = false;
   if (kind === "DEPOT") {
     const settings = await getLabSettings();
-    blockNonConform = settings.blockNonConformAtReception;
     const [families, parameters] = await Promise.all([
       prisma.analysisNature.findMany({
         where: { id: { in: [...new Set(checked.value.lines.map((l) => l.natureId))] } },
@@ -171,11 +169,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const created = await createSerie(
-      checked.value,
-      { id: session.id, role: session.role },
-      { blockNonConform }
-    );
+    const created = await createSerie(checked.value, { id: session.id, role: session.role });
     const serie = await prisma.serie.findUniqueOrThrow({
       where: { id: created.id },
       select: serieSelectFor(session.role),

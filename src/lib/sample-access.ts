@@ -20,6 +20,7 @@ export async function loadAssignedSample(
       status: true,
       technicianId: true,
       analysisBlocked: true,
+      unitCount: true,
       parameters: {
         select: {
           parameter: {

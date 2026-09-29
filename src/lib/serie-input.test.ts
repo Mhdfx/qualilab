@@ -77,11 +77,12 @@ describe("validateLine — the paper line, field by field", () => {
     expect(validateLine({ ...aliment, parameterIds: [] }, 0, natures)).toMatchObject({ ok: false, error: "Choisissez au moins une analyse." });
   });
 
-  it("keeps the unit count within the laboratory's ceiling of fifty", () => {
+  it("takes any unit count up to the technical ceiling (no limit for the laboratory, 29/09)", () => {
     expect(validateLine({ ...aliment, unitCount: 9 }, 0, natures)).toMatchObject({ ok: true });
-    expect(validateLine({ ...aliment, unitCount: 50 }, 0, natures)).toMatchObject({ ok: true });
+    expect(validateLine({ ...aliment, unitCount: 51 }, 0, natures)).toMatchObject({ ok: true });
+    expect(validateLine({ ...aliment, unitCount: 999 }, 0, natures)).toMatchObject({ ok: true });
     expect(validateLine({ ...aliment, unitCount: 0 }, 0, natures)).toMatchObject({ ok: false });
-    expect(validateLine({ ...aliment, unitCount: 51 }, 0, natures)).toMatchObject({ ok: false });
+    expect(validateLine({ ...aliment, unitCount: 1000 }, 0, natures)).toMatchObject({ ok: false });
     expect(validateLine({ ...aliment, unitCount: 2.5 }, 0, natures)).toMatchObject({ ok: false });
   });
 });

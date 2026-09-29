@@ -3,6 +3,7 @@ import { requireApiRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sampleSelectFor } from "@/lib/sample-select";
 import { pageParams, toPage } from "@/lib/pagination";
+import { parseSampleSearch, sampleSearchWhere } from "@/lib/sample-search";
 
 /** The roles that work the sample circuit — stock and (future) portal do not. */
 const CIRCUIT_ROLES = [
@@ -29,7 +30,6 @@ export async function GET(request: Request) {
   if (session instanceof NextResponse) return session;
 
   const params = new URL(request.url).searchParams;
-  const q = params.get("q")?.trim();
   const rawStatus = params.get("status");
   if (rawStatus && !(STATUSES as readonly string[]).includes(rawStatus)) {
     return NextResponse.json({ error: "Statut inconnu." }, { status: 400 });
@@ -39,31 +39,15 @@ export async function GET(request: Request) {
   // A préleveur only ever sees their own field work; the lab roles see all.
   // The search runs in the database, not on the loaded page — otherwise a
   // code typed by the réceptionniste would only match the 50 newest samples.
-  //
-  // The préleveur's search deliberately excludes the laboratory numbering:
-  // a hit on a serial number would tell them which of their samples carries
-  // it, and the whole point of the blind numbering is that they cannot know.
-  const searchable = [
-    { code: { contains: q } },
-    { serie: { serialNumber: { contains: q } } },
-    { produit: { contains: q } },
-    { numeroLot: { contains: q } },
-    { lieu: { contains: q } },
-    { client: { name: { contains: q } } },
-    ...(session.role !== "PRELEVEUR"
-      ? [
-          { controlCode: { contains: q } },
-          { serialNumber: { contains: q } },
-        ]
-      : []),
-  ];
-
+  // Filters (client, période, nature, état) are the search screen's
+  // (RETOUR-LABO-29-09.md, slice F). The préleveur's search is blind: it
+  // never matches the laboratory's N° de contrôle.
   const where = {
+    ...sampleSearchWhere(parseSampleSearch(params), { blind: session.role === "PRELEVEUR" }),
     ...(session.role === "PRELEVEUR" ? { userId: session.id } : {}),
     // A technician's bench is their own: the list API mirrors sample-access.
     ...(session.role === "TECHNICIEN" ? { technicianId: session.id } : {}),
     ...(status ? { status } : {}),
-    ...(q ? { OR: searchable } : {}),
   };
 
   // Never load the whole table: this list grows for the life of the laboratory.

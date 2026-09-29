@@ -14,7 +14,7 @@ import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { labReference } from "@/lib/sample-select";
 import { sampleVerdict } from "@/lib/interpretation";
-import { unitLetter } from "@/lib/series";
+import { repetitionLabel } from "@/lib/series";
 import { VerdictBadge } from "@/components/samples/VerdictBadge";
 import { SampleVerbs } from "@/components/samples/SampleVerbs";
 import { formatDateTime } from "@/lib/labels";
@@ -82,6 +82,7 @@ export default async function ValidationDetailPage({
           note: true,
           threshold: true,
           interpretation: true,
+          informalInterpretation: true,
           normVersion: { select: { label: true } },
           units: { select: { unitIndex: true, rawValue: true }, orderBy: { unitIndex: "asc" } },
           parameter: {
@@ -97,8 +98,12 @@ export default async function ValidationDetailPage({
   const state = approvalState(sample);
   const nonConformes = sample.results.filter((r) => r.conform === false).length;
   // Only a sensitive germ over its limit raises a contamination alert.
-  const alertables = sample.results.filter((r) => r.conform === false && r.parameter.alertOnExceed).length;
+  const alertables = sample.results.filter(
+    (r) => (r.conform === false || r.informalInterpretation === "NON_SATISFAISANT") && r.parameter.alertOnExceed
+  ).length;
   const verdict = sampleVerdict(sample.results);
+  // Too few units for a plan: the report will carry no official verdict.
+  const indicativeOnly = verdict === null && sample.results.some((r) => r.interpretation === null && r.informalInterpretation);
 
   return (
     <div>
@@ -125,6 +130,11 @@ export default async function ValidationDetailPage({
               </h2>
               <div className="flex items-center gap-2">
                 {verdict && <VerdictBadge verdict={verdict} size="md" />}
+                {indicativeOnly && (
+                  <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-200">
+                    Sans interprétation officielle
+                  </span>
+                )}
                 <TypeBadge type={sample.type} />
                 <StatusBadge status={sample.status} />
               </div>
@@ -172,7 +182,7 @@ export default async function ValidationDetailPage({
                           <span className="mt-1 flex flex-wrap gap-1">
                             {result.units.map((u) => (
                               <span key={u.unitIndex} className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-700">
-                                <b className="mr-1 text-slate-500">{unitLetter(u.unitIndex)}</b>
+                                <b className="mr-1 text-slate-500">{repetitionLabel(u.unitIndex)}</b>
                                 {u.rawValue}
                               </span>
                             ))}
@@ -188,6 +198,11 @@ export default async function ValidationDetailPage({
                       <td className="py-2.5">
                         {result.interpretation ? (
                           <VerdictBadge verdict={result.interpretation} />
+                        ) : result.informalInterpretation ? (
+                          <span className="inline-flex flex-wrap items-center gap-1">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-sky-700">Indicatif</span>
+                            <VerdictBadge verdict={result.informalInterpretation} />
+                          </span>
                         ) : result.workStatus === "ANOMALIE" ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
                             <AlertTriangle className="h-3 w-3" aria-hidden="true" />

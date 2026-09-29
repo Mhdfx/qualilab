@@ -10,21 +10,31 @@ import { DEFAULT_THRESHOLDS, type ReceptionThresholds } from "./reception-rules"
  */
 
 export type LabSettings = ReceptionThresholds & {
-  /** Non-conform at reception: held unassigned (true) or analysed (false). */
+  /** Retired on 29/09 (each non-conform line is analysed or destroyed at
+   *  reception); kept readable for the samples it held before. */
   blockNonConformAtReception: boolean;
-  /** Alerts leave at technical validation (true) or at admin approval (false). */
+  /** Alerts leave at technical validation (true, the lab's answer of 29/09)
+   *  or at admin approval (false). */
   alertAfterTechnicalValidation: boolean;
+  /** The report's « Réglementation en vigueur » per family, when the
+   *  product type carries none (RETOUR-LABO-29-09.md, slice C). */
+  regulationMicro: string | null;
+  regulationChimie: string | null;
 };
 
 export const LAB_SETTINGS_DEFAULTS: LabSettings = {
   ...DEFAULT_THRESHOLDS,
   blockNonConformAtReception: false,
-  alertAfterTechnicalValidation: false,
+  alertAfterTechnicalValidation: true,
+  regulationMicro: null,
+  regulationChimie: null,
 };
 
 export const LAB_SETTINGS_SELECT = {
   blockNonConformAtReception: true,
   alertAfterTechnicalValidation: true,
+  regulationMicro: true,
+  regulationChimie: true,
   minFoodMicroG: true,
   minFoodChemG: true,
   minWaterMicroL: true,

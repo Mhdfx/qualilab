@@ -33,7 +33,6 @@ export default async function NouveauDepotPage() {
     <DepositForm
       technicians={technicianOptions}
       thresholds={settings}
-      blockNonConform={settings.blockNonConformAtReception}
     />
   );
 }

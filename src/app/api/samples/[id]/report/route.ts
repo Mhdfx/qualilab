@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { buildReportHtml } from "@/lib/report-html";
+import { buildReportHtml, REPORT_PDF_MARGIN } from "@/lib/report-html";
 import { renderPdf } from "@/lib/pdf";
 import { loadReportData } from "@/lib/report-dispatch";
 import { getCompany } from "@/lib/company-server";
@@ -46,7 +46,7 @@ export async function GET(
   }
 
   try {
-    const pdf = await renderPdf(buildReportHtml(data, await getCompany()));
+    const pdf = await renderPdf(buildReportHtml(data, await getCompany()), { margin: REPORT_PDF_MARGIN });
 
     await logAudit({
       actorId: session.id,

@@ -64,15 +64,19 @@ export function serieStatus(samples: { status: SampleStatus }[]): SerieStatus {
   return "A_RECEPTIONNER";
 }
 
-/** The most units one sample may carry (the laboratory's own ceiling, 14/09). */
-export const MAX_UNITS = 50;
+/**
+ * The most units one sample may carry. The laboratory wants no limit
+ * (RETOUR-LABO-29-09.md, point 11): this is only a technical ceiling that
+ * keeps a typing slip (« 5000 ») from creating thousands of readings.
+ */
+export const MAX_UNITS = 999;
 
 /**
  * Unit labels printed on labels and bench sheets: A…Z for units 1…26, then
- * AA, AB… — the bench sheet keeps its letters whatever n is.
+ * AA, AB…, then AAA… — the bench sheet keeps its letters whatever n is.
  */
 export function unitLetter(index: number) {
-  if (!Number.isInteger(index) || index < 1 || index > 702) {
+  if (!Number.isInteger(index) || index < 1) {
     throw new Error(`Indice d'unité hors limites : ${index}`);
   }
   let n = index;
@@ -83,6 +87,11 @@ export function unitLetter(index: number) {
     n = Math.floor((n - 1) / 26);
   }
   return label;
+}
+
+/** The repetition as the laboratory's report names it: R1 … Rn (point 9). */
+export function repetitionLabel(index: number) {
+  return `R${index}`;
 }
 
 /** Line reference the préleveur sees: « 2780/26 · ligne 3 ». */

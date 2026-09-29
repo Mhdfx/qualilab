@@ -13,6 +13,7 @@ const DETAIL_SELECT: Prisma.ProductTypeSelect = {
   family: true,
   clientId: true,
   active: true,
+  regulation: true,
   client: { select: { name: true } },
   criteria: {
     select: {
@@ -42,14 +43,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   return NextResponse.json(type);
 }
 
-/** Name, family, client and activity — the criteria have their own route. */
+/** Name, family, client, activity and the report's regulation text — the
+ *  criteria have their own route. */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireApiRole("ADMIN");
   if (session instanceof NextResponse) return session;
   const { id } = await params;
   const existing = await prisma.productType.findUnique({
     where: { id },
-    select: { id: true, name: true, family: true, clientId: true, active: true },
+    select: { id: true, name: true, family: true, clientId: true, active: true, regulation: true },
   });
   if (!existing) return NextResponse.json({ error: "Type de produit introuvable." }, { status: 404 });
 
@@ -67,6 +69,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     active: input.active ?? existing.active,
   });
   if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: 400 });
+
+  // « Réglementation en vigueur » (slice C): optional, empty = the family's default.
+  let regulation = existing.regulation;
+  if (input.regulation !== undefined) {
+    if (input.regulation !== null && typeof input.regulation !== "string") {
+      return NextResponse.json({ error: "Texte de réglementation invalide." }, { status: 400 });
+    }
+    const value = (input.regulation ?? "").trim();
+    if (value.length > 2000) return NextResponse.json({ error: "Texte de réglementation trop long (2000 caractères max)." }, { status: 400 });
+    regulation = value || null;
+  }
 
   if (checked.value.clientId && checked.value.clientId !== existing.clientId) {
     const client = await prisma.client.findUnique({ where: { id: checked.value.clientId }, select: { id: true } });
@@ -90,7 +103,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
   }
 
-  const updated = await prisma.productType.update({ where: { id }, data: checked.value, select: DETAIL_SELECT });
-  await logAudit({ actorId: session.id, action: "PRODUCT_TYPE_UPDATED", entity: "ProductType", entityId: id, metadata: { before: existing, after: checked.value } });
+  const updated = await prisma.productType.update({ where: { id }, data: { ...checked.value, regulation }, select: DETAIL_SELECT });
+  await logAudit({ actorId: session.id, action: "PRODUCT_TYPE_UPDATED", entity: "ProductType", entityId: id, metadata: { before: existing, after: { ...checked.value, regulation } } });
   return NextResponse.json(updated);
 }

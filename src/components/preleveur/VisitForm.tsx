@@ -66,7 +66,6 @@ export function VisitForm({ me }: { me: Preleveur }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [natures, setNatures] = useState<NatureOption[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
-  const [preleveurs, setPreleveurs] = useState<Preleveur[]>([me]);
   const [parametersByType, setParametersByType] = useState<Partial<Record<SampleType, ParameterOption[]>>>({});
   const [loadingTypes, setLoadingTypes] = useState<Set<SampleType>>(new Set());
   const requestedTypes = useRef<Set<SampleType>>(new Set());
@@ -84,7 +83,9 @@ export function VisitForm({ me }: { me: Preleveur }) {
   const [startedAt, setStartedAt] = useState(() => toLocalInput(new Date()));
   const [endedAt, setEndedAt] = useState("");
   const [samplerKind, setSamplerKind] = useState<SamplerKind>("QUALILAB");
-  const [samplerUserId, setSamplerUserId] = useState(me.id);
+  // One account per person (29/09, point 13): the sampler is always the
+  // signed-in account, never a colleague picked from a list.
+  const samplerUserId = me.id;
   const [samplerName, setSamplerName] = useState("");
   const [arrivedAt, setArrivedAt] = useState("");
   const [cooler, setCooler] = useState("");
@@ -121,11 +122,9 @@ export function VisitForm({ me }: { me: Preleveur }) {
     Promise.all([
       fetch("/api/natures").then((r) => r.json()),
       fetch("/api/clients").then((r) => r.json()),
-      fetch("/api/preleveurs").then((r) => r.json()),
-    ]).then(([n, c, p]: [NatureOption[], ClientOption[], Preleveur[]]) => {
+    ]).then(([n, c]: [NatureOption[], ClientOption[]]) => {
       setNatures(n);
       setClients(c);
-      if (Array.isArray(p) && p.length > 0) setPreleveurs(p);
       setLines((prev) => (prev.length ? prev : [emptyLine(n[0])]));
       ensureParameters(n[0]?.legacyType);
     });
@@ -360,7 +359,7 @@ export function VisitForm({ me }: { me: Preleveur }) {
 
   const samplerLabel =
     samplerKind === "QUALILAB"
-      ? preleveurs.find((p) => p.id === samplerUserId)?.name ?? me.name
+      ? me.name
       : `${samplerKind === "SERVICE_VETERINAIRE" ? "Service vétérinaire" : "Autre"} — ${samplerName}`;
 
   if (step === 3 && created) {
@@ -610,17 +609,10 @@ export function VisitForm({ me }: { me: Preleveur }) {
                 </div>
                 {samplerKind === "QUALILAB" ? (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <select
-                      value={samplerUserId}
-                      onChange={(e) => setSamplerUserId(e.target.value)}
-                      aria-label="Préleveur"
-                      className="input-field max-w-xs px-4"
-                    >
-                      {preleveurs.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}{p.id === me.id ? " (moi)" : ""}</option>
-                      ))}
-                    </select>
-                    <span className="text-xs text-slate-500">Fonction : Préleveur</span>
+                    <span className="inline-flex min-h-[40px] items-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-800">
+                      {me.name}
+                    </span>
+                    <span className="text-xs text-slate-500">Fonction : Préleveur · votre compte</span>
                   </div>
                 ) : (
                   <input

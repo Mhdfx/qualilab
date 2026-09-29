@@ -18,6 +18,7 @@ import {
   ListChecks,
   Tags,
   BookOpen,
+  Search,
 } from "lucide-react";
 import type { NavSection } from "./nav-types";
 
@@ -41,6 +42,7 @@ export const adminNav: NavSection[] = [
       { label: "Réception", href: "/reception", icon: Inbox },
       { label: "Analyses", href: "/technicien", icon: Microscope },
       { label: "Approbations", href: "/validation", icon: ShieldCheck },
+      { label: "Recherche des analyses", href: "/recherche", icon: Search },
     ],
   },
   {

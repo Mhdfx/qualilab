@@ -67,6 +67,7 @@ export async function GET(
           lineNumber: true,
           lineKind: true,
           status: true,
+          cancelReason: true,
           produit: true,
           surfaceLabel: true,
           surfaceAreaCm2: true,
@@ -106,6 +107,7 @@ export async function GET(
   const isDeposit = serie.kind === "DEPOT";
   const lines: DocumentLine[] = serie.samples.map((s) => ({
     cancelled: s.status === "ANNULE",
+    destroyed: s.status === "ANNULE" && s.cancelReason === "DETRUIT_A_RECEPTION",
     lineNumber: s.lineNumber,
     lineKind: s.lineKind,
     designation:

@@ -515,7 +515,7 @@ export function LineEditor({
           </div>
           <div className="mt-2 flex items-center gap-2">
             <label htmlFor={`n-${line.key}`} className="text-xs text-slate-500">
-              ou saisir (1 à {MAX_UNITS}) :
+              ou saisir le nombre :
             </label>
             <input
               id={`n-${line.key}`}

@@ -673,39 +673,45 @@ déjà satisfaite ; les deux autres ont été livrées.
 - [x] Protocole PDF de production relu à l'image : « Cadre : Contrôle officiel », colonne SURFACE PRÉLEVÉE « Plan de travail inox · 50 cm² », colonne REMARQUES « Produit posé sur le plan inox ».
 - [x] Le préleveur corrige le cadre de sa visite non réceptionnée (200, valeur relue en base).
 
-## Checkpoint P — Retour du laboratoire du 29/09 (spec `RETOUR-LABO-29-09.md`) — à faire
+## Checkpoint P — Retour du laboratoire du 29/09 (spec `RETOUR-LABO-29-09.md`) — dev server 2026-09-29, 1440×900
 
-One box per point of the spec; ticked only when observed in the browser at
-1440×900, on the dev server and then in production.
+Ticked when observed in the browser on the dev server (`pre1`, `recep1`,
+`tech1`, `valid1`, `admin`, `commercial1`), plus the API circuit
+`circuit-2909` (23/23). Production: see P-prod below.
 
 ### P-A — Le correcteur
-- [ ] « Salde composée » tapé sur une ligne propose « Salade composée » ; un clic l'accepte ; un produit vraiment nouveau reste possible.
-- [ ] Même chose sur « Lieu / section ».
-- [ ] Créer un type de produit proche d'un type existant affiche le quasi-doublon et demande confirmation.
-- [ ] La mémoire d'un client est chargée depuis l'ancien logiciel (import analysé puis confirmé, ré-import sans doublon).
+- [x] « Écran — indicatf » tapé sur une ligne propose « Écran — indicatif » ; un clic l'accepte (valeur relue) ; un produit nouveau reste possible (la suggestion n'impose rien).
+- [x] Même chose sur « Lieu / section » (« Cuisne — écran 29/09 » → « Cuisine — écran 29/09 »).
+- [x] Un nom de type à une lettre près d'un type existant, en création : « Types existants très proches : … » et la case « Ce n'est pas une faute de frappe ».
+- [x] Mémoire depuis les échantillons : Analyser → Importer → Analyser à nouveau = 0 nouvelle désignation, 0 nouveau lieu (pas de doublon).
+- [ ] Mémoire depuis le CSV de l'ancien logiciel — couvert par `memory-import.test.ts`, en attente de l'extraction (Docker / base Firebird).
 
 ### P-B — Le moteur
-- [ ] m = M avec c = 1 : une unité au-dessus reste conforme, deux la rendent non conforme (selon Q31).
-- [ ] Un échantillon lu sur une unité pour un plan n = 5 n'a pas de verdict officiel.
-- [ ] Histamine n = 9 lue R1 … R9 en mg/kg, sans type de produit.
-- [ ] Une ligne à 60 unités s'enregistre, s'étiquette et se lit.
+- [ ] m = M avec c = 1 — **attend Q31**, la règle de c n'est pas modifiée.
+- [x] Deux unités pour un plan n = 5 : aucun verdict officiel à l'enregistrement, « Sans interprétation officielle » et « Indicatif » par germe à la validation, rapport sans croix avec la phrase du nombre d'unités.
+- [x] Lecture R1 … R3 sans type de produit (22,8 / 27,1 / 31,5) ; à la paillasse « R1 · A », la valeur retenue est la plus défavorable (150 lu sur « 1,5.10² ») ; une répétition vide bloque la soumission.
+- [x] 999 unités acceptées par la validation d'une ligne, 1 000 refusées (`serie-input.test.ts`) ; lettres au-delà de ZZ (`series.test.ts`).
+- [x] Critère « Non spécifié » sans M : lu, soumis, imprimé « Non spécifié », sans verdict (défaut trouvé et corrigé par ce test).
 
 ### P-C — Le rapport
-- [ ] Tableau « Réglementation en vigueur » avec la croix dans la bonne colonne.
-- [ ] Colonnes Paramètres, Méthode, Unité, R1 … Rn, Critères m / M avec n et c ; « Non spécifié » ; « Absence » et « Non détecté ».
-- [ ] Le cas le plus lourd tient sur une page.
+- [x] Tableau « Réglementation en vigueur » : croix sous « Satisfaisant » (plan complet), aucune croix (unités insuffisantes) ; le texte saisi sur le type de produit est imprimé et figé dans le rapport.
+- [x] Colonnes Paramètres, Méthode, Unité, R1 … Rn, m / M avec n et c ; « Non spécifié » ; « Absence » et « Non détecté » ; unité au-dessus de M en rouge.
+- [x] Le cas le plus lourd réel (le plus gros type du classeur : 37 germes × 9 répétitions) tient sur une page (pdfinfo : 1 page) ; test automatique `report-onepage.test.ts`.
 
 ### P-D — E-mails
-- [ ] L'e-mail du rapport porte le tableau récapitulatif et la conclusion, officielle ou non officielle.
-- [ ] L'alerte part à la validation technique.
+- [x] L'e-mail du rapport porte le tableau récapitulatif (N° dossier, N° de contrôle, dates, analyse, produit, lot, lieu) et la conclusion, « (indicative) » avec la phrase explicative quand il n'y a pas de verdict officiel (rendu relu à l'image).
+- [x] L'alerte part à la validation technique (`alertAfterTechnicalValidation` activé, réglage affiché) ; unités dans les en-têtes « Résultat (/25g) », « Limite (/25g) ».
 
 ### P-E — Réception et comptes
-- [ ] Une ligne non conforme : « Analyser malgré tout » ou « Détruire », tracé au journal.
-- [ ] Le préleveur ne peut plus saisir au nom d'un collègue, ni à l'écran ni par l'API.
+- [x] Ligne non conforme : « Analyser malgré tout » / « Détruire » ; « Détruire » masque le technicien ; après validation « Annulé · Détruit à réception », N° de contrôle attribué, « Réactiver » proposé ; « Détruite à réception » sur le protocole ; entrée `SAMPLE_CANCELLED` au journal.
+- [x] Le préleveur voit son propre nom verrouillé (« votre compte ») ; l'API refuse un autre préleveur (400 « Chaque préleveur saisit ses prélèvements avec son propre compte. »).
 
 ### P-F — Recherche et export
-- [ ] Recherche par client, période, type d'analyse et état.
-- [ ] Résumé d'un client sur une période, exporté en Excel avec les colonnes de leur modèle.
+- [x] `/recherche` : client + période + état → les lignes du jour, conclusion par ligne (Satisfaisant, Non satisfaisant (indicatif), En cours, Annulé), lien Rapport ; « annulées » trouve la ligne détruite ; la recherche du préleveur ne trouve jamais un N° de contrôle.
+- [x] Fiche client « Synthèse des analyses » (période, compteurs par conclusion) et export Excel relu : N° BC, N°, Date de réception, Nom produit, Analyses, N° de lot, Conclusion ; technicien refusé (403).
+
+### P-prod — Production (http://185.217.126.53)
+- [ ] Filled after the deploy of 2026-09-29 (see Session Log).
 
 ## Sign-off log
 

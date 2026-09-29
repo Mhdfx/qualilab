@@ -14,6 +14,11 @@ import {
  * réceptionniste measured or confirmed. The rules engine runs again here:
  * a line under a blocking rule cannot be declared conform, whatever the
  * browser sent.
+ *
+ * A non-conform line is decided case by case (RETOUR-LABO-29-09.md, slice
+ * E): analysed anyway, with a technician, or destroyed — received and
+ * numbered like the others (it prints on the bon de réception), then
+ * cancelled with the motif « Détruit à réception ».
  */
 
 const QUANTITY_UNITS = ["UNITE", "G", "ML", "L"] as const;
@@ -43,9 +48,10 @@ export type CleanReceptionLine = {
   conformity: boolean;
   conformityReason: NonConformityReason | null;
   conformityNote: string | null;
-  /** Null when the lab's policy holds the non-conform line unassigned. */
+  /** « Détruire » on a non-conform line: no analysis, cancelled at once. */
+  destroy: boolean;
+  /** Null only for a destroyed line. */
   technicianId: string | null;
-  analysisBlocked: boolean;
   checks: Check[];
 };
 
@@ -78,8 +84,7 @@ function text(value: unknown) {
 export function validateReception(
   raw: unknown,
   candidates: ReceptionCandidate[],
-  thresholds: ReceptionThresholds,
-  options: { blockNonConform: boolean }
+  thresholds: ReceptionThresholds
 ): ReceptionValidation {
   const input = (raw ?? {}) as Record<string, unknown>;
   const fail = (error: string, lineNumber?: number): ReceptionValidation => ({ ok: false, error, lineNumber });
@@ -169,9 +174,17 @@ export function validateReception(
       conformityNote = note || null;
     }
 
-    const analysisBlocked = options.blockNonConform && !conformity;
+    // Only a non-conform line can be destroyed; « analyser » is the default.
+    const decision = rawLine.decision === undefined || rawLine.decision === null ? "ANALYSER" : rawLine.decision;
+    if (decision !== "ANALYSER" && decision !== "DETRUIRE") {
+      return fail(`Ligne ${n} : décision inconnue.`, n);
+    }
+    if (decision === "DETRUIRE" && conformity) {
+      return fail(`Ligne ${n} : seule une ligne non conforme peut être détruite.`, n);
+    }
+    const destroy = decision === "DETRUIRE";
     let technicianId: string | null = null;
-    if (!analysisBlocked) {
+    if (!destroy) {
       technicianId = text(rawLine.technicianId);
       if (!technicianId) return fail(`Ligne ${n} : attribuez un technicien.`, n);
     }
@@ -186,8 +199,8 @@ export function validateReception(
       conformity,
       conformityReason,
       conformityNote,
+      destroy,
       technicianId,
-      analysisBlocked,
       checks,
     });
   }

@@ -124,6 +124,8 @@ type ReceivedLine = {
   conformity: boolean | null;
   conformityReason: NonConformityReason | null;
   analysisBlocked: boolean;
+  status?: SampleStatus;
+  cancelReason?: CancelReason | null;
   produit: string | null;
   surfaceLabel: string | null;
   personName: string | null;
@@ -143,6 +145,8 @@ type LineState = {
   reason: NonConformityReason | "";
   note: string;
   technicianId: string;
+  /** Non-conform only: « Détruire » instead of « Analyser malgré tout ». */
+  destroy: boolean;
 };
 
 const REASONS = Object.keys(NON_CONFORMITY_REASON_LABELS) as NonConformityReason[];
@@ -218,13 +222,11 @@ export function SerieReceptionForm({
   serie,
   technicians,
   thresholds,
-  blockNonConform,
   role,
 }: {
   serie: ReceptionSerieData;
   technicians: TechnicianOption[];
   thresholds: ReceptionThresholds;
-  blockNonConform: boolean;
   role: Role;
 }) {
   const router = useRouter();
@@ -260,6 +262,7 @@ export function SerieReceptionForm({
       reason: "",
       note: "",
       technicianId: defaultTechnician,
+      destroy: false,
     }))
   );
   const [busy, setBusy] = useState(false);
@@ -335,7 +338,8 @@ export function SerieReceptionForm({
             conformity,
             conformityReason: conformity ? undefined : reason,
             conformityNote: line.note,
-            technicianId: blockNonConform && !conformity ? undefined : line.technicianId,
+            decision: !conformity && line.destroy ? "DETRUIRE" : "ANALYSER",
+            technicianId: !conformity && line.destroy ? undefined : line.technicianId,
           };
         }),
       };
@@ -549,10 +553,33 @@ export function SerieReceptionForm({
                   </div>
                 )}
 
-                {blockNonConform && !conformity ? (
-                  <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {!conformity && (
+                  <fieldset className="mt-3">
+                    <legend className="text-sm font-medium text-slate-700">Décision pour cette ligne</legend>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <ConformityChip
+                        active={!line.destroy}
+                        disabled={false}
+                        tone="ok"
+                        label="Analyser malgré tout"
+                        onClick={() => updateLine(line.sampleId, { destroy: false })}
+                      />
+                      <ConformityChip
+                        active={line.destroy}
+                        disabled={false}
+                        tone="warn"
+                        label="Détruire"
+                        onClick={() => updateLine(line.sampleId, { destroy: true })}
+                      />
+                    </div>
+                  </fieldset>
+                )}
+
+                {!conformity && line.destroy ? (
+                  <p className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                    Ligne bloquée à la réception : numérotée, mais analysée seulement après libération par un administrateur.
+                    Ligne détruite : numérotée et imprimée sur le bon de réception avec sa non-conformité, puis annulée
+                    (motif « Détruit à réception »). Aucune analyse, rien n&apos;est facturé.
                   </p>
                 ) : (
                   <div className="mt-3">
@@ -787,10 +814,13 @@ function ReceivedSummary({
                   <td className="py-2.5 pr-3 font-mono text-base font-bold text-slate-900">{line.controlCode ?? "—"}</td>
                   <td className="py-2.5 pr-3 text-slate-600">{unitsLabel(line.unitCount)}</td>
                   <td className="py-2.5 pr-3">
-                    {!justReceived && byId.get(line.id)?.status === "ANNULE" ? (
+                    {(justReceived ? line.status : byId.get(line.id)?.status) === "ANNULE" ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
                         Annulé
-                        {byId.get(line.id)?.cancelReason ? ` · ${CANCEL_REASON_LABELS[byId.get(line.id)!.cancelReason!]}` : ""}
+                        {(() => {
+                          const reason = justReceived ? line.cancelReason : byId.get(line.id)?.cancelReason;
+                          return reason ? ` · ${CANCEL_REASON_LABELS[reason]}` : "";
+                        })()}
                       </span>
                     ) : line.conformity === false ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
@@ -809,7 +839,7 @@ function ReceivedSummary({
                   <td className="py-2.5">
                     {byId.get(line.id) && (
                       <SampleVerbs
-                        sample={verbSampleOf(byId.get(line.id)!, serie.client.id, justReceived ? "RECU" : byId.get(line.id)!.status)}
+                        sample={verbSampleOf(byId.get(line.id)!, serie.client.id, justReceived ? line.status ?? "RECU" : byId.get(line.id)!.status)}
                         role={role}
                         compact
                       />

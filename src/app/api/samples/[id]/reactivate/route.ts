@@ -50,6 +50,10 @@ export async function POST(
         validatedById: null,
         validatedAt: null,
         alertsSentAt: null,
+        // A line destroyed at reception (a mis-click, the sample still on the
+        // shelf) never had a technician: it comes back held, and « Échantillons
+        // bloqués » assigns one — otherwise it would sit in no queue at all.
+        ...(sample.cancelReason === "DETRUIT_A_RECEPTION" ? { analysisBlocked: true } : {}),
       },
       select: { id: true, code: true, controlCode: true, status: true },
     });

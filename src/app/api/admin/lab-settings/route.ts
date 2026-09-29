@@ -15,10 +15,10 @@ export async function GET() {
   return NextResponse.json(await getLabSettings());
 }
 
-const SWITCHES = [
-  "blockNonConformAtReception",
-  "alertAfterTechnicalValidation",
-] as const;
+// blockNonConformAtReception is retired (29/09): no longer editable.
+const SWITCHES = ["alertAfterTechnicalValidation"] as const;
+const TEXTS = ["regulationMicro", "regulationChimie"] as const;
+const MAX_REGULATION = 2000;
 
 /** Numeric thresholds with their plausible range and unit for the message. */
 const NUMBERS: { key: keyof LabSettings; label: string; min: number; max: number; integer: boolean }[] = [
@@ -50,6 +50,7 @@ export async function PUT(request: Request) {
   const data: Partial<LabSettings> = {};
 
   for (const field of SWITCHES) {
+    if (input[field] === undefined) continue;
     if (typeof input[field] !== "boolean") {
       return NextResponse.json(
         { error: `Le réglage « ${field} » doit être vrai ou faux.` },
@@ -83,6 +84,19 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Type de ligne inconnu dans « température obligatoire »." }, { status: 400 });
     }
     data.temperatureRequiredKinds = [...new Set(kinds)].join(",");
+  }
+
+  for (const field of TEXTS) {
+    const raw = input[field];
+    if (raw === undefined) continue;
+    if (raw !== null && typeof raw !== "string") {
+      return NextResponse.json({ error: "Texte de réglementation invalide." }, { status: 400 });
+    }
+    const value = (raw ?? "").trim();
+    if (value.length > MAX_REGULATION) {
+      return NextResponse.json({ error: `Texte de réglementation trop long (${MAX_REGULATION} caractères max).` }, { status: 400 });
+    }
+    data[field] = value || null;
   }
 
   const saved = await prisma.labSettings.upsert({

@@ -49,7 +49,8 @@ export type VerbSample = {
   clientId: string;
 };
 
-const REASONS = Object.keys(CANCEL_REASON_LABELS) as CancelReason[];
+// « Détruit à réception » is the reception's own verb (slice E), never picked here.
+const REASONS = (Object.keys(CANCEL_REASON_LABELS) as CancelReason[]).filter((r) => r !== "DETRUIT_A_RECEPTION");
 const UNITS = Object.keys(QUANTITY_UNIT_LABELS) as QuantityUnit[];
 const UNIT_CHOICES = [1, 3, 5, 9];
 

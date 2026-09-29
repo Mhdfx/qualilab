@@ -12,7 +12,8 @@ import { canTransition } from "@/lib/sample-status";
  * A sheet can only leave the bench once every requested parameter has been
  * answered — a missing line would reach the validateur as a silent gap. A
  * germ read per unit (CRITERES.md) must have every unit read: an
- * « Incomplet » verdict stays on the bench.
+ * « Incomplet » verdict stays on the bench — and so must any parameter of a
+ * sample taken on several units with a repetition left blank.
  */
 export async function POST(
   _request: Request,
@@ -44,15 +45,22 @@ export async function POST(
       conform: true,
       interpretation: true,
       parameter: { select: { name: true } },
+      _count: { select: { units: true } },
     },
   });
+  const perUnit = sample.unitCount > 1;
 
   const byParameter = new Map(results.map((r) => [r.parameterId, r]));
   const missing: string[] = [];
 
   for (const { parameter } of sample.parameters) {
     const result = byParameter.get(parameter.id);
-    if (!result?.value || result.workStatus === "EN_COURS" || result.interpretation === "INCOMPLET") {
+    if (
+      !result?.value ||
+      result.workStatus === "EN_COURS" ||
+      result.interpretation === "INCOMPLET" ||
+      (perUnit && result._count.units < sample.unitCount)
+    ) {
       missing.push(parameter.name);
     }
   }

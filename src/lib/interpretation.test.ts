@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyUnitFactor, effectivePlan, fmt, interpret, legacyFailures, parseUnitReading, pickCriterion, planLabel, sampleVerdict, summariseReadings, unitStoredDisplay, verdictToConform, worstVerdict, type Plan } from "./interpretation";
+import { applyUnitFactor, fmt, hasLimit, indicativeVerdict, storedPlan, informalVerdict, interpret, judgeUnits, legacyFailures, parseUnitReading, pickCriterion, planLabel, sampleVerdict, summariseReadings, unitStoredDisplay, verdictToConform, worstVerdict, type Plan } from "./interpretation";
 
 const read = (...raws: string[]) => raws.map(parseUnitReading);
 const threeClass: Plan = { n: 5, c: 2, mKind: "VALUE", m: 100, bigM: 10_000 };
@@ -104,10 +104,40 @@ describe("the helpers the screens share", () => {
     expect(planLabel({ n: 5, c: null, mKind: "VALUE", m: 100, bigM: null })).toBe("≤ 1.10²");
   });
 
-  it("judges on the units actually taken", () => {
-    expect(effectivePlan(threeClass, 3)).toEqual({ ...threeClass, n: 3, c: 2 });
-    expect(effectivePlan(threeClass, 1)).toEqual({ ...threeClass, n: 1, c: 0 });
-    expect(effectivePlan(threeClass, 9)).toEqual(threeClass);
+  it("judges officially only when the units taken reach the plan's n", () => {
+    // 5 units taken for n = 5: the plan, as written.
+    expect(judgeUnits(threeClass, read("50", "200", "300", "< 10", "90"))).toMatchObject({ official: { verdict: "ACCEPTABLE" }, informal: null });
+    // 9 units taken for n = 5: every unit counts, a 9th above M still fails.
+    const nine = judgeUnits(threeClass, read("50", "50", "50", "50", "50", "50", "50", "50", "2.10⁴"));
+    expect(nine.official?.verdict).toBe("NON_SATISFAISANT");
+    // 1 unit taken for n = 5: no official verdict, an indicative one.
+    expect(judgeUnits(threeClass, read("200"))).toMatchObject({ official: null, informal: { verdict: "ACCEPTABLE" } });
+    // 3 units taken, one not yet read: still incomplete, so never submitted.
+    expect(judgeUnits(threeClass, read("200", "", "50"))).toMatchObject({ official: { verdict: "INCOMPLET" }, informal: null });
+  });
+
+  it("never judges a « Non spécifié » criterion without limit, but still waits for every unit", () => {
+    const none: Plan = { n: 5, c: null, mKind: "UNSPECIFIED", m: null, bigM: null };
+    expect(hasLimit(none)).toBe(false);
+    expect(hasLimit({ ...none, bigM: 1000 })).toBe(true);
+    expect(hasLimit({ n: 5, c: null, mKind: "ABSENCE", m: null, bigM: null })).toBe(true);
+    expect(judgeUnits(none, read("< 10", "20", "30", "< 10", "50"))).toEqual({ official: null, informal: null });
+    expect(judgeUnits(none, read("< 10"))).toEqual({ official: null, informal: null });
+    expect(judgeUnits(none, read("< 10", ""))).toMatchObject({ official: { verdict: "INCOMPLET" }, informal: null });
+  });
+
+  it("reads each unit on its own for the indicative verdict — no tolerance", () => {
+    expect(informalVerdict(threeClass, read("50", "90")).verdict).toBe("SATISFAISANT");
+    // Three units between m and M exceed c = 2 officially, but not indicatively.
+    expect(informalVerdict(threeClass, read("200", "300", "400")).verdict).toBe("ACCEPTABLE");
+    expect(informalVerdict(threeClass, read("50", "2.10⁴")).verdict).toBe("NON_SATISFAISANT");
+    expect(informalVerdict(threeClass, read("200")).reason).toContain("sur 1 unité au lieu de 5");
+    const absence: Plan = { n: 5, c: null, mKind: "ABSENCE", m: null, bigM: null };
+    expect(informalVerdict(absence, read("Absence")).verdict).toBe("SATISFAISANT");
+    expect(informalVerdict(absence, read("Présence")).verdict).toBe("NON_SATISFAISANT");
+    const single: Plan = { n: 9, c: null, mKind: "VALUE", m: 100, bigM: null };
+    expect(informalVerdict(single, read("22.8", "150")).verdict).toBe("NON_SATISFAISANT");
+    expect(informalVerdict(threeClass, read("")).verdict).toBe("INCOMPLET");
   });
 
   it("summarises the line by its worst unit", () => {
@@ -136,6 +166,25 @@ describe("the sample's verdict", () => {
     expect(sampleVerdict([{ interpretation: null, conform: true }])).toBeNull();
     expect(sampleVerdict([])).toBeNull();
     expect(legacyFailures([{ interpretation: null, conform: false }, { interpretation: "NON_SATISFAISANT", conform: false }])).toHaveLength(1);
+  });
+
+  it("reads a frozen plan back, and nothing from a malformed one", () => {
+    expect(storedPlan({ ...threeClass })).toEqual(threeClass);
+    expect(storedPlan({ n: 5, c: null, mKind: "ABSENCE", m: null, bigM: null })).toMatchObject({ mKind: "ABSENCE", c: null });
+    expect(storedPlan(null)).toBeNull();
+    expect(storedPlan({ n: "5", mKind: "VALUE" })).toBeNull();
+    expect(storedPlan({ n: 5, mKind: "AUTRE" })).toBeNull();
+  });
+
+  it("gives no official conclusion when a germ was judged only indicatively", () => {
+    const results = [
+      { interpretation: "SATISFAISANT" as const, conform: true, informalInterpretation: null },
+      { interpretation: null, conform: null, informalInterpretation: "ACCEPTABLE" as const },
+    ];
+    expect(sampleVerdict(results)).toBeNull();
+    // The e-mail's conclusion takes the indicative verdicts in.
+    expect(indicativeVerdict(results)).toBe("ACCEPTABLE");
+    expect(indicativeVerdict([{ interpretation: "SATISFAISANT", conform: true }, { interpretation: null, conform: false }])).toBe("NON_SATISFAISANT");
   });
 });
 

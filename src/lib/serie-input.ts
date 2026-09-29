@@ -73,6 +73,8 @@ export type CleanLine = {
   conformity: boolean;
   conformityReason: NonConformityReason | null;
   conformityNote: string | null;
+  /** A non-conform deposit line destroyed at the counter (slice E). */
+  destroy: boolean;
   technicianId: string | null;
 };
 
@@ -241,6 +243,7 @@ export function validateLine(
   let conformityReason: NonConformityReason | null = null;
   let conformityNote: string | null = null;
   let technicianId: string | null = null;
+  let destroy = false;
   if (deposit) {
     if (input.conformity !== undefined && typeof input.conformity !== "boolean") {
       return fail("Indiquez la conformité de la ligne.");
@@ -254,7 +257,12 @@ export function validateLine(
       if (reason === "AUTRE" && !note) return fail("Précisez le motif « autre ».");
       conformityNote = note || null;
     }
-    technicianId = text(input.technicianId) || null;
+    // Case by case (29/09): a non-conform line is analysed anyway or destroyed.
+    const decision = input.decision === undefined || input.decision === null ? "ANALYSER" : input.decision;
+    if (decision !== "ANALYSER" && decision !== "DETRUIRE") return fail("Décision inconnue pour la ligne.");
+    if (decision === "DETRUIRE" && conformity) return fail("Seule une ligne non conforme peut être détruite.");
+    destroy = decision === "DETRUIRE";
+    technicianId = destroy ? null : text(input.technicianId) || null;
   }
 
   return {
@@ -289,6 +297,7 @@ export function validateLine(
       conformity,
       conformityReason,
       conformityNote,
+      destroy,
       technicianId,
     },
   };

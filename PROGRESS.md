@@ -8,16 +8,13 @@
 
 ## ▶ NEXT ACTION
 
-**RETOUR DU LABORATOIRE DU 29/09 — planned, spec `RETOUR-LABO-29-09.md`.**
-The laboratory answered the fourteen questions of 19/09 and added two
-requests (per-client Excel summary, search by client / date / analysis
-type); they also report that the designation corrector « n'est pas encore
-actif ». Seven slices A → G (≈ 2,5 weeks). **Start with slice A**, the
-corrector: « vouliez-vous dire … ? » on designation, place and product
-types, and the client memory loaded from the old software. Slice B's rule
-of c waits on **Q31**; Q31–Q37 are in NEEDEDINFO and in a one-page PDF for
-the laboratory (`clarifications-laboratoire-29-septembre-2026.pdf`, outside
-the repo).
+**RETOUR DU LABORATOIRE DU 29/09 — slices A → F built, verified and deployed
+2026-09-29** (spec `RETOUR-LABO-29-09.md`, §7 = as built; TESTPLAN checkpoint
+P). **Next:** (1) the laboratory's answers to **Q31** (rule of c — the only
+point left unimplemented on purpose) and Q32–Q37 (defaults applied); (2) the
+recette with the laboratory (slice G), starting with the report on their
+model and the corrector; (3) the legacy CSV for the client memory once Docker
+runs the Firebird base.
 
 ## ▶ PREVIOUS ACTION (chantier 2)
 
@@ -263,6 +260,16 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-09-29 (evening) — retour du 29/09, tranches A → F
+- A: fuzzy corrector (`similar.ts`) on designation, place and product types; client memory import (samples / legacy CSV).
+- B: `judgeUnits` / `informalVerdict` — no official verdict below the plan's n, indicative one for the e-mail; every unit taken counts above n; per-repetition reading for every parameter of a multi-unit line; ceiling 999; R1 … Rn.
+- Found by the circuit test and fixed: 101 « Non spécifié » criteria without M blocked their sheets for ever (INCOMPLET) → now read with no verdict.
+- C: report on the lab's model, one page (test on 37 germs × 9), criterion and regulation frozen (`Result.criterion`, `Report.regulation`).
+- D: report e-mail summary table; alert at technical validation; units in the alert headers; an indicative non-satisfaisant on a sensitive germ still alerts.
+- E: « Analyser malgré tout / Détruire » per non-conform line (visit reception and counter deposit), `DETRUIT_A_RECEPTION`; sampler locked to his own account (UI + API).
+- F: `/recherche`, client « Synthèse des analyses », Excel export (audited).
+- Migrations `20260929100000_retour_labo_29_09`, `20260929110000_report_snapshot` (additive). 285 tests, lint, build green.
 
 - **2026-09-29 · Claude Code** · **Réponses du laboratoire du 29/09 —
   analyse et plan, pas de code.** Leur document répond aux quatorze

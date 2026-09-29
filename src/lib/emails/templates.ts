@@ -45,30 +45,66 @@ function escape(value: string) {
 export type ReportEmailInput = {
   clientName: string;
   reportNumber: string;
-  produit: string | null;
+  /** N° dossier: the série (visite or dépôt). */
+  serialNumber: string;
+  controlCode: string | null;
   sampledAt: Date;
-  conform: boolean;
+  receivedAt: Date | null;
+  /** The analysis requested (the nature of the line). */
+  analyse: string;
+  produit: string | null;
+  numeroLot: string | null;
+  lieu: string;
+  /** « Satisfaisant », « Non conforme »… */
+  conclusion: string;
+  /** Bad news: the conclusion is printed in red. */
+  alert: boolean;
+  /** True when the conclusion is the indicative one (too few units). */
+  indicative: boolean;
 };
 
+const TH = "border:1px solid #9aa9b3;padding:6px 8px;text-align:left;font-weight:bold;background:#eef0e2";
+const TD = "border:1px solid #9aa9b3;padding:6px 8px";
+
+/**
+ * The report e-mail, with the summary table of the laboratory's model
+ * (RETOUR-LABO-29-09.md, slice D): the client reads the conclusion without
+ * opening the PDF.
+ */
 export function reportEmail(input: ReportEmailInput) {
   const subject = `Rapport d'analyse ${input.reportNumber} — ${COMPANY.name}`;
+  const rows: [string, string][] = [
+    ["N° dossier", input.serialNumber],
+    ["N° de contrôle", input.controlCode ?? "—"],
+    ["Date de prélèvement", formatDate(input.sampledAt)],
+    ["Date de réception", input.receivedAt ? formatDate(input.receivedAt) : "—"],
+    ["Analyse", input.analyse],
+    ["Produit", input.produit ?? "—"],
+    ["N° de lot", input.numeroLot ?? "—"],
+    ["Lieu de prélèvement", input.lieu],
+  ];
 
   const html = shell(`
     <p style="font-size:15px;margin:0 0 14px">Bonjour,</p>
     <p style="font-size:14px;line-height:1.6;margin:0 0 14px">
-      Veuillez trouver ci-joint le rapport d'analyse
-      <b>${escape(input.reportNumber)}</b> concernant l'échantillon
-      ${input.produit ? `<b>${escape(input.produit)}</b> ` : ""}prélevé le
-      <b>${formatDate(input.sampledAt)}</b>.
+      Veuillez trouver ci-joint le rapport d'analyse <b>${escape(input.reportNumber)}</b>.
     </p>
+    <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;margin:0 0 14px">
+      <tbody>
+        ${rows.map(([k, v]) => `<tr><td style="${TH}">${k}</td><td style="${TD}">${escape(v)}</td></tr>`).join("")}
+        <tr>
+          <td style="${TH}">Conclusion</td>
+          <td style="${TD};font-weight:bold;color:${input.alert ? "#a5203a" : "#22562e"}">${escape(input.conclusion)}${input.indicative ? " (indicative)" : ""}</td>
+        </tr>
+      </tbody>
+    </table>
     ${
-      input.conform
-        ? `<p style="font-size:14px;line-height:1.6;margin:0 0 14px;padding:10px 12px;background:#eefaf1;border-left:3px solid #2f6b3a;color:#22562e">
-             L'échantillon analysé est <b>conforme</b> aux critères microbiologiques de référence.
+      input.indicative
+        ? `<p style="font-size:13px;line-height:1.6;margin:0 0 14px;padding:10px 12px;background:#f1f6fb;border-left:3px solid #2e5266;color:#1f3a4d">
+             Le nombre d'unités prélevées est inférieur au plan d'échantillonnage : le rapport ne porte pas
+             d'interprétation officielle. La conclusion ci-dessus est donnée à titre indicatif.
            </p>`
-        : `<p style="font-size:14px;line-height:1.6;margin:0 0 14px;padding:10px 12px;background:#fdecef;border-left:3px solid #a5203a;color:#8c1b31">
-             L'échantillon analysé présente une <b>non-conformité</b>. Le détail figure dans le rapport joint.
-           </p>`
+        : ""
     }
     <p style="font-size:14px;line-height:1.6;margin:0">
       Nous restons à votre disposition pour tout complément d'information.
@@ -86,8 +122,10 @@ export type AlertRow = {
   receivedAt: Date | null;
   numeroLot: string | null;
   germe: string;
+  /** The value, without its unit. */
   resultat: string;
   limite: string;
+  unit: string | null;
 };
 
 /**
@@ -96,6 +134,13 @@ export type AlertRow = {
  */
 export function alertEmail(germe: string, rows: AlertRow[]) {
   const subject = `Alerte de contamination par ${germe}`;
+  // The unit goes into the column headers, as in the laboratory's example —
+  // unless the rows disagree, then each cell keeps its own.
+  const units = new Set(rows.map((row) => row.unit ?? ""));
+  const shared = units.size === 1 ? [...units][0] : null;
+  const withUnit = (value: string, unit: string | null) =>
+    shared === null && unit ? `${value} ${unit}` : value;
+  const header = (label: string) => (shared ? `${label} (${escape(shared)})` : label);
 
   const cells = rows
     .map(
@@ -106,8 +151,8 @@ export function alertEmail(germe: string, rows: AlertRow[]) {
         <td style="border:1px solid #9aa9b3;padding:6px 8px">${row.receivedAt ? formatDate(row.receivedAt) : "—"}</td>
         <td style="border:1px solid #9aa9b3;padding:6px 8px">${escape(row.numeroLot ?? "-")}</td>
         <td style="border:1px solid #9aa9b3;padding:6px 8px">${escape(row.germe)}</td>
-        <td style="border:1px solid #9aa9b3;padding:6px 8px;font-weight:bold">${escape(row.resultat)}</td>
-        <td style="border:1px solid #9aa9b3;padding:6px 8px">${escape(row.limite)}</td>
+        <td style="border:1px solid #9aa9b3;padding:6px 8px;font-weight:bold">${escape(withUnit(row.resultat, row.unit))}</td>
+        <td style="border:1px solid #9aa9b3;padding:6px 8px">${escape(withUnit(row.limite, row.unit))}</td>
       </tr>`
     )
     .join("");
@@ -125,8 +170,8 @@ export function alertEmail(germe: string, rows: AlertRow[]) {
           <th style="border:1px solid #9aa9b3;padding:6px 8px;text-align:left">Date de réception</th>
           <th style="border:1px solid #9aa9b3;padding:6px 8px;text-align:left">N° de lot</th>
           <th style="border:1px solid #9aa9b3;padding:6px 8px;text-align:left">Le germe</th>
-          <th style="border:1px solid #9aa9b3;padding:6px 8px;text-align:left">Résultat</th>
-          <th style="border:1px solid #9aa9b3;padding:6px 8px;text-align:left">Limite</th>
+          <th style="border:1px solid #9aa9b3;padding:6px 8px;text-align:left">${header("Résultat")}</th>
+          <th style="border:1px solid #9aa9b3;padding:6px 8px;text-align:left">${header("Limite")}</th>
         </tr>
       </thead>
       <tbody>${cells}</tbody>

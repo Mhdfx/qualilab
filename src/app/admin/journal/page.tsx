@@ -24,6 +24,7 @@ const ACTION_LABELS: Record<string, string> = {
   SAMPLE_RECEIVED: "Échantillon réceptionné",
   SERIE_RECEIVED: "Série réceptionnée",
   SAMPLE_CANCELLED: "Échantillon annulé",
+  SAMPLES_EXPORTED: "Synthèse des analyses exportée (Excel)",
   SAMPLE_REACTIVATED: "Échantillon réactivé",
   SAMPLE_INTAKE_CORRECTED: "Fiche d'échantillon corrigée",
   PROFILE_CREATED: "Profil d'analyses créé",

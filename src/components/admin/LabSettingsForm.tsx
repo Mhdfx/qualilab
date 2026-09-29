@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ClipboardCheck, SlidersHorizontal } from "lucide-react";
+import { Check, ClipboardCheck, Scale, SlidersHorizontal } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import type { LabSettings } from "@/lib/lab-settings";
 import { LINE_KIND_LABELS } from "@/lib/labels";
@@ -14,7 +14,7 @@ import { LINE_KIND_LABELS } from "@/lib/labels";
  * implementing it is a click on this screen.
  */
 
-type SwitchKey = "blockNonConformAtReception" | "alertAfterTechnicalValidation";
+type SwitchKey = "alertAfterTechnicalValidation";
 type NumberKey =
   | "minFoodMicroG"
   | "minFoodChemG"
@@ -25,18 +25,14 @@ type NumberKey =
   | "histamineUnitG"
   | "coldChainMaxC";
 
+// The non-conform-at-reception switch is gone (29/09): the réceptionniste
+// decides line by line, « Analyser malgré tout » or « Détruire ».
 const SWITCHES: { key: SwitchKey; title: string; on: string; off: string }[] = [
-  {
-    key: "blockNonConformAtReception",
-    title: "Échantillon non conforme à la réception",
-    on: "Bloqué : il est enregistré et numéroté, mais reste en attente jusqu'à ce qu'un administrateur le libère vers un technicien.",
-    off: "Analysé quand même : il suit le circuit normal, la non-conformité reste tracée sur le rapport.",
-  },
   {
     key: "alertAfterTechnicalValidation",
     title: "Moment d'envoi des alertes de contamination",
-    on: "Dès la validation technique : le client est prévenu sans attendre l'approbation finale.",
-    off: "Après l'approbation de l'administrateur (avec le rapport) — le comportement par défaut.",
+    on: "Dès la validation technique : le client est prévenu sans attendre l'approbation finale — le choix du laboratoire (29/09).",
+    off: "Après l'approbation de l'administrateur (avec le rapport).",
   },
 ];
 
@@ -56,9 +52,10 @@ const KINDS = Object.keys(LINE_KIND_LABELS) as (keyof typeof LINE_KIND_LABELS)[]
 export function LabSettingsForm({ initial }: { initial: LabSettings }) {
   const router = useRouter();
   const [switches, setSwitches] = useState<Record<SwitchKey, boolean>>({
-    blockNonConformAtReception: initial.blockNonConformAtReception,
     alertAfterTechnicalValidation: initial.alertAfterTechnicalValidation,
   });
+  const [regulationMicro, setRegulationMicro] = useState(initial.regulationMicro ?? "");
+  const [regulationChimie, setRegulationChimie] = useState(initial.regulationChimie ?? "");
   // Numbers are edited as text so a half-typed « 1, » is not rejected mid-way.
   const [numbers, setNumbers] = useState<Record<NumberKey, string>>(() =>
     Object.fromEntries(THRESHOLDS.map((t) => [t.key, String(initial[t.key]).replace(".", ",")])) as Record<NumberKey, string>
@@ -80,7 +77,7 @@ export function LabSettingsForm({ initial }: { initial: LabSettings }) {
       const response = await fetch("/api/admin/lab-settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...switches, ...numbers, temperatureRequiredKinds: requiredKinds }),
+        body: JSON.stringify({ ...switches, ...numbers, temperatureRequiredKinds: requiredKinds, regulationMicro, regulationChimie }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -104,9 +101,8 @@ export function LabSettingsForm({ initial }: { initial: LabSettings }) {
           Politique du circuit d&apos;analyse
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          Deux comportements sont construits pour chaque point — le réglage
-          choisit celui que le laboratoire applique. Chaque changement est
-          tracé dans le journal.
+          Deux comportements sont construits — le réglage choisit celui que le
+          laboratoire applique. Chaque changement est tracé dans le journal.
         </p>
 
         <div className="mt-4 space-y-4">
@@ -144,14 +140,55 @@ export function LabSettingsForm({ initial }: { initial: LabSettings }) {
 
       <Card className="p-5">
         <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          <Scale className="h-4 w-4 text-brand" aria-hidden="true" />
+          Réglementation en vigueur (rapport)
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Le texte imprimé en tête du tableau des critères de chaque rapport. Un type de produit peut
+          avoir le sien (Critères → type de produit) ; sinon, celui de sa famille ci-dessous s&apos;applique.
+          Vide = un tiret dans le rapport.
+        </p>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label htmlFor="regulationMicro" className="block text-sm font-medium text-slate-700">
+              Microbiologie
+            </label>
+            <textarea
+              id="regulationMicro"
+              value={regulationMicro}
+              onChange={(e) => setRegulationMicro(e.target.value)}
+              rows={3}
+              maxLength={2000}
+              placeholder="Ex. : critères microbiologiques applicables aux denrées alimentaires"
+              className="input-field mt-1.5 resize-y px-3 py-2"
+            />
+          </div>
+          <div>
+            <label htmlFor="regulationChimie" className="block text-sm font-medium text-slate-700">
+              Physico-chimie
+            </label>
+            <textarea
+              id="regulationChimie"
+              value={regulationChimie}
+              onChange={(e) => setRegulationChimie(e.target.value)}
+              rows={3}
+              maxLength={2000}
+              className="input-field mt-1.5 resize-y px-3 py-2"
+            />
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
           <ClipboardCheck className="h-4 w-4 text-brand" aria-hidden="true" />
           Règles d&apos;acceptation à la réception
         </h2>
         <p className="mt-1 text-sm text-slate-500">
           Les sept règles du bon de réception, calculées sur chaque ligne au
           moment de la réception. Une quantité sous le minimum ou une
-          température manquante rend la ligne non conforme ; le réglage
-          ci-dessus décide si elle est analysée ou bloquée.
+          température manquante rend la ligne non conforme ; la réception
+          décide alors, ligne par ligne, de l&apos;analyser malgré tout ou de la détruire.
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">

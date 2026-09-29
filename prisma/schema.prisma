@@ -106,6 +106,8 @@ enum CancelReason {
   QUANTITE_INSUFFISANTE
   DOUBLON
   ANNULATION_CLIENT
+  /// Non-conform at reception and destroyed rather than analysed (29/09, point 14).
+  DETRUIT_A_RECEPTION
   AUTRE
 }
 
@@ -459,6 +461,12 @@ model Result {
   normVersionId  String?
   normVersion    NormVersion?     @relation(fields: [normVersionId], references: [id], onDelete: SetNull)
   interpretation Interpretation?
+  /// Fewer units taken than the plan's n: no official verdict (interpretation
+  /// stays null), this indicative one goes in the e-mail (RETOUR-LABO-29-09.md).
+  informalInterpretation Interpretation?
+  /// The criterion the result was judged against, frozen for the report:
+  /// { n, c, mKind, m, bigM } (RETOUR-LABO-29-09.md, slice C).
+  criterion      Json?
   units          ResultUnit[]
 
   enteredById String?
@@ -481,6 +489,8 @@ model Report {
   conclusion     String?         @db.Text
   /// Chantier 2 — the sample's verdict frozen with the report.
   interpretation Interpretation?
+  /// « Réglementation en vigueur » as it stood at approval (slice C).
+  regulation     String?         @db.Text
 
   technicianName String?
   validatorName  String?
@@ -720,6 +730,9 @@ model ProductType {
   client         Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
   active         Boolean     @default(true)
   legacyId       Int?        @unique
+  /// « Réglementation en vigueur » printed on the report; null = the family's
+  /// default of LabSettings.
+  regulation     String?     @db.Text
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   criteria       Criterion[]
@@ -878,8 +891,12 @@ model LabSettings {
   /// releases it to a technician (true).
   blockNonConformAtReception    Boolean @default(false)
   /// Decision n°11 — contamination alerts leave right after the technical
-  /// validation (true) instead of after the admin approval (false).
-  alertAfterTechnicalValidation Boolean @default(false)
+  /// validation (true, the laboratory's answer of 29/09) instead of after the
+  /// admin approval (false).
+  alertAfterTechnicalValidation Boolean @default(true)
+  /// The report's « Réglementation en vigueur » when the product type has none.
+  regulationMicro               String? @db.Text
+  regulationChimie              String? @db.Text
 
   // ---- Phase 9 · acceptance rules at reception (bon de réception PG05/EN04)
   /// Minimum weight of a food sample for microbiology / for chemistry (g).

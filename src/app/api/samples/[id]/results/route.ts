@@ -7,7 +7,7 @@ import { canTransition } from "@/lib/sample-status";
 import { loadBenchPlans } from "@/lib/bench-plan";
 import {
   applyUnitFactor,
-  interpret,
+  judgeUnits,
   parseUnitReading,
   summariseReadings,
   verdictToConform,
@@ -19,6 +19,7 @@ import {
   parseLabValue,
 } from "@/lib/result-value";
 import type { Interpretation, ResultWorkStatus } from "@/generated/prisma/enums";
+import { Prisma } from "@/generated/prisma/client";
 
 const WORK_STATUSES: ResultWorkStatus[] = ["EN_COURS", "TERMINE", "ANOMALIE"];
 const MAX_UNIT_TEXT = 40;
@@ -43,8 +44,11 @@ type Entry = {
   workStatus: ResultWorkStatus;
   note: string | null;
   interpretation: Interpretation | null;
+  informalInterpretation: Interpretation | null;
+  /** The plan, frozen with the result for the report (slice C). */
+  criterion: Prisma.InputJsonValue | typeof Prisma.DbNull;
   normVersionId: string | null;
-  /** The readings per unit, when the germ has a criterion; null = single value. */
+  /** The readings per unit (R1 … Rn); null = single value. */
   units: UnitReading[] | null;
 };
 
@@ -56,9 +60,12 @@ type Entry = {
  * `RECU → EN_ANALYSE`, because work has visibly started.
  *
  * A germ with a criterion (the sample's product type, CRITERES.md) is read
- * per unit: the readings are stored one by one, the verdict is computed
- * here with the same engine the screen used, and the line's `value` is the
- * worst unit — what the alerts and the old columns keep reading.
+ * per unit, and so is every parameter of a sample taken on several units
+ * (RETOUR-LABO-29-09.md, slice B — histamine, n = 9): the readings are
+ * stored one by one, the verdict is computed here with the same engine the
+ * screen used, and the line's `value` is the worst unit — what the alerts
+ * and the old columns keep reading. Fewer units than the plan's n: no
+ * official verdict, an indicative one for the e-mail.
  */
 export async function PUT(
   request: Request,
@@ -141,15 +148,15 @@ export async function PUT(
     }
 
     const plan = bench.plans.get(parameterId);
-    if (plan) {
-      // ---- per-unit reading against the criterion ----------------------------
+    if (plan || bench.unitCount > 1) {
+      // ---- one reading per unit taken: R1 … Rn --------------------------------
       const typed = Array.isArray(raw.units) ? raw.units : [];
       const units: string[] = [];
-      for (let i = 0; i < plan.plan.n; i += 1) {
+      for (let i = 0; i < Math.max(1, bench.unitCount); i += 1) {
         const text = typeof typed[i] === "string" ? (typed[i] as string).trim() : "";
         if (text.length > MAX_UNIT_TEXT) {
           return NextResponse.json(
-            { error: `Lecture trop longue pour ${parameter.name}, unité ${i + 1} (${MAX_UNIT_TEXT} caractères max).` },
+            { error: `Lecture trop longue pour ${parameter.name}, R${i + 1} (${MAX_UNIT_TEXT} caractères max).` },
             { status: 400 }
           );
         }
@@ -157,22 +164,46 @@ export async function PUT(
       }
       // A dilution factor applies to a unit exactly as to a single value.
       const readings = units.map((u) => applyUnitFactor(parseUnitReading(u), parameter.calcFactor));
-      const verdict = interpret(plan.plan, readings);
       const summary = summariseReadings(readings);
-      entries.push({
-        parameterId,
-        value: summary.value,
-        rawValue: null,
-        numericValue: summary.numeric,
-        unit: plan.unit ?? parameter.unit,
-        threshold: plan.label,
-        conform: verdictToConform(verdict.verdict),
-        workStatus,
-        note: note || null,
-        interpretation: readings.some((r) => r.kind !== "empty") ? verdict.verdict : null,
-        normVersionId: plan.normVersionId,
-        units: readings,
-      });
+      const typedAny = readings.some((r) => r.kind !== "empty");
+      if (plan) {
+        const judged = judgeUnits(plan.plan, readings);
+        entries.push({
+          parameterId,
+          value: summary.value,
+          rawValue: null,
+          numericValue: summary.numeric,
+          unit: plan.unit ?? parameter.unit,
+          threshold: plan.label,
+          conform: verdictToConform(judged.official?.verdict ?? null),
+          workStatus,
+          note: note || null,
+          interpretation: typedAny ? judged.official?.verdict ?? null : null,
+          informalInterpretation: typedAny ? judged.informal?.verdict ?? null : null,
+          criterion: { ...plan.plan },
+          normVersionId: plan.normVersionId,
+          units: readings,
+        });
+      } else {
+        // No criterion: the worst unit against the parameter's own limit,
+        // exactly like a single value (the screen computes it the same way).
+        entries.push({
+          parameterId,
+          value: summary.value,
+          rawValue: null,
+          numericValue: summary.numeric,
+          unit: parameter.unit,
+          threshold: parameter.threshold,
+          conform: typeof raw.conform === "boolean" ? raw.conform : null,
+          workStatus,
+          note: note || null,
+          interpretation: null,
+          informalInterpretation: null,
+          criterion: Prisma.DbNull,
+          normVersionId: null,
+          units: readings,
+        });
+      }
       continue;
     }
 
@@ -208,6 +239,8 @@ export async function PUT(
       workStatus,
       note: note || null,
       interpretation: null,
+      informalInterpretation: null,
+      criterion: Prisma.DbNull,
       normVersionId: null,
       units: null,
     });
@@ -289,6 +322,7 @@ export async function PUT(
       code: sample.code,
       count: entries.length,
       verdicts: Object.fromEntries(entries.filter((e) => e.interpretation).map((e) => [e.parameterId, e.interpretation])),
+      indicative: Object.fromEntries(entries.filter((e) => e.informalInterpretation).map((e) => [e.parameterId, e.informalInterpretation])),
     },
   });
 

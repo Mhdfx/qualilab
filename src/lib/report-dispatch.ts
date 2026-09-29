@@ -1,12 +1,14 @@
 import { prisma } from "./prisma";
 import { logAudit } from "./audit";
 import { renderPdf } from "./pdf";
-import { buildConclusion, buildReportHtml, type ReportData } from "./report-html";
-import { legacyFailures, sampleVerdict, unitStoredDisplay } from "./interpretation";
+import { buildConclusion, buildReportHtml, REPORT_PDF_MARGIN, type ReportData } from "./report-html";
+import { INTERPRETATION_LABELS, indicativeVerdict, legacyFailures, nothingJudged, sampleVerdict, storedPlan, unitStoredDisplay } from "./interpretation";
+import { getLabSettings } from "./lab-settings";
 import { sendEmail, recipientsFor } from "./email";
 import { reportEmail, alertEmail, type AlertRow } from "./emails/templates";
 import { getCompany } from "./company-server";
 import { generateReportNumber } from "./report-number";
+import type { Interpretation } from "@/generated/prisma/enums";
 import { retryOnDuplicate } from "./retry-unique";
 
 /**
@@ -16,6 +18,13 @@ import { retryOnDuplicate } from "./retry-unique";
  * Alerts are grouped by germ, as in the model the client sent: one message per
  * germ listing every product concerned, not one message per result.
  */
+
+/** The report's conclusion when a germ was taken on fewer units than its plan. */
+export const NO_OFFICIAL_VERDICT =
+  "Le nombre d'unités prélevées est inférieur au plan d'échantillonnage : les résultats sont communiqués sans interprétation.";
+
+/** …and when no germ has any criterion to be judged against. */
+export const NO_CRITERION = "Les résultats sont communiqués sans interprétation : aucun critère n'est spécifié pour ces paramètres.";
 
 /** Assembles the data the report PDF needs. Shared with the download route. */
 export async function loadReportData(sampleId: string): Promise<ReportData | null> {
@@ -44,6 +53,7 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
           conform: true,
           note: true,
           interpretation: true,
+          criterion: true,
           normVersion: { select: { label: true } },
           units: { select: { rawValue: true, value: true, detected: true }, orderBy: { unitIndex: "asc" } },
           parameter: { select: { name: true } },
@@ -72,6 +82,7 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
     validatedAt: sample.report.validatedAt,
     conclusion: sample.report.conclusion ?? "",
     interpretation: sample.report.interpretation,
+    regulation: sample.report.regulation,
     productType: sample.productType?.name ?? null,
     unitCount: sample.unitCount,
     results: sample.results.map((result) => ({
@@ -83,7 +94,8 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
       note: result.note,
       interpretation: result.interpretation,
       norm: result.normVersion?.label ?? null,
-      units: result.units.map(unitStoredDisplay),
+      criterion: storedPlan(result.criterion),
+      units: result.units.map((u) => ({ display: unitStoredDisplay(u), value: u.value, detected: u.detected })),
     })),
   };
 }
@@ -109,8 +121,10 @@ export async function createReportFor(sampleId: string) {
       validatedAt: true,
       technician: { select: { name: true } },
       validatedBy: { select: { name: true } },
+      nature: { select: { family: true } },
+      productType: { select: { regulation: true } },
       results: {
-        select: { conform: true, interpretation: true, parameter: { select: { name: true } } },
+        select: { conform: true, interpretation: true, informalInterpretation: true, parameter: { select: { name: true } } },
       },
     },
   });
@@ -120,22 +134,35 @@ export async function createReportFor(sampleId: string) {
   // verdict (CRITERES.md §2 rule 5); otherwise the historical wording. A
   // germ still judged on its old limit is named after the sentence, so the
   // conclusion can never say « conforme » above a non-conform line.
+  //
+  // Too few units for a germ's plan (RETOUR-LABO-29-09.md §3 rule 2): no
+  // official verdict at all — the report states why, and names any germ
+  // still over its old limit.
   const verdict = sampleVerdict(sample.results);
   const scale = verdict ? await prisma.conclusionScale.findUnique({ where: { interpretation: verdict } }) : null;
   const legacy = legacyFailures(sample.results).map((r) => r.parameter.name);
+  const legacySentence =
+    legacy.length > 0
+      ? `Paramètres hors des limites de référence : ${legacy.join(", ")}. Une action corrective est recommandée.`
+      : "";
+  const indicativeOnly = verdict === null && sample.results.some((r) => r.interpretation === null && r.informalInterpretation);
   const historical = buildConclusion(
     sample.results.map((r) => ({ conform: r.conform, parameter: r.parameter.name }))
   );
   const conclusion = scale
-    ? [
-        scale.sentence,
-        legacy.length > 0
-          ? `Paramètres hors des limites de référence : ${legacy.join(", ")}. Une action corrective est recommandée.`
-          : "",
-      ]
-        .filter(Boolean)
-        .join(" ")
-    : historical;
+    ? [scale.sentence, legacySentence].filter(Boolean).join(" ")
+    : indicativeOnly
+      ? [NO_OFFICIAL_VERDICT, legacySentence].filter(Boolean).join(" ")
+      : nothingJudged(sample.results)
+        ? NO_CRITERION
+        : historical;
+
+  // « Réglementation en vigueur »: the product type's own text, else its
+  // family's default — frozen here so a later edit never alters this report.
+  const settings = await getLabSettings();
+  const regulation =
+    sample.productType?.regulation ??
+    (sample.nature.family === "CHIMIE" ? settings.regulationChimie : settings.regulationMicro);
 
   try {
     return await retryOnDuplicate(async () =>
@@ -145,6 +172,7 @@ export async function createReportFor(sampleId: string) {
           number: await generateReportNumber(),
           conclusion,
           interpretation: verdict,
+          regulation,
           technicianName: sample.technician?.name ?? null,
           validatorName: sample.validatedBy?.name ?? null,
           validatedAt: sample.validatedAt,
@@ -170,11 +198,17 @@ export async function sendReport(sampleId: string, actorId: string | null) {
       code: true,
       status: true,
       produit: true,
+      numeroLot: true,
+      lieu: true,
+      controlCode: true,
       sampledAt: true,
+      receivedAt: true,
       clientId: true,
       client: { select: { name: true } },
-      report: { select: { id: true, number: true } },
-      results: { select: { conform: true } },
+      serie: { select: { serialNumber: true } },
+      nature: { select: { label: true } },
+      report: { select: { id: true, number: true, interpretation: true } },
+      results: { select: { conform: true, interpretation: true, informalInterpretation: true } },
     },
   });
 
@@ -185,7 +219,7 @@ export async function sendReport(sampleId: string, actorId: string | null) {
   // Self-healing: an approval whose report creation failed left a VALIDE
   // sample without its official document — the send creates it now instead
   // of failing forever.
-  let report = sample.report;
+  let report: { id: string; number: string; interpretation?: Interpretation | null } | null = sample.report;
   if (!report && (sample.status === "VALIDE" || sample.status === "RAPPORT_ENVOYE")) {
     report = await createReportFor(sample.id);
   }
@@ -210,20 +244,40 @@ export async function sendReport(sampleId: string, actorId: string | null) {
   try {
     attachment = {
       filename: `${report.number}.pdf`,
-      content: await renderPdf(buildReportHtml(data, company)),
+      content: await renderPdf(buildReportHtml(data, company), { margin: REPORT_PDF_MARGIN }),
     };
   } catch (error) {
     console.error("[dispatch] could not render the report", { sampleId, error });
     return { ok: false as const, error: "Génération du PDF impossible." };
   }
 
-  const conform = !sample.results.some((result) => result.conform === false);
+  // The conclusion of the summary table: the report's official verdict; the
+  // indicative one when too few units left the report without any
+  // (RETOUR-LABO-29-09.md §3 rule 2); otherwise the old conform reading.
+  const official = report.interpretation ?? sampleVerdict(sample.results);
+  const indicative = official === null ? indicativeVerdict(sample.results) : null;
+  const legacyNonConform = sample.results.some((result) => result.conform === false);
+  const verdict = official ?? indicative;
   const { subject, html } = reportEmail({
     clientName: sample.client.name,
     reportNumber: report.number,
-    produit: sample.produit,
+    serialNumber: sample.serie.serialNumber,
+    controlCode: sample.controlCode,
     sampledAt: sample.sampledAt,
-    conform,
+    receivedAt: sample.receivedAt,
+    analyse: sample.nature.label,
+    produit: sample.produit,
+    numeroLot: sample.numeroLot,
+    lieu: sample.lieu,
+    conclusion: verdict
+      ? INTERPRETATION_LABELS[verdict]
+      : legacyNonConform
+        ? "Non conforme"
+        : nothingJudged(sample.results)
+          ? "Sans interprétation"
+          : "Conforme",
+    alert: verdict ? verdict === "NON_SATISFAISANT" : legacyNonConform,
+    indicative: official === null && indicative !== null && sample.results.some((r) => r.informalInterpretation),
   });
 
   const result = await sendEmail({
@@ -300,7 +354,12 @@ export async function sendContaminationAlerts(
       alertsSentAt: true,
       report: { select: { id: true } },
       results: {
-        where: { conform: false, parameter: { alertOnExceed: true } },
+        // A sensitive germ over its limit — including one judged only
+        // indicatively (too few units): the contamination is real either way.
+        where: {
+          parameter: { alertOnExceed: true },
+          OR: [{ conform: false }, { informalInterpretation: "NON_SATISFAISANT" }],
+        },
         select: {
           value: true,
           unit: true,
@@ -358,21 +417,22 @@ export async function sendContaminationAlerts(
   for (const result of sample.results) {
     const germ = result.parameter.name;
     const unit = result.unit ?? result.parameter.unit ?? "";
+    // The criterion the verdict came from when there is one (stored on the
+    // result), otherwise the parameter's catalogue threshold — its unit
+    // moves into the column header with the result's.
+    const limite =
+      result.threshold ??
+      result.parameter.threshold ??
+      (result.parameter.limitValue !== null ? String(result.parameter.limitValue) : "—");
     const row: AlertRow = {
       produit: sample.produit,
       site: sample.lieu,
       receivedAt: sample.receivedAt,
       numeroLot: sample.numeroLot,
       germe: germ,
-      resultat: `${result.value ?? "—"}${unit ? ` ${unit}` : ""}`,
-      // The criterion the verdict came from when there is one (stored on the
-      // result), otherwise the parameter's catalogue threshold.
-      limite:
-        result.threshold ??
-        result.parameter.threshold ??
-        (result.parameter.limitValue !== null
-          ? `${result.parameter.limitValue}${unit ? ` ${unit}` : ""}`
-          : "—"),
+      resultat: result.value ?? "—",
+      limite: unit ? limite.replace(` ${unit}`, "").trim() : limite,
+      unit: unit || null,
     };
     byGerm.set(germ, [...(byGerm.get(germ) ?? []), row]);
   }

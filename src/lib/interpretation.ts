@@ -175,13 +175,86 @@ export function planLabel(plan: Plan & { unit?: string | null }): string {
 }
 
 /**
- * The plan actually applied to a sample: the units the préleveur took
- * decide n (a 3-unit sample against a 5-unit plan is judged on 3), and the
- * tolerance never exceeds n − 1.
+ * Whether a plan can judge anything: an absence test, or at least one limit.
+ * The workbook's « Non spécifié » rows without M (101 of them) cannot — the
+ * germ is analysed and printed, with no verdict.
  */
-export function effectivePlan(plan: Plan, unitCount: number): Plan {
-  const n = Math.max(1, Math.min(plan.n, unitCount));
-  return { ...plan, n, c: plan.c === null ? null : Math.min(plan.c, n - 1) };
+export function hasLimit(plan: Plan): boolean {
+  if (plan.mKind === "ABSENCE") return true;
+  if (plan.mKind === "UNSPECIFIED") return plan.bigM !== null;
+  return plan.m !== null || plan.bigM !== null;
+}
+
+export type Judgement = {
+  /** The verdict the report prints; null when too few units were taken. */
+  official: Verdict | null;
+  /** The indicative verdict of the e-mail when there is no official one. */
+  informal: Verdict | null;
+};
+
+/**
+ * One germ judged over the units the sampler took (RETOUR-LABO-29-09.md §3,
+ * rule 2). `readings` has one entry per unit taken, read or not.
+ *
+ *   units taken ≥ the plan's n → the plan, applied to every unit taken
+ *                                (a unit read above M always counts);
+ *   units taken < the plan's n → no official verdict: the report prints the
+ *                                readings without one, and the e-mail carries
+ *                                the indicative verdict of `informalVerdict`.
+ *
+ * Until every unit taken is read the official verdict is INCOMPLET, which
+ * is what keeps the sheet from being submitted.
+ */
+export function judgeUnits(plan: Plan, readings: UnitReading[]): Judgement {
+  const taken = Math.max(1, readings.length);
+  const read = readings.filter((r) => r.kind !== "empty" && r.kind !== "unreadable").length;
+  // « Non spécifié » without any limit: the germ is analysed and reported,
+  // never judged — neither officially nor indicatively.
+  if (!hasLimit(plan)) {
+    return { official: read < taken ? interpret({ ...plan, n: taken }, readings) : null, informal: null };
+  }
+  if (taken >= plan.n || read < taken) {
+    return { official: interpret({ ...plan, n: taken }, readings), informal: null };
+  }
+  return { official: null, informal: informalVerdict(plan, readings) };
+}
+
+/**
+ * The laboratory's indicative reading when a sample was taken on fewer units
+ * than its plan (point 4 of 29/09): each unit on its own — satisfaisant
+ * ≤ m, acceptable between m and M, non satisfaisant above M — and the worst
+ * unit decides. No tolerance c: there is no plan to tolerate against.
+ */
+export function informalVerdict(plan: Plan, readings: UnitReading[]): Verdict {
+  const units = readings.filter((r) => r.kind !== "empty" && r.kind !== "unreadable");
+  const k = units.length;
+  const on = `Indicatif, sur ${k} unité${k > 1 ? "s" : ""} au lieu de ${plan.n}`;
+  const none = { countAboveM: 0, countBetween: 0, missing: 0 };
+  if (k === 0) return { ...none, verdict: "INCOMPLET", missing: plan.n, reason: "Aucune unité lue." };
+
+  if (plan.mKind === "ABSENCE") {
+    const detected = units.filter((u) => u.detected === true || (u.detected === null && (u.value ?? 0) > 0)).length;
+    return detected > 0
+      ? { ...none, verdict: "NON_SATISFAISANT", countAboveM: detected, reason: `${on} : présence — absence exigée.` }
+      : { ...none, verdict: "SATISFAISANT", reason: `${on} : absence.` };
+  }
+
+  const values = units.map((u) => (u.detected === true ? Number.POSITIVE_INFINITY : u.value ?? 0));
+  const single = plan.mKind === "UNSPECIFIED" ? plan.bigM : plan.bigM === null ? plan.m : null;
+  if (single !== null && single !== undefined) {
+    const above = values.filter((v) => v > single).length;
+    return above > 0
+      ? { ...none, verdict: "NON_SATISFAISANT", countAboveM: above, reason: `${on} : au-dessus de la limite ${fmt(single)}.` }
+      : { ...none, verdict: "SATISFAISANT", reason: `${on} : ≤ ${fmt(single)}.` };
+  }
+  if (plan.m === null || plan.bigM === null) {
+    return { ...none, verdict: "INCOMPLET", reason: "Critère incomplet : m ou M manquant." };
+  }
+  const above = values.filter((v) => v > plan.bigM!).length;
+  const between = values.filter((v) => v > plan.m! && v <= plan.bigM!).length;
+  if (above > 0) return { ...none, verdict: "NON_SATISFAISANT", countAboveM: above, countBetween: between, reason: `${on} : au-dessus de M = ${fmt(plan.bigM)}.` };
+  if (between > 0) return { ...none, verdict: "ACCEPTABLE", countBetween: between, reason: `${on} : entre m = ${fmt(plan.m)} et M = ${fmt(plan.bigM)}.` };
+  return { ...none, verdict: "SATISFAISANT", reason: `${on} : ≤ m = ${fmt(plan.m)}.` };
 }
 
 /**
@@ -219,10 +292,16 @@ export function pickCriterion<T extends CriterionLike>(criteria: T[]): T | null 
  * boolean — and a non-conform one still makes the sample « non
  * satisfaisant », otherwise a report could conclude « conforme » above a
  * line printed « Non conforme » (CRITERES.md §2, rule 6).
+ *
+ * A germ judged only indicatively (too few units, RETOUR-LABO-29-09.md §3
+ * rule 2) takes the official conclusion away from the whole sample: a
+ * report concluding « satisfaisant » over a germ nobody could judge would
+ * say more than the laboratory knows.
  */
 export function sampleVerdict(
-  results: { interpretation: Interpretation | null; conform: boolean | null }[]
+  results: { interpretation: Interpretation | null; conform: boolean | null; informalInterpretation?: Interpretation | null }[]
 ): Interpretation | null {
+  if (results.some((r) => r.interpretation === null && r.informalInterpretation)) return null;
   const verdicts = results
     .map((r) => r.interpretation)
     .filter((v): v is Interpretation => v !== null);
@@ -230,6 +309,38 @@ export function sampleVerdict(
     verdicts.push("NON_SATISFAISANT");
   }
   return worstVerdict(verdicts);
+}
+
+/**
+ * The conclusion the e-mail gives when the report has none (point 4 of
+ * 29/09): every germ's official verdict, or its indicative one.
+ */
+export function indicativeVerdict(
+  results: { interpretation: Interpretation | null; conform: boolean | null; informalInterpretation?: Interpretation | null }[]
+): Interpretation | null {
+  return sampleVerdict(
+    results.map((r) => ({ interpretation: r.interpretation ?? r.informalInterpretation ?? null, conform: r.conform }))
+  );
+}
+
+/**
+ * A plan read back from its frozen copy on a result (Result.criterion,
+ * JSON): anything malformed reads as « no criterion » rather than a wrong one.
+ */
+export function storedPlan(raw: unknown): Plan | null {
+  if (!raw || typeof raw !== "object") return null;
+  const p = raw as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const kinds: LimitKind[] = ["VALUE", "ABSENCE", "UNSPECIFIED"];
+  if (!kinds.includes(p.mKind as LimitKind) || num(p.n) === null) return null;
+  return { n: num(p.n)!, c: num(p.c), mKind: p.mKind as LimitKind, m: num(p.m), bigM: num(p.bigM) };
+}
+
+/** No germ carries any judgement: no verdict, no limit, nothing indicative. */
+export function nothingJudged(
+  results: { interpretation: Interpretation | null; conform: boolean | null; informalInterpretation?: Interpretation | null }[]
+): boolean {
+  return results.length > 0 && results.every((r) => r.interpretation === null && r.conform === null && !r.informalInterpretation);
 }
 
 /** The germs judged on the old limit alone, and found over it. */

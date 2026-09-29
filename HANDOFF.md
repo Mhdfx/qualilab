@@ -30,7 +30,7 @@
 | LIMS core — **email, alertes** | auto send, grouped contamination alerts, bench sheet | ✅ **Phase 3 done** (delivery simulated until DNS) |
 | Direction & recherche | direction view, DB-backed global search | ✅ **Phase 5 done** |
 | Infra | Docker image + compose, backups, `DEPLOY.md` — PM2 kept as fallback | ✅ **live on the VPS since 2026-08-26** |
-| **Retour du laboratoire du 29/09** | rapport au modèle du labo (R1 … Rn, tableau de conclusion, une page), e-mail récapitulatif, lecture par répétition pour tout paramètre, correcteur de désignation, destruction au cas par cas, recherche et export Excel par client — spec **`RETOUR-LABO-29-09.md`** | ◀ **planifié 2026-09-29**, 7 tranches A → G ; la règle de c attend Q31 |
+| **Retour du laboratoire du 29/09** | rapport au modèle du labo (R1 … Rn, tableau de conclusion, une page), e-mail récapitulatif, lecture par répétition pour tout paramètre, correcteur de désignation, destruction au cas par cas, recherche et export Excel par client — spec **`RETOUR-LABO-29-09.md`** (§7 = tel que construit) | ✅ **tranches A → F livrées 2026-09-29** (TESTPLAN P) ; la règle de c attend Q31, Q32–Q37 sur défauts documentés ; reste la recette |
 | **Phase 9 — chantier 2 : critères d'interprétation** | types de produits × germe × version de norme, import du classeur, lecture par unité, verdicts satisfaisant / acceptable / non satisfaisant, rapport avec le critère et sa norme — spec **`CRITERES.md`** | ◀ **code complete 2026-09-18** (1 075 critères et 131 types importés sur dev; slices 1–4 vérifiées au navigateur, TESTPLAN M1–M4); reste l'import en production et la recette avec le laboratoire |
 | **Phase 9 — chantier 1 : circuit série** | visite / dépôt multi-lignes, 16 natures, réception groupée, numérotation NNNN/AA + NNNNN/AA, étiquettes, profils, verbes de correction — spec **`WORKFLOW.md`** | ◀ **slices 1–5 live 2026-09-13, slice 1b (the lab's feedback of 14/09: the visit form reads like the paper) live 2026-09-14; slice 6 = recette with the lab** (série + natures + counters + « Nouvelle visite » / « Mes visites » + N° de contrôle everywhere; grouped reception with the seven acceptance rules, coded motifs, labels PDF; « Nouveau dépôt », protocole / bon PDFs with the quality cartouche, `/admin/documents`; profiles, client memory, sites, sampler kind; verbs Corriger / Annuler / Réactiver, queues by série, old routes gone); the recette with the laboratory closes the chantier (restore point `v1.0-avant-phase-9`) |
 
@@ -211,6 +211,12 @@ Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|E
 
 | I want to change… | Go to |
 |---|---|
+| The report's layout (R1 … Rn, verdict table, densities, one page) | `src/lib/report-html.ts` (+ `report-onepage.test.ts`) |
+| Too few units / indicative verdict / « Non spécifié » | `judgeUnits`, `informalVerdict`, `hasLimit` in `src/lib/interpretation.ts` |
+| « Réglementation en vigueur » text | `/admin/types-produits/[id]` (per type), `/admin/reglages` (per family) |
+| Search filters and conclusion per sample | `src/lib/sample-search.ts` (pure) + `sample-search-server.ts` |
+| Excel export columns | `src/app/api/samples/export/route.ts` |
+| Destroy at reception | `src/lib/reception-input.ts`, `serie-create.ts` (deposit) |
 | Company name / ICE / RC / RIB / IBAN / bank | `/admin/entreprise` (DB row); defaults in `src/lib/company.ts` |
 | Sample numbering (field / control / blind serial) | `src/lib/sample-code.ts` |
 | How a result is judged (n, c, m, M, absence, dilutions) | `src/lib/interpretation.ts` — pure, tested; the bench, the validation screen and the report all call it |
@@ -349,6 +355,15 @@ nav links, all 10 screens render without error.
 
 **Still open** — see §9: the invoice PDF is a client-side screenshot while the
 report is rendered server-side, and there is no automated test suite.
+
+### 2026-09-29 — retour du laboratoire, as built
+- No official verdict below the plan's n; the indicative one lives on `Result.informalInterpretation` and in the e-mail only. A sample with one indicative germ gets no official conclusion.
+- Above n, every unit taken is judged (never ignore a unit that was read).
+- A sensitive germ indicatively non satisfaisant still raises the contamination alert.
+- « Non spécifié » without M → no verdict (was a silent blocker).
+- The report freezes its criterion (`Result.criterion`) and regulation (`Report.regulation`): editing either never changes an issued report.
+- `blockNonConformAtReception` retired from the screens: the decision is per line (« Détruire » = `DETRUIT_A_RECEPTION`, not invoiced, client not told — Q35 default).
+- Rule of c untouched until Q31.
 
 ## 8c. A lesson written down (2026-08-25)
 

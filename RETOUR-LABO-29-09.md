@@ -1,6 +1,13 @@
 # RETOUR-LABO-29-09.md — the laboratory's answers of 29/09 and what they change
 
-> **Status (2026-09-29):** planned, not started. Input: the laboratory's
+> **Status (2026-09-29, evening):** slices **A → F implemented, tested and
+> verified in the browser on the dev server**, then deployed (§7 records what
+> was decided while building). **Not implemented, on purpose:** Q31 — the rule
+> of c stays as the engine applies it today (c tolerates units between m and
+> M; a single limit tolerates none) until the laboratory answers. Q32–Q37 run
+> on the documented defaults of §7. Remaining: slice G's recette with the lab.
+>
+> Input: the laboratory's
 > written answers to the fourteen questions of 19/09 (a Word document with
 > seven screenshots, kept outside the public repo), plus a message after
 > they re-tested the platform: « le correcteur pour la désignation des
@@ -195,3 +202,25 @@ client is reserved to that client; Q35 whether a destroyed sample is
 invoiced and whether the client is told; Q36 R1 … Rn everywhere including the
 labels, or letters kept on the labels; Q37 whether « N° BC » in their export
 is the série number. Only Q31 blocks code (slice B's first rule).
+
+---
+
+## 7. As built (2026-09-29) — decisions taken while implementing
+
+| Point | What the code does | Where |
+|---|---|---|
+| Units taken ≥ plan's n | The plan is applied to **every** unit taken (9 taken for n = 5: a 9th unit above M still fails); c unchanged | `judgeUnits` in `src/lib/interpretation.ts` |
+| Units taken < plan's n | `Result.interpretation = null`, `Result.informalInterpretation` = worst unit (≤ m satisfaisant, m–M acceptable, > M non satisfaisant, no c). The sample gets **no official conclusion** if one germ is only indicative; the report says why; the e-mail gives the indicative one, marked « indicative » | `informalVerdict`, `sampleVerdict`, `indicativeVerdict`, `NO_OFFICIAL_VERDICT` |
+| A sensitive germ indicatively non satisfaisant | **Still raises the contamination alert** (the contamination is real) | `sendContaminationAlerts` |
+| « Non spécifié » without M (101 imported criteria) | Found by the circuit test: the engine returned INCOMPLET for ever, so such a sheet could never be submitted. Now: read, printed « Non spécifié », **no verdict**; a sample with nothing judged concludes « sans interprétation » | `hasLimit`, `nothingJudged`, `NO_CRITERION` |
+| Per-repetition reading | Every parameter of a line with n > 1, criterion or not; the line's value is the worst unit; the sheet cannot be submitted with a blank repetition | results route, submit route, `ResultEntryForm` |
+| Ceiling | 999 units (technical); letters go on past ZZ (AAA…) | `MAX_UNITS`, `unitLetter` |
+| Names (Q36 default) | Report and validation screen: **R1 … Rn**; bench: « R1 · A »; labels keep the letters | `repetitionLabel` |
+| Report | Header table « Réglementation en vigueur » with the X; Paramètres · Méthode · Unité · R1 … Rn · m · M (n, c beneath); « Non détecté » for an absence reading, « Non spécifié »; over-M units in red, m–M in amber; one page (three densities, tighter margins, a second band beyond ten repetitions); criterion and regulation **frozen** with the result / report | `report-html.ts`, `Result.criterion`, `Report.regulation`, `report-onepage.test.ts` |
+| Regulation text (Q32 default) | Empty until the lab gives it: per product type (`/admin/types-produits/[id]`), else per family (`/admin/reglages`); empty prints « — » | `ProductType.regulation`, `LabSettings.regulationMicro/Chimie` |
+| Alert timing | `alertAfterTechnicalValidation` = true (migration + schema default); units in the column headers | migration `20260929100000`, `alertEmail` |
+| Destroyed at reception (Q35 default) | Received and numbered (prints « Détruite à réception » on the protocol / bon), then cancelled `DETRUIT_A_RECEPTION`, audited `SAMPLE_CANCELLED`; **not invoiced** (only validated samples are billable), **client not notified**; « Réactiver » brings it back held in « Échantillons bloqués ». The global switch `blockNonConformAtReception` is gone from the screens (column kept) | `reception-input.ts`, `serie-create.ts`, reception route |
+| One account per sampler | The visit form shows the signed-in sampler, locked; the API refuses another sampler's id from a PRELEVEUR (the réception still keys a paper protocol in a sampler's name) | `VisitForm`, `createSerie` |
+| Search | `/recherche` for every lab role (the technician stays on his bench): client, période (réception / prélèvement), type d'analyse, état (en cours / terminées / annulées), text; paginated; report link | `sample-search.ts`, `sample-search-server.ts` |
+| Export (Q37 default) | `GET /api/samples/export` with the search's filters: N° BC (= N° de série), N°, date de réception, nom produit, analyses, lot, conclusion; cancelled lines left out unless asked; audited `SAMPLES_EXPORTED`; client page « Synthèse des analyses » over a period | export route, `ClientSummary` |
+

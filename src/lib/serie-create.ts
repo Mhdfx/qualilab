@@ -27,11 +27,6 @@ export type CreateSerieResult = {
   sampleIds: string[];
 };
 
-export type CreateSerieOptions = {
-  /** LabSettings policy: a non-conform deposit line is held unassigned. */
-  blockNonConform?: boolean;
-};
-
 export class SerieCreationError extends Error {
   constructor(message: string, readonly status: 400 | 404 = 400) {
     super(message);
@@ -95,8 +90,7 @@ async function resolvePlace(
 
 export async function createSerie(
   input: CleanSerie,
-  actor: { id: string; role: Role },
-  options: CreateSerieOptions = {}
+  actor: { id: string; role: Role }
 ): Promise<CreateSerieResult> {
   const client = await prisma.client.findUnique({
     where: { id: input.clientId },
@@ -141,12 +135,15 @@ export async function createSerie(
   }
 
   const isDeposit = input.kind === "DEPOT";
-  const blockNonConform = options.blockNonConform === true;
 
-  // « Prélèvement effectué par »: the logged-in account unless the visit is
-  // attributed to a colleague (shared tablet, sheet keyed in later).
+  // « Prélèvement effectué par »: a sampler always enters his own visits —
+  // one account per person, no shared tablet (29/09, point 13). The
+  // réception keying in a paper protocol names the sampler who signed it.
   let samplerUserId: string | null = null;
   if (input.samplerKind === "QUALILAB") {
+    if (actor.role === "PRELEVEUR" && input.samplerUserId && input.samplerUserId !== actor.id) {
+      throw new SerieCreationError("Chaque préleveur saisit ses prélèvements avec son propre compte.");
+    }
     samplerUserId = input.samplerUserId ?? actor.id;
     if (samplerUserId !== actor.id) {
       const preleveur = await prisma.user.findUnique({
@@ -224,13 +221,13 @@ export async function createSerie(
         const place = await resolvePlace(tx, client.id, siteId, line.lieu);
         const produit = product?.label ?? line.produit;
         const controlCode = isDeposit ? (await nextNumber(tx, "CONTROLE", year)).formatted : null;
-        // Held: a non-conform line when the laboratory blocks them, and any
-        // line that reaches the bench without a technician — an unassigned
-        // sample would sit in no queue at all. Both are released from
-        // « Échantillons bloqués », which assigns a technician.
-        const held =
-          isDeposit && ((blockNonConform && !line.conformity) || line.technicianId === null);
-        const technicianId = isDeposit && !held ? line.technicianId : null;
+        // A destroyed line is received, numbered and cancelled at once. Any
+        // other line that reaches the bench without a technician is held —
+        // an unassigned sample would sit in no queue at all — and released
+        // from « Échantillons bloqués », which assigns one.
+        const destroyed = isDeposit && line.destroy;
+        const held = isDeposit && !destroyed && line.technicianId === null;
+        const technicianId = isDeposit && !held && !destroyed ? line.technicianId : null;
 
         const sample = await tx.sample.create({
           data: {
@@ -272,7 +269,8 @@ export async function createSerie(
             unitCount: line.unitCount,
             productTypeId: line.productTypeId,
             sampledAt: input.startedAt,
-            status: isDeposit ? "RECU" : "PRELEVE",
+            status: destroyed ? "ANNULE" : isDeposit ? "RECU" : "PRELEVE",
+            ...(destroyed ? { cancelledAt: now, cancelledById: actor.id, cancelReason: "DETRUIT_A_RECEPTION" as const } : {}),
             controlCode,
             receivedById: isDeposit ? actor.id : null,
             receivedAt: isDeposit ? now : null,
@@ -312,12 +310,37 @@ export async function createSerie(
       ...(isDeposit
         ? {
             nonConform: input.lines.filter((l) => !l.conformity).length,
+            destroyed: input.lines.flatMap((l, i) => (l.destroy ? [i + 1] : [])),
             advanceAmount: input.advanceAmount,
             advanceMode: input.advanceMode,
           }
         : {}),
     },
   });
+
+  // A line destroyed at the counter is a cancellation like any other.
+  await Promise.all(
+    input.lines.flatMap((line, index) =>
+      isDeposit && line.destroy
+        ? [
+            logAudit({
+              actorId: actor.id,
+              action: "SAMPLE_CANCELLED",
+              entity: "Sample",
+              entityId: result.sampleIds[index],
+              metadata: {
+                from: "RECU",
+                to: "ANNULE",
+                serialNumber: result.serialNumber,
+                lineNumber: index + 1,
+                reason: "DETRUIT_A_RECEPTION",
+                note: line.conformityNote,
+              },
+            }),
+          ]
+        : []
+    )
+  );
 
   return { ...result, kind: input.kind };
 }
