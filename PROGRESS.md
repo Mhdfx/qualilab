@@ -270,6 +270,7 @@ in `PLAN.md`, opened one at a time.
 - E: « Analyser malgré tout / Détruire » per non-conform line (visit reception and counter deposit), `DETRUIT_A_RECEPTION`; sampler locked to his own account (UI + API).
 - F: `/recherche`, client « Synthèse des analyses », Excel export (audited).
 - Migrations `20260929100000_retour_labo_29_09`, `20260929110000_report_snapshot` (additive). 285 tests, lint, build green.
+- Deployed 2026-09-29 (`0be8208`); API circuit replayed on production (série 21/26) and screens checked — TESTPLAN P-prod. Test séries 21/26 (prod) and 23/26–26/26 (dev) are test data.
 
 - **2026-09-29 · Claude Code** · **Réponses du laboratoire du 29/09 —
   analyse et plan, pas de code.** Leur document répond aux quatorze

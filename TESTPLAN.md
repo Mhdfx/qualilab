@@ -711,7 +711,10 @@ Ticked when observed in the browser on the dev server (`pre1`, `recep1`,
 - [x] Fiche client « Synthèse des analyses » (période, compteurs par conclusion) et export Excel relu : N° BC, N°, Date de réception, Nom produit, Analyses, N° de lot, Conclusion ; technicien refusé (403).
 
 ### P-prod — Production (http://185.217.126.53)
-- [ ] Filled after the deploy of 2026-09-29 (see Session Log).
+- [x] Déployé le 29/09 (commit `0be8208`), migrations appliquées ; `alertAfterTechnicalValidation` = vrai relu par l'API.
+- [x] Circuit API rejoué en production (série **21/26**) : refus du collègue, destruction à réception (N° 20/26, `DETRUIT_A_RECEPTION`), pas de verdict officiel sous n, plan complet « Satisfaisant », R1 … R3 sans critère, trois rapports d'une page (RAP-2026-00007 … 00009), recherche, export Excel, technicien refusé à l'export. Le seul écart du script (« recherche du préleveur ») est une collision de numéros — N° de contrôle 20/26 = N° de la série 20/26 du 19/09, que le préleveur voit légitimement ; la ligne détruite n'est pas trouvée.
+- [x] Rapport de production relu à l'image (croix sous « Satisfaisant », R1 … R5, m / M avec n et c, « Non détecté »).
+- [x] `/recherche?etat=annulees` en production : la ligne détruite 20/26, « Annulé ».
 
 ## Sign-off log
 
