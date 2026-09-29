@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Check, ChevronRight, Plus, Search, Tags, X } from "lucide-react";
 import type { Family } from "@/generated/prisma/enums";
 import { Card } from "@/components/ui/Card";
+import { similarLabels } from "@/lib/similar";
 
 export type ProductTypeRow = {
   id: string;
@@ -136,6 +137,7 @@ export function ProductTypesManager({ types, clients }: { types: ProductTypeRow[
         {creating && (
           <CreateForm
             clients={clients}
+            existingNames={types.map((t) => t.name)}
             onCancel={() => setCreating(false)}
             onSaved={(id) => {
               setCreating(false);
@@ -205,11 +207,13 @@ export function ProductTypesManager({ types, clients }: { types: ProductTypeRow[
 
 function CreateForm({
   clients,
+  existingNames,
   onCancel,
   onSaved,
   onError,
 }: {
   clients: ClientRow[];
+  existingNames: string[];
   onCancel: () => void;
   onSaved: (id: string) => void;
   onError: (message: string) => void;
@@ -218,6 +222,10 @@ function CreateForm({
   const [family, setFamily] = useState<Family>("MICRO");
   const [clientId, setClientId] = useState("");
   const [saving, setSaving] = useState(false);
+  // The corrector: close names are shown while typing, and creating one
+  // anyway takes an explicit tick (the server checks it too).
+  const near = similarLabels(name, existingNames, 5);
+  const [confirmSimilar, setConfirmSimilar] = useState(false);
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -228,7 +236,7 @@ function CreateForm({
       const response = await fetch("/api/product-types", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, family, clientId: clientId || null }),
+        body: JSON.stringify({ name, family, clientId: clientId || null, confirmSimilar }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -248,7 +256,37 @@ function CreateForm({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[2fr_1fr_1fr]">
         <div>
           <label htmlFor="pt-name" className="block text-xs font-medium text-slate-600">Nom du type de produit *</label>
-          <input id="pt-name" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex. : Salades avec source protéique" className="input-field mt-1 px-3" autoFocus />
+          <input
+            id="pt-name"
+            type="text"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              setConfirmSimilar(false);
+            }}
+            placeholder="Ex. : Salades avec source protéique"
+            className="input-field mt-1 px-3"
+            autoFocus
+          />
+          {near.length > 0 && (
+            <div className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">
+              <p className="font-semibold">Types existants très proches :</p>
+              <ul className="mt-0.5 list-inside list-disc">
+                {near.map((n) => (
+                  <li key={n}>{n}</li>
+                ))}
+              </ul>
+              <label className="mt-1 flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={confirmSimilar}
+                  onChange={(e) => setConfirmSimilar(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-brand"
+                />
+                Ce n&apos;est pas une faute de frappe : créer quand même
+              </label>
+            </div>
+          )}
         </div>
         <div>
           <label htmlFor="pt-family" className="block text-xs font-medium text-slate-600">Famille</label>
@@ -269,7 +307,7 @@ function CreateForm({
         </div>
       </div>
       <div className="mt-3 flex gap-2">
-        <button type="submit" disabled={saving} className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg bg-brand px-3.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-60">
+        <button type="submit" disabled={saving || (near.length > 0 && !confirmSimilar)} className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg bg-brand px-3.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-60">
           <Check className="h-4 w-4" aria-hidden="true" />
           {saving ? "Création…" : "Créer et saisir les critères"}
         </button>

@@ -702,6 +702,8 @@ export function VisitForm({ me }: { me: Preleveur }) {
                   onRemove={() => removeLine(line.key)}
                   placeSuggestions={placeSuggestions}
                   productSuggestions={productSuggestions}
+                  knownPlaces={memory.places}
+                  knownProducts={memory.products}
                   profiles={profiles.filter((p) => p.natureId === line.natureId)}
                   productTypes={productTypes}
                 />

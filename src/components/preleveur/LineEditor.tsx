@@ -1,10 +1,12 @@
 "use client";
 
-import { Copy, ListChecks, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Copy, ListChecks, Search, Trash2 } from "lucide-react";
 import type { LineKind } from "@/generated/prisma/enums";
 import { HANDS_STATE_LABELS, LINE_KIND_LABELS, QUANTITY_UNIT_LABELS } from "@/lib/labels";
 import { Card } from "@/components/ui/Card";
 import { normalizeLabel } from "@/lib/serie-input";
+import { matchesQuery, similarLabels } from "@/lib/similar";
 import { MAX_UNITS } from "@/lib/series";
 import {
   type LineDraft,
@@ -30,6 +32,10 @@ type LineEditorProps = {
   /** Datalist suggestions from this client's memory. */
   placeSuggestions: string[];
   productSuggestions: string[];
+  /** The client's memory alone (saved spellings) — what the corrector
+   *  compares a typed value against; another line's typo never counts. */
+  knownPlaces?: string[];
+  knownProducts?: string[];
   /** The panels of this nature (client-specific first); empty = tick one by one. */
   profiles?: ProfileOption[];
   /** The catalogue's product types (the client's own first) — a food line picks one and inherits its germs and its n. */
@@ -89,6 +95,8 @@ export function LineEditor({
   onRemove,
   placeSuggestions,
   productSuggestions,
+  knownPlaces = [],
+  knownProducts = [],
   profiles = [],
   productTypes = [],
 }: LineEditorProps) {
@@ -103,6 +111,10 @@ export function LineEditor({
 
   const placeTwin = knownTwin(line.lieu, placeSuggestions);
   const productTwin = knownTwin(line.produit, productSuggestions);
+  // « Vouliez-vous dire … ? » — only when the exact rewrite has nothing.
+  const placeNear = placeTwin ? [] : similarLabels(line.lieu, knownPlaces);
+  const productNear = productTwin ? [] : similarLabels(line.produit, knownProducts);
+  const [typeQuery, setTypeQuery] = useState("");
 
   function applyProfile(profile: ProfileOption) {
     onChange({
@@ -112,8 +124,9 @@ export function LineEditor({
   }
 
   const selectedType = productTypes.find((t) => t.id === line.productTypeId);
-  const clientTypes = productTypes.filter((t) => t.clientId);
-  const catalogueTypes = productTypes.filter((t) => !t.clientId);
+  const visibleTypes = productTypes.filter((t) => t.id === line.productTypeId || matchesQuery(t.name, typeQuery));
+  const clientTypes = visibleTypes.filter((t) => t.clientId);
+  const catalogueTypes = visibleTypes.filter((t) => !t.clientId);
 
   /**
    * Picking a type ADDS its germs to what is already ticked and raises n to
@@ -327,6 +340,7 @@ export function LineEditor({
                 Déjà connu sous « {productTwin} » — cette orthographe sera utilisée.
               </p>
             )}
+            <DidYouMean options={productNear} onPick={(v) => onChange({ produit: v })} />
           </Field>
         )}
 
@@ -341,6 +355,20 @@ export function LineEditor({
                 : "Le type de produit apporte les critères d'interprétation du rapport (facultatif)."
             }
           >
+            <div className="relative mb-2">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+              <input
+                type="search"
+                value={typeQuery}
+                onChange={(e) => setTypeQuery(e.target.value)}
+                placeholder="Rechercher un type (ex. : salade, charcuterie)"
+                aria-label="Rechercher un type de produit"
+                className="input-field pl-9 pr-4"
+              />
+            </div>
+            {typeQuery && visibleTypes.length === 0 && (
+              <p className="mb-2 text-xs text-slate-500">Aucun type ne correspond à « {typeQuery} ».</p>
+            )}
             <select
               value={line.productTypeId}
               onChange={(e) => applyProductType(e.target.value)}
@@ -440,6 +468,7 @@ export function LineEditor({
               Déjà connu sous « {placeTwin} » — cette orthographe sera utilisée.
             </p>
           )}
+          <DidYouMean options={placeNear} onPick={(v) => onChange({ lieu: v })} />
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
@@ -582,5 +611,26 @@ export function LineEditor({
         </Field>
       </div>
     </Card>
+  );
+}
+
+/** « Vouliez-vous dire … ? » — one click replaces what was typed. */
+function DidYouMean({ options, onPick }: { options: string[]; onPick: (value: string) => void }) {
+  if (options.length === 0) return null;
+  return (
+    <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-amber-800">
+      <span>Vouliez-vous dire</span>
+      {options.map((option) => (
+        <button
+          key={option}
+          type="button"
+          onClick={() => onPick(option)}
+          className="rounded-md bg-amber-100 px-2 py-0.5 font-semibold text-amber-900 transition hover:bg-amber-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+        >
+          {option}
+        </button>
+      ))}
+      <span>?</span>
+    </p>
   );
 }

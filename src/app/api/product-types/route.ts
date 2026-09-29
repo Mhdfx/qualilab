@@ -4,6 +4,7 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { validateProductType } from "@/lib/criteria-input";
+import { similarLabels } from "@/lib/similar";
 
 /**
  * The product types of the catalogue — the forms pick one per line
@@ -80,6 +81,23 @@ export async function POST(request: Request) {
     select: { id: true },
   });
   if (duplicate) return NextResponse.json({ error: "Ce type de produit existe déjà." }, { status: 409 });
+
+  // A type one typing error away from an existing one is almost always a
+  // duplicate (« Salade composee » / « Salades composées »): the admin
+  // confirms explicitly before a second one is created.
+  if ((body as { confirmSimilar?: unknown }).confirmSimilar !== true) {
+    const others = await prisma.productType.findMany({
+      where: { OR: [{ clientId: null }, ...(checked.value.clientId ? [{ clientId: checked.value.clientId }] : [])] },
+      select: { name: true },
+    });
+    const similar = similarLabels(checked.value.name, others.map((t) => t.name), 5);
+    if (similar.length > 0) {
+      return NextResponse.json(
+        { error: "Un type de produit très proche existe déjà.", similar },
+        { status: 409 }
+      );
+    }
+  }
 
   const created = await prisma.productType.create({ data: checked.value, select: { id: true, name: true } });
   await logAudit({ actorId: session.id, action: "PRODUCT_TYPE_CREATED", entity: "ProductType", entityId: created.id, metadata: checked.value });
