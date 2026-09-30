@@ -269,7 +269,7 @@ in `PLAN.md`, opened one at a time.
 ### 2026-10-01 — slice H (RETOUR-LABO-30-09.md)
 - H1 single limit (m alone, M alone, m = M) tolerates c units above → « Acceptable » (118 real criteria concerned); tolerated unit amber on the report.
 - H2 product type removed from the report. H3 destruction e-mail to the client (visit reception and counter deposit), journal `DESTRUCTION_NOTIFIED`, migration `20261001100000_destruction_email`. H4 R1 … Rn everywhere, `unitLetter` deleted.
-- 288 tests, lint, build; API circuit 9/9 on dev; labels, report, e-mail and screens checked; deployed and replayed on production.
+- 288 tests, lint, build; API circuit 9/9 on dev; labels, report, e-mail and screens checked. Deployed (`7a4494c`) and replayed on production: 9/9 (séries 22/26 and 23/26 = test data, report RAP-2026-00010 with the X under « Acceptable », no product type, labels up to R60).
 
 ### 2026-09-30 — answers Q31–Q37 analysed, plan H → K
 - The lab's Word reply to the clarification PDF read and mapped: Q31 settled (single-limit tolerance → « Acceptable »), Q32 regulation chosen per sample by the validator, Q33 keep the old 634 types, Q34 types never printed, Q35 client informed, Q36 R1 … Rn everywhere, Q37 confirmed.
