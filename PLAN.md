@@ -13,7 +13,15 @@ One web app, three blocks (LIMS · Facturation · Module préleveur), **7 roles*
 invoices generated from validated samples, full admin configuration, complete
 audit trail — running on the VPS with HTTPS + daily backups.
 
-## Where we are (2026-09-13)
+## Where we are (2026-09-30)
+
+Phase 9 chantiers 1 (série circuit) and 2 (criteria) are live, and so is the
+laboratory's feedback of 29/09 (`RETOUR-LABO-29-09.md`, slices A → F). **The
+next work is `RETOUR-LABO-30-09.md`** — the answers to Q31–Q37 turned into
+four slices, **H → K** (see the table at the end of Phase 9 below). Then the
+recette with the laboratory and go-live.
+
+### Earlier state (2026-09-13)
 
 Phases 1 to 7 are delivered, audited twice and live on the VPS
 (http://185.217.126.53). After the client's review (« multiple things are
@@ -289,8 +297,18 @@ deployed and verified in the browser:
 | F | Search by client, period, analysis type and state; per-client summary over a period with an Excel export | 2 |
 | G | Recette (TESTPLAN checkpoint P) and documents | 1 |
 
-Only slice B's first rule waits on an answer (Q31, the rule of c); the rest
-can start now.
+**Status 2026-09-29:** A → F live in production (TESTPLAN P). The rule of c
+waited on Q31, answered on 30/09.
+
+**The answers of 30/09 are specified in `RETOUR-LABO-30-09.md` — the next
+work**, in this order:
+
+| Slice | Content | Days | Depends on |
+|---|---|---|---|
+| H | Tolerance c on a single limit (« Acceptable »), product type off the report, e-mail to the client for a destroyed line, R1 … Rn everywhere (labels included) | 1 | — |
+| I | Regulation catalogue; the technical validator chooses the regulation per sample (proposed from the client product's last choice, then the type), frozen on the report | 2 | — (Q38 confirms the list) |
+| J | The old software's 634 product types, their criteria and its 176 regulation sources imported from the Firebird base; client memory CSV | 2–3 | Docker running the legacy base; Q39 defaults |
+| K | Recette with the laboratory (TESTPLAN L6, M6, P, Q), production clean-up, demo mode off, DNS / e-mail | — | H, I, J; the laboratory |
 
 ---
 

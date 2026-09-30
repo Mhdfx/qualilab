@@ -46,6 +46,7 @@ should list all three. If it doesn't, you are in the wrong folder.
 | 3 | **PROGRESS.md** | What's done / in progress / next — the live tracker |
 | 4 | **PLAN.md** | The full phased roadmap + target data model |
 | 4b | **WORKFLOW.md** | Phase 9, chantier 1: the série-based circuit — design rules, model delta, slices. Read before touching `Sample`, préleveur or réception |
+| 4c | **CRITERES.md** → **RETOUR-LABO-29-09.md** → **RETOUR-LABO-30-09.md** | The criteria engine, then the laboratory's two feedback batches (the later file wins). **RETOUR-LABO-30-09.md holds the current plan (slices H → K)** |
 | 5 | **CODE_QUALITY.md** | The non-negotiable quality bar (front + back + all) |
 | 6 | **TESTPLAN.md** | The full browser test path, every phase. Tick what you verified; extend the phase section when you finish it |
 | 7 | **NEEDEDINFO.md** | Everything still owed by the laboratory — add to it whenever a phase raises a question only they can answer |

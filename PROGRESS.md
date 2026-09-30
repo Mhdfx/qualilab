@@ -8,15 +8,20 @@
 
 ## ▶ NEXT ACTION
 
-**RETOUR DU LABORATOIRE DU 29/09 — slices A → F built, verified and deployed
-2026-09-29** (spec `RETOUR-LABO-29-09.md`, §7 = as built; TESTPLAN checkpoint
-P). **30/09 — the lab answered Q31–Q37** (analysis: `RETOUR-LABO-29-09.md` §8).
-**Next:** (1) small changes — single-limit tolerance c → « Acceptable »,
-« Type de produit » off the report, e-mail to the client for a destroyed
-line, R1 … Rn on labels and bench; (2) the regulation chosen per sample by
-the technical validator, from the old software's list (Q38); (3) with Docker
-running the Firebird base: the 634 legacy product types and their criteria
-(Q39), the regulation list and the client memory CSV; (4) the recette.
+**SLICE H of `RETOUR-LABO-30-09.md`** — the laboratory answered Q31–Q37 on
+30/09; the plan is four slices **H → K** (spec §2–§6, PLAN.md Phase 9).
+Start with **H** (≈ 1 day, no dependency): H1 tolerance c on a single limit
+⇒ « Acceptable »; H2 the product type never prints on the report; H3 an
+e-mail to the client when a line is destroyed at reception; H4 R1 … Rn
+everywhere, labels included. Then **I** (regulation chosen per sample by the
+technical validator), **J** (the old software's 634 types, criteria and
+regulations — needs Docker running the Firebird base), **K** (recette).
+Open with the lab: Q38, Q39 (to send), Q30.
+
+## ▶ PREVIOUS ACTION (retour du 29/09)
+
+Slices A → F of `RETOUR-LABO-29-09.md` built, verified and deployed
+2026-09-29 (TESTPLAN checkpoint P, production included).
 
 ## ▶ PREVIOUS ACTION (chantier 2)
 
@@ -262,6 +267,10 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-09-30 — answers Q31–Q37 analysed, plan H → K
+- The lab's Word reply to the clarification PDF read and mapped: Q31 settled (single-limit tolerance → « Acceptable »), Q32 regulation chosen per sample by the validator, Q33 keep the old 634 types, Q34 types never printed, Q35 client informed, Q36 R1 … Rn everywhere, Q37 confirmed.
+- New spec `RETOUR-LABO-30-09.md` (slices H → K); PLAN, HANDOFF, TESTPLAN (checkpoint Q), CRITERES, WORKFLOW, AGENTS, NEEDEDINFO (Q38, Q39 to send) updated. No code change.
 
 ### 2026-09-29 (evening) — retour du 29/09, tranches A → F
 - A: fuzzy corrector (`similar.ts`) on designation, place and product types; client memory import (samples / legacy CSV).

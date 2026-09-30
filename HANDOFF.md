@@ -30,7 +30,8 @@
 | LIMS core — **email, alertes** | auto send, grouped contamination alerts, bench sheet | ✅ **Phase 3 done** (delivery simulated until DNS) |
 | Direction & recherche | direction view, DB-backed global search | ✅ **Phase 5 done** |
 | Infra | Docker image + compose, backups, `DEPLOY.md` — PM2 kept as fallback | ✅ **live on the VPS since 2026-08-26** |
-| **Retour du laboratoire du 29/09** | rapport au modèle du labo (R1 … Rn, tableau de conclusion, une page), e-mail récapitulatif, lecture par répétition pour tout paramètre, correcteur de désignation, destruction au cas par cas, recherche et export Excel par client — spec **`RETOUR-LABO-29-09.md`** (§7 = tel que construit) | ✅ **tranches A → F livrées 2026-09-29** (TESTPLAN P) ; la règle de c attend Q31, Q32–Q37 sur défauts documentés ; reste la recette |
+| **Retour du laboratoire du 29/09** | rapport au modèle du labo (R1 … Rn, tableau de conclusion, une page), e-mail récapitulatif, lecture par répétition pour tout paramètre, correcteur de désignation, destruction au cas par cas, recherche et export Excel par client — spec **`RETOUR-LABO-29-09.md`** (§7 = tel que construit) | ✅ **tranches A → F livrées 2026-09-29** (TESTPLAN P) |
+| **Réponses du 30/09 (Q31–Q37)** | tolérance c sur limite unique, type de produit jamais imprimé, e-mail au client pour une ligne détruite, R1 … Rn partout ; réglementation choisie par échantillon par le validateur ; reprise des 634 types, critères et réglementations de l'ancien logiciel — spec **`RETOUR-LABO-30-09.md`** | ◀ **planifié 2026-09-30**, tranches H → K ; **commencer par H** ; Q38, Q39, Q30 ouvertes |
 | **Phase 9 — chantier 2 : critères d'interprétation** | types de produits × germe × version de norme, import du classeur, lecture par unité, verdicts satisfaisant / acceptable / non satisfaisant, rapport avec le critère et sa norme — spec **`CRITERES.md`** | ◀ **code complete 2026-09-18** (1 075 critères et 131 types importés sur dev; slices 1–4 vérifiées au navigateur, TESTPLAN M1–M4); reste l'import en production et la recette avec le laboratoire |
 | **Phase 9 — chantier 1 : circuit série** | visite / dépôt multi-lignes, 16 natures, réception groupée, numérotation NNNN/AA + NNNNN/AA, étiquettes, profils, verbes de correction — spec **`WORKFLOW.md`** | ◀ **slices 1–5 live 2026-09-13, slice 1b (the lab's feedback of 14/09: the visit form reads like the paper) live 2026-09-14; slice 6 = recette with the lab** (série + natures + counters + « Nouvelle visite » / « Mes visites » + N° de contrôle everywhere; grouped reception with the seven acceptance rules, coded motifs, labels PDF; « Nouveau dépôt », protocole / bon PDFs with the quality cartouche, `/admin/documents`; profiles, client memory, sites, sampler kind; verbs Corriger / Annuler / Réactiver, queues by série, old routes gone); the recette with the laboratory closes the chantier (restore point `v1.0-avant-phase-9`) |
 
@@ -364,6 +365,12 @@ report is rendered server-side, and there is no automated test suite.
 - The report freezes its criterion (`Result.criterion`) and regulation (`Report.regulation`): editing either never changes an issued report.
 - `blockNonConformAtReception` retired from the screens: the decision is per line (« Détruire » = `DETRUIT_A_RECEPTION`, not invoiced, client not told — Q35 default).
 - Rule of c untouched until Q31.
+
+### 2026-09-30 — answers Q31–Q37, plan H → K
+- Rule of c: 3-class plans already right; a single limit (m = M, one limit) tolerates c units above it as « Acceptable » (slice H).
+- The regulation is chosen per sample by the technical validator, from a catalogue (slice I) — the per-type / per-family texts of slice C become the defaults of that choice.
+- The catalogue becomes the old software's 634 types; on overlap the September workbook's criteria win, unused types come in inactive (Q39 defaults, slice J). Extracted legacy data never enters the public repo.
+- Product types are internal families: never printed for the client.
 
 ## 8c. A lesson written down (2026-08-25)
 

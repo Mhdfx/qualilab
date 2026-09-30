@@ -227,6 +227,11 @@ checkpoint M). Differences from the plan above, all deliberate:
 > engine rules (the rule of c on a single limit, no official verdict below
 > the plan's n, per-repetition reading for every parameter) and the report
 > layout. See `RETOUR-LABO-29-09.md`, which wins where the two differ.
+>
+> **30/09 — the rule of c is settled** (Q31): 3-class plans as in §4; a single
+> limit (m = M, or one limit) tolerates c units above it as « Acceptable ».
+> The catalogue grows to the old software's 634 types and the regulation is
+> chosen per sample. See `RETOUR-LABO-30-09.md`.
 
 ## 8. Open questions (NEEDEDINFO Q25–Q29)
 

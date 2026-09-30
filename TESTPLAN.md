@@ -716,6 +716,30 @@ Ticked when observed in the browser on the dev server (`pre1`, `recep1`,
 - [x] Rapport de production relu à l'image (croix sous « Satisfaisant », R1 … R5, m / M avec n et c, « Non détecté »).
 - [x] `/recherche?etat=annulees` en production : la ligne détruite 20/26, « Annulé ».
 
+## Checkpoint Q — Réponses du 30/09 (spec `RETOUR-LABO-30-09.md`) — à faire
+
+Ticked only when observed in the browser at 1440×900, on the dev server and
+then in production.
+
+### Q-H — Petits changements
+- [ ] m = M = 1.10², c = 1 : une unité au-dessus ⇒ « Acceptable », deux ⇒ « Non satisfaisant » (paillasse, validation, rapport).
+- [ ] Le rapport n'imprime plus le type de produit ; le protocole et le bon non plus.
+- [ ] Une ligne détruite à la réception (visite et dépôt) envoie au client l'e-mail de destruction (journal des e-mails, statut SIMULE tant que le DNS manque).
+- [ ] R1 … Rn sur les étiquettes (PDF relu, 60 unités sans débordement), à la paillasse, à la réception et au dépôt ; plus aucune lettre.
+
+### Q-I — Réglementation par échantillon
+- [ ] `/admin/reglementations` : créer, modifier, archiver ; quasi-doublon signalé.
+- [ ] À la validation technique, la réglementation est obligatoire pour un échantillon avec critères ; proposée d'après le dernier choix pour le même produit du client, puis le type.
+- [ ] Le rapport imprime la réglementation choisie ; la modifier ensuite ne change pas ce rapport.
+
+### Q-J — Catalogue de l'ancien logiciel
+- [ ] Import analysé puis confirmé : 634 types (223 actifs), critères, 176 réglementations ; paramètres non reconnus listés.
+- [ ] Un type présent dans le classeur garde ses critères de septembre ; un type propre à l'ancien logiciel porte les siens et sa réglementation.
+- [ ] Ré-import sans aucun changement.
+
+### Q-K — Recette
+- [ ] Recette avec le personnel du laboratoire (L6, M6, P, Q) — ligne de signature remplie.
+
 ## Sign-off log
 
 | Phase | Tested by | Date | Result |

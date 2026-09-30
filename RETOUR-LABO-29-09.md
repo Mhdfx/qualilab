@@ -242,3 +242,5 @@ Still open: Q38 (is the old regulation list current), Q39 (overlap between
 the 634 and the September workbook; the 411 unused types), Q30 (billing
 print models).
 
+**The plan for this work is `RETOUR-LABO-30-09.md` (slices H → K).**
+

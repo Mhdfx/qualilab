@@ -462,3 +462,10 @@ reception is decided case by case (« analyser malgré tout » or
 enter a visit in a colleague's name (one account per person). The
 designation corrector gains a tolerance to typing errors and a memory
 loaded from the old software.
+
+## 15. Réponses du laboratoire (30/09/2026)
+
+See `RETOUR-LABO-30-09.md`, slice H: a line destroyed at reception is now
+**notified to the client** by e-mail (still not invoiced), and units are
+named **R1 … Rn everywhere, labels included** (no more letters).
+
