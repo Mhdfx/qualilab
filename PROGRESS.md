@@ -10,11 +10,13 @@
 
 **RETOUR DU LABORATOIRE DU 29/09 — slices A → F built, verified and deployed
 2026-09-29** (spec `RETOUR-LABO-29-09.md`, §7 = as built; TESTPLAN checkpoint
-P). **Next:** (1) the laboratory's answers to **Q31** (rule of c — the only
-point left unimplemented on purpose) and Q32–Q37 (defaults applied); (2) the
-recette with the laboratory (slice G), starting with the report on their
-model and the corrector; (3) the legacy CSV for the client memory once Docker
-runs the Firebird base.
+P). **30/09 — the lab answered Q31–Q37** (analysis: `RETOUR-LABO-29-09.md` §8).
+**Next:** (1) small changes — single-limit tolerance c → « Acceptable »,
+« Type de produit » off the report, e-mail to the client for a destroyed
+line, R1 … Rn on labels and bench; (2) the regulation chosen per sample by
+the technical validator, from the old software's list (Q38); (3) with Docker
+running the Firebird base: the 634 legacy product types and their criteria
+(Q39), the regulation list and the client memory CSV; (4) the recette.
 
 ## ▶ PREVIOUS ACTION (chantier 2)
 

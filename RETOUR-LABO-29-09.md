@@ -224,3 +224,21 @@ is the série number. Only Q31 blocks code (slice B's first rule).
 | Search | `/recherche` for every lab role (the technician stays on his bench): client, période (réception / prélèvement), type d'analyse, état (en cours / terminées / annulées), text; paginated; report link | `sample-search.ts`, `sample-search-server.ts` |
 | Export (Q37 default) | `GET /api/samples/export` with the search's filters: N° BC (= N° de série), N°, date de réception, nom produit, analyses, lot, conclusion; cancelled lines left out unless asked; audited `SAMPLES_EXPORTED`; client page « Synthèse des analyses » over a period | export route, `ClientSummary` |
 
+---
+
+## 8. The answers of 30/09 to Q31–Q37, and what they change
+
+| # | Answer | Consequence | State |
+|---|---|---|---|
+| Q31 | 3-class plan (m < M): any unit above M fails; up to c units between m and M = acceptable, more = non satisfaisant. A single limit (m = M, or one limit only) tolerates c units above it, shown **Acceptable** | 3-class: the engine already does this. Single limit: `interpret` and `informalVerdict` must count c above the limit (today any unit above fails) | 🔧 to build |
+| Q32 | Regulation depends on the sample; the technical validator selects it, « at least the first times » | A regulation catalogue (import the old software's 176 sources, editable), a choice on the validation screen proposed from the product type and the last choice for the same client product, frozen on the report. The per-type / per-family texts of slice C become the proposal | 🔧 to build · Q38 |
+| Q33 | « Keep the 634, we can edit them » | Import the old software's 634 product types with their criteria (TYPENOURITURE_PARAMS + INTERVAL_PETITM) from the Firebird base — needs Docker running | 🔧 to build · Q39 |
+| Q34 | Types are internal families; the client never sees them on the report nor the protocol | Visible to every client (already so); **remove « Type de produit » from the report** (the protocol never printed it) | 🔧 small |
+| Q35 | Not invoiced (already so); the client **is** informed | An e-mail to the client's report recipients when a line is destroyed at reception (new e-mail type) | 🔧 small |
+| Q36 | R1, R2, R3 everywhere, labels included | Labels, bench sheet, bench grid, reception screens: R1 … Rn instead of letters | 🔧 small |
+| Q37 | N° BC = N° de série | Already so | ✅ |
+
+Still open: Q38 (is the old regulation list current), Q39 (overlap between
+the 634 and the September workbook; the 411 unused types), Q30 (billing
+print models).
+
