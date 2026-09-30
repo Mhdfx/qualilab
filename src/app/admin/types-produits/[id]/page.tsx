@@ -14,7 +14,7 @@ export default async function ProductTypeDetailPage({ params }: { params: Promis
   await requireRole("ADMIN");
   const { id } = await params;
 
-  const [type, parameters, norms, clients, settings] = await Promise.all([
+  const [type, parameters, norms, clients, settings, regulations] = await Promise.all([
     prisma.productType.findUnique({
       where: { id },
       select: {
@@ -23,7 +23,7 @@ export default async function ProductTypeDetailPage({ params }: { params: Promis
         family: true,
         clientId: true,
         active: true,
-        regulation: true,
+        regulationId: true,
         criteria: {
           select: { id: true, parameterId: true, normVersionId: true, unit: true, n: true, c: true, mKind: true, m: true, bigM: true, active: true },
           orderBy: [{ parameter: { name: "asc" } }, { normVersion: { version: "desc" } }],
@@ -37,6 +37,7 @@ export default async function ProductTypeDetailPage({ params }: { params: Promis
     }),
     prisma.client.findMany({ where: { archived: false }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     getLabSettings(),
+    prisma.regulation.findMany({ where: { active: true }, select: { id: true, title: true }, orderBy: [{ sortOrder: "asc" }, { title: "asc" }] }),
   ]);
   if (!type) notFound();
 
@@ -56,8 +57,11 @@ export default async function ProductTypeDetailPage({ params }: { params: Promis
       />
       <RegulationEditor
         typeId={type.id}
-        initial={type.regulation}
-        familyDefault={type.family === "CHIMIE" ? settings.regulationChimie : settings.regulationMicro}
+        initialId={type.regulationId}
+        options={regulations}
+        familyDefault={
+          regulations.find((r) => r.id === (type.family === "CHIMIE" ? settings.regulationChimieId : settings.regulationMicroId))?.title ?? null
+        }
       />
       <CriteriaGrid
         type={{ id: type.id, name: type.name, family: type.family, clientId: type.clientId, active: type.active }}

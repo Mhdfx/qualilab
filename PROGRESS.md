@@ -8,13 +8,11 @@
 
 ## ▶ NEXT ACTION
 
-**SLICE I of `RETOUR-LABO-30-09.md`** — the regulation chosen per sample by
-the technical validator (spec §3): `Regulation` catalogue +
-`/admin/reglementations`, `ProductType` / `ClientProduct` / `Sample`
-`regulationId`, required choice on the validation screen with a proposal,
-frozen on the report. Slice H is done (2026-10-01, TESTPLAN Q-H). Then J
-(needs Docker running the Firebird base) and K (recette). Open with the lab:
-Q38, Q39 (to send), Q30.
+**SLICE J of `RETOUR-LABO-30-09.md`** — the old software's 634 product
+types, their criteria and its 176 regulation sources, imported from the
+Firebird base (spec §4; needs Docker Desktop running the restored base).
+Slices H and I are done (2026-10-01, TESTPLAN Q-H, Q-I). Then K (recette).
+Open with the lab: Q38, Q39 (to send), Q30.
 
 ## ▶ PREVIOUS ACTION (retour du 29/09)
 
@@ -265,6 +263,10 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-10-01 — slice I (regulation per sample)
+- `Regulation` catalogue + `/admin/reglementations`; defaults per type and per family as pickers; validation requires a regulation for a sample with a product type, proposed from the client product's last choice; frozen on the report. Migration `20261001120000_regulations`.
+- 292 tests, lint, build; API circuit 11/11 on dev; validation panel and admin page checked at 1440×900.
 
 ### 2026-10-01 — slice H (RETOUR-LABO-30-09.md)
 - H1 single limit (m alone, M alone, m = M) tolerates c units above → « Acceptable » (118 real criteria concerned); tolerated unit amber on the report.

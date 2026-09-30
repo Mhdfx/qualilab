@@ -1,8 +1,8 @@
 # RETOUR-LABO-30-09.md — the answers of 30/09 (Q31–Q37) and the work they create
 
-> **Status (2026-10-01):** **slice H done** — built, tested, verified in the
-> browser on dev and in production (TESTPLAN Q-H). **Next: slice I.**
-> Slices I → K planned.
+> **Status (2026-10-01):** **slices H and I done** — built, tested, verified
+> in the browser on dev and in production (TESTPLAN Q-H, Q-I). **Next:
+> slice J** (needs Docker running the Firebird base), then K.
 >
 > The previous batch (`RETOUR-LABO-29-09.md`,
 > slices A → F) is live in production. The laboratory then answered the seven
@@ -225,4 +225,14 @@ Note for the recette: the default sentence of the scale for ACCEPTABLE
 speaks of « unités comprises entre m et M »; with a single limit the
 tolerated unit is above the limit. The laboratory can reword it in
 `/admin/reglages` → Échelle de conclusion.
+
+## 8. As built — slice I (2026-10-01)
+
+| Point | What the code does | Where |
+|---|---|---|
+| Catalogue | `Regulation` (title, text, active, order, `legacyId`); `/admin/reglementations` (create, edit, archive, near-duplicate check); seeded « Arrêté conjoint n° 624-04 du 8 avril 2004 »; slice C's free texts migrated into entries | migration `20261001120000_regulations`, `api/regulations` |
+| Defaults | `ProductType.regulationId` (picker on the type page), `LabSettings.regulationMicroId / regulationChimieId` (pickers in Réglages) | `RegulationEditor`, `LabSettingsForm` |
+| Choice | Validation screen: « Réglementation en vigueur » select; proposal = sample's own → client product's last choice → type → family (`proposeRegulation`); **required** for a sample with a product type — the API refuses validate / approve without one (400); the admin may change it until approval | `ValidationPanel`, validation route, `regulation.ts` |
+| Memory | The choice is written on the sample and on its `ClientProduct.regulationId`; journal `SAMPLE_REGULATION_SET` | validation route |
+| Report | `Report.regulation` = the chosen text, frozen at approval; a sample without choice takes the proposal | `createReportFor` |
 

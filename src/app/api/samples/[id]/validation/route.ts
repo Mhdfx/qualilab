@@ -13,6 +13,7 @@ import {
   sendContaminationAlerts,
 } from "@/lib/report-dispatch";
 import { getLabSettings } from "@/lib/lab-settings";
+import { needsRegulation } from "@/lib/regulation";
 
 /**
  * Quality validation — the two approvals, and the rejection.
@@ -23,6 +24,11 @@ import { getLabSettings } from "@/lib/lab-settings";
  *                       the status to VALIDE.
  * `action: "reject"`    Either desk sends it back to the technician with a
  *                       mandatory reason (`RESULTATS_SAISIS → EN_ANALYSE`).
+ *
+ * « Réglementation en vigueur » (RETOUR-LABO-30-09.md, slice I): validate
+ * and approve accept `regulationId`. A sample judged against criteria cannot
+ * be validated without one; the choice is remembered on the client's
+ * product, so it is proposed next time.
  */
 export async function POST(
   request: Request,
@@ -41,6 +47,10 @@ export async function POST(
       status: true,
       validatedById: true,
       approvedById: true,
+      productTypeId: true,
+      productId: true,
+      regulationId: true,
+      regulation: { select: { title: true } },
     },
   });
 
@@ -58,12 +68,42 @@ export async function POST(
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
 
-  const { action, reason } = (body ?? {}) as {
+  const { action, reason, regulationId: rawRegulation } = (body ?? {}) as {
     action?: unknown;
     reason?: unknown;
+    regulationId?: unknown;
   };
   const motif = typeof reason === "string" ? reason.trim() : "";
   const now = new Date();
+
+  // The regulation of this sample: the one sent, else the one already chosen.
+  let regulation: { id: string; title: string } | null =
+    sample.regulationId && sample.regulation ? { id: sample.regulationId, title: sample.regulation.title } : null;
+  if (action === "validate" || action === "approve") {
+    if (typeof rawRegulation === "string" && rawRegulation) {
+      const found = await prisma.regulation.findFirst({ where: { id: rawRegulation, active: true }, select: { id: true, title: true } });
+      if (!found) return NextResponse.json({ error: "Réglementation inconnue ou archivée." }, { status: 400 });
+      regulation = found;
+    }
+    if (needsRegulation(sample) && !regulation) {
+      return NextResponse.json({ error: "Choisissez la réglementation en vigueur pour cet échantillon." }, { status: 400 });
+    }
+  }
+  const regulationChanged = (regulation?.id ?? null) !== sample.regulationId;
+  // Recorded on the sample and remembered for the client's product.
+  const recordRegulation = async () => {
+    if (!regulation || !regulationChanged) return;
+    if (sample.productId) {
+      await prisma.clientProduct.update({ where: { id: sample.productId }, data: { regulationId: regulation.id } });
+    }
+    await logAudit({
+      actorId: session.id,
+      action: "SAMPLE_REGULATION_SET",
+      entity: "Sample",
+      entityId: sample.id,
+      metadata: { code: sample.code, before: sample.regulation?.title ?? null, after: regulation.title },
+    });
+  };
 
   if (action === "validate") {
     const check = canValidateTechnically(sample, session.role);
@@ -76,7 +116,7 @@ export async function POST(
       updated = await prisma.sample.update({
         // Guard against two validateurs signing the same sample at once.
         where: { id: sample.id, validatedById: null },
-        data: { validatedById: session.id, validatedAt: now },
+        data: { validatedById: session.id, validatedAt: now, ...(regulation ? { regulationId: regulation.id } : {}) },
         select: { id: true, validatedAt: true },
       });
     } catch (error) {
@@ -94,8 +134,9 @@ export async function POST(
       action: "SAMPLE_VALIDATED_TECHNICAL",
       entity: "Sample",
       entityId: sample.id,
-      metadata: { code: sample.code, step: "1/2" },
+      metadata: { code: sample.code, step: "1/2", regulation: regulation?.title ?? null },
     });
+    await recordRegulation();
 
     // Pending client decision n°11 (LabSettings): when the lab wants the
     // contamination alerts out as soon as the technical validation lands,
@@ -130,6 +171,7 @@ export async function POST(
           approvedById: session.id,
           approvedAt: now,
           status: "VALIDE",
+          ...(regulation ? { regulationId: regulation.id } : {}),
         },
         select: { id: true, code: true, status: true, approvedAt: true },
       });
@@ -146,6 +188,7 @@ export async function POST(
     // Approval is what makes the report official, so it is created here — with
     // the names frozen as they stand today, so a report downloaded next year
     // still shows who actually signed it.
+    await recordRegulation();
     const report = await createReportFor(sample.id);
 
     // The client is served straight away: the report, then an alert if a

@@ -13,7 +13,7 @@ const DETAIL_SELECT: Prisma.ProductTypeSelect = {
   family: true,
   clientId: true,
   active: true,
-  regulation: true,
+  regulationId: true,
   client: { select: { name: true } },
   criteria: {
     select: {
@@ -51,7 +51,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { id } = await params;
   const existing = await prisma.productType.findUnique({
     where: { id },
-    select: { id: true, name: true, family: true, clientId: true, active: true, regulation: true },
+    select: { id: true, name: true, family: true, clientId: true, active: true, regulationId: true },
   });
   if (!existing) return NextResponse.json({ error: "Type de produit introuvable." }, { status: 404 });
 
@@ -70,15 +70,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   });
   if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: 400 });
 
-  // « Réglementation en vigueur » (slice C): optional, empty = the family's default.
-  let regulation = existing.regulation;
-  if (input.regulation !== undefined) {
-    if (input.regulation !== null && typeof input.regulation !== "string") {
-      return NextResponse.json({ error: "Texte de réglementation invalide." }, { status: 400 });
+  // The regulation proposed for this type's samples (slice I): null = the family's.
+  let regulationId = existing.regulationId;
+  if (input.regulationId !== undefined) {
+    if (input.regulationId === null || input.regulationId === "") {
+      regulationId = null;
+    } else {
+      const found = typeof input.regulationId === "string"
+        ? await prisma.regulation.findFirst({ where: { id: input.regulationId, active: true }, select: { id: true } })
+        : null;
+      if (!found) return NextResponse.json({ error: "Réglementation inconnue ou archivée." }, { status: 400 });
+      regulationId = found.id;
     }
-    const value = (input.regulation ?? "").trim();
-    if (value.length > 2000) return NextResponse.json({ error: "Texte de réglementation trop long (2000 caractères max)." }, { status: 400 });
-    regulation = value || null;
   }
 
   if (checked.value.clientId && checked.value.clientId !== existing.clientId) {
@@ -103,7 +106,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
   }
 
-  const updated = await prisma.productType.update({ where: { id }, data: { ...checked.value, regulation }, select: DETAIL_SELECT });
-  await logAudit({ actorId: session.id, action: "PRODUCT_TYPE_UPDATED", entity: "ProductType", entityId: id, metadata: { before: existing, after: { ...checked.value, regulation } } });
+  const updated = await prisma.productType.update({ where: { id }, data: { ...checked.value, regulationId }, select: DETAIL_SELECT });
+  await logAudit({ actorId: session.id, action: "PRODUCT_TYPE_UPDATED", entity: "ProductType", entityId: id, metadata: { before: existing, after: { ...checked.value, regulationId } } });
   return NextResponse.json(updated);
 }

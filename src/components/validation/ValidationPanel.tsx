@@ -33,6 +33,13 @@ type ValidationPanelProps = {
   /** Who signed step 1 — the same person may not sign step 2. */
   validatedById: string | null;
   userId: string;
+  /** « Réglementation en vigueur » (RETOUR-LABO-30-09.md, slice I). */
+  regulations: { id: string; title: string }[];
+  proposedRegulationId: string | null;
+  /** A sample judged against criteria cannot be validated without one. */
+  regulationRequired: boolean;
+  /** The one recorded on the sample, for the approved state. */
+  chosenRegulation: string | null;
 };
 
 /**
@@ -55,6 +62,10 @@ export function ValidationPanel({
   emailLive,
   validatedById,
   userId,
+  regulations,
+  proposedRegulationId,
+  regulationRequired,
+  chosenRegulation,
 }: ValidationPanelProps) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -62,11 +73,16 @@ export function ValidationPanel({
   const [warning, setWarning] = useState("");
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
+  const [regulationId, setRegulationId] = useState(proposedRegulationId ?? "");
 
   async function send(action: "validate" | "approve" | "reject") {
     if (busy) return;
     if (action === "reject" && !reason.trim()) {
       setError("Un motif est obligatoire pour renvoyer l'échantillon.");
+      return;
+    }
+    if (action !== "reject" && regulationRequired && !regulationId) {
+      setError("Choisissez la réglementation en vigueur pour cet échantillon.");
       return;
     }
 
@@ -77,7 +93,7 @@ export function ValidationPanel({
       const response = await fetch(`/api/samples/${sampleId}/validation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, reason: reason.trim() }),
+        body: JSON.stringify({ action, reason: reason.trim(), regulationId: regulationId || undefined }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -157,6 +173,39 @@ export function ValidationPanel({
           detail="Déclenche le rapport et l'envoi au client"
         />
       </ol>
+
+      {(canValidate || canApprove) && (
+        <div className="mt-4">
+          <label htmlFor="regulation" className="block text-sm font-medium text-slate-700">
+            Réglementation en vigueur {regulationRequired && <span className="text-rose-600">*</span>}
+          </label>
+          <select
+            id="regulation"
+            value={regulationId}
+            onChange={(e) => {
+              setRegulationId(e.target.value);
+              setError("");
+            }}
+            className="input-field mt-1.5 px-3"
+          >
+            <option value="">{regulationRequired ? "Choisir…" : "— aucune —"}</option>
+            {regulations.map((r) => (
+              <option key={r.id} value={r.id}>{r.title}</option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-slate-500">
+            {proposedRegulationId && regulationId === proposedRegulationId
+              ? "Proposée d'après les choix précédents pour ce produit ou son type — imprimée en tête du rapport."
+              : "Imprimée en tête du rapport ; proposée ensuite pour le même produit du client."}
+          </p>
+        </div>
+      )}
+
+      {!(canValidate || canApprove) && chosenRegulation && (
+        <p className="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
+          Réglementation : <b className="font-medium text-slate-800">{chosenRegulation}</b>
+        </p>
+      )}
 
       {nonConformes > 0 && state !== "APPROVED" && (
         <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">

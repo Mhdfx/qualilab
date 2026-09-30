@@ -49,13 +49,19 @@ const THRESHOLDS: { key: NumberKey; label: string; unit: string; hint: string }[
 
 const KINDS = Object.keys(LINE_KIND_LABELS) as (keyof typeof LINE_KIND_LABELS)[];
 
-export function LabSettingsForm({ initial }: { initial: LabSettings }) {
+export function LabSettingsForm({
+  initial,
+  regulations,
+}: {
+  initial: LabSettings;
+  regulations: { id: string; title: string }[];
+}) {
   const router = useRouter();
   const [switches, setSwitches] = useState<Record<SwitchKey, boolean>>({
     alertAfterTechnicalValidation: initial.alertAfterTechnicalValidation,
   });
-  const [regulationMicro, setRegulationMicro] = useState(initial.regulationMicro ?? "");
-  const [regulationChimie, setRegulationChimie] = useState(initial.regulationChimie ?? "");
+  const [regulationMicroId, setRegulationMicroId] = useState(initial.regulationMicroId ?? "");
+  const [regulationChimieId, setRegulationChimieId] = useState(initial.regulationChimieId ?? "");
   // Numbers are edited as text so a half-typed « 1, » is not rejected mid-way.
   const [numbers, setNumbers] = useState<Record<NumberKey, string>>(() =>
     Object.fromEntries(THRESHOLDS.map((t) => [t.key, String(initial[t.key]).replace(".", ",")])) as Record<NumberKey, string>
@@ -77,7 +83,7 @@ export function LabSettingsForm({ initial }: { initial: LabSettings }) {
       const response = await fetch("/api/admin/lab-settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...switches, ...numbers, temperatureRequiredKinds: requiredKinds, regulationMicro, regulationChimie }),
+        body: JSON.stringify({ ...switches, ...numbers, temperatureRequiredKinds: requiredKinds, regulationMicroId, regulationChimieId }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -141,41 +147,29 @@ export function LabSettingsForm({ initial }: { initial: LabSettings }) {
       <Card className="p-5">
         <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
           <Scale className="h-4 w-4 text-brand" aria-hidden="true" />
-          Réglementation en vigueur (rapport)
+          Réglementation proposée par famille
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          Le texte imprimé en tête du tableau des critères de chaque rapport. Un type de produit peut
-          avoir le sien (Critères → type de produit) ; sinon, celui de sa famille ci-dessous s&apos;applique.
-          Vide = un tiret dans le rapport.
+          Proposée au validateur technique quand ni le produit du client ni son type n&apos;en ont déjà une ;
+          il la confirme ou la change pour chaque échantillon. La liste se gère dans « Réglementations ».
         </p>
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label htmlFor="regulationMicro" className="block text-sm font-medium text-slate-700">
-              Microbiologie
-            </label>
-            <textarea
-              id="regulationMicro"
-              value={regulationMicro}
-              onChange={(e) => setRegulationMicro(e.target.value)}
-              rows={3}
-              maxLength={2000}
-              placeholder="Ex. : critères microbiologiques applicables aux denrées alimentaires"
-              className="input-field mt-1.5 resize-y px-3 py-2"
-            />
-          </div>
-          <div>
-            <label htmlFor="regulationChimie" className="block text-sm font-medium text-slate-700">
-              Physico-chimie
-            </label>
-            <textarea
-              id="regulationChimie"
-              value={regulationChimie}
-              onChange={(e) => setRegulationChimie(e.target.value)}
-              rows={3}
-              maxLength={2000}
-              className="input-field mt-1.5 resize-y px-3 py-2"
-            />
-          </div>
+          {(
+            [
+              { id: "regulationMicroId", label: "Microbiologie", value: regulationMicroId, set: setRegulationMicroId },
+              { id: "regulationChimieId", label: "Physico-chimie", value: regulationChimieId, set: setRegulationChimieId },
+            ] as const
+          ).map((item) => (
+            <div key={item.id}>
+              <label htmlFor={item.id} className="block text-sm font-medium text-slate-700">{item.label}</label>
+              <select id={item.id} value={item.value} onChange={(e) => item.set(e.target.value)} className="input-field mt-1.5 px-3">
+                <option value="">— aucune —</option>
+                {regulations.map((r) => (
+                  <option key={r.id} value={r.id}>{r.title}</option>
+                ))}
+              </select>
+            </div>
+          ))}
         </div>
       </Card>
 

@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getLabSettings } from "@/lib/lab-settings";
+import { needsRegulation, proposeRegulation } from "@/lib/regulation";
 import { labReference } from "@/lib/sample-select";
 import { sampleVerdict } from "@/lib/interpretation";
 import { repetitionLabel } from "@/lib/series";
@@ -58,7 +60,11 @@ export default async function ValidationDetailPage({
       unitCount: true,
       clientId: true,
       productTypeId: true,
-      productType: { select: { name: true } },
+      productType: { select: { name: true, regulationId: true } },
+      regulationId: true,
+      regulation: { select: { title: true } },
+      product: { select: { regulationId: true } },
+      nature: { select: { family: true } },
       parameters: { select: { parameterId: true } },
       conformity: true,
       conformityNote: true,
@@ -96,6 +102,23 @@ export default async function ValidationDetailPage({
   if (!sample) notFound();
 
   const state = approvalState(sample);
+
+  // « Réglementation en vigueur » (slice I): proposed from what is known,
+  // confirmed or changed by the validator.
+  const [regulations, settings] = await Promise.all([
+    prisma.regulation.findMany({ where: { active: true }, select: { id: true, title: true }, orderBy: [{ sortOrder: "asc" }, { title: "asc" }] }),
+    getLabSettings(),
+  ]);
+  const proposedRegulationId = proposeRegulation(
+    {
+      sample: sample.regulationId,
+      clientProduct: sample.product?.regulationId ?? null,
+      productType: sample.productType?.regulationId ?? null,
+      family: sample.nature.family,
+      settings,
+    },
+    new Set(regulations.map((r) => r.id))
+  );
   const nonConformes = sample.results.filter((r) => r.conform === false).length;
   // Only a sensitive germ over its limit raises a contamination alert.
   const alertables = sample.results.filter(
@@ -318,6 +341,10 @@ export default async function ValidationDetailPage({
           emailLive={!!process.env.RESEND_API_KEY}
           validatedById={sample.validatedById}
           userId={session.id}
+          regulations={regulations}
+          proposedRegulationId={proposedRegulationId}
+          regulationRequired={needsRegulation(sample)}
+          chosenRegulation={sample.regulation?.title ?? null}
         />
       </div>
     </div>

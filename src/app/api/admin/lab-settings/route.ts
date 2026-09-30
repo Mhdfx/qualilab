@@ -17,8 +17,7 @@ export async function GET() {
 
 // blockNonConformAtReception is retired (29/09): no longer editable.
 const SWITCHES = ["alertAfterTechnicalValidation"] as const;
-const TEXTS = ["regulationMicro", "regulationChimie"] as const;
-const MAX_REGULATION = 2000;
+const REGULATIONS = ["regulationMicroId", "regulationChimieId"] as const;
 
 /** Numeric thresholds with their plausible range and unit for the message. */
 const NUMBERS: { key: keyof LabSettings; label: string; min: number; max: number; integer: boolean }[] = [
@@ -86,17 +85,19 @@ export async function PUT(request: Request) {
     data.temperatureRequiredKinds = [...new Set(kinds)].join(",");
   }
 
-  for (const field of TEXTS) {
+  // The family defaults point into the regulation catalogue (slice I).
+  for (const field of REGULATIONS) {
     const raw = input[field];
     if (raw === undefined) continue;
-    if (raw !== null && typeof raw !== "string") {
-      return NextResponse.json({ error: "Texte de réglementation invalide." }, { status: 400 });
+    if (raw === null || raw === "") {
+      data[field] = null;
+      continue;
     }
-    const value = (raw ?? "").trim();
-    if (value.length > MAX_REGULATION) {
-      return NextResponse.json({ error: `Texte de réglementation trop long (${MAX_REGULATION} caractères max).` }, { status: 400 });
-    }
-    data[field] = value || null;
+    const found = typeof raw === "string"
+      ? await prisma.regulation.findFirst({ where: { id: raw, active: true }, select: { id: true } })
+      : null;
+    if (!found) return NextResponse.json({ error: "Réglementation inconnue ou archivée." }, { status: 400 });
+    data[field] = found.id;
   }
 
   const saved = await prisma.labSettings.upsert({

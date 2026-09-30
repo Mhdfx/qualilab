@@ -16,25 +16,25 @@ export type LabSettings = ReceptionThresholds & {
   /** Alerts leave at technical validation (true, the lab's answer of 29/09)
    *  or at admin approval (false). */
   alertAfterTechnicalValidation: boolean;
-  /** The report's « Réglementation en vigueur » per family, when the
-   *  product type carries none (RETOUR-LABO-29-09.md, slice C). */
-  regulationMicro: string | null;
-  regulationChimie: string | null;
+  /** The regulation proposed per family when the product type has none
+   *  (RETOUR-LABO-30-09.md, slice I). */
+  regulationMicroId: string | null;
+  regulationChimieId: string | null;
 };
 
 export const LAB_SETTINGS_DEFAULTS: LabSettings = {
   ...DEFAULT_THRESHOLDS,
   blockNonConformAtReception: false,
   alertAfterTechnicalValidation: true,
-  regulationMicro: null,
-  regulationChimie: null,
+  regulationMicroId: null,
+  regulationChimieId: null,
 };
 
 export const LAB_SETTINGS_SELECT = {
   blockNonConformAtReception: true,
   alertAfterTechnicalValidation: true,
-  regulationMicro: true,
-  regulationChimie: true,
+  regulationMicroId: true,
+  regulationChimieId: true,
   minFoodMicroG: true,
   minFoodChemG: true,
   minWaterMicroL: true,

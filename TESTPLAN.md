@@ -716,7 +716,7 @@ Ticked when observed in the browser on the dev server (`pre1`, `recep1`,
 - [x] Rapport de production relu à l'image (croix sous « Satisfaisant », R1 … R5, m / M avec n et c, « Non détecté »).
 - [x] `/recherche?etat=annulees` en production : la ligne détruite 20/26, « Annulé ».
 
-## Checkpoint Q — Réponses du 30/09 (spec `RETOUR-LABO-30-09.md`) — Q-H vérifié le 01/10
+## Checkpoint Q — Réponses du 30/09 (spec `RETOUR-LABO-30-09.md`) — Q-H et Q-I vérifiés le 01/10
 
 Ticked only when observed in the browser at 1440×900, on the dev server and
 then in production.
@@ -728,9 +728,9 @@ then in production.
 - [x] R1 … Rn : étiquettes (PDF de 3 pages, « R44 » … « R60 » sans débordement, code-barres « 9135/26-R60 »), paillasse (60 champs R1 … R60, aucune lettre), réception « 60 unités (R1–R60) ».
 
 ### Q-I — Réglementation par échantillon
-- [ ] `/admin/reglementations` : créer, modifier, archiver ; quasi-doublon signalé.
-- [ ] À la validation technique, la réglementation est obligatoire pour un échantillon avec critères ; proposée d'après le dernier choix pour le même produit du client, puis le type.
-- [ ] Le rapport imprime la réglementation choisie ; la modifier ensuite ne change pas ce rapport.
+- [x] `/admin/reglementations` : liste (en vigueur / toutes), création, modification, archivage ; « …2073/2006 » près de « …2073/2005 » ⇒ quasi-doublon signalé, confirmation demandée.
+- [x] Validation technique refusée sans réglementation (« Choisissez la réglementation en vigueur… »), réglementation inconnue ou archivée refusée ; le second échantillon du même produit du client arrive avec la réglementation déjà proposée, validé depuis l'écran (dev série 30/26).
+- [x] Le rapport imprime le texte choisi ; texte modifié ensuite ⇒ rapport re-téléchargé inchangé.
 
 ### Q-J — Catalogue de l'ancien logiciel
 - [ ] Import analysé puis confirmé : 634 types (223 actifs), critères, 176 réglementations ; paramètres non reconnus listés.

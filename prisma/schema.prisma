@@ -372,6 +372,10 @@ model Sample {
   /// Chantier 2 — the product type whose criteria interpret the results.
   productTypeId        String?
   productType          ProductType?   @relation(fields: [productTypeId], references: [id], onDelete: SetNull)
+  /// The regulation the technical validator chose for this sample
+  /// (RETOUR-LABO-30-09.md, slice I); printed on the report.
+  regulationId         String?
+  regulation           Regulation?    @relation(fields: [regulationId], references: [id], onDelete: SetNull)
   cancelledAt          DateTime?
   cancelledById        String?
   cancelledBy          User?          @relation("SampleCancelledBy", fields: [cancelledById], references: [id])
@@ -697,6 +701,9 @@ model ClientProduct {
   active          Boolean  @default(true)
   usageCount      Int      @default(0)
   legacyId        Int?
+  /// The last regulation chosen for this client's product: proposed next time.
+  regulationId    String?
+  regulation      Regulation? @relation(fields: [regulationId], references: [id], onDelete: SetNull)
   samples         Sample[]
 
   @@unique([clientId, normalizedLabel])
@@ -732,9 +739,11 @@ model ProductType {
   client         Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
   active         Boolean     @default(true)
   legacyId       Int?        @unique
-  /// « Réglementation en vigueur » printed on the report; null = the family's
-  /// default of LabSettings.
+  /// Slice C's free text, superseded by `regulationId` (slice I); kept, unused.
   regulation     String?     @db.Text
+  /// The regulation proposed for this type's samples (slice I).
+  regulationId   String?
+  defaultRegulation Regulation? @relation(fields: [regulationId], references: [id], onDelete: SetNull)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   criteria       Criterion[]
@@ -896,9 +905,12 @@ model LabSettings {
   /// validation (true, the laboratory's answer of 29/09) instead of after the
   /// admin approval (false).
   alertAfterTechnicalValidation Boolean @default(true)
-  /// The report's « Réglementation en vigueur » when the product type has none.
+  /// Slice C's free texts, superseded by the two ids below (slice I); kept, unused.
   regulationMicro               String? @db.Text
   regulationChimie              String? @db.Text
+  /// The regulation proposed per family when the product type has none.
+  regulationMicroId             String?
+  regulationChimieId            String?
 
   // ---- Phase 9 · acceptance rules at reception (bon de réception PG05/EN04)
   /// Minimum weight of a food sample for microbiology / for chemistry (g).
@@ -1114,3 +1126,27 @@ model EilCampaign {
 
   @@index([status, startDate])
 }
+
+/// « Réglementation en vigueur » — the texts the technical validator picks
+/// from, per sample (RETOUR-LABO-30-09.md, slice I). Frozen as text on the
+/// report, so editing or archiving one never changes an issued report.
+model Regulation {
+  id              String          @id @default(cuid())
+  /// Short name for the picker: « Arrêté conjoint 624-04 ».
+  title           String
+  normalizedTitle String
+  /// Printed in the first cell of the report's verdict table.
+  text            String          @db.Text
+  active          Boolean         @default(true)
+  sortOrder       Int             @default(0)
+  /// GLF_CRITERES id in the old software (slice J import).
+  legacyId        Int?            @unique
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  samples         Sample[]
+  productTypes    ProductType[]
+  clientProducts  ClientProduct[]
+
+  @@index([normalizedTitle])
+}
+

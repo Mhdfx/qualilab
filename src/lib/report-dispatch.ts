@@ -4,6 +4,7 @@ import { renderPdf } from "./pdf";
 import { buildConclusion, buildReportHtml, REPORT_PDF_MARGIN, type ReportData } from "./report-html";
 import { INTERPRETATION_LABELS, indicativeVerdict, legacyFailures, nothingJudged, sampleVerdict, storedPlan, unitStoredDisplay } from "./interpretation";
 import { getLabSettings } from "./lab-settings";
+import { proposeRegulation } from "./regulation";
 import { sendEmail, recipientsFor } from "./email";
 import { reportEmail, alertEmail, type AlertRow } from "./emails/templates";
 import { getCompany } from "./company-server";
@@ -120,7 +121,9 @@ export async function createReportFor(sampleId: string) {
       technician: { select: { name: true } },
       validatedBy: { select: { name: true } },
       nature: { select: { family: true } },
-      productType: { select: { regulation: true } },
+      regulationId: true,
+      product: { select: { regulationId: true } },
+      productType: { select: { regulationId: true } },
       results: {
         select: { conform: true, interpretation: true, informalInterpretation: true, parameter: { select: { name: true } } },
       },
@@ -155,12 +158,23 @@ export async function createReportFor(sampleId: string) {
         ? NO_CRITERION
         : historical;
 
-  // « Réglementation en vigueur »: the product type's own text, else its
-  // family's default — frozen here so a later edit never alters this report.
+  // « Réglementation en vigueur »: the one the technical validator chose for
+  // this sample (slice I); a sample validated without one (no criteria, or
+  // before slice I) takes what the screen would have proposed. Frozen here
+  // as text, so a later edit of the catalogue never alters this report.
   const settings = await getLabSettings();
-  const regulation =
-    sample.productType?.regulation ??
-    (sample.nature.family === "CHIMIE" ? settings.regulationChimie : settings.regulationMicro);
+  const activeRegulations = await prisma.regulation.findMany({ where: { active: true }, select: { id: true, text: true } });
+  const regulationId = proposeRegulation(
+    {
+      sample: sample.regulationId,
+      clientProduct: sample.product?.regulationId ?? null,
+      productType: sample.productType?.regulationId ?? null,
+      family: sample.nature.family,
+      settings,
+    },
+    new Set(activeRegulations.map((r) => r.id))
+  );
+  const regulation = activeRegulations.find((r) => r.id === regulationId)?.text ?? null;
 
   try {
     return await retryOnDuplicate(async () =>

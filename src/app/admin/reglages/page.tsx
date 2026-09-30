@@ -18,7 +18,14 @@ export default async function ReglagesPage() {
         subtitle="Les décisions de fonctionnement en attente du laboratoire — les deux comportements existent, le réglage choisit."
       />
       <div className="max-w-3xl space-y-5">
-        <LabSettingsForm initial={await getLabSettings()} />
+        <LabSettingsForm
+          initial={await getLabSettings()}
+          regulations={await prisma.regulation.findMany({
+            where: { active: true },
+            select: { id: true, title: true },
+            orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
+          })}
+        />
         <ConclusionScaleForm initial={await prisma.conclusionScale.findMany()} />
       </div>
     </div>
