@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getLabSettings } from "@/lib/lab-settings";
 import { validateReception, type ReceptionCandidate } from "@/lib/reception-input";
 import { assignControlCode } from "@/lib/sample-code";
+import { notifyDestroyed } from "@/lib/destruction-notice";
 
 /**
  * Reception of a série in one go — WORKFLOW.md rule 4.
@@ -246,9 +247,20 @@ export async function POST(
       }),
     ]);
 
+    // The client is told about the destroyed lines (Q35) — never at the
+    // cost of the reception itself.
+    const destruction = await notifyDestroyed(
+      input.lines.filter((line) => line.destroy).map((line) => line.sampleId),
+      session.id
+    ).catch((error) => {
+      console.error("[reception] destruction notice failed", { serieId: serie.id, error });
+      return null;
+    });
+
     return NextResponse.json({
       serie: { id: serie.id, serialNumber: serie.serialNumber, receivedAt },
       lines: rows,
+      destruction,
     });
   } catch (error) {
     const code = (error as { code?: string }).code;

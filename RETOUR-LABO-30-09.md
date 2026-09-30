@@ -1,6 +1,10 @@
 # RETOUR-LABO-30-09.md — the answers of 30/09 (Q31–Q37) and the work they create
 
-> **Status (2026-09-30):** planned. The previous batch (`RETOUR-LABO-29-09.md`,
+> **Status (2026-10-01):** **slice H done** — built, tested, verified in the
+> browser on dev and in production (TESTPLAN Q-H). **Next: slice I.**
+> Slices I → K planned.
+>
+> The previous batch (`RETOUR-LABO-29-09.md`,
 > slices A → F) is live in production. The laboratory then answered the seven
 > clarification questions; this file turns the answers into four slices,
 > **H → K**, in the order they must be built. Each slice is deployed and
@@ -69,16 +73,16 @@ Q38; J runs on the defaults of §4.
   (`createSerie` via `POST /api/series`). One e-mail per série listing its
   destroyed lines. No recipient ⇒ the reception still succeeds, the audit
   says `notified: false`.
-- Audited in the existing `SAMPLE_CANCELLED` metadata (`notified`, `to`).
-- Journal label for the new e-mail type.
+- Audited as its own journal entry `DESTRUCTION_NOTIFIED` (série, lines,
+  N° de contrôle, recipients, status) — `src/lib/destruction-notice.ts`.
 
 ### H4 — R1 … Rn everywhere (Q36)
 - Replace `unitLetter()` by `repetitionLabel()` in `src/lib/labels-html.ts`
   (one label per unit: « 9131/26 R3 »), `ResultEntryForm` (« R1 » instead of
   « R1 · A »), `SerieReceptionForm.unitsLabel` (« 5 unités (R1–R5) »),
   `DepositForm`, and any text still saying « A…E ».
-- Keep `unitLetter()` only if something still needs it; otherwise delete it
-  and its tests (no dead code).
+- `unitLetter()` deleted (nothing needs it); `repetitionRange()` added
+  (« R1–R5 »). The label barcode now reads « 9135/26-R3 ».
 - Label layout: « R12 » is wider than « L » — check the label PDF at 60
   units renders without overflow.
 - The bench sheet PDF prints no repetitions today; leave it (question for the
@@ -205,3 +209,20 @@ import changes nothing.
 Build **H → I → J → K**. Every slice: tests, lint, build, browser at
 1440×900 on dev, deploy, browser on production, docs (PROGRESS, HANDOFF,
 TESTPLAN, this file's status), commit, push.
+
+---
+
+## 7. As built — slice H (2026-10-01)
+
+| Point | What the code does | Where |
+|---|---|---|
+| H1 | `singleLimit()` covers m alone, M alone and **m = M** (360 criteria, 118 of them with c ≥ 1); up to c units above ⇒ ACCEPTABLE. On the report a tolerated unit prints amber, not red | `interpretation.ts`, `report-html.ts` |
+| H2 | « Type de produit » removed from the report; no other document printed it | `report-html.ts` |
+| H3 | `EmailType.DESTRUCTION` (migration `20261001100000`); `notifyDestroyed()` after the reception of a série and after a counter deposit — one e-mail per série, to the report recipients, journal `DESTRUCTION_NOTIFIED`; a failure never undoes the reception | `destruction-notice.ts`, `destructionEmail()` |
+| H4 | R1 … Rn on labels (checked at 60 units: « R60 » fits), bench, reception, deposit | `labels-html.ts`, `series.ts` |
+
+Note for the recette: the default sentence of the scale for ACCEPTABLE
+speaks of « unités comprises entre m et M »; with a single limit the
+tolerated unit is above the limit. The laboratory can reword it in
+`/admin/reglages` → Échelle de conclusion.
+

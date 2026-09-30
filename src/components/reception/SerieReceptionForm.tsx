@@ -38,7 +38,7 @@ import {
   formatDecimal,
 } from "@/lib/labels";
 import { evaluateReception, proposedConformity, type ReceptionThresholds } from "@/lib/reception-rules";
-import { unitLetter } from "@/lib/series";
+import { repetitionRange } from "@/lib/series";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -215,7 +215,7 @@ function verbSampleOf(line: ReceptionLineData, clientId: string, status: SampleS
 
 function unitsLabel(unitCount: number) {
   if (unitCount <= 1) return "1 unité";
-  return `${unitCount} unités (${unitLetter(1)}–${unitLetter(unitCount)})`;
+  return `${unitCount} unités (${repetitionRange(unitCount)})`;
 }
 
 export function SerieReceptionForm({

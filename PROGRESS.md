@@ -8,15 +8,13 @@
 
 ## ▶ NEXT ACTION
 
-**SLICE H of `RETOUR-LABO-30-09.md`** — the laboratory answered Q31–Q37 on
-30/09; the plan is four slices **H → K** (spec §2–§6, PLAN.md Phase 9).
-Start with **H** (≈ 1 day, no dependency): H1 tolerance c on a single limit
-⇒ « Acceptable »; H2 the product type never prints on the report; H3 an
-e-mail to the client when a line is destroyed at reception; H4 R1 … Rn
-everywhere, labels included. Then **I** (regulation chosen per sample by the
-technical validator), **J** (the old software's 634 types, criteria and
-regulations — needs Docker running the Firebird base), **K** (recette).
-Open with the lab: Q38, Q39 (to send), Q30.
+**SLICE I of `RETOUR-LABO-30-09.md`** — the regulation chosen per sample by
+the technical validator (spec §3): `Regulation` catalogue +
+`/admin/reglementations`, `ProductType` / `ClientProduct` / `Sample`
+`regulationId`, required choice on the validation screen with a proposal,
+frozen on the report. Slice H is done (2026-10-01, TESTPLAN Q-H). Then J
+(needs Docker running the Firebird base) and K (recette). Open with the lab:
+Q38, Q39 (to send), Q30.
 
 ## ▶ PREVIOUS ACTION (retour du 29/09)
 
@@ -267,6 +265,11 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-10-01 — slice H (RETOUR-LABO-30-09.md)
+- H1 single limit (m alone, M alone, m = M) tolerates c units above → « Acceptable » (118 real criteria concerned); tolerated unit amber on the report.
+- H2 product type removed from the report. H3 destruction e-mail to the client (visit reception and counter deposit), journal `DESTRUCTION_NOTIFIED`, migration `20261001100000_destruction_email`. H4 R1 … Rn everywhere, `unitLetter` deleted.
+- 288 tests, lint, build; API circuit 9/9 on dev; labels, report, e-mail and screens checked; deployed and replayed on production.
 
 ### 2026-09-30 — answers Q31–Q37 analysed, plan H → K
 - The lab's Word reply to the clarification PDF read and mapped: Q31 settled (single-limit tolerance → « Acceptable »), Q32 regulation chosen per sample by the validator, Q33 keep the old 634 types, Q34 types never printed, Q35 client informed, Q36 R1 … Rn everywhere, Q37 confirmed.

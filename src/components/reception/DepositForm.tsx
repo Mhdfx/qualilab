@@ -23,7 +23,7 @@ import {
   formatDateTime,
 } from "@/lib/labels";
 import { evaluateReception, proposedConformity, type ReceptionThresholds } from "@/lib/reception-rules";
-import { unitLetter } from "@/lib/series";
+import { repetitionRange } from "@/lib/series";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StepIndicator } from "@/components/ui/StepIndicator";
@@ -462,7 +462,7 @@ export function DepositForm({
                     </td>
                     <td className="py-2.5 pr-3 font-mono text-base font-bold text-slate-900">{s.controlCode ?? "—"}</td>
                     <td className="py-2.5 pr-3 text-slate-600">
-                      {s.unitCount > 1 ? `${s.unitCount} (${unitLetter(1)}–${unitLetter(s.unitCount)})` : "1"}
+                      {s.unitCount > 1 ? `${s.unitCount} (${repetitionRange(s.unitCount)})` : "1"}
                     </td>
                     <td className="py-2.5 pr-3">
                       {s.conformity === false ? (

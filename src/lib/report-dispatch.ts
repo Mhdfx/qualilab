@@ -42,7 +42,6 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
       user: { select: { name: true } },
       approvedBy: { select: { name: true } },
       client: { select: { name: true, address: true, ice: true } },
-      productType: { select: { name: true } },
       unitCount: true,
       report: true,
       results: {
@@ -83,7 +82,6 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
     conclusion: sample.report.conclusion ?? "",
     interpretation: sample.report.interpretation,
     regulation: sample.report.regulation,
-    productType: sample.productType?.name ?? null,
     unitCount: sample.unitCount,
     results: sample.results.map((result) => ({
       parameter: result.parameter.name,

@@ -75,6 +75,19 @@ export function unitDisplay(reading: UnitReading): string {
   return reading.raw;
 }
 
+/**
+ * The one limit of a two-class plan: m alone, M alone (m « non spécifiée »),
+ * or m = M — a plan whose m and M coincide has no « between » zone. Null
+ * for a three-class plan (m < M) or an absence test.
+ */
+export function singleLimit(plan: Plan): number | null {
+  if (plan.mKind === "ABSENCE") return null;
+  if (plan.mKind === "UNSPECIFIED") return plan.bigM;
+  if (plan.m !== null && plan.bigM === null) return plan.m;
+  if (plan.m !== null && plan.bigM !== null && plan.m === plan.bigM) return plan.m;
+  return null;
+}
+
 export function interpret(plan: Plan, readings: UnitReading[]): Verdict {
   const n = Math.max(1, plan.n);
   const usable = readings.filter((r) => r.kind !== "empty" && r.kind !== "unreadable");
@@ -99,13 +112,27 @@ export function interpret(plan: Plan, readings: UnitReading[]): Verdict {
 
   const values = units.map((u) => (u.detected === true ? Number.POSITIVE_INFINITY : u.value ?? 0));
 
-  // Single limit: m alone, or M alone when m is « non spécifiée ».
-  const single = plan.mKind === "UNSPECIFIED" ? plan.bigM : plan.bigM === null ? plan.m : null;
-  if (single !== null && single !== undefined) {
+  // Single limit: m alone, M alone when m is « non spécifiée », or m = M.
+  // c counts the units tolerated above it, shown « Acceptable » (answer of
+  // the laboratory to Q31, RETOUR-LABO-30-09.md §2 H1).
+  const single = singleLimit(plan);
+  if (single !== null) {
     const above = values.filter((v) => v > single).length;
-    return above > 0
-      ? { verdict: "NON_SATISFAISANT", countAboveM: above, countBetween: 0, missing: 0, reason: `${above} unité${above > 1 ? "s" : ""} au-dessus de la limite ${fmt(single)}.` }
-      : { verdict: "SATISFAISANT", countAboveM: 0, countBetween: 0, missing: 0, reason: `Toutes les unités ≤ ${fmt(single)}.` };
+    const tolerance = plan.c ?? 0;
+    const s = above > 1 ? "s" : "";
+    if (above === 0) {
+      return { verdict: "SATISFAISANT", countAboveM: 0, countBetween: 0, missing: 0, reason: `Toutes les unités ≤ ${fmt(single)}.` };
+    }
+    if (above <= tolerance) {
+      return { verdict: "ACCEPTABLE", countAboveM: above, countBetween: 0, missing: 0, reason: `${above} unité${s} au-dessus de la limite ${fmt(single)}, toléré${s} (c = ${tolerance}).` };
+    }
+    return {
+      verdict: "NON_SATISFAISANT",
+      countAboveM: above,
+      countBetween: 0,
+      missing: 0,
+      reason: `${above} unité${s} au-dessus de la limite ${fmt(single)}${tolerance > 0 ? ` pour une tolérance c = ${tolerance}` : ""}.`,
+    };
   }
 
   if (plan.m === null || plan.bigM === null) {
@@ -240,8 +267,8 @@ export function informalVerdict(plan: Plan, readings: UnitReading[]): Verdict {
   }
 
   const values = units.map((u) => (u.detected === true ? Number.POSITIVE_INFINITY : u.value ?? 0));
-  const single = plan.mKind === "UNSPECIFIED" ? plan.bigM : plan.bigM === null ? plan.m : null;
-  if (single !== null && single !== undefined) {
+  const single = singleLimit(plan);
+  if (single !== null) {
     const above = values.filter((v) => v > single).length;
     return above > 0
       ? { ...none, verdict: "NON_SATISFAISANT", countAboveM: above, reason: `${on} : au-dessus de la limite ${fmt(single)}.` }

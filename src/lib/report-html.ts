@@ -2,7 +2,7 @@ import { COMPANY, type CompanyInfo } from "./company";
 import { companyBrandHtml } from "./brand-html";
 import { SAMPLE_TYPE_LABELS, formatDateTime, formatDate } from "./labels";
 import type { Interpretation, SampleType } from "@/generated/prisma/client";
-import { fmt, type Plan } from "./interpretation";
+import { fmt, singleLimit, type Plan } from "./interpretation";
 import { repetitionLabel } from "./series";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
 
@@ -49,7 +49,6 @@ export type ReportData = {
   interpretation: Interpretation | null;
   /** « Réglementation en vigueur », frozen at approval. */
   regulation: string | null;
-  productType: string | null;
   unitCount: number;
   results: {
     parameter: string;
@@ -108,14 +107,15 @@ function unitText(row: Row, unit: ReportUnit): string {
   return unit.display;
 }
 
-/** Colour of one repetition against the plan: over M red, between m and M amber. */
+/** Colour of one repetition against the plan: over M red, between m and M
+ *  amber — and over a single limit, amber while c tolerates it (Q31). */
 function unitClass(row: Row, unit: ReportUnit): string {
   const plan = row.criterion;
   if (!plan) return "";
   if (unit.detected === true) return "no";
   if (plan.mKind === "ABSENCE" || unit.value === null) return "";
-  const single = plan.mKind === "UNSPECIFIED" ? plan.bigM : plan.bigM === null ? plan.m : null;
-  if (single !== null && single !== undefined) return unit.value > single ? "no" : "";
+  const single = singleLimit(plan);
+  if (single !== null) return unit.value > single ? (row.interpretation === "ACCEPTABLE" ? "mid" : "no") : "";
   if (plan.bigM !== null && unit.value > plan.bigM) return "no";
   if (plan.m !== null && unit.value > plan.m) return "mid";
   return "";
@@ -350,7 +350,6 @@ export function buildReportHtml(
     <div class="row"><span class="k">Prélevé le</span><span class="v">${formatDateTime(data.sampledAt)}</span></div>
     <div class="row"><span class="k">Reçu le</span><span class="v">${data.receivedAt ? formatDateTime(data.receivedAt) : "—"}</span></div>
     <div class="row"><span class="k">Préleveur</span><span class="v">${show(data.preleveur)}</span></div>
-    ${data.productType ? `<div class="row"><span class="k">Type de produit</span><span class="v">${escapeHtml(data.productType)}</span></div>` : ""}
     ${data.unitCount > 1 ? `<div class="row"><span class="k">Répétitions</span><span class="v">${data.unitCount} (R1 … R${data.unitCount})</span></div>` : ""}
   </div>
 </div>

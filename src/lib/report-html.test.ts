@@ -20,7 +20,6 @@ const base: ReportData = {
   conclusion: "Conclusion.",
   interpretation: "ACCEPTABLE",
   regulation: "Critères microbiologiques des denrées alimentaires",
-  productType: "Poisson",
   unitCount: 5,
   results: [
     {
@@ -71,6 +70,24 @@ const base: ReportData = {
 const count = (html: string, needle: string) => html.split(needle).length - 1;
 
 describe("buildReportHtml — the laboratory's model", () => {
+  it("colours a unit tolerated above a single limit amber, not red (Q31)", () => {
+    const html = buildReportHtml({
+      ...base,
+      results: [{
+        ...base.results[0],
+        interpretation: "ACCEPTABLE",
+        criterion: { n: 5, c: 1, mKind: "VALUE", m: 100, bigM: 100 },
+        units: [{ display: "150", value: 150, detected: null }, ...Array.from({ length: 4 }, () => ({ display: "< 10", value: 0, detected: null }))],
+      }],
+    });
+    expect(html).toContain('<td class="rep mid">150</td>');
+  });
+
+  it("never prints the product type — an internal family (Q34)", () => {
+    const html = buildReportHtml(base);
+    expect(html).not.toContain("Type de produit");
+  });
+
   it("prints the regulation and an X under the verdict", () => {
     const html = buildReportHtml(base);
     expect(html).toContain("Réglementation en vigueur");

@@ -144,9 +144,11 @@ interpret(plan: { n, c, mKind, m, M }, units: UnitValue[]) →
 
 - Fewer than `n` values → INCOMPLET (the bench is not finished).
 - ABSENCE plan → any `detected` → NON_SATISFAISANT, else SATISFAISANT.
-- m only (M null) → any value > m → NON_SATISFAISANT, else SATISFAISANT.
-- M only (mKind UNSPECIFIED) → any value > M → NON_SATISFAISANT, else
-  SATISFAISANT.
+- Single limit — m only (M null), M only (mKind UNSPECIFIED), or m = M
+  (`singleLimit()`): 0 values above → SATISFAISANT; 1…c above →
+  ACCEPTABLE; more than c → NON_SATISFAISANT (c null = 0). *Changed
+  2026-10-01 after Q31; before, any value above failed whatever c.*
+- « Non spécifié » without M → no verdict (`hasLimit()`, 29/09).
 - 3-class (m, M, c) → any value > M → NON_SATISFAISANT; more than c values in
   ]m, M] → NON_SATISFAISANT; 1…c values in ]m, M] → ACCEPTABLE; all ≤ m →
   SATISFAISANT.

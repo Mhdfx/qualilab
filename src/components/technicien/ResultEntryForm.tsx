@@ -20,7 +20,7 @@ import {
   suggestConformity,
 } from "@/lib/result-value";
 import { applyUnitFactor, hasLimit, judgeUnits, parseUnitReading, summariseReadings, type Plan, type Verdict as PlanVerdict } from "@/lib/interpretation";
-import { repetitionLabel, unitLetter } from "@/lib/series";
+import { repetitionLabel } from "@/lib/series";
 import type { ResultWorkStatus } from "@/generated/prisma/enums";
 
 export type ParameterLine = {
@@ -290,14 +290,14 @@ export function ResultEntryForm({
                       >
                         {line.units.map((unit, unitIndex) => (
                           <label key={unitIndex} className="block">
-                            {/* R1 on the report, the label's letter on the tube (Q36). */}
+                            {/* R1 … Rn: the same name on the tube, the bench and the report (Q36). */}
                             <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                              {repetitionLabel(unitIndex + 1)} <span className="font-normal text-slate-400">· {unitLetter(unitIndex + 1)}</span>
+                              {repetitionLabel(unitIndex + 1)}
                             </span>
                             <input
                               type="text"
                               inputMode="text"
-                              aria-label={`${line.name} — ${repetitionLabel(unitIndex + 1)} (unité ${unitLetter(unitIndex + 1)})`}
+                              aria-label={`${line.name} — ${repetitionLabel(unitIndex + 1)}`}
                               value={unit}
                               onChange={(e) => updateUnit(index, unitIndex, e.target.value)}
                               disabled={!canEdit}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyUnitFactor, fmt, hasLimit, indicativeVerdict, storedPlan, informalVerdict, interpret, judgeUnits, legacyFailures, parseUnitReading, pickCriterion, planLabel, sampleVerdict, summariseReadings, unitStoredDisplay, verdictToConform, worstVerdict, type Plan } from "./interpretation";
+import { applyUnitFactor, fmt, hasLimit, singleLimit, indicativeVerdict, storedPlan, informalVerdict, interpret, judgeUnits, legacyFailures, parseUnitReading, pickCriterion, planLabel, sampleVerdict, summariseReadings, unitStoredDisplay, verdictToConform, worstVerdict, type Plan } from "./interpretation";
 
 const read = (...raws: string[]) => raws.map(parseUnitReading);
 const threeClass: Plan = { n: 5, c: 2, mKind: "VALUE", m: 100, bigM: 10_000 };
@@ -62,6 +62,24 @@ describe("interpret — the other plans", () => {
     const bigMOnly: Plan = { n: 5, c: null, mKind: "UNSPECIFIED", m: null, bigM: 100 };
     expect(interpret(bigMOnly, read("100", "1", "1", "1", "1")).verdict).toBe("SATISFAISANT");
     expect(interpret(bigMOnly, read("101", "1", "1", "1", "1")).verdict).toBe("NON_SATISFAISANT");
+  });
+
+  it("a single limit tolerates c units above it, shown « Acceptable » (Q31)", () => {
+    // Their report: m = M = 1.10², c = 1.
+    const same: Plan = { n: 5, c: 1, mKind: "VALUE", m: 100, bigM: 100 };
+    expect(singleLimit(same)).toBe(100);
+    expect(interpret(same, read("10", "10", "10", "10", "10")).verdict).toBe("SATISFAISANT");
+    expect(interpret(same, read("150", "10", "10", "10", "10"))).toMatchObject({ verdict: "ACCEPTABLE", countAboveM: 1 });
+    expect(interpret(same, read("150", "2.10²", "10", "10", "10"))).toMatchObject({ verdict: "NON_SATISFAISANT", countAboveM: 2 });
+    // M alone with c = 2.
+    const bigM: Plan = { n: 5, c: 2, mKind: "UNSPECIFIED", m: null, bigM: 1000 };
+    expect(interpret(bigM, read("2000", "3000", "1", "1", "1")).verdict).toBe("ACCEPTABLE");
+    expect(interpret(bigM, read("2000", "3000", "4000", "1", "1")).verdict).toBe("NON_SATISFAISANT");
+    // m alone without c: no tolerance.
+    expect(interpret({ n: 5, c: null, mKind: "VALUE", m: 100, bigM: null }, read("101", "1", "1", "1", "1")).verdict).toBe("NON_SATISFAISANT");
+    // A three-class plan is untouched: any unit above M fails whatever c.
+    expect(singleLimit(threeClass)).toBeNull();
+    expect(interpret(threeClass, read("2.10⁴", "10", "10", "10", "10")).verdict).toBe("NON_SATISFAISANT");
   });
 
   it("m and M without c: a unit between them is not tolerated", () => {

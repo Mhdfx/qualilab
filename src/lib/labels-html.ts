@@ -2,13 +2,13 @@ import * as bwipjs from "bwip-js/node";
 import { COMPANY, type CompanyInfo } from "./company";
 import { escapeHtml } from "./html-text";
 import { formatDayShort } from "./labels";
-import { unitLetter } from "./series";
+import { repetitionLabel } from "./series";
 
 /**
  * Sample labels — one per unit, printed right after the reception of a
  * série on an A4 sheet of 3 × 8 labels (70 × 37 mm, no margins — the common
  * self-adhesive format). Each label carries the N° de contrôle and the unit
- * letter, both as text and as a Code128 barcode, so the tube is identified
+ * repetition (R1 … Rn), both as text and as a Code128 barcode, so the tube is identified
  * at the bench without retyping anything.
  */
 
@@ -40,11 +40,12 @@ function barcodeSvg(text: string) {
 export function labelUnits(lines: LabelLine[]) {
   return lines.flatMap((line) =>
     Array.from({ length: Math.max(1, line.unitCount) }, (_, index) => {
-      const letter = line.unitCount > 1 ? unitLetter(index + 1) : null;
+      // R1 … Rn, as on the report and the bench (answer to Q36).
+      const repetition = line.unitCount > 1 ? repetitionLabel(index + 1) : null;
       return {
         ...line,
-        letter,
-        barcodeText: letter ? `${line.controlCode}-${letter}` : line.controlCode,
+        repetition,
+        barcodeText: repetition ? `${line.controlCode}-${repetition}` : line.controlCode,
       };
     })
   );
@@ -70,7 +71,7 @@ export function buildLabelsHtml(
         </div>
         <div class="code">
           <span class="number">${escapeHtml(unit.controlCode)}</span>
-          ${unit.letter ? `<span class="letter">${unit.letter}</span>` : ""}
+          ${unit.repetition ? `<span class="rep">${unit.repetition}</span>` : ""}
         </div>
         <div class="barcode">${barcodeSvg(unit.barcodeText)}</div>
         <div class="designation">${escapeHtml(unit.designation)}</div>
@@ -102,7 +103,7 @@ export function buildLabelsHtml(
   .code { display: flex; align-items: baseline; gap: 2mm; margin-top: 0.5mm; }
   .number { font-family: Consolas, "DejaVu Sans Mono", monospace; font-size: 15pt; font-weight: 700;
     color: #1f3a4d; letter-spacing: .2px; }
-  .letter { font-size: 11pt; font-weight: 700; color: #fff; background: #1f3a4d; border-radius: 1mm;
+  .rep { font-size: 11pt; font-weight: 700; color: #fff; background: #1f3a4d; border-radius: 1mm;
     padding: 0 1.6mm; line-height: 5mm; }
   .barcode { margin-top: 0.8mm; height: 9mm; }
   .barcode svg { height: 9mm; width: auto; max-width: 100%; display: block; }

@@ -184,3 +184,78 @@ export function alertEmail(germe: string, rows: AlertRow[]) {
 
   return { subject, html };
 }
+
+/* ------------------------------- destruction ------------------------------- */
+
+export type DestructionLine = {
+  controlCode: string | null;
+  designation: string;
+  numeroLot: string | null;
+  lieu: string;
+  /** « Emballage ou contenant non conforme — sachet percé ». */
+  motif: string;
+};
+
+export type DestructionEmailInput = {
+  serialNumber: string;
+  sampledAt: Date;
+  receivedAt: Date | null;
+  lines: DestructionLine[];
+};
+
+/**
+ * The client is told when a line is destroyed at reception (answer of the
+ * laboratory to Q35, RETOUR-LABO-30-09.md H3) — the same header as the
+ * report e-mail, one row per destroyed line with its non-conformity.
+ */
+export function destructionEmail(input: DestructionEmailInput) {
+  const many = input.lines.length > 1;
+  const subject = `Échantillon${many ? "s" : ""} non analysé${many ? "s" : ""} — dossier ${input.serialNumber} — ${COMPANY.name}`;
+  const header: [string, string][] = [
+    ["N° dossier", input.serialNumber],
+    ["Date de prélèvement", formatDate(input.sampledAt)],
+    ["Date de réception", input.receivedAt ? formatDate(input.receivedAt) : "—"],
+  ];
+  const rows = input.lines
+    .map(
+      (line) => `
+      <tr>
+        <td style="${TD};font-weight:bold">${escape(line.controlCode ?? "—")}</td>
+        <td style="${TD}">${escape(line.designation)}</td>
+        <td style="${TD}">${escape(line.numeroLot ?? "—")}</td>
+        <td style="${TD}">${escape(line.lieu)}</td>
+        <td style="${TD};color:#8c1b31">${escape(line.motif)}</td>
+      </tr>`
+    )
+    .join("");
+
+  const html = shell(`
+    <p style="font-size:15px;margin:0 0 14px">Bonjour,</p>
+    <p style="font-size:14px;line-height:1.6;margin:0 0 14px">
+      ${many ? "Les échantillons suivants n'ont pas pu être analysés : ils ont été" : "L'échantillon suivant n'a pas pu être analysé : il a été"}
+      jugé${many ? "s" : ""} non conforme${many ? "s" : ""} à la réception et détruit${many ? "s" : ""}.
+    </p>
+    <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;margin:0 0 14px">
+      <tbody>
+        ${header.map(([k, v]) => `<tr><td style="${TH}">${k}</td><td style="${TD}">${escape(v)}</td></tr>`).join("")}
+      </tbody>
+    </table>
+    <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;margin:0 0 14px">
+      <thead>
+        <tr>
+          <th style="${TH}">N° de contrôle</th>
+          <th style="${TH}">Produit</th>
+          <th style="${TH}">N° de lot</th>
+          <th style="${TH}">Lieu de prélèvement</th>
+          <th style="${TH}">Motif</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p style="font-size:14px;line-height:1.6;margin:0">
+      Aucune analyse n'est facturée pour ${many ? "ces échantillons" : "cet échantillon"}. N'hésitez pas à nous contacter pour organiser un nouveau prélèvement.
+    </p>
+    <p style="font-size:14px;margin:14px 0 0">Sincères salutations,</p>`);
+
+  return { subject, html };
+}

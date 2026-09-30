@@ -67,7 +67,7 @@ function heaviest(): ReportData {
     conclusion: "L'échantillon est satisfaisant au regard des critères de la réglementation en vigueur.",
     interpretation: "SATISFAISANT",
     regulation: "Critères microbiologiques applicables aux denrées alimentaires (texte de démonstration).",
-    productType: "Type de démonstration", unitCount: 9, results,
+    unitCount: 9, results,
   };
 }
 

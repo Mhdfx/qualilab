@@ -716,16 +716,16 @@ Ticked when observed in the browser on the dev server (`pre1`, `recep1`,
 - [x] Rapport de production relu à l'image (croix sous « Satisfaisant », R1 … R5, m / M avec n et c, « Non détecté »).
 - [x] `/recherche?etat=annulees` en production : la ligne détruite 20/26, « Annulé ».
 
-## Checkpoint Q — Réponses du 30/09 (spec `RETOUR-LABO-30-09.md`) — à faire
+## Checkpoint Q — Réponses du 30/09 (spec `RETOUR-LABO-30-09.md`) — Q-H vérifié le 01/10
 
 Ticked only when observed in the browser at 1440×900, on the dev server and
 then in production.
 
 ### Q-H — Petits changements
-- [ ] m = M = 1.10², c = 1 : une unité au-dessus ⇒ « Acceptable », deux ⇒ « Non satisfaisant » (paillasse, validation, rapport).
-- [ ] Le rapport n'imprime plus le type de produit ; le protocole et le bon non plus.
-- [ ] Une ligne détruite à la réception (visite et dépôt) envoie au client l'e-mail de destruction (journal des e-mails, statut SIMULE tant que le DNS manque).
-- [ ] R1 … Rn sur les étiquettes (PDF relu, 60 unités sans débordement), à la paillasse, à la réception et au dépôt ; plus aucune lettre.
+- [x] Micro-organismes à 30 °C, m = M = 5.10⁴, c = 1 : une unité au-dessus ⇒ « Acceptable », deux ⇒ « Non satisfaisant » ; rapport avec la croix sous « Acceptable », l'unité tolérée en ambre (dev série 27/26 ; production, voir Session Log).
+- [x] Le rapport n'imprime plus le type de produit (texte du PDF relu) ; le protocole et le bon ne l'imprimaient pas.
+- [x] Ligne détruite à la réception d'une visite (27/26) et au dépôt (28/26) : e-mail « Échantillon non analysé — dossier … » au destinataire des rapports, statut SIMULE, entrée « Client informé d'une destruction » au journal ; rendu de l'e-mail relu à l'image.
+- [x] R1 … Rn : étiquettes (PDF de 3 pages, « R44 » … « R60 » sans débordement, code-barres « 9135/26-R60 »), paillasse (60 champs R1 … R60, aucune lettre), réception « 60 unités (R1–R60) ».
 
 ### Q-I — Réglementation par échantillon
 - [ ] `/admin/reglementations` : créer, modifier, archiver ; quasi-doublon signalé.

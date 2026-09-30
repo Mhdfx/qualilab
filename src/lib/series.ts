@@ -72,26 +72,19 @@ export function serieStatus(samples: { status: SampleStatus }[]): SerieStatus {
 export const MAX_UNITS = 999;
 
 /**
- * Unit labels printed on labels and bench sheets: A…Z for units 1…26, then
- * AA, AB…, then AAA… — the bench sheet keeps its letters whatever n is.
+ * A unit's name everywhere — report, bench, reception, labels: R1 … Rn
+ * (answers of the laboratory of 29/09, point 9, and 30/09, Q36).
  */
-export function unitLetter(index: number) {
+export function repetitionLabel(index: number) {
   if (!Number.isInteger(index) || index < 1) {
     throw new Error(`Indice d'unité hors limites : ${index}`);
   }
-  let n = index;
-  let label = "";
-  while (n > 0) {
-    const rest = (n - 1) % 26;
-    label = String.fromCharCode(65 + rest) + label;
-    n = Math.floor((n - 1) / 26);
-  }
-  return label;
+  return `R${index}`;
 }
 
-/** The repetition as the laboratory's report names it: R1 … Rn (point 9). */
-export function repetitionLabel(index: number) {
-  return `R${index}`;
+/** « R1–R5 » for a line of five units, « R1 » for one. */
+export function repetitionRange(unitCount: number) {
+  return unitCount > 1 ? `${repetitionLabel(1)}–${repetitionLabel(unitCount)}` : repetitionLabel(1);
 }
 
 /** Line reference the préleveur sees: « 2780/26 · ligne 3 ». */

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { pageParams, toPage } from "@/lib/pagination";
 import { getLabSettings } from "@/lib/lab-settings";
 import { evaluateReception } from "@/lib/reception-rules";
+import { notifyDestroyed } from "@/lib/destruction-notice";
 import { createSerie, SerieCreationError } from "@/lib/serie-create";
 import { validateSerie, type NatureRef } from "@/lib/serie-input";
 import { serieSelectFor, serializeSerie } from "@/lib/serie-select";
@@ -170,6 +171,13 @@ export async function POST(request: Request) {
 
   try {
     const created = await createSerie(checked.value, { id: session.id, role: session.role });
+    // A deposit line destroyed at the counter is told to the client (Q35).
+    if (created.kind === "DEPOT") {
+      await notifyDestroyed(
+        created.sampleIds.filter((_, index) => checked.value.lines[index]?.destroy),
+        session.id
+      ).catch((error) => console.error("[series] destruction notice failed", { serieId: created.id, error }));
+    }
     const serie = await prisma.serie.findUniqueOrThrow({
       where: { id: created.id },
       select: serieSelectFor(session.role),

@@ -22,6 +22,8 @@ enum Role {
 enum EmailType {
   RAPPORT
   ALERTE_CONTAMINATION
+  /// A line destroyed at reception, told to the client (RETOUR-LABO-30-09.md H3).
+  DESTRUCTION
 }
 
 enum ResultWorkStatus {
