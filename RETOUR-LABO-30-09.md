@@ -2,8 +2,8 @@
 
 > **Status (2026-10-01):** **slices H, I and J done** — built, tested,
 > verified on dev and in production (TESTPLAN Q-H, Q-I, Q-J). The old
-> software's catalogue is imported in production. **Left: slice K**, the
-> recette with the laboratory and the go-live steps (§10).
+> software's catalogue, the clients and the client memory are imported in
+> production. **Left: slice K**, the recette with the laboratory (§10).
 >
 > The previous batch (`RETOUR-LABO-29-09.md`,
 > slices A → F) is live in production. The laboratory then answered the seven
@@ -256,12 +256,14 @@ for the laboratory to merge (Q38).
 
 ## 10. Slice K — what is ready, what the laboratory does
 
-Ready now, in `legacy-export/` on the development machine (never in the
-repo): `clients.csv` and `memory.csv`. At go-live, in this order, in
-`/admin/import`: **Clients** (clients.csv) → **Mémoire des clients**
-(memory.csv, matches the clients by name) → then the sampler's corrector
-knows the history. The catalogue (regulations, types, criteria) is already
-imported in production.
+**Done 2026-10-01 in production:** the clients of the old software
+(`clients.csv`: 2 329 rows → **1 516 clients created**, the rest being the
+same name several times — the old base holds one row per site — or 17 rows
+whose ICE / e-mail were invalid, re-imported with that field blank) and the
+client memory (`memory.csv`: 76 193 samples → **21 878 designations and
+3 822 places for 392 clients**, none unmatched). The sampler's corrector
+knows the history from day one. The catalogue (regulations, types,
+criteria) was imported the same day.
 
 Still the laboratory's: the recette (TESTPLAN L6, M6, P, Q), Q38 (is the
 old regulation list current — 175 texts are in `/admin/reglementations`,

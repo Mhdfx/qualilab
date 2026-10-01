@@ -10,9 +10,8 @@
 
 **SLICE K of `RETOUR-LABO-30-09.md` — the recette and go-live, with the
 laboratory** (spec §5 and §10). Slices H, I and J are done and in production
-(2026-10-01, TESTPLAN Q-H, Q-I, Q-J). Ready on the dev machine:
-`legacy-export/clients.csv` and `memory.csv` to import at go-live
-(`/admin/import`: Clients, then Mémoire des clients). Owed by the lab: the
+(2026-10-01, TESTPLAN Q-H, Q-I, Q-J). The go-live data is in
+production too (1 516 clients, the client memory for 392 of them). Owed by the lab: the
 recette (L6, M6, P, Q), Q38, Q39, Q30, DNS, real accounts; then
 `scripts/disable-demo-accounts.sh`, `NEXT_PUBLIC_DEMO_MODE=false`, deletion
 of the test séries 16/26 → 23/26 on production.
@@ -266,6 +265,10 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-10-01 (later) — go-live data on production
+- `clients.csv` imported (2 329 rows → 1 516 created; one row per name, 17 rows with a bad ICE / e-mail re-imported with the field blank), `memory.csv` imported (21 878 designations, 3 822 places, 392 clients, 0 unmatched).
+- The client import now writes in slices of 200 (a 2 000-row file timed out as one transaction).
 
 ### 2026-10-01 — slice J (the old software's catalogue)
 - Docker + the restored Firebird base: `scripts/legacy/extract-legacy.py` writes regulations / types / criteria / clients / memory CSV (mixed-charset decoding).

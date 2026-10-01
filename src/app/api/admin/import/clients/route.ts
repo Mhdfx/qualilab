@@ -152,28 +152,35 @@ export async function POST(request: Request) {
     );
   }
 
-  await prisma.$transaction(
-    toCreate.map((row) =>
-      prisma.client.create({
-        data: {
-          ...row.value,
-          // The email column doubles as the first recipient address, so an
-          // imported client can receive reports without a second data entry.
-          ...(row.value.email
-            ? {
-                emails: {
-                  create: {
-                    email: row.value.email.toLowerCase(),
-                    forReports: true,
-                    forAlerts: true,
+  // Written in slices: a 2 000-client file as one transaction timed out on
+  // the server (go-live import of 2026-10-01). A slice that fails leaves the
+  // earlier ones written; re-running the file skips what exists.
+  const SLICE = 200;
+  for (let i = 0; i < toCreate.length; i += SLICE) {
+    await prisma.$transaction(
+      toCreate.slice(i, i + SLICE).map((row) =>
+        prisma.client.create({
+          data: {
+            ...row.value,
+            // The email column doubles as the first recipient address, so an
+            // imported client can receive reports without a second data entry.
+            ...(row.value.email
+              ? {
+                  emails: {
+                    create: {
+                      email: row.value.email.toLowerCase(),
+                      forReports: true,
+                      forAlerts: true,
+                    },
                   },
-                },
-              }
-            : {}),
-        },
-      })
-    )
-  );
+                }
+              : {}),
+          },
+        })
+      ),
+      { timeout: 60_000 }
+    );
+  }
 
   await logAudit({
     actorId: session.id,
