@@ -1,8 +1,9 @@
 # RETOUR-LABO-30-09.md — the answers of 30/09 (Q31–Q37) and the work they create
 
-> **Status (2026-10-01):** **slices H and I done** — built, tested, verified
-> in the browser on dev and in production (TESTPLAN Q-H, Q-I). **Next:
-> slice J** (needs Docker running the Firebird base), then K.
+> **Status (2026-10-01):** **slices H, I and J done** — built, tested,
+> verified on dev and in production (TESTPLAN Q-H, Q-I, Q-J). The old
+> software's catalogue is imported in production. **Left: slice K**, the
+> recette with the laboratory and the go-live steps (§10).
 >
 > The previous batch (`RETOUR-LABO-29-09.md`,
 > slices A → F) is live in production. The laboratory then answered the seven
@@ -235,4 +236,34 @@ tolerated unit is above the limit. The laboratory can reword it in
 | Choice | Validation screen: « Réglementation en vigueur » select; proposal = sample's own → client product's last choice → type → family (`proposeRegulation`); **required** for a sample with a product type — the API refuses validate / approve without one (400); the admin may change it until approval | `ValidationPanel`, validation route, `regulation.ts` |
 | Memory | The choice is written on the sample and on its `ClientProduct.regulationId`; journal `SAMPLE_REGULATION_SET` | validation route |
 | Report | `Report.regulation` = the chosen text, frozen at approval; a sample without choice takes the proposal | `createReportFor` |
+
+## 9. As built — slice J (2026-10-01)
+
+| Point | What the code does | Where |
+|---|---|---|
+| Extraction | `scripts/legacy/extract-legacy.py` runs isql in the Docker container of the restored base and writes `legacy-export/` (ignored by git): `regulations.csv` (176), `types.csv` (634, with the last use), `criteria.csv` (5 776, intervals flattened), `clients.csv` (2 329 active clients, one e-mail), `memory.csv` (76 198 samples since 2023). The base mixes UTF-8 and cp1252 in one column: decoded byte run by byte run | `scripts/legacy/` |
+| Parsing | `derivePlan`: TYPE_PM 1 → ABSENCE; 2 or qualitative → UNSPECIFIED (one limit at most); 3 → VALUE with m = line « satisfaisant », M = line « acceptable »; value = MAXVAL × 10^EXP_MAX; n = NBR when set, **else 1** (the units are the sample's); c = CONTROL (null when unknown — 41 three-class criteria, listed) | `src/lib/legacy-catalogue.ts` + tests |
+| Import | `/admin/import` → « Catalogue de l'ancien logiciel », analyse then commit, one transaction, idempotent (re-run writes nothing). Types matched by name to the 131 of the workbook keep the workbook's criteria and gain the legacy regulation (117 linked); the other 399 are created with their criteria, **270 inactive** (unused since 2025); duplicates by name in the old base (634 → 530) merged on the most recently used. Parameters matched through the alias matcher; unknown ones listed (890 rows, chemistry mostly), created only on request | `api/admin/import/legacy`, `ImportLegacy` |
+| Result on dev and production | 530 types (260 active), 3 020 criteria, 178 regulations, 11 norms / 16 versions added | — |
+
+Known limits: the 41 three-class criteria without c read as c = 0 until the
+admin fills c (`/admin/types-produits/[id]`); 890 criteria rows of unknown
+parameters (pH, metals, mycotoxins, water chemistry…) wait for those
+parameters to exist in the catalogue — a re-import then adds them.
+
+## 10. Slice K — what is ready, what the laboratory does
+
+Ready now, in `legacy-export/` on the development machine (never in the
+repo): `clients.csv` and `memory.csv`. At go-live, in this order, in
+`/admin/import`: **Clients** (clients.csv) → **Mémoire des clients**
+(memory.csv, matches the clients by name) → then the sampler's corrector
+knows the history. The catalogue (regulations, types, criteria) is already
+imported in production.
+
+Still the laboratory's: the recette (TESTPLAN L6, M6, P, Q), Q38 (is the
+old regulation list current — 175 texts are in `/admin/reglementations`,
+editable), Q39 confirmation of the defaults above, Q30, DNS for the e-mails,
+real user accounts (then `scripts/disable-demo-accounts.sh`,
+`NEXT_PUBLIC_DEMO_MODE=false`), and the deletion of the test séries on
+production (16/26 → 23/26 and their reports).
 

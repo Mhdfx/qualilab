@@ -8,11 +8,14 @@
 
 ## ▶ NEXT ACTION
 
-**SLICE J of `RETOUR-LABO-30-09.md`** — the old software's 634 product
-types, their criteria and its 176 regulation sources, imported from the
-Firebird base (spec §4; needs Docker Desktop running the restored base).
-Slices H and I are done (2026-10-01, TESTPLAN Q-H, Q-I). Then K (recette).
-Open with the lab: Q38, Q39 (to send), Q30.
+**SLICE K of `RETOUR-LABO-30-09.md` — the recette and go-live, with the
+laboratory** (spec §5 and §10). Slices H, I and J are done and in production
+(2026-10-01, TESTPLAN Q-H, Q-I, Q-J). Ready on the dev machine:
+`legacy-export/clients.csv` and `memory.csv` to import at go-live
+(`/admin/import`: Clients, then Mémoire des clients). Owed by the lab: the
+recette (L6, M6, P, Q), Q38, Q39, Q30, DNS, real accounts; then
+`scripts/disable-demo-accounts.sh`, `NEXT_PUBLIC_DEMO_MODE=false`, deletion
+of the test séries 16/26 → 23/26 on production.
 
 ## ▶ PREVIOUS ACTION (retour du 29/09)
 
@@ -263,6 +266,11 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-10-01 — slice J (the old software's catalogue)
+- Docker + the restored Firebird base: `scripts/legacy/extract-legacy.py` writes regulations / types / criteria / clients / memory CSV (mixed-charset decoding).
+- `legacy-catalogue.ts` (pure, tested) + `/api/admin/import/legacy` + `ImportLegacy`; imported on dev and production: 175 regulations, 399 types (270 inactive), 1 945 criteria, 117 workbook types linked to their regulation; re-run idempotent.
+- 299 tests, lint, build.
 
 ### 2026-10-01 — slice I (regulation per sample)
 - `Regulation` catalogue + `/admin/reglementations`; defaults per type and per family as pickers; validation requires a regulation for a sample with a product type, proposed from the client product's last choice; frozen on the report. Migration `20261001120000_regulations`.

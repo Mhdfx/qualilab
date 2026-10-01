@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ImportClients } from "@/components/admin/ImportClients";
 import { ImportCriteres } from "@/components/admin/ImportCriteres";
 import { ImportMemoire } from "@/components/admin/ImportMemoire";
+import { ImportLegacy } from "@/components/admin/ImportLegacy";
 
 export const metadata = { title: "Import de données" };
 
@@ -24,6 +25,10 @@ export default async function ImportPage() {
         <section>
           <h2 className="mb-3 text-base font-semibold text-slate-900">Mémoire des clients (correcteur de désignation)</h2>
           <ImportMemoire />
+        </section>
+        <section>
+          <h2 className="mb-3 text-base font-semibold text-slate-900">Catalogue de l&apos;ancien logiciel (CSV)</h2>
+          <ImportLegacy />
         </section>
         <section>
           <h2 className="mb-3 text-base font-semibold text-slate-900">Clients (export CSV)</h2>

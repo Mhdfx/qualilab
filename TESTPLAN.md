@@ -716,7 +716,7 @@ Ticked when observed in the browser on the dev server (`pre1`, `recep1`,
 - [x] Rapport de production relu à l'image (croix sous « Satisfaisant », R1 … R5, m / M avec n et c, « Non détecté »).
 - [x] `/recherche?etat=annulees` en production : la ligne détruite 20/26, « Annulé ».
 
-## Checkpoint Q — Réponses du 30/09 (spec `RETOUR-LABO-30-09.md`) — Q-H et Q-I vérifiés le 01/10
+## Checkpoint Q — Réponses du 30/09 (spec `RETOUR-LABO-30-09.md`) — Q-H, Q-I et Q-J vérifiés le 01/10
 
 Ticked only when observed in the browser at 1440×900, on the dev server and
 then in production.
@@ -733,9 +733,9 @@ then in production.
 - [x] Le rapport imprime le texte choisi ; texte modifié ensuite ⇒ rapport re-téléchargé inchangé.
 
 ### Q-J — Catalogue de l'ancien logiciel
-- [ ] Import analysé puis confirmé : 634 types (223 actifs), critères, 176 réglementations ; paramètres non reconnus listés.
-- [ ] Un type présent dans le classeur garde ses critères de septembre ; un type propre à l'ancien logiciel porte les siens et sa réglementation.
-- [ ] Ré-import sans aucun changement.
+- [x] Import analysé puis confirmé (dev puis production) : 175 réglementations, 530 types distincts (131 du classeur, 399 créés dont 270 inactifs), 1 945 critères, 11 normes / 16 versions ; 890 lignes de paramètres inconnus listées (chimie, eau), 800 obsolètes et 29 sans limite ignorées.
+- [x] « LÉGIONELLE DANS L'EAU » (ancien logiciel seul) porte ses critères et sa réglementation ; « ABATS CRUS… » (classeur) garde ses 8 critères de septembre et reçoit sa réglementation ; `/admin/types-produits` : Tous 260 · Inactifs 270.
+- [x] Ré-import : 0 réglementation, 0 type, 0 critère écrits.
 
 ### Q-K — Recette
 - [ ] Recette avec le personnel du laboratoire (L6, M6, P, Q) — ligne de signature remplie.

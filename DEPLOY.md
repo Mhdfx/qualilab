@@ -192,3 +192,23 @@ See `.env.production.example` — every variable is documented there and in
 `HANDOFF.md` §6. The two that gate real email delivery are `RESEND_API_KEY`
 and `EMAIL_FROM`; without them, sends are journalised as `SIMULE` and the UI
 says so.
+
+## Go-live data (RETOUR-LABO-30-09.md §10)
+
+The old software's catalogue (regulations, product types, criteria) is
+already imported in production (2026-10-01). What remains is client data,
+kept **outside the repo** in `legacy-export/` on the development machine,
+produced by `scripts/legacy/extract-legacy.py` from the restored Firebird
+base (Docker container `qlabo-fb`):
+
+1. `/admin/import` → **Clients (export CSV)** with `clients.csv`
+   (2 329 active clients, one e-mail each — the others by hand).
+2. `/admin/import` → **Mémoire des clients** with `memory.csv`
+   (76 198 samples since 2023: designation and place per client, matched by
+   client name) — the sampler's corrector then knows the history.
+3. Real user accounts, then `scripts/disable-demo-accounts.sh` and
+   `NEXT_PUBLIC_DEMO_MODE=false`; `RESEND_API_KEY` + `EMAIL_FROM` once the
+   DNS is delegated.
+4. Delete the test séries (16/26 → 23/26) and their reports, by hand in the
+   database, after the laboratory's recette.
+
