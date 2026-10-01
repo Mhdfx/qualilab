@@ -249,7 +249,10 @@ tolerated unit is above the limit. The laboratory can reword it in
 Known limits: the 41 three-class criteria without c read as c = 0 until the
 admin fills c (`/admin/types-produits/[id]`); 890 criteria rows of unknown
 parameters (pH, metals, mycotoxins, water chemistry…) wait for those
-parameters to exist in the catalogue — a re-import then adds them.
+parameters to exist in the catalogue — a re-import then adds them; 13
+regulation texts the old base held several times are kept apart, titled
+« … (2) », « … (3) » (each still proposed by the types that pointed at it),
+for the laboratory to merge (Q38).
 
 ## 10. Slice K — what is ready, what the laboratory does
 
