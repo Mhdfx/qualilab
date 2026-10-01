@@ -13,8 +13,9 @@ laboratory** (spec §5 and §10). Slices H, I and J are done and in production
 (2026-10-01, TESTPLAN Q-H, Q-I, Q-J). The go-live data is in
 production too (1 516 clients, the client memory for 392 of them). Owed by the lab: the
 recette (L6, M6, P, Q), Q38, Q39, Q30, DNS, real accounts; then
-`scripts/disable-demo-accounts.sh`, `NEXT_PUBLIC_DEMO_MODE=false`, deletion
-of the test séries 16/26 → 23/26 on production.
+`scripts/disable-demo-accounts.sh`, `NEXT_PUBLIC_DEMO_MODE=false`; on
+switch-over day the counters (`/admin/reglages`). Test data and demo
+clients are already gone from production (2026-10-01).
 
 ## ▶ PREVIOUS ACTION (retour du 29/09)
 
@@ -265,6 +266,11 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-10-01 (night) — production cleaned, testing moves to production
+- The five demonstration clients and everything attached (24 test séries 1/26 → 24/26, 32 samples, 11 reports, 16 e-mail logs, 5 invoices, memory) removed from production with the new audited purge tool; yearly counters back to 0 (next: 1/26). 1 516 real clients remain.
+- New in `/admin/reglages`: **Compteurs de numérotation** — on switch-over day the admin types the last N° de série / N° de contrôle issued by the old software.
+- From now on verification is done on production (the user's instruction); local = build gate only.
 
 ### 2026-10-01 (later) — go-live data on production
 - `clients.csv` imported (2 329 rows → 1 516 created; one row per name, 17 rows with a bad ICE / e-mail re-imported with the field blank), `memory.csv` imported (21 878 designations, 3 822 places, 392 clients, 0 unmatched).

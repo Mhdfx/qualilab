@@ -208,8 +208,9 @@ import is idempotent.
 1. Real user accounts, then `scripts/disable-demo-accounts.sh` and
    `NEXT_PUBLIC_DEMO_MODE=false`; `RESEND_API_KEY` + `EMAIL_FROM` once the
    DNS is delegated.
-2. Remove the demonstration clients and everything attached (séries,
-   samples, reports, invoices, e-mail logs, memory) with the go-live tool,
+2. *(done 2026-10-01 — production holds no test data)* Remove the
+   demonstration clients and everything attached (séries, samples, reports,
+   invoices, e-mail logs, memory) with the go-live tool,
    ADMIN only, dry run first (no screen on purpose):
    `POST /api/admin/maintenance/purge-clients`
    `{ "mode": "analyse", "clientIds": [...] }` lists what would go, then

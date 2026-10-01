@@ -269,6 +269,7 @@ Still the laboratory's: the recette (TESTPLAN L6, M6, P, Q), Q38 (is the
 old regulation list current — 175 texts are in `/admin/reglementations`,
 editable), Q39 confirmation of the defaults above, Q30, DNS for the e-mails,
 real user accounts (then `scripts/disable-demo-accounts.sh`,
-`NEXT_PUBLIC_DEMO_MODE=false`), and the deletion of the test séries on
-production (16/26 → 23/26 and their reports).
+`NEXT_PUBLIC_DEMO_MODE=false`), and on switch-over day the last numbers of
+the old software typed in `/admin/reglages` → Compteurs. The test séries
+and demo clients were removed from production on 2026-10-01 (counters at 0).
 
