@@ -270,7 +270,7 @@ in `PLAN.md`, opened one at a time.
 ### 2026-10-01 — slice J (the old software's catalogue)
 - Docker + the restored Firebird base: `scripts/legacy/extract-legacy.py` writes regulations / types / criteria / clients / memory CSV (mixed-charset decoding).
 - `legacy-catalogue.ts` (pure, tested) + `/api/admin/import/legacy` + `ImportLegacy`; imported on dev and production: 175 regulations, 399 types (270 inactive), 1 945 criteria, 117 workbook types linked to their regulation; re-run idempotent.
-- 299 tests, lint, build.
+- 299 tests, lint, build. Deployed (`fa3a42c`); production import: 175 regulations, 399 types, 1 945 criteria, 11 norms / 16 versions, 118 workbook types linked; re-run = 0 writes.
 
 ### 2026-10-01 — slice I (regulation per sample)
 - `Regulation` catalogue + `/admin/reglementations`; defaults per type and per family as pickers; validation requires a regulation for a sample with a product type, proposed from the client product's last choice; frozen on the report. Migration `20261001120000_regulations`.
