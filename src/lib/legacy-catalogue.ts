@@ -74,7 +74,8 @@ const num = (v: string | undefined): number | null => {
 
 /** A short name for the picker, cut from the regulation's text. */
 export function regulationTitle(text: string, fallback: string): string {
-  const flat = text.replace(/\s+/g, " ").trim();
+  // The old base often starts a text with « - » or « • ».
+  const flat = text.replace(/\s+/g, " ").replace(/^[\s\-–—•·]+/, "").trim();
   if (!flat) return fallback.trim();
   const cut = flat.split(/\s[:(–—-]\s|:\s|\s\(/)[0].replace(/[\s.;,]+$/, "");
   const title = cut.length >= 8 ? cut : flat;
@@ -88,7 +89,7 @@ export function parseLegacyRegulations(rows: string[][]): { items: LegacyRegulat
   let skipped = 0;
   for (const r of data) {
     const legacyId = int(r.id);
-    const text = r.texte.replace(/\s+/g, " ").trim();
+    const text = r.texte.replace(/\s+/g, " ").replace(/^[\s\-–—•·]+/, "").trim();
     if (legacyId === null || !text) {
       skipped += 1;
       continue;

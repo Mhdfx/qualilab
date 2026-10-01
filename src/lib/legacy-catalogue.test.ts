@@ -74,5 +74,6 @@ describe("the CSV parsers", () => {
   it("cuts a title from a regulation text", () => {
     expect(regulationTitle("Arrêté conjoint du ministre de l'agriculture N° 624-04 du 08/04/2004 (Bulletin officiel N° 5214).", "x")).toBe("Arrêté conjoint du ministre de l'agriculture N° 624-04 du 08/04/2004");
     expect(regulationTitle("FCD 2010", "x")).toBe("FCD 2010");
+    expect(regulationTitle("- Arrêté conjoint du Ministre de l'Agriculture", "x")).toBe("Arrêté conjoint du Ministre de l'Agriculture");
   });
 });
