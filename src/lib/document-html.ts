@@ -312,7 +312,7 @@ export function buildBonHtml(
         <td class="num">${l.lineNumber}</td>
         <td>${show(l.designation)}${l.surface ? `<span class="small"> · ${escapeHtml(l.surface)}</span>` : ""}${
           l.unitCount > 1 ? `<span class="small"> · n = ${l.unitCount}</span>` : ""
-        }${l.conformity === false ? `<br><span class="nc">Non conforme${l.conformityReason ? ` — ${escapeHtml(NON_CONFORMITY_REASON_LABELS[l.conformityReason])}` : ""}</span>` : ""}</td>
+        }${l.conformity === false ? `<br><span class="nc">Non conforme${l.conformityReason ? ` — ${escapeHtml(NON_CONFORMITY_REASON_LABELS[l.conformityReason])}` : ""}${l.destroyed ? " — détruite" : l.cancelled ? " — annulée" : ""}</span>` : l.cancelled ? `<br><span class="nc">${l.destroyed ? "Détruite à réception" : "Ligne annulée"}</span>` : ""}</td>
         <td>${show(l.numeroLot)}</td>
         <td>${dlcText(l)}</td>
         <td>${quantityText(l.quantity, l.quantityUnit)}</td>

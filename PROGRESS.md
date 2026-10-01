@@ -267,6 +267,10 @@ in `PLAN.md`, opened one at a time.
 
 ## Session Log
 
+### 2026-10-01 — recette technique complète en production (TESTPLAN R)
+- 70 checks through the APIs on production, every role, every branch (visit, deposit, destroy, blind numbering, bench verdicts of every kind, rejection, regulation, alerts at technical validation, reports, invoice, search/export, role isolation, concurrency refusals): 70/70; nine documents read at the image, one page each.
+- Found and fixed: the bon de réception did not say « Détruite » on a destroyed line. Test client purged afterwards, counters back to 0.
+
 ### 2026-10-01 (night) — production cleaned, testing moves to production
 - The five demonstration clients and everything attached (24 test séries 1/26 → 24/26, 32 samples, 11 reports, 16 e-mail logs, 5 invoices, memory) removed from production with the new audited purge tool; yearly counters back to 0 (next: 1/26). 1 516 real clients remain.
 - New in `/admin/reglages`: **Compteurs de numérotation** — on switch-over day the admin types the last N° de série / N° de contrôle issued by the old software.

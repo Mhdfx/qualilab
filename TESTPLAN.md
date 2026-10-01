@@ -740,6 +740,59 @@ then in production.
 ### Q-K — Recette
 - [ ] Recette avec le personnel du laboratoire (L6, M6, P, Q) — ligne de signature remplie.
 
+## Checkpoint R — Recette technique complète en production (2026-10-01)
+
+Run on **production** (http://185.217.126.53) through the public APIs with
+the eight demo accounts, on a dedicated test client created for the run and
+purged afterwards (`POST /api/admin/maintenance/purge-clients`): **70
+checks, 70 passed** (one re-checked by hand: the sampler's blind search,
+first tried with a control code equal to a série number). Documents read
+at the image: protocole, étiquettes, bon de réception, feuille de
+paillasse, four rapports, facture — one page each. Script:
+`recette-prod.mjs` (session scratchpad); numbers below are those of the run.
+
+### R-A Préleveur (pre1)
+- [x] Saisie au nom d'un collègue refusée (400).
+- [x] Visite de 8 lignes créée en 611 ms (aliment × 6 dont un type à 3 classes, un type m = M, un type avec 2 unités pour n = 5 ; surface 100 cm² ; mains) — série 1/26.
+- [x] Aucun N° de contrôle dans la charge utile du préleveur ; « Mes visites » ; protocole PDF ; cadre / arrivée / T° glacière complétés avant réception.
+
+### R-B Réception (recep1)
+- [x] Série en file ; réception en une fois (3,1 s) : 8 N° de contrôle 1/26 … 8/26 ; ligne 6 non conforme → « Détruire » : numérotée, annulée `DETRUIT_A_RECEPTION`, sans technicien ; e-mail de destruction au client (SIMULE).
+- [x] Seconde réception refusée (409) ; étiquettes R1 … R5 ; protocole réimprimé ; le préleveur ne change plus le cadre (400).
+- [x] Dépôt au comptoir : reçu et numéroté sur-le-champ (série 2/26, N° 9/26), avance 300 DH espèces, seconde ligne détruite ; bon de réception PDF.
+- [x] « Corriger la fiche » avec motif ; annulation (DOUBLON) puis réactivation par l'admin avec son N° de contrôle ; une ligne détruite réactivée revient bloquée, libérée vers un technicien.
+
+### R-C Technicien (tech1 / tech2)
+- [x] Paillasse d'un autre technicien refusée (403) ; la liste ne montre que ses échantillons.
+- [x] Répétition vide : enregistrée, soumission refusée ; anomalie sans description refusée.
+- [x] Plan 3 classes (m = 1,5·10⁶, M = 5·10⁶, c = 2) : 3 unités entre m et M ⇒ non satisfaisant ; lecture « 3(-2) » acceptée.
+- [x] m = M, c = 1 : une unité au-dessus ⇒ acceptable.
+- [x] 2 unités pour n = 5 ⇒ aucun verdict officiel.
+- [x] Surface, salade en 3 répétitions sans critère, E. coli 5·10² hors limite, mains : enregistrés ; 7 lignes soumises ; feuille de paillasse PDF.
+
+### R-D Validateur (valid1)
+- [x] Validation refusée sans réglementation / avec une inconnue ; validée avec « Arrêté conjoint n° 624-04 » ; seconde validation refusée ; le validateur ne peut pas approuver.
+- [x] Renvoi au technicien avec motif → en analyse → corrigé et resoumis → validé.
+- [x] Alertes de contamination dès la validation technique : Salmonelles « Présence » (indicatif, 2 unités) ⇒ 1 alerte ; E. coli hors limite sans type ⇒ 1 alerte ; germe non sensible hors critère ⇒ 0.
+- [x] L'admin qui a signé la validation technique ne peut pas approuver lui-même (409).
+
+### R-E Administrateur
+- [x] 7 approbations ⇒ RAP-2026-00001 … 00007, envoi simulé ; les alertes déjà parties ne repartent pas ; seconde approbation refusée.
+- [x] Rapports relus à l'image : L1 croix sous « Non satisfaisant », unités entre m et M en ambre ; L2 « Acceptable » ; L3 « Détecté » en rouge, aucune croix, phrase « nombre d'unités inférieur au plan » ; L5 sans critère « Non spécifié » ; un page chacun.
+- [x] Renvoi du rapport par le gestionnaire ; recherche par N° de contrôle (laboratoire : trouvé ; préleveur : rien) ; recherche client + période + « terminées » = 7 ; export Excel sans la ligne détruite ; journal : réception, destruction notifiée, réglementation choisie, réactivation, fiche corrigée.
+
+### R-F/G/H Gestionnaire, comptable, magasinier
+- [x] Fiche client avec synthèse ; gestionnaire refusé sur les comptes.
+- [x] Échantillons approuvés facturables ; facture FAC-2026-0001 et son PDF ; double facturation refusée ; ligne détruite non facturable ; comptable refusé sur le catalogue.
+- [x] Magasinier refusé sur échantillons et clients ; technicien sur les factures ; préleveur sur les comptes.
+- [x] Listes sous 300 ms (`/api/samples` 212 ms, stats 226 ms, séries 91 ms, types 250 ms).
+
+### Défaut trouvé et corrigé le jour même
+- Le bon de réception imprimait la non-conformité d'une ligne détruite sans la décision « Détruite » (le protocole l'imprimait). Corrigé.
+
+### Après la recette
+- Client de test et tout ce qui s'y rattache supprimés de la production avec l'outil de purge ; compteurs revenus à 0.
+
 ## Sign-off log
 
 | Phase | Tested by | Date | Result |
