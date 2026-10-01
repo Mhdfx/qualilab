@@ -60,6 +60,8 @@ const ACTION_LABELS: Record<string, string> = {
   CRITERIA_IMPORTED: "Critères importés",
   CLIENT_MEMORY_IMPORTED: "Mémoire client importée",
   LEGACY_CATALOGUE_IMPORTED: "Catalogue de l'ancien logiciel importé",
+  DEMO_DATA_PURGED: "Données de démonstration supprimées",
+  COUNTER_SET: "Compteur de numérotation modifié",
   PRODUCT_TYPE_CREATED: "Type de produit créé",
   PRODUCT_TYPE_UPDATED: "Type de produit modifié",
   CRITERIA_UPDATED: "Critères modifiés",

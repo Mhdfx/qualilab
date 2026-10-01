@@ -208,6 +208,15 @@ import is idempotent.
 1. Real user accounts, then `scripts/disable-demo-accounts.sh` and
    `NEXT_PUBLIC_DEMO_MODE=false`; `RESEND_API_KEY` + `EMAIL_FROM` once the
    DNS is delegated.
-2. Delete the test séries (16/26 → 23/26), their reports and the five demo
-   clients, by hand in the database, after the laboratory's recette.
+2. Remove the demonstration clients and everything attached (séries,
+   samples, reports, invoices, e-mail logs, memory) with the go-live tool,
+   ADMIN only, dry run first (no screen on purpose):
+   `POST /api/admin/maintenance/purge-clients`
+   `{ "mode": "analyse", "clientIds": [...] }` lists what would go, then
+   `{ "mode": "commit", "clientIds": [...], "confirm": "SUPPRIMER" }` removes
+   it and brings the yearly counters back to the highest number still in
+   use. One journal entry (`DEMO_DATA_PURGED`); the journal is never erased.
+3. On switch-over day, `/admin/reglages` → **Compteurs de numérotation**:
+   type the last N° de série and N° de contrôle issued by the old software,
+   so the new system continues the year's sequences.
 
