@@ -1,5 +1,7 @@
 "use client";
 
+import { verbsFor } from "@/lib/sample-verbs";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Ban, Check, Pencil, RotateCcw, X } from "lucide-react";
@@ -13,7 +15,7 @@ import type {
 } from "@/generated/prisma/enums";
 import type { Role } from "@/lib/roles";
 import { CANCEL_REASON_LABELS, HANDS_STATE_LABELS, QUANTITY_UNIT_LABELS } from "@/lib/labels";
-import { canTransition, CORRECTABLE_STATUSES } from "@/lib/sample-status";
+
 
 /**
  * The correction verbs of a sample (WORKFLOW.md §8), each with a reason and
@@ -54,12 +56,7 @@ const REASONS = (Object.keys(CANCEL_REASON_LABELS) as CancelReason[]).filter((r)
 const UNITS = Object.keys(QUANTITY_UNIT_LABELS) as QuantityUnit[];
 const UNIT_CHOICES = [1, 3, 5, 9];
 
-export function verbsFor(sample: { status: SampleStatus }, role: Role) {
-  const correct = CORRECTABLE_STATUSES.includes(sample.status) && ["RECEPTIONNISTE", "VALIDATEUR", "ADMIN"].includes(role);
-  const cancel = canTransition(sample.status, "ANNULE", role).ok;
-  const reactivate = sample.status === "ANNULE" && role === "ADMIN";
-  return { correct, cancel, reactivate };
-}
+export { verbsFor };
 
 export function SampleVerbs({
   sample,

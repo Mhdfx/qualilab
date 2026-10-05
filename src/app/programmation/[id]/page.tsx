@@ -26,7 +26,7 @@ import {
 import { loadProgrammeReferential, loadProgrammeSample, serializeProgramme } from "@/lib/programme-referential";
 import { labReference } from "@/lib/sample-select";
 import { lineDesignation } from "@/components/preleveur/visit-types";
-import { verbsFor } from "@/components/samples/SampleVerbs";
+import { verbsFor } from "@/lib/sample-verbs";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
