@@ -146,6 +146,28 @@ EN_ANALYSE et avance le moment où la facturation peut travailler. Elle
 remplace la réponse proposée aux demandes 8 et 9 (le bloc « Analyses à
 effectuer » à la réception devient l'écran du nouveau rôle).
 
+**Précision du laboratoire (05/10, soir).** Ce n'est pas un simple rôle de
+tri : il définit tout ce qui concerne le prélèvement — les paramètres, ce
+qu'il faut faire sur l'échantillon, « les nombres », les méthodes — avant la
+paillasse. Le programme d'analyse devient donc un objet complet par
+échantillon, modifiable jusqu'au démarrage de la paillasse :
+
+| Rubrique | Contenu défini par le responsable | Ce qui en dépend |
+|---|---|---|
+| Analyses | paramètres (germes / chimie), profil contractuel, ajout ou retrait | paillasse, feuille de paillasse, étiquettes, rapport, facture |
+| Type de produit et critères | type du catalogue (n, c, m, M par germe), réglementation proposée | verdicts, en-tête du rapport, obligation de réglementation à la validation |
+| Nombres | nombre d'unités / répétitions à lire par germe (n), quantité à engager (prise d'essai), dilutions ou facteur de calcul, nombre de sous-échantillons | grille R1 … Rn, calcul des valeurs finales, étiquettes |
+| Méthodes | version de norme par paramètre, méthode interne, matériel | colonne « Méthode » du rapport, métrologie |
+| Organisation | technicien par paramètre ou par famille (micro / chimie), priorité, délai de rendu, consignes de préparation, conservation | file des techniciens, délais, alertes |
+| Conformité d'entrée | vérification que ce qui a été reçu permet le programme (quantité suffisante pour n, température), demande de complément au client | réception, bon de réception, annulation motivée |
+| Facturation | lignes à facturer issues du programme (analyses × prix du catalogue, forfaits), remarques pour le comptable | facture préparée dès la confirmation |
+
+Les N° de contrôle restent attribués à la réception (ils identifient le
+tube dès l'arrivée) ; si « les nombres » désignent aussi la numérotation, à
+confirmer. Effort révisé : ≈ **48 h** (la fiche de programme couvre les
+nombres, les méthodes et l'organisation par paramètre, et la paillasse lit
+tout cela au lieu du type seul).
+
 **Proposition.**
 - Rôle `PROGRAMMATEUR` (libellé « Responsable des paramètres ») dans l'enum
   `Role` ; espace `/programmation` : file « À programmer » (lignes RECU sans
@@ -167,8 +189,8 @@ effectuer » à la réception devient l'écran du nouveau rôle).
 - Dépôt au comptoir : même passage par le programmateur (la réception ne
   choisit plus les analyses) ; le préleveur garde le nombre d'unités.
 - Effort : rôle et espace (12 h), statut, file, fiche et garde-fous (14 h),
-  facturation (4 h), recette et docs (6 h) ≈ **36 h**, en remplacement des
-  17 h de la tranche L4.
+  facturation (4 h), recette et docs (6 h) ≈ 36 h pour la version de base, ≈ 48 h avec la
+  fiche complète ci-dessus, en remplacement des 17 h de la tranche L4.
 
 **Avis.** Cohérent avec le fonctionnement d'un laboratoire : une seule
 personne connaît les contrats et les critères, les techniciens de paillasse
