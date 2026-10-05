@@ -143,6 +143,7 @@ températures sont saisissables sur toute nature (une main prélevée porte
 les grammes et litres servent au bon de réception et aux règles de
 recevabilité ; la signature de l'interlocuteur reste sur papier, le
 préleveur photographie la feuille signée depuis le téléphone.
+| Q40 | Salmonelles sur « ABATS CRUS DE VOLAILLE AUTRES QUE LE FOIE GRAS… » : le critère repris du classeur dit « Absence /1g » alors que le paramètre est lu « /25 g ». Laquelle des deux prises d'essai doit figurer sur la paillasse et le rapport ? (même question pour tout type dont l'unité du critère diffère de celle du paramètre) | Critères (chantier 2) |
 
 ## 2. Ready to send — current batch
 

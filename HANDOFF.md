@@ -31,7 +31,7 @@
 | Direction & recherche | direction view, DB-backed global search | ✅ **Phase 5 done** |
 | Infra | Docker image + compose, backups, `DEPLOY.md` — PM2 kept as fallback | ✅ **live on the VPS since 2026-08-26** |
 | **Retour du laboratoire du 29/09** | rapport au modèle du labo (R1 … Rn, tableau de conclusion, une page), e-mail récapitulatif, lecture par répétition pour tout paramètre, correcteur de désignation, destruction au cas par cas, recherche et export Excel par client — spec **`RETOUR-LABO-29-09.md`** (§7 = tel que construit) | ✅ **tranches A → F livrées 2026-09-29** (TESTPLAN P) |
-| **Réponses du 30/09 (Q31–Q37)** | tolérance c sur limite unique, type de produit jamais imprimé, e-mail au client pour une ligne détruite, R1 … Rn partout ; réglementation choisie par échantillon par le validateur ; reprise des 634 types, critères et réglementations de l'ancien logiciel — spec **`RETOUR-LABO-30-09.md`** | ✅ **tranches H, I, J livrées 2026-10-01** (TESTPLAN Q-H, Q-I, Q-J) ; clients (1 516) et mémoire client importés, données de test supprimées de la production le 01/10 (compteurs à 0, écran Compteurs dans Réglages) ; **recette technique complète en production le 01/10 : 70/70 (TESTPLAN R)** ; reste **K** = recette avec le laboratoire (`RETOUR-LABO-30-09.md` §10) |
+| **Réponses du 30/09 (Q31–Q37)** | tolérance c sur limite unique, type de produit jamais imprimé, e-mail au client pour une ligne détruite, R1 … Rn partout ; réglementation choisie par échantillon par le validateur ; reprise des 634 types, critères et réglementations de l'ancien logiciel — spec **`RETOUR-LABO-30-09.md`** | ✅ **tranches H, I, J livrées 2026-10-01** (TESTPLAN Q-H, Q-I, Q-J) ; clients (1 516) et mémoire client importés, données de test supprimées de la production le 01/10 (compteurs à 0, écran Compteurs dans Réglages) ; **recette technique complète en production le 01/10 : 70/70 (TESTPLAN R)** ; **recette navigateur en production le 05/10, défauts corrigés et déployés le jour même (TESTPLAN S, `RECETTE-05-10-*.md`)** ; reste **K** = recette avec le laboratoire (`RETOUR-LABO-30-09.md` §10) |
 | **Phase 9 — chantier 2 : critères d'interprétation** | types de produits × germe × version de norme, import du classeur, lecture par unité, verdicts satisfaisant / acceptable / non satisfaisant, rapport avec le critère et sa norme — spec **`CRITERES.md`** | ◀ **code complete 2026-09-18** (1 075 critères et 131 types importés sur dev; slices 1–4 vérifiées au navigateur, TESTPLAN M1–M4); reste l'import en production et la recette avec le laboratoire |
 | **Phase 9 — chantier 1 : circuit série** | visite / dépôt multi-lignes, 16 natures, réception groupée, numérotation NNNN/AA + NNNNN/AA, étiquettes, profils, verbes de correction — spec **`WORKFLOW.md`** | ◀ **slices 1–5 live 2026-09-13, slice 1b (the lab's feedback of 14/09: the visit form reads like the paper) live 2026-09-14; slice 6 = recette with the lab** (série + natures + counters + « Nouvelle visite » / « Mes visites » + N° de contrôle everywhere; grouped reception with the seven acceptance rules, coded motifs, labels PDF; « Nouveau dépôt », protocole / bon PDFs with the quality cartouche, `/admin/documents`; profiles, client memory, sites, sampler kind; verbs Corriger / Annuler / Réactiver, queues by série, old routes gone); the recette with the laboratory closes the chantier (restore point `v1.0-avant-phase-9`) |
 
@@ -373,6 +373,19 @@ report is rendered server-side, and there is no automated test suite.
 - The regulation is chosen per sample by the technical validator, from a catalogue (slice I) — the per-type / per-family texts of slice C become the defaults of that choice.
 - The catalogue becomes the old software's 634 types; on overlap the September workbook's criteria win, unused types come in inactive (Q39 defaults, slice J). Extracted legacy data never enters the public repo.
 - Product types are internal families: never printed for the client.
+
+### 2026-10-05 — the laboratory's clock no longer trusts the device (`src/lib/lab-time.ts`)
+Morocco returned to plain UTC on 20 September 2026 (décret n° 2.26.530,
+tzdata 2026c). The server image has that data; a PC or phone that has not
+been updated still applies UTC+1 to « Africa/Casablanca », so server- and
+browser-rendered times disagreed by one hour (and React logged a hydration
+mismatch), and a `datetime-local` typed there landed one hour early.
+Decision: every format and every wall-time conversion goes through
+`labTimeZone()` / `toLabWallTime()` / `fromLabWallTime()`: the IANA zone
+before the switch (its history is identical everywhere), explicit UTC after
+it. If Morocco changes again, `MOROCCO_GMT_SWITCH` is the one constant to
+revisit. The lab's devices still need their OS update so that their own
+clocks show the legal time (DEPLOY.md, go-live).
 
 ## 8c. A lesson written down (2026-08-25)
 

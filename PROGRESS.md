@@ -267,6 +267,11 @@ in `PLAN.md`, opened one at a time.
 
 ## Session Log
 
+### 2026-10-05 — recette navigateur en production (TESTPLAN S)
+- Eight headless-Chrome role agents (interrupted twice, the technician's sweep complete) + a scripted sweep of 75 pages / 25 access rules / 13 documents / phone layout, and the whole circuit by hand in the browser pane (visit → reception → bench → validation → approval → report → deposit → invoice, plus clients, stock, configuration). Reports: `RECETTE-05-10-AUTOMATIQUE.md`, `RECETTE-05-10-MANUELLE.md`.
+- Fixed and deployed the same day: unreadable bench readings accepted, sticky manual decision, bench sheet without R1 … Rn / criteria, phone grid, account creation with a hyphen (500), PDF links prefetching a render, tab titles, honorific as first name, badges and plurals. Hardened the laboratory clock against devices whose time-zone data predates Morocco's return to GMT (20/09/2026) — `src/lib/lab-time.ts`.
+- Test clients purged, counters 0 / 0, test objects archived. Open for the lab: Q40 (Salmonelles /1g vs /25 g), demo panel until go-live, time-zone update of the lab's PCs.
+
 ### 2026-10-01 — recette technique complète en production (TESTPLAN R)
 - 70 checks through the APIs on production, every role, every branch (visit, deposit, destroy, blind numbering, bench verdicts of every kind, rejection, regulation, alerts at technical validation, reports, invoice, search/export, role isolation, concurrency refusals): 70/70; nine documents read at the image, one page each.
 - Found and fixed: the bon de réception did not say « Détruite » on a destroyed line. Test client purged afterwards, counters back to 0.

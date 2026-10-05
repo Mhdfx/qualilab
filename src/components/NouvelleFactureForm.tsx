@@ -198,7 +198,7 @@ export function NouvelleFactureForm() {
       </Link>
 
       <PageHeader
-        badge="Administration"
+        badge="Facturation"
         title="Nouvelle facture"
         subtitle="Sélectionnez un client, ajoutez les prestations et générez la facture"
       />

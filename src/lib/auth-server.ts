@@ -76,7 +76,14 @@ export const auth = betterAuth({
         : process.env.NODE_ENV === "production",
   },
   plugins: [
-    username(),
+    username({
+      // The same rule as the administration screen (3–30 characters, letters,
+      // digits, « . _ - »): the plugin's default refuses a hyphen, and the
+      // account creation would die with a 500 instead of a message.
+      minUsernameLength: 3,
+      maxUsernameLength: 30,
+      usernameValidator: (value) => /^[a-z0-9._-]{3,30}$/i.test(value),
+    }),
     admin({
       adminRoles: ["ADMIN"],
       defaultRole: "PRELEVEUR",

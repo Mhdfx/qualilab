@@ -31,6 +31,8 @@ import { searchSamples } from "@/lib/sample-search-server";
  * single screen: who they are, who receives their mail, their samples, their
  * reports and their invoices.
  */
+
+export const metadata = { title: "Fiche client" };
 export default async function ClientDetailPage({
   params,
   searchParams,

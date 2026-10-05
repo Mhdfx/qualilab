@@ -4,6 +4,8 @@ import { requireRole } from "@/lib/auth";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ClientForm } from "@/components/clients/ClientForm";
 
+
+export const metadata = { title: "Nouveau client" };
 export default async function NouveauClientPage() {
   await requireRole("GESTIONNAIRE", "ADMIN");
 

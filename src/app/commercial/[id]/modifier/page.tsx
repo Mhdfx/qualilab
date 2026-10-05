@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ClientForm } from "@/components/clients/ClientForm";
 
+
+export const metadata = { title: "Modifier le client" };
 export default async function ModifierClientPage({
   params,
 }: {

@@ -6,6 +6,8 @@ import { getCompany } from "@/lib/company-server";
 import { FactureDetail } from "@/components/FactureDetail";
 import type { Invoice } from "@/lib/invoice-types";
 
+
+export const metadata = { title: "Facture" };
 export default async function ComptaFactureDetailPage({
   params,
 }: {

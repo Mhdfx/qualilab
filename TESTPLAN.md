@@ -956,6 +956,38 @@ du code.
 - [x] **Espace comptabilité** : le bloc « prochaines fonctionnalités »
       annonçait encore les trois écrans de la phase 4, livrés depuis.
 
+## Checkpoint S — Recette navigateur en production (2026-10-05)
+
+Two reports at the repo root: `RECETTE-05-10-AUTOMATIQUE.md` (headless
+Chrome: 8 role agents, then a scripted sweep of every page / access rule /
+document / phone layout — `.ui-tests/sweep-all.mjs`, gitignored folder) and
+`RECETTE-05-10-MANUELLE.md` (the circuit by hand in the browser pane). Test
+client « TEST UI 2026-10-05 » seeded by the API, purged afterwards,
+counters back to 0 / 0.
+
+### S-1 Circuit by hand (pre1 → recep1 → tech1 → valid1 → admin → compta1)
+- [x] Visit 7/26 (type search, corrector « Vouliez-vous dire … ? », recap, no control number for the sampler), arrival panel (end before start refused), protocol PDF.
+- [x] Reception 7/26: cooler temperature pre-filled, 50 g forces non-conform with a motif, future arrival refused by the server, technician for all lines, N° 13/26 – 15/26, labels and protocol PDF.
+- [x] Bench 13/26: Tab across R1 … R5, verdicts satisfaisant / acceptable / non satisfaisant live, blank repetition blocks the submit, anomaly without note refused, submit; 15/26 submitted.
+- [x] Validation: regulation proposed and recorded, « Renvoyer au technicien » needs a motif; admin approves 13/26 → RAP-2026-00004 (read at the image), resend; the admin who validated 15/26 cannot approve it.
+- [x] Deposit 11/26 (advance without payment mode refused, missing arrival temperature refused) → N° 21/26, bon de réception PDF read at the image.
+- [x] Invoice FAC-2026-0003 from the approved sample (prices typed, « Marquer encaissée », PDF read), the sample no longer billable.
+- [x] Clients (invalid ICE, duplicate name), stock (item, +10 / −3, history), suppliers and purchase-invoice validation, product type with near-duplicate guard and a criterion, regulation duplicate / archive / restore, user form, counters floor, reactivation with a motif.
+
+### S-2 Scripted sweep on the deployed fixes
+- [x] 75 pages over 9 accounts: all 200, no console error, no failed request; 25 cross-role URLs redirected; 13 PDF / Excel documents real; unknown URLs → 404 « Page introuvable ».
+- [x] Phone 390 × 844: login, sampler dashboard / form / visit, bench n = 3 — no horizontal overflow, R cells 93 px.
+- [~] Scripted login-form check inconclusive (sign-in rate limit saturated by the agents) — done by hand in S-1.
+
+### Défauts trouvés par cette recette et corrigés le jour même
+- Unreadable reading (« abc ») in a repetition grid accepted and submitted; manual decision sticking after the reading was corrected (« Dépassement » without a limit); bench sheet without R1 … Rn cells and without the m / M / c criteria; 5-cell grid unreadable on a phone; « 5 unités non lues » for an unreadable value.
+- Account creation with a hyphen in the username → 500 (Better Auth's default validator refused it; the auth layer now follows the screen's rule and refuses with a 400 message).
+- Hour shown one hour apart between server- and browser-rendered pages on a device whose time-zone data predates Morocco's return to GMT (20/09/2026): `lab-time.ts` makes the laboratory's clock independent of the device (formatting and `datetime-local`).
+- PDF links as Next `<Link>` (a prefetch rendered a PDF on every page view); bench sheet in the same tab; honorific shown as first name; generic tab titles; « Administration » badge on billing pages; search subtitle promising an export to the technician; plural « saisi »; closed sample still showing the entry instructions.
+
+### Left for the laboratory
+- Q40 Salmonelles « Absence /1g » vs parameter « /25 g » (ABATS CRUS DE VOLAILLE); the demo-accounts panel and the shared password until go-live (`DEPLOY.md`); Windows / Chrome time-zone update on the lab's devices.
+
 ## Checkpoint L — Phase 9, chantier 1 : circuit série (L1–L5 verified 2026-09-13, L1b verified 2026-09-14, all on the dev server at 1440×900 and on the VPS after deploy; L6 = recette with the laboratory, pending)
 
 Tick only what was seen in the browser. One sub-checkpoint per slice of

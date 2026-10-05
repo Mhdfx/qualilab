@@ -88,15 +88,27 @@ export async function POST(request: Request) {
   }
 
   // Through Better Auth, so the password hash matches what sign-in expects.
-  const created = await auth.api.createUser({
-    body: {
-      name: cleanName,
-      email: internalEmailFor(cleanUsername),
-      password,
-      role: role as never,
-      data: { username: cleanUsername, displayUsername: cleanUsername },
-    },
-  });
+  let created: Awaited<ReturnType<typeof auth.api.createUser>>;
+  try {
+    created = await auth.api.createUser({
+      body: {
+        name: cleanName,
+        email: internalEmailFor(cleanUsername),
+        password,
+        role: role as never,
+        data: { username: cleanUsername, displayUsername: cleanUsername },
+      },
+    });
+  } catch (error) {
+    // A refusal of the auth layer (identifier or password it will not
+    // accept) is the administrator's to fix, not a server failure.
+    const message = error instanceof Error ? error.message : "";
+    console.error("[admin/users] création refusée", { username: cleanUsername, message });
+    return NextResponse.json(
+      { error: message ? `Création refusée : ${message}` : "Création refusée par le service d'authentification." },
+      { status: 400 }
+    );
+  }
 
   await logAudit({
     actorId: session.id,

@@ -144,6 +144,19 @@ docker compose up -d --build
 `disable-demo-accounts.sh` is idempotent and refuses to lock the lab out:
 it exits with a clear message while no non-demo ADMIN exists.
 
+## Time zone — Morocco's return to GMT (20/09/2026)
+
+The container runs with `TZ=Africa/Casablanca` on a Node image whose ICU
+data (tzdata 2026c) knows the return to permanent UTC; the application
+formats and parses the laboratory's wall time independently of the device
+(`src/lib/lab-time.ts`). What the application cannot fix: a PC or phone
+whose operating system has not received the Morocco update shows a clock
+one hour ahead of the legal time, and its users type that wrong hour.
+**Before go-live, every PC and phone of the laboratory must have the
+Windows / Android / iOS update that moves Morocco to GMT**, and Chrome must
+be current. Check: the clock in the taskbar must match the time printed on
+the reception queue.
+
 ## Restoring a dump
 
 `scripts/restore-db.sh <dump.sql.gz>` stops the app, **drops and recreates**
