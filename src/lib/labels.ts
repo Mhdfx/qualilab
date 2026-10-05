@@ -146,6 +146,16 @@ export function formatDayShort(date: Date | string) {
   }).format(d);
 }
 
+/**
+ * The refusal of a time ahead of the clock, with the legal time it was
+ * compared to: a device that missed Morocco's return to GMT (20/09/2026)
+ * shows one hour more, and its user retypes that hour in good faith.
+ */
+export function futureMessage(what: string): string {
+  const legal = formatDayTime(new Date()).slice(-5);
+  return `${what} est dans le futur : il est ${legal} (heure légale du Maroc, GMT depuis le 20/09/2026). Un appareil non mis à jour affiche une heure de plus — gardez l'heure proposée.`;
+}
+
 export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
   EN_ATTENTE: "En attente",
   PAYEE: "Payée",

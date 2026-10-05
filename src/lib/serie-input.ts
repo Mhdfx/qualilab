@@ -9,6 +9,7 @@ import type {
   SerieKind,
 } from "@/generated/prisma/enums";
 import { MAX_UNITS } from "./series";
+import { futureMessage } from "./labels";
 
 /**
  * Validating a série (visite or dépôt) and its lines — pure, shared by the
@@ -335,15 +336,15 @@ export function validateSerie(
   if (startedAtRaw === "invalid") return fail("La date et l'heure du prélèvement ne sont pas valides.");
   const startedAt = startedAtRaw ?? new Date();
   const now = Date.now();
-  if (startedAt.getTime() > now + 5 * 60 * 1000) return fail("L'heure du prélèvement est dans le futur.");
+  if (startedAt.getTime() > now + 5 * 60 * 1000) return fail(futureMessage("L'heure du prélèvement"));
   if (startedAt.getTime() < now - 30 * 24 * 3600 * 1000) return fail("L'heure du prélèvement remonte à plus de 30 jours.");
 
   const endedAt = dateOrNull(input.endedAt);
   const arrivedAt = dateOrNull(input.arrivedAt);
   if (endedAt === "invalid") return fail("L'heure de fin n'est pas valide.");
   if (arrivedAt === "invalid") return fail("L'heure d'arrivée n'est pas valide.");
-  if (endedAt && endedAt.getTime() > now + 5 * 60 * 1000) return fail("L'heure de fin est dans le futur.");
-  if (arrivedAt && arrivedAt.getTime() > now + 5 * 60 * 1000) return fail("L'heure d'arrivée est dans le futur.");
+  if (endedAt && endedAt.getTime() > now + 5 * 60 * 1000) return fail(futureMessage("L'heure de fin"));
+  if (arrivedAt && arrivedAt.getTime() > now + 5 * 60 * 1000) return fail(futureMessage("L'heure d'arrivée"));
   if (endedAt && endedAt < startedAt) return fail("L'heure de fin précède le début du prélèvement.");
   if (arrivedAt && endedAt && arrivedAt < endedAt) return fail("L'arrivée au laboratoire précède la fin du prélèvement.");
   if (arrivedAt && !endedAt && arrivedAt < startedAt) return fail("L'arrivée au laboratoire précède le prélèvement.");

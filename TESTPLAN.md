@@ -985,6 +985,10 @@ counters back to 0 / 0.
 - Hour shown one hour apart between server- and browser-rendered pages on a device whose time-zone data predates Morocco's return to GMT (20/09/2026): `lab-time.ts` makes the laboratory's clock independent of the device (formatting and `datetime-local`).
 - PDF links as Next `<Link>` (a prefetch rendered a PDF on every page view); bench sheet in the same tab; honorific shown as first name; generic tab titles; « Administration » badge on billing pages; search subtitle promising an export to the technician; plural « saisi »; closed sample still showing the entry instructions.
 
+### S-3 Afternoon — « les prélèvements ne s'enregistrent pas » (reproduced, fixed, deployed)
+- [x] A visit typed with the hour of a device one hour ahead of the legal time (un-updated Windows) → `POST /api/series` 400 « L'heure du prélèvement est dans le futur » and nothing saved; the same visit with the proposed time → 201. Same through the local dev server.
+- [x] After the fix: the legal time is printed under the date-time fields with an amber warning on such a device; the refusal message states the legal time and the cause.
+
 ### Left for the laboratory
 - Q40 Salmonelles « Absence /1g » vs parameter « /25 g » (ABATS CRUS DE VOLAILLE); the demo-accounts panel and the shared password until go-live (`DEPLOY.md`); Windows / Chrome time-zone update on the lab's devices.
 

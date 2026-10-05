@@ -10,6 +10,7 @@ import { SERIE_STATUS_LABELS, type SerieProgress, type SerieStatus } from "@/lib
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
+import { LegalTimeHint } from "@/components/LegalTimeHint";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { fromLocalInput, lineDesignation, toLocalInput } from "./visit-types";
 
@@ -215,6 +216,7 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
               <div>
                 <label htmlFor="arrivedAt" className="mb-1.5 block text-sm font-semibold text-slate-700">Arrivée au laboratoire</label>
                 <input id="arrivedAt" type="datetime-local" value={arrivedAt} onChange={(e) => setArrivedAt(e.target.value)} className="input-field px-3" />
+                <LegalTimeHint />
               </div>
               <div>
                 <p className="mb-1.5 block text-sm font-semibold text-slate-700">Cadre</p>

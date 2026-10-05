@@ -39,6 +39,7 @@ import {
 import { evaluateReception, proposedConformity, type ReceptionThresholds } from "@/lib/reception-rules";
 import { repetitionRange } from "@/lib/series";
 import { Card } from "@/components/ui/Card";
+import { LegalTimeHint } from "@/components/LegalTimeHint";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
@@ -648,6 +649,7 @@ export function SerieReceptionForm({
               <label htmlFor="arrivedAt" className="block text-sm font-medium text-slate-700">
                 Arrivée au laboratoire
               </label>
+              <LegalTimeHint className="mb-1" />
               <div className="mt-1.5 flex gap-2">
                 <input
                   id="arrivedAt"

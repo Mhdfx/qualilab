@@ -267,6 +267,10 @@ in `PLAN.md`, opened one at a time.
 
 ## Session Log
 
+### 2026-10-05 (afternoon) — « les prélèvements ne s'enregistrent pas »
+- Reproduced on production: the sampler's PC shows one hour more than the legal time (Windows without the Morocco-to-GMT update); retyping that hour in « Prélevé le » makes the server refuse « L'heure du prélèvement est dans le futur » and the visit is never saved. The API and the form with the proposed time work (checked on production and on the local dev server).
+- Fix: `LegalTimeHint` under every date-time field (legal time, and a warning when the device is one hour ahead: « gardez l'heure proposée ; mettez l'appareil à jour »), and the refusal messages now state the legal time and the cause (`futureMessage` in labels.ts).
+
 ### 2026-10-05 — recette navigateur en production (TESTPLAN S)
 - Eight headless-Chrome role agents (interrupted twice, the technician's sweep complete) + a scripted sweep of 75 pages / 25 access rules / 13 documents / phone layout, and the whole circuit by hand in the browser pane (visit → reception → bench → validation → approval → report → deposit → invoice, plus clients, stock, configuration). Reports: `RECETTE-05-10-AUTOMATIQUE.md`, `RECETTE-05-10-MANUELLE.md`.
 - Fixed and deployed the same day: unreadable bench readings accepted, sticky manual decision, bench sheet without R1 … Rn / criteria, phone grid, account creation with a hyphen (500), PDF links prefetching a render, tab titles, honorific as first name, badges and plurals. Hardened the laboratory clock against devices whose time-zone data predates Morocco's return to GMT (20/09/2026) — `src/lib/lab-time.ts`.

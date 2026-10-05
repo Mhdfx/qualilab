@@ -1,4 +1,5 @@
 import type { NonConformityReason, QuantityUnit } from "@/generated/prisma/enums";
+import { futureMessage } from "./labels";
 import {
   evaluateReception,
   type Check,
@@ -97,7 +98,7 @@ export function validateReception(
   if (input.arrivedAt !== undefined && input.arrivedAt !== null && input.arrivedAt !== "") {
     const d = new Date(String(input.arrivedAt));
     if (Number.isNaN(d.getTime())) return fail("L'heure d'arrivée est invalide.");
-    if (d.getTime() > Date.now() + 5 * 60 * 1000) return fail("L'heure d'arrivée est dans le futur.");
+    if (d.getTime() > Date.now() + 5 * 60 * 1000) return fail(futureMessage("L'heure d'arrivée"));
     arrivedAt = d;
   }
   const coolerTemperature = parseNumber(input.coolerTemperature, -80, 300);

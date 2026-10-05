@@ -28,6 +28,7 @@ import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StepIndicator } from "@/components/ui/StepIndicator";
 import { Card } from "@/components/ui/Card";
+import { LegalTimeHint } from "@/components/LegalTimeHint";
 import { LineEditor } from "@/components/preleveur/LineEditor";
 import {
   emptyLine,
@@ -657,6 +658,7 @@ export function DepositForm({
                   ) : (
                     <div className="input-field px-4" aria-hidden="true" />
                   )}
+                  <LegalTimeHint />
                 </div>
               </div>
 

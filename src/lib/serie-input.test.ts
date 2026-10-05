@@ -129,8 +129,8 @@ describe("validateSerie — the end of the visit typed on site", () => {
   it("refuses an end or an arrival in the future, like the reception does", () => {
     const soon = new Date(Date.now() + 2 * 3600 * 1000).toISOString();
     const visit = { clientId: "c1", lines: [{ ...aliment }] };
-    expect(validateSerie({ ...visit, endedAt: soon }, natures, { kind: "VISITE" })).toMatchObject({ ok: false, error: "L'heure de fin est dans le futur." });
-    expect(validateSerie({ ...visit, arrivedAt: soon }, natures, { kind: "VISITE" })).toMatchObject({ ok: false, error: "L'heure d'arrivée est dans le futur." });
+    expect(validateSerie({ ...visit, endedAt: soon }, natures, { kind: "VISITE" })).toMatchObject({ ok: false, error: expect.stringContaining("L'heure de fin est dans le futur") });
+    expect(validateSerie({ ...visit, arrivedAt: soon }, natures, { kind: "VISITE" })).toMatchObject({ ok: false, error: expect.stringContaining("L'heure d'arrivée est dans le futur") });
     const past = new Date(Date.now() - 3600 * 1000).toISOString();
     const earlier = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
     expect(validateSerie({ ...visit, startedAt: earlier, endedAt: past, arrivedAt: past, coolerTemperature: "1" }, natures, { kind: "VISITE" })).toMatchObject({ ok: true });

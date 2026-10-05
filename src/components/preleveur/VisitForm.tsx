@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { Cadre, LineKind, SampleType, SamplerKind } from "@/generated/prisma/enums";
 import { CADRE_LABELS, LINE_KIND_LABELS, formatDateTime } from "@/lib/labels";
+import { LegalTimeHint } from "@/components/LegalTimeHint";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StepIndicator } from "@/components/ui/StepIndicator";
@@ -562,6 +563,7 @@ export function VisitForm({ me }: { me: Preleveur }) {
                   ) : (
                     <div className="input-field px-4" aria-hidden="true" />
                   )}
+                  <LegalTimeHint />
                 </div>
                 <div>
                   <label className="section-title mb-2">
