@@ -469,3 +469,18 @@ See `RETOUR-LABO-30-09.md`, slice H: a line destroyed at reception is now
 **notified to the client** by e-mail (still not invoiced), and units are
 named **R1 … Rn everywhere, labels included** (no more letters).
 
+## 16. Le programme d'analyse (05/10/2026 — `PROGRAMME.md`)
+
+Entre la réception et la paillasse, le **responsable des paramètres**
+(rôle PROGRAMMATEUR, espace `/programmation`) confirme pour chaque ligne un
+programme d'analyse : type de produit et critères, analyses (profils,
+cases), nombres (unités à lire, prise d'essai, dilution par paramètre),
+méthodes (version de norme par paramètre), organisation (technicien par
+paramètre, priorité, délai, consignes). La ligne passe RECU → **PROGRAMME** ;
+la paillasse ne démarre qu'une ligne programmée, chaque technicien ne saisit
+que ses paramètres et la soumission attend que tout soit terminé. La
+réception n'attribue plus obligatoirement un technicien. La facturation peut
+être préparée dès le programme confirmé (mention « avant résultat » tant que
+la ligne n'est pas validée). Journal : `SAMPLE_PROGRAMMED`,
+`SAMPLE_PROGRAMME_UPDATED`. Recette : TESTPLAN T.
+

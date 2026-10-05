@@ -8,7 +8,7 @@
 
 ## ▶ NEXT ACTION
 
-**Tranche PROGRAMME (`PROGRAMME.md`) — le responsable des paramètres** : P1 fondation → P2 écrans → P3 adaptations → P4 gates, puis recette en production (TESTPLAN T) et déploiement ; ensuite seulement les tranches L1–L3 de `RETOUR-LABO-05-10.md` (en-tête du protocole, familles, surfaces) après les réponses du laboratoire.
+**Tranche PROGRAMME livrée (TESTPLAN T, 05/10 night).** Next: les tranches L1–L3 de `RETOUR-LABO-05-10.md` (en-tête du protocole, familles, surfaces) après les réponses du laboratoire.
 
 _Previous next action, kept for context:_ **SLICE K of `RETOUR-LABO-30-09.md` — the recette and go-live, with the
 laboratory** (spec §5 and §10). Slices H, I and J are done and in production
@@ -268,6 +268,10 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-10-05 (night) — slice PROGRAMME live (TESTPLAN T)
+- Built in four workflow phases (foundation, screens ∥ adaptations, gates), 77 files, 400 tests; deployed with migration 20261006100000_programme. Recette on production through the APIs (22 checks) and in the browser as param1: reception without technician, queue, draft / confirm / edit, billing before result, two technicians on one line with 403 and submit lock, dilution ×10 on the report, two technicians printed. One crash found and fixed the same night (verbsFor called from a server page).
+- Test client purged, counters 0 / 0. Docs: WORKFLOW §16, DEPLOY, HANDOFF, TESTPLAN T.
 
 ### 2026-10-05 (night) — PROGRAMME.md written, slice started
 - The lab's oral request detailed: a new role « Responsable des paramètres » (PROGRAMMATEUR) between reception and the bench, a complete programme d'analyse per sample (type and criteria, analyses, numbers, methods, technician per parameter, priority and deadline, instructions, billing preview), status PROGRAMME, billing possible from the programme. Spec: `PROGRAMME.md`; build in four slices P1–P4.

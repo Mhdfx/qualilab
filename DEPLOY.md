@@ -157,6 +157,16 @@ Windows / Android / iOS update that moves Morocco to GMT**, and Chrome must
 be current. Check: the clock in the taskbar must match the time printed on
 the reception queue.
 
+## Programme d'analyse (2026-10-06)
+
+The deploy applies migration `20261006100000_programme` (additive: status
+value PROGRAMME, columns on Sample and SampleParameter, indexes). Existing
+lines keep working; a line received before the deploy sits in RECU and must
+be programmed before the bench can start it. Create the account of the new
+role once on production (demo during the recette: `param1` / Rachid Alaoui,
+role PROGRAMMATEUR, via `/admin/utilisateurs` or `POST /api/admin/users`);
+on go-live day create the real account like the others.
+
 ## Restoring a dump
 
 `scripts/restore-db.sh <dump.sql.gz>` stops the app, **drops and recreates**

@@ -992,6 +992,32 @@ counters back to 0 / 0.
 ### Left for the laboratory
 - Q40 Salmonelles « Absence /1g » vs parameter « /25 g » (ABATS CRUS DE VOLAILLE); the demo-accounts panel and the shared password until go-live (`DEPLOY.md`); Windows / Chrome time-zone update on the lab's devices.
 
+## Checkpoint T — Le programme d'analyse en production (2026-10-05, night)
+
+Spec `PROGRAMME.md`. Built in four phases (P1 fondation, P2 écrans, P3
+adaptations, P4 gates), gates green (tsc, eslint, 400 tests, build), migration
+`20261006100000_programme` applied on production by the deploy. Recette through
+the APIs (`.ui-tests/recette-programme.mjs` + `-2.mjs`, 22 checks) and in the
+browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
+(counters back to 0 / 0).
+
+### T-1 Circuit
+- [x] Account `param1` (Responsable des paramètres) created through `/api/admin/users`; its space `/programmation` opens with the menu of §2; the header reads « Responsable des paramètres · Rachid ».
+- [x] Visit 1/26 (2 lines), received by `recep1` **without technician** → lines RECU 1/26, 2/26; the bench (`/api/samples` as tech1) does not list them; a result PUT on a RECU line is refused: « En attente de programmation : le responsable des paramètres doit confirmer le programme ».
+- [x] Queue `/api/programmation/queue` lists the série; the referential of a line carries 260 types, 43 parameters, 2 technicians, norm versions and catalogue prices.
+- [x] Draft saved (status stays RECU); confirming without analysis refused (« Choisissez au moins une analyse avant de confirmer le programme ») ; confirmed with the type ABATS CRUS DE VOLAILLE, 5 analyses, n = 5, prise d'essai 25 g, Coliformes to tech2 with dilution ×10, priority urgente, délai → status PROGRAMME, programmedAt set; edited after confirmation (stays PROGRAMME); `param1` cannot validate (403).
+- [x] Billing: the PROGRAMME line is proposed to `compta1` in `/api/clients/[id]/billable` before any result.
+- [x] Bench: tech1 and tech2 both see the line; tech1 types his four germs; tech1 refused on Coliformes (« Le paramètre Coliformes thermotolérants à 44°C est attribué à Imane Cherkaoui : vous ne pouvez pas le saisir ») ; submit refused « Il reste 1 paramètre à d'autres techniciens » ; tech2 types Coliformes 2.10², 1.10², 3.10² → the report prints 2.10³, 1.10³, 3.10³ (dilution ×10 applied) ; tech2's submit closes the line (RESULTATS_SAISIS) ; bench sheet PDF per technician.
+- [x] valid1 validates, admin approves → RAP-2026-00001 read at the image: « Analyses réalisées par : Yassine Amrani · Imane Cherkaoui », method column NM ISO per germ, criteria n / c / m / M.
+- [x] Browser (param1): dashboard indicators (À programmer 1, Programmées aujourd'hui 2, En retard 0, En attente de paillasse 0), queue grouped by série with « Programmer » ; sheet of 3/26 with the seven sections (type with search and the criteria table, profile chip, units chips, prise d'essai, dilution, norm versions, technicians, priority, délai, consignes, vérification d'entrée, facturation) ; type « SALADES AVEC SOURCE PROTEIQUE » + profile « Micro aliments standard » + Yassine + urgente + 25 g → « Programme confirmé le 5 oct. 2026, 20:48 par Rachid Alaoui », badge Programmé, button « Enregistrer les modifications ».
+
+### Défaut trouvé par cette recette et corrigé le jour même
+- The programme sheet crashed on production (« Une erreur est survenue ») : `verbsFor` was exported from the "use client" module `SampleVerbs.tsx` and called from the server page — a runtime error that tsc cannot see. Moved to `src/lib/sample-verbs.ts`, redeployed, verified.
+
+### Left
+- The germs of a chosen type are listed « non programmé » when a profile chip replaces the ticked analyses afterwards: visible and deliberate, but the lab may prefer the type's germs to stay ticked (to confirm).
+- Q41 (« les nombres », numbering) and Q42 (one sample split between technicians) in NEEDEDINFO.
+
 ## Checkpoint L — Phase 9, chantier 1 : circuit série (L1–L5 verified 2026-09-13, L1b verified 2026-09-14, all on the dev server at 1440×900 and on the VPS after deploy; L6 = recette with the laboratory, pending)
 
 Tick only what was seen in the browser. One sub-checkpoint per slice of
