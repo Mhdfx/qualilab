@@ -57,7 +57,7 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
       <PageHeader
         badge="Recherche"
         title="Recherche des analyses"
-        subtitle="Les analyses terminées ou en cours, par client, période, type d'analyse et état. Exportez le résultat en Excel."
+        subtitle={`Les analyses terminées ou en cours, par client, période, type d'analyse et état.${canExport ? " Exportez le résultat en Excel." : ""}`}
       />
 
       <Card className="p-5">

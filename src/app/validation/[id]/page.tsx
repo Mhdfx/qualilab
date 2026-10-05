@@ -27,6 +27,12 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
 import { ValidationPanel } from "@/components/validation/ValidationPanel";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const sample = await prisma.sample.findUnique({ where: { id }, select: { code: true, controlCode: true } });
+  return { title: sample ? `Contrôle ${labReference(sample)}` : "Contrôle qualité" };
+}
+
 export default async function ValidationDetailPage({
   params,
 }: {

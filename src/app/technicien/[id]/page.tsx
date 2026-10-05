@@ -16,6 +16,12 @@ import {
   type ParameterLine,
 } from "@/components/technicien/ResultEntryForm";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const sample = await prisma.sample.findUnique({ where: { id }, select: { code: true, controlCode: true } });
+  return { title: sample ? `Analyse ${labReference(sample)}` : "Analyse" };
+}
+
 export default async function AnalysePage({
   params,
 }: {
@@ -116,7 +122,7 @@ export default async function AnalysePage({
       <PageHeader
         badge="Analyse"
         title={labReference(sample)}
-        subtitle={bench.plans.size > 0 ? "Lisez chaque répétition (R1 … Rn) : le verdict (satisfaisant, acceptable, non satisfaisant) suit le plan n, c, m, M du type de produit." : bench.unitCount > 1 ? "Lisez chaque répétition (R1 … Rn) : la valeur retenue est la plus défavorable, comparée à la limite de référence." : "Saisissez chaque paramètre. La conformité est calculée automatiquement à partir de la limite de référence."}
+        subtitle={!canEdit ? "Résultats soumis à la validation — consultation en lecture seule." : bench.plans.size > 0 ? "Lisez chaque répétition (R1 … Rn) : le verdict (satisfaisant, acceptable, non satisfaisant) suit le plan n, c, m, M du type de produit." : bench.unitCount > 1 ? "Lisez chaque répétition (R1 … Rn) : la valeur retenue est la plus défavorable, comparée à la limite de référence." : "Saisissez chaque paramètre. La conformité est calculée automatiquement à partir de la limite de référence."}
       />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px_1fr]">

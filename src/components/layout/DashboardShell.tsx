@@ -54,7 +54,8 @@ export function DashboardShell({
     router.refresh();
   }
 
-  const firstName = userName.split(" ")[0];
+  // « Dr. Nawal Bennani » is greeted as Nawal, not as « Dr. ».
+  const firstName = userName.split(/\s+/).find((word) => !/^(dr|pr|m|mr|mme|mlle|me)\.?$/i.test(word)) ?? userName;
   const initials = getInitials(userName);
 
   return (

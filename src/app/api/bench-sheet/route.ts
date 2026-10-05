@@ -7,6 +7,7 @@ import { getCompany } from "@/lib/company-server";
 import { getDocumentReference } from "@/lib/document-reference";
 import { formatIsoDay } from "@/lib/labels";
 import { labReference } from "@/lib/sample-select";
+import { loadBenchPlans } from "@/lib/bench-plan";
 
 /**
  * The printable bench sheet for a given day.
@@ -40,8 +41,10 @@ export async function GET(request: Request) {
       receivedAt: { gte: start, lt: end },
     },
     select: {
+      id: true,
       code: true,
       controlCode: true,
+      unitCount: true,
       serie: { select: { serialNumber: true } },
       type: true,
       produit: true,
@@ -50,27 +53,39 @@ export async function GET(request: Request) {
       technician: { select: { name: true } },
       parameters: {
         select: {
-          parameter: { select: { name: true, unit: true, threshold: true } },
+          parameter: { select: { id: true, name: true, unit: true, threshold: true } },
         },
       },
     },
     orderBy: { receivedAt: "asc" },
   });
 
-  const samples: BenchSheetSample[] = rows.map((row) => ({
-    reference: labReference(row),
-    serieNumber: row.serie.serialNumber,
-    type: row.type,
-    produit: row.produit,
-    numeroLot: row.numeroLot,
-    clientName: row.client.name,
-    technicianName: row.technician?.name ?? null,
-    parameters: row.parameters.map(({ parameter }) => ({
-      name: parameter.name,
-      unit: parameter.unit,
-      threshold: parameter.threshold,
-    })),
-  }));
+  // The same criteria as the bench screen (product type, norm in force), so
+  // the sheet carries m, M, c and the R1 … Rn cells the technician will key in.
+  const samples: BenchSheetSample[] = await Promise.all(
+    rows.map(async (row) => {
+      const bench = await loadBenchPlans(row.id);
+      const perUnit = bench.plans.size > 0 || row.unitCount > 1;
+      return {
+        reference: labReference(row),
+        serieNumber: row.serie.serialNumber,
+        type: row.type,
+        produit: row.produit,
+        numeroLot: row.numeroLot,
+        clientName: row.client.name,
+        technicianName: row.technician?.name ?? null,
+        unitCount: perUnit ? Math.max(1, row.unitCount) : 1,
+        parameters: row.parameters.map(({ parameter }) => {
+          const plan = bench.plans.get(parameter.id);
+          return {
+            name: parameter.name,
+            unit: plan?.unit ?? parameter.unit,
+            threshold: plan ? `${plan.label}${plan.normLabel ? ` · ${plan.normLabel}` : ""}` : parameter.threshold,
+          };
+        }),
+      };
+    })
+  );
 
   try {
     const [company, reference] = await Promise.all([getCompany(), getDocumentReference("FEUILLE_PAILLASSE")]);

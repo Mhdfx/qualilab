@@ -4,6 +4,7 @@ import { companyBrandHtml } from "./brand-html";
 import { SAMPLE_TYPE_LABELS, formatDate } from "./labels";
 import type { SampleType } from "@/generated/prisma/client";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
+import { repetitionLabel } from "./series";
 
 /**
  * Feuille de paillasse — the printable worksheet the technicians fill at the
@@ -11,6 +12,8 @@ import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
  *
  * It lists the samples of a chosen day with one line per parameter and blank
  * columns for the reading and a note, so it is written on rather than read.
+ * A sample taken on several units gets one cell per repetition (R1 … Rn) and
+ * the criterion of its product type, exactly as the bench screen shows them.
  * Samples are identified by their blind serial number, which is what appears
  * on the tube.
  */
@@ -24,8 +27,22 @@ export type BenchSheetSample = {
   numeroLot: string | null;
   clientName: string;
   technicianName: string | null;
+  /** Readings per parameter: one cell per unit taken (R1 … Rn), 1 = a single value. */
+  unitCount: number;
+  /** `threshold` is the product type's criterion (m, M, c, norm) when there is one. */
   parameters: { name: string; unit: string | null; threshold: string | null }[];
 };
+
+/** The reading cells of one row: R1 … Rn when the sample was taken on several units. */
+function readingCells(unitCount: number) {
+  return Array.from({ length: Math.max(1, unitCount) }, () => '<td class="fill"></td>').join("");
+}
+
+function readingHeaders(unitCount: number, width: number) {
+  if (unitCount <= 1) return `<th style="width:${width}%">Valeur mesurée</th>`;
+  const each = (width / unitCount).toFixed(1);
+  return Array.from({ length: unitCount }, (_, i) => `<th class="rep" style="width:${each}%">${repetitionLabel(i + 1)}</th>`).join("");
+}
 
 
 export function buildBenchSheetHtml(
@@ -53,11 +70,11 @@ export function buildBenchSheetHtml(
       <table>
         <thead>
           <tr>
-            <th style="width:34%">Paramètre</th>
-            <th style="width:12%">Unité</th>
-            <th style="width:20%">Seuil</th>
-            <th style="width:16%">Valeur mesurée</th>
-            <th style="width:18%">Note</th>
+            <th style="width:${sample.unitCount > 1 ? 24 : 34}%">Paramètre</th>
+            <th style="width:9%">Unité</th>
+            <th style="width:${sample.unitCount > 1 ? 23 : 20}%">Critère / seuil</th>
+            ${readingHeaders(sample.unitCount, sample.unitCount > 1 ? 34 : 19)}
+            <th style="width:${sample.unitCount > 1 ? 10 : 18}%">Note</th>
           </tr>
         </thead>
         <tbody>
@@ -67,8 +84,8 @@ export function buildBenchSheetHtml(
             <tr>
               <td class="param">${escapeHtml(parameter.name)}</td>
               <td>${show(parameter.unit)}</td>
-              <td>${show(parameter.threshold)}</td>
-              <td class="fill"></td>
+              <td class="crit">${show(parameter.threshold)}</td>
+              ${readingCells(sample.unitCount)}
               <td class="fill"></td>
             </tr>`
             )
@@ -113,6 +130,8 @@ export function buildBenchSheetHtml(
     border: 1px solid #d9e3e8; }
   tbody td { padding: 6px; border: 1px solid #d9e3e8; }
   .param { font-weight: 600; }
+  .crit { font-size: 8.2pt; }
+  thead th.rep { text-align: center; font-family: Consolas, monospace; }
   .fill { background: #fcfdfe; height: 22px; }
   .empty { text-align: center; color: #7d929c; padding: 28px; border: 1px dashed #d9e3e8;
     border-radius: 4px; }

@@ -1,4 +1,5 @@
 import type { InvoiceStatus, SampleStatus, SampleType } from "@/generated/prisma/client";
+import { labTimeZone } from "./lab-time";
 
 export const SAMPLE_TYPE_LABELS: Record<SampleType, string> = {
   ALIMENTAIRE: "Alimentaire",
@@ -81,35 +82,42 @@ export const CANCEL_REASON_LABELS = {
  * format a timestamp identically or hydration mismatches. The container's TZ
  * (docker-compose.yml) is set to the same zone so that day cut-offs — "reçus
  * aujourd'hui", the bench sheet — land on the same day as the printed times.
+ *
+ * Since Morocco's return to plain UTC (20/09/2026) the zone is resolved per
+ * instant by `labTimeZone` (lab-time.ts), so a browser whose time-zone data
+ * predates the change still prints the laboratory's time.
  */
 export const LAB_TIME_ZONE = "Africa/Casablanca";
 
+const asDate = (date: Date | string) => (typeof date === "string" ? new Date(date) : date);
+
 export function formatDateTime(date: Date | string) {
+  const d = asDate(date);
   return new Intl.DateTimeFormat("fr-FR", {
-    timeZone: LAB_TIME_ZONE,
+    timeZone: labTimeZone(d),
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(new Date(date));
+  }).format(d);
 }
 
 export function formatDate(date: Date | string) {
+  const d = asDate(date);
   return new Intl.DateTimeFormat("fr-FR", {
     dateStyle: "medium",
-    timeZone: LAB_TIME_ZONE,
-  }).format(
-    new Date(date)
-  );
+    timeZone: labTimeZone(d),
+  }).format(d);
 }
 
 /** Short "jour/mois heure:minute" — the lab's own zone, client-safe. */
 export function formatDayTime(date: Date | string) {
+  const d = asDate(date);
   return new Intl.DateTimeFormat("fr-FR", {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: LAB_TIME_ZONE,
-  }).format(typeof date === "string" ? new Date(date) : date);
+    timeZone: labTimeZone(d),
+  }).format(d);
 }
 
 /**
@@ -118,22 +126,24 @@ export function formatDayTime(date: Date | string) {
  * day in UTC, so the stamp would be one day behind for the whole day.
  */
 export function formatIsoDay(date: Date | string) {
+  const d = asDate(date);
   return new Intl.DateTimeFormat("en-CA", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-    timeZone: LAB_TIME_ZONE,
-  }).format(typeof date === "string" ? new Date(date) : date);
+    timeZone: labTimeZone(d),
+  }).format(d);
 }
 
 /** Numeric "jj/mm/aaaa" — the lab's own zone, client-safe. */
 export function formatDayShort(date: Date | string) {
+  const d = asDate(date);
   return new Intl.DateTimeFormat("fr-FR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-    timeZone: LAB_TIME_ZONE,
-  }).format(typeof date === "string" ? new Date(date) : date);
+    timeZone: labTimeZone(d),
+  }).format(d);
 }
 
 export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {

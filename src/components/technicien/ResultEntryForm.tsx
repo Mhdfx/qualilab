@@ -70,7 +70,11 @@ type Reading = {
   /** True when that verdict is only indicative (fewer units than the plan's n). */
   indicative: boolean;
   typedUnits: number;
+  /** Repetitions typed in a notation the engine cannot read (« abc »): R1, R4… */
+  unreadable: string[];
 };
+
+const NO_UNREADABLE: string[] = [];
 
 export function ResultEntryForm({
   sampleId,
@@ -91,22 +95,30 @@ export function ResultEntryForm({
           // the verdict shown while typing is the verdict stored.
           const units = line.units.map((u) => applyUnitFactor(parseUnitReading(u), line.calcFactor));
           const typedUnits = units.filter((u) => u.kind !== "empty").length;
+          // A reading the engine cannot parse is neither a count nor an
+          // absence: it must be retyped, never silently dropped.
+          const unreadable = units.flatMap((u, i) => (u.kind === "unreadable" ? [repetitionLabel(i + 1)] : []));
           if (line.plan) {
             const judged = typedUnits > 0 ? judgeUnits(line.plan, units) : null;
             const verdict = judged ? judged.official ?? judged.informal : null;
-            return { parsed: null, conform: null, needsManual: false, verdict, indicative: !!judged && !judged.official, typedUnits };
+            return { parsed: null, conform: null, needsManual: false, verdict, indicative: !!judged && !judged.official, typedUnits, unreadable };
           }
           // No criterion: the worst unit against the parameter's limit.
           const summary = summariseReadings(units);
           const parsed = summary.value ? { ...parseLabValue(summary.value), numeric: summary.numeric } : null;
           const auto = parsed ? suggestConformity(parsed.numeric, line.limitValue) : null;
+          // The technician only decides when the reading is meaningful but
+          // not a number (« Présence ») — a decision taken earlier must not
+          // outlive the reading it was about.
+          const needsManual = typedUnits > 0 && unreadable.length === 0 && parsed?.numeric == null;
           return {
             parsed,
-            conform: auto ?? line.manualConform,
-            needsManual: typedUnits > 0 && parsed?.numeric == null,
+            conform: auto ?? (needsManual ? line.manualConform : null),
+            needsManual,
             verdict: null,
             indicative: false,
             typedUnits,
+            unreadable,
           };
         }
         // The suggestion compares the FINAL value — raw reading × factor —
@@ -117,13 +129,15 @@ export function ResultEntryForm({
         const auto = parsed
           ? suggestConformity(parsed.numeric, line.limitValue)
           : null;
+        const needsManual = !!line.value && parsed?.numeric === null;
         return {
           parsed,
-          conform: auto ?? line.manualConform,
-          needsManual: !!line.value && parsed?.numeric === null,
+          conform: auto ?? (needsManual ? line.manualConform : null),
+          needsManual,
           verdict: null,
           indicative: false,
           typedUnits: 0,
+          unreadable: NO_UNREADABLE,
         };
       }),
     [lines]
@@ -133,6 +147,7 @@ export function ResultEntryForm({
     if (line.workStatus === "EN_COURS") return false;
     const reading = readings[index];
     if (line.perUnit && reading.typedUnits < line.units.length) return false;
+    if (reading.unreadable.length > 0) return false;
     // A « Non spécifié » criterion gives no verdict: read is enough.
     if (line.plan && !hasLimit(line.plan)) return reading.verdict?.verdict !== "INCOMPLET";
     if (line.plan) return reading.verdict !== null && reading.verdict.verdict !== "INCOMPLET";
@@ -285,8 +300,8 @@ export function ResultEntryForm({
                         )}
                       </legend>
                       <div
-                        className="mt-1 grid gap-2"
-                        style={{ gridTemplateColumns: `repeat(${Math.min(line.units.length, 5)}, minmax(0, 1fr))` }}
+                        className="mt-1 grid gap-2 overflow-x-auto pb-1"
+                        style={{ gridTemplateColumns: `repeat(${Math.min(line.units.length, 5)}, minmax(4.75rem, 1fr))` }}
                       >
                         {line.units.map((unit, unitIndex) => (
                           <label key={unitIndex} className="block">
@@ -370,7 +385,18 @@ export function ResultEntryForm({
                   </div>
                 </div>
 
-                {line.plan && !hasLimit(line.plan) ? (
+                {reading.unreadable.length > 0 ? (
+                  <p
+                    role="alert"
+                    className="mt-2.5 flex flex-wrap items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900"
+                  >
+                    <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>
+                      {reading.unreadable.join(", ")} : lecture non reconnue. Notation attendue : 1,2.10², &lt; 10, Absence,
+                      Présence ou 3(-2).
+                    </span>
+                  </p>
+                ) : line.plan && !hasLimit(line.plan) ? (
                   <p className="mt-2.5 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
                     Critère « non spécifié » : le résultat figure au rapport sans verdict.
                   </p>
@@ -577,7 +603,7 @@ function Verdict({
         {limitValue !== null &&
           ` · limite ${limitValue.toLocaleString("fr-FR")}${unit ? ` ${unit}` : ""}`}
       </span>
-      {!conform && (
+      {!conform && limitValue !== null && (
         <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold">
           <AlertTriangle className="h-3 w-3" aria-hidden="true" />
           Dépassement

@@ -62,3 +62,6 @@ finalversion.md
 
 # Extraction of the old software (client data) — scripts/legacy/, never the files
 /legacy-export/
+
+# Browser recette scripts and screenshots (local only)
+/.ui-tests/

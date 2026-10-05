@@ -1,4 +1,5 @@
 import type { LineKind, Family, SampleType, QuantityUnit, HandsState } from "@/generated/prisma/enums";
+import { fromLabWallTime, toLabWallTime } from "@/lib/lab-time";
 
 /** Shapes shared by the visit screens (client side). */
 
@@ -152,14 +153,23 @@ export function lineDesignation(line: {
   return line.produit || "—";
 }
 
-/** `datetime-local` wants local time without zone: 2026-09-13T14:05 */
+/**
+ * `datetime-local` wants a wall time without zone: 2026-09-13T14:05. It is
+ * the LABORATORY's wall time (lab-time.ts), not the device's: a phone whose
+ * time-zone data predates Morocco's return to UTC would otherwise shift
+ * every typed hour by one.
+ */
 export function toLocalInput(date: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return toLabWallTime(date);
 }
 
 export function fromLocalInput(value: string): string | null {
   if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  return fromLabWallTime(value)?.toISOString() ?? null;
+}
+
+/** The instant behind a `datetime-local` value, for display and comparison. */
+export function localInputDate(value: string): Date | null {
+  if (!value) return null;
+  return fromLabWallTime(value);
 }

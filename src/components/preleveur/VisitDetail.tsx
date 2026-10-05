@@ -138,7 +138,7 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
           <Card className="p-5">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">La visite</h2>
-              <Link
+              <a
                 href={`/api/series/${visit.id}/document`}
                 target="_blank"
                 rel="noopener"
@@ -146,7 +146,7 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
               >
                 <FileText className="h-3.5 w-3.5" aria-hidden="true" />
                 Protocole (PDF)
-              </Link>
+              </a>
             </div>
             <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
               <Info label="Prélevé par">

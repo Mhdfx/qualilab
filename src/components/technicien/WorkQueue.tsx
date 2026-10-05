@@ -86,8 +86,7 @@ export function WorkQueue({ items }: { items: WorkItem[] }) {
                           {item.client.name}
                         </p>
                         <p className="mt-0.5 text-sm text-slate-500">
-                          {done} / {total} paramètre{total > 1 ? "s" : ""} saisi
-                          {done > 1 ? "s" : ""} · reçu le{" "}
+                          {done} / {total} paramètre{total > 1 ? "s" : ""} saisi{total > 1 ? "s" : ""} · reçu le{" "}
                           {item.receivedAt ? formatDate(item.receivedAt) : "—"}
                         </p>
                       </div>

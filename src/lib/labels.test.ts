@@ -44,3 +44,11 @@ describe("lab time zone", () => {
     expect(formatDate("2026-09-08T23:30:00.000Z")).toContain("9");
   });
 });
+
+describe("after Morocco's return to plain UTC (20/09/2026)", () => {
+  it("prints the laboratory's time as UTC whatever the device's zone data", () => {
+    // 00:57 UTC on 5 October 2026 is 00:57 on the laboratory's clock.
+    expect(formatDateTime("2026-10-05T00:57:00.000Z")).toContain("00:57");
+    expect(formatDate("2026-10-05T23:30:00.000Z")).toContain("5");
+  });
+});

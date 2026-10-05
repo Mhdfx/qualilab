@@ -13,7 +13,8 @@ import { canTransition } from "@/lib/sample-status";
  * answered — a missing line would reach the validateur as a silent gap. A
  * germ read per unit (CRITERES.md) must have every unit read: an
  * « Incomplet » verdict stays on the bench — and so must any parameter of a
- * sample taken on several units with a repetition left blank.
+ * sample taken on several units with a repetition left blank or typed in a
+ * notation the engine cannot read.
  */
 export async function POST(
   _request: Request,
@@ -45,7 +46,8 @@ export async function POST(
       conform: true,
       interpretation: true,
       parameter: { select: { name: true } },
-      _count: { select: { units: true } },
+      // value null + detected null = a reading the engine could not parse.
+      units: { select: { value: true, detected: true } },
     },
   });
   const perUnit = sample.unitCount > 1;
@@ -59,7 +61,8 @@ export async function POST(
       !result?.value ||
       result.workStatus === "EN_COURS" ||
       result.interpretation === "INCOMPLET" ||
-      (perUnit && result._count.units < sample.unitCount)
+      (perUnit && result.units.length < sample.unitCount) ||
+      result.units.some((u) => u.value === null && u.detected === null)
     ) {
       missing.push(parameter.name);
     }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -682,7 +681,7 @@ export function SerieReceptionForm({
               />
               <p className="mt-1 text-xs text-slate-500">Pré-remplit la température de chaque ligne.</p>
             </div>
-            <Link
+            <a
               href={`/api/series/${serie.id}/document`}
               target="_blank"
               rel="noopener"
@@ -690,7 +689,7 @@ export function SerieReceptionForm({
             >
               <FileText className="h-4 w-4" aria-hidden="true" />
               Voir le protocole de prélèvement (PDF)
-            </Link>
+            </a>
             <div className="mt-3">
               <label htmlFor="allTech" className="block text-sm font-medium text-slate-700">
                 Technicien pour toutes les lignes
@@ -852,7 +851,7 @@ function ReceivedSummary({
         </div>
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-          <Link
+          <a
             href={`/api/series/${serie.id}/labels`}
             target="_blank"
             rel="noopener"
@@ -860,8 +859,8 @@ function ReceivedSummary({
           >
             <Printer className="h-4 w-4" aria-hidden="true" />
             Imprimer les étiquettes
-          </Link>
-          <Link
+          </a>
+          <a
             href={`/api/series/${serie.id}/document`}
             target="_blank"
             rel="noopener"
@@ -869,7 +868,7 @@ function ReceivedSummary({
           >
             <FileText className="h-4 w-4" aria-hidden="true" />
             {serie.kind === "DEPOT" ? "Bon de réception (PDF)" : "Protocole de prélèvement (PDF)"}
-          </Link>
+          </a>
           <SecondaryButton type="button" onClick={onBack}>
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Retour à la file de réception

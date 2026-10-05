@@ -32,6 +32,7 @@ import { LineEditor } from "@/components/preleveur/LineEditor";
 import {
   emptyLine,
   fromLocalInput,
+  localInputDate,
   kindsFor,
   lineDesignation,
   mergeSuggestions,
@@ -882,7 +883,7 @@ export function DepositForm({
               <Row label="Prélèvement" value={samplerKind === "CLIENT" ? "Par le client" : `${SAMPLER_KIND_LABELS[samplerKind]} — ${samplerName}`} />
               <Row label="Cadre" value={CADRE_LABELS[cadre]} />
               {interlocutor && <Row label="Déposé par" value={interlocutor} />}
-              <Row label="Prélevé le" value={isMounted && startedAt ? formatDateTime(new Date(startedAt)) : "—"} />
+              <Row label="Prélevé le" value={isMounted && startedAt ? formatDateTime(localInputDate(startedAt)!) : "—"} />
               {clientReference && <Row label="Référence client" value={clientReference} />}
               {advanceAmount && <Row label="Avance" value={`${advanceAmount} DH — ${PAYMENT_MODES.find((m) => m.value === advanceMode)?.label ?? ""}`} />}
             </div>

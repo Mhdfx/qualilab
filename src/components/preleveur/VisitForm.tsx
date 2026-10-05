@@ -24,6 +24,7 @@ import { LineEditor } from "./LineEditor";
 import {
   emptyLine,
   fromLocalInput,
+  localInputDate,
   lineDesignation,
   mergeSuggestions,
   natureForKind,
@@ -296,8 +297,8 @@ export function VisitForm({ me }: { me: Preleveur }) {
     if (!clientId) return setStepError("Choisissez le client.");
     if (samplerKind === "QUALILAB" && !samplerUserId) return setStepError("Indiquez qui a effectué le prélèvement.");
     if (samplerKind !== "QUALILAB" && !samplerName.trim()) return setStepError("Indiquez qui a effectué le prélèvement.");
-    if (endedAt && startedAt && new Date(endedAt) < new Date(startedAt)) return setStepError("L'heure de fin précède le début du prélèvement.");
-    if (arrivedAt && endedAt && new Date(arrivedAt) < new Date(endedAt)) return setStepError("L'arrivée au laboratoire précède la fin du prélèvement.");
+    if (endedAt && startedAt && localInputDate(endedAt)! < localInputDate(startedAt)!) return setStepError("L'heure de fin précède le début du prélèvement.");
+    if (arrivedAt && endedAt && localInputDate(arrivedAt)! < localInputDate(endedAt)!) return setStepError("L'arrivée au laboratoire précède la fin du prélèvement.");
     for (const [i, line] of lines.entries()) {
       const n = i + 1;
       if (!line.natureId) return setStepError("Choisissez la nature d'analyse.", n);
@@ -778,10 +779,10 @@ export function VisitForm({ me }: { me: Preleveur }) {
               <Row label="Site de prélèvement" value={selectedSite?.name ?? "Siège"} />
               <Row label="Cadre" value={CADRE_LABELS[cadre]} />
               {interlocutor && <Row label="Interlocuteur" value={interlocutor} />}
-              <Row label="Prélevé le" value={isMounted && startedAt ? formatDateTime(new Date(startedAt)) : "—"} />
-              <Row label="Heure de fin" value={isMounted && endedAt ? formatDateTime(new Date(endedAt)) : "—"} />
+              <Row label="Prélevé le" value={isMounted && startedAt ? formatDateTime(localInputDate(startedAt)!) : "—"} />
+              <Row label="Heure de fin" value={isMounted && endedAt ? formatDateTime(localInputDate(endedAt)!) : "—"} />
               <Row label="Prélèvement effectué par" value={samplerLabel} />
-              <Row label="Arrivée au laboratoire" value={isMounted && arrivedAt ? formatDateTime(new Date(arrivedAt)) : "—"} />
+              <Row label="Arrivée au laboratoire" value={isMounted && arrivedAt ? formatDateTime(localInputDate(arrivedAt)!) : "—"} />
               <Row label="T° à l'arrivée" value={cooler ? `${cooler} °C` : "—"} />
               {clientReference && <Row label="N° de factures" value={clientReference} />}
               <Row

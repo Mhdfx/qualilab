@@ -68,24 +68,40 @@ export function Sidebar({ sections, roleLabel, onNavigate, onClose }: SidebarPro
                 }
 
                 const isActive = item.href === active;
+                const className = `flex min-h-[44px] items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 lg:min-h-[38px] lg:py-2 ${
+                  isActive
+                    ? "border-l-[3px] border-white bg-white/12 pl-[9px] pr-3 text-white shadow-sm"
+                    : "border-l-[3px] border-transparent px-3 text-white/65 hover:bg-white/8 hover:text-white"
+                }`;
+                const content = (
+                  <>
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="flex-1">{item.label}</span>
+                  </>
+                );
+
+                // API links are documents (PDF): a plain anchor in a new tab,
+                // so the work screen stays and nothing is prefetched (a
+                // prefetch would render a Chromium page for nothing).
+                if (item.href.startsWith("/api/")) {
+                  return (
+                    <li key={item.label}>
+                      <a href={item.href} target="_blank" rel="noopener" onClick={onNavigate} className={className}>
+                        {content}
+                      </a>
+                    </li>
+                  );
+                }
 
                 return (
                   <li key={item.label}>
                     <Link
                       href={item.href}
-                      // API links (PDFs) are documents: prefetching would
-                      // render a Chromium page on every view for nothing.
-                      prefetch={item.href.startsWith("/api/") ? false : undefined}
                       onClick={onNavigate}
                       aria-current={isActive ? "page" : undefined}
-                      className={`flex min-h-[44px] items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 lg:min-h-[38px] lg:py-2 ${
-                        isActive
-                          ? "border-l-[3px] border-white bg-white/12 pl-[9px] pr-3 text-white shadow-sm"
-                          : "border-l-[3px] border-transparent px-3 text-white/65 hover:bg-white/8 hover:text-white"
-                      }`}
+                      className={className}
                     >
-                      <Icon className="h-4 w-4 shrink-0" />
-                      <span className="flex-1">{item.label}</span>
+                      {content}
                     </Link>
                   </li>
                 );
