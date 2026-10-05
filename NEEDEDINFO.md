@@ -145,6 +145,9 @@ recevabilité ; la signature de l'interlocuteur reste sur papier, le
 préleveur photographie la feuille signée depuis le téléphone.
 | Q40 | Salmonelles sur « ABATS CRUS DE VOLAILLE AUTRES QUE LE FOIE GRAS… » : le critère repris du classeur dit « Absence /1g » alors que le paramètre est lu « /25 g ». Laquelle des deux prises d'essai doit figurer sur la paillasse et le rapport ? (même question pour tout type dont l'unité du critère diffère de celle du paramètre) | Critères (chantier 2) |
 
+| Q41 | Programme d'analyse : « les nombres » = unités à lire, prise d'essai et dilutions ? Les N° de contrôle restent-ils attribués à la réception ? | Programme (`PROGRAMME.md`) |
+| Q42 | Un même échantillon peut-il être réparti entre plusieurs techniciens (micro à l'un, chimie à l'autre) ? Si oui, qui soumet à la validation : le dernier qui termine ? | Programme (`PROGRAMME.md`) |
+
 ## 2. Ready to send — current batch
 
 *Copy this into an email. Update the date when you send it.*
