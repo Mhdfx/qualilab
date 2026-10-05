@@ -11,6 +11,7 @@ const prisma = new PrismaClient({ adapter });
 const demoUsers = [
   { username: "pre1", name: "Karim Benali", role: "PRELEVEUR" },
   { username: "recep1", name: "Salma Idrissi", role: "RECEPTIONNISTE" },
+  { username: "param1", name: "Rachid Alaoui", role: "PROGRAMMATEUR" },
   { username: "tech1", name: "Yassine Amrani", role: "TECHNICIEN" },
   { username: "tech2", name: "Imane Cherkaoui", role: "TECHNICIEN" },
   { username: "valid1", name: "Dr. Nawal Bennani", role: "VALIDATEUR" },

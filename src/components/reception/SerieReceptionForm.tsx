@@ -584,7 +584,8 @@ export function SerieReceptionForm({
                 ) : (
                   <div className="mt-3">
                     <label htmlFor={`tech-${line.sampleId}`} className="block text-sm font-medium text-slate-700">
-                      Technicien <span className="text-rose-600">*</span>
+                      Technicien{" "}
+                      <span className="font-normal text-slate-500">(facultatif — le responsable des paramètres attribue)</span>
                     </label>
                     <select
                       id={`tech-${line.sampleId}`}
@@ -592,7 +593,7 @@ export function SerieReceptionForm({
                       onChange={(e) => updateLine(line.sampleId, { technicianId: e.target.value })}
                       className="input-field mt-1.5 px-3"
                     >
-                      <option value="">Sélectionner un technicien</option>
+                      <option value="">À attribuer à la programmation</option>
                       {technicians.map((t) => (
                         <option key={t.id} value={t.id}>
                           {t.name} — {t.load} en cours
@@ -711,7 +712,7 @@ export function SerieReceptionForm({
               </select>
               {technicians.length === 0 && (
                 <p className="mt-1.5 text-sm text-amber-700">
-                  Aucun technicien disponible. Créez un compte technicien avant de réceptionner.
+                  Aucun technicien actif : le responsable des paramètres attribuera les lignes à la programmation.
                 </p>
               )}
             </div>
@@ -732,7 +733,7 @@ export function SerieReceptionForm({
             <PrimaryButton
               type="button"
               onClick={submit}
-              disabled={busy || technicians.length === 0}
+              disabled={busy}
               className="mt-4 w-full min-h-[48px]"
             >
               {busy ? "Réception en cours…" : `Valider la réception (${pending.length} ligne${pending.length > 1 ? "s" : ""})`}

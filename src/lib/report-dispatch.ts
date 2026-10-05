@@ -9,6 +9,7 @@ import { sendEmail, recipientsFor } from "./email";
 import { reportEmail, alertEmail, type AlertRow } from "./emails/templates";
 import { getCompany } from "./company-server";
 import { generateReportNumber } from "./report-number";
+import { reportMethod, reportTechnicianNames } from "./report-programme";
 import type { Interpretation } from "@/generated/prisma/enums";
 import { retryOnDuplicate } from "./retry-unique";
 
@@ -45,6 +46,8 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
       client: { select: { name: true, address: true, ice: true } },
       unitCount: true,
       report: true,
+      // The programme d'analyse: the norm version retained per parameter.
+      parameters: { select: { parameterId: true, normVersion: { select: { label: true } } } },
       results: {
         select: {
           value: true,
@@ -56,13 +59,27 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
           criterion: true,
           normVersion: { select: { label: true } },
           units: { select: { rawValue: true, value: true, detected: true }, orderBy: { unitIndex: "asc" } },
-          parameter: { select: { name: true } },
+          parameter: {
+            select: {
+              id: true,
+              name: true,
+              // The parameter's own method: the version in force of a norm
+              // its catalogue criteria cite — the last fallback.
+              criteria: {
+                where: { active: true, normVersion: { is: { current: true } } },
+                select: { normVersion: { select: { label: true } } },
+                take: 1,
+              },
+            },
+          },
         },
       },
     },
   });
 
   if (!sample?.report) return null;
+
+  const programmedNorm = new Map(sample.parameters.map((p) => [p.parameterId, p.normVersion?.label ?? null]));
 
   return {
     number: sample.report.number,
@@ -92,7 +109,13 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
       conform: result.conform,
       note: result.note,
       interpretation: result.interpretation,
-      norm: result.normVersion?.label ?? null,
+      // « Méthode » (PROGRAMME.md §6): the programmed version, else the one
+      // the result was read under (the criterion's), else the parameter's.
+      norm: reportMethod(
+        programmedNorm.get(result.parameter.id),
+        result.normVersion?.label,
+        result.parameter.criteria[0]?.normVersion?.label
+      ),
       criterion: storedPlan(result.criterion),
       units: result.units.map((u) => ({ display: unitStoredDisplay(u), value: u.value, detected: u.detected })),
     })),
@@ -119,6 +142,9 @@ export async function createReportFor(sampleId: string) {
     select: {
       validatedAt: true,
       technician: { select: { name: true } },
+      // « Analyses réalisées par » names every technician of the line
+      // (PROGRAMME.md §6): the sample's and each parameter's, once each.
+      parameters: { select: { technician: { select: { name: true } } } },
       validatedBy: { select: { name: true } },
       nature: { select: { family: true } },
       regulationId: true,
@@ -185,7 +211,7 @@ export async function createReportFor(sampleId: string) {
           conclusion,
           interpretation: verdict,
           regulation,
-          technicianName: sample.technician?.name ?? null,
+          technicianName: reportTechnicianNames(sample),
           validatorName: sample.validatedBy?.name ?? null,
           validatedAt: sample.validatedAt,
         },

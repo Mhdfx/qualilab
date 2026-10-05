@@ -13,6 +13,8 @@ describe("assignable roles", () => {
     const built = new Set([
       "/preleveur",
       "/reception",
+      // PROGRAMME.md: the responsable des paramètres' space (screens in P2).
+      "/programmation",
       "/technicien",
       "/validation",
       "/commercial",

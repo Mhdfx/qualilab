@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { ArrowRight, FlaskConical, AlertTriangle } from "lucide-react";
-import type { SampleStatus, SampleType } from "@/generated/prisma/client";
+import { ArrowRight, FlaskConical, AlertTriangle, Zap } from "lucide-react";
+import type { ProgrammePriority, SampleStatus, SampleType } from "@/generated/prisma/client";
 import { formatDate } from "@/lib/labels";
 import { labReference } from "@/lib/sample-select";
 import { groupBySerie } from "@/lib/serie-groups";
+import { splitParameters } from "@/lib/bench-access";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
@@ -16,14 +17,25 @@ export type WorkItem = {
   status: SampleStatus;
   receivedAt: Date | null;
   conformity: boolean | null;
+  /** The programme d'analyse (PROGRAMME.md §3): priority and promised date. */
+  priority: ProgrammePriority;
+  dueAt: Date | null;
+  technicianId: string | null;
   client: { name: string };
   serie: { serialNumber: string };
-  parameters: { parameter: { id: string } }[];
-  results: { value: string | null; workStatus: string; interpretation: string | null }[];
+  /** Each parameter with its own technician (null = the sample's). */
+  parameters: { parameterId: string; technicianId: string | null }[];
+  results: { parameterId: string; value: string | null; workStatus: string; interpretation: string | null }[];
 };
 
-/** The samples on this technician's bench, grouped by série, oldest first. */
-export function WorkQueue({ items }: { items: WorkItem[] }) {
+/**
+ * The samples on this technician's bench, grouped by série, oldest first.
+ *
+ * `viewerId` is the technician looking at their own queue: a line shared
+ * with a colleague (PROGRAMME.md §6) says how many of its parameters are
+ * theirs. Null for the admin, who oversees every line whole.
+ */
+export function WorkQueue({ items, viewerId = null }: { items: WorkItem[]; viewerId?: string | null }) {
   if (items.length === 0) {
     return (
       <Card className="p-10 text-center">
@@ -34,8 +46,8 @@ export function WorkQueue({ items }: { items: WorkItem[] }) {
           Aucune analyse en attente
         </p>
         <p className="mt-1 text-sm text-slate-500">
-          Les échantillons qui vous sont attribués à la réception apparaîtront
-          ici.
+          Les échantillons que le responsable des paramètres vous attribue au
+          programme d&apos;analyse apparaîtront ici.
         </p>
       </Card>
     );
@@ -59,6 +71,8 @@ export function WorkQueue({ items }: { items: WorkItem[] }) {
               const done = item.results.filter(
                 (r) => r.value && r.workStatus !== "EN_COURS" && r.interpretation !== "INCOMPLET"
               ).length;
+              // On a shared line, how many of its parameters are mine.
+              const mine = viewerId ? splitParameters(item, viewerId).mine.length : total;
 
               return (
                 <li key={item.id}>
@@ -74,6 +88,12 @@ export function WorkQueue({ items }: { items: WorkItem[] }) {
                           </span>
                           <TypeBadge type={item.type} />
                           <StatusBadge status={item.status} />
+                          {item.priority === "URGENTE" && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
+                              <Zap className="h-3 w-3" aria-hidden="true" />
+                              Urgente
+                            </span>
+                          )}
                           {item.conformity === false && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
                               <AlertTriangle className="h-3 w-3" aria-hidden="true" />
@@ -86,13 +106,15 @@ export function WorkQueue({ items }: { items: WorkItem[] }) {
                           {item.client.name}
                         </p>
                         <p className="mt-0.5 text-sm text-slate-500">
-                          {done} / {total} paramètre{total > 1 ? "s" : ""} saisi{total > 1 ? "s" : ""} · reçu le{" "}
+                          {done} / {total} paramètre{total > 1 ? "s" : ""} saisi{total > 1 ? "s" : ""}
+                          {mine < total ? ` · ${mine} pour vous` : ""} · reçu le{" "}
                           {item.receivedAt ? formatDate(item.receivedAt) : "—"}
+                          {item.dueAt ? ` · à rendre le ${formatDate(item.dueAt)}` : ""}
                         </p>
                       </div>
 
                       <span className="inline-flex shrink-0 items-center gap-1.5 self-center rounded-xl bg-brand-light px-3 py-2 text-sm font-semibold text-brand transition-colors group-hover:bg-brand group-hover:text-white">
-                        {item.status === "RECU" ? "Commencer" : "Continuer"}
+                        {item.status === "PROGRAMME" ? "Commencer" : "Continuer"}
                         <ArrowRight className="h-4 w-4" aria-hidden="true" />
                       </span>
                     </div>

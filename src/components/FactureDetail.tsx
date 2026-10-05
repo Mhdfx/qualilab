@@ -10,6 +10,7 @@ import { formatCurrency, formatDecimal } from "@/lib/labels";
 import type { CompanyInfo } from "@/lib/company";
 import { computeInvoiceTotals } from "@/lib/invoice-math";
 import type { Invoice } from "@/lib/invoice-types";
+import { INVOICE_NOTICE_LABELS, invoiceNotices } from "@/lib/invoice-notices";
 
 const INVOICE_BLUE = "#4472C4";
 const INVOICE_BLUE_LIGHT = "#DDEBF7";
@@ -70,6 +71,9 @@ export function FactureDetail({
   }
 
   const clientNumber = invoice.client.ice ?? invoice.client.id.slice(-8).toUpperCase();
+  // Billed on the programme (PROGRAMME.md §6): say so while the results are
+  // not validated, and flag a line cancelled after it was billed.
+  const notices = invoiceNotices(invoice.items);
   const { subtotal, taxAmount, total, lines: lineAmounts } = computeInvoiceTotals(
     invoice.items,
     invoice.taxRate
@@ -135,6 +139,25 @@ export function FactureDetail({
           </a>
         </div>
       </div>
+
+      {notices.length > 0 && (
+        <div className="no-print mb-4 space-y-2" aria-label="Avertissements de facturation">
+          {notices.map((notice) => (
+            <p
+              key={notice.kind}
+              role="status"
+              className={`rounded-xl border px-4 py-3 text-sm ${
+                notice.kind === "CANCELLED"
+                  ? "border-rose-200 bg-rose-50 text-rose-800"
+                  : "border-amber-200 bg-amber-50 text-amber-800"
+              }`}
+            >
+              <b>{INVOICE_NOTICE_LABELS[notice.kind].title}</b> — {INVOICE_NOTICE_LABELS[notice.kind].hint}{" "}
+              <span className="font-mono">{notice.references.join(", ")}</span>
+            </p>
+          ))}
+        </div>
+      )}
 
       {error && (
         <p

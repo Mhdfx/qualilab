@@ -43,9 +43,11 @@ export type ProposedLine = {
  * The catalogue is keyed by name and domain: "E. coli" costs one price on food
  * and another on water.
  */
-function key(name: string, category: string) {
+export function catalogueKey(name: string, category: string) {
   return `${category}::${name}`.toLowerCase();
 }
+
+const key = catalogueKey;
 
 export function buildCatalogueIndex(entries: CatalogueEntry[]) {
   const index = new Map<string, CatalogueEntry>();

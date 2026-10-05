@@ -8,6 +8,9 @@
 export const ROLES = [
   "PRELEVEUR",
   "RECEPTIONNISTE",
+  // Responsable des paramètres (PROGRAMME.md §2): confirms the programme
+  // d'analyse of each received line, between the reception and the bench.
+  "PROGRAMMATEUR",
   "TECHNICIEN",
   "VALIDATEUR",
   "GESTIONNAIRE",
@@ -22,6 +25,7 @@ export type Role = (typeof ROLES)[number];
 export const ROLE_LABELS: Record<Role, string> = {
   PRELEVEUR: "Préleveur",
   RECEPTIONNISTE: "Réceptionniste",
+  PROGRAMMATEUR: "Responsable des paramètres",
   TECHNICIEN: "Technicien",
   VALIDATEUR: "Validateur",
   GESTIONNAIRE: "Gestionnaire commercial",
@@ -35,6 +39,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const ROLE_HOME: Record<Role, string> = {
   PRELEVEUR: "/preleveur",
   RECEPTIONNISTE: "/reception",
+  PROGRAMMATEUR: "/programmation",
   TECHNICIEN: "/technicien",
   VALIDATEUR: "/validation",
   GESTIONNAIRE: "/commercial",

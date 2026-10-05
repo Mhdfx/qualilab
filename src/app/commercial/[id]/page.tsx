@@ -24,6 +24,7 @@ import { TypeBadge } from "@/components/ui/TypeBadge";
 import { SitesManager } from "@/components/commercial/SitesManager";
 import { ClientSummary } from "@/components/commercial/ClientSummary";
 import { parseSampleSearch } from "@/lib/sample-search";
+import { INVOICE_NOTICE_LABELS, sampleBillingNotice } from "@/lib/invoice-notices";
 import { searchSamples } from "@/lib/sample-search-server";
 
 /**
@@ -78,6 +79,8 @@ export default async function ClientDetailPage({
         produit: true,
         sampledAt: true,
         report: { select: { number: true, sentAt: true } },
+        // Billed already? The programme lets the invoice precede the result.
+        invoiceItems: { select: { invoiceId: true }, take: 1 },
       },
       orderBy: { sampledAt: "desc" },
       take: 25,
@@ -219,7 +222,11 @@ export default async function ClientDetailPage({
               <Empty>Aucun échantillon pour ce client.</Empty>
             ) : (
               <ul className="divide-y divide-slate-100">
-                {samples.map((sample) => (
+                {samples.map((sample) => {
+                  // « Facturé avant résultat » / « annulé après facturation »
+                  // (PROGRAMME.md §6) — only once an invoice line names it.
+                  const notice = sample.invoiceItems.length > 0 ? sampleBillingNotice(sample.status) : null;
+                  return (
                   <li key={sample.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
                     <div className="min-w-0">
                       <p className="flex flex-wrap items-center gap-2 text-sm">
@@ -228,6 +235,18 @@ export default async function ClientDetailPage({
                         </span>
                         <TypeBadge type={sample.type} />
                         <StatusBadge status={sample.status} />
+                        {notice && (
+                          <span
+                            title={INVOICE_NOTICE_LABELS[notice].hint}
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${
+                              notice === "CANCELLED"
+                                ? "bg-rose-50 text-rose-700 ring-rose-200"
+                                : "bg-amber-50 text-amber-700 ring-amber-200"
+                            }`}
+                          >
+                            {INVOICE_NOTICE_LABELS[notice].title}
+                          </span>
+                        )}
                       </p>
                       <p className="mt-0.5 text-xs text-slate-500">
                         {sample.produit ? `${sample.produit} · ` : ""}
@@ -245,7 +264,8 @@ export default async function ClientDetailPage({
                       </a>
                     )}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </Card>

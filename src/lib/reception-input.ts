@@ -17,9 +17,13 @@ import {
  * browser sent.
  *
  * A non-conform line is decided case by case (RETOUR-LABO-29-09.md, slice
- * E): analysed anyway, with a technician, or destroyed — received and
- * numbered like the others (it prints on the bon de réception), then
- * cancelled with the motif « Détruit à réception ».
+ * E): analysed anyway, or destroyed — received and numbered like the others
+ * (it prints on the bon de réception), then cancelled with the motif
+ * « Détruit à réception ».
+ *
+ * The technician is indicative only since the programme d'analyse
+ * (PROGRAMME.md §6): the responsable des paramètres assigns the bench when
+ * confirming the programme, so a line may be received without one.
  */
 
 const QUANTITY_UNITS = ["UNITE", "G", "ML", "L"] as const;
@@ -51,7 +55,7 @@ export type CleanReceptionLine = {
   conformityNote: string | null;
   /** « Détruire » on a non-conform line: no analysis, cancelled at once. */
   destroy: boolean;
-  /** Null only for a destroyed line. */
+  /** Indicative (PROGRAMME.md §6): may be null; always null for a destroyed line. */
   technicianId: string | null;
   checks: Check[];
 };
@@ -184,11 +188,10 @@ export function validateReception(
       return fail(`Ligne ${n} : seule une ligne non conforme peut être détruite.`, n);
     }
     const destroy = decision === "DETRUIRE";
-    let technicianId: string | null = null;
-    if (!destroy) {
-      technicianId = text(rawLine.technicianId);
-      if (!technicianId) return fail(`Ligne ${n} : attribuez un technicien.`, n);
-    }
+    // An empty choice is kept as null, never refused: the responsable des
+    // paramètres assigns at programming time. A destroyed line has none,
+    // whatever the browser sent.
+    const technicianId = destroy ? null : text(rawLine.technicianId) || null;
 
     lines.push({
       sampleId,

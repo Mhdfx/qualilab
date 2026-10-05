@@ -63,6 +63,7 @@ export async function DirectionStats() {
   const inPipeline =
     (statusCount.get("PRELEVE") ?? 0) +
     (statusCount.get("RECU") ?? 0) +
+    (statusCount.get("PROGRAMME") ?? 0) +
     (statusCount.get("EN_ANALYSE") ?? 0) +
     (statusCount.get("RESULTATS_SAISIS") ?? 0);
 
@@ -86,6 +87,7 @@ export async function DirectionStats() {
   const STATUS_ORDER: SampleStatus[] = [
     "PRELEVE",
     "RECU",
+    "PROGRAMME",
     "EN_ANALYSE",
     "RESULTATS_SAISIS",
     "VALIDE",

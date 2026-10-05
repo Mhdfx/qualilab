@@ -31,7 +31,8 @@ export type SerieProgress = {
   termines: number;
 };
 
-const OPEN: SampleStatus[] = ["RECU", "EN_ANALYSE", "RESULTATS_SAISIS"];
+/** Received and not yet validated — the programme step included (PROGRAMME.md §6). */
+const OPEN: SampleStatus[] = ["RECU", "PROGRAMME", "EN_ANALYSE", "RESULTATS_SAISIS"];
 const DONE: SampleStatus[] = ["VALIDE", "RAPPORT_ENVOYE"];
 
 export function serieProgress(

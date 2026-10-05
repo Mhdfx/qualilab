@@ -361,10 +361,9 @@ export function DepositForm({
       if (line.lineKind === "SURFACE" && !line.surfaceLabel.trim()) return setStepError("Indiquez la surface prélevée.", n);
       if (line.lineKind === "MAINS" && !line.personName.trim()) return setStepError("Indiquez la personne prélevée.", n);
       if (line.parameterIds.length === 0) return setStepError("Choisissez au moins une analyse.", n);
-      const { conformity, reason, extra, destroy } = evaluate(line);
+      const { conformity, reason, extra } = evaluate(line);
       if (!conformity && !reason) return setStepError("Choisissez le motif de non-conformité.", n);
       if (!conformity && reason === "AUTRE" && !extra.note.trim()) return setStepError("Précisez le motif « autre ».", n);
-      if (!destroy && !extra.technicianId) return setStepError("Attribuez un technicien.", n);
     }
     setError("");
     setErrorLine(null);
@@ -753,7 +752,8 @@ export function DepositForm({
                     {!destroy && (
                       <div>
                         <label htmlFor={`tech-${line.key}`} className="mb-1.5 block text-sm font-semibold text-slate-700">
-                          Technicien <span className="text-rose-600">*</span>
+                          Technicien{" "}
+                          <span className="font-normal text-slate-500">(facultatif — le responsable des paramètres attribue)</span>
                         </label>
                         <select
                           id={`tech-${line.key}`}
@@ -761,7 +761,7 @@ export function DepositForm({
                           onChange={(e) => updateIntake(line.key, { technicianId: e.target.value })}
                           className="input-field px-4"
                         >
-                          <option value="">Sélectionner un technicien</option>
+                          <option value="">À attribuer à la programmation</option>
                           {technicians.map((t) => (
                             <option key={t.id} value={t.id}>{t.name} — {t.load} en cours</option>
                           ))}
@@ -865,13 +865,12 @@ export function DepositForm({
           <PrimaryButton
             type="button"
             onClick={() => validateStep1() && setStep(2)}
-            disabled={technicians.length === 0}
             className="w-full min-h-[48px] py-3.5 text-sm font-bold tracking-wide"
           >
             Continuer — Vérifier ({lines.length} ligne{lines.length > 1 ? "s" : ""})
           </PrimaryButton>
           {technicians.length === 0 && (
-            <p className="text-sm text-amber-700">Aucun technicien disponible. Créez un compte technicien avant de réceptionner.</p>
+            <p className="text-sm text-amber-700">Aucun technicien actif : le responsable des paramètres attribuera les lignes à la programmation.</p>
           )}
         </div>
       )}
@@ -905,7 +904,7 @@ export function DepositForm({
                           {line.quantity ? `${line.quantity} ${line.quantityUnit === "UNITE" ? "unité(s)" : line.quantityUnit.toLowerCase()}` : "quantité non pesée"}
                           {extra.temperature ? ` · ${extra.temperature} °C à l'arrivée` : ""}
                           {line.unitCount > 1 ? ` · n = ${line.unitCount}` : ""}
-                          {technician ? ` · ${technician.name}` : ""}
+                          {technician ? ` · ${technician.name}` : " · technicien attribué à la programmation"}
                         </p>
                       </div>
                       <span

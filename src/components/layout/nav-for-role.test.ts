@@ -56,6 +56,17 @@ describe("navFor", () => {
     expect(navFor("CLIENT")).toEqual([]);
   });
 
+  it("gives the responsable des paramètres the programme, the search and the bench sheet", () => {
+    // PROGRAMME.md §2: everything a technician reads plus the programme —
+    // and nothing of the validation or the administration.
+    const all = hrefs(navFor("PROGRAMMATEUR"));
+    expect(all).toContain("/programmation");
+    expect(all).toContain("/programmation#file");
+    expect(all).toContain("/recherche");
+    expect(all).toContain("/api/bench-sheet");
+    expect(all.some((href) => href.startsWith("/validation") || href.startsWith("/admin"))).toBe(false);
+  });
+
   it("captions the shell with the role, not the space", () => {
     for (const role of ASSIGNABLE_ROLES) {
       expect(roleLabelFor(role)).toBe(ROLE_LABELS[role]);

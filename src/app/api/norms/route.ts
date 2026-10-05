@@ -14,7 +14,7 @@ const NORM_SELECT = {
 
 /** The norms and their dated versions — the report prints the one in force. */
 export async function GET() {
-  const session = await requireApiRole("TECHNICIEN", "VALIDATEUR", "ADMIN");
+  const session = await requireApiRole("PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "ADMIN");
   if (session instanceof NextResponse) return session;
   const norms = await prisma.norm.findMany({ select: NORM_SELECT, orderBy: { code: "asc" } });
   return NextResponse.json(norms);

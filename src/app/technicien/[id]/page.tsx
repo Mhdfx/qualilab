@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, AlertTriangle, Building2, Package, Hash, Calendar } from "lucide-react";
+import { ArrowLeft, AlertTriangle, Building2, Package, Hash, Calendar, ClipboardList, Hourglass } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { labReference } from "@/lib/sample-select";
 import { loadBenchPlans } from "@/lib/bench-plan";
-import { formatDate } from "@/lib/labels";
+import { canEditParameter, isOnBenchOf } from "@/lib/bench-access";
+import { effectiveFactor } from "@/lib/dilution";
+import { formatDate, PROGRAMME_PRIORITY_LABELS } from "@/lib/labels";
 import { getDashboardPath } from "@/lib/roles";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -46,10 +48,25 @@ export default async function AnalysePage({
       conformity: true,
       conformityNote: true,
       technicianId: true,
+      technician: { select: { name: true } },
+      // The programme d'analyse (PROGRAMME.md §3).
+      priority: true,
+      dueAt: true,
+      testPortion: true,
+      programmeNote: true,
+      programmedAt: true,
+      programmedBy: { select: { name: true } },
       client: { select: { name: true } },
       serie: { select: { serialNumber: true } },
       parameters: {
         select: {
+          parameterId: true,
+          // Per parameter: its technician, norm version, dilution, note.
+          technicianId: true,
+          technician: { select: { name: true } },
+          normVersion: { select: { label: true } },
+          dilutionFactor: true,
+          note: true,
           parameter: {
             select: {
               id: true,
@@ -69,14 +86,16 @@ export default async function AnalysePage({
   if (!sample) notFound();
   const bench = await loadBenchPlans(sample.id);
 
-  // A technician may only open their own bench work.
-  if (session.role === "TECHNICIEN" && sample.technicianId !== session.id) {
+  // A technician may only open their own bench work: the sample's
+  // technician, or one of its parameters' (PROGRAMME.md §6).
+  if (session.role === "TECHNICIEN" && !isOnBenchOf(sample, session.id)) {
     redirect(getDashboardPath(session.role));
   }
 
   const resultByParameter = new Map(sample.results.map((r) => [r.parameterId, r]));
 
-  const lines: ParameterLine[] = sample.parameters.map(({ parameter }) => {
+  const lines: ParameterLine[] = sample.parameters.map((line) => {
+    const { parameter } = line;
     const existing = resultByParameter.get(parameter.id);
     const plan = bench.plans.get(parameter.id) ?? null;
     // One reading per unit taken (R1 … Rn) for a germ with a criterion, and
@@ -89,14 +108,16 @@ export default async function AnalysePage({
       perUnit,
       plan: plan?.plan ?? null,
       planLabel: plan?.label ?? null,
-      normLabel: plan?.normLabel ?? null,
+      // The method: the programmed norm version, else the criterion's.
+      normLabel: line.normVersion?.label ?? plan?.normLabel ?? null,
       units,
       parameterId: parameter.id,
       name: parameter.name,
       unit: parameter.unit,
       threshold: parameter.threshold,
       limitValue: parameter.limitValue,
-      calcFactor: parameter.calcFactor,
+      // The programmed dilution of this sample replaces the catalogue's factor.
+      calcFactor: effectiveFactor(line.dilutionFactor, parameter.calcFactor),
       // When a factor transformed the entry, the bench reading (rawValue) is
       // what the technician typed and re-edits; `value` holds the computed
       // final figure.
@@ -104,10 +125,16 @@ export default async function AnalysePage({
       note: existing?.note ?? "",
       workStatus: existing?.workStatus ?? "EN_COURS",
       manualConform: existing?.conform ?? null,
+      // Only my parameters are editable; the admin stands in for anyone.
+      editable: session.role !== "TECHNICIEN" || canEditParameter(sample, line, session.id),
+      technicianName: line.technician?.name ?? sample.technician?.name ?? null,
+      methodNote: line.note,
     };
   });
 
-  const canEdit = sample.status === "RECU" || sample.status === "EN_ANALYSE";
+  const canEdit = sample.status === "PROGRAMME" || sample.status === "EN_ANALYSE";
+  // Received but not programmed yet: nothing to type (PROGRAMME.md §6).
+  const waiting = sample.status === "PRELEVE" || sample.status === "RECU";
 
   return (
     <div>
@@ -122,7 +149,7 @@ export default async function AnalysePage({
       <PageHeader
         badge="Analyse"
         title={labReference(sample)}
-        subtitle={!canEdit ? "Résultats soumis à la validation — consultation en lecture seule." : bench.plans.size > 0 ? "Lisez chaque répétition (R1 … Rn) : le verdict (satisfaisant, acceptable, non satisfaisant) suit le plan n, c, m, M du type de produit." : bench.unitCount > 1 ? "Lisez chaque répétition (R1 … Rn) : la valeur retenue est la plus défavorable, comparée à la limite de référence." : "Saisissez chaque paramètre. La conformité est calculée automatiquement à partir de la limite de référence."}
+        subtitle={waiting ? "En attente de programmation — le responsable des paramètres n'a pas encore confirmé le programme d'analyse." : !canEdit ? "Résultats soumis à la validation — consultation en lecture seule." : bench.plans.size > 0 ? "Lisez chaque répétition (R1 … Rn) : le verdict (satisfaisant, acceptable, non satisfaisant) suit le plan n, c, m, M du type de produit." : bench.unitCount > 1 ? "Lisez chaque répétition (R1 … Rn) : la valeur retenue est la plus défavorable, comparée à la limite de référence." : "Saisissez chaque paramètre. La conformité est calculée automatiquement à partir de la limite de référence."}
       />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px_1fr]">
@@ -169,6 +196,17 @@ export default async function AnalysePage({
               <Field icon={Calendar} label="Reçu le">
                 {sample.receivedAt ? formatDate(sample.receivedAt) : "—"}
               </Field>
+              {sample.programmedAt && (
+                <Field icon={ClipboardList} label="Programme d'analyse">
+                  Confirmé le {formatDate(sample.programmedAt)}
+                  {sample.programmedBy ? ` par ${sample.programmedBy.name}` : ""}
+                  <span className="block text-xs font-normal text-slate-500">
+                    Priorité {PROGRAMME_PRIORITY_LABELS[sample.priority].toLowerCase()}
+                    {sample.dueAt ? ` · à rendre le ${formatDate(sample.dueAt)}` : ""}
+                    {sample.testPortion ? ` · prise d'essai ${sample.testPortion}` : ""}
+                  </span>
+                </Field>
+              )}
             </dl>
 
             {sample.conformity === false && (
@@ -189,10 +227,31 @@ export default async function AnalysePage({
                 <p className="mt-1 text-sm text-slate-700">{sample.notes}</p>
               </div>
             )}
+            {sample.programmeNote && (
+              <div className="mt-4 rounded-xl bg-teal-50 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-teal-700">
+                  Consignes du responsable des paramètres
+                </p>
+                <p className="mt-1 text-sm text-slate-700">{sample.programmeNote}</p>
+              </div>
+            )}
           </Card>
         </div>
 
-        {canEdit ? (
+        {waiting ? (
+          <Card className="p-5">
+            <h2 className="flex items-center gap-2 font-semibold text-slate-900">
+              <Hourglass className="h-4 w-4 text-slate-400" aria-hidden="true" />
+              En attente de programmation
+            </h2>
+            <p className="mt-1.5 text-sm text-slate-600">
+              Le responsable des paramètres n&apos;a pas encore confirmé le programme
+              d&apos;analyse de cette ligne : les analyses, les nombres et les méthodes
+              sont fixés à cette étape. Rien à saisir pour l&apos;instant — la ligne
+              apparaîtra dans « Mes analyses » une fois programmée.
+            </p>
+          </Card>
+        ) : canEdit ? (
           <ResultEntryForm sampleId={sample.id} canEdit initialLines={lines} />
         ) : (
           <Card className="p-5">

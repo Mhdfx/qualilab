@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/auth";
+import { isOnBenchOf } from "@/lib/bench-access";
 
 /**
  * Loads a sample for the technician working on it.
  *
- * A technician may only ever touch the samples assigned to them — checked here,
- * on the server, for every result operation. ADMIN can act on any sample.
+ * A technician may only ever touch the samples on their bench — checked
+ * here, on the server, for every result operation. Since the programme
+ * d'analyse (PROGRAMME.md §6) a line is on a technician's bench when they
+ * hold the sample (`Sample.technicianId`) **or** one of its parameters
+ * (`SampleParameter.technicianId`); which parameters they may actually type
+ * is decided line by line by `canEditParameter`. ADMIN can act on any sample.
  */
 export async function loadAssignedSample(
   sampleId: string,
@@ -23,6 +28,13 @@ export async function loadAssignedSample(
       unitCount: true,
       parameters: {
         select: {
+          parameterId: true,
+          // The programme per parameter: its technician, its norm version,
+          // its dilution (PROGRAMME.md §3).
+          technicianId: true,
+          technician: { select: { name: true } },
+          normVersionId: true,
+          dilutionFactor: true,
           parameter: {
             select: {
               id: true,
@@ -47,7 +59,7 @@ export async function loadAssignedSample(
     };
   }
 
-  if (session.role === "TECHNICIEN" && sample.technicianId !== session.id) {
+  if (session.role === "TECHNICIEN" && !isOnBenchOf(sample, session.id)) {
     return {
       error: NextResponse.json(
         { error: "Cet échantillon ne vous est pas attribué." },

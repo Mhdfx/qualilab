@@ -28,7 +28,7 @@ const TONES: Record<Conclusion["tone"], string> = {
  * bookmarked or sent to a colleague. Server-side and paginated.
  */
 export default async function RecherchePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const session = await requireRole("RECEPTIONNISTE", "TECHNICIEN", "VALIDATEUR", "GESTIONNAIRE", "COMPTABLE", "ADMIN");
+  const session = await requireRole("RECEPTIONNISTE", "PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "GESTIONNAIRE", "COMPTABLE", "ADMIN");
   const raw = await searchParams;
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(raw)) if (typeof v === "string") params.set(k, v);

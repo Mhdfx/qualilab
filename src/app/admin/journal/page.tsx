@@ -36,6 +36,8 @@ const ACTION_LABELS: Record<string, string> = {
   SITE_CREATED: "Site créé",
   SITE_UPDATED: "Site modifié",
   DOCUMENT_REFERENCE_UPDATED: "Cartouche de document modifié",
+  SAMPLE_PROGRAMMED: "Programme d'analyse confirmé",
+  SAMPLE_PROGRAMME_UPDATED: "Programme d'analyse modifié",
   SAMPLE_ANALYSIS_STARTED: "Analyse démarrée",
   RESULTS_SAVED: "Résultats enregistrés",
   RESULTS_SUBMITTED: "Résultats soumis à validation",

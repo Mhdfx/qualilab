@@ -30,7 +30,11 @@ const INTAKE_SELECT = {
   productTypeId: true,
   clientId: true,
   validatedById: true,
-  parameters: { select: { parameterId: true } },
+  // The programme d'analyse per parameter (PROGRAMME.md §3): kept when the
+  // analyses are corrected, for every analysis that stays.
+  parameters: {
+    select: { parameterId: true, technicianId: true, normVersionId: true, dilutionFactor: true, note: true },
+  },
 } as const;
 
 /**
@@ -117,8 +121,24 @@ export async function PATCH(
       await tx.result.deleteMany({ where: { sampleId: id } });
     }
     if (parameterIds) {
+      // An analysis the programme already decided keeps its technician, norm
+      // version, dilution and note; an analysis added here starts bare —
+      // the responsable des paramètres completes it on a programmed line.
+      const programmed = new Map(sample.parameters.map((line) => [line.parameterId, line]));
       await tx.sampleParameter.deleteMany({ where: { sampleId: id } });
-      await tx.sampleParameter.createMany({ data: parameterIds.map((parameterId) => ({ sampleId: id, parameterId })) });
+      await tx.sampleParameter.createMany({
+        data: parameterIds.map((parameterId) => {
+          const previous = programmed.get(parameterId);
+          return {
+            sampleId: id,
+            parameterId,
+            technicianId: previous?.technicianId ?? null,
+            normVersionId: previous?.normVersionId ?? null,
+            dilutionFactor: previous?.dilutionFactor ?? null,
+            note: previous?.note ?? null,
+          };
+        }),
+      });
     }
     return tx.sample.update({
       where: { id },

@@ -14,6 +14,7 @@ import { serieStatus, type SerieStatus } from "@/lib/series";
 const CIRCUIT_ROLES = [
   "PRELEVEUR",
   "RECEPTIONNISTE",
+  "PROGRAMMATEUR",
   "TECHNICIEN",
   "VALIDATEUR",
   "GESTIONNAIRE",
@@ -25,7 +26,8 @@ const STATUSES: SerieStatus[] = ["A_RECEPTIONNER", "EN_COURS", "TERMINEE", "ANNU
 
 /** A derived status, expressed as a query on the lines. */
 function whereForStatus(status: SerieStatus): Prisma.SerieWhereInput {
-  const open = { in: ["RECU", "EN_ANALYSE", "RESULTATS_SAISIS"] as SampleStatus[] };
+  // Mirrors `OPEN` in series.ts: a programmed line keeps its série en cours.
+  const open = { in: ["RECU", "PROGRAMME", "EN_ANALYSE", "RESULTATS_SAISIS"] as SampleStatus[] };
   switch (status) {
     case "A_RECEPTIONNER":
       return { samples: { some: { status: "PRELEVE" } } };

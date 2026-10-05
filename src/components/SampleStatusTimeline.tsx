@@ -4,13 +4,15 @@ import { Check } from "lucide-react";
 const WORKFLOW_STEPS = [
   { id: 0, label: "Prélevé", statuses: ["PRELEVE"] as SampleStatus[] },
   { id: 1, label: "Reçu", statuses: ["RECU"] as SampleStatus[] },
+  // PROGRAMME.md §1 — the programme d'analyse is confirmed, the bench may start.
+  { id: 2, label: "Programmé", statuses: ["PROGRAMME"] as SampleStatus[] },
   {
-    id: 2,
+    id: 3,
     label: "En analyse",
     statuses: ["EN_ANALYSE", "RESULTATS_SAISIS"] as SampleStatus[],
   },
-  { id: 3, label: "Validé", statuses: ["VALIDE"] as SampleStatus[] },
-  { id: 4, label: "Rapport envoyé", statuses: ["RAPPORT_ENVOYE"] as SampleStatus[] },
+  { id: 4, label: "Validé", statuses: ["VALIDE"] as SampleStatus[] },
+  { id: 5, label: "Rapport envoyé", statuses: ["RAPPORT_ENVOYE"] as SampleStatus[] },
 ];
 
 function getCurrentStepIndex(status: SampleStatus): number {

@@ -22,7 +22,9 @@ export default async function FactureDetailPage({
     include: {
       client: true,
       createdBy: { select: { id: true, name: true } },
-      items: true,
+      // The billed sample's status: « Facturé avant résultat » and
+      // « Échantillon annulé après facturation » (PROGRAMME.md §6).
+      items: { include: { sample: { select: { id: true, code: true, controlCode: true, status: true } } } },
     },
   });
 
@@ -55,6 +57,7 @@ export default async function FactureDetailPage({
       quantity: item.quantity,
       unitPrice: toMoney(item.unitPrice),
       lineTotal: toMoney(item.lineTotal),
+      sample: item.sample,
     })),
   };
 

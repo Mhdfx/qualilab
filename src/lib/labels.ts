@@ -1,4 +1,4 @@
-import type { InvoiceStatus, SampleStatus, SampleType } from "@/generated/prisma/client";
+import type { InvoiceStatus, ProgrammePriority, SampleStatus, SampleType } from "@/generated/prisma/client";
 import { labTimeZone } from "./lab-time";
 
 export const SAMPLE_TYPE_LABELS: Record<SampleType, string> = {
@@ -10,11 +10,19 @@ export const SAMPLE_TYPE_LABELS: Record<SampleType, string> = {
 export const SAMPLE_STATUS_LABELS: Record<SampleStatus, string> = {
   PRELEVE: "Prélevé",
   RECU: "Reçu",
+  /** The programme d'analyse is confirmed, the bench may start (PROGRAMME.md). */
+  PROGRAMME: "Programmé",
   EN_ANALYSE: "En analyse",
   RESULTATS_SAISIS: "Résultats saisis",
   VALIDE: "Validé",
   RAPPORT_ENVOYE: "Rapport envoyé",
   ANNULE: "Annulé",
+};
+
+/** PROGRAMME.md §3 — the priority the responsable des paramètres gives a line. */
+export const PROGRAMME_PRIORITY_LABELS: Record<ProgrammePriority, string> = {
+  NORMALE: "Normale",
+  URGENTE: "Urgente",
 };
 
 // ---- Phase 9 · chantier 1 — the série and its lines ------------------------

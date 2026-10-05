@@ -11,7 +11,7 @@ import { similarLabels } from "@/lib/similar";
  * (a client's own types first), the admin manages them.
  */
 export async function GET(request: Request) {
-  const session = await requireApiRole("PRELEVEUR", "RECEPTIONNISTE", "TECHNICIEN", "VALIDATEUR", "GESTIONNAIRE", "ADMIN");
+  const session = await requireApiRole("PRELEVEUR", "RECEPTIONNISTE", "PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "GESTIONNAIRE", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const params = new URL(request.url).searchParams;

@@ -113,11 +113,23 @@ describe("validateReception", () => {
     if (ok.ok) expect(ok.value.lines[0]).toMatchObject({ conformityReason: "AUTRE", conformityNote: "Sachet percé" });
   });
 
-  it("decides a non-conform line case by case: analysed with a technician, or destroyed", () => {
+  it("keeps the technician optional — the responsable des paramètres assigns (PROGRAMME.md §6)", () => {
+    const without = validate({ ...good, lines: [{ ...good.lines[0], technicianId: "" }, { sampleId: "s2", conformity: true }] });
+    expect(without.ok).toBe(true);
+    if (without.ok) {
+      expect(without.value.lines[0]).toMatchObject({ conformity: true, destroy: false, technicianId: null });
+      expect(without.value.lines[1]).toMatchObject({ technicianId: null });
+    }
+    // An indicative choice still travels.
+    const with1 = validate(good);
+    expect(with1.ok && with1.value.lines[0]).toMatchObject({ technicianId: "t1" });
+  });
+
+  it("decides a non-conform line case by case: analysed anyway, or destroyed", () => {
     const line = { ...good.lines[0], conformity: false, conformityReason: "EMBALLAGE", technicianId: "" };
-    // Analysed anyway (the default) still needs its technician.
+    // Analysed anyway (the default) no longer waits for a technician.
     const analysed = validate({ ...good, lines: [line, good.lines[1]] });
-    expect(analysed).toMatchObject({ ok: false, lineNumber: 1 });
+    expect(analysed.ok && analysed.value.lines[0]).toMatchObject({ destroy: false, technicianId: null });
     const withTech = validate({ ...good, lines: [{ ...line, decision: "ANALYSER", technicianId: "t1" }, good.lines[1]] });
     expect(withTech.ok && withTech.value.lines[0]).toMatchObject({ destroy: false, technicianId: "t1" });
 

@@ -17,7 +17,7 @@ import { searchSamples } from "@/lib/sample-search-server";
 const MAX_ROWS = 20_000;
 
 export async function GET(request: Request) {
-  const session = await requireApiRole("RECEPTIONNISTE", "VALIDATEUR", "GESTIONNAIRE", "COMPTABLE", "ADMIN");
+  const session = await requireApiRole("RECEPTIONNISTE", "PROGRAMMATEUR", "VALIDATEUR", "GESTIONNAIRE", "COMPTABLE", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const search = parseSampleSearch(new URL(request.url).searchParams);

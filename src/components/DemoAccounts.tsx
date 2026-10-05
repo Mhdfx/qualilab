@@ -19,6 +19,7 @@ export const DEMO_PASSWORD = "password";
 const DEMO_ACCOUNTS: { username: string; role: Role; name: string }[] = [
   { username: "pre1", role: "PRELEVEUR", name: "Karim Benali" },
   { username: "recep1", role: "RECEPTIONNISTE", name: "Salma Idrissi" },
+  { username: "param1", role: "PROGRAMMATEUR", name: "Rachid Alaoui" },
   { username: "tech1", role: "TECHNICIEN", name: "Yassine Amrani" },
   { username: "tech2", role: "TECHNICIEN", name: "Imane Cherkaoui" },
   { username: "valid1", role: "VALIDATEUR", name: "Dr. Nawal Bennani" },

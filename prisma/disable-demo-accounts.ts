@@ -16,7 +16,7 @@ import { getMariaDbConfig } from "../src/lib/database-url";
  */
 
 const DEMO_USERNAMES = [
-  "pre1", "recep1", "tech1", "tech2", "valid1",
+  "pre1", "recep1", "param1", "tech1", "tech2", "valid1",
   "commercial1", "compta1", "admin", "magasin1",
 ];
 

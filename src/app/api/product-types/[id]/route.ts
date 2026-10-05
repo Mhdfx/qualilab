@@ -35,7 +35,7 @@ const DETAIL_SELECT: Prisma.ProductTypeSelect = {
 };
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireApiRole("TECHNICIEN", "VALIDATEUR", "ADMIN");
+  const session = await requireApiRole("PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "ADMIN");
   if (session instanceof NextResponse) return session;
   const { id } = await params;
   const type = await prisma.productType.findUnique({ where: { id }, select: DETAIL_SELECT });

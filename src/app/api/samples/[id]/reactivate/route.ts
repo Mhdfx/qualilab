@@ -19,7 +19,7 @@ export async function POST(
   const { id } = await params;
   const sample = await prisma.sample.findUnique({
     where: { id },
-    select: { id: true, code: true, controlCode: true, status: true, cancelReason: true },
+    select: { id: true, code: true, controlCode: true, status: true, cancelReason: true, programmedAt: true },
   });
   if (!sample) return NextResponse.json({ error: "Échantillon introuvable." }, { status: 404 });
 

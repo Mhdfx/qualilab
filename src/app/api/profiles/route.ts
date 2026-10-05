@@ -22,7 +22,7 @@ const PROFILE_SELECT = {
  * to pre-tick the analyses of a line; the admin manages them.
  */
 export async function GET(request: Request) {
-  const session = await requireApiRole("PRELEVEUR", "RECEPTIONNISTE", "TECHNICIEN", "VALIDATEUR", "GESTIONNAIRE", "ADMIN");
+  const session = await requireApiRole("PRELEVEUR", "RECEPTIONNISTE", "PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "GESTIONNAIRE", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const params = new URL(request.url).searchParams;

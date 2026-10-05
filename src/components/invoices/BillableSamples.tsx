@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { FlaskConical, Plus, RefreshCw } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/labels";
-import { SAMPLE_TYPE_LABELS } from "@/lib/labels";
-import type { SampleType } from "@/generated/prisma/client";
+import { SAMPLE_STATUS_LABELS, SAMPLE_TYPE_LABELS } from "@/lib/labels";
+import { billedBeforeResult } from "@/lib/billing-status";
+import type { SampleStatus, SampleType } from "@/generated/prisma/client";
 
 export type BillableLine = {
   sampleId: string;
@@ -20,12 +21,17 @@ type BillableSample = {
   controlCode: string | null;
   type: SampleType;
   produit: string | null;
+  /** Billable from the confirmed programme on (PROGRAMME.md §6): not always validated. */
+  status: SampleStatus;
+  programmedAt: string | null;
   validatedAt: string | null;
   parameters: { name: string }[];
 };
 
 /**
- * The validated analyses a client has not been invoiced for.
+ * The analyses a client has not been invoiced for — validated, or only
+ * programmed (PROGRAMME.md §6): the invoice no longer waits for the report,
+ * and a line billed before its result is flagged so the accountant knows.
  *
  * Choosing samples fills the invoice lines at catalogue prices; the accountant
  * then edits the wording and the amounts freely before issuing, which is the
@@ -90,7 +96,7 @@ function BillableSamplesFor({
   if (samples.length === 0) {
     return (
       <p className="rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-500">
-        Aucune analyse validée en attente de facturation pour ce client.
+        Aucune analyse en attente de facturation pour ce client.
       </p>
     );
   }
@@ -115,7 +121,7 @@ function BillableSamplesFor({
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-800">
           <FlaskConical className="h-4 w-4 text-brand" aria-hidden="true" />
-          Analyses validées à facturer
+          Analyses à facturer
         </h3>
         <button
           type="button"
@@ -140,6 +146,8 @@ function BillableSamplesFor({
             0
           );
           const missingPrice = sampleLines.some((line) => line.unpriced);
+          // Programmed or on the bench: billed before its results are validated.
+          const beforeResult = billedBeforeResult(sample.status);
 
           return (
             <li key={sample.id}>
@@ -163,12 +171,24 @@ function BillableSamplesFor({
                         prix à saisir
                       </span>
                     )}
+                    {beforeResult && (
+                      <span
+                        title={`Ligne « ${SAMPLE_STATUS_LABELS[sample.status]} » : facturée sur le programme confirmé, résultats non validés.`}
+                        className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800"
+                      >
+                        avant résultat
+                      </span>
+                    )}
                   </span>
                   <span className="mt-0.5 block truncate text-xs text-slate-500">
                     {sample.produit ? `${sample.produit} · ` : ""}
                     {sampleLines.length} analyse
                     {sampleLines.length > 1 ? "s" : ""}
-                    {sample.validatedAt && ` · validé le ${formatDate(sample.validatedAt)}`}
+                    {sample.validatedAt
+                      ? ` · validé le ${formatDate(sample.validatedAt)}`
+                      : sample.programmedAt
+                        ? ` · programmé le ${formatDate(sample.programmedAt)}`
+                        : ""}
                   </span>
                 </span>
                 <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-700">

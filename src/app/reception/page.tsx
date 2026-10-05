@@ -1,4 +1,4 @@
-import { Inbox, ClipboardCheck, FlaskConical, Layers, PackagePlus } from "lucide-react";
+import { Inbox, ClipboardCheck, FlaskConical, Layers, ListChecks, PackagePlus } from "lucide-react";
 import { PrimaryLink } from "@/components/PrimaryButton";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
@@ -18,7 +18,7 @@ export default async function ReceptionPage() {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
-  const [session, pending, blocked, recusAujourdhui, enAnalyse] = await Promise.all([
+  const [session, pending, blocked, recusAujourdhui, enAnalyse, aProgrammer] = await Promise.all([
     // Belt and braces with the layout guard.
     requireRole("RECEPTIONNISTE", "ADMIN"),
     // The queue is made of séries (WORKFLOW.md rule 1): a série waits as
@@ -60,6 +60,8 @@ export default async function ReceptionPage() {
     }),
     prisma.sample.count({ where: { receivedAt: { gte: startOfDay } } }),
     prisma.sample.count({ where: { status: "EN_ANALYSE" } }),
+    // Received lines waiting for the responsable des paramètres (PROGRAMME.md §6).
+    prisma.sample.count({ where: { status: "RECU" } }),
   ]);
 
   const pendingLines = pending.reduce(
@@ -79,7 +81,7 @@ export default async function ReceptionPage() {
       }),
       prisma.sample.groupBy({
         by: ["technicianId"],
-        where: { status: { in: ["RECU", "EN_ANALYSE"] } },
+        where: { status: { in: ["RECU", "PROGRAMME", "EN_ANALYSE"] } },
         _count: { _all: true },
       }),
     ]);
@@ -118,10 +120,11 @@ export default async function ReceptionPage() {
       />
 
       <section aria-label="Indicateurs" className="mb-8">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <StatCard label="Séries à réceptionner" value={pending.length} icon={Inbox} accent="amber" />
           <StatCard label="Lignes en attente" value={pendingLines} icon={Layers} accent="brand" />
           <StatCard label="Reçus aujourd'hui" value={recusAujourdhui} icon={ClipboardCheck} accent="emerald" />
+          <StatCard label="À programmer" value={aProgrammer} icon={ListChecks} accent="violet" />
           <StatCard label="En analyse" value={enAnalyse} icon={FlaskConical} accent="blue" />
         </div>
       </section>

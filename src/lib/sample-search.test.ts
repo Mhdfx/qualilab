@@ -29,7 +29,7 @@ describe("parseSampleSearch", () => {
 describe("sampleSearchWhere", () => {
   it("filters by state, period on the chosen date, client and nature", () => {
     const where = sampleSearchWhere(parse("client=c1&nature=n1&etat=en_cours&du=2026-09-01"));
-    expect(where).toMatchObject({ clientId: "c1", natureId: "n1", status: { in: ["PRELEVE", "RECU", "EN_ANALYSE", "RESULTATS_SAISIS"] } });
+    expect(where).toMatchObject({ clientId: "c1", natureId: "n1", status: { in: ["PRELEVE", "RECU", "PROGRAMME", "EN_ANALYSE", "RESULTATS_SAISIS"] } });
     expect(where).toHaveProperty("receivedAt.gte");
     expect(sampleSearchWhere(parse("date=prelevement&au=2026-09-30"))).toHaveProperty("sampledAt.lte");
     expect(sampleSearchWhere(parse("etat=annulees"))).toMatchObject({ status: "ANNULE" });

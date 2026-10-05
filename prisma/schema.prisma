@@ -17,6 +17,9 @@ enum Role {
   ADMIN
   CLIENT
   MAGASINIER
+  /// Responsable des paramètres — confirms the programme d'analyse of each
+  /// received line before the bench (PROGRAMME.md §2).
+  PROGRAMMATEUR
 }
 
 enum EmailType {
@@ -47,12 +50,21 @@ enum SampleType {
 enum SampleStatus {
   PRELEVE
   RECU
+  /// The programme d'analyse is confirmed: only such a line may be opened
+  /// at the bench (PROGRAMME.md §1).
+  PROGRAMME
   EN_ANALYSE
   RESULTATS_SAISIS
   VALIDE
   RAPPORT_ENVOYE
   /// Terminal: taken out of every queue, report and invoice (Phase 9).
   ANNULE
+}
+
+/// PROGRAMME.md §3 — how urgently the bench should take a programmed line.
+enum ProgrammePriority {
+  NORMALE
+  URGENTE
 }
 
 /// Phase 9 — the série (visite or dépôt) is the unit of work.
@@ -180,6 +192,10 @@ model User {
   approvedSamples  Sample[]             @relation("SampleApprovedBy")
   rejectedSamples  Sample[]             @relation("SampleRejectedBy")
   cancelledSamples Sample[]             @relation("SampleCancelledBy")
+  /// PROGRAMME.md — the lines whose programme this user confirmed, and the
+  /// parameters handed to this technician one by one.
+  programmedSamples    Sample[]          @relation("ProgrammedSamples")
+  parameterAssignments SampleParameter[] @relation("ParameterTechnician")
   createdSeries    Serie[]              @relation("SerieCreatedBy")
   sampledSeries    Serie[]              @relation("SerieSampler")
   receivedSeries   Serie[]              @relation("SerieReceivedBy")
@@ -418,6 +434,20 @@ model Sample {
   rejectedBy       User?                @relation("SampleRejectedBy", fields: [rejectedById], references: [id])
   rejectedAt       DateTime?
 
+  // ---- PROGRAMME.md §3 — the programme d'analyse of the line --------------
+  /// When the responsable des paramètres confirmed the programme (RECU →
+  /// PROGRAMME). Null on a line that was never programmed — old rows too.
+  programmedAt   DateTime?
+  programmedById String?
+  programmedBy   User?             @relation("ProgrammedSamples", fields: [programmedById], references: [id], onDelete: SetNull)
+  priority       ProgrammePriority @default(NORMALE)
+  /// The delivery date promised to the client.
+  dueAt          DateTime?
+  /// The test portion to engage (« 25 g », « 100 mL »).
+  testPortion    String?           @db.VarChar(60)
+  /// Preparation / storage instructions, and the note for the accountant.
+  programmeNote  String?           @db.Text
+
   sampledAt    DateTime          @default(now())
   createdAt    DateTime          @default(now())
   parameters   SampleParameter[]
@@ -431,6 +461,7 @@ model Sample {
   // Composite indexes matching how the screens actually query, so the queues
   // stay fast once the table holds years of samples rather than a handful.
   @@index([status, receivedAt])
+  @@index([status, programmedAt])
   @@index([technicianId, status])
   @@index([userId, createdAt])
   @@index([createdAt])
@@ -551,7 +582,21 @@ model SampleParameter {
   sample      Sample            @relation(fields: [sampleId], references: [id], onDelete: Cascade)
   parameter   AnalysisParameter @relation(fields: [parameterId], references: [id])
 
+  // ---- PROGRAMME.md §3 — what the programme decides per parameter --------
+  /// The technician of this parameter; null = the sample's technician.
+  technicianId   String?
+  technician     User?        @relation("ParameterTechnician", fields: [technicianId], references: [id], onDelete: SetNull)
+  /// The norm version retained for this parameter (printed as the method).
+  normVersionId  String?
+  normVersion    NormVersion? @relation(fields: [normVersionId], references: [id], onDelete: SetNull)
+  /// The dilution factor of this sample — replaces the parameter's
+  /// `calcFactor` when present.
+  dilutionFactor Decimal?     @db.Decimal(12, 4)
+  /// Method note for the bench.
+  note           String?      @db.VarChar(191)
+
   @@id([sampleId, parameterId])
+  @@index([technicianId])
 }
 
 // ───────────────────────── Phase 9 · chantier 1 — la série ─────────────────
@@ -774,6 +819,8 @@ model NormVersion {
   current       Boolean     @default(false)
   criteria      Criterion[]
   results       Result[]
+  /// PROGRAMME.md — the per-sample parameters programmed with this version.
+  sampleParameters SampleParameter[]
 
   @@unique([normId, version])
 }

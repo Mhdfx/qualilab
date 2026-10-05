@@ -23,7 +23,8 @@ export type SampleSearch = {
 };
 
 export const DONE_STATUSES: SampleStatus[] = ["VALIDE", "RAPPORT_ENVOYE"];
-export const OPEN_STATUSES: SampleStatus[] = ["PRELEVE", "RECU", "EN_ANALYSE", "RESULTATS_SAISIS"];
+/** « En cours » — every step before validation, the programme included (PROGRAMME.md §6). */
+export const OPEN_STATUSES: SampleStatus[] = ["PRELEVE", "RECU", "PROGRAMME", "EN_ANALYSE", "RESULTATS_SAISIS"];
 
 /** « 2026-09-01 » → the start of that day; anything else → null. */
 function day(value: string | null, endOfDay: boolean): Date | null {

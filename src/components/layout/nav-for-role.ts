@@ -2,6 +2,7 @@ import { ROLE_LABELS, type Role } from "@/lib/roles";
 import type { NavSection } from "./nav-types";
 import { adminNav } from "./admin-nav";
 import { preleveurNav } from "./preleveur-nav";
+import { programmationNav } from "./programmation-nav";
 import {
   receptionNav,
   technicienNav,
@@ -26,6 +27,7 @@ const NAVS: Record<Role, NavSection[]> = {
   ADMIN: adminNav,
   PRELEVEUR: preleveurNav,
   RECEPTIONNISTE: receptionNav,
+  PROGRAMMATEUR: programmationNav,
   TECHNICIEN: technicienNav,
   VALIDATEUR: [
     ...validationNav,

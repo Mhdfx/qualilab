@@ -1,0 +1,342 @@
+import { describe, expect, it } from "vitest";
+import { DEFAULT_THRESHOLDS } from "@/lib/reception-rules";
+import {
+  applyProductType,
+  applyProfile,
+  assignAll,
+  assignByFamily,
+  billingLines,
+  criteriaOf,
+  defaultNormVersionId,
+  entryChecks,
+  initialDraft,
+  parameterFamilies,
+  profileApplied,
+  spansFamilies,
+  toRequestBody,
+  toggleParameter,
+  typeUnitCount,
+  unitWarning,
+  updateSetting,
+} from "./programme-sheet-logic";
+import type { ProgrammeReferentialData, ProgrammeSampleData, ProgrammeState } from "./programme-sheet-types";
+
+/**
+ * PROGRAMME.md §4 — what the sheet does on its own: a product type adds its
+ * germs and proposes n and the norm version, a profile replaces the
+ * analyses, the shortcuts hand the parameters to technicians, the entry
+ * check never blocks, the billing preview prices the programme.
+ */
+
+const referential: ProgrammeReferentialData = {
+  productTypes: [
+    {
+      id: "type-client",
+      name: "Salade du client",
+      family: "MICRO",
+      clientId: "client-a",
+      criteria: [
+        { parameterId: "p-ecoli", parameterName: "E. coli", n: 3, c: 2, mKind: "VALUE", m: 10, bigM: 100, unit: "ufc/g", normVersionId: "nv-ecoli-2013", normVersion: { id: "nv-ecoli-2013", label: "ISO 16649-2:2013", current: false, version: "2013" } },
+      ],
+    },
+    {
+      id: "type-catalogue",
+      name: "Plat cuisiné",
+      family: "MICRO",
+      clientId: null,
+      criteria: [
+        { parameterId: "p-ecoli", parameterName: "E. coli", n: 5, c: 2, mKind: "VALUE", m: 10, bigM: 100, unit: "ufc/g", normVersionId: "nv-ecoli-2021", normVersion: { id: "nv-ecoli-2021", label: "ISO 16649-2:2021", current: true, version: "2021" } },
+        // An older criterion for the same germ: the one in force wins.
+        { parameterId: "p-ecoli", parameterName: "E. coli", n: 5, c: 1, mKind: "VALUE", m: 10, bigM: 100, unit: "ufc/g", normVersionId: "nv-ecoli-2013", normVersion: { id: "nv-ecoli-2013", label: "ISO 16649-2:2013", current: false, version: "2013" } },
+        { parameterId: "p-salm", parameterName: "Salmonelles", n: 5, c: null, mKind: "ABSENCE", m: null, bigM: null, unit: "/25 g", normVersionId: null, normVersion: null },
+        // A germ the nature's category does not carry: ignored.
+        { parameterId: "p-autre", parameterName: "Autre", n: 5, c: null, mKind: "VALUE", m: 1, bigM: null, unit: null, normVersionId: null, normVersion: null },
+      ],
+    },
+    {
+      id: "type-chimie",
+      name: "Poisson (histamine)",
+      family: "CHIMIE",
+      clientId: null,
+      criteria: [
+        { parameterId: "p-hist", parameterName: "Histamine", n: 9, c: 2, mKind: "VALUE", m: 100, bigM: 200, unit: "mg/kg", normVersionId: null, normVersion: null },
+      ],
+    },
+  ],
+  parameters: [
+    { id: "p-ecoli", name: "E. coli", unit: "UFC/g", threshold: null, calcFactor: 1 },
+    { id: "p-hist", name: "Histamine", unit: "mg/kg", threshold: null, calcFactor: 1 },
+    { id: "p-salm", name: "Salmonelles", unit: "/25 g", threshold: null, calcFactor: 1 },
+    { id: "p-flore", name: "Flore totale", unit: "UFC/g", threshold: null, calcFactor: 1 },
+  ],
+  profiles: [
+    { id: "prof-std", name: "Micro standard", clientId: null, unitCount: 5, parameterIds: ["p-ecoli", "p-salm", "p-inconnu"] },
+    { id: "prof-hist", name: "Histamine", clientId: "client-a", unitCount: 9, parameterIds: ["p-hist"] },
+  ],
+  technicians: [
+    { id: "tech1", name: "Yassine" },
+    { id: "tech2", name: "Imane" },
+  ],
+  normVersions: {
+    "p-ecoli": [
+      { id: "nv-ecoli-2021", normId: "n-ecoli", normCode: "ISO 16649-2", version: "2021", label: "ISO 16649-2:2021", current: true },
+      { id: "nv-ecoli-2013", normId: "n-ecoli", normCode: "ISO 16649-2", version: "2013", label: "ISO 16649-2:2013", current: false },
+    ],
+    "p-salm": [{ id: "nv-salm-2021", normId: "n-salm", normCode: "ISO 6579-1", version: "2021", label: "ISO 6579-1:2021", current: true }],
+    "p-hist": [],
+    "p-flore": [],
+  },
+  prices: { "p-ecoli": 320, "p-salm": 450, "p-hist": null, "p-flore": 220 },
+};
+
+const sample: Pick<ProgrammeSampleData, "lineKind" | "nature" | "quantity" | "quantityUnit" | "receptionTemperature"> = {
+  lineKind: "ALIMENT",
+  nature: { id: "nat", code: "MICRO_ALIMENTS", label: "Microbiologie des aliments", family: "MICRO" },
+  quantity: 50,
+  quantityUnit: "G",
+  receptionTemperature: 4,
+};
+
+/** A received line as the préleveur left it: one germ ticked, no programme yet. */
+const received: ProgrammeState = {
+  productTypeId: null,
+  parameterIds: ["p-ecoli", "p-retire"],
+  unitCount: 1,
+  testPortion: null,
+  technicianId: "tech1",
+  priority: "NORMALE",
+  dueAt: null,
+  programmeNote: null,
+  parameters: [
+    { parameterId: "p-ecoli", technicianId: null, normVersionId: null, dilutionFactor: null, note: null },
+    { parameterId: "p-retire", technicianId: null, normVersionId: null, dilutionFactor: null, note: null },
+  ],
+  programmedAt: null,
+  programmedBy: null,
+  editable: true,
+};
+
+describe("initialDraft", () => {
+  it("pre-ticks the préleveur's analyses, proposes the version in force and keeps the reception's technician", () => {
+    const draft = initialDraft(received, referential);
+    expect(draft.parameterIds).toEqual(["p-ecoli"]);
+    expect(draft.settings["p-ecoli"].normVersionId).toBe("nv-ecoli-2021");
+    expect(draft.technicianId).toBe("tech1");
+    expect(draft.productTypeId).toBe("");
+    expect(draft.dueAt).toBe("");
+  });
+
+  it("reads a stored programme back as typed: dilution with a comma, wall-time due date, explicit versions", () => {
+    const draft = initialDraft(
+      {
+        ...received,
+        productTypeId: "type-client",
+        parameterIds: ["p-ecoli", "p-salm"],
+        unitCount: 3,
+        testPortion: "25 g",
+        technicianId: "tech-parti",
+        priority: "URGENTE",
+        dueAt: "2026-10-08T12:00:00.000Z",
+        programmeNote: "Conserver à 4 °C",
+        parameters: [
+          { parameterId: "p-ecoli", technicianId: "tech2", normVersionId: "nv-ecoli-2013", dilutionFactor: 10.5, note: "×10" },
+          { parameterId: "p-salm", technicianId: null, normVersionId: null, dilutionFactor: null, note: null },
+        ],
+      },
+      referential
+    );
+    expect(draft.productTypeId).toBe("type-client");
+    expect(draft.unitCount).toBe(3);
+    expect(draft.priority).toBe("URGENTE");
+    expect(draft.dueAt).toBe("2026-10-08T12:00");
+    // A technician who left is no longer offered: the select cannot show them.
+    expect(draft.technicianId).toBe("");
+    expect(draft.settings["p-ecoli"]).toEqual({ technicianId: "tech2", normVersionId: "nv-ecoli-2013", dilutionFactor: "10,5", note: "×10" });
+    expect(draft.settings["p-salm"].normVersionId).toBe("nv-salm-2021");
+  });
+
+  it("drops a type the client may no longer use", () => {
+    expect(initialDraft({ ...received, productTypeId: "type-retire" }, referential).productTypeId).toBe("");
+  });
+});
+
+describe("product type", () => {
+  it("keeps one criterion per germ, the one under the version in force", () => {
+    const criteria = criteriaOf(referential.productTypes[1]);
+    expect(criteria.map((c) => c.parameterId)).toEqual(["p-autre", "p-ecoli", "p-salm"]);
+    expect(criteria.find((c) => c.parameterId === "p-ecoli")?.c).toBe(2);
+    expect(typeUnitCount(referential.productTypes[1])).toBe(5);
+    expect(typeUnitCount(undefined)).toBe(0);
+  });
+
+  it("proposes the criterion's version when a type names one, else the version in force", () => {
+    expect(defaultNormVersionId("p-ecoli", referential.productTypes[0], referential)).toBe("nv-ecoli-2013");
+    expect(defaultNormVersionId("p-ecoli", undefined, referential)).toBe("nv-ecoli-2021");
+    expect(defaultNormVersionId("p-salm", referential.productTypes[1], referential)).toBe("nv-salm-2021");
+    expect(defaultNormVersionId("p-hist", referential.productTypes[2], referential)).toBe("");
+  });
+
+  it("adds the type's germs to the analyses, raises n and sets the criterion's version", () => {
+    const draft = applyProductType(initialDraft({ ...received, parameterIds: ["p-flore"], parameters: [] }, referential), "type-catalogue", referential);
+    expect(draft.productTypeId).toBe("type-catalogue");
+    // The préleveur's analysis stays, the germs come after it, the unknown one is ignored.
+    expect(draft.parameterIds).toEqual(["p-flore", "p-ecoli", "p-salm"]);
+    expect(draft.unitCount).toBe(5);
+    expect(draft.settings["p-ecoli"].normVersionId).toBe("nv-ecoli-2021");
+    expect(draft.settings["p-salm"].normVersionId).toBe("nv-salm-2021");
+  });
+
+  it("never lowers n, and the client's type overrides the version the sheet proposed", () => {
+    const base = { ...initialDraft(received, referential), unitCount: 9 };
+    const draft = applyProductType(base, "type-client", referential);
+    expect(draft.unitCount).toBe(9);
+    expect(draft.settings["p-ecoli"].normVersionId).toBe("nv-ecoli-2013");
+  });
+
+  it("« — aucun — » detaches the type without touching the analyses", () => {
+    const withType = applyProductType(initialDraft(received, referential), "type-catalogue", referential);
+    const draft = applyProductType(withType, "", referential);
+    expect(draft.productTypeId).toBe("");
+    expect(draft.parameterIds).toEqual(withType.parameterIds);
+    expect(draft.unitCount).toBe(5);
+  });
+
+  it("warns when fewer units are read than the type's plans need", () => {
+    const draft = { ...initialDraft(received, referential), unitCount: 3 };
+    expect(unitWarning(draft, referential.productTypes[1])).toMatch(/n = 5/);
+    expect(unitWarning(draft, referential.productTypes[1])).toMatch(/3 unités/);
+    expect(unitWarning({ ...draft, unitCount: 5 }, referential.productTypes[1])).toBeNull();
+    expect(unitWarning(draft, undefined)).toBeNull();
+  });
+});
+
+describe("profiles and analyses", () => {
+  it("a profile replaces the analyses, proposes its n and fills the versions of the new germs", () => {
+    const draft = applyProfile(initialDraft({ ...received, parameterIds: ["p-flore"], parameters: [] }, referential), referential.profiles[0], referential);
+    expect(draft.parameterIds).toEqual(["p-ecoli", "p-salm"]);
+    expect(draft.unitCount).toBe(5);
+    expect(draft.settings["p-salm"].normVersionId).toBe("nv-salm-2021");
+    expect(profileApplied(draft, referential.profiles[0], referential)).toBe(true);
+    expect(profileApplied(draft, referential.profiles[1], referential)).toBe(false);
+  });
+
+  it("a profile's n is raised to the chosen type's when that reads more", () => {
+    const withType = applyProductType(initialDraft(received, referential), "type-catalogue", referential);
+    expect(applyProfile(withType, referential.profiles[1], referential).unitCount).toBe(9);
+    expect(applyProfile({ ...withType, unitCount: 1 }, { ...referential.profiles[1], unitCount: 1 }, referential).unitCount).toBe(5);
+  });
+
+  it("unticking an analysis keeps its settings for when it is ticked again", () => {
+    const base = updateSetting(initialDraft(received, referential), "p-ecoli", { dilutionFactor: "10", note: "×10" });
+    const off = toggleParameter(base, "p-ecoli", referential);
+    expect(off.parameterIds).toEqual([]);
+    const on = toggleParameter(off, "p-ecoli", referential);
+    expect(on.parameterIds).toEqual(["p-ecoli"]);
+    expect(on.settings["p-ecoli"]).toMatchObject({ dilutionFactor: "10", note: "×10", normVersionId: "nv-ecoli-2021" });
+    // A newly ticked analysis gets the version in force.
+    expect(toggleParameter(on, "p-salm", referential).settings["p-salm"].normVersionId).toBe("nv-salm-2021");
+  });
+});
+
+describe("technicians", () => {
+  it("reads each parameter's family from the catalogue, the nature's for the rest", () => {
+    const families = parameterFamilies(referential, "MICRO");
+    expect(families.get("p-ecoli")).toBe("MICRO");
+    expect(families.get("p-hist")).toBe("CHIMIE");
+    expect(families.get("p-flore")).toBe("MICRO");
+    // A germ cited by both families follows the line.
+    const ambiguous: ProgrammeReferentialData = {
+      ...referential,
+      productTypes: [
+        ...referential.productTypes,
+        { id: "t-mix", name: "Mixte", family: "CHIMIE", clientId: null, criteria: [{ parameterId: "p-ecoli", parameterName: "E. coli", n: 5, c: null, mKind: "VALUE", m: 1, bigM: null, unit: null, normVersionId: null, normVersion: null }] },
+      ],
+    };
+    expect(parameterFamilies(ambiguous, "CHIMIE").get("p-ecoli")).toBe("CHIMIE");
+  });
+
+  it("« tous à X » sets the default and lifts every override; « micro à X, chimie à Y » keeps Y on chemistry only", () => {
+    const families = parameterFamilies(referential, "MICRO");
+    const base = applyProfile(initialDraft(received, referential), referential.profiles[0], referential);
+    const mixed = toggleParameter(base, "p-hist", referential);
+    expect(spansFamilies(base, families)).toBe(false);
+    expect(spansFamilies(mixed, families)).toBe(true);
+
+    const all = assignAll(updateSetting(mixed, "p-salm", { technicianId: "tech2" }), "tech1");
+    expect(all.technicianId).toBe("tech1");
+    expect(all.settings["p-salm"].technicianId).toBe("");
+
+    const split = assignByFamily(mixed, families, "tech1", "tech2");
+    expect(split.technicianId).toBe("tech1");
+    expect(split.settings["p-ecoli"].technicianId).toBe("");
+    expect(split.settings["p-salm"].technicianId).toBe("");
+    expect(split.settings["p-hist"].technicianId).toBe("tech2");
+    // The same person on both sides is no override at all.
+    expect(assignByFamily(mixed, families, "tech1", "tech1").settings["p-hist"].technicianId).toBe("");
+  });
+});
+
+describe("entry check and billing", () => {
+  it("recomputes the reception's rules with the programmed analyses and units, never blocking", () => {
+    const draft = initialDraft(received, referential);
+    const checks = entryChecks(sample, draft, referential, DEFAULT_THRESHOLDS);
+    // 50 g of food for microbiology would block at reception: a warning here.
+    const quantity = checks.find((c) => c.rule === "ALIMENT_MICRO_POIDS");
+    expect(quantity?.level).toBe("AVERTISSEMENT");
+    expect(checks.every((c) => c.level !== "BLOQUANT")).toBe(true);
+
+    // Histamine programmed with one unit: the rule reads the draft, not the line.
+    const histamine = entryChecks(sample, toggleParameter(draft, "p-hist", referential), referential, DEFAULT_THRESHOLDS);
+    expect(histamine.find((c) => c.rule === "HISTAMINE_UNITES")?.level).toBe("AVERTISSEMENT");
+    expect(entryChecks(sample, { ...toggleParameter(draft, "p-hist", referential), unitCount: 9 }, referential, DEFAULT_THRESHOLDS).find((c) => c.rule === "HISTAMINE_UNITES")?.level).toBe("OK");
+  });
+
+  it("prices each programmed analysis from the catalogue and counts the ones to price by hand", () => {
+    const draft = applyProfile(initialDraft(received, referential), referential.profiles[0], referential);
+    const billing = billingLines(toggleParameter(draft, "p-hist", referential), referential);
+    expect(billing.lines.map((l) => [l.name, l.unitPrice])).toEqual([
+      ["E. coli", 320],
+      ["Salmonelles", 450],
+      ["Histamine", null],
+    ]);
+    expect(billing.total).toBe(770);
+    expect(billing.unpriced).toBe(1);
+    expect(billingLines({ ...draft, parameterIds: [] }, referential)).toEqual({ lines: [], total: 0, unpriced: 0 });
+  });
+});
+
+describe("toRequestBody", () => {
+  it("sends the programme as PROGRAMME.md §5 describes it, empties as null, the due date as an instant", () => {
+    const draft = updateSetting(
+      {
+        ...applyProductType(initialDraft(received, referential), "type-catalogue", referential),
+        testPortion: " 25 g ",
+        priority: "URGENTE",
+        dueAt: "2026-10-08T12:00",
+        programmeNote: "",
+      },
+      "p-ecoli",
+      { technicianId: "tech2", dilutionFactor: " 10,5 ", note: "" }
+    );
+    expect(toRequestBody(draft, true)).toEqual({
+      confirm: true,
+      productTypeId: "type-catalogue",
+      parameterIds: ["p-ecoli", "p-salm"],
+      unitCount: 5,
+      testPortion: "25 g",
+      technicianId: "tech1",
+      priority: "URGENTE",
+      dueAt: "2026-10-08T12:00:00.000Z",
+      programmeNote: null,
+      parameters: [
+        { parameterId: "p-ecoli", technicianId: "tech2", normVersionId: "nv-ecoli-2021", dilutionFactor: "10,5", note: null },
+        { parameterId: "p-salm", technicianId: null, normVersionId: "nv-salm-2021", dilutionFactor: null, note: null },
+      ],
+    });
+  });
+
+  it("a draft may be empty and carry no due date", () => {
+    const body = toRequestBody({ ...initialDraft(received, referential), parameterIds: [], technicianId: "", dueAt: "" }, false);
+    expect(body).toMatchObject({ confirm: false, parameterIds: [], technicianId: null, dueAt: null, productTypeId: null, parameters: [] });
+  });
+});

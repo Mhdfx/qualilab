@@ -12,6 +12,9 @@ describe("série status — derived from its samples, never stored", () => {
   it("is in progress once every line is received and one is still open", () => {
     expect(serieStatus(s("RECU", "EN_ANALYSE"))).toBe("EN_COURS");
     expect(serieStatus(s("RESULTATS_SAISIS", "VALIDE"))).toBe("EN_COURS");
+    // A programmed line (PROGRAMME.md) is open work, not a série waiting at reception.
+    expect(serieStatus(s("PROGRAMME", "PROGRAMME"))).toBe("EN_COURS");
+    expect(serieProgress(s("PROGRAMME", "VALIDE")).enCours).toBe(1);
   });
 
   it("is finished when every remaining line is validated or sent", () => {

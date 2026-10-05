@@ -8,16 +8,19 @@ import { getDocumentReference } from "@/lib/document-reference";
 import { formatIsoDay } from "@/lib/labels";
 import { labReference } from "@/lib/sample-select";
 import { loadBenchPlans } from "@/lib/bench-plan";
+import { benchQueueWhereFor, canEditParameter } from "@/lib/bench-access";
+import { reportTechnicianNames } from "@/lib/report-programme";
 
 /**
  * The printable bench sheet for a given day.
  *
  * `?date=YYYY-MM-DD` — defaults to today. It covers the samples currently on
- * the bench (received or under analysis) that were received that day; a
- * technician only gets their own.
+ * the bench (programmed or under analysis, PROGRAMME.md §6) that were
+ * received that day; a technician only gets the lines they hold or share,
+ * and on a shared line only their own parameters — the sheet is theirs.
  */
 export async function GET(request: Request) {
-  const session = await requireApiRole("TECHNICIEN", "VALIDATEUR", "ADMIN");
+  const session = await requireApiRole("PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const requested = new URL(request.url).searchParams.get("date");
@@ -32,12 +35,9 @@ export async function GET(request: Request) {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
 
-  const mine = session.role === "TECHNICIEN" ? { technicianId: session.id } : {};
-
   const rows = await prisma.sample.findMany({
     where: {
-      ...mine,
-      status: { in: ["RECU", "EN_ANALYSE"] },
+      ...benchQueueWhereFor(session),
       receivedAt: { gte: start, lt: end },
     },
     select: {
@@ -50,9 +50,13 @@ export async function GET(request: Request) {
       produit: true,
       numeroLot: true,
       client: { select: { name: true } },
+      technicianId: true,
       technician: { select: { name: true } },
       parameters: {
         select: {
+          technicianId: true,
+          technician: { select: { name: true } },
+          normVersion: { select: { label: true } },
           parameter: { select: { id: true, name: true, unit: true, threshold: true } },
         },
       },
@@ -66,6 +70,11 @@ export async function GET(request: Request) {
     rows.map(async (row) => {
       const bench = await loadBenchPlans(row.id);
       const perUnit = bench.plans.size > 0 || row.unitCount > 1;
+      // My sheet carries my parameters; the other roles print the whole line.
+      const lines =
+        session.role === "TECHNICIEN"
+          ? row.parameters.filter((line) => canEditParameter(row, line, session.id))
+          : row.parameters;
       return {
         reference: labReference(row),
         serieNumber: row.serie.serialNumber,
@@ -73,14 +82,16 @@ export async function GET(request: Request) {
         produit: row.produit,
         numeroLot: row.numeroLot,
         clientName: row.client.name,
-        technicianName: row.technician?.name ?? null,
+        technicianName: reportTechnicianNames(row),
         unitCount: perUnit ? Math.max(1, row.unitCount) : 1,
-        parameters: row.parameters.map(({ parameter }) => {
+        parameters: lines.map(({ parameter, normVersion }) => {
           const plan = bench.plans.get(parameter.id);
+          // The method: the programmed norm version, else the criterion's.
+          const norm = normVersion?.label ?? plan?.normLabel ?? null;
           return {
             name: parameter.name,
             unit: plan?.unit ?? parameter.unit,
-            threshold: plan ? `${plan.label}${plan.normLabel ? ` · ${plan.normLabel}` : ""}` : parameter.threshold,
+            threshold: plan ? `${plan.label}${norm ? ` · ${norm}` : ""}` : parameter.threshold,
           };
         }),
       };

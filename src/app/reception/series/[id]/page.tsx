@@ -32,7 +32,7 @@ export default async function SerieReceptionPage({
     }),
     prisma.sample.groupBy({
       by: ["technicianId"],
-      where: { status: { in: ["RECU", "EN_ANALYSE"] } },
+      where: { status: { in: ["RECU", "PROGRAMME", "EN_ANALYSE"] } },
       _count: { _all: true },
     }),
     getLabSettings(),

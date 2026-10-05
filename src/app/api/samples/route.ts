@@ -4,11 +4,13 @@ import { prisma } from "@/lib/prisma";
 import { sampleSelectFor } from "@/lib/sample-select";
 import { pageParams, toPage } from "@/lib/pagination";
 import { parseSampleSearch, sampleSearchWhere } from "@/lib/sample-search";
+import { benchWhereFor } from "@/lib/bench-access";
 
 /** The roles that work the sample circuit — stock and (future) portal do not. */
 const CIRCUIT_ROLES = [
   "PRELEVEUR",
   "RECEPTIONNISTE",
+  "PROGRAMMATEUR",
   "TECHNICIEN",
   "VALIDATEUR",
   "GESTIONNAIRE",
@@ -19,6 +21,7 @@ const CIRCUIT_ROLES = [
 const STATUSES = [
   "PRELEVE",
   "RECU",
+  "PROGRAMME",
   "EN_ANALYSE",
   "RESULTATS_SAISIS",
   "VALIDE",
@@ -45,8 +48,10 @@ export async function GET(request: Request) {
   const where = {
     ...sampleSearchWhere(parseSampleSearch(params), { blind: session.role === "PRELEVEUR" }),
     ...(session.role === "PRELEVEUR" ? { userId: session.id } : {}),
-    // A technician's bench is their own: the list API mirrors sample-access.
-    ...(session.role === "TECHNICIEN" ? { technicianId: session.id } : {}),
+    // A technician's bench is their own — the sample's technician or one of
+    // its parameters' (PROGRAMME.md §6): the list API mirrors sample-access.
+    // Wrapped in AND so its OR never collides with the search's own.
+    ...(session.role === "TECHNICIEN" ? { AND: [benchWhereFor(session)] } : {}),
     ...(status ? { status } : {}),
   };
 

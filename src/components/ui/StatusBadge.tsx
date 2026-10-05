@@ -4,6 +4,9 @@ import { SAMPLE_STATUS_LABELS } from "@/lib/labels";
 const STATUS_STYLES: Record<SampleStatus, string> = {
   PRELEVE: "bg-sky-50 text-sky-700 ring-sky-200/60",
   RECU: "bg-amber-50 text-amber-700 ring-amber-200/60",
+  // Between « Reçu » (amber) and « En analyse » (violet): its own hue, so the
+  // queues tell a programmed line from a received one at a glance.
+  PROGRAMME: "bg-teal-50 text-teal-700 ring-teal-200/60",
   EN_ANALYSE: "bg-violet-50 text-violet-700 ring-violet-200/60",
   RESULTATS_SAISIS: "bg-orange-50 text-orange-700 ring-orange-200/60",
   VALIDE: "bg-emerald-50 text-emerald-700 ring-emerald-200/60",

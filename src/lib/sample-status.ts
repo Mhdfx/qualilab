@@ -14,6 +14,7 @@ import { SAMPLE_STATUS_LABELS } from "@/lib/labels";
 export const SAMPLE_STATUS_ORDER: SampleStatus[] = [
   "PRELEVE",
   "RECU",
+  "PROGRAMME",
   "EN_ANALYSE",
   "RESULTATS_SAISIS",
   "VALIDE",
@@ -30,7 +31,12 @@ type Transition = {
 
 const TRANSITIONS: Transition[] = [
   { from: "PRELEVE", to: "RECU", roles: ["RECEPTIONNISTE", "ADMIN"] },
-  { from: "RECU", to: "EN_ANALYSE", roles: ["TECHNICIEN", "ADMIN"] },
+  // PROGRAMME.md §1 — the responsable des paramètres confirms the programme
+  // d'analyse of a received line; only a programmed line may be opened at
+  // the bench, so the former RECU → EN_ANALYSE shortcut no longer exists.
+  // The admin stands in for an absent responsable.
+  { from: "RECU", to: "PROGRAMME", roles: ["PROGRAMMATEUR", "ADMIN"] },
+  { from: "PROGRAMME", to: "EN_ANALYSE", roles: ["TECHNICIEN", "ADMIN"] },
   { from: "EN_ANALYSE", to: "RESULTATS_SAISIS", roles: ["TECHNICIEN", "ADMIN"] },
   // Double validation (client, 2026-08-18): the VALIDATEUR signs off technically
   // first — recorded on the sample, not as a status change — then the ADMIN
@@ -52,17 +58,36 @@ const TRANSITIONS: Transition[] = [
   // step it had reached (received or not), with a written reason.
   { from: "PRELEVE", to: "ANNULE", roles: ["RECEPTIONNISTE", "ADMIN"] },
   { from: "RECU", to: "ANNULE", roles: ["RECEPTIONNISTE", "ADMIN"] },
+  // A programmed line is already the laboratory's work: only the admin
+  // cancels it (PROGRAMME.md §1), and brings it back to PROGRAMME.
+  { from: "PROGRAMME", to: "ANNULE", roles: ["ADMIN"] },
   { from: "EN_ANALYSE", to: "ANNULE", roles: ["ADMIN"] },
   { from: "RESULTATS_SAISIS", to: "ANNULE", roles: ["ADMIN"] },
   { from: "ANNULE", to: "PRELEVE", roles: ["ADMIN"], requiresReason: true },
   { from: "ANNULE", to: "RECU", roles: ["ADMIN"], requiresReason: true },
+  { from: "ANNULE", to: "PROGRAMME", roles: ["ADMIN"], requiresReason: true },
 ];
 
 /** The statuses whose identification fields may still be corrected (before approval). */
-export const CORRECTABLE_STATUSES: SampleStatus[] = ["PRELEVE", "RECU", "EN_ANALYSE", "RESULTATS_SAISIS"];
+export const CORRECTABLE_STATUSES: SampleStatus[] = ["PRELEVE", "RECU", "PROGRAMME", "EN_ANALYSE", "RESULTATS_SAISIS"];
 
-/** Where a reactivated sample goes back to: the reception step if it was numbered. */
-export function reactivationTarget(sample: { controlCode: string | null }): SampleStatus {
+/**
+ * The statuses a programme d'analyse may be written on (PROGRAMME.md §5):
+ * received and waiting, or programmed and not yet at the bench. Afterwards,
+ * « Corriger la fiche » with a reason.
+ */
+export const PROGRAMMABLE_STATUSES: SampleStatus[] = ["RECU", "PROGRAMME"];
+
+/**
+ * Where a reactivated sample goes back to — the step it had reached: its
+ * programme if one was confirmed, the reception step if it was numbered,
+ * else the field.
+ */
+export function reactivationTarget(sample: {
+  controlCode: string | null;
+  programmedAt: Date | null;
+}): SampleStatus {
+  if (sample.programmedAt) return "PROGRAMME";
   return sample.controlCode ? "RECU" : "PRELEVE";
 }
 

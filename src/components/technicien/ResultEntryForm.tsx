@@ -44,6 +44,12 @@ export type ParameterLine = {
   normLabel: string | null;
   /** One reading per unit taken when `perUnit`. */
   units: string[];
+  /** May this technician type the line? A colleague's parameter is read-only (PROGRAMME.md §6). */
+  editable: boolean;
+  /** The technician in charge of the line, named when it is not me. */
+  technicianName: string | null;
+  /** The method note of the programme d'analyse, if any. */
+  methodNote: string | null;
 };
 
 type ResultEntryFormProps = {
@@ -172,23 +178,27 @@ export function ResultEntryForm({
   }
 
   function payload() {
-    return lines.map((line, index) =>
-      line.perUnit
-        ? {
-            parameterId: line.parameterId,
-            units: line.units,
-            note: line.note,
-            workStatus: line.workStatus,
-            conform: line.plan ? undefined : readings[index].conform,
-          }
-        : {
-            parameterId: line.parameterId,
-            value: line.value,
-            note: line.note,
-            workStatus: line.workStatus,
-            conform: readings[index].conform,
-          }
-    );
+    // Only my lines travel: the server refuses a colleague's (403).
+    return lines.flatMap((line, index) => {
+      if (!line.editable) return [];
+      return [
+        line.perUnit
+          ? {
+              parameterId: line.parameterId,
+              units: line.units,
+              note: line.note,
+              workStatus: line.workStatus,
+              conform: line.plan ? undefined : readings[index].conform,
+            }
+          : {
+              parameterId: line.parameterId,
+              value: line.value,
+              note: line.note,
+              workStatus: line.workStatus,
+              conform: readings[index].conform,
+            },
+      ];
+    });
   }
 
   async function save(then?: () => Promise<void>) {
@@ -266,13 +276,22 @@ export function ResultEntryForm({
         <ul className="mt-4 space-y-3">
           {lines.map((line, index) => {
             const reading = readings[index];
+            // A colleague's parameter is read-only on my sheet (PROGRAMME.md §6).
+            const locked = !canEdit || !line.editable;
             return (
               <li
                 key={line.parameterId}
                 className="rounded-xl border border-slate-200 p-3.5"
               >
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <p className="font-semibold text-slate-800">{line.name}</p>
+                  <p className="flex flex-wrap items-center gap-2 font-semibold text-slate-800">
+                    {line.name}
+                    {!line.editable && (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200">
+                        {line.technicianName ? `Paramètre de ${line.technicianName}` : "Paramètre d'un autre technicien"} — lecture seule
+                      </span>
+                    )}
+                  </p>
                   <p className="text-xs text-slate-500">
                     {line.plan ? (
                       <>
@@ -289,6 +308,9 @@ export function ResultEntryForm({
                     )}
                   </p>
                 </div>
+                {line.methodNote && (
+                  <p className="mt-1 text-xs text-slate-500">Méthode : {line.methodNote}</p>
+                )}
 
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
                   {line.perUnit ? (
@@ -315,7 +337,7 @@ export function ResultEntryForm({
                               aria-label={`${line.name} — ${repetitionLabel(unitIndex + 1)}`}
                               value={unit}
                               onChange={(e) => updateUnit(index, unitIndex, e.target.value)}
-                              disabled={!canEdit}
+                              disabled={locked}
                               placeholder={line.plan?.mKind === "ABSENCE" ? "Absence" : line.plan ? "1,2.10²" : "Valeur"}
                               className={INPUT}
                             />
@@ -337,7 +359,7 @@ export function ResultEntryForm({
                         inputMode="text"
                         value={line.value}
                         onChange={(e) => update(index, { value: e.target.value })}
-                        disabled={!canEdit}
+                        disabled={locked}
                         placeholder="Ex. : 8,9.10²  ·  < 10  ·  Absence"
                         className={INPUT}
                       />
@@ -371,7 +393,7 @@ export function ResultEntryForm({
                           workStatus: e.target.value as ResultWorkStatus,
                         })
                       }
-                      disabled={!canEdit}
+                      disabled={locked}
                       className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50 sm:w-36"
                     >
                       {(
@@ -417,7 +439,7 @@ export function ResultEntryForm({
                     reading={reading}
                     limitValue={line.limitValue}
                     unit={line.unit}
-                    canEdit={canEdit}
+                    canEdit={!locked}
                     onManual={(conform) => update(index, { manualConform: conform })}
                   />
                 )}
@@ -441,7 +463,7 @@ export function ResultEntryForm({
                       id={`note-${line.parameterId}`}
                       value={line.note}
                       onChange={(e) => update(index, { note: e.target.value })}
-                      disabled={!canEdit}
+                      disabled={locked}
                       rows={2}
                       className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50"
                     />
@@ -497,7 +519,7 @@ export function ResultEntryForm({
         {canEdit && !allComplete && (
           <p className="mt-2 text-center text-xs text-slate-500 sm:text-right">
             Tous les paramètres doivent être renseignés et terminés pour
-            soumettre.
+            soumettre{lines.some((line) => !line.editable) ? ", y compris ceux de vos collègues" : ""}.
           </p>
         )}
       </Card>

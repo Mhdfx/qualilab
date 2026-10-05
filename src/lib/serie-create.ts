@@ -161,8 +161,9 @@ export async function createSerie(
   const analysesMicro = input.analysesMicro ?? families.has("MICRO");
   const analysesChimie = input.analysesChimie ?? families.has("CHIMIE");
 
-  // A deposit's lines go straight to a technician (unless held): every one
-  // named must exist and be active — one query for all.
+  // A deposit's lines may name an indicative technician (PROGRAMME.md §6 —
+  // the responsable des paramètres assigns the bench): every one named must
+  // exist and be active — one query for all.
   const technicianIds = isDeposit
     ? [...new Set(input.lines.map((l) => l.technicianId).filter((t): t is string => t !== null))]
     : [];
@@ -221,13 +222,13 @@ export async function createSerie(
         const place = await resolvePlace(tx, client.id, siteId, line.lieu);
         const produit = product?.label ?? line.produit;
         const controlCode = isDeposit ? (await nextNumber(tx, "CONTROLE", year)).formatted : null;
-        // A destroyed line is received, numbered and cancelled at once. Any
-        // other line that reaches the bench without a technician is held —
-        // an unassigned sample would sit in no queue at all — and released
-        // from « Échantillons bloqués », which assigns one.
+        // A destroyed line is received, numbered and cancelled at once. A
+        // line received without a technician is no longer held: it waits in
+        // the programmation queue (RECU) for the responsable des paramètres,
+        // who assigns the bench (PROGRAMME.md §1 — the deposit follows the
+        // same path as a visit).
         const destroyed = isDeposit && line.destroy;
-        const held = isDeposit && !destroyed && line.technicianId === null;
-        const technicianId = isDeposit && !held && !destroyed ? line.technicianId : null;
+        const technicianId = isDeposit && !destroyed ? line.technicianId : null;
 
         const sample = await tx.sample.create({
           data: {
@@ -277,7 +278,7 @@ export async function createSerie(
             conformity: isDeposit ? line.conformity : null,
             conformityReason: isDeposit ? line.conformityReason : null,
             conformityNote: isDeposit ? line.conformityNote : null,
-            analysisBlocked: held,
+            analysisBlocked: false,
             technicianId,
             assignedAt: technicianId ? now : null,
             parameters: { create: line.parameterIds.map((parameterId) => ({ parameterId })) },

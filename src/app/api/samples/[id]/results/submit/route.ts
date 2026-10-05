@@ -4,6 +4,7 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { loadAssignedSample } from "@/lib/sample-access";
 import { canTransition } from "@/lib/sample-status";
+import { canEditParameter } from "@/lib/bench-access";
 
 /**
  * Submits the completed sheet to quality validation:
@@ -15,6 +16,11 @@ import { canTransition } from "@/lib/sample-status";
  * « Incomplet » verdict stays on the bench — and so must any parameter of a
  * sample taken on several units with a repetition left blank or typed in a
  * notation the engine cannot read.
+ *
+ * Every parameter must be done whoever holds it (PROGRAMME.md §6): any
+ * technician of the line may submit once everything is finished; until a
+ * colleague has finished theirs the answer says how many lines remain
+ * with other technicians.
  */
 export async function POST(
   _request: Request,
@@ -54,8 +60,12 @@ export async function POST(
 
   const byParameter = new Map(results.map((r) => [r.parameterId, r]));
   const missing: string[] = [];
+  // The incomplete lines that belong to other technicians — mine come first
+  // in the message, since they are the ones I can finish.
+  const foreign: string[] = [];
 
-  for (const { parameter } of sample.parameters) {
+  for (const line of sample.parameters) {
+    const { parameter } = line;
     const result = byParameter.get(parameter.id);
     if (
       !result?.value ||
@@ -64,7 +74,11 @@ export async function POST(
       (perUnit && result.units.length < sample.unitCount) ||
       result.units.some((u) => u.value === null && u.detected === null)
     ) {
-      missing.push(parameter.name);
+      if (session.role === "TECHNICIEN" && !canEditParameter(sample, line, session.id)) {
+        foreign.push(parameter.name);
+      } else {
+        missing.push(parameter.name);
+      }
     }
   }
 
@@ -72,7 +86,16 @@ export async function POST(
     return NextResponse.json(
       {
         error: `Paramètres incomplets : ${missing.join(", ")}.`,
-        missing,
+        missing: [...missing, ...foreign],
+      },
+      { status: 400 }
+    );
+  }
+  if (foreign.length > 0) {
+    return NextResponse.json(
+      {
+        error: `Il reste ${foreign.length} paramètre${foreign.length > 1 ? "s" : ""} à d'autres techniciens : ${foreign.join(", ")}.`,
+        missing: foreign,
       },
       { status: 400 }
     );

@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { loadAssignedSample } from "@/lib/sample-access";
 import { canTransition } from "@/lib/sample-status";
 import { loadBenchPlans } from "@/lib/bench-plan";
+import { canEditParameter } from "@/lib/bench-access";
+import { effectiveFactor } from "@/lib/dilution";
 import {
   applyUnitFactor,
   judgeUnits,
@@ -57,7 +59,13 @@ type Entry = {
  *
  * Results may be entered over several sittings, so this accepts a partial
  * sheet and never forces the sample forward on its own. The first save moves
- * `RECU → EN_ANALYSE`, because work has visibly started.
+ * `PROGRAMME → EN_ANALYSE`, because work has visibly started; a line still
+ * waiting for its programme d'analyse is refused (PROGRAMME.md §1).
+ *
+ * Since the programme (PROGRAMME.md §6) each parameter has its technician:
+ * a technician may only type their own lines (403 naming the parameter),
+ * and the dilution programmed for this sample replaces the parameter's
+ * catalogue factor when present.
  *
  * A germ with a criterion (the sample's product type, CRITERES.md) is read
  * per unit, and so is every parameter of a sample taken on several units
@@ -79,7 +87,18 @@ export async function PUT(
   if (loaded.error) return loaded.error;
   const sample = loaded.sample;
 
-  if (sample.status !== "RECU" && sample.status !== "EN_ANALYSE") {
+  // Only a programmed line may be opened at the bench: a received one
+  // waits for the responsable des paramètres.
+  if (sample.status === "PRELEVE" || sample.status === "RECU") {
+    return NextResponse.json(
+      {
+        error:
+          "En attente de programmation : le responsable des paramètres doit confirmer le programme d'analyse avant la saisie.",
+      },
+      { status: 409 }
+    );
+  }
+  if (sample.status !== "PROGRAMME" && sample.status !== "EN_ANALYSE") {
     return NextResponse.json(
       {
         error:
@@ -105,9 +124,7 @@ export async function PUT(
   }
 
   // Only the parameters actually requested for this sample may be filled in.
-  const allowed = new Map(
-    sample.parameters.map(({ parameter }) => [parameter.id, parameter])
-  );
+  const allowed = new Map(sample.parameters.map((line) => [line.parameter.id, line]));
   if (results.length > allowed.size) {
     return NextResponse.json({ error: "Trop de résultats pour cet échantillon." }, { status: 400 });
   }
@@ -119,13 +136,14 @@ export async function PUT(
   for (const raw of results as IncomingResult[]) {
     const parameterId =
       typeof raw?.parameterId === "string" ? raw.parameterId : "";
-    const parameter = allowed.get(parameterId);
-    if (!parameter) {
+    const line = allowed.get(parameterId);
+    if (!line) {
       return NextResponse.json(
         { error: "Paramètre inconnu pour cet échantillon." },
         { status: 400 }
       );
     }
+    const parameter = line.parameter;
     // The same germ twice in one payload would write itself over silently.
     if (seen.has(parameterId)) {
       return NextResponse.json(
@@ -134,6 +152,18 @@ export async function PUT(
       );
     }
     seen.add(parameterId);
+    // A colleague's parameter is read-only on my sheet (PROGRAMME.md §6).
+    if (session.role === "TECHNICIEN" && !canEditParameter(sample, line, session.id)) {
+      return NextResponse.json(
+        {
+          error: `Le paramètre ${parameter.name} est attribué à ${line.technician?.name ?? "un autre technicien"} : vous ne pouvez pas le saisir.`,
+          parameterId,
+        },
+        { status: 403 }
+      );
+    }
+    // The programmed dilution of this sample, else the catalogue's factor.
+    const factor = effectiveFactor(line.dilutionFactor, parameter.calcFactor);
 
     const note = typeof raw.note === "string" ? raw.note.trim() : "";
     const workStatus = WORK_STATUSES.includes(raw.workStatus as ResultWorkStatus)
@@ -163,7 +193,7 @@ export async function PUT(
         units.push(text);
       }
       // A dilution factor applies to a unit exactly as to a single value.
-      const readings = units.map((u) => applyUnitFactor(parseUnitReading(u), parameter.calcFactor));
+      const readings = units.map((u) => applyUnitFactor(parseUnitReading(u), factor));
       const summary = summariseReadings(readings);
       const typedAny = readings.some((r) => r.kind !== "empty");
       if (plan) {
@@ -181,7 +211,8 @@ export async function PUT(
           interpretation: typedAny ? judged.official?.verdict ?? null : null,
           informalInterpretation: typedAny ? judged.informal?.verdict ?? null : null,
           criterion: { ...plan.plan },
-          normVersionId: plan.normVersionId,
+          // The method of the report: the programmed version, else the criterion's.
+          normVersionId: line.normVersionId ?? plan.normVersionId,
           units: readings,
         });
       } else {
@@ -200,7 +231,7 @@ export async function PUT(
           interpretation: null,
           informalInterpretation: null,
           criterion: Prisma.DbNull,
-          normVersionId: null,
+          normVersionId: line.normVersionId,
           units: readings,
         });
       }
@@ -211,8 +242,9 @@ export async function PUT(
     const value = typeof raw.value === "string" ? raw.value.trim() : "";
 
     // The value is stored as typed and as a number: the alert compares
-    // figures. A calcFactor (dilution) turns the bench reading into the final
-    // value; the raw entry is kept alongside so nothing is lost. Only a
+    // figures. A factor (the programmed dilution, else the parameter's
+    // calcFactor) turns the bench reading into the final value; the raw
+    // entry is kept alongside so nothing is lost. Only a
     // genuine count is rewritten — « Absence » and « < 10 » stay as typed
     // (their numeric 0 × factor is still 0), otherwise the report would print
     // "0" where the technician wrote « Absence ».
@@ -223,10 +255,10 @@ export async function PUT(
       );
     }
     const parsed = value
-      ? applyCalcFactor(parseLabValue(value), parameter.calcFactor)
+      ? applyCalcFactor(parseLabValue(value), factor)
       : { numeric: null, kind: "unreadable" as const };
     const transformed =
-      parameter.calcFactor !== 1 && parsed.kind === "number" && parsed.numeric !== null;
+      factor !== 1 && parsed.kind === "number" && parsed.numeric !== null;
 
     entries.push({
       parameterId,
@@ -241,7 +273,7 @@ export async function PUT(
       interpretation: null,
       informalInterpretation: null,
       criterion: Prisma.DbNull,
-      normVersionId: null,
+      normVersionId: line.normVersionId,
       units: null,
     });
   }
@@ -289,12 +321,12 @@ export async function PUT(
 
   // Starting to record results is what puts a sample "en analyse".
   let status = sample.status;
-  if (sample.status === "RECU") {
-    const transition = canTransition("RECU", "EN_ANALYSE", session.role);
+  if (sample.status === "PROGRAMME") {
+    const transition = canTransition("PROGRAMME", "EN_ANALYSE", session.role);
     if (transition.ok) {
       await prisma.sample
         .update({
-          where: { id: sample.id, status: "RECU" },
+          where: { id: sample.id, status: "PROGRAMME" },
           data: { status: "EN_ANALYSE" },
         })
         .catch((error) => {
@@ -308,7 +340,7 @@ export async function PUT(
         action: "SAMPLE_ANALYSIS_STARTED",
         entity: "Sample",
         entityId: sample.id,
-        metadata: { from: "RECU", to: "EN_ANALYSE", code: sample.code },
+        metadata: { from: "PROGRAMME", to: "EN_ANALYSE", code: sample.code },
       });
     }
   }

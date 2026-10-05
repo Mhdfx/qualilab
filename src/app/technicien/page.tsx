@@ -1,6 +1,7 @@
 import { FlaskConical, ClipboardCheck, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { benchQueueWhereFor, benchWhereFor } from "@/lib/bench-access";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { WorkQueue } from "@/components/technicien/WorkQueue";
@@ -10,12 +11,14 @@ export const metadata = { title: "Analyses" };
 export default async function TechnicienPage() {
   const session = await requireRole("TECHNICIEN", "ADMIN");
 
-  // A technician only ever sees their own bench; ADMIN oversees everything.
-  const mine = session.role === "TECHNICIEN" ? { technicianId: session.id } : {};
+  // A technician's bench is the lines they hold or share a parameter of
+  // (PROGRAMME.md §6); ADMIN oversees everything. Only a programmed line
+  // reaches the bench: a received one waits for its programme.
+  const mine = benchWhereFor(session);
 
   const [items, anomalies, submitted] = await Promise.all([
     prisma.sample.findMany({
-      where: { ...mine, status: { in: ["RECU", "EN_ANALYSE"] } },
+      where: benchQueueWhereFor(session),
       select: {
         id: true,
         code: true,
@@ -24,18 +27,22 @@ export default async function TechnicienPage() {
         status: true,
         receivedAt: true,
         conformity: true,
+        priority: true,
+        dueAt: true,
+        technicianId: true,
         client: { select: { name: true } },
         serie: { select: { serialNumber: true } },
-        parameters: { select: { parameter: { select: { id: true } } } },
-        results: { select: { value: true, workStatus: true, interpretation: true } },
+        parameters: { select: { parameterId: true, technicianId: true } },
+        results: { select: { parameterId: true, value: true, workStatus: true, interpretation: true } },
       },
-      orderBy: { receivedAt: "asc" },
+      // The urgent lines first, then the oldest receptions.
+      orderBy: [{ priority: "desc" }, { receivedAt: "asc" }],
     }),
     prisma.result.count({ where: { workStatus: "ANOMALIE", sample: mine } }),
     prisma.sample.count({ where: { ...mine, status: "RESULTATS_SAISIS" } }),
   ]);
 
-  const waiting = items.filter((item) => item.status === "RECU").length;
+  const waiting = items.filter((item) => item.status === "PROGRAMME").length;
   const inProgress = items.filter((item) => item.status === "EN_ANALYSE").length;
 
   return (
@@ -62,7 +69,7 @@ export default async function TechnicienPage() {
             {items.length} échantillon{items.length > 1 ? "s" : ""}
           </span>
         </div>
-        <WorkQueue items={items} />
+        <WorkQueue items={items} viewerId={session.role === "TECHNICIEN" ? session.id : null} />
       </section>
     </div>
   );
