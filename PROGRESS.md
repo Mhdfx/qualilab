@@ -267,6 +267,9 @@ in `PLAN.md`, opened one at a time.
 
 ## Session Log
 
+### 2026-10-05 (evening) — the laboratory's requests on the sampler form analysed
+- Nine requests (clients from the field, contractual cadre, no more « Service vétérinaire », « Référence client », free text on « Autre », two analysis families per line, surface labels, surfaces as a managed list, analyses and product type decided by the lab): all feasible, ≈ 58 h in four slices — `RETOUR-LABO-05-10.md` (verdict, changes, risks, seven questions to confirm before coding).
+
 ### 2026-10-05 (afternoon) — « les prélèvements ne s'enregistrent pas »
 - Reproduced on production: the sampler's PC shows one hour more than the legal time (Windows without the Morocco-to-GMT update); retyping that hour in « Prélevé le » makes the server refuse « L'heure du prélèvement est dans le futur » and the visit is never saved. The API and the form with the proposed time work (checked on production and on the local dev server).
 - Fix: `LegalTimeHint` under every date-time field (legal time, and a warning when the device is one hour ahead: « gardez l'heure proposée ; mettez l'appareil à jour »), and the refusal messages now state the legal time and the cause (`futureMessage` in labels.ts).
