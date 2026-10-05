@@ -127,3 +127,55 @@ restent sur le terrain : les unités sont prélevées physiquement sur place.
 - **L3 (surfaces, ≈ 14 h)** : demande 7b — nouvelle table et écran admin.
 - **L4 (le laboratoire décide des analyses, ≈ 17 h)** : demandes 8 et 9 —
   nouveau bloc à la réception, garde-fous paillasse.
+
+## 5. Nouveau rôle : technicien responsable des paramètres (demande orale du 05/10)
+
+**Ce que le laboratoire décrit.** Après la réception, une personne dédiée
+décide, pour chaque prélèvement, de ce qui doit être fait (paramètres,
+type de produit, consignes) avant qu'un technicien de paillasse ne saisisse
+les résultats. Dès que ce « programme d'analyse » est confirmé, la
+comptabilité dispose de ce qu'il lui faut (les analyses à facturer) ; puis
+paillasse → validateur → approbation → rapport, comme aujourd'hui.
+
+**Lecture dans le circuit actuel.** Le circuit est PRELEVE → RECU →
+EN_ANALYSE → RESULTATS_SAISIS → VALIDE → RAPPORT_ENVOYE (`sample-status.ts`).
+Aujourd'hui les analyses et le type sont fixés par le préleveur et le
+technicien est attribué par la réception ; la facturation ne voit un
+échantillon qu'une fois VALIDE. La demande insère une étape entre RECU et
+EN_ANALYSE et avance le moment où la facturation peut travailler. Elle
+remplace la réponse proposée aux demandes 8 et 9 (le bloc « Analyses à
+effectuer » à la réception devient l'écran du nouveau rôle).
+
+**Proposition.**
+- Rôle `PROGRAMMATEUR` (libellé « Responsable des paramètres ») dans l'enum
+  `Role` ; espace `/programmation` : file « À programmer » (lignes RECU sans
+  programme), fiche par ligne : type de produit (critères n, c, m, M),
+  profil / paramètres, technicien de paillasse, priorité et délai,
+  consignes ; bouton « Confirmer le programme ».
+- Statut `PROGRAMME` entre RECU et EN_ANALYSE (`RECU → PROGRAMME` par le
+  programmateur ou l'admin ; `PROGRAMME → EN_ANALYSE` par le technicien) ;
+  la paillasse refuse de commencer une ligne non programmée ; la réception
+  n'attribue plus le technicien (ou seulement à titre indicatif) ; la ligne
+  détruite à la réception ne passe pas par là. Le programme est journalisé
+  (`SAMPLE_PROGRAMMED`, avant/après) et modifiable par le programmateur
+  tant que la paillasse n'a pas commencé, ensuite par « Corriger la fiche ».
+- Facturation : la liste « à facturer » (`/api/clients/[id]/billable`)
+  accepte les lignes PROGRAMME, VALIDE et RAPPORT_ENVOYE ; la facture peut
+  donc être préparée dès le programme confirmé, aux prix du catalogue des
+  analyses programmées. Une ligne annulée après facturation doit être
+  signalée au comptable (avoir / facture à rouvrir) — nouveau cas à traiter.
+- Dépôt au comptoir : même passage par le programmateur (la réception ne
+  choisit plus les analyses) ; le préleveur garde le nombre d'unités.
+- Effort : rôle et espace (12 h), statut, file, fiche et garde-fous (14 h),
+  facturation (4 h), recette et docs (6 h) ≈ **36 h**, en remplacement des
+  17 h de la tranche L4.
+
+**Avis.** Cohérent avec le fonctionnement d'un laboratoire : une seule
+personne connaît les contrats et les critères, les techniciens de paillasse
+n'ont plus à choisir, et la facturation n'attend plus le rapport. Trois
+points à trancher avec le laboratoire : (1) facturer avant le résultat
+suppose de gérer l'annulation après facturation ; (2) qui remplace le
+programmateur quand il est absent (l'admin, ou un second compte) sinon la
+paillasse s'arrête ; (3) le protocole signé par le client n'engage plus sur
+les analyses, seulement sur le prélèvement — à confirmer avec le responsable
+qualité.
