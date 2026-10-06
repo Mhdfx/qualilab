@@ -147,6 +147,8 @@ préleveur photographie la feuille signée depuis le téléphone.
 
 | Q41 | Programme d'analyse : « les nombres » = unités à lire, prise d'essai et dilutions ? Les N° de contrôle restent-ils attribués à la réception ? | Programme (`PROGRAMME.md`) |
 | Q42 | Un même échantillon peut-il être réparti entre plusieurs techniciens (micro à l'un, chimie à l'autre) ? Si oui, qui soumet à la validation : le dernier qui termine ? | Programme (`PROGRAMME.md`) |
+| Q43 | Des types repris de l'ancien logiciel n'ont **aucun critère** (ex. « PLATS CUISINÉS-VOLAILLES ») : la fiche de programme les propose sans tableau n / c / m / M et le rapport n'imprime alors ni critère ni verdict. Quels types doivent être complétés avant le go-live, et avec quels critères ? | Critères (chantier 2) — `RECETTE-06-10-PARCOURS.md` §3 |
+| Q44 | Un échantillon jugé sans critère (seulement une limite du catalogue) n'imprime pas la ligne « Réglementation en vigueur », même si le validateur en a choisi une. Faut-il l'imprimer quand même, sans la croix Satisfaisant / Acceptable / Non satisfaisant ? | Rapport — `RECETTE-06-10-PARCOURS.md` §3 |
 
 ## 2. Ready to send — current batch
 

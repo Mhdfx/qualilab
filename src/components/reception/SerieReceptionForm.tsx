@@ -232,7 +232,10 @@ export function SerieReceptionForm({
   const router = useRouter();
   const pending = serie.samples.filter((s) => s.status === "PRELEVE");
   const alreadyReceived = serie.samples.filter((s) => s.status !== "PRELEVE");
-  const defaultTechnician = technicians[0]?.id ?? "";
+  // Nobody is pre-assigned: the responsable des paramètres attributes the
+  // bench at the programme stage (PROGRAMME.md); a technician picked here is
+  // only a hint.
+  const defaultTechnician = "";
 
   const [arrivedAt, setArrivedAt] = useState(
     serie.arrivedAt ? toLocalInput(new Date(serie.arrivedAt)) : ""
@@ -703,7 +706,7 @@ export function SerieReceptionForm({
                 onChange={(e) => applyTechnicianToAll(e.target.value)}
                 className="input-field mt-1.5 px-3"
               >
-                <option value="">Choisir…</option>
+                <option value="">À attribuer à la programmation</option>
                 {technicians.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name} — {t.load} en cours

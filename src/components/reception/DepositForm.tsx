@@ -124,7 +124,10 @@ export function DepositForm({
 }) {
   const router = useRouter();
   const isMounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
-  const defaultTechnician = technicians[0]?.id ?? "";
+  // Nobody is pre-assigned: the responsable des paramètres attributes the
+  // bench at the programme stage (PROGRAMME.md); a technician picked here is
+  // only a hint.
+  const defaultTechnician = "";
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [natures, setNatures] = useState<NatureOption[]>([]);

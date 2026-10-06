@@ -1018,6 +1018,36 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 - The germs of a chosen type are listed « non programmé » when a profile chip replaces the ticked analyses afterwards: visible and deliberate, but the lab may prefer the type's germs to stay ticked (to confirm).
 - Q41 (« les nombres », numbering) and Q42 (one sample split between technicians) in NEEDEDINFO.
 
+## Checkpoint U — « Une journée du laboratoire » en production (2026-10-06)
+
+One prélèvement followed by hand in the browser pane, in the lab's order, every
+step re-read after a reload and checked against the audit journal. Full
+report: `RECETTE-06-10-PARCOURS.md`.
+
+### U-1 Circuit of série 1/26 · contrôle 1/26 (client « TEST UI 2026-10-06 Traiteur »)
+- [x] commercial1 creates the client (13:58) ; pre1's « Nouvelle visite » with the proposed legal time (13:59, hint under the field) → série 1/26, no N° de contrôle on the préleveur's side, protocol PDF 200.
+- [x] recep1 receives it (14:01) : 5 °C, 300 g, conform, **no technician** → N° de contrôle 1/26, RECU, labels PDF 200.
+- [x] param1 confirms the programme (14:03) : type « PLAT CUIT PRÊT À CONSOMMER » (6 germs with criteria), n = 5, 25 g, Salmonelles to Imane, délai 07/10 16:00 → PROGRAMME.
+- [x] tech1 types R1 … R5 for his five germs with the keyboard and saves (14:06) → EN_ANALYSE ; tech2 types Salmonelles « Absence » ×5, saves and submits (14:07) → RESULTATS_SAISIS.
+- [x] valid1 validates technically with the proposed regulation (14:08) ; the badge stays « Résultats saisis » and the panel shows step 1 signed (double validation, by design).
+- [x] admin approves (14:10) → RAPPORT_ENVOYE, **RAP-2026-00001**, e-mail simulated ; PDF re-read at the image : regulation table with the X under « Satisfaisant », R1 … R5, n / c / m / M, two technicians, three signatures, one page.
+- [x] compta1 invoices the validated analysis (14:16) : **FAC-2026-0001**, 6 lines, 1 250 DH HT / 1 500 TTC, PDF ; 1/26 no longer proposed. Search : « Rapport envoyé · Satisfaisant ».
+- [x] Database evidence : `GET /api/samples?limit=50` as admin lists the sample RAPPORT_ENVOYE after sign-out / sign-in ; the journal holds the 23 entries with their hours and authors ; counters série 2 · contrôle 2 · rapport 2 · facture 1.
+
+### U-2 Regulation chosen by the validator (série 2/26 · contrôle 2/26)
+- [x] Received without technician (14:12), programmed with E. coli alone, < 10 typed and submitted (14:13).
+- [x] valid1 replaces « — aucune — » by « Arrêté conjoint n° 624-04 du 8 avril 2004 » **with a real keystroke** and validates (14:20) : « Réglementation choisie pour un échantillon » in the journal, the chosen text shown after reload and as admin.
+- [x] admin approves (14:22) → **RAP-2026-00002** ; the PDF prints no « Réglementation en vigueur » table because the sample has no criteria plan and no official verdict (CRITERES §3) — question Q44 to the lab.
+- [x] Yesterday's « regulation not applied » was the test tool (value set by script, unseen by React), not the application.
+
+### Found and fixed the same day
+- Reception pre-selected the first technician although the field is optional since the programme : `SerieReceptionForm` and `DepositForm` now default to « À attribuer à la programmation » (also the « Technicien pour toutes les lignes » select). Gates : tsc, eslint, vitest 400, build.
+- [ ] **Production after deploy :** a new série received with the empty default lands in the programmer's queue with « technicien à attribuer ».
+
+### Left
+- Q43 : types imported without any criterion (« PLATS CUISINÉS-VOLAILLES » …) ; Q44 : print the chosen regulation on a report judged without criteria ?
+- Test client kept on production for the lab to replay the circuit ; purge with `.ui-tests/purge-c.mjs`.
+
 ## Checkpoint L — Phase 9, chantier 1 : circuit série (L1–L5 verified 2026-09-13, L1b verified 2026-09-14, all on the dev server at 1440×900 and on the VPS after deploy; L6 = recette with the laboratory, pending)
 
 Tick only what was seen in the browser. One sub-checkpoint per slice of

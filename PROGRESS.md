@@ -269,6 +269,10 @@ in `PLAN.md`, opened one at a time.
 
 ## Session Log
 
+### 2026-10-06 — recette « une journée du laboratoire » en production (TESTPLAN U)
+- One prélèvement followed by hand from the visit to the invoice (series 1/26, RAP-2026-00001, FAC-2026-0001), every step re-read after a reload and matched with the audit journal (23 entries, hours and authors) — `RECETTE-06-10-PARCOURS.md`. A second line (2/26, RAP-2026-00002) proves the regulation chosen by the validator is recorded and shown ; yesterday's doubt was the test tool, not the app.
+- Fixed and deployed the same day : reception no longer pre-selects a technician (« À attribuer à la programmation » by default on the série reception, the deposit and the bulk select). Questions Q43 (imported types without criteria) and Q44 (print the chosen regulation when a sample has no criteria plan) added to NEEDEDINFO. Test client kept on production for the lab.
+
 ### 2026-10-05 (night) — slice PROGRAMME live (TESTPLAN T)
 - Built in four workflow phases (foundation, screens ∥ adaptations, gates), 77 files, 400 tests; deployed with migration 20261006100000_programme. Recette on production through the APIs (22 checks) and in the browser as param1: reception without technician, queue, draft / confirm / edit, billing before result, two technicians on one line with 403 and submit lock, dilution ×10 on the report, two technicians printed. One crash found and fixed the same night (verbsFor called from a server page).
 - Test client purged, counters 0 / 0. Docs: WORKFLOW §16, DEPLOY, HANDOFF, TESTPLAN T.

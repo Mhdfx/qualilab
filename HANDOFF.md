@@ -35,7 +35,7 @@
 | **Phase 9 — chantier 2 : critères d'interprétation** | types de produits × germe × version de norme, import du classeur, lecture par unité, verdicts satisfaisant / acceptable / non satisfaisant, rapport avec le critère et sa norme — spec **`CRITERES.md`** | ◀ **code complete 2026-09-18** (1 075 critères et 131 types importés sur dev; slices 1–4 vérifiées au navigateur, TESTPLAN M1–M4); reste l'import en production et la recette avec le laboratoire |
 | **Phase 9 — chantier 1 : circuit série** | visite / dépôt multi-lignes, 16 natures, réception groupée, numérotation NNNN/AA + NNNNN/AA, étiquettes, profils, verbes de correction — spec **`WORKFLOW.md`** | ◀ **slices 1–5 live 2026-09-13, slice 1b (the lab's feedback of 14/09: the visit form reads like the paper) live 2026-09-14; slice 6 = recette with the lab** (série + natures + counters + « Nouvelle visite » / « Mes visites » + N° de contrôle everywhere; grouped reception with the seven acceptance rules, coded motifs, labels PDF; « Nouveau dépôt », protocole / bon PDFs with the quality cartouche, `/admin/documents`; profiles, client memory, sites, sampler kind; verbs Corriger / Annuler / Réactiver, queues by série, old routes gone); the recette with the laboratory closes the chantier (restore point `v1.0-avant-phase-9`) |
 
-| **Programme d'analyse (05/10) — live 05/10 night, TESTPLAN T** | rôle « Responsable des paramètres », statut PROGRAMME entre réception et paillasse, fiche de programme (type, analyses, nombres, méthodes, technicien par paramètre, délai, consignes), facturation dès le programme — spec **`PROGRAMME.md`** | ✅ **live 2026-10-05 night** — migration `20261006100000_programme` appliquée en production, recette TESTPLAN T (22 checks API + navigateur comme param1), un plantage de la fiche corrigé le soir même ; questions Q41–Q42 au laboratoire |
+| **Programme d'analyse (05/10) — live 05/10 night, TESTPLAN T** | rôle « Responsable des paramètres », statut PROGRAMME entre réception et paillasse, fiche de programme (type, analyses, nombres, méthodes, technicien par paramètre, délai, consignes), facturation dès le programme — spec **`PROGRAMME.md`** | ✅ **live 2026-10-05 night** — migration `20261006100000_programme` appliquée en production, recette TESTPLAN T (22 checks API + navigateur comme param1), un plantage de la fiche corrigé le soir même ; questions Q41–Q42 au laboratoire ; **parcours complet d'un prélèvement en production le 06/10 (TESTPLAN U, `RECETTE-06-10-PARCOURS.md`)**, réception sans technicien par défaut depuis le 06/10 |
 
 **Bottom line:** the five core phases are code-complete. The whole circuit runs
 — field intake to report, alert and invoice — and the lab configures everything
@@ -388,6 +388,14 @@ before the switch (its history is identical everywhere), explicit UTC after
 it. If Morocco changes again, `MOROCCO_GMT_SWITCH` is the one constant to
 revisit. The lab's devices still need their OS update so that their own
 clocks show the legal time (DEPLOY.md, go-live).
+
+### 2026-10-06 — reception pre-assigns nobody
+Since the programme d'analyse (PROGRAMME.md) the responsable des paramètres
+attributes the bench ; the technician at reception is only a hint. The forms
+still defaulted to the first technician of the list, so every line received
+without a thought was assigned. Decision : `defaultTechnician = ""` in
+`SerieReceptionForm` and `DepositForm` — « À attribuer à la programmation ».
+Found by the end-to-end recette of 06/10 (`RECETTE-06-10-PARCOURS.md`).
 
 ## 8c. A lesson written down (2026-08-25)
 
