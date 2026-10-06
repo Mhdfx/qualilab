@@ -1042,7 +1042,7 @@ report: `RECETTE-06-10-PARCOURS.md`.
 
 ### Found and fixed the same day
 - Reception pre-selected the first technician although the field is optional since the programme : `SerieReceptionForm` and `DepositForm` now default to « À attribuer à la programmation » (also the « Technicien pour toutes les lignes » select). Gates : tsc, eslint, vitest 400, build.
-- [ ] **Production after deploy :** a new série received with the empty default lands in the programmer's queue with « technicien à attribuer ».
+- [x] **Production after deploy (14:38) :** série 3/26 (« Tajine de légumes ») opened at `/reception/series/[id]` in a fresh tab — both selects read « À attribuer à la programmation » (value empty) ; 4 °C, 250 g, « Maintenant », « Conforme », « Valider la réception » → `POST /api/series/[id]/reception` 200, N° de contrôle 3/26, 5 labels, technician « — » on the summary ; `GET /api/programmation/queue` lists it (« à programmer » 1, technician null). Left at RECU for the lab to programme.
 
 ### Left
 - Q43 : types imported without any criterion (« PLATS CUISINÉS-VOLAILLES » …) ; Q44 : print the chosen regulation on a report judged without criteria ?

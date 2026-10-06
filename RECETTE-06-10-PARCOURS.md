@@ -73,13 +73,17 @@ sur tout le parcours ; chaque écriture a sa trace dans le journal.
 
 `SerieReceptionForm` et `DepositForm` ne pré-sélectionnent plus de technicien
 (`defaultTechnician = ""`), et « Technicien pour toutes les lignes » propose
-« À attribuer à la programmation ». Vérification sur production après
-déploiement : voir la dernière ligne de TESTPLAN U.
+« À attribuer à la programmation ». Vérifié sur production après
+déploiement (14:38) : la série 3/26 ouverte dans un nouvel onglet montre les deux
+listes sur « À attribuer à la programmation » ; réceptionnée telle quelle
+(4 °C, 250 g, conforme) → N° de contrôle 3/26, technicien « — », et la file du
+responsable des paramètres l'affiche « à programmer ».
 
 ## 5. Données de test
 
-Le client « TEST UI 2026-10-06 Traiteur » et ses deux séries sont **conservés**
+Le client « TEST UI 2026-10-06 Traiteur » et ses trois séries sont **conservés**
 pour que le laboratoire puisse rejouer le parcours (rapports RAP-2026-00001 et
-00002, facture FAC-2026-0001). Pour les supprimer et remettre les compteurs à
+00002, facture FAC-2026-0001 ; série 3/26 laissée à l'état RECU, à programmer
+par `param1`). Pour les supprimer et remettre les compteurs à
 zéro : `node .ui-tests/purge-c.mjs` (dry run puis « SUPPRIMER »), ou
 `/api/admin/maintenance/purge-clients` depuis `/admin/reglages`.
