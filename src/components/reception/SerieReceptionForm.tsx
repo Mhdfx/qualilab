@@ -13,6 +13,8 @@ import {
   Thermometer,
 } from "lucide-react";
 import type {
+  AirMethod,
+  Cadre,
   CancelReason,
   Family,
   HandsState,
@@ -23,15 +25,16 @@ import type {
   SampleType,
   SamplerKind,
   SerieKind,
+  SurfaceState,
 } from "@/generated/prisma/enums";
 import {
   CANCEL_REASON_LABELS,
-  HANDS_STATE_LABELS,
   LINE_KIND_LABELS,
   NON_CONFORMITY_REASON_LABELS,
   QUANTITY_UNIT_LABELS,
   SAMPLER_KIND_LABELS,
   SERIE_KIND_LABELS,
+  formatCadre,
   formatDate,
   formatDateTime,
   formatDecimal,
@@ -46,16 +49,27 @@ import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { fromLocalInput, toLocalInput } from "@/components/preleveur/visit-types";
 import type { TechnicianOption } from "./types";
 import { Checklist, ConformityChip } from "./reception-widgets";
+import { sampleRef } from "@/lib/reception-input";
 import { SampleVerbs, type VerbSample } from "@/components/samples/SampleVerbs";
 import type { Role } from "@/lib/roles";
+import {
+  countLabel,
+  errorConcernsSample,
+  missingFamilies as missingFamiliesOf,
+  receptionDesignation,
+  sampleHeading,
+} from "./reception-logic";
 
 /**
  * Reception of a série in one screen — WORKFLOW.md §3.3.
  *
  * The header carries what the cooler tells (arrival, temperature); every
- * line shows what the préleveur wrote, what the réceptionniste measures, the
- * acceptance checklist computed live from the lab's rules, the conformity
- * with its coded motif and the technician. One button numbers everything.
+ * sample (« Échantillon N », RETOUR-LABO-06-10.md §5, V2) shows what the
+ * préleveur wrote, what the réceptionniste measures, the acceptance
+ * checklist computed live from the lab's rules, the conformity with its
+ * coded motif and the technician. The two samples of a two-family line
+ * (« 2M », « 2P » — V3) are received one by one, each with its own rules
+ * (100 g micro, 300 g physico-chimie). One button numbers everything.
  */
 
 export type ReceptionLineData = {
@@ -76,6 +90,11 @@ export type ReceptionLineData = {
   ambientTemperature: number | null;
   surfaceLabel: string | null;
   surfaceAreaCm2: number | null;
+  /** « État de la surface » (V2) / « Méthode de prélèvement » of the air (V4):
+   * null on a sample entered before 07/10; optional while the série's
+   * select does not carry them everywhere. */
+  surfaceState?: SurfaceState | null;
+  airMethod?: AirMethod | null;
   personName: string | null;
   personRole: string | null;
   handsState: HandsState | null;
@@ -103,6 +122,9 @@ export type ReceptionSerieData = {
   samplerKind: SamplerKind;
   samplerUser: { id: string; name: string } | null;
   samplerName: string | null;
+  cadre: Cadre;
+  /** The precision of « Autre » (V1); optional on an older payload. */
+  cadreNote?: string | null;
   clientReference: string | null;
   startedAt: string;
   endedAt: string | null;
@@ -128,6 +150,8 @@ type ReceivedLine = {
   cancelReason?: CancelReason | null;
   produit: string | null;
   surfaceLabel: string | null;
+  surfaceState?: SurfaceState | null;
+  airMethod?: AirMethod | null;
   personName: string | null;
   nature: { label: string };
   technician: { id: string; name: string } | null;
@@ -152,27 +176,6 @@ type LineState = {
 const REASONS = Object.keys(NON_CONFORMITY_REASON_LABELS) as NonConformityReason[];
 const UNITS = Object.keys(QUANTITY_UNIT_LABELS) as QuantityUnit[];
 
-function designationOf(line: {
-  lineKind: LineKind;
-  produit: string | null;
-  surfaceLabel: string | null;
-  surfaceAreaCm2?: number | null;
-  personName: string | null;
-  personRole?: string | null;
-  handsState?: HandsState | null;
-}) {
-  switch (line.lineKind) {
-    case "SURFACE":
-      return `${line.surfaceLabel ?? "Surface"}${line.surfaceAreaCm2 ? ` (${line.surfaceAreaCm2} cm²)` : ""}`;
-    case "MAINS":
-      return `${line.personName ?? "Mains"}${line.personRole ? ` — ${line.personRole}` : ""}${
-        line.handsState ? ` · ${HANDS_STATE_LABELS[line.handsState].toLowerCase()}` : ""
-      }`;
-    default:
-      return line.produit ?? "—";
-  }
-}
-
 function samplerOf(serie: ReceptionSerieData) {
   if (serie.samplerKind === "QUALILAB") return serie.samplerUser?.name ?? "Qualilab";
   return serie.samplerName ?? SAMPLER_KIND_LABELS[serie.samplerKind];
@@ -184,7 +187,7 @@ function numberOrNull(value: string) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** What the verbs need of a line, as the API serialised it. */
+/** What the verbs need of a sample, as the API serialised it. */
 function verbSampleOf(line: ReceptionLineData, clientId: string, status: SampleStatus = line.status): VerbSample {
   return {
     clientId,
@@ -207,6 +210,9 @@ function verbSampleOf(line: ReceptionLineData, clientId: string, status: SampleS
     personName: line.personName,
     personRole: line.personRole,
     handsState: line.handsState,
+    // « État de la surface » / « Méthode de prélèvement » in « Corriger la fiche ».
+    surfaceState: line.surfaceState ?? null,
+    airMethod: line.airMethod ?? null,
     remarks: line.remarks,
     unitCount: line.unitCount,
     parameterIds: line.parameters.map((p) => p.parameter.id),
@@ -269,23 +275,26 @@ export function SerieReceptionForm({
     }))
   );
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<{ message: string; lineNumber: number | null } | null>(null);
+  const [error, setError] = useState<{ message: string; lineNumber: number | null; ref?: string | null } | null>(null);
   const [result, setResult] = useState<ReceivedLine[] | null>(null);
 
   const byId = useMemo(() => new Map(serie.samples.map((s) => [s.id, s])), [serie.samples]);
 
-  // A box ticked on the protocol without a line of that family: the lab
-  // has to add the analyses — say so where the série is received.
-  const missingFamilies = useMemo(() => {
-    const families = new Set(serie.samples.filter((s) => s.status !== "ANNULE").map((s) => s.nature.family));
-    const missing: string[] = [];
-    if (serie.analysesMicro && !families.has("MICRO")) missing.push("analyses microbiologiques");
-    if (serie.analysesChimie && !families.has("CHIMIE")) missing.push("analyses physico-chimiques");
-    return missing;
-  }, [serie.samples, serie.analysesMicro, serie.analysesChimie]);
+  // A box of the protocol that no sample still to analyse answers — only on
+  // a série entered before the boxes were computed (07/10), or once the
+  // samples of a family are cancelled: say so where the série is received.
+  const missingFamilies = useMemo(
+    () =>
+      missingFamiliesOf({
+        analysesMicro: serie.analysesMicro,
+        analysesChimie: serie.analysesChimie,
+        samples: serie.samples,
+      }),
+    [serie.samples, serie.analysesMicro, serie.analysesChimie]
+  );
 
-  // The cooler's temperature pre-fills every line the réceptionniste has not
-  // measured separately — one reading, eight lines.
+  // The cooler's temperature pre-fills every sample the réceptionniste has
+  // not measured separately — one reading, eight samples.
   function changeCooler(value: string) {
     setCooler(value);
     setLines((current) =>
@@ -302,7 +311,7 @@ export function SerieReceptionForm({
     setLines((current) => current.map((line) => ({ ...line, technicianId })));
   }
 
-  /** The live evaluation of one line: checks, proposal, effective choice. */
+  /** The live evaluation of one sample: checks, proposal, effective choice. */
   function evaluate(line: LineState) {
     const sample = byId.get(line.sampleId)!;
     const checks = evaluateReception(
@@ -353,7 +362,11 @@ export function SerieReceptionForm({
       });
       const data = await response.json();
       if (!response.ok) {
-        setError({ message: data.error ?? "Impossible de réceptionner la série.", lineNumber: data.lineNumber ?? null });
+        setError({
+          message: data.error ?? "Impossible de réceptionner la série.",
+          lineNumber: data.lineNumber ?? null,
+          ref: data.ref ?? null,
+        });
         return;
       }
       setResult(data.lines as ReceivedLine[]);
@@ -378,6 +391,8 @@ export function SerieReceptionForm({
         analysisBlocked: false,
         produit: s.produit,
         surfaceLabel: s.surfaceLabel,
+        surfaceState: s.surfaceState ?? null,
+        airMethod: s.airMethod ?? null,
         personName: s.personName,
         nature: { label: s.nature.label },
         technician: s.technician,
@@ -401,23 +416,22 @@ export function SerieReceptionForm({
       <PageHeader
         badge={SERIE_KIND_LABELS[serie.kind]}
         title={`Série ${serie.serialNumber}`}
-        subtitle={`${serie.client.name}${serie.site ? ` · ${serie.site.name}` : ""} — ${pending.length} ligne${pending.length > 1 ? "s" : ""} à réceptionner`}
+        subtitle={`${serie.client.name}${serie.site ? ` · ${serie.site.name}` : ""} — ${countLabel(pending.length, "échantillon")} à réceptionner`}
       />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
           {alreadyReceived.length > 0 && (
             <Card className="p-4 text-sm text-slate-600">
-              {alreadyReceived.length} ligne{alreadyReceived.length > 1 ? "s" : ""} de cette série{" "}
-              {alreadyReceived.length > 1 ? "sont" : "est"} déjà réceptionnée
-              {alreadyReceived.length > 1 ? "s" : ""} (
+              {countLabel(alreadyReceived.length, "échantillon")} de cette série{" "}
+              {alreadyReceived.length > 1 ? "sont déjà réceptionnés" : "est déjà réceptionné"} (
               {alreadyReceived.map((s) => s.controlCode ?? s.code).join(", ")}).
             </Card>
           )}
 
           {lines.map((line) => {
             const { sample, checks, proposal, conformity, reason } = evaluate(line);
-            const highlighted = error?.lineNumber === sample.lineNumber;
+            const highlighted = errorConcernsSample(error, sample);
             return (
               <Card
                 key={line.sampleId}
@@ -426,9 +440,9 @@ export function SerieReceptionForm({
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-wide text-brand">
-                      Ligne {sample.lineNumber} · {sample.nature.label}
+                      {sampleHeading(sample, sample.nature.label)}
                     </p>
-                    <p className="mt-0.5 text-base font-semibold text-slate-900">{designationOf(sample)}</p>
+                    <p className="mt-0.5 text-base font-semibold text-slate-900">{receptionDesignation(sample)}</p>
                     <p className="mt-0.5 text-sm text-slate-500">
                       {LINE_KIND_LABELS[sample.lineKind]} · {sample.lieu}
                       {sample.numeroLot ? ` · lot ${sample.numeroLot}` : ""}
@@ -438,7 +452,10 @@ export function SerieReceptionForm({
                       {sample.ambientTemperature !== null ? ` · T°a ${formatDecimal(sample.ambientTemperature)} °C` : ""}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      {unitsLabel(sample.unitCount)} · {sample.parameters.map((p) => p.parameter.name).join(", ")}
+                      {unitsLabel(sample.unitCount)} ·{" "}
+                      {sample.parameters.length > 0
+                        ? sample.parameters.map((p) => p.parameter.name).join(", ")
+                        : "analyses fixées par le responsable des paramètres"}
                     </p>
                     {sample.remarks && <p className="mt-1 text-xs italic text-slate-500">{sample.remarks}</p>}
                   </div>
@@ -515,7 +532,7 @@ export function SerieReceptionForm({
                   </div>
                   {proposal.forced && (
                     <p className="mt-1.5 text-xs text-rose-700">
-                      Une règle bloquante s&apos;applique : corrigez la mesure ou réceptionnez la ligne comme non conforme.
+                      Une règle bloquante s&apos;applique : corrigez la mesure ou réceptionnez l&apos;échantillon comme non conforme.
                     </p>
                   )}
                 </fieldset>
@@ -558,7 +575,7 @@ export function SerieReceptionForm({
 
                 {!conformity && (
                   <fieldset className="mt-3">
-                    <legend className="text-sm font-medium text-slate-700">Décision pour cette ligne</legend>
+                    <legend className="text-sm font-medium text-slate-700">Décision pour cet échantillon</legend>
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <ConformityChip
                         active={!line.destroy}
@@ -581,7 +598,7 @@ export function SerieReceptionForm({
                 {!conformity && line.destroy ? (
                   <p className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                    Ligne détruite : numérotée et imprimée sur le bon de réception avec sa non-conformité, puis annulée
+                    Échantillon détruit : numéroté et imprimé sur le bon de réception avec sa non-conformité, puis annulé
                     (motif « Détruit à réception »). Aucune analyse, rien n&apos;est facturé.
                   </p>
                 ) : (
@@ -622,6 +639,16 @@ export function SerieReceptionForm({
                 <dd className="text-right font-medium text-slate-800">{samplerOf(serie)}</dd>
               </div>
               <div className="flex justify-between gap-3">
+                <dt className="text-slate-400">Cadre</dt>
+                <dd className="text-right font-medium text-slate-800">{formatCadre(serie.cadre, serie.cadreNote)}</dd>
+              </div>
+              {serie.clientReference && (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-400">Référence client</dt>
+                  <dd className="text-right font-medium text-slate-800">{serie.clientReference}</dd>
+                </div>
+              )}
+              <div className="flex justify-between gap-3">
                 <dt className="text-slate-400">Début</dt>
                 <dd className="text-right font-medium text-slate-800">{formatDateTime(serie.startedAt)}</dd>
               </div>
@@ -638,14 +665,16 @@ export function SerieReceptionForm({
               <div className="flex justify-between gap-3">
                 <dt className="text-slate-400">Analyses à effectuer</dt>
                 <dd className="text-right font-medium text-slate-800">
-                  {[serie.analysesMicro ? "micro" : "", serie.analysesChimie ? "physico-chimie" : ""].filter(Boolean).join(" · ") || "—"}
+                  {[serie.analysesMicro ? "microbiologiques" : "", serie.analysesChimie ? "physico-chimiques" : ""]
+                    .filter(Boolean)
+                    .join(" · ") || "—"}
                 </dd>
               </div>
             </dl>
             {missingFamilies.length > 0 && (
               <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                Demandé sur le protocole sans ligne correspondante : {missingFamilies.join(" et ")} — à programmer
-                (« Corriger la fiche » sur une ligne, ou une ligne à ajouter par le préleveur).
+                Coché sur le protocole sans échantillon correspondant : {missingFamilies.join(" et ")}. Vérifiez avec le
+                préleveur s&apos;il manque un échantillon.
               </p>
             )}
 
@@ -685,7 +714,7 @@ export function SerieReceptionForm({
                 placeholder="Ex. : 3"
                 className="input-field mt-1.5 px-3"
               />
-              <p className="mt-1 text-xs text-slate-500">Pré-remplit la température de chaque ligne.</p>
+              <p className="mt-1 text-xs text-slate-500">Pré-remplit la température de chaque échantillon.</p>
             </div>
             <a
               href={`/api/series/${serie.id}/document`}
@@ -698,7 +727,7 @@ export function SerieReceptionForm({
             </a>
             <div className="mt-3">
               <label htmlFor="allTech" className="block text-sm font-medium text-slate-700">
-                Technicien pour toutes les lignes
+                Technicien pour tous les échantillons
               </label>
               <select
                 id="allTech"
@@ -715,7 +744,7 @@ export function SerieReceptionForm({
               </select>
               {technicians.length === 0 && (
                 <p className="mt-1.5 text-sm text-amber-700">
-                  Aucun technicien actif : le responsable des paramètres attribuera les lignes à la programmation.
+                  Aucun technicien actif : le responsable des paramètres attribuera les échantillons à la programmation.
                 </p>
               )}
             </div>
@@ -725,7 +754,7 @@ export function SerieReceptionForm({
             <div className="flex items-start gap-2 text-sm text-slate-600">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden="true" />
               <p>
-                La validation attribue un <b>N° de contrôle</b>{" "}à chaque ligne, en une seule opération. Les étiquettes s&apos;impriment ensuite.
+                La validation attribue un <b>N° de contrôle</b>{" "}à chaque échantillon, en une seule opération. Les étiquettes s&apos;impriment ensuite.
               </p>
             </div>
             {error && (
@@ -739,7 +768,7 @@ export function SerieReceptionForm({
               disabled={busy}
               className="mt-4 w-full min-h-[48px]"
             >
-              {busy ? "Réception en cours…" : `Valider la réception (${pending.length} ligne${pending.length > 1 ? "s" : ""})`}
+              {busy ? "Réception en cours…" : `Valider la réception (${countLabel(pending.length, "échantillon")})`}
             </PrimaryButton>
             <SecondaryButton
               type="button"
@@ -792,7 +821,7 @@ function ReceivedSummary({
               {justReceived ? "Série réceptionnée" : "Série déjà réceptionnée"}
             </h2>
             <p className="text-sm text-slate-500">
-              {lines.length} ligne{lines.length > 1 ? "s" : ""} numérotée{lines.length > 1 ? "s" : ""} · {units} étiquette{units > 1 ? "s" : ""}
+              {countLabel(lines.length, "échantillon numéroté", "échantillons numérotés")} · {countLabel(units, "étiquette")}
             </p>
           </div>
         </div>
@@ -801,7 +830,7 @@ function ReceivedSummary({
           <table className="w-full min-w-[560px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="pb-2 pr-3 font-medium">Ligne</th>
+                <th className="pb-2 pr-3 font-medium">Échantillon</th>
                 <th className="pb-2 pr-3 font-medium">N° de contrôle</th>
                 <th className="pb-2 pr-3 font-medium">Unités</th>
                 <th className="pb-2 pr-3 font-medium">Conformité</th>
@@ -810,48 +839,61 @@ function ReceivedSummary({
               </tr>
             </thead>
             <tbody>
-              {lines.map((line) => (
-                <tr key={line.id} className="border-b border-slate-100 align-top">
-                  <td className="py-2.5 pr-3">
-                    <span className="font-medium text-slate-800">{line.lineNumber} · {line.nature.label}</span>
-                    <span className="block text-xs text-slate-500">{designationOf({ lineKind: "AUTRE", produit: line.produit ?? line.surfaceLabel ?? line.personName, surfaceLabel: null, personName: null })}</span>
-                  </td>
-                  <td className="py-2.5 pr-3 font-mono text-base font-bold text-slate-900">{line.controlCode ?? "—"}</td>
-                  <td className="py-2.5 pr-3 text-slate-600">{unitsLabel(line.unitCount)}</td>
-                  <td className="py-2.5 pr-3">
-                    {(justReceived ? line.status : byId.get(line.id)?.status) === "ANNULE" ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
-                        Annulé
-                        {(() => {
-                          const reason = justReceived ? line.cancelReason : byId.get(line.id)?.cancelReason;
-                          return reason ? ` · ${CANCEL_REASON_LABELS[reason]}` : "";
-                        })()}
+              {lines.map((line) => {
+                const source = byId.get(line.id);
+                return (
+                  <tr key={line.id} className="border-b border-slate-100 align-top">
+                    <td className="py-2.5 pr-3">
+                      <span className="font-medium text-slate-800">
+                        {sampleRef(line.lineNumber, line.code)} · {line.nature.label}
                       </span>
-                    ) : line.conformity === false ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
-                        <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-                        {line.conformityReason ? NON_CONFORMITY_REASON_LABELS[line.conformityReason] : "Non conforme"}
-                        {line.analysisBlocked ? " · bloquée" : ""}
+                      <span className="block text-xs text-slate-500">
+                        {source
+                          ? receptionDesignation({
+                              ...source,
+                              surfaceState: line.surfaceState ?? source.surfaceState,
+                              airMethod: line.airMethod ?? source.airMethod,
+                            })
+                          : (line.produit ?? line.surfaceLabel ?? line.personName ?? "—")}
                       </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
-                        <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
-                        Conforme
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2.5 pr-3 text-slate-700">{line.technician?.name ?? "—"}</td>
-                  <td className="py-2.5">
-                    {byId.get(line.id) && (
-                      <SampleVerbs
-                        sample={verbSampleOf(byId.get(line.id)!, serie.client.id, justReceived ? line.status ?? "RECU" : byId.get(line.id)!.status)}
-                        role={role}
-                        compact
-                      />
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="py-2.5 pr-3 font-mono text-base font-bold text-slate-900">{line.controlCode ?? "—"}</td>
+                    <td className="py-2.5 pr-3 text-slate-600">{unitsLabel(line.unitCount)}</td>
+                    <td className="py-2.5 pr-3">
+                      {(justReceived ? line.status : byId.get(line.id)?.status) === "ANNULE" ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
+                          Annulé
+                          {(() => {
+                            const reason = justReceived ? line.cancelReason : byId.get(line.id)?.cancelReason;
+                            return reason ? ` · ${CANCEL_REASON_LABELS[reason]}` : "";
+                          })()}
+                        </span>
+                      ) : line.conformity === false ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
+                          <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                          {line.conformityReason ? NON_CONFORMITY_REASON_LABELS[line.conformityReason] : "Non conforme"}
+                          {line.analysisBlocked ? " · bloquée" : ""}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                          <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                          Conforme
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2.5 pr-3 text-slate-700">{line.technician?.name ?? "—"}</td>
+                    <td className="py-2.5">
+                      {byId.get(line.id) && (
+                        <SampleVerbs
+                          sample={verbSampleOf(byId.get(line.id)!, serie.client.id, justReceived ? line.status ?? "RECU" : byId.get(line.id)!.status)}
+                          role={role}
+                          compact
+                        />
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

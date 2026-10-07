@@ -8,7 +8,9 @@
 
 ## ▶ NEXT ACTION
 
-**Tranche PROGRAMME livrée (TESTPLAN T, 05/10 night).** Next: les tranches L1–L3 de `RETOUR-LABO-05-10.md` (en-tête du protocole, familles, surfaces) après les réponses du laboratoire.
+**Retours du laboratoire 05 → 07/10 : V1 → V6 construits le 07/10, pas encore déployés** (`RETOUR-LABO-06-10.md` §5). Next: commit + deploy (the migration `20261007100000_retour_labo_v` runs with `prisma migrate deploy`), then **TESTPLAN V** on production (V0 → V6), the « Sites de l'ancien logiciel » import (extract `sites.csv` with `scripts/legacy/extract-legacy.py`, analyse, commit), a new version of PG04/EN01 and PG05/EN04 in `/admin/documents`. Waiting on the lab: Q45 (sending by site), Q50 (air and physico-chemistry parameters in the catalogue).
+
+_Previous next action:_ **Tranche PROGRAMME livrée (TESTPLAN T, 05/10 night).** Next: les tranches L1–L3 de `RETOUR-LABO-05-10.md` (en-tête du protocole, familles, surfaces) après les réponses du laboratoire.
 
 _Previous next action, kept for context:_ **SLICE K of `RETOUR-LABO-30-09.md` — the recette and go-live, with the
 laboratory** (spec §5 and §10). Slices H, I and J are done and in production
@@ -268,6 +270,10 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-10-07 (night) — V1 → V6 built (`RETOUR-LABO-06-10.md` §5)
+- One migration (cadre widened → séries set to AUTRE → narrowed; `cadreNote`, `surfaceState`, `airMethod`, `AnalysisParameter.family`). Cadre required with four choices, « Service vétérinaire » refused at creation; « Échantillon N » on the circuit and in the messages; Désignation + « État de la surface »; two families per sample → twin samples « …M » / « …P »; air sampling method; sites import + site filter + « Client — Site » on the report and e-mail; analyses optional on visit and deposit.
+- Gates green locally: prisma generate, `tsc --noEmit`, `eslint src --max-warnings=0`, vitest (49 files, 614 tests), `npm run build`. Not deployed, not tried in a browser: TESTPLAN V on production.
 
 ### 2026-10-07 — retours du laboratoire des 05 → 07/10 : un plan unique V1 → V7
 - Nine remarks of 06 and 07/10 (sites of chain clients, no « Service vétérinaire », « Échantillon » instead of « Ligne », « Désignation », nature hidden, air sampling method, two analysis families per sample, cadre Autre / Devis validé / BC / Convention, « État de la surface ») analysed against the code, production and the old database: all feasible, ≈ 43 h. Merged with what is left of 05/10 into **one plan, V1 → V7 (≈ 53 h), 19 h deliverable without any answer (V1, V2)** — `RETOUR-LABO-06-10.md`, which replaces the plan of `RETOUR-LABO-05-10.md`.

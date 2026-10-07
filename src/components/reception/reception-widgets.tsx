@@ -3,11 +3,11 @@
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import type { Check } from "@/lib/reception-rules";
 
-/** The acceptance checklist of one line, as the rules engine computed it. */
+/** The acceptance checklist of one sample, as the rules engine computed it. */
 export function Checklist({ checks }: { checks: Check[] }) {
   if (checks.length === 0) {
     return (
-      <p className="mt-3 text-xs text-slate-400">Aucune règle de quantité ou de température pour ce type de ligne.</p>
+      <p className="mt-3 text-xs text-slate-500">Aucune règle de quantité ou de température pour ce type d&apos;échantillon.</p>
     );
   }
   return (

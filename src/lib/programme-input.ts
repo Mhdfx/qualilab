@@ -1,5 +1,5 @@
-import type { ProgrammePriority, SampleStatus } from "@/generated/prisma/enums";
-import { SAMPLE_STATUS_LABELS } from "./labels";
+import type { Family, ProgrammePriority, SampleStatus, SampleType } from "@/generated/prisma/enums";
+import { ANALYSIS_FAMILY_LABELS, SAMPLE_STATUS_LABELS } from "./labels";
 import { PROGRAMMABLE_STATUSES } from "./sample-status";
 import { MAX_UNITS } from "./series";
 
@@ -11,6 +11,12 @@ import { MAX_UNITS } from "./series";
  * to the client, the parameters of the nature's category, the active
  * technicians, the norm versions of each parameter) and this decides. Every
  * rule gives a message in French; the first failure stops the check.
+ *
+ * RETOUR-LABO-06-10.md §5 (V3, Q49 by default): the fine nature (cosmetics,
+ * supplements, oils…) is chosen here, never by the préleveur — the payload
+ * may name another active nature of the SAME family as the line's (the other
+ * family is another sample, with its own code « …M » / « …P »). The
+ * parameters are then those of the new nature's category.
  */
 
 export const PROGRAMME_PRIORITIES: readonly ProgrammePriority[] = ["NORMALE", "URGENTE"];
@@ -35,9 +41,21 @@ export type ProgrammeParameter = {
   note: string | null;
 };
 
+/** A nature as the programme reads it — the referential's `natures` carry the same fields. */
+export type ProgrammeNatureRef = {
+  id: string;
+  label: string;
+  family: Family;
+  /** The category the nature maps to: it becomes `Sample.type` and decides the parameters offered. */
+  legacyType: SampleType;
+  active: boolean;
+};
+
 export type ProgrammeInput = {
   /** True = « Confirmer le programme »; false = a draft, or an edit of a confirmed one. */
   confirm: boolean;
+  /** The line's nature after the write: the current one unless the request names another. */
+  natureId: string;
   productTypeId: string | null;
   parameterIds: string[];
   unitCount: number;
@@ -54,10 +72,25 @@ export type ProgrammeContext = {
   /** The line's current status: only RECU and PROGRAMME accept a programme. */
   status: SampleStatus;
   clientId: string;
+  /** The line's current nature and its family — a change stays in that family. */
+  natureId: string;
+  natureFamily: Family;
+  /**
+   * The natures the request may name: at least the active ones of the line's
+   * family and the requested one, so a refusal can say why (unknown,
+   * archived, other family).
+   */
+  natures: readonly ProgrammeNatureRef[];
   /** The product types the request names (the rule checks activity and visibility). */
   productTypes: { id: string; clientId: string | null; active: boolean }[];
-  /** The parameters the line may be given — those of the nature's category. */
+  /**
+   * The parameters the line may be given — those of the category of the
+   * nature it will have: the requested one when the request changes it
+   * (`resolveProgrammeNature` tells the route which).
+   */
   parameterIds: readonly string[];
+  /** The names of the parameters the request names, to say which one is refused. */
+  parameterNames?: Readonly<Record<string, string>>;
   /** The users the request names as technicians (the rule checks role and ban). */
   technicians: { id: string; role: string; banned: boolean | null }[];
   /** The norm versions each parameter may be programmed with. */
@@ -65,6 +98,71 @@ export type ProgrammeContext = {
   /** Injected by the tests; the wall clock otherwise. */
   now?: Date;
 };
+
+export type NatureResolution =
+  | {
+      ok: true;
+      /** The line's nature after the write. */
+      natureId: string;
+      /** The requested nature when it differs from the current one, null otherwise. */
+      changed: ProgrammeNatureRef | null;
+    }
+  | { ok: false; error: string };
+
+/**
+ * The nature a request asks for (Q49 by default): absent, empty or the
+ * current one = no change; otherwise an active nature of the same family.
+ * The route calls it first to know which category's parameters to load;
+ * `validateProgramme` calls it again, so the rule lives in one place.
+ */
+export function resolveProgrammeNature(
+  raw: unknown,
+  ctx: Pick<ProgrammeContext, "natureId" | "natureFamily" | "natures">
+): NatureResolution {
+  const requested =
+    typeof raw === "object" && raw !== null && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>).natureId
+      : undefined;
+  if (requested === undefined || requested === null || requested === "" || requested === ctx.natureId) {
+    return { ok: true, natureId: ctx.natureId, changed: null };
+  }
+  if (typeof requested !== "string") return { ok: false, error: "Nature d'analyse invalide." };
+
+  const nature = ctx.natures.find((candidate) => candidate.id === requested);
+  if (!nature) return { ok: false, error: "Nature d'analyse inconnue." };
+  if (nature.family !== ctx.natureFamily) {
+    return {
+      ok: false,
+      error: `Choisissez une nature de la même famille (${ANALYSIS_FAMILY_LABELS[ctx.natureFamily].toLowerCase()}) : l'autre famille fait l'objet d'un autre échantillon.`,
+    };
+  }
+  if (!nature.active) {
+    return { ok: false, error: `La nature « ${nature.label} » est archivée : choisissez-en une autre.` };
+  }
+  return { ok: true, natureId: nature.id, changed: nature };
+}
+
+/** « L'analyse « Salmonella » n'existe pas… », or a count when several are refused. */
+function outsideCategoryMessage(
+  outside: string[],
+  names: Readonly<Record<string, string>> | undefined,
+  changed: ProgrammeNatureRef | null
+): string {
+  const where = changed ? `la nature « ${changed.label} »` : "cette nature";
+  const named = outside.flatMap((id) => (names?.[id] ? [`« ${names[id]} »`] : []));
+  const subject =
+    outside.length === 1
+      ? named.length === 1
+        ? `L'analyse ${named[0]} n'existe pas`
+        : "Une des analyses demandées n'existe pas"
+      : `${outside.length} analyses demandées n'existent pas`;
+  const list = outside.length > 1 && named.length > 0 ? ` (${named.join(", ")})` : "";
+  // After a change of nature, say the way out: drop them or keep the nature.
+  const remedy = changed
+    ? ` : ${outside.length === 1 ? "retirez-la" : "retirez-les"} ou gardez la nature actuelle.`
+    : ".";
+  return `${subject}${list} pour ${where}${remedy}`;
+}
 
 export type ProgrammeValidation =
   | { ok: true; value: ProgrammeInput }
@@ -110,7 +208,7 @@ function decimal(value: unknown): number | null {
 export function validateProgramme(raw: unknown, ctx: ProgrammeContext): ProgrammeValidation {
   if (!PROGRAMMABLE_STATUSES.includes(ctx.status)) {
     return fail(
-      `Le programme ne peut plus être modifié : la ligne est « ${SAMPLE_STATUS_LABELS[ctx.status]} ».`,
+      `Le programme ne peut plus être modifié : l'échantillon est « ${SAMPLE_STATUS_LABELS[ctx.status]} ».`,
       409
     );
   }
@@ -124,6 +222,10 @@ export function validateProgramme(raw: unknown, ctx: ProgrammeContext): Programm
   // A confirmed programme stays confirmed: an edit may not empty it.
   const confirming = confirm || ctx.status === "PROGRAMME";
 
+  // ---- Nature (Q49: the fine nature, within the line's family) -----------
+  const nature = resolveProgrammeNature(input, ctx);
+  if (!nature.ok) return fail(nature.error);
+
   // ---- Analyses -----------------------------------------------------------
   if (!Array.isArray(input.parameterIds)) return fail("La liste des analyses est invalide.");
   const parameterIds: string[] = [];
@@ -132,9 +234,8 @@ export function validateProgramme(raw: unknown, ctx: ProgrammeContext): Programm
     if (!parameterIds.includes(id)) parameterIds.push(id);
   }
   const allowedParameters = new Set(ctx.parameterIds);
-  if (parameterIds.some((id) => !allowedParameters.has(id))) {
-    return fail("Une des analyses demandées n'existe pas pour cette nature.");
-  }
+  const outside = parameterIds.filter((id) => !allowedParameters.has(id));
+  if (outside.length > 0) return fail(outsideCategoryMessage(outside, ctx.parameterNames, nature.changed));
   if (confirming && parameterIds.length === 0) {
     return fail("Choisissez au moins une analyse avant de confirmer le programme.");
   }
@@ -262,6 +363,7 @@ export function validateProgramme(raw: unknown, ctx: ProgrammeContext): Programm
     ok: true,
     value: {
       confirm,
+      natureId: nature.natureId,
       productTypeId,
       parameterIds,
       unitCount,

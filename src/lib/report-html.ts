@@ -1,10 +1,11 @@
 import { COMPANY, type CompanyInfo } from "./company";
 import { companyBrandHtml } from "./brand-html";
 import { SAMPLE_TYPE_LABELS, formatDateTime, formatDate } from "./labels";
-import type { Interpretation, SampleType } from "@/generated/prisma/client";
+import type { Interpretation, LineKind, SampleType } from "@/generated/prisma/client";
 import { fmt, singleLimit, type Plan } from "./interpretation";
 import { repetitionLabel } from "./series";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
+import { designationHeading } from "./document-html";
 
 /**
  * The official analysis report.
@@ -32,7 +33,14 @@ export type ReportData = {
   /** The série (visite or dépôt) the sample belongs to. */
   serialNumber: string;
   client: { name: string; address: string | null; ice: string | null };
+  /** The série's site of the client (a restaurant of a chain…), printed
+   *  under the client — RETOUR-LABO-06-10.md §5, V5. */
+  siteName?: string | null;
+  /** The designation as the documents print it (`sampleDesignation`):
+   *  « Planche verte — surface nettoyée », « Salle — Boîte exposée 30 min ». */
   produit: string | null;
+  /** Names the designation row: « Produit » for food and water, « Désignation » otherwise. */
+  lineKind?: LineKind | null;
   numeroLot: string | null;
   lieu: string;
   type: SampleType;
@@ -336,12 +344,13 @@ export function buildReportHtml(
   <div class="box">
     <h2>Client</h2>
     <div class="row"><span class="k">Raison sociale</span><span class="v">${show(data.client.name)}</span></div>
+    ${data.siteName ? `<div class="row"><span class="k">Site</span><span class="v">${show(data.siteName)}</span></div>` : ""}
     <div class="row"><span class="k">Adresse</span><span class="v">${show(data.client.address)}</span></div>
     <div class="row"><span class="k">ICE</span><span class="v">${show(data.client.ice)}</span></div>
   </div>
   <div class="box">
     <h2>Échantillon</h2>
-    <div class="row"><span class="k">Produit</span><span class="v">${show(data.produit)}</span></div>
+    <div class="row"><span class="k">${designationHeading(data.lineKind)}</span><span class="v">${show(data.produit)}</span></div>
     <div class="row"><span class="k">N° de lot</span><span class="v">${show(data.numeroLot)}</span></div>
     <div class="row"><span class="k">Lieu</span><span class="v">${show(data.lieu)}</span></div>
   </div>

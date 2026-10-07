@@ -22,7 +22,7 @@ export default async function ReceptionPage() {
     // Belt and braces with the layout guard.
     requireRole("RECEPTIONNISTE", "ADMIN"),
     // The queue is made of séries (WORKFLOW.md rule 1): a série waits as
-    // long as one of its lines is still PRELEVE.
+    // long as one of its samples is still PRELEVE.
     prisma.serie.findMany({
       where: { samples: { some: { status: "PRELEVE" } } },
       select: {
@@ -60,11 +60,11 @@ export default async function ReceptionPage() {
     }),
     prisma.sample.count({ where: { receivedAt: { gte: startOfDay } } }),
     prisma.sample.count({ where: { status: "EN_ANALYSE" } }),
-    // Received lines waiting for the responsable des paramètres (PROGRAMME.md §6).
+    // Received samples waiting for the responsable des paramètres (PROGRAMME.md §6).
     prisma.sample.count({ where: { status: "RECU" } }),
   ]);
 
-  const pendingLines = pending.reduce(
+  const pendingSamples = pending.reduce(
     (n, serie) => n + serie.samples.filter((s) => s.status === "PRELEVE").length,
     0
   );
@@ -122,7 +122,7 @@ export default async function ReceptionPage() {
       <section aria-label="Indicateurs" className="mb-8">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <StatCard label="Séries à réceptionner" value={pending.length} icon={Inbox} accent="amber" />
-          <StatCard label="Lignes en attente" value={pendingLines} icon={Layers} accent="brand" />
+          <StatCard label="Échantillons en attente" value={pendingSamples} icon={Layers} accent="brand" />
           <StatCard label="Reçus aujourd'hui" value={recusAujourdhui} icon={ClipboardCheck} accent="emerald" />
           <StatCard label="À programmer" value={aProgrammer} icon={ListChecks} accent="violet" />
           <StatCard label="En analyse" value={enAnalyse} icon={FlaskConical} accent="blue" />

@@ -86,6 +86,15 @@ describe("groupQueue", () => {
     expect(groups[0].lines.map((l) => l.id)).toEqual(["l1", "l2", "l3"]);
   });
 
+  it("puts the two samples of one line « …M » before « …P », whatever their status", () => {
+    const groups = groupQueue([
+      { ...line("2P", "RECU", serie1, 2), code: "0001/26-2P" },
+      { ...line("2M", "PROGRAMME", serie1, 2), code: "0001/26-2M" },
+      { ...line("1", "PROGRAMME", serie1, 1), code: "0001/26-1" },
+    ]);
+    expect(groups[0].lines.map((l) => l.id)).toEqual(["1", "2M", "2P"]);
+  });
+
   it("gives nothing for an empty queue", () => {
     expect(groupQueue([])).toEqual([]);
   });

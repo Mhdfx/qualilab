@@ -18,8 +18,8 @@ export default async function ProgrammationPage() {
   const [, rows, programmeesAujourdhui, enRetard] = await Promise.all([
     // Belt and braces with the layout guard: a page must be safe on its own.
     requireRole("PROGRAMMATEUR", "ADMIN"),
-    // The queue of PROGRAMME.md §5: received and programmed lines, grouped by
-    // série by the component; a cancelled line has left the circuit.
+    // The queue of PROGRAMME.md §5: received and programmed samples, grouped
+    // by série by the component; a cancelled sample has left the circuit.
     prisma.sample.findMany({
       where: { status: { in: ["RECU", "PROGRAMME"] } },
       select: {
@@ -31,6 +31,9 @@ export default async function ProgrammationPage() {
         produit: true,
         surfaceLabel: true,
         personName: true,
+        // « Planche verte — surface nettoyée » / « Air — Biocollecteur ».
+        surfaceState: true,
+        airMethod: true,
         lieu: true,
         status: true,
         unitCount: true,
@@ -47,11 +50,12 @@ export default async function ProgrammationPage() {
         serie: { select: { id: true, serialNumber: true, kind: true, receivedAt: true } },
         parameters: { select: { parameterId: true } },
       },
-      orderBy: [{ receivedAt: "asc" }, { serieId: "asc" }, { lineNumber: "asc" }],
+      // The two samples of a two-family line share their number: « …M » before « …P ».
+      orderBy: [{ receivedAt: "asc" }, { serieId: "asc" }, { lineNumber: "asc" }, { code: "asc" }],
       take: QUEUE_LIMIT,
     }),
     prisma.sample.count({ where: { programmedAt: { gte: startOfDay } } }),
-    // A promised delivery date already passed on a line not yet validated.
+    // A promised delivery date already passed on a sample not yet validated.
     prisma.sample.count({
       where: { dueAt: { lt: now }, status: { in: ["RECU", "PROGRAMME", "EN_ANALYSE", "RESULTATS_SAISIS"] } },
     }),
@@ -70,13 +74,13 @@ export default async function ProgrammationPage() {
       <PageHeader
         badge="Espace programmation"
         title="Programme d'analyse"
-        subtitle="Pour chaque ligne réceptionnée, décidez du type de produit, des analyses, des nombres, des méthodes et de l'organisation avant la paillasse. La facturation se prépare dès la confirmation."
+        subtitle="Pour chaque échantillon réceptionné, décidez de la nature, du type de produit, des analyses, des nombres, des méthodes et de l'organisation avant la paillasse. La facturation se prépare dès la confirmation."
       />
 
       <section aria-label="Indicateurs" className="mb-8">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="À programmer" value={aProgrammer} icon={ClipboardList} accent="amber" />
-          <StatCard label="Programmées aujourd'hui" value={programmeesAujourdhui} icon={CheckCircle2} accent="emerald" />
+          <StatCard label="Programmés aujourd'hui" value={programmeesAujourdhui} icon={CheckCircle2} accent="emerald" />
           <StatCard label="En retard" value={enRetard} icon={Clock} accent="violet" />
           <StatCard label="En attente de paillasse" value={programmees} icon={FlaskConical} accent="brand" />
         </div>
@@ -86,13 +90,13 @@ export default async function ProgrammationPage() {
         <div className="mb-3 flex items-baseline justify-between">
           <h2 className="text-lg font-semibold text-slate-900">À programmer</h2>
           <span className="text-sm text-slate-500">
-            {lines.length} ligne{lines.length > 1 ? "s" : ""}
-            {programmees > 0 ? ` · ${programmees} programmée${programmees > 1 ? "s" : ""}` : ""}
+            {lines.length} échantillon{lines.length > 1 ? "s" : ""}
+            {programmees > 0 ? ` · ${programmees} programmé${programmees > 1 ? "s" : ""}` : ""}
           </span>
         </div>
         {truncated && (
           <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">
-            La file est tronquée aux {QUEUE_LIMIT} lignes les plus anciennes : programmez-les pour voir les suivantes.
+            La file est tronquée aux {QUEUE_LIMIT} échantillons les plus anciens : programmez-les pour voir les suivants.
           </p>
         )}
         <ProgrammationQueue lines={lines} now={now} />

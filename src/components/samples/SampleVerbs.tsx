@@ -5,56 +5,53 @@ import { verbsFor } from "@/lib/sample-verbs";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Ban, Check, Pencil, RotateCcw, X } from "lucide-react";
-import type {
-  CancelReason,
-  HandsState,
-  LineKind,
-  QuantityUnit,
-  SampleStatus,
-  SampleType,
-} from "@/generated/prisma/enums";
+import type { CancelReason, Family, QuantityUnit } from "@/generated/prisma/enums";
 import type { Role } from "@/lib/roles";
-import { CANCEL_REASON_LABELS, HANDS_STATE_LABELS, QUANTITY_UNIT_LABELS } from "@/lib/labels";
+import {
+  AIR_METHOD_CHOICES,
+  AIR_METHOD_LABELS,
+  ANALYSIS_FAMILY_LABELS,
+  CANCEL_REASON_LABELS,
+  HANDS_STATE_LABELS,
+  QUANTITY_UNIT_LABELS,
+  SURFACE_STATE_CHOICES,
+  SURFACE_STATE_LABELS,
+} from "@/lib/labels";
+import {
+  correctionBody,
+  correctionFields,
+  correctionValues,
+  type CorrectionValues,
+  type VerbSample,
+} from "./sample-verbs-logic";
 
+export type { CorrectionValues, VerbSample };
 
 /**
  * The correction verbs of a sample (WORKFLOW.md §8), each with a reason and
  * an audit line: « Corriger la fiche » until approval, « Annuler » with a
  * coded motif, « Réactiver » for an admin. The state machine decides which
  * one a role sees; the API checks again.
+ *
+ * « Corriger la fiche » shows the fields of the sample's kind only
+ * (RETOUR-LABO-06-10.md §5, V2 and V4): a surface sample its
+ * « Désignation », « État de la surface » and « Surface prélevée (cm²) »,
+ * an air sample its « Méthode de prélèvement ». A field the dialog does not
+ * show is not sent, so an old value of another kind is never emptied.
  */
-
-export type VerbSample = {
-  id: string;
-  code: string;
-  controlCode: string | null;
-  status: SampleStatus;
-  type: SampleType;
-  lineKind: LineKind;
-  produit: string | null;
-  lieu: string;
-  numeroLot: string | null;
-  productionDate: string | null;
-  expiryDate: string | null;
-  quantity: number | null;
-  quantityUnit: QuantityUnit | null;
-  surfaceLabel: string | null;
-  surfaceAreaCm2: number | null;
-  personName: string | null;
-  personRole: string | null;
-  handsState: HandsState | null;
-  remarks: string | null;
-  unitCount: number;
-  parameterIds: string[];
-  /** The catalogue's product type, changeable until approval (CRITERES.md). */
-  productTypeId: string | null;
-  clientId: string;
-};
 
 // « Détruit à réception » is the reception's own verb (slice E), never picked here.
 const REASONS = (Object.keys(CANCEL_REASON_LABELS) as CancelReason[]).filter((r) => r !== "DETRUIT_A_RECEPTION");
 const UNITS = Object.keys(QUANTITY_UNIT_LABELS) as QuantityUnit[];
 const UNIT_CHOICES = [1, 3, 5, 9];
+const FAMILY_ORDER: Family[] = ["MICRO", "CHIMIE", "AUTRE"];
+
+/** A parameter offered by the dialog, as `GET /api/parameters` serves it. */
+type ParameterOption = { id: string; name: string; family?: Family | null };
+
+const CHOICE = "min-h-[36px] rounded-lg border px-3 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand";
+const choice = (active: boolean) =>
+  `${CHOICE} ${active ? "border-brand bg-brand-light/60 text-brand" : "border-slate-200 text-slate-600 hover:border-slate-300"}`;
 
 export { verbsFor };
 
@@ -157,26 +154,10 @@ async function send(url: string, method: string, body: unknown) {
 
 function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClose: () => void; onDone: () => void }) {
   const kind = sample.lineKind;
-  const [values, setValues] = useState({
-    produit: sample.produit ?? "",
-    lieu: sample.lieu,
-    numeroLot: sample.numeroLot ?? "",
-    productionDate: sample.productionDate ? sample.productionDate.slice(0, 10) : "",
-    expiryDate: sample.expiryDate ? sample.expiryDate.slice(0, 10) : "",
-    quantity: sample.quantity === null ? "" : String(sample.quantity).replace(".", ","),
-    quantityUnit: sample.quantityUnit ?? "G",
-    surfaceLabel: sample.surfaceLabel ?? "",
-    surfaceAreaCm2: sample.surfaceAreaCm2 === null ? "" : String(sample.surfaceAreaCm2),
-    personName: sample.personName ?? "",
-    personRole: sample.personRole ?? "",
-    handsState: (sample.handsState ?? "") as HandsState | "",
-    remarks: sample.remarks ?? "",
-    unitCount: sample.unitCount,
-    productTypeId: sample.productTypeId ?? "",
-  });
+  const [values, setValues] = useState<CorrectionValues>(() => correctionValues(sample));
   const [parameterIds, setParameterIds] = useState<string[]>(sample.parameterIds);
   const [productTypes, setProductTypes] = useState<{ id: string; name: string; clientId: string | null; unitCount: number }[]>([]);
-  const [options, setOptions] = useState<{ id: string; name: string }[] | null>(null);
+  const [options, setOptions] = useState<ParameterOption[] | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -199,7 +180,7 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
     let cancelled = false;
     fetch(`/api/parameters?category=${sample.type}`)
       .then((r) => r.json())
-      .then((data: { id: string; name: string }[]) => {
+      .then((data: ParameterOption[]) => {
         if (!cancelled) setOptions(Array.isArray(data) ? data : []);
       })
       .catch(() => {});
@@ -208,13 +189,29 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
     };
   }, [sample.type]);
 
-  const set = (key: keyof typeof values, value: string | number) => setValues((v) => ({ ...v, [key]: value }));
-  const input = (key: keyof typeof values, label: string, type = "text") => (
+  const shown = correctionFields(kind);
+  const set = (key: keyof CorrectionValues, value: string | number) => setValues((v) => ({ ...v, [key]: value }));
+  const input = (key: keyof CorrectionValues, label: string, type = "text", hint?: string) => (
     <div>
-      <label className="block text-xs font-medium text-slate-600">{label}</label>
-      <input type={type} value={String(values[key])} onChange={(e) => set(key, e.target.value)} className="input-field mt-1 px-3" />
+      <label htmlFor={`correct-${key}`} className="block text-xs font-medium text-slate-600">{label}</label>
+      <input
+        id={`correct-${key}`}
+        type={type}
+        value={String(values[key])}
+        onChange={(e) => set(key, e.target.value)}
+        className="input-field mt-1 px-3"
+        {...(type === "number" ? { inputMode: "numeric" as const, min: 1 } : {})}
+      />
+      {hint && <p className="mt-0.5 text-[11px] text-slate-500">{hint}</p>}
     </div>
   );
+
+  // The analyses offered, grouped by family when more than one is present.
+  const groups = (() => {
+    if (!options) return [];
+    const present = FAMILY_ORDER.filter((family) => options.some((p) => (p.family ?? "MICRO") === family));
+    return present.map((family) => ({ family, parameters: options.filter((p) => (p.family ?? "MICRO") === family) }));
+  })();
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -223,12 +220,7 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
     setError("");
     try {
       const sameParameters = parameterIds.length === sample.parameterIds.length && parameterIds.every((id) => sample.parameterIds.includes(id));
-      await send(`/api/samples/${sample.id}/intake`, "PATCH", {
-        ...values,
-        handsState: values.handsState || undefined,
-        ...(sameParameters ? {} : { parameterIds }),
-        reason,
-      });
+      await send(`/api/samples/${sample.id}/intake`, "PATCH", correctionBody(kind, values, sameParameters ? null : parameterIds, reason));
       onDone();
     } catch (e) {
       setError((e as Error).message);
@@ -241,8 +233,8 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
     <Dialog title={`Corriger la fiche — ${sample.controlCode ?? sample.code}`} onClose={onClose}>
       <form onSubmit={submit} noValidate>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {(kind === "ALIMENT" || kind === "EAU" || kind === "AIR" || kind === "AUTRE") && input("produit", "Désignation")}
-          {kind === "ALIMENT" && (
+          {shown.produit && input("produit", "Désignation")}
+          {shown.food && (
             <div>
               <label htmlFor="correct-product-type" className="block text-xs font-medium text-slate-600">Type de produit (critères)</label>
               <select
@@ -273,14 +265,60 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
               </select>
             </div>
           )}
-          {input("surfaceLabel", "Surface prélevée")}
-          {input("surfaceAreaCm2", "Aire (cm²)", "number")}
-          {kind === "MAINS" && input("personName", "Personne")}
-          {kind === "MAINS" && input("personRole", "Fonction")}
-          {kind === "ALIMENT" && input("numeroLot", "N° du lot")}
-          {kind === "ALIMENT" && input("productionDate", "DLC — production", "date")}
-          {kind === "ALIMENT" && input("expiryDate", "DLC — expiration", "date")}
-          {(kind === "ALIMENT" || kind === "EAU" || kind === "AUTRE") && (
+          {shown.surface && input("surfaceLabel", "Désignation", "text", "Ce qui est prélevé (ex. : planche verte)")}
+          {shown.surface && input("surfaceAreaCm2", "Surface prélevée (cm²)", "number", "Vide = 100 cm²")}
+          {shown.surface && (
+            <div className="sm:col-span-2" role="group" aria-labelledby="correct-surface-state">
+              <p id="correct-surface-state" className="text-xs font-medium text-slate-600">
+                État de la surface {sample.surfaceState ? "*" : ""}
+              </p>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {SURFACE_STATE_CHOICES.map((state) => (
+                  <button
+                    key={state}
+                    type="button"
+                    onClick={() => set("surfaceState", state)}
+                    aria-pressed={values.surfaceState === state}
+                    className={choice(values.surfaceState === state)}
+                  >
+                    {SURFACE_STATE_LABELS[state]}
+                  </button>
+                ))}
+              </div>
+              {!sample.surfaceState && !values.surfaceState && (
+                <p className="mt-0.5 text-[11px] text-slate-500">Non renseigné sur cet échantillon ancien : facultatif ici.</p>
+              )}
+            </div>
+          )}
+          {shown.air && (
+            <div className="sm:col-span-2" role="group" aria-labelledby="correct-air-method">
+              <p id="correct-air-method" className="text-xs font-medium text-slate-600">
+                Méthode de prélèvement {sample.airMethod ? "*" : ""}
+              </p>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {AIR_METHOD_CHOICES.map((method) => (
+                  <button
+                    key={method}
+                    type="button"
+                    onClick={() => set("airMethod", method)}
+                    aria-pressed={values.airMethod === method}
+                    className={choice(values.airMethod === method)}
+                  >
+                    {AIR_METHOD_LABELS[method]}
+                  </button>
+                ))}
+              </div>
+              {!sample.airMethod && !values.airMethod && (
+                <p className="mt-0.5 text-[11px] text-slate-500">Non renseignée sur cet échantillon ancien : facultative ici.</p>
+              )}
+            </div>
+          )}
+          {shown.hands && input("personName", "Personne")}
+          {shown.hands && input("personRole", "Fonction")}
+          {shown.food && input("numeroLot", "N° du lot")}
+          {shown.food && input("productionDate", "DLC — production", "date")}
+          {shown.food && input("expiryDate", "DLC — expiration", "date")}
+          {shown.quantity && (
             <div>
               <label className="block text-xs font-medium text-slate-600">Quantité</label>
               <div className="mt-1 flex gap-2">
@@ -294,9 +332,9 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
             </div>
           )}
           {input("lieu", "Lieu / section")}
-          {kind === "MAINS" && (
-            <div>
-              <p className="text-xs font-medium text-slate-600">État des mains</p>
+          {shown.hands && (
+            <div role="group" aria-labelledby="correct-hands-state">
+              <p id="correct-hands-state" className="text-xs font-medium text-slate-600">État des mains</p>
               <div className="mt-1 flex gap-2">
                 {(["LAVEES", "NON_LAVEES"] as const).map((s) => (
                   <button
@@ -304,7 +342,7 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
                     type="button"
                     onClick={() => set("handsState", values.handsState === s ? "" : s)}
                     aria-pressed={values.handsState === s}
-                    className={`min-h-[36px] rounded-lg border px-3 text-xs font-medium ${values.handsState === s ? "border-brand bg-brand-light/60 text-brand" : "border-slate-200 text-slate-600"}`}
+                    className={choice(values.handsState === s)}
                   >
                     {HANDS_STATE_LABELS[s]}
                   </button>
@@ -336,17 +374,26 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
           {options === null ? (
             <p className="mt-1 text-xs text-slate-500">Chargement…</p>
           ) : (
-            <div className="mt-1 grid gap-1.5 sm:grid-cols-2">
-              {options.map((p) => (
-                <label key={p.id} className="flex min-h-[36px] cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={parameterIds.includes(p.id)}
-                    onChange={() => setParameterIds((c) => (c.includes(p.id) ? c.filter((x) => x !== p.id) : [...c, p.id]))}
-                    className="h-4 w-4 accent-brand"
-                  />
-                  {p.name}
-                </label>
+            <div className="mt-1 space-y-2">
+              {groups.map((group) => (
+                <div key={group.family} role="group" aria-label={ANALYSIS_FAMILY_LABELS[group.family]}>
+                  {groups.length > 1 && (
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{ANALYSIS_FAMILY_LABELS[group.family]}</p>
+                  )}
+                  <div className="grid gap-1.5 sm:grid-cols-2">
+                    {group.parameters.map((p) => (
+                      <label key={p.id} className="flex min-h-[36px] cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={parameterIds.includes(p.id)}
+                          onChange={() => setParameterIds((c) => (c.includes(p.id) ? c.filter((x) => x !== p.id) : [...c, p.id]))}
+                          className="h-4 w-4 accent-brand"
+                        />
+                        {p.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           )}

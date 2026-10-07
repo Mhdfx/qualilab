@@ -5,8 +5,10 @@ import {
   MAX_PARAMETER_NOTE,
   MAX_PROGRAMME_NOTE,
   MAX_TEST_PORTION,
+  resolveProgrammeNature,
   validateProgramme,
   type ProgrammeContext,
+  type ProgrammeNatureRef,
 } from "./programme-input";
 import { MAX_UNITS } from "./series";
 
@@ -16,9 +18,21 @@ import { MAX_UNITS } from "./series";
  */
 const NOW = new Date("2026-10-06T10:00:00.000Z");
 
+/** Invented natures: two micro ones of the food category, one of water, one archived, one physico-chemical. */
+const natures: ProgrammeNatureRef[] = [
+  { id: "nat-micro-aliments", label: "Microbiologie des aliments", family: "MICRO", legacyType: "ALIMENTAIRE", active: true },
+  { id: "nat-micro-fine", label: "Microbiologie d'une nature fine", family: "MICRO", legacyType: "ALIMENTAIRE", active: true },
+  { id: "nat-micro-eaux", label: "Microbiologie des eaux", family: "MICRO", legacyType: "EAU", active: true },
+  { id: "nat-micro-retiree", label: "Microbiologie retirée", family: "MICRO", legacyType: "ALIMENTAIRE", active: false },
+  { id: "nat-pc-aliments", label: "Physico-chimie des aliments", family: "CHIMIE", legacyType: "ALIMENTAIRE", active: true },
+];
+
 const ctx: ProgrammeContext = {
   status: "RECU",
   clientId: "client-a",
+  natureId: "nat-micro-aliments",
+  natureFamily: "MICRO",
+  natures,
   productTypes: [
     { id: "type-catalogue", clientId: null, active: true },
     { id: "type-client-a", clientId: "client-a", active: true },
@@ -68,6 +82,7 @@ describe("validateProgramme — a complete programme", () => {
     if (!checked.ok) return;
     expect(checked.value).toEqual({
       confirm: true,
+      natureId: "nat-micro-aliments",
       productTypeId: "type-client-a",
       parameterIds: ["p-ecoli", "p-salm"],
       unitCount: 5,
@@ -162,7 +177,17 @@ describe("validateProgramme — the analyses", () => {
   });
 
   it("refuses an analysis the nature does not offer", () => {
-    expectError({ ...good, parameterIds: ["p-ecoli", "p-ph"] }, /n'existe pas pour cette nature/);
+    expectError({ ...good, parameterIds: ["p-ecoli", "p-ph"] }, "Une des analyses demandées n'existe pas pour cette nature.");
+  });
+
+  it("names the refused analysis when its name is known, and counts several", () => {
+    const named = { ...ctx, parameterNames: { "p-ph": "pH", "p-nitrates": "Nitrates" } };
+    expectError({ ...good, parameterIds: ["p-ecoli", "p-ph"] }, "L'analyse « pH » n'existe pas pour cette nature.", named);
+    expectError(
+      { ...good, parameterIds: ["p-ph", "p-nitrates", "p-ecoli"] },
+      "2 analyses demandées n'existent pas (« pH », « Nitrates ») pour cette nature.",
+      named
+    );
   });
 
   it("refuses a malformed list", () => {
@@ -325,5 +350,98 @@ describe("validateProgramme — per-parameter settings", () => {
     const trimmed = validateProgramme(withSetting({ note: "  incubation 48 h " }), ctx);
     expect(trimmed.ok).toBe(true);
     if (trimmed.ok) expect(trimmed.value.parameters[0].note).toBe("incubation 48 h");
+  });
+});
+
+describe("validateProgramme — the nature (Q49, within the family)", () => {
+  it("keeps the current nature when the request names none, an empty one or the same", () => {
+    for (const natureId of [undefined, null, "", "nat-micro-aliments"]) {
+      const checked = validateProgramme({ ...good, natureId }, ctx);
+      expect(checked.ok).toBe(true);
+      if (checked.ok) expect(checked.value.natureId).toBe("nat-micro-aliments");
+    }
+  });
+
+  it("accepts another active nature of the same family", () => {
+    const checked = validateProgramme({ ...good, natureId: "nat-micro-fine" }, ctx);
+    expect(checked.ok).toBe(true);
+    if (checked.ok) expect(checked.value.natureId).toBe("nat-micro-fine");
+  });
+
+  it("refuses a nature of the other family: that is another sample", () => {
+    expectError({ ...good, natureId: "nat-pc-aliments" }, /même famille \(analyses microbiologiques\)/);
+    expectError({ ...good, natureId: "nat-pc-aliments" }, /autre échantillon/);
+  });
+
+  it("refuses an archived, an unknown or a malformed nature", () => {
+    expectError({ ...good, natureId: "nat-micro-retiree" }, "La nature « Microbiologie retirée » est archivée : choisissez-en une autre.");
+    expectError({ ...good, natureId: "nat-nowhere" }, "Nature d'analyse inconnue.");
+    expectError({ ...good, natureId: 42 }, "Nature d'analyse invalide.");
+  });
+
+  it("checks the nature before the analyses, and the status before the nature", () => {
+    expectError({ ...good, natureId: "nat-pc-aliments", parameterIds: ["p-nowhere"] }, /même famille/);
+    expectError({ ...good, natureId: "nat-pc-aliments" }, /ne peut plus être modifié/, { ...ctx, status: "EN_ANALYSE" }, 409);
+  });
+
+  it("refuses the analyses the new nature's category does not offer, and says how to get out", () => {
+    // The route hands the parameters of the requested nature's category (water here).
+    const water = { ...ctx, parameterIds: ["p-coliformes"], parameterNames: { "p-ecoli": "E. coli", "p-salm": "Salmonella" } };
+    expectError(
+      { ...good, natureId: "nat-micro-eaux", parameters: [] },
+      "2 analyses demandées n'existent pas (« E. coli », « Salmonella ») pour la nature « Microbiologie des eaux » : retirez-les ou gardez la nature actuelle.",
+      water
+    );
+    expectError(
+      { ...good, natureId: "nat-micro-eaux", parameterIds: ["p-coliformes", "p-ecoli"], parameters: [] },
+      "L'analyse « E. coli » n'existe pas pour la nature « Microbiologie des eaux » : retirez-la ou gardez la nature actuelle.",
+      water
+    );
+    const checked = validateProgramme(
+      { ...good, natureId: "nat-micro-eaux", parameterIds: ["p-coliformes"], parameters: [] },
+      water
+    );
+    expect(checked.ok).toBe(true);
+    if (checked.ok) {
+      expect(checked.value.natureId).toBe("nat-micro-eaux");
+      expect(checked.value.parameterIds).toEqual(["p-coliformes"]);
+    }
+  });
+
+  it("lets a draft change the nature with no analysis yet", () => {
+    const checked = validateProgramme({ confirm: false, natureId: "nat-micro-fine", parameterIds: [], unitCount: 1 }, ctx);
+    expect(checked.ok).toBe(true);
+    if (checked.ok) expect(checked.value.natureId).toBe("nat-micro-fine");
+  });
+});
+
+describe("resolveProgrammeNature", () => {
+  const natureCtx = { natureId: "nat-micro-aliments", natureFamily: "MICRO" as const, natures };
+
+  it("tells the route whether the nature changes, and to which", () => {
+    expect(resolveProgrammeNature({}, natureCtx)).toEqual({ ok: true, natureId: "nat-micro-aliments", changed: null });
+    expect(resolveProgrammeNature({ natureId: "nat-micro-aliments" }, natureCtx)).toEqual({
+      ok: true,
+      natureId: "nat-micro-aliments",
+      changed: null,
+    });
+    expect(resolveProgrammeNature({ natureId: "nat-micro-eaux" }, natureCtx)).toEqual({
+      ok: true,
+      natureId: "nat-micro-eaux",
+      changed: natures[2],
+    });
+  });
+
+  it("reads nothing from what is not an object", () => {
+    for (const raw of [null, "nat-micro-eaux", ["nat-micro-eaux"], 3]) {
+      expect(resolveProgrammeNature(raw, natureCtx)).toEqual({ ok: true, natureId: "nat-micro-aliments", changed: null });
+    }
+  });
+
+  it("keeps a family of its own for « Autres analyses »", () => {
+    const other = { natureId: "nat-sensorielle", natureFamily: "AUTRE" as const, natures };
+    const refused = resolveProgrammeNature({ natureId: "nat-micro-fine" }, other);
+    expect(refused).toMatchObject({ ok: false });
+    if (!refused.ok) expect(refused.error).toMatch(/même famille \(autres analyses\)/);
   });
 });

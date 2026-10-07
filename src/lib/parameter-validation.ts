@@ -1,4 +1,4 @@
-import type { SampleType } from "@/generated/prisma/client";
+import type { Family, SampleType } from "@/generated/prisma/client";
 
 /**
  * Validating an analysis parameter.
@@ -11,9 +11,19 @@ import type { SampleType } from "@/generated/prisma/client";
 
 export const SAMPLE_TYPES: SampleType[] = ["ALIMENTAIRE", "EAU", "AMBIANCE"];
 
+/**
+ * The family of a parameter (RETOUR-LABO-06-10.md §5, V3): the analyses
+ * proposed on a line are grouped by it and each one goes to the sample of
+ * its family. MICRO when the form says nothing — every parameter of the
+ * production catalogue is microbiology today.
+ */
+export const PARAMETER_FAMILIES: Family[] = ["MICRO", "CHIMIE", "AUTRE"];
+export const DEFAULT_PARAMETER_FAMILY: Family = "MICRO";
+
 export type ParameterInput = {
   name?: unknown;
   category?: unknown;
+  family?: unknown;
   unit?: unknown;
   threshold?: unknown;
   limitValue?: unknown;
@@ -25,6 +35,7 @@ export type ParameterInput = {
 export type CleanParameter = {
   name: string;
   category: SampleType;
+  family: Family;
   unit: string | null;
   threshold: string | null;
   limitValue: number | null;
@@ -65,6 +76,15 @@ export function validateParameter(input: ParameterInput): ParameterResult {
   const category = text(input.category) as SampleType;
   if (!SAMPLE_TYPES.includes(category)) {
     return { ok: false, error: "Domaine d'analyse invalide." };
+  }
+
+  // Absent or empty = microbiology; anything else must be one of the three.
+  const family =
+    input.family === undefined || input.family === null || input.family === ""
+      ? DEFAULT_PARAMETER_FAMILY
+      : (text(input.family) as Family);
+  if (!PARAMETER_FAMILIES.includes(family)) {
+    return { ok: false, error: "Famille d'analyse invalide : microbiologie, physico-chimie ou autre." };
   }
 
   const limit = parseLimit(input.limitValue);
@@ -110,6 +130,7 @@ export function validateParameter(input: ParameterInput): ParameterResult {
     value: {
       name,
       category,
+      family,
       unit: text(input.unit) || null,
       threshold: text(input.threshold) || null,
       limitValue: limit,

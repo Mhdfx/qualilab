@@ -17,7 +17,7 @@ export default async function ParametresPage() {
       <PageHeader
         badge="Configuration"
         title="Paramètres d'analyse"
-        subtitle="Unités, seuils de référence et limites — ce sont ces valeurs qui décident de la conformité d'un résultat et des alertes de contamination."
+        subtitle="Unités, seuils de référence, limites et famille — ces valeurs décident de la conformité d'un résultat, des alertes de contamination et de l'échantillon (microbiologie ou physico-chimie) qui reçoit chaque analyse."
       />
       <ParametersManager parameters={parameters} />
     </div>

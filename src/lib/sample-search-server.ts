@@ -12,6 +12,8 @@ export type SearchRow = {
   id: string;
   clientId: string;
   clientName: string;
+  /** The série's sampling site, null for the « Siège » (RETOUR-LABO-06-10.md §5, V5). */
+  siteName: string | null;
   serialNumber: string;
   controlCode: string | null;
   code: string;
@@ -57,7 +59,7 @@ export async function searchSamples(
         sampledAt: true,
         receivedAt: true,
         client: { select: { id: true, name: true } },
-        serie: { select: { serialNumber: true } },
+        serie: { select: { serialNumber: true, site: { select: { name: true } } } },
         nature: { select: { label: true } },
         parameters: { select: { parameter: { select: { name: true } } } },
         report: { select: { interpretation: true } },
@@ -72,6 +74,7 @@ export async function searchSamples(
       id: s.id,
       clientId: s.client.id,
       clientName: s.client.name,
+      siteName: s.serie.site?.name ?? null,
       serialNumber: s.serie.serialNumber,
       controlCode: s.controlCode,
       code: s.code,

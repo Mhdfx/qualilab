@@ -6,8 +6,8 @@ import { pageParams, toPage } from "@/lib/pagination";
 import { getLabSettings } from "@/lib/lab-settings";
 import { evaluateReception } from "@/lib/reception-rules";
 import { notifyDestroyed } from "@/lib/destruction-notice";
-import { createSerie, SerieCreationError } from "@/lib/serie-create";
-import { validateSerie, type NatureRef } from "@/lib/serie-input";
+import { createSerie, planSerieSamples, SerieCreationError } from "@/lib/serie-create";
+import { sampleLineMessage, validateSerie, type NatureRef } from "@/lib/serie-input";
 import { serieSelectFor, serializeSerie } from "@/lib/serie-select";
 import { serieStatus, type SerieStatus } from "@/lib/series";
 
@@ -97,7 +97,8 @@ export async function GET(request: Request) {
 }
 
 /**
- * Creates a série with all its lines in one transaction.
+ * Creates a série with all its lines in one transaction — one sample per
+ * family ticked on a line (RETOUR-LABO-06-10.md §5, V3).
  *
  * A PRELEVEUR creates a VISITE (their own field work). The réception and the
  * admin may create either kind: a VISITE keyed in from a paper protocol, or
@@ -118,8 +119,10 @@ export async function POST(request: Request) {
   const kind =
     session.role === "PRELEVEUR" ? "VISITE" : requested === "DEPOT" ? "DEPOT" : "VISITE";
 
+  // The whole catalogue of natures (16 rows): the line's nature is deduced
+  // from its type × the ticked family (RETOUR-LABO-06-10.md §5, V3).
   const natures = await prisma.analysisNature.findMany({
-    select: { id: true, defaultLineKind: true, active: true },
+    select: { id: true, code: true, family: true, defaultLineKind: true, active: true },
   });
   const natureMap = new Map<string, NatureRef>(natures.map((n) => [n.id, n]));
 
@@ -130,53 +133,62 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-
-  // A deposit is received on the spot: the acceptance rules run here, as
-  // they do for a visit at reception — a blocking rule cannot be declared
-  // conform whatever the form sent.
-  if (kind === "DEPOT") {
-    const settings = await getLabSettings();
-    const [families, parameters] = await Promise.all([
-      prisma.analysisNature.findMany({
-        where: { id: { in: [...new Set(checked.value.lines.map((l) => l.natureId))] } },
-        select: { id: true, family: true },
-      }),
-      prisma.analysisParameter.findMany({
-        where: { id: { in: [...new Set(checked.value.lines.flatMap((l) => l.parameterIds))] } },
-        select: { id: true, name: true },
-      }),
-    ]);
-    const familyOf = new Map(families.map((n) => [n.id, n.family]));
-    const nameOf = new Map(parameters.map((p) => [p.id, p.name]));
-    for (const [index, line] of checked.value.lines.entries()) {
-      const checks = evaluateReception(
-        {
-          lineKind: line.lineKind,
-          family: familyOf.get(line.natureId) ?? "AUTRE",
-          parameterNames: line.parameterIds.map((id) => nameOf.get(id) ?? ""),
-          quantity: line.quantity,
-          quantityUnit: line.quantityUnit,
-          receptionTemperature: line.receptionTemperature,
-          unitCount: line.unitCount,
-        },
-        settings
-      );
-      const blocking = checks.find((c) => c.level === "BLOQUANT");
-      if (blocking && line.conformity) {
-        return NextResponse.json(
-          { error: `${blocking.message} La ligne ne peut pas être déclarée conforme.`, line: index + 1 },
-          { status: 400 }
-        );
-      }
-    }
-  }
+  const lines = checked.value.lines;
 
   try {
+    // A deposit is received on the spot: the acceptance rules run here, as
+    // they do for a visit at reception, on each sample the line becomes (the
+    // minimal quantity differs between microbiology and physico-chemistry) —
+    // a blocking rule cannot be declared conform whatever the form sent.
+    if (kind === "DEPOT") {
+      const plans = await planSerieSamples(lines);
+      const settings = await getLabSettings();
+      const parameterIds = [...new Set(lines.flatMap((l) => l.parameterIds))];
+      const parameters =
+        parameterIds.length === 0
+          ? []
+          : await prisma.analysisParameter.findMany({
+              where: { id: { in: parameterIds } },
+              select: { id: true, name: true },
+            });
+      const nameOf = new Map(parameters.map((p) => [p.id, p.name]));
+      for (const [index, line] of lines.entries()) {
+        if (!line.conformity) continue;
+        for (const planned of plans[index]) {
+          const checks = evaluateReception(
+            {
+              lineKind: line.lineKind,
+              family: planned.family,
+              parameterNames: planned.parameterIds.map((id) => nameOf.get(id) ?? ""),
+              quantity: line.quantity,
+              quantityUnit: line.quantityUnit,
+              receptionTemperature: line.receptionTemperature,
+              unitCount: line.unitCount,
+            },
+            settings
+          );
+          const blocking = checks.find((c) => c.level === "BLOQUANT");
+          if (blocking) {
+            return NextResponse.json(
+              {
+                error: sampleLineMessage(
+                  `${index + 1}${planned.twin ?? ""}`,
+                  `${blocking.message} L'échantillon ne peut pas être déclaré conforme.`
+                ),
+                line: index + 1,
+              },
+              { status: 400 }
+            );
+          }
+        }
+      }
+    }
+
     const created = await createSerie(checked.value, { id: session.id, role: session.role });
-    // A deposit line destroyed at the counter is told to the client (Q35).
+    // A deposit sample destroyed at the counter is told to the client (Q35).
     if (created.kind === "DEPOT") {
       await notifyDestroyed(
-        created.sampleIds.filter((_, index) => checked.value.lines[index]?.destroy),
+        created.samples.filter((s) => lines[s.lineIndex]?.destroy).map((s) => s.id),
         session.id
       ).catch((error) => console.error("[series] destruction notice failed", { serieId: created.id, error }));
     }
@@ -187,7 +199,10 @@ export async function POST(request: Request) {
     return NextResponse.json(serializeSerie(serie, serieStatus(serie.samples)), { status: 201 });
   } catch (error) {
     if (error instanceof SerieCreationError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return NextResponse.json(
+        { error: error.message, ...(error.line ? { line: error.line } : {}) },
+        { status: error.status }
+      );
     }
     console.error("[series] creation failed", { error });
     return NextResponse.json({ error: "Impossible d'enregistrer la série." }, { status: 500 });

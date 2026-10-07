@@ -9,22 +9,27 @@ import {
   Layers,
   MapPin,
   Package,
+  Ruler,
   Thermometer,
   User,
+  Wind,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getLabSettings } from "@/lib/lab-settings";
 import {
+  AIR_METHOD_LABELS,
   LINE_KIND_LABELS,
   NON_CONFORMITY_REASON_LABELS,
   QUANTITY_UNIT_LABELS,
   SERIE_KIND_LABELS,
+  SURFACE_STATE_LABELS,
   formatDateTime,
   formatDecimal,
 } from "@/lib/labels";
 import { loadProgrammeReferential, loadProgrammeSample, serializeProgramme } from "@/lib/programme-referential";
 import { labReference } from "@/lib/sample-select";
+import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
 import { verbsFor } from "@/lib/sample-verbs";
 import { Card } from "@/components/ui/Card";
@@ -42,20 +47,24 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 /**
  * The identification fields the programme select leaves out: what names a
- * surface or a hands line, and what « Corriger la fiche » edits.
+ * surface, a hands or an air sample — the surface's state and the air's
+ * method included (RETOUR-LABO-06-10.md §5, V2 and V4) — and what
+ * « Corriger la fiche » edits.
  */
 const IDENTITY_SELECT = {
   productionDate: true,
   expiryDate: true,
   surfaceLabel: true,
   surfaceAreaCm2: true,
+  surfaceState: true,
   personName: true,
   personRole: true,
   handsState: true,
+  airMethod: true,
   remarks: true,
 } as const;
 
-/** The programme sheet of one line (PROGRAMME.md §4). */
+/** The programme sheet of one sample (PROGRAMME.md §4). */
 export default async function ProgrammePage({ params }: { params: Promise<{ id: string }> }) {
   // Belt and braces with the layout guard: a page must be safe on its own.
   const session = await requireRole("PROGRAMMATEUR", "ADMIN");
@@ -102,7 +111,7 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
             ? "Décidez de tout ce qui sera fait sur cet échantillon avant la paillasse, puis confirmez le programme."
             : sample.status === "PROGRAMME"
               ? "Programme confirmé — modifiable tant que la paillasse n'a pas commencé."
-              : "Programme de la ligne, en consultation."
+              : "Programme de l'échantillon, en consultation."
         }
       />
 
@@ -124,14 +133,42 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
               <Field icon={Hash} label="Série">
                 <span className="font-mono">{sample.serie.serialNumber}</span>
                 <span className="ml-1.5 text-xs font-normal text-slate-500">
-                  ligne {sample.lineNumber} · {SERIE_KIND_LABELS[sample.serie.kind]}
+                  échantillon {sampleRef(sample.lineNumber, sample.code)} · {SERIE_KIND_LABELS[sample.serie.kind]}
                 </span>
               </Field>
               <Field icon={Building2} label="Client">{sample.client.name}</Field>
               <Field icon={Package} label="Désignation">
-                {lineDesignation({ lineKind: sample.lineKind, produit: sample.produit, surfaceLabel: identity.surfaceLabel, personName: identity.personName })}
+                {lineDesignation({
+                  lineKind: sample.lineKind,
+                  produit: sample.produit,
+                  surfaceLabel: identity.surfaceLabel,
+                  personName: identity.personName,
+                  surfaceState: identity.surfaceState,
+                  airMethod: identity.airMethod,
+                })}
                 {sample.numeroLot && <span className="ml-1.5 text-xs font-normal text-slate-500">lot {sample.numeroLot}</span>}
               </Field>
+              {sample.lineKind === "SURFACE" && (
+                <Field icon={Ruler} label="État et surface prélevée">
+                  {identity.surfaceState ? (
+                    SURFACE_STATE_LABELS[identity.surfaceState]
+                  ) : (
+                    <span className="text-slate-400">État non renseigné</span>
+                  )}
+                  {identity.surfaceAreaCm2 !== null && (
+                    <span className="ml-1.5 text-xs font-normal text-slate-500">{identity.surfaceAreaCm2} cm²</span>
+                  )}
+                </Field>
+              )}
+              {sample.lineKind === "AIR" && (
+                <Field icon={Wind} label="Méthode de prélèvement">
+                  {identity.airMethod ? (
+                    AIR_METHOD_LABELS[identity.airMethod]
+                  ) : (
+                    <span className="text-slate-400">Non renseignée</span>
+                  )}
+                </Field>
+              )}
               <Field icon={MapPin} label="Lieu">{sample.lieu}</Field>
               <Field icon={Layers} label="Nature">
                 {sample.nature.label}
@@ -191,6 +228,8 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
                   quantityUnit: sample.quantityUnit,
                   surfaceLabel: identity.surfaceLabel,
                   surfaceAreaCm2: identity.surfaceAreaCm2,
+                  surfaceState: identity.surfaceState,
+                  airMethod: identity.airMethod,
                   personName: identity.personName,
                   personRole: identity.personRole,
                   handsState: identity.handsState,

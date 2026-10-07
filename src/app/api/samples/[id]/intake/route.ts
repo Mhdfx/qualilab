@@ -11,6 +11,7 @@ const INTAKE_SELECT = {
   controlCode: true,
   status: true,
   lineKind: true,
+  type: true,
   produit: true,
   lieu: true,
   numeroLot: true,
@@ -22,9 +23,11 @@ const INTAKE_SELECT = {
   ambientTemperature: true,
   surfaceLabel: true,
   surfaceAreaCm2: true,
+  surfaceState: true,
   personName: true,
   personRole: true,
   handsState: true,
+  airMethod: true,
   remarks: true,
   unitCount: true,
   productTypeId: true,
@@ -42,6 +45,11 @@ const INTAKE_SELECT = {
  * sample may be fixed until its approval, with a reason and a before/after
  * audit line. Changing the analyses empties the results and sends the
  * sample back to the bench.
+ *
+ * RETOUR-LABO-06-10.md §5: a SURFACE line also corrects its « État de la
+ * surface » (`surfaceState`) and an AIR line its « Méthode de prélèvement »
+ * (`airMethod`); both come back in the answer and in the journal's
+ * before/after like the other fields.
  */
 export async function PATCH(
   request: Request,
@@ -80,9 +88,11 @@ export async function PATCH(
     ambientTemperature: sample.ambientTemperature,
     surfaceLabel: sample.surfaceLabel,
     surfaceAreaCm2: sample.surfaceAreaCm2,
+    surfaceState: sample.surfaceState,
     personName: sample.personName,
     personRole: sample.personRole,
     handsState: sample.handsState,
+    airMethod: sample.airMethod,
     remarks: sample.remarks,
     unitCount: sample.unitCount,
     productTypeId: sample.productTypeId,
@@ -94,9 +104,23 @@ export async function PATCH(
   const { changes, parameterIds, reason } = checked.value;
 
   if (parameterIds) {
-    const known = await prisma.analysisParameter.findMany({ where: { id: { in: parameterIds } }, select: { id: true } });
+    const known = await prisma.analysisParameter.findMany({
+      where: { id: { in: parameterIds } },
+      select: { id: true, name: true, category: true },
+    });
     if (known.length !== parameterIds.length) {
       return NextResponse.json({ error: "Une des analyses demandées n'existe pas." }, { status: 400 });
+    }
+    // An analysis added here belongs to the sample's category, like on the
+    // programme; one the sample already carries stays whatever its category.
+    const foreign = known.find(
+      (parameter) => parameter.category !== sample.type && !current.parameterIds.includes(parameter.id)
+    );
+    if (foreign) {
+      return NextResponse.json(
+        { error: `L'analyse « ${foreign.name} » n'existe pas pour la nature de cet échantillon.` },
+        { status: 400 }
+      );
     }
   }
   if (changes.productTypeId) {

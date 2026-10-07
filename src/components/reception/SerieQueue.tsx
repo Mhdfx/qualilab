@@ -3,6 +3,7 @@ import { ArrowRight, Inbox, MapPin, Thermometer, User } from "lucide-react";
 import type { SamplerKind, SerieKind } from "@/generated/prisma/enums";
 import { SAMPLER_KIND_LABELS, SERIE_KIND_LABELS, formatDateTime, formatDecimal } from "@/lib/labels";
 import { Card } from "@/components/ui/Card";
+import { countLabel } from "./reception-logic";
 
 export type QueueSerie = {
   id: string;
@@ -26,7 +27,9 @@ function samplerOf(serie: QueueSerie) {
 
 /**
  * The séries waiting at reception — one row per visit or deposit, not per
- * sample: the cooler arrives as a whole and is received as a whole.
+ * sample: the cooler arrives as a whole and is received as a whole. The
+ * count is of samples (« Échantillon N », RETOUR-LABO-06-10.md §5): a line
+ * with both families ticked counts twice — two N° de contrôle to draw.
  */
 export function SerieQueue({ series }: { series: QueueSerie[] }) {
   if (series.length === 0) {
@@ -62,7 +65,7 @@ export function SerieQueue({ series }: { series: QueueSerie[] }) {
                       {SERIE_KIND_LABELS[serie.kind]}
                     </span>
                     <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
-                      {pending} ligne{pending > 1 ? "s" : ""} à réceptionner
+                      {countLabel(pending, "échantillon")} à réceptionner
                       {pending !== serie.samples.length ? ` / ${serie.samples.length}` : ""}
                     </span>
                   </div>

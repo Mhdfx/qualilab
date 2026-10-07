@@ -102,11 +102,18 @@ export async function PATCH(
 
     if (emails !== undefined) {
       // The list is replaced wholesale: simpler than diffing, and the client
-      // form always submits the complete set.
+      // form always submits the complete set. The form does not know an
+      // address's site (set by the sites import, RETOUR-LABO-06-10.md §5 V5):
+      // an address kept in the list keeps its site.
+      const previous = await tx.clientEmail.findMany({
+        where: { clientId: id, siteId: { not: null } },
+        select: { email: true, siteId: true },
+      });
+      const siteOf = new Map(previous.map((entry) => [entry.email.toLowerCase(), entry.siteId]));
       await tx.clientEmail.deleteMany({ where: { clientId: id } });
       if (list.value.length > 0) {
         await tx.clientEmail.createMany({
-          data: list.value.map((entry) => ({ ...entry, clientId: id })),
+          data: list.value.map((entry) => ({ ...entry, clientId: id, siteId: siteOf.get(entry.email) ?? null })),
         });
       }
     }

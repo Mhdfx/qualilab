@@ -7,6 +7,7 @@ import { Check, ChevronRight, Plus, Search, Tags, X } from "lucide-react";
 import type { Family } from "@/generated/prisma/enums";
 import { Card } from "@/components/ui/Card";
 import { similarLabels } from "@/lib/similar";
+import { FAMILY_SHORT_LABELS as FAMILY_LABELS } from "@/lib/labels";
 
 export type ProductTypeRow = {
   id: string;
@@ -21,7 +22,6 @@ export type ProductTypeRow = {
 
 export type ClientRow = { id: string; name: string };
 
-const FAMILY_LABELS: Record<Family, string> = { MICRO: "Microbiologie", CHIMIE: "Physico-chimie", AUTRE: "Autre" };
 type Filter = "all" | "catalogue" | "client" | "inactive";
 
 /**

@@ -6,6 +6,7 @@ import { getCompany } from "@/lib/company-server";
 import { getDocumentReference } from "@/lib/document-reference";
 import { getLabSettings } from "@/lib/lab-settings";
 import { HANDS_STATE_LABELS } from "@/lib/labels";
+import { sampleRef } from "@/lib/reception-input";
 import { ROLE_LABELS, type Role } from "@/lib/roles";
 import {
   buildBonHtml,
@@ -21,6 +22,10 @@ import {
  * of a visit (printed on site for the interlocutor's signature — the
  * préleveur may print their own), the bon de réception of a deposit (lab
  * side only: it carries the N° de contrôle).
+ *
+ * The two samples of an échantillon whose two families are ticked
+ * (« 1M » / « 1P », RETOUR-LABO-06-10.md §5, V3) print as one row on the
+ * protocol and as two rows — one N° de contrôle each — on the bon.
  */
 export async function GET(
   _request: Request,
@@ -45,6 +50,7 @@ export async function GET(
       serialNumber: true,
       clientReference: true,
       cadre: true,
+      cadreNote: true,
       interlocutor: true,
       samplerKind: true,
       samplerName: true,
@@ -64,6 +70,7 @@ export async function GET(
       receivedBy: { select: { name: true } },
       samples: {
         select: {
+          code: true,
           lineNumber: true,
           lineKind: true,
           status: true,
@@ -71,6 +78,8 @@ export async function GET(
           produit: true,
           surfaceLabel: true,
           surfaceAreaCm2: true,
+          surfaceState: true,
+          airMethod: true,
           personName: true,
           personRole: true,
           handsState: true,
@@ -91,7 +100,8 @@ export async function GET(
           nature: { select: { family: true } },
           parameters: { select: { parameter: { select: { name: true } } } },
         },
-        orderBy: { lineNumber: "asc" },
+        // Line order, the microbiology sample (« 1M ») before the other.
+        orderBy: [{ lineNumber: "asc" }, { code: "asc" }],
       },
     },
   });
@@ -109,6 +119,7 @@ export async function GET(
     cancelled: s.status === "ANNULE",
     destroyed: s.status === "ANNULE" && s.cancelReason === "DETRUIT_A_RECEPTION",
     lineNumber: s.lineNumber,
+    ref: sampleRef(s.lineNumber, s.code),
     lineKind: s.lineKind,
     designation:
       s.lineKind === "MAINS"
@@ -119,6 +130,7 @@ export async function GET(
           ? s.surfaceLabel ?? ""
           : s.produit ?? "",
     surface: surfaceText(s),
+    surfaceState: s.surfaceState,
     numeroLot: s.numeroLot,
     productionDate: s.productionDate,
     expiryDate: s.expiryDate,
@@ -152,6 +164,7 @@ export async function GET(
     clientPhone: serie.client.phone,
     siteName: serie.site?.name ?? null,
     cadre: serie.cadre,
+    cadreNote: serie.cadreNote,
     interlocutor: serie.interlocutor,
     samplerKind: serie.samplerKind,
     samplerName: serie.samplerKind === "QUALILAB" ? serie.samplerUser?.name ?? null : serie.samplerName,

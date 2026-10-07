@@ -4,9 +4,10 @@ import { logAudit } from "./audit";
 import { recipientsFor, sendEmail } from "./email";
 import { destructionEmail } from "./emails/templates";
 import { NON_CONFORMITY_REASON_LABELS } from "./labels";
+import { sampleDesignation } from "./document-html";
 
 /**
- * Tells the client that lines of a série were destroyed at reception
+ * Tells the client that samples of a série were destroyed at reception
  * (RETOUR-LABO-30-09.md H3). One e-mail per série, to the report recipients.
  *
  * Called after the reception is written: a missing address or a failed send
@@ -21,9 +22,12 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
       clientId: true,
       serieId: true,
       lineNumber: true,
+      lineKind: true,
       controlCode: true,
       produit: true,
       surfaceLabel: true,
+      surfaceState: true,
+      airMethod: true,
       personName: true,
       numeroLot: true,
       lieu: true,
@@ -33,7 +37,8 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
       conformityNote: true,
       serie: { select: { serialNumber: true } },
     },
-    orderBy: { lineNumber: "asc" },
+    // The two samples of a two-family line: « …M » before « …P ».
+    orderBy: [{ lineNumber: "asc" }, { code: "asc" }],
   });
   if (samples.length === 0) return null;
 
@@ -45,7 +50,8 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
     receivedAt: first.receivedAt,
     lines: samples.map((s) => ({
       controlCode: s.controlCode,
-      designation: s.produit ?? s.surfaceLabel ?? s.personName ?? "—",
+      // « Planche verte — surface nettoyée », « Salle — Biocollecteur ».
+      designation: sampleDesignation(s) ?? "—",
       numeroLot: s.numeroLot,
       lieu: s.lieu,
       motif: [s.conformityReason ? NON_CONFORMITY_REASON_LABELS[s.conformityReason] : "Non conforme", s.conformityNote]

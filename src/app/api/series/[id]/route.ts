@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import type { Cadre } from "@/generated/prisma/enums";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
+import { CADRE_CHOICES, formatCadre } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 import { serieSelectFor, serializeSerie } from "@/lib/serie-select";
 import { serieStatus } from "@/lib/series";
@@ -40,8 +42,8 @@ export async function GET(
 
 /**
  * Header fields the préleveur completes after the sampling (end time,
- * arrival at the lab, cooler temperature, photo of the signed sheet), and
- * that the réception may correct. The lines themselves are corrected through
+ * arrival at the lab, cooler temperature, photo of the signed sheet, the
+ * cadre and its precision), and that the réception may correct. The lines themselves are corrected through
  * the sample routes.
  */
 export async function PATCH(
@@ -54,7 +56,17 @@ export async function PATCH(
   const { id } = await params;
   const serie = await prisma.serie.findUnique({
     where: { id },
-    select: { id: true, createdById: true, cadre: true, startedAt: true, endedAt: true, arrivedAt: true, receivedAt: true, serialNumber: true },
+    select: {
+      id: true,
+      createdById: true,
+      cadre: true,
+      cadreNote: true,
+      startedAt: true,
+      endedAt: true,
+      arrivedAt: true,
+      receivedAt: true,
+      serialNumber: true,
+    },
   });
   if (!serie || (session.role === "PRELEVEUR" && serie.createdById !== session.id)) {
     return NextResponse.json({ error: "Série introuvable." }, { status: 404 });
@@ -119,13 +131,31 @@ export async function PATCH(
   }
 
   // Le cadre se corrige : par le préleveur tant que la série n'est pas
-  // réceptionnée, par le laboratoire ensuite (retour du 19/09).
-  if (input.cadre !== undefined && input.cadre !== serie.cadre) {
-    if (input.cadre !== "AUTOCONTROLE" && input.cadre !== "OFFICIEL") return fail("Cadre invalide.");
+  // réceptionnée, par le laboratoire ensuite (retour du 19/09). Quatre
+  // valeurs depuis le 07/10 ; la précision n'existe que pour « Autre ».
+  let nextCadre = serie.cadre;
+  if (input.cadre !== undefined) {
+    if (typeof input.cadre !== "string" || !(CADRE_CHOICES as readonly string[]).includes(input.cadre)) {
+      return fail("Cadre invalide.");
+    }
+    nextCadre = input.cadre as Cadre;
+  }
+  let nextNote = serie.cadreNote;
+  if (input.cadreNote !== undefined) {
+    if (input.cadreNote !== null && typeof input.cadreNote !== "string") return fail("Précision du cadre invalide.");
+    const note = text(input.cadreNote);
+    if (note.length > 191) return fail("La précision du cadre est trop longue (191 caractères maximum).");
+    nextNote = note || null;
+  }
+  if (nextCadre !== "AUTRE") nextNote = null;
+  const cadreChanged = nextCadre !== serie.cadre;
+  const noteChanged = nextNote !== serie.cadreNote;
+  if (cadreChanged || noteChanged) {
     if (session.role === "PRELEVEUR" && serie.receivedAt) {
       return fail("La série est réceptionnée : le laboratoire seul peut changer le cadre.");
     }
-    data.cadre = input.cadre;
+    if (cadreChanged) data.cadre = nextCadre;
+    if (noteChanged) data.cadreNote = nextNote;
   }
 
   if (Object.keys(data).length === 0) return fail("Rien à modifier.");
@@ -144,9 +174,12 @@ export async function PATCH(
     metadata: {
       serialNumber: serie.serialNumber,
       fields: Object.keys(data).filter((k) => k !== "signedProtocolData"),
-      // Autocontrôle ou contrôle officiel : ce que porte la série change ce
-      // que vaut le rapport, la valeur avant/après est écrite en clair.
-      cadre: "cadre" in data ? { avant: serie.cadre, apres: data.cadre } : undefined,
+      // Le cadre (Autre, Devis validé, BC, Convention) dit à quel titre la
+      // série est analysée : la valeur avant/après est écrite en clair.
+      cadre:
+        cadreChanged || noteChanged
+          ? { avant: formatCadre(serie.cadre, serie.cadreNote), apres: formatCadre(nextCadre, nextNote) }
+          : undefined,
       photo: "signedProtocolData" in data ? (data.signedProtocolData ? "ajoutée" : "retirée") : undefined,
     },
   });

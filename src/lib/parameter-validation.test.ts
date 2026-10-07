@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateParameter, parseLimit } from "./parameter-validation";
+import { DEFAULT_PARAMETER_FAMILY, PARAMETER_FAMILIES, validateParameter, parseLimit } from "./parameter-validation";
 
 const valid = {
   name: "E. coli",
@@ -127,5 +127,41 @@ describe("aliases", () => {
     const ok = validateParameter({ name: "Salmonella", category: "ALIMENTAIRE", aliases: " Recherche de Salmonella /25g \n\nSalmonella spp " });
     expect(ok).toMatchObject({ ok: true, value: { aliases: "Recherche de Salmonella /25g\nSalmonella spp" } });
     expect(validateParameter({ name: "Salmonella", category: "ALIMENTAIRE", aliases: "" })).toMatchObject({ ok: true, value: { aliases: null } });
+  });
+});
+
+describe("family (RETOUR-LABO-06-10.md §5, V3)", () => {
+  const base = { name: "pH", category: "EAU" };
+
+  it("defaults to microbiology when the form says nothing", () => {
+    for (const family of [undefined, null, ""]) {
+      const result = validateParameter({ ...base, family });
+      expect(result).toMatchObject({ ok: true, value: { family: "MICRO" } });
+    }
+    expect(DEFAULT_PARAMETER_FAMILY).toBe("MICRO");
+  });
+
+  it("accepts the three families", () => {
+    for (const family of PARAMETER_FAMILIES) {
+      expect(validateParameter({ ...base, family })).toMatchObject({ ok: true, value: { family } });
+    }
+    expect(PARAMETER_FAMILIES).toEqual(["MICRO", "CHIMIE", "AUTRE"]);
+  });
+
+  it("refuses anything else, in French", () => {
+    for (const family of ["PHYSICO", "micro", 2, true, ["CHIMIE"]]) {
+      const result = validateParameter({ ...base, family });
+      expect(result).toEqual({
+        ok: false,
+        error: "Famille d'analyse invalide : microbiologie, physico-chimie ou autre.",
+      });
+    }
+  });
+
+  it("keeps the family apart from the domain", () => {
+    expect(validateParameter({ ...base, family: "CHIMIE" })).toMatchObject({
+      ok: true,
+      value: { name: "pH", category: "EAU", family: "CHIMIE" },
+    });
   });
 });

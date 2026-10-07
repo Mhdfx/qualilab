@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { ArrowRight, FlaskConical, AlertTriangle, Zap } from "lucide-react";
-import type { ProgrammePriority, SampleStatus, SampleType } from "@/generated/prisma/client";
+import type { AirMethod, LineKind, ProgrammePriority, SampleStatus, SampleType, SurfaceState } from "@/generated/prisma/client";
 import { formatDate } from "@/lib/labels";
 import { labReference } from "@/lib/sample-select";
 import { groupBySerie } from "@/lib/serie-groups";
 import { splitParameters } from "@/lib/bench-access";
+import { sampleRef } from "@/lib/reception-input";
+import { lineDesignation } from "@/components/preleveur/visit-types";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
@@ -15,6 +17,14 @@ export type WorkItem = {
   controlCode: string | null;
   type: SampleType;
   status: SampleStatus;
+  /** What is analysed — designation, surface state, air method (RETOUR-LABO-06-10.md §5). */
+  lineNumber: number;
+  lineKind: LineKind;
+  produit: string | null;
+  surfaceLabel: string | null;
+  surfaceState: SurfaceState | null;
+  personName: string | null;
+  airMethod: AirMethod | null;
   receivedAt: Date | null;
   conformity: boolean | null;
   /** The programme d'analyse (PROGRAMME.md §3): priority and promised date. */
@@ -31,9 +41,9 @@ export type WorkItem = {
 /**
  * The samples on this technician's bench, grouped by série, oldest first.
  *
- * `viewerId` is the technician looking at their own queue: a line shared
+ * `viewerId` is the technician looking at their own queue: a sample shared
  * with a colleague (PROGRAMME.md §6) says how many of its parameters are
- * theirs. Null for the admin, who oversees every line whole.
+ * theirs. Null for the admin, who oversees every sample whole.
  */
 export function WorkQueue({ items, viewerId = null }: { items: WorkItem[]; viewerId?: string | null }) {
   if (items.length === 0) {
@@ -71,7 +81,7 @@ export function WorkQueue({ items, viewerId = null }: { items: WorkItem[]; viewe
               const done = item.results.filter(
                 (r) => r.value && r.workStatus !== "EN_COURS" && r.interpretation !== "INCOMPLET"
               ).length;
-              // On a shared line, how many of its parameters are mine.
+              // On a shared sample, how many of its parameters are mine.
               const mine = viewerId ? splitParameters(item, viewerId).mine.length : total;
 
               return (
@@ -103,7 +113,10 @@ export function WorkQueue({ items, viewerId = null }: { items: WorkItem[]; viewe
                         </div>
 
                         <p className="mt-1.5 truncate font-semibold text-slate-800">
-                          {item.client.name}
+                          {lineDesignation(item)}
+                          <span className="ml-1.5 font-normal text-slate-500">
+                            · {item.client.name} · échantillon {sampleRef(item.lineNumber, item.code)}
+                          </span>
                         </p>
                         <p className="mt-0.5 text-sm text-slate-500">
                           {done} / {total} paramètre{total > 1 ? "s" : ""} saisi{total > 1 ? "s" : ""}

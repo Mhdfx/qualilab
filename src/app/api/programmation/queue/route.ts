@@ -5,10 +5,11 @@ import { groupQueue } from "@/lib/programmation-queue";
 
 /**
  * The responsable des paramètres' queue (PROGRAMME.md §5): the received
- * (still to programme) and programmed lines, grouped by série, the RECU
- * first and the oldest receptions at the head. A cancelled line has left
- * the circuit and never appears; a line held at reception is listed but
- * flagged — the admin releases it before it can be programmed.
+ * (still to programme) and programmed samples, grouped by série, the RECU
+ * first and the oldest receptions at the head. A cancelled sample has left
+ * the circuit and never appears; a sample held at reception is listed but
+ * flagged — the admin releases it before it can be programmed. Same query
+ * as `/programmation` (page.tsx).
  */
 
 /** A ceiling, not a page: the queue is the current work, never the history. */
@@ -27,6 +28,11 @@ export async function GET() {
       lineNumber: true,
       lineKind: true,
       produit: true,
+      surfaceLabel: true,
+      personName: true,
+      // « Planche verte — surface nettoyée » / « Air — Biocollecteur ».
+      surfaceState: true,
+      airMethod: true,
       lieu: true,
       status: true,
       unitCount: true,
@@ -43,7 +49,8 @@ export async function GET() {
       serie: { select: { id: true, serialNumber: true, kind: true, receivedAt: true } },
       parameters: { select: { parameterId: true } },
     },
-    orderBy: [{ receivedAt: "asc" }, { serieId: "asc" }, { lineNumber: "asc" }],
+    // The two samples of a two-family line share their number: « …M » before « …P ».
+    orderBy: [{ receivedAt: "asc" }, { serieId: "asc" }, { lineNumber: "asc" }, { code: "asc" }],
     take: QUEUE_LIMIT,
   });
 

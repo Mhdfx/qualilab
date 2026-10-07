@@ -88,7 +88,7 @@ export function repetitionRange(unitCount: number) {
   return unitCount > 1 ? `${repetitionLabel(1)}–${repetitionLabel(unitCount)}` : repetitionLabel(1);
 }
 
-/** Line reference the préleveur sees: « 2780/26 · ligne 3 ». */
+/** Line reference the préleveur sees: « 2780/26 · échantillon 3 » (V2 wording). */
 export function lineReference(serialNumber: string, lineNumber: number) {
-  return `${serialNumber} · ligne ${lineNumber}`;
+  return `${serialNumber} · échantillon ${lineNumber}`;
 }

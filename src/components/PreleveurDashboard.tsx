@@ -75,7 +75,7 @@ export function PreleveurDashboard({ userName }: PreleveurDashboardProps) {
       <PageHeader
         badge="Module Préleveur"
         title={`Bonjour, ${firstName}`}
-        subtitle="Une visite, un numéro de série, toutes les lignes en une fois"
+        subtitle="Une visite, un numéro de série, tous les échantillons en une fois"
         action={
           <PrimaryLink href="/preleveur/nouvelle-visite" className="shadow-lg shadow-black/20">
             <Plus className="h-4 w-4" />

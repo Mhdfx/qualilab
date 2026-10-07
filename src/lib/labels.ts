@@ -1,4 +1,13 @@
-import type { InvoiceStatus, ProgrammePriority, SampleStatus, SampleType } from "@/generated/prisma/client";
+import type {
+  AirMethod,
+  Cadre,
+  Family,
+  InvoiceStatus,
+  ProgrammePriority,
+  SampleStatus,
+  SampleType,
+  SurfaceState,
+} from "@/generated/prisma/client";
 import { labTimeZone } from "./lab-time";
 
 export const SAMPLE_TYPE_LABELS: Record<SampleType, string> = {
@@ -35,14 +44,75 @@ export const SERIE_KIND_LABELS = {
 export const SAMPLER_KIND_LABELS = {
   QUALILAB: "Technicien Qualilab",
   CLIENT: "Prélèvement effectué par le client",
+  /** No longer offered nor accepted on a new série (RETOUR-LABO-06-10.md §5,
+   * V1): kept so the old séries still print who sampled them. */
   SERVICE_VETERINAIRE: "Prélèvement effectué par le service vétérinaire",
   AUTRE: "Autre",
 } as const;
 
+/** The série's cadre, chosen by the préleveur or at the counter — never
+ * deduced from who sampled (RETOUR-LABO-06-10.md §5, V1). */
 export const CADRE_LABELS = {
-  AUTOCONTROLE: "Autocontrôle",
-  OFFICIEL: "Contrôle officiel",
-} as const;
+  AUTRE: "Autre",
+  DEVIS_VALIDE: "Devis validé",
+  BON_COMMANDE: "BC",
+  CONVENTION: "Convention",
+} as const satisfies Record<Cadre, string>;
+
+/** The four buttons, in the order the laboratory listed them; none is preselected. */
+export const CADRE_CHOICES: readonly Cadre[] = ["AUTRE", "DEVIS_VALIDE", "BON_COMMANDE", "CONVENTION"];
+
+/** « Autre — texte » when « Autre » carries a precision, the label alone otherwise. */
+export function formatCadre(cadre: Cadre, cadreNote?: string | null): string {
+  const note = cadreNote?.trim();
+  return cadre === "AUTRE" && note ? `${CADRE_LABELS.AUTRE} — ${note}` : CADRE_LABELS[cadre];
+}
+
+/** « État de la surface » of a SURFACE line (RETOUR-LABO-06-10.md §5, V2). */
+export const SURFACE_STATE_LABELS = {
+  ASEPTIQUE: "Aseptique",
+  EN_COURS_DE_TRAVAIL: "En cours de travail",
+  NETTOYE: "Nettoyé",
+} as const satisfies Record<SurfaceState, string>;
+
+export const SURFACE_STATE_CHOICES: readonly SurfaceState[] = ["ASEPTIQUE", "EN_COURS_DE_TRAVAIL", "NETTOYE"];
+
+/** The state as printed after a designation: « Planche verte — surface nettoyée ». */
+export const SURFACE_STATE_PHRASES = {
+  ASEPTIQUE: "surface aseptique",
+  EN_COURS_DE_TRAVAIL: "en cours de travail",
+  NETTOYE: "surface nettoyée",
+} as const satisfies Record<SurfaceState, string>;
+
+/** « Planche verte — surface nettoyée »; the designation alone on a line
+ * entered before the state existed. */
+export function withSurfaceState(designation: string, state?: SurfaceState | null): string {
+  return state ? `${designation} — ${SURFACE_STATE_PHRASES[state]}` : designation;
+}
+
+/** « Méthode de prélèvement » of an AIR line (RETOUR-LABO-06-10.md §5, V4). */
+export const AIR_METHOD_LABELS = {
+  BOITE_EXPOSEE_30MIN: "Boîte exposée 30 min",
+  BIOCOLLECTEUR: "Biocollecteur",
+} as const satisfies Record<AirMethod, string>;
+
+export const AIR_METHOD_CHOICES: readonly AirMethod[] = ["BOITE_EXPOSEE_30MIN", "BIOCOLLECTEUR"];
+
+/** The two boxes of each sample, and the groups of the analyses proposed
+ * (`AnalysisParameter.family` — RETOUR-LABO-06-10.md §5, V3). */
+export const ANALYSIS_FAMILY_LABELS = {
+  MICRO: "Analyses microbiologiques",
+  CHIMIE: "Analyses physico-chimiques",
+  AUTRE: "Autres analyses",
+} as const satisfies Record<Family, string>;
+
+/** The short names of the families, on the admin screens (parameters,
+ * product types, criteria) where a column or a filter names them. */
+export const FAMILY_SHORT_LABELS = {
+  MICRO: "Microbiologie",
+  CHIMIE: "Physico-chimie",
+  AUTRE: "Autre",
+} as const satisfies Record<Family, string>;
 
 export const LINE_KIND_LABELS = {
   ALIMENT: "Produit alimentaire",

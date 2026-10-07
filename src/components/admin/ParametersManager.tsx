@@ -4,13 +4,16 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Check, Pencil, Plus, X, Bell, BellOff } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { SAMPLE_TYPE_LABELS } from "@/lib/labels";
-import type { SampleType } from "@/generated/prisma/client";
+import { FAMILY_SHORT_LABELS as FAMILY_LABELS, SAMPLE_TYPE_LABELS } from "@/lib/labels";
+import { DEFAULT_PARAMETER_FAMILY, PARAMETER_FAMILIES } from "@/lib/parameter-validation";
+import type { Family, SampleType } from "@/generated/prisma/client";
 
 export type ParameterRow = {
   id: string;
   name: string;
   category: SampleType;
+  /** MICRO / CHIMIE / AUTRE — the analyses are grouped by it on the sample card and go to the sample of their family. */
+  family: Family;
   unit: string | null;
   threshold: string | null;
   limitValue: number | null;
@@ -21,6 +24,14 @@ export type ParameterRow = {
 
 const DOMAINS: SampleType[] = ["ALIMENTAIRE", "EAU", "AMBIANCE"];
 
+const FAMILY_BADGE: Record<Family, string> = {
+  MICRO: "bg-teal-50 text-teal-700 ring-teal-200",
+  CHIMIE: "bg-sky-50 text-sky-700 ring-sky-200",
+  AUTRE: "bg-slate-100 text-slate-600 ring-slate-200",
+};
+
+type FamilyFilter = Family | "TOUTES";
+
 /**
  * The laboratory's analysis parameters.
  *
@@ -28,14 +39,22 @@ const DOMAINS: SampleType[] = ["ALIMENTAIRE", "EAU", "AMBIANCE"];
  * whether a result is declared conform, and the "sensitive" flag decides which
  * germs raise a contamination alert — so the screen says that plainly rather
  * than presenting the fields as neutral settings.
+ *
+ * Each parameter also carries its family (RETOUR-LABO-06-10.md §5, V3):
+ * microbiology, physico-chemistry or other. The sample card groups the
+ * analyses by it and each one goes to the sample of its family — every
+ * parameter is « Microbiologie » until it is set here.
  */
 export function ParametersManager({ parameters }: { parameters: ParameterRow[] }) {
   const router = useRouter();
   const [editing, setEditing] = useState<string | null>(null);
   const [creating, setCreating] = useState<SampleType | null>(null);
   const [error, setError] = useState("");
+  const [familyFilter, setFamilyFilter] = useState<FamilyFilter>("TOUTES");
 
   const provisional = parameters.filter((p) => p.alertOnExceed).length;
+  const countOf = (family: FamilyFilter) =>
+    family === "TOUTES" ? parameters.length : parameters.filter((p) => p.family === family).length;
 
   return (
     <div>
@@ -59,9 +78,34 @@ export function ParametersManager({ parameters }: { parameters: ParameterRow[] }
         </p>
       )}
 
+      <div className="mb-5" role="group" aria-label="Filtrer par famille">
+        <p className="mb-1.5 text-xs font-medium text-slate-600">Famille</p>
+        <div className="flex flex-wrap gap-2">
+          {(["TOUTES", ...PARAMETER_FAMILIES] as FamilyFilter[]).map((family) => {
+            const active = familyFilter === family;
+            return (
+              <button
+                key={family}
+                type="button"
+                onClick={() => setFamilyFilter(family)}
+                aria-pressed={active}
+                className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                  active ? "border-brand bg-brand-light/60 text-brand" : "border-slate-200 text-slate-600 hover:border-slate-300"
+                }`}
+              >
+                {family === "TOUTES" ? "Toutes" : FAMILY_LABELS[family]}
+                <span className="text-xs font-normal text-slate-400">{countOf(family)}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="space-y-6">
         {DOMAINS.map((domain) => {
-          const rows = parameters.filter((p) => p.category === domain);
+          const rows = parameters.filter(
+            (p) => p.category === domain && (familyFilter === "TOUTES" || p.family === familyFilter)
+          );
           return (
             <section key={domain}>
               <div className="mb-2 flex items-baseline justify-between">
@@ -86,6 +130,7 @@ export function ParametersManager({ parameters }: { parameters: ParameterRow[] }
                 {creating === domain && (
                   <ParameterForm
                     category={domain}
+                    defaultFamily={familyFilter === "TOUTES" ? DEFAULT_PARAMETER_FAMILY : familyFilter}
                     onCancel={() => setCreating(null)}
                     onSaved={() => {
                       setCreating(null);
@@ -97,7 +142,9 @@ export function ParametersManager({ parameters }: { parameters: ParameterRow[] }
 
                 {rows.length === 0 && creating !== domain ? (
                   <p className="p-6 text-center text-sm text-slate-500">
-                    Aucun paramètre pour ce domaine.
+                    {familyFilter === "TOUTES"
+                      ? "Aucun paramètre pour ce domaine."
+                      : `Aucun paramètre « ${FAMILY_LABELS[familyFilter]} » pour ce domaine.`}
                   </p>
                 ) : (
                   <ul className="divide-y divide-slate-100">
@@ -123,6 +170,12 @@ export function ParametersManager({ parameters }: { parameters: ParameterRow[] }
                           <div className="min-w-0">
                             <p className="flex flex-wrap items-center gap-2 font-medium text-slate-800">
                               {row.name}
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${FAMILY_BADGE[row.family] ?? FAMILY_BADGE.AUTRE}`}
+                                title="Famille d'analyse"
+                              >
+                                {FAMILY_LABELS[row.family] ?? row.family}
+                              </span>
                               {row.alertOnExceed ? (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700 ring-1 ring-violet-200">
                                   <Bell className="h-3 w-3" aria-hidden="true" />
@@ -181,17 +234,21 @@ export function ParametersManager({ parameters }: { parameters: ParameterRow[] }
 function ParameterForm({
   category,
   parameter,
+  defaultFamily = DEFAULT_PARAMETER_FAMILY,
   onCancel,
   onSaved,
   onError,
 }: {
   category: SampleType;
   parameter?: ParameterRow;
+  /** The family a new parameter starts with: the filter's, else microbiology. */
+  defaultFamily?: Family;
   onCancel: () => void;
   onSaved: () => void;
   onError: (message: string) => void;
 }) {
   const [name, setName] = useState(parameter?.name ?? "");
+  const [family, setFamily] = useState<Family>(parameter?.family ?? defaultFamily);
   const [unit, setUnit] = useState(parameter?.unit ?? "");
   const [threshold, setThreshold] = useState(parameter?.threshold ?? "");
   const [limitValue, setLimitValue] = useState(
@@ -220,6 +277,7 @@ function ParameterForm({
           body: JSON.stringify({
             name,
             category,
+            family,
             unit,
             threshold,
             limitValue,
@@ -253,6 +311,24 @@ function ParameterForm({
           disabled={!!parameter}
           hint={parameter ? "Le nom ne se modifie pas" : undefined}
         />
+        <div>
+          <label htmlFor="p-family" className="block text-xs font-medium text-slate-600">
+            Famille
+          </label>
+          <select
+            id="p-family"
+            value={family}
+            onChange={(event) => setFamily(event.target.value as Family)}
+            className="mt-1 min-h-[38px] w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          >
+            {PARAMETER_FAMILIES.map((option) => (
+              <option key={option} value={option}>
+                {FAMILY_LABELS[option]}
+              </option>
+            ))}
+          </select>
+          <p className="mt-0.5 text-[11px] text-slate-500">Range l&apos;analyse sur l&apos;échantillon de sa famille</p>
+        </div>
         <Field id="p-unit" label="Unité" value={unit} onChange={setUnit} placeholder="UFC/g" />
         <Field
           id="p-threshold"

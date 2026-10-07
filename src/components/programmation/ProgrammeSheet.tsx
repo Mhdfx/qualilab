@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -9,6 +9,7 @@ import {
   ClipboardCheck,
   FlaskConical,
   Hash,
+  Layers,
   ListChecks,
   Lock,
   Package,
@@ -19,7 +20,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ProgrammePriority } from "@/generated/prisma/enums";
-import { CANCEL_REASON_LABELS, PROGRAMME_PRIORITY_LABELS, formatCurrency, formatDateTime } from "@/lib/labels";
+import {
+  ANALYSIS_FAMILY_LABELS,
+  CANCEL_REASON_LABELS,
+  PROGRAMME_PRIORITY_LABELS,
+  formatCurrency,
+  formatDateTime,
+} from "@/lib/labels";
 import { fmt } from "@/lib/interpretation";
 import { DUE_AT_TOLERANCE_MS, MAX_PARAMETER_NOTE, MAX_PROGRAMME_NOTE, MAX_TEST_PORTION, PROGRAMME_PRIORITIES } from "@/lib/programme-input";
 import type { ReceptionThresholds } from "@/lib/reception-rules";
@@ -34,6 +41,7 @@ import { fromLocalInput } from "@/components/preleveur/visit-types";
 import { SampleVerbs, type VerbSample } from "@/components/samples/SampleVerbs";
 import {
   UNIT_CHOICES,
+  adoptReferential,
   applyProductType,
   applyProfile,
   assignAll,
@@ -42,7 +50,10 @@ import {
   clampUnits,
   criteriaOf,
   entryChecks,
+  groupParameters,
   initialDraft,
+  natureChangeNotice,
+  natureChoices,
   parameterFamilies,
   profileApplied,
   settingOf,
@@ -56,6 +67,7 @@ import {
 } from "./programme-sheet-logic";
 import type {
   CriterionRef,
+  ProgrammeReadResponse,
   ProgrammeReferentialData,
   ProgrammeResponse,
   ProgrammeSampleData,
@@ -64,14 +76,23 @@ import type {
 
 /**
  * The programme sheet (PROGRAMME.md §4): the seven sections the responsable
- * des paramètres fills before the bench, a draft that keeps the line
+ * des paramètres fills before the bench, a draft that keeps the sample
  * received, and the confirmation that moves it to PROGRAMME. Once the bench
  * started the sheet is read-only — « Corriger la fiche » takes over.
+ *
+ * RETOUR-LABO-06-10.md §5 (V3, Q49 by default): the fine « Nature
+ * d'analyse » is chosen here, within the sample's family. Choosing one
+ * reloads the referential of that nature at once (`GET …/programme
+ * ?natureId=` — its analyses, profiles and prices), drops the ticked
+ * analyses it does not offer and says which; the sample takes the nature
+ * when the programme is saved (`natureId` in the PUT). Nothing is written
+ * before that save, so leaving the page keeps the old nature.
  */
 
 type ProgrammeSheetProps = {
   sample: ProgrammeSampleData;
   programme: ProgrammeState;
+  /** The referential of the sample's own nature; the sheet replaces it when another nature is chosen. */
   referential: ProgrammeReferentialData;
   /** The laboratory's acceptance thresholds, for the entry check. */
   thresholds: ReceptionThresholds;
@@ -114,9 +135,27 @@ function limitCells(criterion: CriterionRef): { m: string; bigM: string } {
   };
 }
 
-export function ProgrammeSheet({ sample, programme, referential, thresholds, role, verbSample }: ProgrammeSheetProps) {
+export function ProgrammeSheet({
+  sample,
+  programme,
+  referential: initialReferential,
+  thresholds,
+  role,
+  verbSample,
+}: ProgrammeSheetProps) {
   const router = useRouter();
-  const [draft, setDraft] = useState<ProgrammeDraft>(() => initialDraft(programme, referential));
+  const [referential, setReferential] = useState<ProgrammeReferentialData>(initialReferential);
+  const [draft, setDraft] = useState<ProgrammeDraft>(() => initialDraft(programme, initialReferential));
+  // The nature the sample carries in the database — the draft's may differ until the save.
+  const [savedNatureId, setSavedNatureId] = useState(programme.natureId);
+  // The nature being loaded, shown in the select while its referential travels.
+  const [pendingNature, setPendingNature] = useState<string | null>(null);
+  const natureRequest = useRef(0);
+  // The latest committed draft, for a referential that arrives after the user kept typing.
+  const draftRef = useRef(draft);
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
   const [saved, setSaved] = useState<SavedState>({
     status: sample.status,
     analysisBlocked: sample.analysisBlocked,
@@ -137,6 +176,11 @@ export function ProgrammeSheet({ sample, programme, referential, thresholds, rol
   const type = typeOf(referential, draft.productTypeId);
   const criteria = useMemo(() => criteriaOf(type), [type]);
   const families = useMemo(() => parameterFamilies(referential, sample.nature.family), [referential, sample.nature.family]);
+  const groups = useMemo(() => groupParameters(referential, sample.nature.family), [referential, sample.nature.family]);
+  const natures = natureChoices(referential, sample.nature.family);
+  const draftNature = referential.natures.find((nature) => nature.id === draft.natureId) ?? null;
+  const natureChanged = draft.natureId !== savedNatureId;
+  const familyLabel = ANALYSIS_FAMILY_LABELS[sample.nature.family].toLowerCase();
   const programmed = draft.parameterIds.flatMap((id) => {
     const parameter = referential.parameters.find((candidate) => candidate.id === id);
     return parameter ? [parameter] : [];
@@ -157,8 +201,21 @@ export function ProgrammeSheet({ sample, programme, referential, thresholds, rol
     setDraft((current) => ({ ...current, ...changes }));
   }
 
-  function adopt(data: ProgrammeResponse) {
-    setDraft(initialDraft(data.programme, referential));
+  /**
+   * The server's answer becomes the sheet: the stored programme, and the
+   * nature it now carries (the « actuelle » flag of the natures follows).
+   */
+  function adopt(data: ProgrammeResponse, nextReferential: ProgrammeReferentialData = referential) {
+    const natureId = data.programme.natureId ?? data.sample.natureId;
+    const marked = {
+      ...nextReferential,
+      natures: nextReferential.natures.map((nature) => ({ ...nature, current: nature.id === natureId })),
+    };
+    setReferential(marked);
+    setSavedNatureId(natureId);
+    setPendingNature(null);
+    natureRequest.current += 1;
+    setDraft(initialDraft(data.programme, marked));
     setSaved({
       status: data.sample.status,
       analysisBlocked: data.sample.analysisBlocked,
@@ -169,9 +226,10 @@ export function ProgrammeSheet({ sample, programme, referential, thresholds, rol
   }
 
   /**
-   * After a correction verb (fiche corrected, line cancelled or reactivated)
-   * the line changed under the sheet: the header is the server's, the sheet
-   * re-reads its programme so the analyses, the units and the status follow.
+   * After a correction verb (fiche corrected, sample cancelled or reactivated)
+   * the sample changed under the sheet: the header is the server's, the sheet
+   * re-reads its programme — and the referential of its nature — so the
+   * analyses, the units and the status follow.
    */
   async function reload() {
     router.refresh();
@@ -179,17 +237,53 @@ export function ProgrammeSheet({ sample, programme, referential, thresholds, rol
     setNotice("");
     try {
       const response = await fetch(`/api/samples/${sample.id}/programme`);
-      const data = (await response.json().catch(() => ({}))) as Partial<ProgrammeResponse>;
+      const data = (await response.json().catch(() => ({}))) as Partial<ProgrammeReadResponse>;
       if (!response.ok || !data.sample || !data.programme) return;
-      adopt(data as ProgrammeResponse);
+      adopt(data as ProgrammeResponse, data.referential ?? referential);
       setNotice("Fiche mise à jour.");
     } catch {
       // The server part of the page was refreshed anyway; the next save re-checks everything.
     }
   }
 
+  /**
+   * Another nature of the same family (Q49): its referential replaces the one
+   * on screen, the analyses it does not offer leave the draft. The sample
+   * itself only changes when the programme is saved.
+   */
+  async function changeNature(natureId: string) {
+    if (readOnly || busy || !natureId || natureId === (pendingNature ?? draft.natureId)) return;
+    const ticket = ++natureRequest.current;
+    setError("");
+    setNotice("");
+    setPendingNature(natureId);
+    try {
+      const response = await fetch(`/api/samples/${sample.id}/programme?natureId=${encodeURIComponent(natureId)}`);
+      const data = (await response.json().catch(() => ({}))) as Partial<ProgrammeReadResponse> & { error?: string };
+      if (ticket !== natureRequest.current) return;
+      if (!response.ok || !data.referential) {
+        setError(data.error ?? "Impossible de charger les analyses de cette nature. Réessayez.");
+        return;
+      }
+      const next: ProgrammeReferentialData = {
+        ...data.referential,
+        // The « actuelle » flag is the stored nature's, whatever the route computed it for.
+        natures: data.referential.natures.map((nature) => ({ ...nature, current: nature.id === savedNatureId })),
+      };
+      const result = adoptReferential(draftRef.current, referential, next);
+      setReferential(next);
+      setDraft(result.draft);
+      const label = next.natures.find((nature) => nature.id === next.natureId)?.label ?? "choisie";
+      setNotice(natureChangeNotice(label, result.dropped, next.natureId === savedNatureId));
+    } catch {
+      if (ticket === natureRequest.current) setError("Une erreur réseau est survenue. Réessayez.");
+    } finally {
+      if (ticket === natureRequest.current) setPendingNature(null);
+    }
+  }
+
   async function save(confirm: boolean) {
-    if (busy || readOnly) return;
+    if (busy || readOnly || pendingNature) return;
     setError("");
     setNotice("");
     if ((confirm || confirmed) && draft.parameterIds.length === 0) {
@@ -220,12 +314,16 @@ export function ProgrammeSheet({ sample, programme, referential, thresholds, rol
         return;
       }
       adopt(data as ProgrammeResponse);
+      const natureNote =
+        data.programme.natureId && data.programme.natureId !== savedNatureId
+          ? ` Nature d'analyse : ${data.sample.nature.label}.`
+          : "";
       setNotice(
-        confirm && data.sample.status === "PROGRAMME"
-          ? "Programme confirmé : la ligne est prête pour la paillasse."
+        (confirm && data.sample.status === "PROGRAMME"
+          ? "Programme confirmé : l'échantillon est prêt pour la paillasse."
           : confirmed
             ? "Modifications du programme enregistrées."
-            : "Brouillon enregistré — la ligne reste « Reçu » jusqu'à la confirmation."
+            : "Brouillon enregistré — l'échantillon reste « Reçu » jusqu'à la confirmation.") + natureNote
       );
       // The header (status, « confirmé le … par … ») is the server's: refresh it.
       router.refresh();
@@ -239,13 +337,13 @@ export function ProgrammeSheet({ sample, programme, referential, thresholds, rol
   const readOnlyReason = (() => {
     if (!readOnly) return null;
     if (saved.status === "PRELEVE") {
-      return "Cette ligne n'est pas encore réceptionnée : le programme se décide après la réception.";
+      return "Cet échantillon n'est pas encore réceptionné : le programme se décide après la réception.";
     }
     if (saved.status === "ANNULE") {
-      return `Ligne annulée${sample.cancelReason ? ` (${CANCEL_REASON_LABELS[sample.cancelReason]})` : ""} : seul un administrateur peut la réactiver.`;
+      return `Échantillon annulé${sample.cancelReason ? ` (${CANCEL_REASON_LABELS[sample.cancelReason]})` : ""} : seul un administrateur peut le réactiver.`;
     }
     if (saved.analysisBlocked) {
-      return "Ligne bloquée en réception : un administrateur doit la libérer avant la programmation.";
+      return "Échantillon bloqué en réception : un administrateur doit le libérer avant la programmation.";
     }
     return "Fiche en lecture seule : la paillasse a commencé. Les changements passent désormais par « Corriger la fiche », avec un motif.";
   })();
@@ -269,14 +367,55 @@ export function ProgrammeSheet({ sample, programme, referential, thresholds, rol
         </p>
       )}
 
-      {/* 1 — Type de produit et critères */}
+      {/* 1 — Nature, type de produit et critères */}
       <Card className="p-4 sm:p-6">
         <SectionTitle
           index={1}
           icon={Package}
-          title="Type de produit et critères"
+          title="Nature, type de produit et critères"
           hint="Le type apporte les critères d'interprétation (n, c, m, M par germe) ; ses germes s'ajoutent aux analyses et son n est proposé. « — aucun — » laisse la lecture simple."
         />
+        <div className="mb-5">
+          <label htmlFor="programme-nature" className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+            <Layers className="h-4 w-4 text-brand" aria-hidden="true" />
+            Nature d&apos;analyse
+          </label>
+          <select
+            id="programme-nature"
+            value={pendingNature ?? draft.natureId}
+            onChange={(e) => changeNature(e.target.value)}
+            disabled={readOnly || !!busy || !!pendingNature || natures.length < 2}
+            aria-describedby="programme-nature-hint"
+            className="input-field px-4 disabled:bg-slate-50"
+          >
+            {/* A nature missing from the referential still names itself. */}
+            {!natures.some((nature) => nature.id === draft.natureId) && (
+              <option value={draft.natureId}>{draftNature?.label ?? sample.nature.label}</option>
+            )}
+            {natures.map((nature) => (
+              <option key={nature.id} value={nature.id}>
+                {`${nature.label}${nature.id === savedNatureId ? " — actuelle" : ""}${nature.active ? "" : " (archivée)"}`}
+              </option>
+            ))}
+          </select>
+          <p id="programme-nature-hint" className="mt-1 text-xs text-slate-500">
+            {pendingNature
+              ? "Chargement des analyses de cette nature…"
+              : readOnly
+                ? `Famille : ${familyLabel}.`
+                : natures.length < 2
+                ? `Aucune autre nature active dans la même famille (${familyLabel}).`
+                : `Dans la même famille (${familyLabel}) : l'autre famille fait l'objet d'un autre échantillon. Changer de nature recharge les analyses, les profils et les prix ; la nature change à l'enregistrement du programme.`}
+          </p>
+          {natureChanged && !readOnly && (
+            <p className="mt-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>
+                Nature modifiée ({draftNature?.label ?? "nouvelle nature"}) : enregistrez le programme pour l&apos;appliquer à l&apos;échantillon.
+              </span>
+            </p>
+          )}
+        </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
@@ -324,7 +463,7 @@ export function ProgrammeSheet({ sample, programme, referential, thresholds, rol
           <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <span>
-              Le type « {lostType.name} » enregistré sur la ligne n&apos;est plus proposé à ce client : choisissez-en un autre, ou laissez « — aucun — ».
+              Le type « {lostType.name} » enregistré sur l&apos;échantillon n&apos;est plus proposé à ce client : choisissez-en un autre, ou laissez « — aucun — ».
             </span>
           </p>
         )}
@@ -415,30 +554,55 @@ export function ProgrammeSheet({ sample, programme, referential, thresholds, rol
           {referential.parameters.length === 0 ? (
             <p className="text-sm text-slate-500">Aucun paramètre n&apos;est défini pour cette nature : l&apos;administrateur doit en créer avant la programmation.</p>
           ) : (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {referential.parameters.map((parameter) => {
-                const checked = draft.parameterIds.includes(parameter.id);
+            <div className="space-y-4">
+              {groups.map((group) => {
+                const ticked = group.parameters.filter((parameter) => draft.parameterIds.includes(parameter.id)).length;
                 return (
-                  <label
-                    key={parameter.id}
-                    className={`flex min-h-[44px] items-center gap-3 rounded-xl border px-3.5 py-2.5 text-sm transition-all ${
-                      readOnly ? "cursor-default" : "cursor-pointer"
-                    } ${checked ? "border-brand/40 bg-brand-light/60 shadow-sm ring-1 ring-brand/10" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => setDraft((current) => toggleParameter(current, parameter.id, referential))}
-                      disabled={readOnly}
-                      className="accent-brand h-4 w-4"
-                    />
-                    <span className="min-w-0 flex-1">
-                      {parameter.name}
-                      {parameter.unit && <span className="ml-1.5 text-xs text-slate-400">{parameter.unit}</span>}
-                    </span>
-                  </label>
+                  <div key={group.family} role="group" aria-label={group.label}>
+                    <p className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      {group.label}
+                      <span className="font-normal normal-case tracking-normal text-slate-400">
+                        {ticked} sur {group.parameters.length}
+                      </span>
+                      {group.foreign && (
+                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold normal-case tracking-normal text-amber-700 ring-1 ring-amber-200">
+                          autre famille que l&apos;échantillon
+                        </span>
+                      )}
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {group.parameters.map((parameter) => {
+                        const checked = draft.parameterIds.includes(parameter.id);
+                        return (
+                          <label
+                            key={parameter.id}
+                            className={`flex min-h-[44px] items-center gap-3 rounded-xl border px-3.5 py-2.5 text-sm transition-all ${
+                              readOnly ? "cursor-default" : "cursor-pointer"
+                            } ${checked ? "border-brand/40 bg-brand-light/60 shadow-sm ring-1 ring-brand/10" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => setDraft((current) => toggleParameter(current, parameter.id, referential))}
+                              disabled={readOnly || !!pendingNature}
+                              className="accent-brand h-4 w-4"
+                            />
+                            <span className="min-w-0 flex-1">
+                              {parameter.name}
+                              {parameter.unit && <span className="ml-1.5 text-xs text-slate-400">{parameter.unit}</span>}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
+              {groups.some((group) => group.foreign) && (
+                <p className="text-xs text-slate-500">
+                  Une analyse d&apos;une autre famille se programme d&apos;ordinaire sur l&apos;autre échantillon du même numéro (« …M » / « …P »).
+                </p>
+              )}
             </div>
           )}
         </fieldset>
@@ -620,7 +784,7 @@ export function ProgrammeSheet({ sample, programme, referential, thresholds, rol
           index={5}
           icon={Users}
           title="Organisation"
-          hint="Le technicien par défaut lit toute la ligne ; une analyse peut être confiée à un autre. Priorité, délai de rendu promis et consignes."
+          hint="Le technicien par défaut lit tout l'échantillon ; une analyse peut être confiée à un autre. Priorité, délai de rendu promis et consignes."
         />
         {referential.technicians.length === 0 && (
           <p className="mb-3 text-sm text-amber-700">Aucun technicien actif : l&apos;administrateur doit créer un compte technicien avant l&apos;attribution.</p>
@@ -802,7 +966,7 @@ export function ProgrammeSheet({ sample, programme, referential, thresholds, rol
         />
         <Checklist checks={checks} />
         <p className="mt-3 text-xs text-slate-500">
-          La réception a déjà accepté cette ligne : ces rappels n&apos;empêchent pas la confirmation. Une identification à corriger ou une ligne à annuler passe par les verbes ci-dessous.
+          La réception a déjà accepté cet échantillon : ces rappels n&apos;empêchent pas la confirmation. Une identification à corriger ou un échantillon à annuler passe par les verbes ci-dessous.
         </p>
         <div className="mt-3">
           {verbSample ? (
@@ -877,6 +1041,7 @@ export function ProgrammeSheet({ sample, programme, referential, thresholds, rol
           {type ? ` · ${type.name}` : " · sans type"}
           {defaultTechnician ? ` · ${defaultTechnician.name}` : " · technicien à attribuer"}
           {draft.priority === "URGENTE" ? " · urgente" : ""}
+          {natureChanged && draftNature ? ` · nature : ${draftNature.label} (à enregistrer)` : ""}
         </p>
         {error && (
           <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>
@@ -891,18 +1056,18 @@ export function ProgrammeSheet({ sample, programme, referential, thresholds, rol
           </p>
         ) : confirmed ? (
           <div className="mt-4 flex flex-col gap-3 sm:flex-row-reverse">
-            <PrimaryButton type="button" onClick={() => save(false)} disabled={!!busy} className="sm:flex-1">
+            <PrimaryButton type="button" onClick={() => save(false)} disabled={!!busy || !!pendingNature} className="sm:flex-1">
               <Save className="h-4 w-4" aria-hidden="true" />
               {busy === "draft" ? "Enregistrement…" : "Enregistrer les modifications"}
             </PrimaryButton>
           </div>
         ) : (
           <div className="mt-4 flex flex-col gap-3 sm:flex-row-reverse">
-            <PrimaryButton type="button" onClick={() => save(true)} disabled={!!busy} className="sm:flex-1">
+            <PrimaryButton type="button" onClick={() => save(true)} disabled={!!busy || !!pendingNature} className="sm:flex-1">
               <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
               {busy === "confirm" ? "Confirmation…" : "Confirmer le programme"}
             </PrimaryButton>
-            <SecondaryButton type="button" onClick={() => save(false)} disabled={!!busy} className="sm:flex-1">
+            <SecondaryButton type="button" onClick={() => save(false)} disabled={!!busy || !!pendingNature} className="sm:flex-1">
               <Save className="h-4 w-4" aria-hidden="true" />
               {busy === "draft" ? "Enregistrement…" : "Enregistrer le brouillon"}
             </SecondaryButton>
@@ -910,7 +1075,7 @@ export function ProgrammeSheet({ sample, programme, referential, thresholds, rol
         )}
         {!readOnly && !confirmed && (
           <p className="mt-2 text-xs text-slate-500">
-            Le brouillon laisse la ligne « Reçu » ; la confirmation la passe à « Programmé » et ouvre la paillasse et la facturation.
+            Le brouillon laisse l&apos;échantillon « Reçu » ; la confirmation le passe à « Programmé » et ouvre la paillasse et la facturation.
           </p>
         )}
       </Card>

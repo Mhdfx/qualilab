@@ -10,13 +10,18 @@ import { notifyDestroyed } from "@/lib/destruction-notice";
 /**
  * Reception of a série in one go — WORKFLOW.md rule 4.
  *
- * One button, one transaction: every line still `PRELEVE` gets its
+ * One button, one transaction: every sample still `PRELEVE` gets its
  * N° de contrôle (yearly counter, locked), its temperature, quantity,
  * conformity with a coded motif and its technician; the série records who
- * received it and when. A non-conform line the réceptionniste destroys is
+ * received it and when. A non-conform sample the réceptionniste destroys is
  * received and numbered too (it prints on the bon de réception), then
- * cancelled in the same transaction with the motif DETRUIT_A_RECEPTION. Either every line is received or none is — two
- * réceptionnistes on the same série cannot half-number it (P2025 → 409).
+ * cancelled in the same transaction with the motif DETRUIT_A_RECEPTION.
+ * Either every sample is received or none is — two réceptionnistes on the
+ * same série cannot half-number it (P2025 → 409).
+ *
+ * The two samples of a two-family line (« 2M », « 2P » — RETOUR-LABO-06-10.md
+ * §5, V3) are received like any other, each with its own N° de contrôle,
+ * microbiology first.
  */
 export async function POST(
   request: Request,
@@ -38,6 +43,7 @@ export async function POST(
       samples: {
         select: {
           id: true,
+          code: true,
           lineNumber: true,
           status: true,
           lineKind: true,
@@ -48,7 +54,7 @@ export async function POST(
           nature: { select: { family: true } },
           parameters: { select: { parameter: { select: { name: true } } } },
         },
-        orderBy: { lineNumber: "asc" },
+        orderBy: [{ lineNumber: "asc" }, { code: "asc" }],
       },
     },
   });
@@ -70,6 +76,7 @@ export async function POST(
   const settings = await getLabSettings();
   const candidates: ReceptionCandidate[] = serie.samples.map((s) => ({
     id: s.id,
+    code: s.code,
     lineNumber: s.lineNumber,
     status: s.status,
     lineKind: s.lineKind,
@@ -82,11 +89,11 @@ export async function POST(
   }));
 
   // The old global switch (blockNonConformAtReception) is retired: each
-  // non-conform line is analysed or destroyed, case by case (slice E).
+  // non-conform sample is analysed or destroyed, case by case (slice E).
   const validation = validateReception(body, candidates, settings);
   if (!validation.ok) {
     return NextResponse.json(
-      { error: validation.error, lineNumber: validation.lineNumber ?? null },
+      { error: validation.error, lineNumber: validation.lineNumber ?? null, ref: validation.ref ?? null },
       { status: 400 }
     );
   }
@@ -154,6 +161,8 @@ export async function POST(
                 analysisBlocked: true,
                 produit: true,
                 surfaceLabel: true,
+                surfaceState: true,
+                airMethod: true,
                 personName: true,
                 nature: { select: { label: true } },
                 technician: { select: { id: true, name: true } },
@@ -198,6 +207,7 @@ export async function POST(
             controlCode: rows[index].controlCode,
             serialNumber: serie.serialNumber,
             lineNumber: line.lineNumber,
+            ref: line.ref,
             conformity: line.conformity,
             conformityReason: line.conformityReason,
             conformityNote: line.conformityNote,
@@ -211,7 +221,7 @@ export async function POST(
           },
         })
       ),
-      // A destroyed line is a cancellation like any other: its own entry.
+      // A destroyed sample is a cancellation like any other: its own entry.
       ...input.lines
         .filter((line) => line.destroy)
         .map((line) =>
@@ -240,14 +250,14 @@ export async function POST(
           serialNumber: serie.serialNumber,
           lines: rows.length,
           controlCodes: rows.map((r) => r.controlCode),
-          destroyed: input.lines.filter((l) => l.destroy).map((l) => l.lineNumber),
+          destroyed: input.lines.filter((l) => l.destroy).map((l) => l.ref),
           arrivedAt: input.arrivedAt,
           coolerTemperature: input.coolerTemperature,
         },
       }),
     ]);
 
-    // The client is told about the destroyed lines (Q35) — never at the
+    // The client is told about the destroyed samples (Q35) — never at the
     // cost of the reception itself.
     const destruction = await notifyDestroyed(
       input.lines.filter((line) => line.destroy).map((line) => line.sampleId),
@@ -264,10 +274,10 @@ export async function POST(
     });
   } catch (error) {
     const code = (error as { code?: string }).code;
-    // P2025: a line left PRELEVE between our check and the write.
+    // P2025: a sample left PRELEVE between our check and the write.
     if (code === "P2025") {
       return NextResponse.json(
-        { error: "Une ligne vient d'être réceptionnée par quelqu'un d'autre — rechargez la série." },
+        { error: "Un échantillon vient d'être réceptionné par quelqu'un d'autre — rechargez la série." },
         { status: 409 }
       );
     }

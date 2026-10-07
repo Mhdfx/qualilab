@@ -484,14 +484,15 @@ réception n'attribue plus obligatoirement un technicien. La facturation peut
 la ligne n'est pas validée). Journal : `SAMPLE_PROGRAMMED`,
 `SAMPLE_PROGRAMME_UPDATED`. Recette : TESTPLAN T.
 
-## 17. Retours du laboratoire des 05, 06 et 07/10 — planifiés (`RETOUR-LABO-06-10.md`)
+## 17. Retours du laboratoire des 05, 06 et 07/10 — construits le 07/10 (`RETOUR-LABO-06-10.md` §5)
 
-Ce que le circuit va changer, tranche par tranche (rien n'est encore
-construit) :
+Ce que le circuit change, tranche par tranche — construit le 07/10 avec les
+choix par défaut de §5, à déployer puis à recetter en production
+(TESTPLAN V) :
 
 - **En-tête (V1).** Le cadre n'est plus déduit de « qui prélève » : le
-  préleveur choisit **Autre** (avec un texte), **Devis validé**, **BC** ou
-  **Convention** ; « Autocontrôle » et « Contrôle officiel » disparaissent.
+  préleveur choisit **Autre** (précision facultative), **Devis validé**,
+  **BC** ou **Convention**, aucun présélectionné ; « Autocontrôle » et « Contrôle officiel » disparaissent.
   « Service vétérinaire » quitte « Prélèvement effectué par » (visite et
   dépôt) ; « N° de factures » devient « Référence client ».
 - **Vocabulaire (V2).** Partout où l'écran dit « Ligne N » d'une série, il
@@ -503,11 +504,14 @@ construit) :
 - **Familles (V3).** Chaque échantillon coche « Analyses
   microbiologiques » et / ou « Analyses physico-chimiques » ; la nature est
   déduite du type × famille ; les deux cochées donnent deux échantillons
-  (deux N° de contrôle), comme dans l'ancien logiciel.
+  « …M » et « …P » sous le même numéro (deux N° de contrôle), comme dans
+  l'ancien logiciel ; la nature fine se change sur la fiche de programme,
+  dans la même famille.
 - **Air (V4).** Une ligne Air porte sa méthode : boîte exposée 30 min ou
   biocollecteur.
 - **Sites (V5).** Les sites des chaînes de restauration et de collectivités
-  sont des sites du client, plus des clients séparés ; le rapport imprime
-  « Client — Site ».
+  sont des sites du client, plus des clients séparés (import « Sites de
+  l'ancien logiciel » dans `/admin/import`) ; le rapport et l'objet de
+  l'e-mail impriment « Client — Site » ; la recherche filtre par site.
 - **Analyses (V6).** Le préleveur peut ne cocher aucune analyse ni type de
   produit : la fiche de programme les fixe.

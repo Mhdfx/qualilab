@@ -29,7 +29,7 @@ export default async function ProductTypesPage() {
       <PageHeader
         badge="Configuration"
         title="Types de produits & critères"
-        subtitle="Le catalogue des produits analysés et, pour chacun, les critères d'interprétation (n, c, m, M) par germe et par version de norme. Une ligne de prélèvement choisit son type ; le rapport en tire ses verdicts."
+        subtitle="Le catalogue des produits analysés et, pour chacun, les critères d'interprétation (n, c, m, M) par germe et par version de norme. Un échantillon reçoit son type (au dépôt ou sur la fiche de programme) ; le rapport en tire ses verdicts."
       />
       <ProductTypesManager
         clients={clients}

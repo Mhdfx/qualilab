@@ -15,15 +15,18 @@ import { repetitionLabel } from "./series";
  * A sample taken on several units gets one cell per repetition (R1 … Rn) and
  * the criterion of its product type, exactly as the bench screen shows them.
  * Samples are identified by their blind serial number, which is what appears
- * on the tube.
+ * on the tube; the two samples of a two-family échantillon (« 1M » / « 1P »)
+ * are two blocks, each under its own N° de contrôle.
  */
 
 export type BenchSheetSample = {
-  /** N° de contrôle once received, série line before that. */
+  /** N° de contrôle once received, the échantillon's code before that. */
   reference: string;
   serieNumber: string;
   type: SampleType;
-  produit: string | null;
+  /** As `sampleDesignation` prints it: « Planche verte — surface nettoyée »,
+   *  « Salle — Boîte exposée 30 min ». */
+  designation: string | null;
   numeroLot: string | null;
   clientName: string;
   technicianName: string | null;
@@ -62,7 +65,7 @@ export function buildBenchSheetHtml(
         </div>
         <div class="meta">
           Série ${escapeHtml(sample.serieNumber)} · ${show(sample.clientName)}
-          ${sample.produit ? ` · ${escapeHtml(sample.produit)}` : ""}
+          ${sample.designation ? ` · ${escapeHtml(sample.designation)}` : ""}
           ${sample.numeroLot ? ` · lot ${escapeHtml(sample.numeroLot)}` : ""}
           ${sample.technicianName ? ` · ${escapeHtml(sample.technicianName)}` : ""}
         </div>

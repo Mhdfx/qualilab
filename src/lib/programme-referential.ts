@@ -1,8 +1,9 @@
 import "server-only";
-import type { SampleType } from "@/generated/prisma/enums";
+import type { Family, SampleType } from "@/generated/prisma/enums";
 import { prisma } from "./prisma";
 import { buildCatalogueIndex, catalogueKey, type CatalogueEntry } from "./billing";
 import { toMoney } from "./money";
+import type { ProgrammeNatureRef } from "./programme-input";
 import { PROGRAMMABLE_STATUSES } from "./sample-status";
 
 /**
@@ -12,6 +13,12 @@ import { PROGRAMMABLE_STATUSES } from "./sample-status";
  * of the nature's category, the profiles, the active technicians, the norm
  * versions of each parameter, the catalogue prices. Shared by GET and PUT
  * so the rules are checked against exactly what the screen was offered.
+ *
+ * RETOUR-LABO-06-10.md §5 (V3, Q49 by default): the fiche may change the
+ * line's nature to another active nature of the same family; the
+ * referential then lists those natures and can be computed for any of them
+ * (its parameters, profiles and prices follow the nature's category). Each
+ * parameter carries its family (`AnalysisParameter.family`).
  */
 
 export const PROGRAMME_SAMPLE_SELECT = {
@@ -26,7 +33,7 @@ export const PROGRAMME_SAMPLE_SELECT = {
   client: { select: { id: true, name: true } },
   serie: { select: { id: true, serialNumber: true, kind: true, receivedAt: true } },
   natureId: true,
-  nature: { select: { id: true, code: true, label: true, family: true } },
+  nature: { select: { id: true, code: true, label: true, family: true, legacyType: true, active: true } },
   produit: true,
   numeroLot: true,
   lieu: true,
@@ -58,7 +65,7 @@ export const PROGRAMME_SAMPLE_SELECT = {
       normVersionId: true,
       dilutionFactor: true,
       note: true,
-      parameter: { select: { id: true, name: true, unit: true, calcFactor: true } },
+      parameter: { select: { id: true, name: true, unit: true, calcFactor: true, family: true, category: true } },
       technician: { select: { id: true, name: true } },
       normVersion: { select: { id: true, label: true, current: true } },
     },
@@ -78,6 +85,8 @@ const num = (value: Numeric) => (value === null || value === undefined ? null : 
 /** The programme as the fiche edits it — also the audit's before/after. */
 export function programmeOf(sample: ProgrammeSampleRow) {
   return {
+    /** The nature the programme was decided for — changeable within its family (Q49). */
+    natureId: sample.natureId,
     productTypeId: sample.productTypeId,
     parameterIds: sample.parameters.map((p) => p.parameterId),
     unitCount: sample.unitCount,
@@ -108,6 +117,8 @@ export function serializeProgramme(sample: ProgrammeSampleRow) {
         name: p.parameter.name,
         unit: p.parameter.unit,
         calcFactor: p.parameter.calcFactor,
+        family: p.parameter.family,
+        category: p.parameter.category,
         technicianId: p.technicianId,
         technician: p.technician,
         normVersionId: p.normVersionId,
@@ -124,6 +135,32 @@ export function serializeProgramme(sample: ProgrammeSampleRow) {
       editable: PROGRAMMABLE_STATUSES.includes(sample.status) && !sample.analysisBlocked,
     },
   };
+}
+
+/** A nature the fiche may give the line (`current` = the one it has). */
+export type ProgrammeNatureOption = ProgrammeNatureRef & { code: string; current: boolean };
+
+/**
+ * The natures the programme may name for this line: the active natures of
+ * its family, its current nature (even archived — it stays readable) and,
+ * for a PUT, the one the request names (so a refusal can say why).
+ */
+export async function loadProgrammeNatures(
+  sample: { natureId: string; nature: { family: Family } },
+  requestedId?: string | null
+): Promise<ProgrammeNatureOption[]> {
+  const ids = [sample.natureId, ...(requestedId ? [requestedId] : [])];
+  const rows = await prisma.analysisNature.findMany({
+    where: { OR: [{ active: true, family: sample.nature.family }, { id: { in: ids } }] },
+    select: { id: true, code: true, label: true, family: true, legacyType: true, active: true },
+    orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
+  });
+  return rows.map((row) => ({ ...row, current: row.id === sample.natureId }));
+}
+
+/** The natures the fiche offers: the current one and the active ones of its family. */
+export function selectableNatures(natures: readonly ProgrammeNatureOption[], family: Family) {
+  return natures.filter((nature) => nature.current || (nature.active && nature.family === family));
 }
 
 export type NormVersionOption = {
@@ -194,13 +231,36 @@ export async function normVersionsForParameters(
   return result;
 }
 
-/** The referential of the fiche (PROGRAMME.md §5, GET). */
-export async function loadProgrammeReferential(sample: {
-  clientId: string;
-  type: SampleType;
-  natureId: string;
-  parameters: { parameterId: string; normVersionId: string | null }[];
-}) {
+/**
+ * The referential of the fiche (PROGRAMME.md §5, GET), computed for the
+ * line's nature or — `options.natureId` — for another nature the fiche may
+ * give it (Q49): the parameters, profiles and prices then follow that
+ * nature's category. A nature the line may not take falls back to the
+ * current one; the GET route refuses it before calling this.
+ */
+export async function loadProgrammeReferential(
+  sample: {
+    clientId: string;
+    type: SampleType;
+    natureId: string;
+    nature: { family: Family };
+    parameters: { parameterId: string; normVersionId: string | null }[];
+  },
+  options: { natureId?: string | null; natures?: ProgrammeNatureOption[] } = {}
+) {
+  const natures = selectableNatures(
+    options.natures ?? (await loadProgrammeNatures(sample)),
+    sample.nature.family
+  );
+  const target =
+    (options.natureId && natures.find((nature) => nature.id === options.natureId)) ||
+    natures.find((nature) => nature.current) ||
+    null;
+  // The current nature keeps the line's own category (a row typed before
+  // the natures existed); another nature brings its own.
+  const category: SampleType = target && !target.current ? target.legacyType : sample.type;
+  const natureId = target?.id ?? sample.natureId;
+
   const [productTypes, parameters, profiles, technicians, services] = await Promise.all([
     prisma.productType.findMany({
       where: { active: true, OR: [{ clientId: null }, { clientId: sample.clientId }] },
@@ -229,12 +289,12 @@ export async function loadProgrammeReferential(sample: {
       orderBy: [{ clientId: "desc" }, { name: "asc" }],
     }),
     prisma.analysisParameter.findMany({
-      where: { category: sample.type },
-      select: { id: true, name: true, unit: true, threshold: true, calcFactor: true },
+      where: { category },
+      select: { id: true, name: true, unit: true, threshold: true, calcFactor: true, family: true, category: true },
       orderBy: { name: "asc" },
     }),
     prisma.analysisProfile.findMany({
-      where: { active: true, natureId: sample.natureId, OR: [{ clientId: null }, { clientId: sample.clientId }] },
+      where: { active: true, natureId, OR: [{ clientId: null }, { clientId: sample.clientId }] },
       select: { id: true, name: true, clientId: true, unitCount: true, parameters: { select: { parameterId: true } } },
       orderBy: [{ clientId: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
     }),
@@ -244,7 +304,7 @@ export async function loadProgrammeReferential(sample: {
       orderBy: { name: "asc" },
     }),
     prisma.labService.findMany({
-      where: { active: true, category: sample.type },
+      where: { active: true, category },
       select: { name: true, category: true, unitPrice: true, active: true },
     }),
   ]);
@@ -265,10 +325,23 @@ export async function loadProgrammeReferential(sample: {
   const index = buildCatalogueIndex(catalogue);
   const prices: Record<string, number | null> = {};
   for (const parameter of parameters) {
-    prices[parameter.id] = index.get(catalogueKey(parameter.name, sample.type))?.unitPrice ?? null;
+    prices[parameter.id] = index.get(catalogueKey(parameter.name, category))?.unitPrice ?? null;
   }
 
   return {
+    /** The nature this referential was computed for, and its category. */
+    natureId,
+    category,
+    /** The natures the fiche may give the line (the current one flagged), in the catalogue order. */
+    natures: natures.map((nature) => ({
+      id: nature.id,
+      code: nature.code,
+      label: nature.label,
+      family: nature.family,
+      legacyType: nature.legacyType,
+      active: nature.active,
+      current: nature.current,
+    })),
     productTypes: productTypes.map((type) => ({
       id: type.id,
       name: type.name,

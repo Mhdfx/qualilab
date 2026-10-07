@@ -179,10 +179,10 @@ export function LabSettingsForm({
           Règles d&apos;acceptation à la réception
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          Les sept règles du bon de réception, calculées sur chaque ligne au
+          Les sept règles du bon de réception, calculées sur chaque échantillon au
           moment de la réception. Une quantité sous le minimum ou une
-          température manquante rend la ligne non conforme ; la réception
-          décide alors, ligne par ligne, de l&apos;analyser malgré tout ou de la détruire.
+          température manquante rend l&apos;échantillon non conforme ; la réception
+          décide alors, échantillon par échantillon, de l&apos;analyser malgré tout ou de le détruire.
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">

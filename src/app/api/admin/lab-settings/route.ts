@@ -80,7 +80,7 @@ export async function PUT(request: Request) {
       .map((k) => String(k).trim())
       .filter(Boolean);
     if (kinds.some((k) => !(LINE_KINDS as readonly string[]).includes(k))) {
-      return NextResponse.json({ error: "Type de ligne inconnu dans « température obligatoire »." }, { status: 400 });
+      return NextResponse.json({ error: "Type d'échantillon inconnu dans « température obligatoire »." }, { status: 400 });
     }
     data.temperatureRequiredKinds = [...new Set(kinds)].join(",");
   }

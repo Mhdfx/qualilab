@@ -78,13 +78,35 @@ enum SerieKind {
 enum SamplerKind {
   QUALILAB
   CLIENT
+  /// Refused on a new série since RETOUR-LABO-06-10.md §5 (V1): a veterinary
+  /// sampling is entered as AUTRE + name. Kept for the old séries.
   SERVICE_VETERINAIRE
   AUTRE
 }
 
+/// The commercial frame of the série, chosen on the visit and the deposit
+/// (RETOUR-LABO-06-10.md §5, V1). Replaced AUTOCONTROLE / OFFICIEL, which were
+/// deduced from who sampled; the existing séries were moved to AUTRE.
 enum Cadre {
-  AUTOCONTROLE
-  OFFICIEL
+  AUTRE
+  DEVIS_VALIDE
+  /// Printed « BC » (bon de commande).
+  BON_COMMANDE
+  CONVENTION
+}
+
+/// « État de la surface » of a SURFACE line (RETOUR-LABO-06-10.md §5, V2),
+/// on the model of HandsState.
+enum SurfaceState {
+  ASEPTIQUE
+  EN_COURS_DE_TRAVAIL
+  NETTOYE
+}
+
+/// « Méthode de prélèvement » of an AIR line (RETOUR-LABO-06-10.md §5, V4).
+enum AirMethod {
+  BOITE_EXPOSEE_30MIN
+  BIOCOLLECTEUR
 }
 
 /// What a sample line physically is — drives the fields shown on the form.
@@ -306,6 +328,10 @@ model AnalysisParameter {
   id             String                     @id @default(cuid())
   name           String
   category       SampleType
+  /// The family the parameter belongs to (RETOUR-LABO-06-10.md §5, V3): the
+  /// analyses proposed on a line are grouped by it and each one goes to the
+  /// sample of its family. Set in /admin/parametres; MICRO for every existing row.
+  family         Family                     @default(MICRO)
   unit           String?
   /// Human-readable reference threshold shown to the technician.
   threshold      String?
@@ -377,11 +403,19 @@ model Sample {
   productTemperature   Float?
   ambientTemperature   Float?
   receptionTemperature Float?
+  /// « Désignation » of a SURFACE line (ex-« Surface prélevée »).
   surfaceLabel         String?
+  /// « Surface prélevée (cm²) » (ex-« Aire prélevée »).
   surfaceAreaCm2       Int?
+  /// « État de la surface » (RETOUR-LABO-06-10.md §5, V2): required on a new
+  /// SURFACE line, null on every other kind and on the lines entered before.
+  surfaceState         SurfaceState?
   personName           String?
   personRole           String?
   handsState           HandsState?
+  /// « Méthode de prélèvement » (RETOUR-LABO-06-10.md §5, V4): required on a
+  /// new AIR line, null on every other kind and on the lines entered before.
+  airMethod            AirMethod?
   remarks              String?        @db.Text
   /// Number of units read separately (n = 5 foods, n = 9 histamine).
   unitCount            Int            @default(1)
@@ -620,8 +654,13 @@ model Serie {
   samplerUserId      String?
   samplerUser        User?        @relation("SerieSampler", fields: [samplerUserId], references: [id])
   samplerName        String?
-  cadre              Cadre        @default(AUTOCONTROLE)
-  /// « N° de factures » on the paper: the client's own reference.
+  /// Chosen on the série, never deduced (RETOUR-LABO-06-10.md §5, V1).
+  cadre              Cadre        @default(AUTRE)
+  /// Free precision offered when the cadre is « Autre », optional; printed
+  /// « Cadre : Autre — texte ».
+  cadreNote          String?      @db.VarChar(191)
+  /// « Référence client » (ex-« N° de factures » on the paper): the client's
+  /// own reference — the N° of the BC or of the devis goes here.
   clientReference    String?
   startedAt          DateTime
   endedAt            DateTime?
@@ -633,7 +672,8 @@ model Serie {
   advanceAmount      Decimal?     @db.Decimal(12, 2)
   advanceMode        PaymentMode?
   /// The two boxes at the foot of the paper protocol, « Analyses à effectuer »
-  /// (pre-ticked from the lines' natures, editable — WORKFLOW.md §13).
+  /// (pre-ticked from the lines' natures, editable — WORKFLOW.md §13; computed
+  /// from the samples' families since RETOUR-LABO-06-10.md §5, V3).
   analysesMicro      Boolean      @default(false)
   analysesChimie     Boolean      @default(false)
   notes              String?      @db.Text

@@ -4,7 +4,7 @@
 > "where do I change X" map. Read after `AGENTS.md`. **Keep this current** — it
 > is what lets any AI on any platform continue without archaeology.
 >
-> Last updated: **2026-09-13** · Branch: `master` · Remote:
+> Last updated: **2026-10-07** · Branch: `master` · Remote:
 > `github.com/Mhdfx/qualilab.git`
 
 ---
@@ -36,7 +36,7 @@
 | **Phase 9 — chantier 1 : circuit série** | visite / dépôt multi-lignes, 16 natures, réception groupée, numérotation NNNN/AA + NNNNN/AA, étiquettes, profils, verbes de correction — spec **`WORKFLOW.md`** | ◀ **slices 1–5 live 2026-09-13, slice 1b (the lab's feedback of 14/09: the visit form reads like the paper) live 2026-09-14; slice 6 = recette with the lab** (série + natures + counters + « Nouvelle visite » / « Mes visites » + N° de contrôle everywhere; grouped reception with the seven acceptance rules, coded motifs, labels PDF; « Nouveau dépôt », protocole / bon PDFs with the quality cartouche, `/admin/documents`; profiles, client memory, sites, sampler kind; verbs Corriger / Annuler / Réactiver, queues by série, old routes gone); the recette with the laboratory closes the chantier (restore point `v1.0-avant-phase-9`) |
 
 | **Programme d'analyse (05/10) — live 05/10 night, TESTPLAN T** | rôle « Responsable des paramètres », statut PROGRAMME entre réception et paillasse, fiche de programme (type, analyses, nombres, méthodes, technicien par paramètre, délai, consignes), facturation dès le programme — spec **`PROGRAMME.md`** | ✅ **live 2026-10-05 night** — migration `20261006100000_programme` appliquée en production, recette TESTPLAN T (22 checks API + navigateur comme param1), un plantage de la fiche corrigé le soir même ; questions Q41–Q42 au laboratoire ; **parcours complet d'un prélèvement en production le 06/10 (TESTPLAN U, `RECETTE-06-10-PARCOURS.md`)**, réception sans technicien par défaut depuis le 06/10 |
-| **Retours du laboratoire 05/10 → 07/10 — planned, not started** | cadre Autre / Devis validé / BC / Convention, « Service vétérinaire » retiré, « Échantillon » au lieu de « Ligne », Désignation + « État de la surface », deux familles par échantillon (nature masquée), méthode de prélèvement de l'air, sites des clients repris de l'ancien logiciel (84 restaurants d'une chaîne importés comme clients), analyses et type de produit décidés par le laboratoire — spec **`RETOUR-LABO-06-10.md`** (plan unique V1 → V7, ≈ 53 h) | ⏳ **V1 et V2 (≈ 19 h) livrables sans attendre** ; V3 → V6 attendent Q45–Q52 (NEEDEDINFO) ; constats : le rapport n'imprime pas le site, aucun paramètre d'air au catalogue |
+| **Retours du laboratoire 05/10 → 07/10 — built 07/10, not deployed** | cadre Autre / Devis validé / BC / Convention (+ précision facultative), « Service vétérinaire » retiré, « Échantillon » au lieu de « Ligne », Désignation + « État de la surface », deux familles par échantillon (nature déduite, échantillons jumeaux « …M » / « …P »), méthode de prélèvement de l'air, import des sites de l'ancien logiciel + filtre par site + « Client — Site » sur le rapport et l'e-mail, analyses et type de produit décidés par le laboratoire — spec **`RETOUR-LABO-06-10.md`** §5 (décisions de construction) | ◀ **V1 → V6 construits le 07/10** (migration `20261007100000_retour_labo_v`, gates vertes en local) ; reste : déploiement (`prisma migrate deploy`), import du fichier des sites, recette **TESTPLAN V** en production, nouvelle version PG04/EN01 et PG05/EN04 dans `/admin/documents` ; hors construction : paramètres d'air et de physico-chimie au catalogue (Q50), envoi et facturation par site (Q45) |
 
 **Bottom line:** the five core phases are code-complete. The whole circuit runs
 — field intake to report, alert and invoice — and the lab configures everything
@@ -265,6 +265,18 @@ Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|E
 | The laboratory's clock (printed times, day cut-offs) | `TZ` in `docker-compose.yml` (app service) and `LAB_TIME_ZONE` in `src/lib/labels.ts` — keep them equal |
 | Which roles an admin may hand out | `ASSIGNABLE_ROLES` in `src/lib/roles.ts` (CLIENT stays out until `/portail` exists) |
 | Marking a client invoice settled | `PATCH /api/invoices/[id]/payment` (COMPTABLE, ADMIN) — the button lives in `FactureDetail` |
+| The cadre's four values, their labels, « Autre — texte » | `Cadre` enum + `CADRE_LABELS` / `CADRE_CHOICES` / `formatCadre` in `src/lib/labels.ts`; checked by `validateSerie` (`src/lib/serie-input.ts`) and `PATCH /api/series/[id]` |
+| The nature of a sample (type × family, greyed cells) | `src/lib/nature-family.ts` (pure, tested) — the form, the API and the programme sheet all read it |
+| The two samples of a two-family line (codes « …M » / « …P ») | `sampleCodeFor` / `twinFor` in `src/lib/sample-code.ts`; created by `planLineSamples` (`serie-input.ts`) + `src/lib/serie-create.ts` |
+| The sample card (families, surface state, air method, analyses by family) | `src/components/preleveur/LineEditor.tsx` + `visit-types.ts` (pure helpers, `visit-types.test.ts`) |
+| How the préleveur names saved samples (« Échantillon 1 · micro ») | `src/components/preleveur/visit-samples.ts` |
+| Reception wording, the twins' acceptance checks per family | `src/components/reception/reception-logic.ts` (tested) |
+| The fine nature of a sample (Q49) | programme sheet « Nature d'analyse »: `ProgrammeSheet.tsx` + `programme-sheet-logic.ts`; `PUT /api/samples/[id]/programme` (`natureId`) + `resolveProgrammeNature` (`src/lib/programme-input.ts`) |
+| A parameter's family | `/admin/parametres` (filter + « Famille »), `AnalysisParameter.family`, `src/lib/parameter-validation.ts`; short labels `FAMILY_SHORT_LABELS` |
+| How a sample is named on the PDFs, report, e-mails, labels, bench sheet (state, method) | `sampleDesignation` / `designationHeading` in `src/lib/document-html.ts`; twins on the protocol / bon: `protocolRows` there |
+| Legacy sites → client sites (import) | `/admin/import` « Sites de l'ancien logiciel »; `src/lib/sites-import.ts` (pure plan, tests) + `POST /api/admin/import/sites` |
+| Search / export by site | `src/lib/sample-search.ts` (`siteId`, `SIEGE`) + `src/components/recherche/ClientSiteFilter.tsx`; Excel « Site » column in `src/app/api/samples/export/route.ts` |
+| What a série's JSON carries (cadreNote, surfaceState, airMethod, twin order) | `src/lib/serie-select.ts` |
 
 ## 6. Environment variables
 
@@ -397,6 +409,15 @@ still defaulted to the first technician of the list, so every line received
 without a thought was assigned. Decision : `defaultTechnician = ""` in
 `SerieReceptionForm` and `DepositForm` — « À attribuer à la programmation ».
 Found by the end-to-end recette of 06/10 (`RECETTE-06-10-PARCOURS.md`).
+
+### 2026-10-07 — retours du laboratoire 05 → 07/10, as built (`RETOUR-LABO-06-10.md` §5)
+- One migration, `20261007100000_retour_labo_v`: the cadre ENUM is widened, every série set to `AUTRE`, then narrowed (default `AUTRE`); `Serie.cadreNote`, `Sample.surfaceState`, `Sample.airMethod` nullable; `AnalysisParameter.family` defaults to `MICRO`. Old rows stay readable (no state, no method, `SERVICE_VETERINAIRE`, a nature chosen by hand).
+- The cadre is a required choice, never deduced from who sampled; `SERVICE_VETERINAIRE` is refused at creation and only labelled for old séries.
+- A line with both families ticked becomes two samples under the same `lineNumber` (« …M » / « …P »), each with its nature, N° de contrôle, programme and report; the série's « Analyses à effectuer » boxes are computed from the lines. Older callers that still name a `natureId` keep the one-sample path.
+- On a two-family deposit line, the counter's temperature, conformity and decision apply to both samples; a blocking rule on one family makes the line non-conform (the screen suggests splitting the line).
+- The programme sheet filters analyses by category, not by family: another family's analyses are offered, grouped and badged. Enforcing the family waits until `/admin/parametres` holds the real families (all `MICRO` after the migration).
+- « Corriger la fiche » sends only the fields of the sample's kind and never empties a stored value it does not mention (it used to clear a product type set by the programme on a non-food sample, and its results with it).
+- Addresses moved by the sites import arrive with « Reçoit les rapports / alertes » unticked: `recipientsFor` ignores `ClientEmail.siteId` (sending by site = Q45). Editing the client's fiche keeps the site of an address still listed (`PATCH /api/clients/[id]`).
 
 ## 8c. A lesson written down (2026-08-25)
 

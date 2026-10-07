@@ -29,6 +29,8 @@ const LINE_COMMON = {
   personName: true,
   personRole: true,
   handsState: true,
+  surfaceState: true,
+  airMethod: true,
   remarks: true,
   unitCount: true,
   cancelReason: true,
@@ -38,6 +40,9 @@ const LINE_COMMON = {
     select: { parameter: { select: { id: true, name: true, unit: true } } },
   },
 } as const;
+
+/** Line order, then code: the twins of one line come out « …M » before « …P ». */
+const LINE_ORDER = [{ lineNumber: "asc" as const }, { code: "asc" as const }];
 
 const SERIE_COMMON = {
   id: true,
@@ -51,6 +56,7 @@ const SERIE_COMMON = {
   samplerUser: { select: { id: true, name: true } },
   samplerName: true,
   cadre: true,
+  cadreNote: true,
   clientReference: true,
   startedAt: true,
   endedAt: true,
@@ -66,7 +72,7 @@ const SERIE_COMMON = {
 
 export const SERIE_FIELD_SELECT = {
   ...SERIE_COMMON,
-  samples: { select: LINE_COMMON, orderBy: { lineNumber: "asc" as const } },
+  samples: { select: LINE_COMMON, orderBy: LINE_ORDER },
 } as const;
 
 export const SERIE_LAB_SELECT = {
@@ -82,7 +88,7 @@ export const SERIE_LAB_SELECT = {
       conformityNote: true,
       technician: { select: { id: true, name: true } },
     },
-    orderBy: { lineNumber: "asc" as const },
+    orderBy: LINE_ORDER,
   },
 } as const;
 

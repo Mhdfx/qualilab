@@ -1,4 +1,6 @@
+import type { LineKind } from "@/generated/prisma/enums";
 import { COMPANY } from "@/lib/company";
+import { designationHeading } from "@/lib/document-html";
 import { formatDate } from "@/lib/labels";
 
 /**
@@ -44,6 +46,9 @@ function escape(value: string) {
 
 export type ReportEmailInput = {
   clientName: string;
+  /** The série's site of the client: in the subject (« Client — Site ») and
+   *  the summary table — RETOUR-LABO-06-10.md §5, V5. */
+  siteName?: string | null;
   reportNumber: string;
   /** N° dossier: the série (visite or dépôt). */
   serialNumber: string;
@@ -52,7 +57,10 @@ export type ReportEmailInput = {
   receivedAt: Date | null;
   /** The analysis requested (the nature of the line). */
   analyse: string;
+  /** The designation as the report prints it (« Planche verte — surface nettoyée »). */
   produit: string | null;
+  /** Names that row: « Produit » for food and water, « Désignation » otherwise. */
+  lineKind?: LineKind | null;
   numeroLot: string | null;
   lieu: string;
   /** « Satisfaisant », « Non conforme »… */
@@ -70,17 +78,22 @@ const TD = "border:1px solid #9aa9b3;padding:6px 8px";
  * The report e-mail, with the summary table of the laboratory's model
  * (RETOUR-LABO-29-09.md, slice D): the client reads the conclusion without
  * opening the PDF.
+ *
+ * A client with several sites (the restaurants of a chain) reads which one
+ * the report is about from the subject — « Client — Site » — and the table.
  */
 export function reportEmail(input: ReportEmailInput) {
-  const subject = `Rapport d'analyse ${input.reportNumber} — ${COMPANY.name}`;
+  const site = input.siteName?.trim() || null;
+  const subject = `Rapport d'analyse ${input.reportNumber}${site ? ` — ${input.clientName} — ${site}` : ""} — ${COMPANY.name}`;
   const rows: [string, string][] = [
     ["N° dossier", input.serialNumber],
     ["N° de contrôle", input.controlCode ?? "—"],
     ["Date de prélèvement", formatDate(input.sampledAt)],
     ["Date de réception", input.receivedAt ? formatDate(input.receivedAt) : "—"],
     ["Analyse", input.analyse],
-    ["Produit", input.produit ?? "—"],
+    [designationHeading(input.lineKind), input.produit ?? "—"],
     ["N° de lot", input.numeroLot ?? "—"],
+    ...(site ? ([["Site", `${input.clientName} — ${site}`]] as [string, string][]) : []),
     ["Lieu de prélèvement", input.lieu],
   ];
 

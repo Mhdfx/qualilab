@@ -10,14 +10,15 @@ import { labReference } from "@/lib/sample-select";
 import { loadBenchPlans } from "@/lib/bench-plan";
 import { benchQueueWhereFor, canEditParameter } from "@/lib/bench-access";
 import { reportTechnicianNames } from "@/lib/report-programme";
+import { sampleDesignation } from "@/lib/document-html";
 
 /**
  * The printable bench sheet for a given day.
  *
  * `?date=YYYY-MM-DD` — defaults to today. It covers the samples currently on
  * the bench (programmed or under analysis, PROGRAMME.md §6) that were
- * received that day; a technician only gets the lines they hold or share,
- * and on a shared line only their own parameters — the sheet is theirs.
+ * received that day; a technician only gets the échantillons they hold or
+ * share, and on a shared one only their own parameters — the sheet is theirs.
  */
 export async function GET(request: Request) {
   const session = await requireApiRole("PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "ADMIN");
@@ -47,7 +48,12 @@ export async function GET(request: Request) {
       unitCount: true,
       serie: { select: { serialNumber: true } },
       type: true,
+      lineKind: true,
       produit: true,
+      surfaceLabel: true,
+      surfaceState: true,
+      personName: true,
+      airMethod: true,
       numeroLot: true,
       client: { select: { name: true } },
       technicianId: true,
@@ -61,7 +67,8 @@ export async function GET(request: Request) {
         },
       },
     },
-    orderBy: { receivedAt: "asc" },
+    // Received together, the two samples of an échantillon keep their order (« 1M », « 1P »).
+    orderBy: [{ receivedAt: "asc" }, { code: "asc" }],
   });
 
   // The same criteria as the bench screen (product type, norm in force), so
@@ -70,7 +77,7 @@ export async function GET(request: Request) {
     rows.map(async (row) => {
       const bench = await loadBenchPlans(row.id);
       const perUnit = bench.plans.size > 0 || row.unitCount > 1;
-      // My sheet carries my parameters; the other roles print the whole line.
+      // My sheet carries my parameters; the other roles print the whole échantillon.
       const lines =
         session.role === "TECHNICIEN"
           ? row.parameters.filter((line) => canEditParameter(row, line, session.id))
@@ -79,7 +86,7 @@ export async function GET(request: Request) {
         reference: labReference(row),
         serieNumber: row.serie.serialNumber,
         type: row.type,
-        produit: row.produit,
+        designation: sampleDesignation(row),
         numeroLot: row.numeroLot,
         clientName: row.client.name,
         technicianName: reportTechnicianNames(row),

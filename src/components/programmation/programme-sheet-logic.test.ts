@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_THRESHOLDS } from "@/lib/reception-rules";
 import {
+  adoptReferential,
   applyProductType,
   applyProfile,
   assignAll,
@@ -9,7 +10,10 @@ import {
   criteriaOf,
   defaultNormVersionId,
   entryChecks,
+  groupParameters,
   initialDraft,
+  natureChangeNotice,
+  natureChoices,
   parameterFamilies,
   profileApplied,
   spansFamilies,
@@ -29,6 +33,14 @@ import type { ProgrammeReferentialData, ProgrammeSampleData, ProgrammeState } fr
  */
 
 const referential: ProgrammeReferentialData = {
+  natureId: "nat",
+  category: "ALIMENTAIRE",
+  natures: [
+    { id: "nat", code: "MICRO_ALIMENTS", label: "Microbiologie des aliments", family: "MICRO", legacyType: "ALIMENTAIRE", active: true, current: true },
+    { id: "nat-fine", code: "MICRO_FINE", label: "Nature fine de test", family: "MICRO", legacyType: "AMBIANCE", active: true, current: false },
+    { id: "nat-archivee", code: "MICRO_ANCIENNE", label: "Nature archivée", family: "MICRO", legacyType: "ALIMENTAIRE", active: false, current: false },
+    { id: "nat-pc", code: "PC_ALIMENTS", label: "Physico-chimie des aliments", family: "CHIMIE", legacyType: "ALIMENTAIRE", active: true, current: false },
+  ],
   productTypes: [
     {
       id: "type-client",
@@ -64,10 +76,10 @@ const referential: ProgrammeReferentialData = {
     },
   ],
   parameters: [
-    { id: "p-ecoli", name: "E. coli", unit: "UFC/g", threshold: null, calcFactor: 1 },
-    { id: "p-hist", name: "Histamine", unit: "mg/kg", threshold: null, calcFactor: 1 },
-    { id: "p-salm", name: "Salmonelles", unit: "/25 g", threshold: null, calcFactor: 1 },
-    { id: "p-flore", name: "Flore totale", unit: "UFC/g", threshold: null, calcFactor: 1 },
+    { id: "p-ecoli", name: "E. coli", unit: "UFC/g", threshold: null, calcFactor: 1, family: "MICRO", category: "ALIMENTAIRE" },
+    { id: "p-hist", name: "Histamine", unit: "mg/kg", threshold: null, calcFactor: 1, family: "CHIMIE", category: "ALIMENTAIRE" },
+    { id: "p-salm", name: "Salmonelles", unit: "/25 g", threshold: null, calcFactor: 1, family: "MICRO", category: "ALIMENTAIRE" },
+    { id: "p-flore", name: "Flore totale", unit: "UFC/g", threshold: null, calcFactor: 1, family: "MICRO", category: "ALIMENTAIRE" },
   ],
   profiles: [
     { id: "prof-std", name: "Micro standard", clientId: null, unitCount: 5, parameterIds: ["p-ecoli", "p-salm", "p-inconnu"] },
@@ -91,7 +103,7 @@ const referential: ProgrammeReferentialData = {
 
 const sample: Pick<ProgrammeSampleData, "lineKind" | "nature" | "quantity" | "quantityUnit" | "receptionTemperature"> = {
   lineKind: "ALIMENT",
-  nature: { id: "nat", code: "MICRO_ALIMENTS", label: "Microbiologie des aliments", family: "MICRO" },
+  nature: { id: "nat", code: "MICRO_ALIMENTS", label: "Microbiologie des aliments", family: "MICRO", legacyType: "ALIMENTAIRE", active: true },
   quantity: 50,
   quantityUnit: "G",
   receptionTemperature: 4,
@@ -99,6 +111,7 @@ const sample: Pick<ProgrammeSampleData, "lineKind" | "nature" | "quantity" | "qu
 
 /** A received line as the préleveur left it: one germ ticked, no programme yet. */
 const received: ProgrammeState = {
+  natureId: "nat",
   productTypeId: null,
   parameterIds: ["p-ecoli", "p-retire"],
   unitCount: 1,
@@ -124,6 +137,7 @@ describe("initialDraft", () => {
     expect(draft.technicianId).toBe("tech1");
     expect(draft.productTypeId).toBe("");
     expect(draft.dueAt).toBe("");
+    expect(draft.natureId).toBe("nat");
   });
 
   it("reads a stored programme back as typed: dilution with a comma, wall-time due date, explicit versions", () => {
@@ -239,14 +253,29 @@ describe("profiles and analyses", () => {
 });
 
 describe("technicians", () => {
-  it("reads each parameter's family from the catalogue, the nature's for the rest", () => {
+  it("reads each parameter's own family, whatever the catalogue's types say", () => {
     const families = parameterFamilies(referential, "MICRO");
+    expect(families.get("p-ecoli")).toBe("MICRO");
+    expect(families.get("p-hist")).toBe("CHIMIE");
+    expect(families.get("p-flore")).toBe("MICRO");
+    // Set to « Autre » on /admin/parametres: it stays « Autre ».
+    const autre = { ...referential, parameters: referential.parameters.map((p) => (p.id === "p-flore" ? { ...p, family: "AUTRE" as const } : p)) };
+    expect(parameterFamilies(autre, "MICRO").get("p-flore")).toBe("AUTRE");
+  });
+
+  it("without a family on the parameter, reads it from the catalogue, the nature's for the rest", () => {
+    // A referential served before the parameters carried their family.
+    const bare = {
+      ...referential,
+      parameters: referential.parameters.map((p) => ({ id: p.id, name: p.name, unit: p.unit, threshold: p.threshold, calcFactor: p.calcFactor })),
+    } as unknown as ProgrammeReferentialData;
+    const families = parameterFamilies(bare, "MICRO");
     expect(families.get("p-ecoli")).toBe("MICRO");
     expect(families.get("p-hist")).toBe("CHIMIE");
     expect(families.get("p-flore")).toBe("MICRO");
     // A germ cited by both families follows the line.
     const ambiguous: ProgrammeReferentialData = {
-      ...referential,
+      ...bare,
       productTypes: [
         ...referential.productTypes,
         { id: "t-mix", name: "Mixte", family: "CHIMIE", clientId: null, criteria: [{ parameterId: "p-ecoli", parameterName: "E. coli", n: 5, c: null, mKind: "VALUE", m: 1, bigM: null, unit: null, normVersionId: null, normVersion: null }] },
@@ -305,6 +334,83 @@ describe("entry check and billing", () => {
   });
 });
 
+describe("analyses grouped by family (RETOUR-LABO-06-10.md §5, V3)", () => {
+  it("lists the line's own family first, flags the other, leaves out the empty groups", () => {
+    const groups = groupParameters(referential, "MICRO");
+    expect(groups.map((g) => [g.family, g.label, g.foreign, g.parameters.map((p) => p.id)])).toEqual([
+      ["MICRO", "Analyses microbiologiques", false, ["p-ecoli", "p-salm", "p-flore"]],
+      ["CHIMIE", "Analyses physico-chimiques", true, ["p-hist"]],
+    ]);
+  });
+
+  it("puts a chemistry sample's own family at the head", () => {
+    expect(groupParameters(referential, "CHIMIE").map((g) => [g.family, g.foreign])).toEqual([
+      ["CHIMIE", false],
+      ["MICRO", true],
+    ]);
+    expect(groupParameters({ ...referential, parameters: [] }, "MICRO")).toEqual([]);
+  });
+});
+
+describe("nature d'analyse (Q49 by default)", () => {
+  /** The referential the route computes for the fine nature: another category, other parameters. */
+  const fine: ProgrammeReferentialData = {
+    ...referential,
+    natureId: "nat-fine",
+    category: "AMBIANCE",
+    natures: referential.natures.map((n) => ({ ...n })),
+    parameters: [
+      { id: "p-flore", name: "Flore totale", unit: "UFC/g", threshold: null, calcFactor: 1, family: "MICRO", category: "AMBIANCE" },
+      { id: "p-levures", name: "Levures", unit: "UFC/g", threshold: null, calcFactor: 1, family: "MICRO", category: "AMBIANCE" },
+    ],
+    profiles: [],
+  };
+
+  it("offers the current nature and the active natures of its family only", () => {
+    expect(natureChoices(referential, "MICRO").map((n) => n.id)).toEqual(["nat", "nat-fine"]);
+    // The line's own nature stays offered even once archived.
+    const archived = { ...referential, natures: referential.natures.map((n) => (n.id === "nat" ? { ...n, active: false } : n)) };
+    expect(natureChoices(archived, "MICRO").map((n) => n.id)).toEqual(["nat", "nat-fine"]);
+  });
+
+  it("switching drops the analyses the new nature does not offer and keeps everything else", () => {
+    const base = updateSetting(
+      { ...applyProfile(initialDraft(received, referential), referential.profiles[0], referential), unitCount: 3, testPortion: "25 g" },
+      "p-ecoli",
+      { dilutionFactor: "10" }
+    );
+    const withFlore = toggleParameter(base, "p-flore", referential);
+    const { draft, dropped } = adoptReferential(withFlore, referential, fine);
+    expect(draft.natureId).toBe("nat-fine");
+    expect(draft.parameterIds).toEqual(["p-flore"]);
+    expect(dropped).toEqual(["E. coli", "Salmonelles"]);
+    expect(draft.unitCount).toBe(3);
+    expect(draft.testPortion).toBe("25 g");
+    // Coming back restores the nature; the settings were never lost.
+    const back = adoptReferential(draft, fine, referential);
+    expect(back.draft.natureId).toBe("nat");
+    expect(back.dropped).toEqual([]);
+    expect(toggleParameter(back.draft, "p-ecoli", referential).settings["p-ecoli"].dilutionFactor).toBe("10");
+  });
+
+  it("says which analyses were dropped and that the change waits for the save", () => {
+    expect(natureChangeNotice("Nature fine de test", [], false)).toBe(
+      "Nature « Nature fine de test » choisie. Enregistrez le programme pour l'appliquer."
+    );
+    expect(natureChangeNotice("Nature fine de test", ["E. coli"], false)).toBe(
+      "Nature « Nature fine de test » choisie : l'analyse « E. coli » n'existe pas pour cette nature et a été retirée. Enregistrez le programme pour l'appliquer."
+    );
+    expect(natureChangeNotice("Microbiologie des aliments", ["A", "B"], true)).toBe(
+      "Nature d'origine « Microbiologie des aliments » rétablie : 2 analyses n'existent pas pour cette nature et ont été retirées (« A », « B »). Enregistrez le programme pour l'appliquer."
+    );
+  });
+
+  it("sends the chosen nature with the programme", () => {
+    const { draft } = adoptReferential(initialDraft(received, referential), referential, fine);
+    expect(toRequestBody(draft, false)).toMatchObject({ natureId: "nat-fine", parameterIds: [] });
+  });
+});
+
 describe("toRequestBody", () => {
   it("sends the programme as PROGRAMME.md §5 describes it, empties as null, the due date as an instant", () => {
     const draft = updateSetting(
@@ -320,6 +426,7 @@ describe("toRequestBody", () => {
     );
     expect(toRequestBody(draft, true)).toEqual({
       confirm: true,
+      natureId: "nat",
       productTypeId: "type-catalogue",
       parameterIds: ["p-ecoli", "p-salm"],
       unitCount: 5,

@@ -9,6 +9,7 @@ import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { fmt } from "@/lib/interpretation";
 import { parseLabValue } from "@/lib/result-value";
 import { MAX_UNITS } from "@/lib/series";
+import { FAMILY_SHORT_LABELS as FAMILY_LABELS } from "@/lib/labels";
 
 type TypeHeader = { id: string; name: string; family: Family; clientId: string | null; active: boolean };
 type CriterionRow = {
@@ -41,7 +42,6 @@ type Draft = {
   active: boolean;
 };
 
-const FAMILY_LABELS: Record<Family, string> = { MICRO: "Microbiologie", CHIMIE: "Physico-chimie", AUTRE: "Autre" };
 const KIND_LABELS: Record<LimitKind, string> = { VALUE: "m et M chiffrés", ABSENCE: "Absence exigée", UNSPECIFIED: "m non spécifiée (M seule)" };
 
 /**

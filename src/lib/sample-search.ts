@@ -5,15 +5,22 @@ import { INTERPRETATION_LABELS, indicativeVerdict, nothingJudged, sampleVerdict 
  * Finding the analyses (RETOUR-LABO-29-09.md, slice F) — pure: the filters
  * read from a URL, turned into a Prisma `where`, shared by the search
  * screen, the samples API and the per-client Excel export so the three
- * always agree.
+ * always agree. The site filter (RETOUR-LABO-06-10.md §5, V5) narrows a
+ * client to one of its sampling sites — or to its « Siège », the séries
+ * recorded without a site.
  */
 
 export type SearchState = "en_cours" | "terminees" | "annulees";
 export type DateField = "reception" | "prelevement";
 
+/** The `site` value that means « Siège »: the client's séries without a site. */
+export const SIEGE = "siege";
+
 export type SampleSearch = {
   q: string | null;
   clientId: string | null;
+  /** A site id of the client, or `SIEGE`; only read when a client is chosen. */
+  siteId: string | null;
   natureId: string | null;
   state: SearchState | null;
   dateField: DateField;
@@ -40,9 +47,12 @@ export function parseSampleSearch(params: URLSearchParams): SampleSearch {
   let to = day(text("au"), true);
   // A period typed backwards is still the period the user meant.
   if (from && to && from > to) [from, to] = [day(text("au"), false), day(text("du"), true)];
+  const clientId = text("client");
   return {
     q: text("q")?.slice(0, 100) ?? null,
-    clientId: text("client"),
+    clientId,
+    // A site belongs to a client: without the client the filter means nothing.
+    siteId: clientId ? text("site") : null,
     natureId: text("nature"),
     state: state === "en_cours" || state === "terminees" || state === "annulees" ? state : null,
     dateField: text("date") === "prelevement" ? "prelevement" : "reception",
@@ -72,6 +82,7 @@ export function sampleSearchWhere(search: SampleSearch, options: { blind?: boole
           : {};
   return {
     ...(search.clientId ? { clientId: search.clientId } : {}),
+    ...(search.siteId ? { serie: { siteId: search.siteId === SIEGE ? null : search.siteId } } : {}),
     ...(search.natureId ? { natureId: search.natureId } : {}),
     ...status,
     ...range,
@@ -84,6 +95,7 @@ export function sampleSearchWhere(search: SampleSearch, options: { blind?: boole
             { numeroLot: { contains: q } },
             { lieu: { contains: q } },
             { client: { name: { contains: q } } },
+            { serie: { site: { name: { contains: q } } } },
             ...(options.blind ? [] : [{ controlCode: { contains: q } }, { serialNumber: { contains: q } }]),
           ],
         }
@@ -98,6 +110,7 @@ export function searchQueryString(search: SampleSearch, extra: Record<string, st
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   if (search.q) params.set("q", search.q);
   if (search.clientId) params.set("client", search.clientId);
+  if (search.siteId) params.set("site", search.siteId);
   if (search.natureId) params.set("nature", search.natureId);
   if (search.state) params.set("etat", search.state);
   if (search.dateField !== "reception") params.set("date", search.dateField);

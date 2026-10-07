@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateReception, type ReceptionCandidate } from "./reception-input";
+import { sampleRef, validateReception, type ReceptionCandidate } from "./reception-input";
 import { DEFAULT_THRESHOLDS } from "./reception-rules";
 
 const candidates: ReceptionCandidate[] = [
@@ -62,12 +62,17 @@ describe("validateReception", () => {
     const twice = validate({ ...good, lines: [good.lines[0], good.lines[0], good.lines[1]] });
     expect(twice).toMatchObject({ ok: false, lineNumber: 1 });
 
+    if (!twice.ok) expect(twice.error).toBe("L'échantillon 1 est envoyé deux fois.");
+
     const missing = validate({ ...good, lines: [good.lines[0]] });
-    expect(missing).toMatchObject({ ok: false, lineNumber: 2 });
-    if (!missing.ok) expect(missing.error).toContain("en une fois");
+    expect(missing).toMatchObject({
+      ok: false,
+      lineNumber: 2,
+      error: "L'échantillon 2 n'est pas renseigné — la série se réceptionne en une fois.",
+    });
 
     const stranger = validate({ ...good, lines: [...good.lines, { sampleId: "zz", conformity: true }] });
-    expect(stranger.ok).toBe(false);
+    expect(stranger).toMatchObject({ ok: false, error: "Un échantillon envoyé n'appartient pas à cette série." });
   });
 
   it("re-runs the rules: a blocked line cannot be declared conform", () => {
@@ -76,7 +81,10 @@ describe("validateReception", () => {
       lines: [{ ...good.lines[0], receptionTemperature: "" }, good.lines[1]],
     });
     expect(noTemperature).toMatchObject({ ok: false, lineNumber: 1 });
-    if (!noTemperature.ok) expect(noTemperature.error).toContain("Température à l'arrivée obligatoire");
+    if (!noTemperature.ok) {
+      expect(noTemperature.error).toContain("Échantillon 1 : Température à l'arrivée obligatoire");
+      expect(noTemperature.error).toContain("L'échantillon ne peut pas être déclaré conforme.");
+    }
 
     const declared = validate({
       ...good,
@@ -94,7 +102,7 @@ describe("validateReception", () => {
 
   it("needs a coded motif for a non-conformity, and a note when the motif is « autre »", () => {
     const noReason = validate({ ...good, lines: [{ ...good.lines[0], conformity: false }, good.lines[1]] });
-    expect(noReason).toMatchObject({ ok: false, lineNumber: 1 });
+    expect(noReason).toMatchObject({ ok: false, lineNumber: 1, error: "Échantillon 1 : choisissez le motif de non-conformité." });
 
     const other = validate({
       ...good,
@@ -137,14 +145,75 @@ describe("validateReception", () => {
     const destroyed = validate({ ...good, lines: [{ ...line, decision: "DETRUIRE", technicianId: "t1" }, good.lines[1]] });
     expect(destroyed.ok && destroyed.value.lines[0]).toMatchObject({ destroy: true, technicianId: null });
 
-    // A conform line cannot be destroyed; an unknown decision is refused.
-    expect(validate({ ...good, lines: [{ ...good.lines[0], decision: "DETRUIRE" }, good.lines[1]] })).toMatchObject({ ok: false, lineNumber: 1 });
+    // A conform sample cannot be destroyed; an unknown decision is refused.
+    expect(validate({ ...good, lines: [{ ...good.lines[0], decision: "DETRUIRE" }, good.lines[1]] })).toMatchObject({
+      ok: false,
+      lineNumber: 1,
+      error: "Échantillon 1 : seul un échantillon non conforme peut être détruit.",
+    });
     expect(validate({ ...good, lines: [{ ...line, decision: "BLOQUER" }, good.lines[1]] })).toMatchObject({ ok: false, lineNumber: 1 });
   });
 
   it("rejects implausible numbers and a quantity without unit", () => {
     expect(validate({ ...good, coolerTemperature: "500" }).ok).toBe(false);
-    expect(validate({ ...good, lines: [{ ...good.lines[0], quantity: "250", quantityUnit: "" }, good.lines[1]] })).toMatchObject({ ok: false, lineNumber: 1 });
+    expect(validate({ ...good, lines: [{ ...good.lines[0], quantity: "250", quantityUnit: "" }, good.lines[1]] })).toMatchObject({
+      ok: false,
+      lineNumber: 1,
+      error: "Échantillon 1 : précisez l'unité de la quantité.",
+    });
     expect(validate({ ...good, arrivedAt: "pas une date" }).ok).toBe(false);
+  });
+});
+
+describe("sampleRef — the sample named by its line, and its letter", () => {
+  it("reads « M » / « P » from the code of a two-family line", () => {
+    expect(sampleRef(3, "1/26-3M")).toBe("3M");
+    expect(sampleRef(3, "1/26-3P")).toBe("3P");
+    expect(sampleRef(3, "1/26-3")).toBe("3");
+    // Older codes and a code of another line keep the bare number.
+    expect(sampleRef(3, "QL-0042")).toBe("3");
+    expect(sampleRef(2, "1/26-12M")).toBe("2");
+    expect(sampleRef(4)).toBe("4");
+  });
+});
+
+describe("validateReception — the two samples of a two-family line (RETOUR-LABO-06-10 §5, V3)", () => {
+  const twins: ReceptionCandidate[] = [
+    { ...candidates[0], id: "m", code: "1/26-1M", family: "MICRO" },
+    { ...candidates[0], id: "p", code: "1/26-1P", family: "CHIMIE" },
+  ];
+  const line = { receptionTemperature: "4", quantityUnit: "G", conformity: true };
+
+  it("receives each one on its own, microbiology first, and names them by their letter", () => {
+    const result = validateReception(
+      { lines: [{ ...line, sampleId: "p", quantity: "300" }, { ...line, sampleId: "m", quantity: "100" }] },
+      twins,
+      DEFAULT_THRESHOLDS
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.lines.map((l) => [l.sampleId, l.lineNumber, l.ref])).toEqual([
+      ["m", 1, "1M"],
+      ["p", 1, "1P"],
+    ]);
+  });
+
+  it("applies each family's own minimum and names the right sample", () => {
+    // 250 g is enough for microbiology (100 g), not for physico-chemistry (300 g).
+    const short = validateReception(
+      { lines: [{ ...line, sampleId: "m", quantity: "250" }, { ...line, sampleId: "p", quantity: "250" }] },
+      twins,
+      DEFAULT_THRESHOLDS
+    );
+    expect(short).toMatchObject({ ok: false, lineNumber: 1, ref: "1P" });
+    if (!short.ok) expect(short.error).toMatch(/^Échantillon 1P : Quantité 250 g < 300 g requis\./);
+
+    const missing = validateReception({ lines: [{ ...line, sampleId: "m", quantity: "250" }] }, twins, DEFAULT_THRESHOLDS);
+    expect(missing).toMatchObject({
+      ok: false,
+      lineNumber: 1,
+      ref: "1P",
+      error: "L'échantillon 1P n'est pas renseigné — la série se réceptionne en une fois.",
+    });
   });
 });

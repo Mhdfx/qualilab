@@ -12,6 +12,9 @@ Extracts the old software's catalogue from its restored Firebird base
   clients.csv      CLIENTS — the active clients (for the client import)
   memory.csv       one row per sample since 2023: client, désignation, lieu
                    (the client memory of the designation corrector)
+  sites.csv        CLIENTS of type 102 (« Site ») with their parent
+                   (ID_HAUTE) — the « Sites de l'ancien logiciel » import
+                   (RETOUR-LABO-06-10.md §5, V5)
 
 The base runs in a Docker container (default `qlabo-fb`, Firebird 3,
 SYSDBA / quali — see the project notes). Only this script is committed:
@@ -92,6 +95,16 @@ QUERIES = {
         LEFT JOIN PRODUIT pr ON pr.ID = l.ID_PRODUIT
         LEFT JOIN LIEU_PRELEVEMENT lp ON lp.ID = l.LIEU_PRELEVEMENT
         WHERE l.DATE_PRELEV >= '2023-01-01';""",
+    ),
+    # Header = SITE_FILE_HEADER (src/lib/sites-import.ts). « ville » is left
+    # empty: the city column of CLIENTS was not confirmed when this query was
+    # written — put it in place of the '' once checked against the base.
+    "sites.csv": (
+        ["legacySiteId", "site", "adresse", "ville", "telephone", "email", "obsolete", "legacyClientId", "client", "clientObsolete"],
+        f"""SELECT {cols(n('s.ID'), s('s.NOM'), f"TRIM(COALESCE({clean('s.ADRESSE1')}, '') || ' ' || COALESCE({clean('s.ADRESSE2')}, ''))", "''", s('s.TEL1'), s('s.EMAIL'), n('s.OBSOLETE'), n('p.ID'), s('p.NOM'), n('p.OBSOLETE'))}
+        FROM CLIENTS s
+        JOIN CLIENTS p ON p.ID = s.ID_HAUTE
+        WHERE s.TYPECLIENT = 102 AND s.NOM IS NOT NULL AND s.NOM <> '';""",
     ),
 }
 

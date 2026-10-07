@@ -30,6 +30,9 @@ export type ProgrammeParameterData = {
   normVersion: { id: string; label: string; current: boolean } | null;
   dilutionFactor: number | null;
   note: string | null;
+  /** The parameter's family (RETOUR-LABO-06-10.md §5, V3) and its category. */
+  family: Family;
+  category: SampleType;
 };
 
 export type ProgrammeSampleData = {
@@ -44,7 +47,8 @@ export type ProgrammeSampleData = {
   client: { id: string; name: string };
   serie: { id: string; serialNumber: string; kind: SerieKind; receivedAt: string | null };
   natureId: string;
-  nature: { id: string; code: string; label: string; family: Family };
+  /** `legacyType` is the category the nature files the line under; `active` false = archived. */
+  nature: { id: string; code: string; label: string; family: Family; legacyType: SampleType; active: boolean };
   produit: string | null;
   numeroLot: string | null;
   lieu: string;
@@ -74,6 +78,8 @@ export type ProgrammeSampleData = {
 
 /** The programme as stored, plus what the sheet may do with it. */
 export type ProgrammeState = {
+  /** The nature the programme was decided for — changeable within its family (Q49). */
+  natureId: string;
   productTypeId: string | null;
   parameterIds: string[];
   unitCount: number;
@@ -122,6 +128,24 @@ export type ParameterRef = {
   unit: string | null;
   threshold: string | null;
   calcFactor: number;
+  /** MICRO / CHIMIE / AUTRE, set on `/admin/parametres` — the sheet groups the analyses by it. */
+  family: Family;
+  category: SampleType;
+};
+
+/**
+ * A nature the sheet may give the line (RETOUR-LABO-06-10.md §5, V3 — Q49
+ * by default): the current one (`current`, even archived) and the active
+ * natures of the same family, in the catalogue order.
+ */
+export type ProgrammeNatureData = {
+  id: string;
+  code: string;
+  label: string;
+  family: Family;
+  legacyType: SampleType;
+  active: boolean;
+  current: boolean;
 };
 
 export type ProfileRef = {
@@ -144,9 +168,15 @@ export type NormVersionRef = {
 export type TechnicianRef = { id: string; name: string };
 
 export type ProgrammeReferentialData = {
+  /** The nature this referential was computed for — the line's, or the one the sheet is trying. */
+  natureId: string;
+  /** That nature's category: the parameters, prices and services below are of it. */
+  category: SampleType;
+  /** The natures the sheet may choose from (same family only). */
+  natures: ProgrammeNatureData[];
   /** The client's own types first, then the catalogue. */
   productTypes: ProductTypeRef[];
-  /** The parameters of the nature's category. */
+  /** The parameters of the nature's category, each with its family. */
   parameters: ParameterRef[];
   profiles: ProfileRef[];
   technicians: TechnicianRef[];
@@ -160,4 +190,9 @@ export type ProgrammeReferentialData = {
 export type ProgrammeResponse = {
   sample: ProgrammeSampleData;
   programme: ProgrammeState;
+};
+
+/** What `GET /api/samples/[id]/programme[?natureId=]` answers: the PUT's answer plus the referential. */
+export type ProgrammeReadResponse = ProgrammeResponse & {
+  referential: ProgrammeReferentialData;
 };

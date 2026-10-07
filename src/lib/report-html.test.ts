@@ -131,6 +131,26 @@ describe("buildReportHtml — the laboratory's model", () => {
     expect(html).toContain("Paramètres (suite)");
   });
 
+  it("prints the client's site under the client when the série has one (V5)", () => {
+    const html = buildReportHtml({ ...base, client: { name: "Client Démo", address: null, ice: null }, siteName: "Restaurant Test" });
+    expect(html).toContain('<span class="k">Raison sociale</span><span class="v">Client Démo</span>');
+    expect(html).toContain('<span class="k">Site</span><span class="v">Restaurant Test</span>');
+    expect(buildReportHtml(base)).not.toContain('<span class="k">Site</span>');
+    expect(buildReportHtml({ ...base, siteName: null })).not.toContain('<span class="k">Site</span>');
+  });
+
+  it("names the designation of a surface « Désignation », the product of a food « Produit »", () => {
+    expect(buildReportHtml(base)).toContain('<span class="k">Produit</span><span class="v">Thon</span>');
+    const surface = buildReportHtml({
+      ...base,
+      type: "AMBIANCE",
+      lineKind: "SURFACE",
+      produit: "Planche verte — surface nettoyée",
+    });
+    expect(surface).toContain('<span class="k">Désignation</span><span class="v">Planche verte — surface nettoyée</span>');
+    expect(surface).not.toContain('<span class="k">Produit</span>');
+  });
+
   it("keeps the single-value layout for a sample read without repetitions", () => {
     const html = buildReportHtml({
       ...base,

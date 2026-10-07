@@ -1,10 +1,17 @@
 import "server-only";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Family, Prisma } from "@/generated/prisma/client";
 import { prisma } from "./prisma";
 import { nextNumber } from "./counters";
 import { logAudit } from "./audit";
-import { sampleCodeFor } from "./sample-code";
-import { normalizeLabel, type CleanSerie } from "./serie-input";
+import { sampleCodeFor, type SampleTwin } from "./sample-code";
+import {
+  normalizeLabel,
+  planLineSamples,
+  type CleanSerie,
+  type NatureRow,
+  type ParameterRef,
+  type PlannedSample,
+} from "./serie-input";
 import type { Role } from "./roles";
 
 /**
@@ -12,23 +19,48 @@ import type { Role } from "./roles";
  *
  * The N° de série is drawn inside the transaction, so a failed creation
  * never burns a number. A deposit (kind DEPOT) is received on the spot: its
- * lines are born RECU with their N° de contrôle, their conformity and their
- * technician; a visit's lines are born PRELEVE and get theirs at reception.
+ * samples are born RECU with their N° de contrôle, their conformity and their
+ * technician; a visit's samples are born PRELEVE and get theirs at reception.
+ *
+ * A line becomes one sample per ticked family (RETOUR-LABO-06-10.md §5, V3):
+ * the two samples of a two-family line share the line number and everything
+ * the préleveur typed (désignation, lot, lieu, quantities, temperatures,
+ * remarks), and differ by their code (« 1/26-1M » / « 1/26-1P »), their
+ * nature, their analyses and — for a deposit — their N° de contrôle. The
+ * série's two boxes « Analyses à effectuer » are the union of the lines.
  *
  * Places and products are memorised per client: the same label, however it
  * is capitalised or accented, always resolves to the same row, so the
- * history of « Poste salades » or « Salade Gaillardière » stays comparable.
+ * history of « Poste froid » or « Salade composée » stays comparable.
+ * A line is counted once in that memory, whatever its number of samples.
  */
+
+/** One sample written, and the line it comes from. */
+export type CreatedSample = {
+  id: string;
+  /** Index of the line in `CleanSerie.lines` (0-based). */
+  lineIndex: number;
+  lineNumber: number;
+  family: Family;
+  twin: SampleTwin | null;
+};
 
 export type CreateSerieResult = {
   id: string;
   serialNumber: string;
   kind: CleanSerie["kind"];
+  /** Every sample written, in line order (microbiology first within a line). */
   sampleIds: string[];
+  samples: CreatedSample[];
 };
 
 export class SerieCreationError extends Error {
-  constructor(message: string, readonly status: 400 | 404 = 400) {
+  constructor(
+    message: string,
+    readonly status: 400 | 404 = 400,
+    /** The line the message is about, when there is one. */
+    readonly line?: number
+  ) {
     super(message);
   }
 }
@@ -88,6 +120,39 @@ async function resolvePlace(
   });
 }
 
+/**
+ * The samples of every line, from the catalogue as it stands: natures still
+ * active, analyses that exist, each one in its family and its domain. Throws
+ * a SerieCreationError naming the line otherwise.
+ */
+export async function planSerieSamples(lines: CleanSerie["lines"]): Promise<PlannedSample[][]> {
+  const natureIds = [...new Set(lines.flatMap((l) => l.natures.map((n) => n.natureId)))];
+  const natureRows = await prisma.analysisNature.findMany({
+    where: { id: { in: natureIds }, active: true },
+    select: { id: true, legacyType: true, family: true },
+  });
+  const natures = new Map<string, NatureRow>(natureRows.map((n) => [n.id, n]));
+
+  const parameterIds = [...new Set(lines.flatMap((l) => l.parameterIds))];
+  const parameterRows =
+    parameterIds.length === 0
+      ? []
+      : await prisma.analysisParameter.findMany({
+          where: { id: { in: parameterIds } },
+          select: { id: true, name: true, family: true, category: true },
+        });
+  if (parameterRows.length !== parameterIds.length) {
+    throw new SerieCreationError("Une des analyses demandées n'existe pas.");
+  }
+  const parameters = new Map<string, ParameterRef>(parameterRows.map((p) => [p.id, p]));
+
+  return lines.map((line, index) => {
+    const plan = planLineSamples(line, index + 1, natures, parameters);
+    if (!plan.ok) throw new SerieCreationError(plan.error, 400, plan.line);
+    return plan.samples;
+  });
+}
+
 export async function createSerie(
   input: CleanSerie,
   actor: { id: string; role: Role }
@@ -105,24 +170,7 @@ export async function createSerie(
     throw new SerieCreationError("Ce site n'appartient pas à ce client.");
   }
 
-  const natureIds = [...new Set(input.lines.map((l) => l.natureId))];
-  const natures = await prisma.analysisNature.findMany({
-    where: { id: { in: natureIds }, active: true },
-    select: { id: true, legacyType: true, family: true },
-  });
-  const natureById = new Map(natures.map((n) => [n.id, n]));
-  for (const line of input.lines) {
-    if (!natureById.has(line.natureId)) throw new SerieCreationError("Nature d'analyse inconnue.");
-  }
-
-  const parameterIds = [...new Set(input.lines.flatMap((l) => l.parameterIds))];
-  const known = await prisma.analysisParameter.findMany({
-    where: { id: { in: parameterIds } },
-    select: { id: true },
-  });
-  if (known.length !== parameterIds.length) {
-    throw new SerieCreationError("Une des analyses demandées n'existe pas.");
-  }
+  const plans = await planSerieSamples(input.lines);
 
   // A product type is the catalogue's or the client's own — never another client's.
   const productTypeIds = [...new Set(input.lines.map((l) => l.productTypeId).filter((v): v is string => v !== null))];
@@ -156,10 +204,10 @@ export async function createSerie(
     }
   }
 
-  // The two boxes of the paper: ticked as sent, or derived from the lines.
-  const families = new Set(input.lines.map((l) => natureById.get(l.natureId)!.family));
-  const analysesMicro = input.analysesMicro ?? families.has("MICRO");
-  const analysesChimie = input.analysesChimie ?? families.has("CHIMIE");
+  // The two boxes of the paper are a summary of the samples' families (V3).
+  const families = new Set(plans.flat().map((s) => s.family));
+  const analysesMicro = families.has("MICRO");
+  const analysesChimie = families.has("CHIMIE");
 
   // A deposit's lines may name an indicative technician (PROGRAMME.md §6 —
   // the responsable des paramètres assigns the bench): every one named must
@@ -197,6 +245,7 @@ export async function createSerie(
           samplerUserId,
           samplerName: input.samplerKind === "QUALILAB" ? null : input.samplerName,
           cadre: input.cadre,
+          cadreNote: input.cadre === "AUTRE" ? input.cadreNote : null,
           clientReference: input.clientReference,
           startedAt: input.startedAt,
           endedAt: input.endedAt,
@@ -214,14 +263,14 @@ export async function createSerie(
         select: { id: true, serialNumber: true },
       });
 
-      const sampleIds: string[] = [];
+      const samples: CreatedSample[] = [];
       for (const [index, line] of input.lines.entries()) {
         const lineNumber = index + 1;
-        const nature = natureById.get(line.natureId)!;
+        // Once per line: the memory counts what the préleveur typed, not
+        // the number of samples it becomes.
         const product = line.produit ? await resolveProduct(tx, client.id, line.produit) : null;
         const place = await resolvePlace(tx, client.id, siteId, line.lieu);
         const produit = product?.label ?? line.produit;
-        const controlCode = isDeposit ? (await nextNumber(tx, "CONTROLE", year)).formatted : null;
         // A destroyed line is received, numbered and cancelled at once. A
         // line received without a technician is no longer held: it waits in
         // the programmation queue (RECU) for the responsable des paramètres,
@@ -230,65 +279,69 @@ export async function createSerie(
         const destroyed = isDeposit && line.destroy;
         const technicianId = isDeposit && !destroyed ? line.technicianId : null;
 
-        const sample = await tx.sample.create({
-          data: {
-            code: sampleCodeFor(serie.serialNumber, lineNumber),
-            serieId: serie.id,
-            lineNumber,
-            clientId: client.id,
-            userId: actor.id,
-            natureId: line.natureId,
-            lineKind: line.lineKind,
-            type: nature.legacyType,
-            lieu: place?.label ?? line.lieu,
-            placeId: place?.id ?? null,
-            productId: product?.id ?? null,
-            // La désignation suit le type de ligne : une surface saisie sur
-            // une ligne mains ou aliment (colonne du protocole) ne remplace
-            // jamais la personne ni le produit.
-            produit:
-              produit ??
-              (line.lineKind === "SURFACE"
-                ? line.surfaceLabel
-                : line.lineKind === "MAINS"
-                  ? line.personName
-                  : line.surfaceLabel),
-            numeroLot: line.numeroLot,
-            productionDate: line.productionDate,
-            expiryDate: line.expiryDate,
-            quantity: line.quantity,
-            quantityUnit: line.quantityUnit,
-            productTemperature: line.productTemperature,
-            ambientTemperature: line.ambientTemperature,
-            receptionTemperature: isDeposit ? line.receptionTemperature : null,
-            surfaceLabel: line.surfaceLabel,
-            surfaceAreaCm2: line.surfaceAreaCm2,
-            personName: line.personName,
-            personRole: line.personRole,
-            handsState: line.handsState,
-            remarks: line.remarks,
-            unitCount: line.unitCount,
-            productTypeId: line.productTypeId,
-            sampledAt: input.startedAt,
-            status: destroyed ? "ANNULE" : isDeposit ? "RECU" : "PRELEVE",
-            ...(destroyed ? { cancelledAt: now, cancelledById: actor.id, cancelReason: "DETRUIT_A_RECEPTION" as const } : {}),
-            controlCode,
-            receivedById: isDeposit ? actor.id : null,
-            receivedAt: isDeposit ? now : null,
-            conformity: isDeposit ? line.conformity : null,
-            conformityReason: isDeposit ? line.conformityReason : null,
-            conformityNote: isDeposit ? line.conformityNote : null,
-            analysisBlocked: false,
-            technicianId,
-            assignedAt: technicianId ? now : null,
-            parameters: { create: line.parameterIds.map((parameterId) => ({ parameterId })) },
-          },
-          select: { id: true },
-        });
-        sampleIds.push(sample.id);
+        for (const planned of plans[index]) {
+          const controlCode = isDeposit ? (await nextNumber(tx, "CONTROLE", year)).formatted : null;
+          const sample = await tx.sample.create({
+            data: {
+              code: sampleCodeFor(serie.serialNumber, lineNumber, planned.twin ?? undefined),
+              serieId: serie.id,
+              lineNumber,
+              clientId: client.id,
+              userId: actor.id,
+              natureId: planned.natureId,
+              lineKind: line.lineKind,
+              type: planned.type,
+              lieu: place?.label ?? line.lieu,
+              placeId: place?.id ?? null,
+              productId: product?.id ?? null,
+              // La désignation suit le type de ligne : la surface pour une
+              // ligne Surface, la personne pour une ligne Mains.
+              produit:
+                produit ??
+                (line.lineKind === "SURFACE"
+                  ? line.surfaceLabel
+                  : line.lineKind === "MAINS"
+                    ? line.personName
+                    : null),
+              numeroLot: line.numeroLot,
+              productionDate: line.productionDate,
+              expiryDate: line.expiryDate,
+              quantity: line.quantity,
+              quantityUnit: line.quantityUnit,
+              productTemperature: line.productTemperature,
+              ambientTemperature: line.ambientTemperature,
+              receptionTemperature: isDeposit ? line.receptionTemperature : null,
+              surfaceLabel: line.surfaceLabel,
+              surfaceAreaCm2: line.surfaceAreaCm2,
+              surfaceState: line.surfaceState,
+              personName: line.personName,
+              personRole: line.personRole,
+              handsState: line.handsState,
+              airMethod: line.airMethod,
+              remarks: line.remarks,
+              unitCount: line.unitCount,
+              productTypeId: line.productTypeId,
+              sampledAt: input.startedAt,
+              status: destroyed ? "ANNULE" : isDeposit ? "RECU" : "PRELEVE",
+              ...(destroyed ? { cancelledAt: now, cancelledById: actor.id, cancelReason: "DETRUIT_A_RECEPTION" as const } : {}),
+              controlCode,
+              receivedById: isDeposit ? actor.id : null,
+              receivedAt: isDeposit ? now : null,
+              conformity: isDeposit ? line.conformity : null,
+              conformityReason: isDeposit ? line.conformityReason : null,
+              conformityNote: isDeposit ? line.conformityNote : null,
+              analysisBlocked: false,
+              technicianId,
+              assignedAt: technicianId ? now : null,
+              parameters: { create: planned.parameterIds.map((parameterId) => ({ parameterId })) },
+            },
+            select: { id: true },
+          });
+          samples.push({ id: sample.id, lineIndex: index, lineNumber, family: planned.family, twin: planned.twin });
+        }
       }
 
-      return { id: serie.id, serialNumber: serie.serialNumber, sampleIds };
+      return { id: serie.id, serialNumber: serie.serialNumber, samples };
     },
     { timeout: 20_000 }
   );
@@ -303,9 +356,11 @@ export async function createSerie(
       clientId: client.id,
       siteId,
       lines: input.lines.length,
+      samples: result.samples.length,
       samplerKind: input.samplerKind,
       samplerUserId,
       cadre: input.cadre,
+      cadreNote: input.cadre === "AUTRE" ? input.cadreNote : null,
       analysesMicro,
       analysesChimie,
       ...(isDeposit
@@ -319,23 +374,24 @@ export async function createSerie(
     },
   });
 
-  // A line destroyed at the counter is a cancellation like any other.
+  // A sample destroyed at the counter is a cancellation like any other.
   await Promise.all(
-    input.lines.flatMap((line, index) =>
-      isDeposit && line.destroy
+    result.samples.flatMap((sample) =>
+      isDeposit && input.lines[sample.lineIndex].destroy
         ? [
             logAudit({
               actorId: actor.id,
               action: "SAMPLE_CANCELLED",
               entity: "Sample",
-              entityId: result.sampleIds[index],
+              entityId: sample.id,
               metadata: {
                 from: "RECU",
                 to: "ANNULE",
                 serialNumber: result.serialNumber,
-                lineNumber: index + 1,
+                lineNumber: sample.lineNumber,
+                twin: sample.twin,
                 reason: "DETRUIT_A_RECEPTION",
-                note: line.conformityNote,
+                note: input.lines[sample.lineIndex].conformityNote,
               },
             }),
           ]
@@ -343,5 +399,11 @@ export async function createSerie(
     )
   );
 
-  return { ...result, kind: input.kind };
+  return {
+    id: result.id,
+    serialNumber: result.serialNumber,
+    kind: input.kind,
+    sampleIds: result.samples.map((s) => s.id),
+    samples: result.samples,
+  };
 }

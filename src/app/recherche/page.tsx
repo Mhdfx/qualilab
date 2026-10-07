@@ -8,6 +8,7 @@ import { searchSamples } from "@/lib/sample-search-server";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { ClientSiteFilter } from "@/components/recherche/ClientSiteFilter";
 
 export const metadata = { title: "Recherche des analyses" };
 
@@ -23,9 +24,10 @@ const TONES: Record<Conclusion["tone"], string> = {
 
 /**
  * Finding the analyses done or in progress (RETOUR-LABO-29-09.md, slice F):
- * by client, period (reception or sampling), type of analysis and state,
- * plus free text. A plain GET form: the URL is the search, so it can be
- * bookmarked or sent to a colleague. Server-side and paginated.
+ * by client and site (RETOUR-LABO-06-10.md §5, V5), period (reception or
+ * sampling), type of analysis and state, plus free text. A plain GET form:
+ * the URL is the search, so it can be bookmarked or sent to a colleague.
+ * Server-side and paginated.
  */
 export default async function RecherchePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await requireRole("RECEPTIONNISTE", "PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "GESTIONNAIRE", "COMPTABLE", "ADMIN");
@@ -36,8 +38,14 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
   const page = Math.max(1, Number.parseInt(params.get("page") ?? "1", 10) || 1);
   const searched = [...params.keys()].some((k) => k !== "page");
 
-  const [clients, natures, result] = await Promise.all([
+  const [clients, sites, natures, result] = await Promise.all([
     prisma.client.findMany({ where: { archived: false }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    // Every site of the active clients, inactive ones included: old analyses were done there.
+    prisma.site.findMany({
+      where: { client: { archived: false } },
+      select: { id: true, clientId: true, name: true, active: true },
+      orderBy: [{ active: "desc" }, { name: "asc" }],
+    }),
     prisma.analysisNature.findMany({ select: { id: true, label: true }, orderBy: [{ sortOrder: "asc" }, { label: "asc" }] }),
     searchSamples(search, {
       take: PAGE_SIZE,
@@ -57,24 +65,23 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
       <PageHeader
         badge="Recherche"
         title="Recherche des analyses"
-        subtitle={`Les analyses terminées ou en cours, par client, période, type d'analyse et état.${canExport ? " Exportez le résultat en Excel." : ""}`}
+        subtitle={`Les analyses terminées ou en cours, par client et site, période, type d'analyse et état.${canExport ? " Exportez le résultat en Excel." : ""}`}
       />
 
       <Card className="p-5">
         <form method="GET" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="lg:col-span-2">
             <label htmlFor="q" className="block text-sm font-medium text-slate-700">Texte</label>
-            <input id="q" name="q" defaultValue={search.q ?? ""} placeholder="N° de contrôle, série, produit, lot, lieu…" className="input-field mt-1.5 px-3" />
+            <input id="q" name="q" defaultValue={search.q ?? ""} placeholder="N° de contrôle, série, produit, lot, lieu, site…" className="input-field mt-1.5 px-3" />
           </div>
-          <div>
-            <label htmlFor="client" className="block text-sm font-medium text-slate-700">Client</label>
-            <select id="client" name="client" defaultValue={search.clientId ?? ""} className="input-field mt-1.5 px-3">
-              <option value="">Tous les clients</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
+          <ClientSiteFilter
+            // A new search (« Effacer », a bookmarked link) starts from the URL again.
+            key={`${search.clientId ?? ""}|${search.siteId ?? ""}`}
+            clients={clients}
+            sites={sites}
+            clientId={search.clientId}
+            siteId={search.siteId}
+          />
           <div>
             <label htmlFor="nature" className="block text-sm font-medium text-slate-700">Type d&apos;analyse</label>
             <select id="nature" name="nature" defaultValue={search.natureId ?? ""} className="input-field mt-1.5 px-3">
@@ -108,7 +115,7 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
             <label htmlFor="au" className="block text-sm font-medium text-slate-700">Au</label>
             <input id="au" name="au" type="date" defaultValue={iso(search.to)} className="input-field mt-1.5 px-3" />
           </div>
-          <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-4">
+          <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-3">
             <button type="submit" className="inline-flex min-h-[42px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark">
               <Search className="h-4 w-4" aria-hidden="true" />
               Rechercher
@@ -162,7 +169,10 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
                   <tr key={row.id} className="border-b border-slate-100 align-top">
                     <td className="py-2.5 pr-3 font-mono font-semibold text-slate-900">{row.controlCode ?? row.code}</td>
                     <td className="py-2.5 pr-3 font-mono text-slate-600">{row.serialNumber}</td>
-                    <td className="py-2.5 pr-3 text-slate-800">{row.clientName}</td>
+                    <td className="py-2.5 pr-3 text-slate-800">
+                      {row.clientName}
+                      {row.siteName && <span className="block text-xs text-slate-500">{row.siteName}</span>}
+                    </td>
                     <td className="py-2.5 pr-3 text-slate-800">
                       {row.produit ?? "—"}
                       {row.numeroLot && <span className="block text-xs text-slate-500">Lot {row.numeroLot}</span>}

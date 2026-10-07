@@ -61,6 +61,8 @@ function heaviest(): ReportData {
   return {
     number: "RA-2026-9999", controlCode: "09999/26", serialNumber: "0999/26",
     client: { name: "Client de démonstration SARL", address: "Zone industrielle, lot 12", ice: "001234567000045" },
+    // The site row of a chain's restaurant (V5) must not push the page over.
+    siteName: "Restaurant Test",
     produit: "Produit de démonstration", numeroLot: "LOT-2026-09", lieu: "Chambre froide n°2",
     type: "ALIMENTAIRE", sampledAt: new Date(), receivedAt: new Date(), preleveur: "Préleveur Un",
     technicianName: "Technicien Un", validatorName: "Validateur Un", approverName: "Admin", validatedAt: new Date(),

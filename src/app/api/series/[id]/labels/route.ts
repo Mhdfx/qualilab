@@ -4,11 +4,13 @@ import { prisma } from "@/lib/prisma";
 import { renderPdf } from "@/lib/pdf";
 import { getCompany } from "@/lib/company-server";
 import { buildLabelsHtml, type LabelLine } from "@/lib/labels-html";
+import { sampleDesignation } from "@/lib/document-html";
 
 /**
- * The labels of a série — one per unit of every received line, as a PDF
- * sheet. Only lines that carry a N° de contrôle print; a cancelled line
- * never does.
+ * The labels of a série — one per unit of every received sample, as a PDF
+ * sheet. Only samples that carry a N° de contrôle print; a cancelled one
+ * never does. The two samples of a two-family échantillon (« 1M » / « 1P »)
+ * each get their own labels, under their own N° de contrôle.
  */
 export async function GET(
   _request: Request,
@@ -29,13 +31,16 @@ export async function GET(
         select: {
           controlCode: true,
           unitCount: true,
+          lineKind: true,
           produit: true,
           surfaceLabel: true,
+          surfaceState: true,
           personName: true,
+          airMethod: true,
           receivedAt: true,
           nature: { select: { label: true } },
         },
-        orderBy: { lineNumber: "asc" },
+        orderBy: [{ lineNumber: "asc" }, { code: "asc" }],
       },
     },
   });
@@ -45,7 +50,7 @@ export async function GET(
   }
   if (serie.samples.length === 0) {
     return NextResponse.json(
-      { error: "Aucune ligne réceptionnée : les étiquettes s'impriment après la réception." },
+      { error: "Aucun échantillon réceptionné : les étiquettes s'impriment après la réception." },
       { status: 409 }
     );
   }
@@ -54,7 +59,8 @@ export async function GET(
     controlCode: s.controlCode as string,
     unitCount: s.unitCount,
     natureLabel: s.nature.label,
-    designation: s.produit ?? s.surfaceLabel ?? s.personName ?? "",
+    // « Planche verte — surface nettoyée », « Salle — Boîte exposée 30 min ».
+    designation: sampleDesignation(s) ?? "",
     clientName: serie.client.name,
     siteName: serie.site?.name ?? null,
     receivedAt: s.receivedAt,

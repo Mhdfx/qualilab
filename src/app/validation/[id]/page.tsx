@@ -20,6 +20,8 @@ import { repetitionLabel } from "@/lib/series";
 import { VerdictBadge } from "@/components/samples/VerdictBadge";
 import { SampleVerbs } from "@/components/samples/SampleVerbs";
 import { formatDateTime } from "@/lib/labels";
+import { sampleRef } from "@/lib/reception-input";
+import { lineDesignation } from "@/components/preleveur/visit-types";
 import { approvalState } from "@/lib/sample-status";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -53,15 +55,19 @@ export default async function ValidationDetailPage({
       produit: true,
       numeroLot: true,
       lineKind: true,
+      lineNumber: true,
       productionDate: true,
       expiryDate: true,
       quantity: true,
       quantityUnit: true,
       surfaceLabel: true,
       surfaceAreaCm2: true,
+      // « État de la surface » / « Méthode de prélèvement » (RETOUR-LABO-06-10.md §5).
+      surfaceState: true,
       personName: true,
       personRole: true,
       handsState: true,
+      airMethod: true,
       remarks: true,
       unitCount: true,
       clientId: true,
@@ -131,6 +137,8 @@ export default async function ValidationDetailPage({
     (r) => (r.conform === false || r.informalInterpretation === "NON_SATISFAISANT") && r.parameter.alertOnExceed
   ).length;
   const verdict = sampleVerdict(sample.results);
+  // « Planche verte — surface nettoyée »; « — » when nothing names it.
+  const designation = lineDesignation(sample);
   // Too few units for a plan: the report will carry no official verdict.
   const indicativeOnly = verdict === null && sample.results.some((r) => r.interpretation === null && r.informalInterpretation);
 
@@ -281,6 +289,8 @@ export default async function ValidationDetailPage({
                   quantityUnit: sample.quantityUnit,
                   surfaceLabel: sample.surfaceLabel,
                   surfaceAreaCm2: sample.surfaceAreaCm2,
+                  surfaceState: sample.surfaceState,
+                  airMethod: sample.airMethod,
                   personName: sample.personName,
                   personRole: sample.personRole,
                   handsState: sample.handsState,
@@ -298,12 +308,18 @@ export default async function ValidationDetailPage({
               </Field>
               <Field icon={Hash} label="N° de série">
                 <span className="font-mono">{sample.serie.serialNumber}</span>
+                <span className="ml-1.5 text-xs font-normal text-slate-500">
+                  échantillon {sampleRef(sample.lineNumber, sample.code)}
+                </span>
               </Field>
               <Field icon={Building2} label="Client">
                 {sample.client.name}
               </Field>
-              <Field icon={Package} label="Produit">
-                {sample.produit ?? <span className="text-slate-400">Non renseigné</span>}
+              <Field icon={Package} label="Désignation">
+                {designation === "—" ? <span className="text-slate-400">Non renseignée</span> : designation}
+                {sample.lineKind === "SURFACE" && sample.surfaceAreaCm2 !== null && (
+                  <span className="ml-1.5 text-xs font-normal text-slate-500">{sample.surfaceAreaCm2} cm²</span>
+                )}
               </Field>
               <Field icon={Hash} label="N° de lot">
                 {sample.numeroLot ?? <span className="text-slate-400">Non renseigné</span>}

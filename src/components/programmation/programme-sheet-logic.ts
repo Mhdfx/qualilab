@@ -1,13 +1,16 @@
 import type { Family, ProgrammePriority } from "@/generated/prisma/enums";
 import { pickCriterion } from "@/lib/interpretation";
+import { ANALYSIS_FAMILY_LABELS } from "@/lib/labels";
 import { roundMoney } from "@/lib/invoice-math";
 import { evaluateReception, type Check, type ReceptionThresholds } from "@/lib/reception-rules";
 import { MAX_UNITS } from "@/lib/series";
 import { fromLocalInput, toLocalInput } from "@/components/preleveur/visit-types";
 import type {
   CriterionRef,
+  ParameterRef,
   ProductTypeRef,
   ProfileRef,
+  ProgrammeNatureData,
   ProgrammeReferentialData,
   ProgrammeSampleData,
   ProgrammeState,
@@ -32,6 +35,12 @@ export type ParameterSetting = {
 };
 
 export type ProgrammeDraft = {
+  /**
+   * The nature the programme is written for (RETOUR-LABO-06-10.md §5, V3 —
+   * Q49): the line's own until the sheet picks another of the same family.
+   * It is always the nature of the referential on screen.
+   */
+  natureId: string;
   productTypeId: string;
   parameterIds: string[];
   unitCount: number;
@@ -142,6 +151,7 @@ export function initialDraft(
   for (const id of parameterIds) settings[id] = withDefaults(settings, id, type, referential);
   const technicianId = programme.technicianId ?? "";
   return {
+    natureId: referential.natureId || programme.natureId,
     productTypeId: type?.id ?? "",
     parameterIds,
     unitCount: clampUnits(programme.unitCount),
@@ -247,10 +257,11 @@ export function assignAll(draft: ProgrammeDraft, technicianId: string): Programm
 }
 
 /**
- * The family of each parameter, read from the catalogue: a germ cited by the
- * criteria of microbiology types is micro, a parameter cited by chemistry
- * types is chemistry. A parameter cited by both, or by none, follows the
- * nature of the line — the catalogue holds no family on the parameter itself.
+ * The family of each parameter: its own (`AnalysisParameter.family`, set on
+ * `/admin/parametres` — RETOUR-LABO-06-10.md §5, V3). A referential that
+ * does not carry it yet falls back to the catalogue: a germ cited only by
+ * microbiology types is micro, only by chemistry types is chemistry; one
+ * cited by both, or by none, follows the nature of the line.
  */
 export function parameterFamilies(referential: ProgrammeReferentialData, natureFamily: Family): Map<string, Family> {
   const cited = new Map<string, Set<Family>>();
@@ -264,10 +275,45 @@ export function parameterFamilies(referential: ProgrammeReferentialData, natureF
   }
   const families = new Map<string, Family>();
   for (const parameter of referential.parameters) {
+    if (parameter.family) {
+      families.set(parameter.id, parameter.family);
+      continue;
+    }
     const set = cited.get(parameter.id);
     families.set(parameter.id, set && set.size === 1 ? [...set][0] : natureFamily);
   }
   return families;
+}
+
+/** The order the families are listed in: the two boxes of the protocol, then the rest. */
+const FAMILY_ORDER: readonly Family[] = ["MICRO", "CHIMIE", "AUTRE"];
+
+export type ParameterGroup = {
+  family: Family;
+  /** « Analyses microbiologiques », « Analyses physico-chimiques », « Autres analyses ». */
+  label: string;
+  /** True when the group is not the family of the line's nature: the other family is normally another sample. */
+  foreign: boolean;
+  parameters: ParameterRef[];
+};
+
+/**
+ * The analyses offered, grouped by family (RETOUR-LABO-06-10.md §5, V3):
+ * the line's own family first, then the others in the protocol's order;
+ * empty groups are left out, the catalogue order is kept inside a group.
+ */
+export function groupParameters(
+  referential: ProgrammeReferentialData,
+  natureFamily: Family
+): ParameterGroup[] {
+  const families = parameterFamilies(referential, natureFamily);
+  const order = [natureFamily, ...FAMILY_ORDER.filter((family) => family !== natureFamily)];
+  return order.flatMap((family) => {
+    const parameters = referential.parameters.filter((parameter) => families.get(parameter.id) === family);
+    return parameters.length > 0
+      ? [{ family, label: ANALYSIS_FAMILY_LABELS[family], foreign: family !== natureFamily, parameters }]
+      : [];
+  });
 }
 
 /** True when the programmed analyses span both families: « micro à X, chimie à Y » then means something. */
@@ -289,6 +335,50 @@ export function assignByFamily(
     settings[id] = { ...settingOf(draft, id), technicianId: override };
   }
   return { ...draft, technicianId: micro, settings };
+}
+
+/**
+ * The natures the sheet offers (Q49 by default): the line's current one —
+ * even archived, it stays readable — and the active natures of its family.
+ * The other family is another sample, never a choice here.
+ */
+export function natureChoices(referential: ProgrammeReferentialData, family: Family): ProgrammeNatureData[] {
+  return referential.natures.filter((nature) => nature.current || (nature.active && nature.family === family));
+}
+
+/**
+ * The draft once the referential of another nature replaced the one on
+ * screen: the nature follows, and the analyses the new nature does not
+ * offer are dropped — their names are returned so the sheet can say which.
+ * Everything else (type, units, organisation, the settings of every
+ * analysis) is kept: re-choosing the first nature loses nothing but the
+ * dropped analyses, which the user ticks again.
+ */
+export function adoptReferential(
+  draft: ProgrammeDraft,
+  previous: ProgrammeReferentialData,
+  next: ProgrammeReferentialData
+): { draft: ProgrammeDraft; dropped: string[] } {
+  const known = new Set(next.parameters.map((parameter) => parameter.id));
+  const kept = draft.parameterIds.filter((id) => known.has(id));
+  const dropped = draft.parameterIds
+    .filter((id) => !known.has(id))
+    .map((id) => previous.parameters.find((parameter) => parameter.id === id)?.name ?? id);
+  // The product type stays only while the client may still use it.
+  const productTypeId = draft.productTypeId && typeOf(next, draft.productTypeId) ? draft.productTypeId : "";
+  return { draft: { ...draft, natureId: next.natureId, parameterIds: kept, productTypeId }, dropped };
+}
+
+/** « Nature « Huiles » choisie : 2 analyses retirées (« A », « B ») … ». */
+export function natureChangeNotice(label: string, dropped: string[], current: boolean): string {
+  const head = current ? `Nature d'origine « ${label} » rétablie` : `Nature « ${label} » choisie`;
+  const removed =
+    dropped.length === 0
+      ? ""
+      : dropped.length === 1
+        ? ` : l'analyse « ${dropped[0]} » n'existe pas pour cette nature et a été retirée`
+        : ` : ${dropped.length} analyses n'existent pas pour cette nature et ont été retirées (${dropped.map((name) => `« ${name} »`).join(", ")})`;
+  return `${head}${removed}. Enregistrez le programme pour l'appliquer.`;
 }
 
 /** The warning of PROGRAMME.md §3 when the units read are fewer than the type's plans need. */
@@ -352,6 +442,8 @@ const text = (value: string) => (value.trim() ? value.trim() : null);
 export function toRequestBody(draft: ProgrammeDraft, confirm: boolean) {
   return {
     confirm,
+    // The current nature means « no change » to the route (Q49).
+    natureId: draft.natureId || null,
     productTypeId: draft.productTypeId || null,
     parameterIds: draft.parameterIds,
     unitCount: draft.unitCount,

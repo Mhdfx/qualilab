@@ -4,6 +4,7 @@ import { ImportClients } from "@/components/admin/ImportClients";
 import { ImportCriteres } from "@/components/admin/ImportCriteres";
 import { ImportMemoire } from "@/components/admin/ImportMemoire";
 import { ImportLegacy } from "@/components/admin/ImportLegacy";
+import { ImportSites } from "@/components/admin/ImportSites";
 
 export const metadata = { title: "Import de données" };
 
@@ -33,6 +34,10 @@ export default async function ImportPage() {
         <section>
           <h2 className="mb-3 text-base font-semibold text-slate-900">Clients (export CSV)</h2>
           <ImportClients />
+        </section>
+        <section>
+          <h2 className="mb-3 text-base font-semibold text-slate-900">Sites de l&apos;ancien logiciel (CSV)</h2>
+          <ImportSites />
         </section>
       </div>
     </div>

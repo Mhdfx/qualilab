@@ -11,6 +11,8 @@ export type QueueLineRef = {
   status: SampleStatus;
   receivedAt: Date | string | null;
   lineNumber: number;
+  /** « 1/26-2M » / « 1/26-2P »: orders the two samples of one line. */
+  code?: string;
   serie: { id: string; serialNumber: string; kind: SerieKind; receivedAt: Date | string | null };
   client: { id: string; name: string };
 };
@@ -40,9 +42,9 @@ export function orderQueue<T extends QueueLineRef>(lines: T[]): T[] {
 }
 
 /**
- * Groups the ordered lines by série: a série takes the place of its first
- * line (so a série with a line still to programme comes before the fully
- * programmed ones) and lists its lines in their own order.
+ * Groups the ordered samples by série: a série takes the place of its first
+ * sample (so a série with a sample still to programme comes before the fully
+ * programmed ones) and lists its samples by number, « …M » before « …P ».
  */
 export function groupQueue<T extends QueueLineRef>(lines: T[]): QueueGroup<T>[] {
   const groups = new Map<string, QueueGroup<T>>();
@@ -62,7 +64,7 @@ export function groupQueue<T extends QueueLineRef>(lines: T[]): QueueGroup<T>[] 
     group.lines.push(line);
   }
   for (const group of groups.values()) {
-    group.lines.sort((a, b) => a.lineNumber - b.lineNumber);
+    group.lines.sort((a, b) => a.lineNumber - b.lineNumber || (a.code ?? "").localeCompare(b.code ?? ""));
   }
   return [...groups.values()];
 }

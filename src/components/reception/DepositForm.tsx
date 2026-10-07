@@ -14,15 +14,30 @@ import {
   User,
   Wallet,
 } from "lucide-react";
-import type { Cadre, LineKind, NonConformityReason, PaymentMode, SampleType, SamplerKind } from "@/generated/prisma/enums";
+import type {
+  AirMethod,
+  Cadre,
+  CancelReason,
+  Family,
+  NonConformityReason,
+  PaymentMode,
+  SampleStatus,
+  SampleType,
+  SamplerKind,
+  SurfaceState,
+} from "@/generated/prisma/enums";
 import {
+  CADRE_CHOICES,
   CADRE_LABELS,
   LINE_KIND_LABELS,
   NON_CONFORMITY_REASON_LABELS,
   SAMPLER_KIND_LABELS,
+  formatCadre,
   formatDateTime,
 } from "@/lib/labels";
-import { evaluateReception, proposedConformity, type ReceptionThresholds } from "@/lib/reception-rules";
+import { type ReceptionThresholds } from "@/lib/reception-rules";
+import { sampleRef } from "@/lib/reception-input";
+import { SERIE_MESSAGES, sampleLineMessage } from "@/lib/serie-input";
 import { repetitionRange } from "@/lib/series";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -31,13 +46,18 @@ import { Card } from "@/components/ui/Card";
 import { LegalTimeHint } from "@/components/LegalTimeHint";
 import { LineEditor } from "@/components/preleveur/LineEditor";
 import {
+  duplicateDraft,
   emptyLine,
   fromLocalInput,
-  localInputDate,
-  kindsFor,
+  lineCategory,
   lineDesignation,
+  lineDraftError,
+  lineNatures,
+  linePayload,
+  localInputDate,
   mergeSuggestions,
-  natureForKind,
+  parameterFamily,
+  serieAnalyses,
   toLocalInput,
   type ClientMemory,
   type ClientOption,
@@ -48,11 +68,17 @@ import {
   type ProfileOption,
 } from "@/components/preleveur/visit-types";
 import { Checklist, ConformityChip } from "./reception-widgets";
+import { countLabel, depositLineChecks, familiesSummary, lineSampleRefs, sampleCount } from "./reception-logic";
 import type { TechnicianOption } from "./types";
 
 const subscribeNoop = () => () => {};
 
-/** What the counter records on top of the line itself. */
+/**
+ * What the counter records on top of the sample itself. Keyed by the line:
+ * when both families are ticked the line becomes two samples (« 2M »,
+ * « 2P ») and `POST /api/series` gives both the same temperature,
+ * conformity, decision and technician.
+ */
 type LineIntake = {
   temperature: string;
   conformityChoice: boolean | null;
@@ -73,18 +99,29 @@ type CreatedDeposit = {
     code: string;
     lineNumber: number;
     lineKind: LineDraft["lineKind"];
+    status: SampleStatus;
     produit: string | null;
     surfaceLabel: string | null;
     personName: string | null;
+    /** Optional: only once the série's select carries them. */
+    surfaceState?: SurfaceState | null;
+    airMethod?: AirMethod | null;
     controlCode: string | null;
     unitCount: number;
     conformity: boolean | null;
     conformityReason: NonConformityReason | null;
+    cancelReason: CancelReason | null;
+    nature: { label: string; family: Family };
     technician: { name: string } | null;
   }[];
 };
 
-const SAMPLER_CHOICES: SamplerKind[] = ["CLIENT", "SERVICE_VETERINAIRE", "AUTRE"];
+/** « Prélèvement effectué par » at the counter. « Service vétérinaire » is
+ * gone (RETOUR-LABO-06-10.md §5, V1): « Autre » + the service's name. */
+const SAMPLER_CHOICES: { value: SamplerKind; label: string }[] = [
+  { value: "CLIENT", label: "Le client" },
+  { value: "AUTRE", label: "Autre" },
+];
 const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
   { value: "ESPECES", label: "Espèces" },
   { value: "CHEQUE", label: "Chèque" },
@@ -92,6 +129,22 @@ const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
   { value: "CARTE", label: "Carte" },
 ];
 const REASONS = Object.keys(NON_CONFORMITY_REASON_LABELS) as NonConformityReason[];
+const CADRE_NOTE_MAX = 191;
+
+const CHIP_ON = "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20";
+const CHIP_OFF = "border-slate-200 text-slate-600 hover:border-slate-300";
+
+/** The id of the card of « Échantillon N », to bring an error into view. */
+const sampleAnchor = (lineNumber: number) => `deposit-sample-${lineNumber}`;
+
+/** Scrolls a sample to fix into view (after the next paint, so that a card
+ * shown again by « Modifier » exists). */
+function reveal(id: string) {
+  requestAnimationFrame(() => {
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    document.getElementById(id)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+  });
+}
 
 function numberOrNull(value: string) {
   if (!value.trim()) return null;
@@ -99,9 +152,13 @@ function numberOrNull(value: string) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** A deposit line is weighed at the counter: grams for food, litres for water. */
-function depositLine(nature: NatureOption | undefined, previous?: LineDraft): LineDraft {
-  const line = emptyLine(nature, previous);
+/**
+ * A deposit sample is weighed at the counter: grams for food, litres for
+ * water. It continues the previous one (type, families, analyses, place) —
+ * the place of a first sample is the counter itself.
+ */
+function depositLine(natures: readonly NatureOption[], previous?: LineDraft): LineDraft {
+  const line = emptyLine(natures, previous);
   return {
     ...line,
     lieu: previous?.lieu ?? "Dépôt au laboratoire",
@@ -112,8 +169,9 @@ function depositLine(nature: NatureOption | undefined, previous?: LineDraft): Li
 
 /**
  * The bon de réception, filled at the counter when a client brings samples:
- * the same lines as a visit, plus what the reception measures — the deposit
- * is numbered and received in the same transaction (WORKFLOW.md §3.2).
+ * the same samples as a visit, plus what the reception measures — the
+ * deposit is numbered and received in the same transaction (WORKFLOW.md
+ * §3.2).
  */
 export function DepositForm({
   technicians,
@@ -143,9 +201,9 @@ export function DepositForm({
   const [clientId, setClientId] = useState("");
   const [siteId, setSiteId] = useState("");
   const [samplerKind, setSamplerKind] = useState<SamplerKind>("CLIENT");
-  // null = suit la déduction (service vétérinaire ⇒ officiel).
-  const [cadreChoice, setCadreChoice] = useState<Cadre | null>(null);
-  const cadre: Cadre = cadreChoice ?? (samplerKind === "SERVICE_VETERINAIRE" ? "OFFICIEL" : "AUTOCONTROLE");
+  // A choice, never deduced from who sampled, none preselected (V1).
+  const [cadre, setCadre] = useState<Cadre | null>(null);
+  const [cadreNote, setCadreNote] = useState("");
   const [samplerName, setSamplerName] = useState("");
   const [interlocutor, setInterlocutor] = useState("");
   const [clientReference, setClientReference] = useState("");
@@ -166,7 +224,11 @@ export function DepositForm({
     fetch(`/api/parameters?category=${type}`)
       .then((r) => r.json())
       .then((data: ParameterOption[]) => {
-        setParametersByType((prev) => ({ ...prev, [type]: data }));
+        setParametersByType((prev) => ({ ...prev, [type]: Array.isArray(data) ? data : [] }));
+      })
+      .catch(() => {
+        // A later edit of the line asks again.
+        requestedTypes.current.delete(type);
       })
       .finally(() => {
         setLoadingTypes((prev) => {
@@ -182,10 +244,11 @@ export function DepositForm({
       fetch("/api/natures").then((r) => r.json()),
       fetch("/api/clients").then((r) => r.json()),
     ]).then(([n, c]: [NatureOption[], ClientOption[]]) => {
+      const first = depositLine(n);
       setNatures(n);
       setClients(c);
-      setLines((prev) => (prev.length ? prev : [depositLine(n[0])]));
-      ensureParameters(n[0]?.legacyType);
+      setLines((prev) => (prev.length ? prev : [first]));
+      ensureParameters(lineCategory(n, first));
     });
   }, [ensureParameters]);
 
@@ -235,147 +298,123 @@ export function DepositForm({
     [memory.places, lines]
   );
 
+  function clearError() {
+    setError("");
+    setErrorLine(null);
+  }
+
   function intakeOf(key: string): LineIntake {
     return intake[key] ?? { temperature: "", conformityChoice: null, reason: "", note: "", technicianId: defaultTechnician, destroy: false };
   }
 
   function updateIntake(key: string, patch: Partial<LineIntake>) {
     setIntake((prev) => ({ ...prev, [key]: { ...intakeOf(key), ...patch } }));
-    setError("");
-    setErrorLine(null);
+    clearError();
   }
 
-  function updateLine(key: string, patch: Partial<LineDraft>) {
-    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
-  }
-
-  function changeNature(key: string, natureId: string) {
-    const nature = natures.find((n) => n.id === natureId);
-    ensureParameters(nature?.legacyType);
-    setLines((prev) =>
-      prev.map((l) => {
-        if (l.key !== key) return l;
-        const kinds = kindsFor(nature);
-        const lineKind = kinds.includes(l.lineKind) ? l.lineKind : (nature?.defaultLineKind ?? "ALIMENT");
-        return {
-          ...l,
-          natureId,
-          lineKind,
-          parameterIds: [],
-          quantityUnit: lineKind === "EAU" ? "L" : l.quantityUnit === "L" ? "G" : l.quantityUnit,
-        };
-      })
-    );
-  }
-
-  /** The line's type comes first; the nature follows it (still changeable). */
-  function changeKind(key: string, kind: LineKind) {
-    const line = lines.find((l) => l.key === key);
-    const current = natures.find((n) => n.id === line?.natureId);
-    const target = natureForKind(natures, kind, current);
-    ensureParameters(target?.legacyType);
-    setLines((prev) =>
-      prev.map((l) => {
-        if (l.key !== key) return l;
-        const sameDomain = current?.legacyType === target?.legacyType;
-        return {
-          ...l,
-          lineKind: kind,
-          natureId: target?.id ?? l.natureId,
-          parameterIds: sameDomain ? l.parameterIds : [],
-          quantityUnit: kind === "EAU" ? "L" : l.quantityUnit === "L" ? "G" : l.quantityUnit,
-          // L'aire de 100 cm² est la valeur d'usage d'une ligne surface : on
-          // la propose en y entrant, on la retire en en sortant.
-          surfaceAreaCm2:
-            kind === "SURFACE"
-              ? l.surfaceAreaCm2 || "100"
-              : l.surfaceAreaCm2 === "100"
-                ? ""
-                : l.surfaceAreaCm2,
-        };
-      })
-    );
+  /** Every edit of a sample, the type and family changes included: the
+   * patch arrives consistent from the LineEditor, the analyses of the
+   * resulting category are loaded if they are not yet. */
+  function patchLine(line: LineDraft, patch: Partial<LineDraft>) {
+    setLines((prev) => prev.map((l) => (l.key === line.key ? { ...l, ...patch } : l)));
+    ensureParameters(lineCategory(natures, { ...line, ...patch }));
   }
 
   function addLine() {
-    const last = lines.at(-1);
-    const nature = natures.find((n) => n.id === last?.natureId) ?? natures[0];
-    ensureParameters(nature?.legacyType);
-    setLines((prev) => [...prev, depositLine(nature, last)]);
+    const line = depositLine(natures, lines.at(-1));
+    ensureParameters(lineCategory(natures, line));
+    setLines((prev) => [...prev, line]);
   }
 
   function duplicateLine(key: string) {
+    const index = lines.findIndex((l) => l.key === key);
+    if (index < 0) return;
+    const copy = duplicateDraft(lines[index], natures);
+    setIntake((current) => ({ ...current, [copy.key]: { ...intakeOf(key) } }));
     setLines((prev) => {
-      const index = prev.findIndex((l) => l.key === key);
-      if (index < 0) return prev;
-      const copy: LineDraft = { ...prev[index], key: emptyLine(undefined).key, numeroLot: "", productionDate: "", expiryDate: "" };
-      setIntake((current) => ({ ...current, [copy.key]: { ...intakeOf(key) } }));
-      return [...prev.slice(0, index + 1), copy, ...prev.slice(index + 1)];
+      const at = prev.findIndex((l) => l.key === key);
+      return at < 0 ? prev : [...prev.slice(0, at + 1), copy, ...prev.slice(at + 1)];
     });
   }
 
   function removeLine(key: string) {
     setLines((prev) => (prev.length > 1 ? prev.filter((l) => l.key !== key) : prev));
+    clearError();
   }
 
-  /** Live rules for one line: checks, proposal and the effective conformity. */
+  /**
+   * Live rules for one line: the acceptance rules of each sample it becomes
+   * (one per ticked family — 100 g micro, 300 g physico-chimie), the
+   * proposal and the effective conformity, shared by both samples.
+   */
   function evaluate(line: LineDraft) {
-    const nature = natures.find((n) => n.id === line.natureId);
-    const names = (nature ? parametersByType[nature.legacyType] ?? [] : [])
-      .filter((p) => line.parameterIds.includes(p.id))
-      .map((p) => p.name);
+    const category = lineCategory(natures, line);
+    const catalogue = category ? (parametersByType[category] ?? []) : [];
+    const ticked = line.parameterIds.flatMap((id) => catalogue.filter((p) => p.id === id));
+    const samples = lineNatures(natures, line);
+    const families = samples.map((s) => s.family);
     const extra = intakeOf(line.key);
-    const quantity = numberOrNull(line.quantity);
-    const checks = evaluateReception(
+    const { checks, familyBlocking, proposal } = depositLineChecks(
       {
         lineKind: line.lineKind,
-        family: nature?.family ?? "AUTRE",
-        parameterNames: names,
-        quantity,
-        quantityUnit: quantity === null ? null : line.quantityUnit,
+        families,
+        parameters: ticked.map((p) => ({ name: p.name, family: parameterFamily(p) })),
+        quantity: numberOrNull(line.quantity),
+        quantityUnit: line.quantityUnit,
         receptionTemperature: numberOrNull(extra.temperature),
         unitCount: line.unitCount,
       },
       thresholds
     );
-    const proposal = proposedConformity(checks);
     const conformity = proposal.forced ? false : (extra.conformityChoice ?? proposal.conformity);
     const reason: NonConformityReason | "" = conformity ? "" : extra.reason || proposal.reason || "";
     const destroy = !conformity && extra.destroy;
-    return { nature, names, extra, checks, proposal, conformity, reason, destroy };
+    return {
+      families,
+      twins: samples.length > 1,
+      names: ticked.map((p) => p.name),
+      extra,
+      checks,
+      familyBlocking,
+      proposal,
+      conformity,
+      reason,
+      destroy,
+    };
   }
 
   function setStepError(message: string, line: number | null = null) {
     setError(message);
     setErrorLine(line);
+    if (line !== null) reveal(sampleAnchor(line));
     return false;
   }
 
   function validateStep1() {
     if (!clientId) return setStepError("Choisissez le client.");
-    if ((samplerKind === "SERVICE_VETERINAIRE" || samplerKind === "AUTRE") && !samplerName.trim()) {
+    if (samplerKind === "AUTRE" && !samplerName.trim()) {
       return setStepError("Indiquez qui a effectué le prélèvement.");
     }
+    if (!cadre) return setStepError(SERIE_MESSAGES.cadreMissing);
     if (advanceAmount.trim() && !advanceMode) return setStepError("Indiquez le mode de paiement de l'avance.");
     for (const [i, line] of lines.entries()) {
       const n = i + 1;
-      if (!line.natureId) return setStepError("Choisissez la nature d'analyse.", n);
-      if (line.lineKind === "ALIMENT" && !line.produit.trim()) return setStepError("Indiquez la désignation du produit.", n);
-      if (line.lineKind === "SURFACE" && !line.surfaceLabel.trim()) return setStepError("Indiquez la surface prélevée.", n);
-      if (line.lineKind === "MAINS" && !line.personName.trim()) return setStepError("Indiquez la personne prélevée.", n);
-      if (line.parameterIds.length === 0) return setStepError("Choisissez au moins une analyse.", n);
+      // No analysis is required (V6): the programme sheet fixes them.
+      const problem = lineDraftError(line, natures, { requirePlace: false });
+      if (problem) return setStepError(sampleLineMessage(n, problem), n);
       const { conformity, reason, extra } = evaluate(line);
-      if (!conformity && !reason) return setStepError("Choisissez le motif de non-conformité.", n);
-      if (!conformity && reason === "AUTRE" && !extra.note.trim()) return setStepError("Précisez le motif « autre ».", n);
+      if (!conformity && !reason) return setStepError(sampleLineMessage(n, "Choisissez le motif de non-conformité."), n);
+      if (!conformity && reason === "AUTRE" && !extra.note.trim()) {
+        return setStepError(sampleLineMessage(n, "Précisez le motif « autre »."), n);
+      }
     }
-    setError("");
-    setErrorLine(null);
+    clearError();
     return true;
   }
 
   async function handleConfirm() {
     setLoading(true);
-    setError("");
+    clearError();
     try {
       const res = await fetch("/api/series", {
         method: "POST",
@@ -386,6 +425,7 @@ export function DepositForm({
           siteId: siteId || undefined,
           samplerKind,
           cadre,
+          cadreNote: cadre === "AUTRE" ? cadreNote.trim() || undefined : undefined,
           samplerName: samplerKind === "CLIENT" ? undefined : samplerName,
           interlocutor,
           clientReference,
@@ -393,11 +433,11 @@ export function DepositForm({
           notes,
           advanceAmount: advanceAmount || undefined,
           advanceMode: advanceMode || undefined,
+          // The série's two boxes are computed by the API from the samples.
           lines: lines.map((line) => {
             const { conformity, reason, extra, destroy } = evaluate(line);
             return {
-              ...Object.fromEntries(Object.entries(line).filter(([k]) => k !== "key")),
-              handsState: line.handsState || undefined,
+              ...linePayload(line),
               receptionTemperature: extra.temperature,
               conformity,
               conformityReason: conformity ? undefined : reason,
@@ -410,9 +450,9 @@ export function DepositForm({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Impossible d'enregistrer le dépôt.");
-        setErrorLine(typeof data.line === "number" ? data.line : null);
+        // The API's message already names the sample (« Échantillon 2 — … »).
         setStep(1);
+        setStepError(data.error ?? "Impossible d'enregistrer le dépôt.", typeof data.line === "number" ? data.line : null);
         return;
       }
       setCreated(data);
@@ -424,12 +464,22 @@ export function DepositForm({
     }
   }
 
+  const cadreMissing = !cadre && error === SERIE_MESSAGES.cadreMissing;
+  const samplesToCreate = sampleCount(lines);
+  const analyses = serieAnalyses(lines);
+  const serieFamilies: Family[] = [
+    ...(analyses.analysesMicro ? (["MICRO"] as const) : []),
+    ...(analyses.analysesChimie ? (["CHIMIE"] as const) : []),
+  ];
+
   if (step === 3 && created) {
-    const units = created.samples.reduce((n, s) => n + Math.max(1, s.unitCount), 0);
+    // The two samples of a line side by side, microbiology first (« 2M », « 2P »).
+    const samples = [...created.samples].sort((a, b) => a.lineNumber - b.lineNumber || a.code.localeCompare(b.code));
+    const units = samples.reduce((n, s) => n + Math.max(1, s.unitCount), 0);
     return (
       <div className="mx-auto max-w-4xl">
         <Card className="p-6 sm:p-8">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-50 ring-1 ring-emerald-200">
               <CheckCircle2 className="h-6 w-6 text-emerald-600" aria-hidden="true" />
             </span>
@@ -437,7 +487,8 @@ export function DepositForm({
               <h2 className="text-xl font-semibold text-slate-900">Dépôt enregistré et réceptionné</h2>
               <p className="text-sm text-slate-500">
                 {created.client.name} · {created.arrivedAt ? formatDateTime(created.arrivedAt) : ""} ·{" "}
-                {created.samples.length} ligne{created.samples.length > 1 ? "s" : ""} · {units} étiquette{units > 1 ? "s" : ""}
+                {countLabel(samples.length, "échantillon numéroté", "échantillons numérotés")} ·{" "}
+                {countLabel(units, "étiquette")}
               </p>
             </div>
             <div className="ml-auto rounded-2xl bg-brand px-5 py-3 text-white shadow-lg shadow-brand/20">
@@ -450,7 +501,7 @@ export function DepositForm({
             <table className="w-full min-w-[560px] text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th className="pb-2 pr-3 font-medium">Ligne</th>
+                  <th className="pb-2 pr-3 font-medium">Échantillon</th>
                   <th className="pb-2 pr-3 font-medium">N° de contrôle</th>
                   <th className="pb-2 pr-3 font-medium">Unités</th>
                   <th className="pb-2 pr-3 font-medium">Conformité</th>
@@ -458,18 +509,27 @@ export function DepositForm({
                 </tr>
               </thead>
               <tbody>
-                {created.samples.map((s) => (
+                {samples.map((s) => (
                   <tr key={s.id} className="border-b border-slate-100 align-top">
                     <td className="py-2.5 pr-3">
-                      <span className="font-medium text-slate-800">{s.lineNumber} · {lineDesignation(s)}</span>
-                      <span className="block text-xs text-slate-500">{LINE_KIND_LABELS[s.lineKind]}</span>
+                      <span className="font-medium text-slate-800">
+                        {sampleRef(s.lineNumber, s.code)} · {lineDesignation(s)}
+                      </span>
+                      <span className="block text-xs text-slate-500">
+                        {LINE_KIND_LABELS[s.lineKind]} · {s.nature.label}
+                      </span>
                     </td>
                     <td className="py-2.5 pr-3 font-mono text-base font-bold text-slate-900">{s.controlCode ?? "—"}</td>
                     <td className="py-2.5 pr-3 text-slate-600">
                       {s.unitCount > 1 ? `${s.unitCount} (${repetitionRange(s.unitCount)})` : "1"}
                     </td>
                     <td className="py-2.5 pr-3">
-                      {s.conformity === false ? (
+                      {s.status === "ANNULE" ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                          Échantillon détruit
+                          {s.conformityReason ? ` · ${NON_CONFORMITY_REASON_LABELS[s.conformityReason]}` : ""}
+                        </span>
+                      ) : s.conformity === false ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
                           <AlertTriangle className="h-3 w-3" aria-hidden="true" />
                           {s.conformityReason ? NON_CONFORMITY_REASON_LABELS[s.conformityReason] : "Non conforme"}
@@ -526,7 +586,7 @@ export function DepositForm({
         title={step === 1 ? "Bon de réception" : "Vérification"}
         subtitle={
           step === 1
-            ? "Le client apporte ses échantillons : un numéro de série, une ligne par échantillon, réceptionnés sur-le-champ"
+            ? "Le client apporte ses échantillons : un numéro de série pour le dépôt, chaque échantillon réceptionné sur-le-champ"
             : "Vérifiez les données avant l'enregistrement"
         }
       />
@@ -539,17 +599,19 @@ export function DepositForm({
             <div className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className={sites.length > 0 ? "" : "sm:col-span-2"}>
-                  <label className="section-title mb-2">
+                  <label htmlFor="deposit-client" className="section-title mb-2">
                     <Building2 className="h-4 w-4" />
                     Client
                   </label>
                   <select
+                    id="deposit-client"
                     value={clientId}
                     onChange={(e) => {
                       setClientId(e.target.value);
                       setSiteId("");
                       setMemory({ places: [], products: [] });
-                      // A type of the previous client must not stay on a line.
+                      clearError();
+                      // A type of the previous client must not stay on a sample.
                       setLines((prev) => prev.map((l) => (l.productTypeId ? { ...l, productTypeId: "" } : l)));
                     }}
                     className="input-field px-4"
@@ -562,8 +624,8 @@ export function DepositForm({
                 </div>
                 {sites.length > 0 && (
                   <div>
-                    <label className="section-title mb-2">Site (facultatif)</label>
-                    <select value={siteId} onChange={(e) => setSiteId(e.target.value)} className="input-field px-4">
+                    <label htmlFor="deposit-site" className="section-title mb-2">Site (facultatif)</label>
+                    <select id="deposit-site" value={siteId} onChange={(e) => setSiteId(e.target.value)} className="input-field px-4">
                       <option value="">— Siège —</option>
                       {sites.map((s) => (
                         <option key={s.id} value={s.id}>{s.name}</option>
@@ -573,71 +635,107 @@ export function DepositForm({
                 )}
               </div>
 
-              <div>
-                <p className="section-title mb-2">
+              <div role="group" aria-labelledby="deposit-sampler">
+                <p id="deposit-sampler" className="section-title mb-2">
                   <User className="h-4 w-4" />
                   Prélèvement effectué par
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {SAMPLER_CHOICES.map((k) => (
+                  {SAMPLER_CHOICES.map((choice) => (
                     <button
-                      key={k}
+                      key={choice.value}
                       type="button"
                       onClick={() => {
-                        setSamplerKind(k);
-                        // Le cadre redevient celui que ce préleveur implique.
-                        setCadreChoice(null);
+                        setSamplerKind(choice.value);
+                        clearError();
                       }}
-                      aria-pressed={samplerKind === k}
-                      className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition ${
-                        samplerKind === k
-                          ? "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20"
-                          : "border-slate-200 text-slate-600 hover:border-slate-300"
+                      aria-pressed={samplerKind === choice.value}
+                      className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                        samplerKind === choice.value ? CHIP_ON : CHIP_OFF
                       }`}
                     >
-                      {k === "CLIENT" ? "Le client" : k === "SERVICE_VETERINAIRE" ? "Service vétérinaire" : "Autre"}
+                      {choice.label}
                     </button>
                   ))}
                 </div>
-                {samplerKind !== "CLIENT" && (
+                {samplerKind === "AUTRE" && (
                   <input
                     type="text"
                     value={samplerName}
                     onChange={(e) => setSamplerName(e.target.value)}
-                    placeholder={SAMPLER_KIND_LABELS[samplerKind] + " — nom"}
+                    aria-label="Nom de la personne ou du service qui a prélevé"
+                    placeholder="Nom de la personne ou du service (ex. : service vétérinaire)"
                     className="input-field mt-2 px-4"
                   />
                 )}
-                <p className="section-title mb-2 mt-4">
+              </div>
+
+              <div>
+                <p id="deposit-cadre" className="section-title mb-2">
                   <ClipboardList className="h-4 w-4" />
                   Cadre
+                  <span className="-ml-1 text-rose-600" aria-hidden="true">*</span>
+                  <span className="sr-only">(obligatoire)</span>
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  {(["AUTOCONTROLE", "OFFICIEL"] as const).map((c) => (
+                <div
+                  role="group"
+                  aria-labelledby="deposit-cadre"
+                  aria-describedby={cadreMissing ? "deposit-cadre-error" : undefined}
+                  className={`flex flex-wrap gap-2 rounded-xl ${cadreMissing ? "ring-2 ring-rose-300 ring-offset-2" : ""}`}
+                >
+                  {CADRE_CHOICES.map((c) => (
                     <button
                       key={c}
                       type="button"
-                      onClick={() => setCadreChoice(c)}
+                      onClick={() => {
+                        setCadre(c);
+                        clearError();
+                      }}
                       aria-pressed={cadre === c}
-                      className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition ${
-                        cadre === c
-                          ? "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20"
-                          : "border-slate-200 text-slate-600 hover:border-slate-300"
+                      className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                        cadre === c ? CHIP_ON : CHIP_OFF
                       }`}
                     >
                       {CADRE_LABELS[c]}
                     </button>
                   ))}
                 </div>
+                {cadreMissing && (
+                  <p id="deposit-cadre-error" className="mt-1 text-xs text-rose-600">
+                    {SERIE_MESSAGES.cadreMissing}
+                  </p>
+                )}
+                {cadre === "AUTRE" && (
+                  <div className="mt-3">
+                    <label htmlFor="deposit-cadre-note" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                      Préciser (facultatif)
+                    </label>
+                    <input
+                      id="deposit-cadre-note"
+                      type="text"
+                      maxLength={CADRE_NOTE_MAX}
+                      value={cadreNote}
+                      onChange={(e) => setCadreNote(e.target.value)}
+                      placeholder="Ex. : audit interne"
+                      className="input-field px-4"
+                    />
+                  </div>
+                )}
+                {(cadre === "DEVIS_VALIDE" || cadre === "BON_COMMANDE") && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Le N° du {cadre === "BON_COMMANDE" ? "BC" : "devis"} se saisit dans « Référence client ».
+                  </p>
+                )}
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="section-title mb-2">
+                  <label htmlFor="deposit-interlocutor" className="section-title mb-2">
                     <User className="h-4 w-4" />
                     Déposé par (personne au comptoir)
                   </label>
                   <input
+                    id="deposit-interlocutor"
                     type="text"
                     value={interlocutor}
                     onChange={(e) => setInterlocutor(e.target.value)}
@@ -646,12 +744,13 @@ export function DepositForm({
                   />
                 </div>
                 <div>
-                  <label className="section-title mb-2">
+                  <label htmlFor="deposit-started" className="section-title mb-2">
                     <Clock className="h-4 w-4" />
                     Prélevé le
                   </label>
                   {isMounted ? (
                     <input
+                      id="deposit-started"
                       type="datetime-local"
                       value={startedAt}
                       onChange={(e) => setStartedAt(e.target.value)}
@@ -666,25 +765,27 @@ export function DepositForm({
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="section-title mb-2">
+                  <label htmlFor="deposit-reference" className="section-title mb-2">
                     <ClipboardList className="h-4 w-4" />
-                    N° de factures / référence client
+                    Référence client
                   </label>
                   <input
+                    id="deposit-reference"
                     type="text"
                     value={clientReference}
                     onChange={(e) => setClientReference(e.target.value)}
-                    placeholder="Facultatif"
+                    placeholder="Facultatif — ex. : N° du BC ou du devis"
                     className="input-field px-4"
                   />
                 </div>
                 <div>
-                  <label className="section-title mb-2">
+                  <label htmlFor="deposit-advance" className="section-title mb-2">
                     <Wallet className="h-4 w-4" />
                     Avance encaissée (DH)
                   </label>
                   <div className="flex gap-2">
                     <input
+                      id="deposit-advance"
                       type="text"
                       inputMode="decimal"
                       value={advanceAmount}
@@ -710,33 +811,46 @@ export function DepositForm({
           </Card>
 
           {lines.map((line, index) => {
-            const { nature, checks, proposal, conformity, reason, extra, destroy } = evaluate(line);
-            const type = nature?.legacyType;
+            const number = index + 1;
+            const { families, twins, checks, familyBlocking, proposal, conformity, reason, extra, destroy } = evaluate(line);
+            const category = lineCategory(natures, line);
+            const [microRef, chimieRef] = lineSampleRefs(number, families);
             return (
-              <div key={line.key} className={errorLine === index + 1 ? "space-y-3 rounded-2xl ring-2 ring-rose-300" : "space-y-3"}>
+              <div
+                key={line.key}
+                id={sampleAnchor(number)}
+                className={`scroll-mt-4 space-y-3 ${errorLine === number ? "rounded-2xl ring-2 ring-rose-300" : ""}`}
+              >
                 <LineEditor
                   index={index}
                   line={line}
                   natures={natures}
-                  parameters={type ? (parametersByType[type] ?? []) : []}
-                  parametersLoading={type ? loadingTypes.has(type) : false}
+                  parameters={category ? (parametersByType[category] ?? []) : []}
+                  parametersLoading={category ? loadingTypes.has(category) : false}
                   canRemove={lines.length > 1}
-                  onChange={(patch) => updateLine(line.key, patch)}
-                  onNatureChange={(id) => changeNature(line.key, id)}
-                  onKindChange={(kind) => changeKind(line.key, kind)}
+                  onChange={(patch) => patchLine(line, patch)}
+                  onKindChange={(_kind, patch) => patchLine(line, patch)}
                   onDuplicate={() => duplicateLine(line.key)}
                   onRemove={() => removeLine(line.key)}
                   placeSuggestions={placeSuggestions}
                   productSuggestions={productSuggestions}
                   knownPlaces={memory.places}
                   knownProducts={memory.products}
-                  profiles={profiles.filter((p) => p.natureId === line.natureId)}
+                  profiles={profiles}
                   productTypes={productTypes}
+                  quantityUnitFallback="G"
                 />
                 <Card className="p-4 sm:p-6">
                   <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                    Réception de la ligne {index + 1}
+                    Réception de l&apos;échantillon {number}
                   </h3>
+                  {twins && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Deux familles cochées : deux échantillons, {microRef} (microbiologie) et {chimieRef}{" "}
+                      (physico-chimie), chacun avec son N° de contrôle. La température, la conformité et le technicien
+                      saisis ici valent pour les deux.
+                    </p>
+                  )}
                   <div className="mt-3 grid gap-4 sm:grid-cols-2">
                     <div>
                       <label htmlFor={`rt-${line.key}`} className="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -783,7 +897,11 @@ export function DepositForm({
                     </div>
                     {proposal.forced && (
                       <p className="mt-1.5 text-xs text-rose-700">
-                        Une règle bloquante s&apos;applique : corrigez la mesure ou réceptionnez la ligne comme non conforme.
+                        Une règle bloquante s&apos;applique : corrigez la mesure ou réceptionnez{" "}
+                        {twins ? "les deux échantillons" : "l'échantillon"} comme non conforme{twins ? "s" : ""}.
+                        {twins && familyBlocking
+                          ? " Elle ne concerne qu'une famille : pour réceptionner l'autre comme conforme, dupliquez l'échantillon et ne cochez qu'une famille sur chaque copie."
+                          : ""}
                       </p>
                     )}
                   </fieldset>
@@ -823,7 +941,9 @@ export function DepositForm({
                   )}
                   {!conformity && (
                     <fieldset className="mt-3">
-                      <legend className="text-sm font-semibold text-slate-700">Décision pour cette ligne</legend>
+                      <legend className="text-sm font-semibold text-slate-700">
+                        Décision pour {twins ? "ces deux échantillons" : "cet échantillon"}
+                      </legend>
                       <div className="mt-2 grid grid-cols-2 gap-2">
                         <ConformityChip active={!destroy} disabled={false} tone="ok" label="Analyser malgré tout" onClick={() => updateIntake(line.key, { destroy: false })} />
                         <ConformityChip active={destroy} disabled={false} tone="warn" label="Détruire" onClick={() => updateIntake(line.key, { destroy: true })} />
@@ -833,7 +953,9 @@ export function DepositForm({
                   {destroy && (
                     <p className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                      Ligne détruite : numérotée et imprimée sur le bon de réception avec sa non-conformité, puis annulée
+                      {twins
+                        ? `Échantillons ${microRef} et ${chimieRef} détruits : numérotés et imprimés sur le bon de réception avec leur non-conformité, puis annulés`
+                        : "Échantillon détruit : numéroté et imprimé sur le bon de réception avec sa non-conformité, puis annulé"}{" "}
                       (motif « Détruit à réception »). Aucune analyse, rien n&apos;est facturé.
                     </p>
                   )}
@@ -842,14 +964,15 @@ export function DepositForm({
             );
           })}
 
-          <SecondaryButton type="button" onClick={addLine} className="w-full min-h-[48px]">
+          <SecondaryButton type="button" onClick={addLine} disabled={natures.length === 0} className="w-full min-h-[48px]">
             <Plus className="h-4 w-4" />
-            Ajouter une ligne
+            Ajouter un échantillon
           </SecondaryButton>
 
           <Card className="p-4 sm:p-6">
-            <label className="mb-2 block text-sm font-semibold text-slate-700">Notes (optionnel)</label>
+            <label htmlFor="deposit-notes" className="mb-2 block text-sm font-semibold text-slate-700">Notes (optionnel)</label>
             <textarea
+              id="deposit-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
@@ -860,7 +983,6 @@ export function DepositForm({
 
           {error && (
             <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600 ring-1 ring-red-100">
-              {errorLine ? `Ligne ${errorLine} — ` : ""}
               {error}
             </p>
           )}
@@ -870,10 +992,13 @@ export function DepositForm({
             onClick={() => validateStep1() && setStep(2)}
             className="w-full min-h-[48px] py-3.5 text-sm font-bold tracking-wide"
           >
-            Continuer — Vérifier ({lines.length} ligne{lines.length > 1 ? "s" : ""})
+            Continuer — Vérifier ({countLabel(lines.length, "échantillon")}
+            {samplesToCreate > lines.length ? ` · ${samplesToCreate} N° de contrôle` : ""})
           </PrimaryButton>
           {technicians.length === 0 && (
-            <p className="text-sm text-amber-700">Aucun technicien actif : le responsable des paramètres attribuera les lignes à la programmation.</p>
+            <p className="text-sm text-amber-700">
+              Aucun technicien actif : le responsable des paramètres attribuera les échantillons à la programmation.
+            </p>
           )}
         </div>
       )}
@@ -885,29 +1010,35 @@ export function DepositForm({
             <div className="space-y-3 rounded-xl bg-slate-50 p-5 text-sm ring-1 ring-slate-100">
               <Row label="Client" value={selectedClient?.name ?? "—"} />
               <Row label="Prélèvement" value={samplerKind === "CLIENT" ? "Par le client" : `${SAMPLER_KIND_LABELS[samplerKind]} — ${samplerName}`} />
-              <Row label="Cadre" value={CADRE_LABELS[cadre]} />
+              <Row label="Cadre" value={cadre ? formatCadre(cadre, cadreNote) : "—"} />
               {interlocutor && <Row label="Déposé par" value={interlocutor} />}
               <Row label="Prélevé le" value={isMounted && startedAt ? formatDateTime(localInputDate(startedAt)!) : "—"} />
               {clientReference && <Row label="Référence client" value={clientReference} />}
+              <Row label="Analyses à effectuer" value={serieFamilies.length > 0 ? familiesSummary(serieFamilies) : "—"} />
               {advanceAmount && <Row label="Avance" value={`${advanceAmount} DH — ${PAYMENT_MODES.find((m) => m.value === advanceMode)?.label ?? ""}`} />}
             </div>
             <ul className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-100">
               {lines.map((line, i) => {
-                const { nature, names, conformity, reason, extra, destroy } = evaluate(line);
+                const number = i + 1;
+                const { families, twins, names, conformity, reason, extra, destroy } = evaluate(line);
                 const technician = technicians.find((t) => t.id === extra.technicianId);
                 return (
                   <li key={line.key} className="px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-xs font-semibold uppercase tracking-wide text-brand">
-                          Ligne {i + 1} · {nature?.label}
+                          Échantillon {number} · {LINE_KIND_LABELS[line.lineKind]}
                         </p>
                         <p className="font-medium text-slate-900">{lineDesignation(line)}</p>
+                        <p className="text-xs text-slate-600">
+                          {familiesSummary(families)}
+                          {twins ? ` — deux échantillons : ${lineSampleRefs(number, families).join(" et ")}` : ""}
+                        </p>
                         <p className="text-xs text-slate-500">
                           {line.quantity ? `${line.quantity} ${line.quantityUnit === "UNITE" ? "unité(s)" : line.quantityUnit.toLowerCase()}` : "quantité non pesée"}
                           {extra.temperature ? ` · ${extra.temperature} °C à l'arrivée` : ""}
                           {line.unitCount > 1 ? ` · n = ${line.unitCount}` : ""}
-                          {technician ? ` · ${technician.name}` : " · technicien attribué à la programmation"}
+                          {destroy ? "" : technician ? ` · ${technician.name}` : " · technicien attribué à la programmation"}
                         </p>
                       </div>
                       <span
@@ -919,13 +1050,17 @@ export function DepositForm({
                         {destroy ? " · à détruire" : ""}
                       </span>
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {names.map((n) => (
-                        <span key={n} className="rounded-full bg-white px-2.5 py-0.5 text-xs font-medium text-brand ring-1 ring-brand/10">
-                          {n}
-                        </span>
-                      ))}
-                    </div>
+                    {names.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {names.map((n) => (
+                          <span key={n} className="rounded-full bg-white px-2.5 py-0.5 text-xs font-medium text-brand ring-1 ring-brand/10">
+                            {n}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-xs text-slate-500">Analyses fixées par le responsable des paramètres.</p>
+                    )}
                   </li>
                 );
               })}

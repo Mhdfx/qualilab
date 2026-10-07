@@ -8,6 +8,8 @@ import { loadBenchPlans } from "@/lib/bench-plan";
 import { canEditParameter, isOnBenchOf } from "@/lib/bench-access";
 import { effectiveFactor } from "@/lib/dilution";
 import { formatDate, PROGRAMME_PRIORITY_LABELS } from "@/lib/labels";
+import { sampleRef } from "@/lib/reception-input";
+import { lineDesignation } from "@/components/preleveur/visit-types";
 import { getDashboardPath } from "@/lib/roles";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -43,6 +45,14 @@ export default async function AnalysePage({
       lieu: true,
       produit: true,
       numeroLot: true,
+      // What is analysed: « Planche verte — surface nettoyée », « Salle — Biocollecteur ».
+      lineNumber: true,
+      lineKind: true,
+      surfaceLabel: true,
+      surfaceState: true,
+      surfaceAreaCm2: true,
+      personName: true,
+      airMethod: true,
       notes: true,
       receivedAt: true,
       conformity: true,
@@ -93,6 +103,8 @@ export default async function AnalysePage({
   }
 
   const resultByParameter = new Map(sample.results.map((r) => [r.parameterId, r]));
+  // « — » when nothing names it (a food sample without a designation).
+  const designation = lineDesignation(sample);
 
   const lines: ParameterLine[] = sample.parameters.map((line) => {
     const { parameter } = line;
@@ -171,12 +183,18 @@ export default async function AnalysePage({
               </Field>
               <Field icon={Hash} label="N° de série">
                 <span className="font-mono">{sample.serie.serialNumber}</span>
+                <span className="ml-1.5 text-xs font-normal text-slate-500">
+                  échantillon {sampleRef(sample.lineNumber, sample.code)}
+                </span>
               </Field>
               <Field icon={Building2} label="Client">
                 {sample.client.name}
               </Field>
-              <Field icon={Package} label="Produit">
-                {sample.produit ?? <span className="text-slate-400">Non renseigné</span>}
+              <Field icon={Package} label="Désignation">
+                {designation === "—" ? <span className="text-slate-400">Non renseignée</span> : designation}
+                {sample.lineKind === "SURFACE" && sample.surfaceAreaCm2 !== null && (
+                  <span className="ml-1.5 text-xs font-normal text-slate-500">{sample.surfaceAreaCm2} cm²</span>
+                )}
               </Field>
               <Field icon={Package} label="Type de produit">
                 {bench.productType ? (
@@ -246,9 +264,9 @@ export default async function AnalysePage({
             </h2>
             <p className="mt-1.5 text-sm text-slate-600">
               Le responsable des paramètres n&apos;a pas encore confirmé le programme
-              d&apos;analyse de cette ligne : les analyses, les nombres et les méthodes
-              sont fixés à cette étape. Rien à saisir pour l&apos;instant — la ligne
-              apparaîtra dans « Mes analyses » une fois programmée.
+              d&apos;analyse de cet échantillon : les analyses, les nombres et les méthodes
+              sont fixés à cette étape. Rien à saisir pour l&apos;instant — l&apos;échantillon
+              apparaîtra dans « Mes analyses » une fois programmé.
             </p>
           </Card>
         ) : canEdit ? (

@@ -4,15 +4,53 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Camera, CheckCircle2, FileText, Thermometer } from "lucide-react";
-import type { LineKind, SampleStatus } from "@/generated/prisma/enums";
-import { CADRE_LABELS, LINE_KIND_LABELS, SAMPLER_KIND_LABELS, formatDateTime } from "@/lib/labels";
+import type {
+  AirMethod,
+  Cadre,
+  Family,
+  LineKind,
+  SampleStatus,
+  SurfaceState,
+} from "@/generated/prisma/enums";
+import {
+  CADRE_CHOICES,
+  CADRE_LABELS,
+  LINE_KIND_LABELS,
+  SAMPLER_KIND_LABELS,
+  formatCadre,
+  formatDateTime,
+} from "@/lib/labels";
 import { SERIE_STATUS_LABELS, type SerieProgress, type SerieStatus } from "@/lib/series";
+import type { LineFamily } from "@/lib/nature-family";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { LegalTimeHint } from "@/components/LegalTimeHint";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { fromLocalInput, lineDesignation, toLocalInput } from "./visit-types";
+import { familiesLabel, groupByLine, sampleFamily } from "./visit-samples";
+
+type VisitSample = {
+  id: string;
+  code: string;
+  lineNumber: number;
+  lineKind: LineKind;
+  status: SampleStatus;
+  lieu: string;
+  produit: string | null;
+  surfaceLabel: string | null;
+  personName: string | null;
+  numeroLot: string | null;
+  unitCount: number;
+  productTemperature: number | null;
+  /** The V2 / V4 fields: optional so that a payload not selecting them
+   *  still reads, null on the samples entered before. */
+  surfaceAreaCm2?: number | null;
+  surfaceState?: SurfaceState | null;
+  airMethod?: AirMethod | null;
+  nature: { label: string; family?: Family | null };
+  parameters: { parameter: { id: string; name: string } }[];
+};
 
 export type VisitData = {
   id: string;
@@ -24,7 +62,9 @@ export type VisitData = {
   samplerKind: keyof typeof SAMPLER_KIND_LABELS;
   samplerUser: { id: string; name: string } | null;
   samplerName: string | null;
-  cadre: keyof typeof CADRE_LABELS;
+  cadre: Cadre;
+  /** The precision of « Autre » (« Autre — texte »). */
+  cadreNote?: string | null;
   receivedAt: string | null;
   clientReference: string | null;
   startedAt: string;
@@ -36,23 +76,10 @@ export type VisitData = {
   notes: string | null;
   status: SerieStatus;
   progress: SerieProgress;
-  samples: {
-    id: string;
-    code: string;
-    lineNumber: number;
-    lineKind: LineKind;
-    status: SampleStatus;
-    lieu: string;
-    produit: string | null;
-    surfaceLabel: string | null;
-    personName: string | null;
-    numeroLot: string | null;
-    unitCount: number;
-    productTemperature: number | null;
-    nature: { label: string };
-    parameters: { parameter: { id: string; name: string } }[];
-  }[];
+  samples: VisitSample[];
 };
+
+const CADRE_NOTE_MAX = 191;
 
 /** Shrinks a phone photo to a data URI the API accepts (≤ 1.5 MB). */
 async function fileToDataUri(file: File): Promise<string> {
@@ -66,13 +93,41 @@ async function fileToDataUri(file: File): Promise<string> {
   return canvas.toDataURL("image/jpeg", 0.8);
 }
 
+const decimal = (value: number) => String(value).replace(".", ",");
+
+/** The analyses asked for one sample, or what happens when none was ticked (V6). */
+function analysesText(sample: VisitSample) {
+  const names = sample.parameters.map((p) => p.parameter.name);
+  return names.length > 0 ? names.join(", ") : "Aucune analyse demandée : le laboratoire les fixera.";
+}
+
+/** Type, place, lot, area, temperature — what the line's samples share. */
+function lineDetails(sample: VisitSample, withUnits: boolean) {
+  return [
+    LINE_KIND_LABELS[sample.lineKind],
+    sample.lieu,
+    sample.numeroLot ? `lot ${sample.numeroLot}` : "",
+    sample.lineKind === "SURFACE" && sample.surfaceAreaCm2 ? `${sample.surfaceAreaCm2} cm²` : "",
+    withUnits && sample.unitCount > 1 ? `n = ${sample.unitCount}` : "",
+    sample.productTemperature !== null ? `${decimal(sample.productTemperature)} °C` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** The precision of « Autre » as stored: none on another cadre. */
+function storedNote(visit: Pick<VisitData, "cadre" | "cadreNote">) {
+  return visit.cadre === "AUTRE" ? (visit.cadreNote ?? "").trim() : "";
+}
+
 export function VisitDetail({ visit: initial }: { visit: VisitData }) {
   const router = useRouter();
   const [visit, setVisit] = useState(initial);
   const [endedAt, setEndedAt] = useState(initial.endedAt ? toLocalInput(new Date(initial.endedAt)) : "");
   const [arrivedAt, setArrivedAt] = useState(initial.arrivedAt ? toLocalInput(new Date(initial.arrivedAt)) : "");
   const [cooler, setCooler] = useState(initial.coolerTemperature === null ? "" : String(initial.coolerTemperature));
-  const [cadre, setCadre] = useState(initial.cadre);
+  const [cadre, setCadre] = useState<Cadre>(initial.cadre);
+  const [cadreNote, setCadreNote] = useState(storedNote(initial));
   // Une fois la série réceptionnée, le cadre appartient au laboratoire.
   const cadreLocked = Boolean(visit.receivedAt);
   const [photo, setPhoto] = useState<string | null>(null);
@@ -85,14 +140,18 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
     setBusy(true);
     setError("");
     setSaved(false);
+    const note = cadre === "AUTRE" ? cadreNote.trim() : "";
+    const cadreChanged = cadre !== visit.cadre;
+    const noteChanged = note !== storedNote(visit);
     try {
       const body: Record<string, unknown> = {
         endedAt: fromLocalInput(endedAt),
         arrivedAt: fromLocalInput(arrivedAt),
         coolerTemperature: cooler,
-        // Envoyé seulement s'il change : une série réceptionnée refuserait
+        // Envoyés seulement s'ils changent : une série réceptionnée refuserait
         // l'écriture et le reste du panneau serait perdu avec elle.
-        ...(cadre !== visit.cadre ? { cadre } : {}),
+        ...(cadreChanged ? { cadre } : {}),
+        ...(cadreChanged || noteChanged ? { cadreNote: note || null } : {}),
       };
       if (photo) body.signedProtocolData = photo;
       const res = await fetch(`/api/series/${visit.id}`, {
@@ -105,7 +164,18 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
         setError(data.error ?? "Enregistrement impossible.");
         return;
       }
-      setVisit((v) => ({ ...v, ...data }));
+      setVisit((v) => ({
+        ...v,
+        ...data,
+        cadre: data.cadre ?? cadre,
+        // The answer may not carry the precision: what was sent is what is stored.
+        cadreNote: data.cadreNote !== undefined ? data.cadreNote : cadreChanged || noteChanged ? note || null : v.cadreNote,
+        // Keep what the answer leaves out of each sample (state, method…).
+        samples: Array.isArray(data.samples)
+          ? (data.samples as VisitSample[]).map((s) => ({ ...v.samples.find((o) => o.id === s.id), ...s }))
+          : v.samples,
+      }));
+      setCadreNote(note);
       if (photo) setHasPhoto(true);
       setPhoto(null);
       setSaved(true);
@@ -118,6 +188,11 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
   }
 
   const closed = Boolean(visit.arrivedAt);
+  const groups = groupByLine(visit.samples);
+  const sampler =
+    visit.samplerKind === "QUALILAB"
+      ? visit.samplerUser?.name ?? "—"
+      : `${SAMPLER_KIND_LABELS[visit.samplerKind]}${visit.samplerName ? ` — ${visit.samplerName}` : ""}`;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -150,17 +225,16 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
               </a>
             </div>
             <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-              <Info label="Prélevé par">
-                {visit.samplerKind === "QUALILAB" ? visit.samplerUser?.name ?? "—" : SAMPLER_KIND_LABELS[visit.samplerKind]}
-              </Info>
+              <Info label="Prélevé par">{sampler}</Info>
+              <Info label="Cadre">{formatCadre(visit.cadre, visit.cadreNote)}</Info>
               <Info label="Interlocuteur">{visit.interlocutor ?? "—"}</Info>
+              <Info label="Référence client">{visit.clientReference ?? "—"}</Info>
               <Info label="Début">{formatDateTime(visit.startedAt)}</Info>
               <Info label="Fin">{visit.endedAt ? formatDateTime(visit.endedAt) : "—"}</Info>
               <Info label="Arrivée au laboratoire">{visit.arrivedAt ? formatDateTime(visit.arrivedAt) : "—"}</Info>
               <Info label="T° à l'arrivée">
-                {visit.coolerTemperature === null ? "—" : `${String(visit.coolerTemperature).replace(".", ",")} °C`}
+                {visit.coolerTemperature === null ? "—" : `${decimal(visit.coolerTemperature)} °C`}
               </Info>
-              {visit.clientReference && <Info label="N° de factures">{visit.clientReference}</Info>}
               <Info label="Analyses à effectuer">
                 {[visit.analysesMicro ? "microbiologiques" : "", visit.analysesChimie ? "physico-chimiques" : ""]
                   .filter(Boolean)
@@ -172,29 +246,63 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
 
           <Card className="p-5">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Échantillons ({visit.samples.length})
+              Échantillons ({groups.length})
+              {visit.samples.length > groups.length && (
+                <span className="ml-1 font-normal normal-case tracking-normal text-slate-400">
+                  · {visit.samples.length} au laboratoire
+                </span>
+              )}
             </h2>
             <ul className="mt-3 divide-y divide-slate-100">
-              {visit.samples.map((s) => (
-                <li key={s.id} className="flex items-start justify-between gap-3 py-3">
-                  <div className="min-w-0">
+              {groups.map((group) => {
+                const first = group.samples[0];
+                if (!group.twinned) {
+                  return (
+                    <li key={group.lineNumber} className="flex items-start justify-between gap-3 py-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-brand">
+                          Échantillon {group.lineNumber} · {first.nature.label}
+                        </p>
+                        <p className="font-medium text-slate-900">{lineDesignation(first)}</p>
+                        <p className="text-xs text-slate-500">{lineDetails(first, true)}</p>
+                        <p className="mt-1 text-xs text-slate-500">{analysesText(first)}</p>
+                      </div>
+                      <StatusBadge status={first.status} />
+                    </li>
+                  );
+                }
+                const families = group.samples
+                  .map(sampleFamily)
+                  .filter((f, i, all): f is LineFamily => f !== null && all.indexOf(f) === i);
+                return (
+                  <li key={group.lineNumber} className="py-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-brand">
-                      Ligne {s.lineNumber} · {s.nature.label}
+                      Échantillon {group.lineNumber} · {familiesLabel(families)}
                     </p>
-                    <p className="font-medium text-slate-900">{lineDesignation(s)}</p>
-                    <p className="text-xs text-slate-500">
-                      {LINE_KIND_LABELS[s.lineKind]} · {s.lieu}
-                      {s.numeroLot ? ` · lot ${s.numeroLot}` : ""}
-                      {s.unitCount > 1 ? ` · n = ${s.unitCount}` : ""}
-                      {s.productTemperature !== null ? ` · ${String(s.productTemperature).replace(".", ",")} °C` : ""}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {s.parameters.map((p) => p.parameter.name).join(", ")}
-                    </p>
-                  </div>
-                  <StatusBadge status={s.status} />
-                </li>
-              ))}
+                    <p className="font-medium text-slate-900">{lineDesignation(first)}</p>
+                    <p className="text-xs text-slate-500">{lineDetails(first, false)}</p>
+                    <ul className="mt-2 space-y-2" aria-label={`Échantillon ${group.lineNumber} au laboratoire`}>
+                      {group.samples.map((s) => (
+                        <li
+                          key={s.id}
+                          className="flex items-start justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-100"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-800">
+                              {s.nature.label}
+                              {s.unitCount > 1 ? (
+                                <span className="font-normal text-slate-500"> · n = {s.unitCount}</span>
+                              ) : null}
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-500">{analysesText(s)}</p>
+                          </div>
+                          <StatusBadge status={s.status} />
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                );
+              })}
             </ul>
           </Card>
         </div>
@@ -219,16 +327,16 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
                 <LegalTimeHint />
               </div>
               <div>
-                <p className="mb-1.5 block text-sm font-semibold text-slate-700">Cadre</p>
-                <div className="flex flex-wrap gap-2">
-                  {(["AUTOCONTROLE", "OFFICIEL"] as const).map((c) => (
+                <p id="visit-cadre" className="mb-1.5 block text-sm font-semibold text-slate-700">Cadre</p>
+                <div role="group" aria-labelledby="visit-cadre" className="flex flex-wrap gap-2">
+                  {CADRE_CHOICES.map((c) => (
                     <button
                       key={c}
                       type="button"
                       onClick={() => setCadre(c)}
                       disabled={cadreLocked}
                       aria-pressed={cadre === c}
-                      className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition ${
+                      className={`min-h-[44px] rounded-xl border px-4 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                         cadre === c
                           ? "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20"
                           : "border-slate-200 text-slate-600 hover:border-slate-300"
@@ -238,6 +346,23 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
                     </button>
                   ))}
                 </div>
+                {cadre === "AUTRE" && (
+                  <div className="mt-3">
+                    <label htmlFor="cadreNote" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                      Préciser (facultatif)
+                    </label>
+                    <input
+                      id="cadreNote"
+                      type="text"
+                      value={cadreNote}
+                      maxLength={CADRE_NOTE_MAX}
+                      disabled={cadreLocked}
+                      onChange={(e) => setCadreNote(e.target.value)}
+                      placeholder="Ex. : audit interne"
+                      className="input-field px-4 disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                  </div>
+                )}
                 <p className="mt-1 text-xs text-slate-500">
                   {cadreLocked
                     ? "La série est réceptionnée : le laboratoire seul peut encore changer le cadre."

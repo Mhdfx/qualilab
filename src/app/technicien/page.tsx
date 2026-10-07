@@ -11,8 +11,8 @@ export const metadata = { title: "Analyses" };
 export default async function TechnicienPage() {
   const session = await requireRole("TECHNICIEN", "ADMIN");
 
-  // A technician's bench is the lines they hold or share a parameter of
-  // (PROGRAMME.md §6); ADMIN oversees everything. Only a programmed line
+  // A technician's bench is the samples they hold or share a parameter of
+  // (PROGRAMME.md §6); ADMIN oversees everything. Only a programmed sample
   // reaches the bench: a received one waits for its programme.
   const mine = benchWhereFor(session);
 
@@ -25,6 +25,14 @@ export default async function TechnicienPage() {
         controlCode: true,
         type: true,
         status: true,
+        // What is analysed: « Planche verte — surface nettoyée » (RETOUR-LABO-06-10.md §5).
+        lineNumber: true,
+        lineKind: true,
+        produit: true,
+        surfaceLabel: true,
+        surfaceState: true,
+        personName: true,
+        airMethod: true,
         receivedAt: true,
         conformity: true,
         priority: true,
@@ -35,7 +43,7 @@ export default async function TechnicienPage() {
         parameters: { select: { parameterId: true, technicianId: true } },
         results: { select: { parameterId: true, value: true, workStatus: true, interpretation: true } },
       },
-      // The urgent lines first, then the oldest receptions.
+      // The urgent samples first, then the oldest receptions.
       orderBy: [{ priority: "desc" }, { receivedAt: "asc" }],
     }),
     prisma.result.count({ where: { workStatus: "ANOMALIE", sample: mine } }),

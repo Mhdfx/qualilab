@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSampleSearch, sampleConclusion, sampleSearchWhere, searchQueryString } from "./sample-search";
+import { SIEGE, parseSampleSearch, sampleConclusion, sampleSearchWhere, searchQueryString } from "./sample-search";
 
 const parse = (query: string) => parseSampleSearch(new URLSearchParams(query));
 
@@ -20,9 +20,16 @@ describe("parseSampleSearch", () => {
   });
 
   it("round-trips through the query string", () => {
-    const s = parse("client=c1&etat=en_cours&du=2026-09-01&au=2026-09-30");
+    const s = parse("client=c1&site=s1&etat=en_cours&du=2026-09-01&au=2026-09-30");
     expect(parse(searchQueryString(s))).toEqual(s);
     expect(searchQueryString(s, { page: "2" })).toContain("page=2");
+  });
+
+  it("reads the site only once a client is chosen", () => {
+    expect(parse("client=c1&site=s1")).toMatchObject({ clientId: "c1", siteId: "s1" });
+    expect(parse("client=c1&site=siege").siteId).toBe(SIEGE);
+    expect(parse("site=s1").siteId).toBeNull();
+    expect(parse("client=c1&site=").siteId).toBeNull();
   });
 });
 
@@ -33,6 +40,16 @@ describe("sampleSearchWhere", () => {
     expect(where).toHaveProperty("receivedAt.gte");
     expect(sampleSearchWhere(parse("date=prelevement&au=2026-09-30"))).toHaveProperty("sampledAt.lte");
     expect(sampleSearchWhere(parse("etat=annulees"))).toMatchObject({ status: "ANNULE" });
+  });
+
+  it("narrows a client to one site, or to its séries without a site", () => {
+    expect(sampleSearchWhere(parse("client=c1&site=s1"))).toMatchObject({ clientId: "c1", serie: { siteId: "s1" } });
+    expect(sampleSearchWhere(parse("client=c1&site=siege"))).toMatchObject({ clientId: "c1", serie: { siteId: null } });
+    expect(sampleSearchWhere(parse("client=c1"))).not.toHaveProperty("serie");
+  });
+
+  it("finds a sample by the name of its site", () => {
+    expect(JSON.stringify(sampleSearchWhere(parse("q=Essai")))).toContain('"site":{"name":{"contains":"Essai"}}');
   });
 
   it("never searches the N° de contrôle for the préleveur", () => {

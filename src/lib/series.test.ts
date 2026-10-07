@@ -52,6 +52,6 @@ describe("unit letters and line references", () => {
   });
 
   it("writes the line reference the préleveur sees", () => {
-    expect(lineReference("2780/26", 3)).toBe("2780/26 · ligne 3");
+    expect(lineReference("2780/26", 3)).toBe("2780/26 · échantillon 3");
   });
 });

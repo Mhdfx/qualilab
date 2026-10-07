@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { AlertTriangle, ArrowRight, ClipboardList, Clock, Lock, User, Zap } from "lucide-react";
-import type { Family, LineKind, ProgrammePriority, SampleStatus, SerieKind } from "@/generated/prisma/enums";
+import type { AirMethod, Family, LineKind, ProgrammePriority, SampleStatus, SerieKind, SurfaceState } from "@/generated/prisma/enums";
 import { LINE_KIND_LABELS, SERIE_KIND_LABELS, formatDateTime, formatDayTime } from "@/lib/labels";
 import { labReference } from "@/lib/sample-select";
 import { groupQueue } from "@/lib/programmation-queue";
+import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 
-/** One line of the responsable des paramètres' queue, as the dashboard selects it. */
+/** One sample of the responsable des paramètres' queue, as the dashboard selects it. */
 export type QueueLine = {
   id: string;
   code: string;
@@ -18,6 +19,9 @@ export type QueueLine = {
   produit: string | null;
   surfaceLabel: string | null;
   personName: string | null;
+  /** « Planche verte — surface nettoyée », « Salle — Boîte exposée 30 min » (RETOUR-LABO-06-10.md §5); null on older samples. */
+  surfaceState?: SurfaceState | null;
+  airMethod?: AirMethod | null;
   lieu: string;
   status: SampleStatus;
   unitCount: number;
@@ -36,9 +40,10 @@ export type QueueLine = {
 };
 
 /**
- * The lines to programme and the programmed ones, grouped by série
- * (PROGRAMME.md §5): the received lines first, the oldest receptions at the
- * head. Each line opens its programme sheet.
+ * The samples to programme and the programmed ones, grouped by série
+ * (PROGRAMME.md §5): the received ones first, the oldest receptions at the
+ * head. Each sample — « Échantillon N » of its série, « NM » / « NP » for
+ * the two samples of a two-family line — opens its programme sheet.
  */
 export function ProgrammationQueue({ lines, now }: { lines: QueueLine[]; now: Date }) {
   if (lines.length === 0) {
@@ -47,9 +52,9 @@ export function ProgrammationQueue({ lines, now }: { lines: QueueLine[]; now: Da
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
           <ClipboardList className="h-6 w-6 text-slate-400" aria-hidden="true" />
         </div>
-        <p className="mt-3 font-semibold text-slate-700">Aucune ligne à programmer</p>
+        <p className="mt-3 font-semibold text-slate-700">Aucun échantillon à programmer</p>
         <p className="mt-1 text-sm text-slate-500">
-          Les lignes réceptionnées apparaîtront ici dès leur numérotation.
+          Les échantillons réceptionnés apparaîtront ici dès leur numérotation.
         </p>
       </Card>
     );
@@ -68,7 +73,7 @@ export function ProgrammationQueue({ lines, now }: { lines: QueueLine[]; now: Da
                 {SERIE_KIND_LABELS[group.kind]}
               </span>
               <span className="text-xs text-slate-500">
-                {group.lines.length} ligne{group.lines.length > 1 ? "s" : ""}
+                {group.lines.length} échantillon{group.lines.length > 1 ? "s" : ""}
                 {waiting > 0 && waiting < group.lines.length ? ` · ${waiting} à programmer` : ""}
                 {group.receivedAt ? ` · reçue le ${formatDateTime(group.receivedAt)}` : ""}
               </span>
@@ -87,6 +92,7 @@ export function ProgrammationQueue({ lines, now }: { lines: QueueLine[]; now: Da
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-mono text-sm font-semibold text-slate-900">{labReference(line)}</span>
+                            <span className="text-xs font-medium text-slate-500">Échantillon {sampleRef(line.lineNumber, line.code)}</span>
                             <StatusBadge status={line.status} />
                             {line.priority === "URGENTE" && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
@@ -103,7 +109,7 @@ export function ProgrammationQueue({ lines, now }: { lines: QueueLine[]; now: Da
                             {line.analysisBlocked && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
                                 <Lock className="h-3 w-3" aria-hidden="true" />
-                                Bloquée en réception
+                                Bloqué en réception
                               </span>
                             )}
                           </div>
@@ -133,13 +139,13 @@ export function ProgrammationQueue({ lines, now }: { lines: QueueLine[]; now: Da
                             )}
                             {line.programmedAt ? (
                               <span>
-                                programmée le {formatDayTime(line.programmedAt)}
+                                programmé le {formatDayTime(line.programmedAt)}
                                 {line.programmedBy ? ` par ${line.programmedBy.name}` : ""}
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1">
                                 <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
-                                reçue le {line.receivedAt ? formatDayTime(line.receivedAt) : "—"}
+                                reçu le {line.receivedAt ? formatDayTime(line.receivedAt) : "—"}
                               </span>
                             )}
                           </div>

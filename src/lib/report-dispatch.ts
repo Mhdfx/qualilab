@@ -12,6 +12,7 @@ import { generateReportNumber } from "./report-number";
 import { reportMethod, reportTechnicianNames } from "./report-programme";
 import type { Interpretation } from "@/generated/prisma/enums";
 import { retryOnDuplicate } from "./retry-unique";
+import { sampleDesignation } from "./document-html";
 
 /**
  * What happens once a sample is approved: the client receives the report, and
@@ -28,14 +29,26 @@ export const NO_OFFICIAL_VERDICT =
 /** …and when no germ has any criterion to be judged against. */
 export const NO_CRITERION = "Les résultats sont communiqués sans interprétation : aucun critère n'est spécifié pour ces paramètres.";
 
+/** The fields `sampleDesignation` reads: « Planche verte — surface nettoyée ». */
+const DESIGNATION_SELECT = {
+  lineKind: true,
+  produit: true,
+  surfaceLabel: true,
+  surfaceState: true,
+  personName: true,
+  airMethod: true,
+} as const;
+
 /** Assembles the data the report PDF needs. Shared with the download route. */
 export async function loadReportData(sampleId: string): Promise<ReportData | null> {
   const sample = await prisma.sample.findUnique({
     where: { id: sampleId },
     select: {
       controlCode: true,
-      serie: { select: { serialNumber: true } },
-      produit: true,
+      // The site of the client (a restaurant of a chain): printed under the
+      // client — RETOUR-LABO-06-10.md §5, V5.
+      serie: { select: { serialNumber: true, site: { select: { name: true } } } },
+      ...DESIGNATION_SELECT,
       numeroLot: true,
       lieu: true,
       type: true,
@@ -86,7 +99,9 @@ export async function loadReportData(sampleId: string): Promise<ReportData | nul
     controlCode: sample.controlCode,
     serialNumber: sample.serie.serialNumber,
     client: sample.client,
-    produit: sample.produit,
+    siteName: sample.serie.site?.name ?? null,
+    produit: sampleDesignation(sample),
+    lineKind: sample.lineKind,
     numeroLot: sample.numeroLot,
     lieu: sample.lieu,
     type: sample.type,
@@ -235,7 +250,7 @@ export async function sendReport(sampleId: string, actorId: string | null) {
       id: true,
       code: true,
       status: true,
-      produit: true,
+      ...DESIGNATION_SELECT,
       numeroLot: true,
       lieu: true,
       controlCode: true,
@@ -243,7 +258,7 @@ export async function sendReport(sampleId: string, actorId: string | null) {
       receivedAt: true,
       clientId: true,
       client: { select: { name: true } },
-      serie: { select: { serialNumber: true } },
+      serie: { select: { serialNumber: true, site: { select: { name: true } } } },
       nature: { select: { label: true } },
       report: { select: { id: true, number: true, interpretation: true } },
       results: { select: { conform: true, interpretation: true, informalInterpretation: true } },
@@ -298,13 +313,15 @@ export async function sendReport(sampleId: string, actorId: string | null) {
   const verdict = official ?? indicative;
   const { subject, html } = reportEmail({
     clientName: sample.client.name,
+    siteName: sample.serie.site?.name ?? null,
     reportNumber: report.number,
     serialNumber: sample.serie.serialNumber,
     controlCode: sample.controlCode,
     sampledAt: sample.sampledAt,
     receivedAt: sample.receivedAt,
     analyse: sample.nature.label,
-    produit: sample.produit,
+    produit: sampleDesignation(sample),
+    lineKind: sample.lineKind,
     numeroLot: sample.numeroLot,
     lieu: sample.lieu,
     conclusion: verdict
@@ -384,12 +401,13 @@ export async function sendContaminationAlerts(
     select: {
       id: true,
       code: true,
-      produit: true,
+      ...DESIGNATION_SELECT,
       numeroLot: true,
       lieu: true,
       receivedAt: true,
       clientId: true,
       alertsSentAt: true,
+      serie: { select: { site: { select: { name: true } } } },
       report: { select: { id: true } },
       results: {
         // A sensitive germ over its limit — including one judged only
@@ -450,7 +468,12 @@ export async function sendContaminationAlerts(
       data: { alertsSentAt: null },
     });
 
-  // One message per germ, listing every product concerned.
+  // One message per germ, listing every product concerned. « Site de
+  // prélèvement » names the client's site before the place when the série
+  // has one: a chain reads which restaurant is concerned (V5).
+  const designation = sampleDesignation(sample);
+  const siteName = sample.serie.site?.name ?? null;
+  const site = siteName ? `${siteName} — ${sample.lieu}` : sample.lieu;
   const byGerm = new Map<string, AlertRow[]>();
   for (const result of sample.results) {
     const germ = result.parameter.name;
@@ -463,8 +486,8 @@ export async function sendContaminationAlerts(
       result.parameter.threshold ??
       (result.parameter.limitValue !== null ? String(result.parameter.limitValue) : "—");
     const row: AlertRow = {
-      produit: sample.produit,
-      site: sample.lieu,
+      produit: designation,
+      site,
       receivedAt: sample.receivedAt,
       numeroLot: sample.numeroLot,
       germe: germ,

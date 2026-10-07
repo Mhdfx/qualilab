@@ -1018,31 +1018,48 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 - The germs of a chosen type are listed « non programmé » when a profile chip replaces the ticked analyses afterwards: visible and deliberate, but the lab may prefer the type's germs to stay ticked (to confirm).
 - Q41 (« les nombres », numbering) and Q42 (one sample split between technicians) in NEEDEDINFO.
 
-## Checkpoint V — Retours du laboratoire des 05 → 07/10 (planned — `RETOUR-LABO-06-10.md`)
+## Checkpoint V — Retours du laboratoire des 05 → 07/10 (built 07/10, to tick on production — `RETOUR-LABO-06-10.md` §5)
 
-Planned acceptance, to tick on production as each slice ships.
+Built on 07/10 with the defaults of §5 (V1 → V6, V5 import included);
+gates green locally (prisma generate, tsc, eslint, vitest, build). Not yet
+deployed: the deployment runs `prisma migrate deploy` for
+`20261007100000_retour_labo_v` — every existing série becomes cadre
+« Autre », every parameter family « Microbiologie ». Tick each box on
+production, on the test client only.
+
+### V0 — Deployment
+- [ ] `prisma migrate deploy` applies `20261007100000_retour_labo_v`; an old série opens and reads cadre « Autre »; `/admin/parametres` lists every parameter under « Microbiologie ».
+- [ ] `/admin/documents`: PG04/EN01 (protocole) and PG05/EN04 (bon de réception) get a new version and date.
 
 ### V1 — En-tête de la visite
-- [ ] « Cadre » offers exactly Autre / Devis validé / BC / Convention on the visit and the deposit; « Autre » requires a text; the old séries read « Autre » after the migration; the protocol PDF prints « Cadre : … ».
-- [ ] « Service vétérinaire » absent from « Prélèvement effectué par » (visit and deposit); a POST with it is refused; an old série keeps its label.
-- [ ] « Référence client » on the form, the visit page, the protocol and the bon de réception.
+- [ ] « Cadre »* offers exactly Autre / Devis validé / BC / Convention on the visit and the deposit, none preselected; continuing without one rings the group red with « Choisissez le cadre de l'analyse. » and scrolls to it.
+- [ ] « Autre » opens « Préciser (facultatif) » (optional, 191 characters); Devis validé / BC show the hint that the number goes in « Référence client ». The visit page, the reception side panel, the protocol and the bon print « Autre — texte ».
+- [ ] On the visit page the cadre and its note can be changed until reception, then are locked for the préleveur.
+- [ ] « Service vétérinaire » absent from « Prélèvement effectué par » (visit: Qualilab / Autre; deposit: Le client / Autre); a POST with it is refused (« … choisissez « Autre » et indiquez le nom. »); an old série keeps its label.
+- [ ] « Référence client » on the form, the recap, the visit page, the protocol and the bon de réception (no « N° de factures » left).
 
 ### V2 — Vocabulaire et surfaces
-- [ ] No « Ligne N » left on the circuit screens (visit, deposit, reception, programme, bench, validation): « Échantillon N », plurals right; invoice and import lines unchanged.
-- [ ] A Surface line asks « Désignation »*, « État de la surface »* (Aseptique / En cours de travail / Nettoyé) and « Surface prélevée (cm²) »; the state prints in the protocol's « Remarques », on the label, the programme sheet, « Corriger la fiche » and the report.
+- [ ] No « Ligne N » left on the circuit screens (visit, deposit, reception, programme, bench, validation, PDFs): « Échantillon N », plurals right; errors read « Échantillon 2 — … » and scroll to the card; invoice, import and criteria lines unchanged.
+- [ ] A Surface sample asks « Désignation »*, « État de la surface »* (Aseptique / En cours de travail / Nettoyé) and « Surface prélevée (cm²) » (100 by default); these fields are absent on the other types. The state prints in the protocol's « Remarques », on the bon, the programme sheet, « Corriger la fiche », the validation page and the report (« Planche verte — surface nettoyée »).
+- [ ] The protocol prints « Échantillon annulé » / « Détruit à réception »; the bon prints « — annulé » / « — détruit ».
 
 ### V3 — Familles par échantillon
-- [ ] Two boxes per sample instead of the nature select; both ticked → two samples, two N° de contrôle, two reports; minimum quantities 100 g / 300 g applied per sample; the protocol prints one row with both columns.
-- [ ] A fine nature (cosmétiques…) can be set at reception or on the programme sheet.
+- [ ] Two boxes « Analyses microbiologiques » / « Analyses physico-chimiques » per sample instead of the nature select; a family the type does not allow is greyed (« Non proposées pour ce type »).
+- [ ] Both ticked → two samples « …-1M » and « …-1P », two N° de contrôle, two rows on the bon, two cards at reception (an error on 1P highlights 1P only), two programme sheets; the protocol prints one row with the analyses in both columns and its boxes ticked from the samples.
+- [ ] Deposit with both ticked: minimum quantities 100 g / 300 g checked per family (« Physico-chimie : … »), the API names « Échantillon 1P ».
+- [ ] Programme sheet: « Nature d'analyse » offers the natures of the same family only; picking one reloads the analyses and names those removed; saving writes the new nature and type.
 
 ### V4 — Air
-- [ ] An Air line requires « Boîte exposée 30 min » or « Biocollecteur »; printed on the protocol, the programme sheet and the report; air parameters exist in the catalogue with their units.
+- [ ] An Air sample requires « Méthode de prélèvement »* (Boîte exposée 30 min / Biocollecteur); printed in the protocol's « Surface prélevée » column, on the bon, the programme sheet, « Corriger la fiche » and the report. (Air parameters in the catalogue: waiting for Q50.)
 
 ### V5 — Sites des clients
-- [ ] The largest chain client lists its 84 restaurants as sites; the restaurants are no longer clients (archived, memory moved); the visit's client → site cascade proposes them; the report and the e-mail print « Client — Site »; search filters by site.
+- [ ] `/admin/import` « Sites de l'ancien logiciel »: « Analyser » writes nothing and lists the counts and examples; « Rattacher les sites » writes; a second run writes nothing.
+- [ ] The largest chain client lists its restaurants as sites; the restaurants imported as clients by mistake are archived, their places, products and addresses moved to the site; a client with history is only reported.
+- [ ] The visit's client → site cascade proposes the sites; the report prints a « Site » row and the e-mail subject « Rapport d'analyse N — Client — Site — … »; `/recherche` filters by site (and « Siège (sans site) »), the Excel export gains a « Site » column.
+- [ ] `/admin/journal` reads « Sites de l'ancien logiciel rattachés ».
 
 ### V6 — Le laboratoire décide des analyses
-- [ ] A visit saves with no analysis and no product type; the programme sheet refuses to confirm without analysis; the bench never opens an unprogrammed sample.
+- [ ] A visit saves with no analysis and no product type (no type selector on the visit; it stays on the deposit); a deposit saves with no analysis; the programme sheet refuses to confirm without analysis; the bench never opens an unprogrammed sample.
 
 ## Checkpoint U — « Une journée du laboratoire » en production (2026-10-06)
 
@@ -1126,11 +1143,11 @@ Tick only what was seen in the browser. One sub-checkpoint per slice of
 - [x] **Production (185.217.126.53, after deploy):** `/reception/<sampleId>` → 404, `POST /api/samples` → 405; `recep1` corrects the lot of 13/26 (série 16/26) from the série page (« L-0913-B », API confirms); `tech2`'s bench is grouped by série (8/26, 4/26, 5/26, 16/26, 17/26).
 
 ### L1b — Le protocole tel quel (retour du laboratoire 14/09 — WORKFLOW.md §13) — dev server 2026-09-14, `pre1` / `recep1`
-- [x] The header shows, in the paper's order: N° de série slot (« attribué à l'enregistrement »), client, site (always shown — « Siège (adresse du client) » by default; « + Nouveau site… » created « Speedy Grill » inline and selected it), cadre (derived, shown), interlocuteur, prélevé le … à … + heure de fin, effectué par (« Karim Benali (moi) » picked from the PRELEVEUR accounts, « Fonction : Préleveur »; vétérinaire / autre with a name), arrivé le … à …, T° à l'arrivée, N° de factures — read in that order from the labels of the page.
+- [x] The header shows, in the paper's order: N° de série slot (« attribué à l'enregistrement »), client, site (always shown — « Siège (adresse du client) » by default; « + Nouveau site… » created « Site démo » inline and selected it), cadre (derived, shown), interlocuteur, prélevé le … à … + heure de fin, effectué par (« Karim Benali (moi) » picked from the PRELEVEUR accounts, « Fonction : Préleveur »; vétérinaire / autre with a name), arrivé le … à …, T° à l'arrivée, N° de factures — read in that order from the labels of the page.
 - [x] Every line starts with its type (Produit alimentaire / Surface / Mains du personnel / Eau / Air / Autre): choosing « Mains du personnel » on line 2 and « Surface » on line 3 switched their nature to Microbiologie des surfaces and showed the person / « Surface prélevée » + « Aire (100 cm²) » fields; the nature select stays editable.
 - [x] Nombre d'unités: the number input accepted 30 on line 3 (chips 1/3/5/9 kept); the recap and the série page print « 30 unités (A–AD) »; after reception the sheet holds 36 labels (5 + 1 + 30) on two A4 pages, « 9114/26 AA » … « 9114/26 AD » among them (pdftotext); the validator refuses 51 (unit test).
 - [x] The two « Analyses à effectuer » boxes at the end of the form were pre-ticked from the lines (micro), editable, saved on série 14/26 (`analysesMicro: true`, `analysesChimie: false`) and printed as boxes on the protocol PDF (« ANALYSES À EFFECTUER : [x] Analyses microbiologiques [ ] Analyses physico-chimiques », drawn in CSS); série 15/26 created with « physico-chimie » ticked and no chimie line shows at reception « Demandé sur le protocole sans ligne correspondante : analyses physico-chimiques — à programmer ».
-- [~] The Gaillardière protocol entered on one screen: 3 of its 6 lines (Salade Gaillardière « 01 » T°p 1 / T°a 2 with the profile in one tap, MP Hamza Bassou — Chef cuisine, mains lavées, T°p 25, MS Planche verte 100 cm²), fin, arrivée and 1 °C typed on the form → série **14/26**, the protocol PDF prints them field for field (site « Speedy Grill », « Prélevé le … — fin … », « Arrivé au laboratoire », « T° à l'arrivée : 1 °C », « Fonction : Préleveur », MAIN / 100 cm² / n = 30). Entered from the desktop pane, not a phone; the three remaining lines (Suprême de poulet, Zaalouk, Plan travail) are the same kinds.
+- [~] The Gaillardière protocol entered on one screen: 3 of its 6 lines (Salade Gaillardière « 01 » T°p 1 / T°a 2 with the profile in one tap, MP Hamza Bassou — Chef cuisine, mains lavées, T°p 25, MS Planche verte 100 cm²), fin, arrivée and 1 °C typed on the form → série **14/26**, the protocol PDF prints them field for field (site « Site démo », « Prélevé le … — fin … », « Arrivé au laboratoire », « T° à l'arrivée : 1 °C », « Fonction : Préleveur », MAIN / 100 cm² / n = 30). Entered from the desktop pane, not a phone; the three remaining lines (Suprême de poulet, Zaalouk, Plan travail) are the same kinds.
 - [x] The visit page still completes what was not typed on site (end, arrival, temperature, photo) and the reception still overrides arrival and temperature: the série page came pre-filled with the form's fin / arrivée / 1 °C on every line; an arrival typed in the future is refused (« L'heure d'arrivée est dans le futur ») both on the form and at reception; « Maintenant » then « Valider la réception » numbered the three lines 9112/26 – 9114/26.
 - [x] **Production (185.217.126.53, after deploy):** the migration backfilled the boxes of the existing séries (14/26, 15/26, 16/26 → micro ticked); `pre1`'s « Nouvelle visite » shows the header in the paper's order, the six type chips, « Siège » + « Nouveau site… », the n input and the pre-ticked boxes; série **18/26** created with « Siège », fin / arrivée / 1 °C, a 30-unit surface line and both boxes, its protocol PDF renders (200); `GET /api/preleveurs` lists the préleveur accounts.
 

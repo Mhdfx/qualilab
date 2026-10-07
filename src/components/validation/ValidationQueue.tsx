@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { ArrowRight, ShieldCheck, AlertTriangle, Clock } from "lucide-react";
-import type { SampleType } from "@/generated/prisma/client";
+import type { AirMethod, LineKind, SampleType, SurfaceState } from "@/generated/prisma/client";
 import { formatDate } from "@/lib/labels";
 import { labReference } from "@/lib/sample-select";
 import { approvalState, APPROVAL_LABELS } from "@/lib/sample-status";
 import { groupBySerie } from "@/lib/serie-groups";
+import { sampleRef } from "@/lib/reception-input";
+import { lineDesignation } from "@/components/preleveur/visit-types";
 import { Card } from "@/components/ui/Card";
 import { TypeBadge } from "@/components/ui/TypeBadge";
 
@@ -13,6 +15,14 @@ export type ValidationItem = {
   code: string;
   controlCode: string | null;
   type: SampleType;
+  /** What was analysed — designation, surface state, air method (RETOUR-LABO-06-10.md §5). */
+  lineNumber: number;
+  lineKind: LineKind;
+  produit: string | null;
+  surfaceLabel: string | null;
+  surfaceState: SurfaceState | null;
+  personName: string | null;
+  airMethod: AirMethod | null;
   validatedById: string | null;
   approvedById: string | null;
   client: { name: string };
@@ -97,7 +107,10 @@ export function ValidationQueue({ items }: { items: ValidationItem[] }) {
                         </div>
 
                         <p className="mt-1.5 truncate font-semibold text-slate-800">
-                          {item.client.name}
+                          {lineDesignation(item)}
+                          <span className="ml-1.5 font-normal text-slate-500">
+                            · {item.client.name} · échantillon {sampleRef(item.lineNumber, item.code)}
+                          </span>
                         </p>
                         <p className="mt-0.5 text-sm text-slate-500">
                           {item.results.length} résultat{item.results.length > 1 ? "s" : ""}
