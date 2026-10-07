@@ -150,11 +150,13 @@ préleveur photographie la feuille signée depuis le téléphone.
 | Q43 | Des types repris de l'ancien logiciel n'ont **aucun critère** (ex. « PLATS CUISINÉS-VOLAILLES ») : la fiche de programme les propose sans tableau n / c / m / M et le rapport n'imprime alors ni critère ni verdict. Quels types doivent être complétés avant le go-live, et avec quels critères ? | Critères (chantier 2) — `RECETTE-06-10-PARCOURS.md` §3 |
 | Q44 | Un échantillon jugé sans critère (seulement une limite du catalogue) n'imprime pas la ligne « Réglementation en vigueur », même si le validateur en a choisi une. Faut-il l'imprimer quand même, sans la croix Satisfaisant / Acceptable / Non satisfaisant ? | Rapport — `RECETTE-06-10-PARCOURS.md` §3 |
 | Q45 | Sites : rattacher les 426 sites de l'ancien logiciel à leurs 36 clients (McDonald's 84, Rezoroute 77, Sodexo 55…) et archiver les « clients » créés pour chaque site à l'import ? Rapports et factures par site ? | Clients — `RETOUR-LABO-06-10.md` §2.1 |
-| Q46 | « Service vétérinaire » : le retirer aussi du dépôt au comptoir (11 % des échantillons de l'ancien logiciel) ? Le « Contrôle officiel » doit-il encore exister ? | Série — `RETOUR-LABO-06-10.md` §2.2 |
+| Q46 | « Service vétérinaire » : le retirer aussi du dépôt au comptoir (11 % des échantillons de l'ancien logiciel) ? Proposé : oui — « Contrôle officiel » disparaît avec le nouveau cadre (07/10). | Série — `RETOUR-LABO-06-10.md` §2.2 |
 | Q47 | Sur une ligne aliment, eau ou air, retirer le champ facultatif « Surface prélevée » (doublon de « Désignation ») ? | Visite — `RETOUR-LABO-06-10.md` §2.4 |
 | Q48 | Micro et physico-chimie cochées sur un échantillon : deux N° de contrôle et deux rapports, comme dans l'ancien logiciel ? | Visite — `RETOUR-LABO-06-10.md` §2.5 |
 | Q49 | Natures fines (cosmétiques, compléments, nettoyage, huiles, sensorielle) une fois la liste retirée du préleveur : choisies par la réception ou le responsable des paramètres ? | Visite / programme — `RETOUR-LABO-06-10.md` §2.5 |
 | Q50 | Air : durée fixe de 30 min ? volume aspiré pour le biocollecteur ? paramètres d'air et unités (UFC/boîte, UFC/m³) à ajouter au catalogue (aucun aujourd'hui) ? | Visite / catalogue — `RETOUR-LABO-06-10.md` §2.6 |
+| Q51 | Ligne Surface : la désignation (« Planche verte ») reste et « État de la surface » (Aseptique / En cours de travail / Nettoyé) s'ajoute en choix obligatoire — c'est bien la lecture ? | Visite — `RETOUR-LABO-06-10.md` §2.4 |
+| Q52 | Cadre (Autre / Devis validé / BC / Convention) : valeur par défaut (aucune ou celle de la dernière visite du client) ? Le N° du BC ou du devis va-t-il dans « Référence client » ? | Série — `RETOUR-LABO-06-10.md` §2.8 |
 
 ## 2. Ready to send — current batch
 
@@ -249,3 +251,7 @@ Bien cordialement,
 | 2026-09-30 | Q37 — N° BC | Oui, c'est le N° de série (déjà le cas) |
 | 2026-09-29 | Moment de l'alerte | Après la validation technique, bien avant l'approbation finale, au format de leur exemple |
 | 2026-09-29 | *Nouveau* — exploitation | Résumé par client sur une période, exportable en Excel ; recherche par client, date, type d'analyse |
+| 2026-10-07 | Cadre (RETOUR-LABO-05-10 question 1) | « Autocontrôle » et « Contrôle officiel » remplacés par **Autre, Devis validé, BC, Convention** ⇒ tranche V1 de `RETOUR-LABO-06-10.md` |
+| 2026-10-06 | Service vétérinaire (05/10 demande 3) | Confirmé une seconde fois : à retirer de « Prélèvement effectué par » ⇒ V1 |
+| 2026-10-06 | Deux familles par ligne (05/10 demande 6) | Confirmé : « Analyses microbiologiques » et « Analyses physico-chimiques » sur chaque échantillon ⇒ V3 (Q48, Q49) |
+| 2026-10-07 | Surfaces | « Surface prélevée* » devient « État de la surface » : Aseptique / En cours de travail / Nettoyé ⇒ V2 (Q51) |

@@ -484,3 +484,30 @@ réception n'attribue plus obligatoirement un technicien. La facturation peut
 la ligne n'est pas validée). Journal : `SAMPLE_PROGRAMMED`,
 `SAMPLE_PROGRAMME_UPDATED`. Recette : TESTPLAN T.
 
+## 17. Retours du laboratoire des 05, 06 et 07/10 — planifiés (`RETOUR-LABO-06-10.md`)
+
+Ce que le circuit va changer, tranche par tranche (rien n'est encore
+construit) :
+
+- **En-tête (V1).** Le cadre n'est plus déduit de « qui prélève » : le
+  préleveur choisit **Autre** (avec un texte), **Devis validé**, **BC** ou
+  **Convention** ; « Autocontrôle » et « Contrôle officiel » disparaissent.
+  « Service vétérinaire » quitte « Prélèvement effectué par » (visite et
+  dépôt) ; « N° de factures » devient « Référence client ».
+- **Vocabulaire (V2).** Partout où l'écran dit « Ligne N » d'une série, il
+  dira « Échantillon N » ; les noms techniques (`lineNumber`, `lineKind`)
+  restent.
+- **Surfaces (V2).** Une ligne Surface porte « Désignation » (ce qui est
+  prélevé), « État de la surface » (Aseptique / En cours de travail /
+  Nettoyé, comme « État des mains ») et « Surface prélevée (cm²) ».
+- **Familles (V3).** Chaque échantillon coche « Analyses
+  microbiologiques » et / ou « Analyses physico-chimiques » ; la nature est
+  déduite du type × famille ; les deux cochées donnent deux échantillons
+  (deux N° de contrôle), comme dans l'ancien logiciel.
+- **Air (V4).** Une ligne Air porte sa méthode : boîte exposée 30 min ou
+  biocollecteur.
+- **Sites (V5).** Les sites des chaînes (McDonald's, Rezoroute, Sodexo…)
+  sont des sites du client, plus des clients séparés ; le rapport imprime
+  « Client — Site ».
+- **Analyses (V6).** Le préleveur peut ne cocher aucune analyse ni type de
+  produit : la fiche de programme les fixe.

@@ -269,8 +269,9 @@ in `PLAN.md`, opened one at a time.
 
 ## Session Log
 
-### 2026-10-07 — retour du laboratoire du 06/10 analysé
-- Seven remarks (sites of chain clients, no « Service vétérinaire », « Échantillon » instead of « Ligne », « Désignation », nature hidden, air sampling method, two analysis families per sample): all feasible, ≈ 31 h in two lots — `RETOUR-LABO-06-10.md`. Found while checking: the 426 sites of the old software were imported as separate clients (McDonald's has 0 sites on production, its 84 restaurants are clients) and the report does not print the site; the catalogue has no air parameter. Questions Q45–Q50 in NEEDEDINFO.
+### 2026-10-07 — retours du laboratoire des 05 → 07/10 : un plan unique V1 → V7
+- Nine remarks of 06 and 07/10 (sites of chain clients, no « Service vétérinaire », « Échantillon » instead of « Ligne », « Désignation », nature hidden, air sampling method, two analysis families per sample, cadre Autre / Devis validé / BC / Convention, « État de la surface ») analysed against the code, production and the old database: all feasible, ≈ 43 h. Merged with what is left of 05/10 into **one plan, V1 → V7 (≈ 53 h), 19 h deliverable without any answer (V1, V2)** — `RETOUR-LABO-06-10.md`, which replaces the plan of `RETOUR-LABO-05-10.md`.
+- Found while checking: the old software's 426 sites (36 parent clients — McDonald's 84, Rezoroute 77, Sodexo 55) were imported as separate clients, so « MC DONALDS » has no site on production; the report does not print the site; the catalogue has no air parameter. Questions Q45–Q52 in NEEDEDINFO; answers of 06–07/10 recorded. PLAN (V table), WORKFLOW §17, TESTPLAN V (planned), HANDOFF §1 updated. Nothing built yet.
 
 ### 2026-10-06 — recette « une journée du laboratoire » en production (TESTPLAN U)
 - One prélèvement followed by hand from the visit to the invoice (series 1/26, RAP-2026-00001, FAC-2026-0001), every step re-read after a reload and matched with the audit journal (23 entries, hours and authors) — `RECETTE-06-10-PARCOURS.md`. A second line (2/26, RAP-2026-00002) proves the regulation chosen by the validator is recorded and shown ; yesterday's doubt was the test tool, not the app.

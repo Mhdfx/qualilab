@@ -13,7 +13,16 @@ One web app, three blocks (LIMS · Facturation · Module préleveur), **7 roles*
 invoices generated from validated samples, full admin configuration, complete
 audit trail — running on the VPS with HTTPS + daily backups.
 
-## Where we are (2026-09-30)
+## Where we are (2026-10-07)
+
+H, I, J and the programme d'analyse (`PROGRAMME.md`) are live, and one
+prélèvement has been followed from the visit to the invoice on production
+(TESTPLAN U, 06/10). **The next work is `RETOUR-LABO-06-10.md`** — the
+laboratory's remarks of 05, 06 and 07/10 merged into one plan, **V1 → V7**
+(table at the end of Phase 9 below); V1 and V2 need no answer. Then K, the
+recette with the laboratory and go-live.
+
+### State on 2026-09-30
 
 Phase 9 chantiers 1 (série circuit) and 2 (criteria) are live, and so is the
 laboratory's feedback of 29/09 (`RETOUR-LABO-29-09.md`, slices A → F). **The
@@ -309,6 +318,21 @@ work**, in this order:
 | I | Regulation catalogue; the technical validator chooses the regulation per sample (proposed from the client product's last choice, then the type), frozen on the report | 2 | — (Q38 confirms the list) |
 | J | The old software's 634 product types, their criteria and its 176 regulation sources imported from the Firebird base; client memory CSV | 2–3 | Docker running the legacy base; Q39 defaults |
 | K | Recette with the laboratory (TESTPLAN L6, M6, P, Q), production clean-up, demo mode off, DNS / e-mail | — | H, I, J; the laboratory |
+
+**Status 2026-10-07:** H, I, J live (01/10); the programme d'analyse live
+(05/10, `PROGRAMME.md`, TESTPLAN T); end-to-end recette on production
+(06/10, TESTPLAN U). **The laboratory's remarks of 05 → 07/10 are planned in
+`RETOUR-LABO-06-10.md` — the next work, before K:**
+
+| Slice | Content | Hours | Depends on |
+|---|---|---|---|
+| V1 | Visit header: cadre Autre / Devis validé / BC / Convention (+ free text on « Autre »), « Service vétérinaire » removed, « Référence client »; protocol PDF re-versioned | 11.5 | — |
+| V2 | Wording and surfaces: « Échantillon » instead of « Ligne », « Désignation » and « Surface prélevée (cm²) », « État de la surface » (Aseptique / En cours de travail / Nettoyé) | 7.5 | — |
+| V3 | Two analysis families per sample, nature hidden and derived, two samples when both are ticked, fine nature chosen in the lab | 10 | Q48, Q49 |
+| V4 | Air sampling method (exposed plate 30 min / biocollector) and the air parameters in the catalogue | 5 + catalogue | Q50 |
+| V5 | Client sites: the old software's 426 sites under their 36 clients (McDonald's 84), sites imported as clients archived, site on the report and the e-mail | 10 | Q45 |
+| V6 | The lab decides the analyses: analyses optional and product type off the sampler's form (the programme sheet already does the job) | 6 | 05/10 Q6 |
+| V7 | Recette (TESTPLAN V) and documents | 3 | V1 → V6 |
 
 ---
 

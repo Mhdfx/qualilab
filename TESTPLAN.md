@@ -1018,6 +1018,32 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 - The germs of a chosen type are listed « non programmé » when a profile chip replaces the ticked analyses afterwards: visible and deliberate, but the lab may prefer the type's germs to stay ticked (to confirm).
 - Q41 (« les nombres », numbering) and Q42 (one sample split between technicians) in NEEDEDINFO.
 
+## Checkpoint V — Retours du laboratoire des 05 → 07/10 (planned — `RETOUR-LABO-06-10.md`)
+
+Planned acceptance, to tick on production as each slice ships.
+
+### V1 — En-tête de la visite
+- [ ] « Cadre » offers exactly Autre / Devis validé / BC / Convention on the visit and the deposit; « Autre » requires a text; the old séries read « Autre » after the migration; the protocol PDF prints « Cadre : … ».
+- [ ] « Service vétérinaire » absent from « Prélèvement effectué par » (visit and deposit); a POST with it is refused; an old série keeps its label.
+- [ ] « Référence client » on the form, the visit page, the protocol and the bon de réception.
+
+### V2 — Vocabulaire et surfaces
+- [ ] No « Ligne N » left on the circuit screens (visit, deposit, reception, programme, bench, validation): « Échantillon N », plurals right; invoice and import lines unchanged.
+- [ ] A Surface line asks « Désignation »*, « État de la surface »* (Aseptique / En cours de travail / Nettoyé) and « Surface prélevée (cm²) »; the state prints in the protocol's « Remarques », on the label, the programme sheet, « Corriger la fiche » and the report.
+
+### V3 — Familles par échantillon
+- [ ] Two boxes per sample instead of the nature select; both ticked → two samples, two N° de contrôle, two reports; minimum quantities 100 g / 300 g applied per sample; the protocol prints one row with both columns.
+- [ ] A fine nature (cosmétiques…) can be set at reception or on the programme sheet.
+
+### V4 — Air
+- [ ] An Air line requires « Boîte exposée 30 min » or « Biocollecteur »; printed on the protocol, the programme sheet and the report; air parameters exist in the catalogue with their units.
+
+### V5 — Sites des clients
+- [ ] « MC DONALDS » lists its 84 restaurants as sites; the restaurants are no longer clients (archived, memory moved); the visit's client → site cascade proposes them; the report and the e-mail print « Client — Site »; search filters by site.
+
+### V6 — Le laboratoire décide des analyses
+- [ ] A visit saves with no analysis and no product type; the programme sheet refuses to confirm without analysis; the bench never opens an unprogrammed sample.
+
 ## Checkpoint U — « Une journée du laboratoire » en production (2026-10-06)
 
 One prélèvement followed by hand in the browser pane, in the lab's order, every

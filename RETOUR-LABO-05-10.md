@@ -1,5 +1,13 @@
 # Retour du laboratoire du 05/10/2026 — demandes sur le formulaire du préleveur
 
+> **Statut 07/10 :** le laboratoire a confirmé les demandes 2 (cadre : Autre,
+> Devis validé, BC, Convention), 3 (service vétérinaire), 6 (deux familles
+> par échantillon) et 7a (libellés surface) les 06 et 07/10. Le plan de ce
+> document (§4) est **remplacé par le plan unique de `RETOUR-LABO-06-10.md`
+> §4** (tranches V1 → V7) ; les demandes 8 et 9 y deviennent V6, plus
+> légère depuis la fiche de programme ; les demandes 1 et 7b attendent
+> toujours les questions 7 et 5 ci-dessous.
+>
 > Analyse de faisabilité (code lu le 05/10, quatre lecteurs indépendants).
 > Rien n'est encore construit : ce document sert à confirmer les lectures
 > avec le laboratoire avant d'ouvrir les tranches. Chiffrage pour un
