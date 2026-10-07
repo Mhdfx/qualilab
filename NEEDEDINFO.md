@@ -149,6 +149,12 @@ préleveur photographie la feuille signée depuis le téléphone.
 | Q42 | Un même échantillon peut-il être réparti entre plusieurs techniciens (micro à l'un, chimie à l'autre) ? Si oui, qui soumet à la validation : le dernier qui termine ? | Programme (`PROGRAMME.md`) |
 | Q43 | Des types repris de l'ancien logiciel n'ont **aucun critère** (ex. « PLATS CUISINÉS-VOLAILLES ») : la fiche de programme les propose sans tableau n / c / m / M et le rapport n'imprime alors ni critère ni verdict. Quels types doivent être complétés avant le go-live, et avec quels critères ? | Critères (chantier 2) — `RECETTE-06-10-PARCOURS.md` §3 |
 | Q44 | Un échantillon jugé sans critère (seulement une limite du catalogue) n'imprime pas la ligne « Réglementation en vigueur », même si le validateur en a choisi une. Faut-il l'imprimer quand même, sans la croix Satisfaisant / Acceptable / Non satisfaisant ? | Rapport — `RECETTE-06-10-PARCOURS.md` §3 |
+| Q45 | Sites : rattacher les 426 sites de l'ancien logiciel à leurs 36 clients (McDonald's 84, Rezoroute 77, Sodexo 55…) et archiver les « clients » créés pour chaque site à l'import ? Rapports et factures par site ? | Clients — `RETOUR-LABO-06-10.md` §2.1 |
+| Q46 | « Service vétérinaire » : le retirer aussi du dépôt au comptoir (11 % des échantillons de l'ancien logiciel) ? Le « Contrôle officiel » doit-il encore exister ? | Série — `RETOUR-LABO-06-10.md` §2.2 |
+| Q47 | Sur une ligne aliment, eau ou air, retirer le champ facultatif « Surface prélevée » (doublon de « Désignation ») ? | Visite — `RETOUR-LABO-06-10.md` §2.4 |
+| Q48 | Micro et physico-chimie cochées sur un échantillon : deux N° de contrôle et deux rapports, comme dans l'ancien logiciel ? | Visite — `RETOUR-LABO-06-10.md` §2.5 |
+| Q49 | Natures fines (cosmétiques, compléments, nettoyage, huiles, sensorielle) une fois la liste retirée du préleveur : choisies par la réception ou le responsable des paramètres ? | Visite / programme — `RETOUR-LABO-06-10.md` §2.5 |
+| Q50 | Air : durée fixe de 30 min ? volume aspiré pour le biocollecteur ? paramètres d'air et unités (UFC/boîte, UFC/m³) à ajouter au catalogue (aucun aujourd'hui) ? | Visite / catalogue — `RETOUR-LABO-06-10.md` §2.6 |
 
 ## 2. Ready to send — current batch
 
