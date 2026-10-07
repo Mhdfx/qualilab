@@ -13,7 +13,9 @@ One web app, three blocks (LIMS · Facturation · Module préleveur), **7 roles*
 invoices generated from validated samples, full admin configuration, complete
 audit trail — running on the VPS with HTTPS + daily backups.
 
-## Where we are (2026-10-07)
+## Where we are (2026-10-07, evening)
+
+**V1 → V6 are live (TESTPLAN V)**; V7 (recette) done on the test client. What is left of the plan below is the laboratory's: air / physico-chimie parameters (Q50), document versions, answers Q45–Q52, then K.
 
 H, I, J and the programme d'analyse (`PROGRAMME.md`) are live, and one
 prélèvement has been followed from the visit to the invoice on production

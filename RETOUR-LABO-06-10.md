@@ -268,3 +268,29 @@ préleveur ; il reste sur le dépôt) ; un dépôt aussi peut s'enregistrer sans
 analyse. La fiche de programme refuse déjà de confirmer sans analyse et la
 paillasse n'ouvre qu'un échantillon programmé : rien à ajouter côté
 laboratoire.
+
+## 6. Livré et vérifié en production (07/10)
+
+V1 → V6 sont en production (commits `e30c2b0` et `e83421c`, migration
+`20261007100000_retour_labo_v`). Recette : TESTPLAN V (script d'API 29/29
+et parcours réel au navigateur : visite → protocole → réception →
+correction → programme → rapport), sur le client de test.
+
+- **Fait :** cadre à quatre valeurs avec précision sur « Autre » ;
+  « Service vétérinaire » retiré ; « Référence client » ; « Échantillon N »
+  partout ; ligne Surface = Désignation, État de la surface, Surface prélevée
+  (cm²) ; deux familles par échantillon (1M / 1P), nature masquée et déduite,
+  nature fine sur la fiche de programme (même famille, même type
+  d'échantillon) ; méthode de prélèvement de l'air ; analyses et type de
+  produit facultatifs pour le préleveur ; site sur le rapport et filtre par
+  site dans la recherche.
+- **Sites :** import exécuté en production — 420 sites créés sous leurs
+  36 clients, 345 clients créés à tort archivés (réversible), 75 noms
+  douteux et 5 parents ambigus laissés tels quels (à rattacher à la main
+  depuis la fiche client si besoin), 5 noms qui sont aussi de vrais clients
+  protégés.
+- **Reste au laboratoire :** les paramètres d'air et de physico-chimie au
+  catalogue et la famille de chaque paramètre dans `/admin/parametres` (Q50) ;
+  la nouvelle version des documents PG04/EN01 et PG05/EN04 dans
+  `/admin/documents` ; les réponses Q45–Q52 (envoi et facturation par site,
+  confirmation des choix par défaut).

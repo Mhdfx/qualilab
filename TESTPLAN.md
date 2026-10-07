@@ -1018,48 +1018,58 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 - The germs of a chosen type are listed « non programmé » when a profile chip replaces the ticked analyses afterwards: visible and deliberate, but the lab may prefer the type's germs to stay ticked (to confirm).
 - Q41 (« les nombres », numbering) and Q42 (one sample split between technicians) in NEEDEDINFO.
 
-## Checkpoint V — Retours du laboratoire des 05 → 07/10 (built 07/10, to tick on production — `RETOUR-LABO-06-10.md` §5)
+## Checkpoint V — Retours du laboratoire des 05 → 07/10 (live 07/10 — `RETOUR-LABO-06-10.md` §5, §6)
 
-Built on 07/10 with the defaults of §5 (V1 → V6, V5 import included);
-gates green locally (prisma generate, tsc, eslint, vitest, build). Not yet
-deployed: the deployment runs `prisma migrate deploy` for
-`20261007100000_retour_labo_v` — every existing série becomes cadre
-« Autre », every parameter family « Microbiologie ». Tick each box on
-production, on the test client only.
+Built on 07/10 with the defaults of §5 (V1 → V6), deployed (commits
+`e30c2b0`, then `e83421c` for the five defects found by this recette),
+migration `20261007100000_retour_labo_v` applied. Verified on production on
+the test client « TEST UI 2026-10-06 Traiteur »: an API script
+(`.ui-tests/recette-v.mjs`, 29/29) and the real screens in the browser pane
+(pre1 → recep1 → param1 → admin). Séries 4/26 → 8/26 are test séries.
 
 ### V0 — Deployment
-- [ ] `prisma migrate deploy` applies `20261007100000_retour_labo_v`; an old série opens and reads cadre « Autre »; `/admin/parametres` lists every parameter under « Microbiologie ».
-- [ ] `/admin/documents`: PG04/EN01 (protocole) and PG05/EN04 (bon de réception) get a new version and date.
+- [x] The migration applied (migrate container exited 0); the old séries read cadre « Autre »; the 43 food parameters come back with family MICRO.
+- [ ] `/admin/documents`: PG04/EN01 (protocole) and PG05/EN04 (bon) get a new version and date — the laboratory's quality decision, left to it.
 
 ### V1 — En-tête de la visite
-- [ ] « Cadre »* offers exactly Autre / Devis validé / BC / Convention on the visit and the deposit, none preselected; continuing without one rings the group red with « Choisissez le cadre de l'analyse. » and scrolls to it.
-- [ ] « Autre » opens « Préciser (facultatif) » (optional, 191 characters); Devis validé / BC show the hint that the number goes in « Référence client ». The visit page, the reception side panel, the protocol and the bon print « Autre — texte ».
-- [ ] On the visit page the cadre and its note can be changed until reception, then are locked for the préleveur.
-- [ ] « Service vétérinaire » absent from « Prélèvement effectué par » (visit: Qualilab / Autre; deposit: Le client / Autre); a POST with it is refused (« … choisissez « Autre » et indiquez le nom. »); an old série keeps its label.
-- [ ] « Référence client » on the form, the recap, the visit page, the protocol and the bon de réception (no « N° de factures » left).
+- [x] « Cadre »* offers Autre / Devis validé / BC / Convention on the visit and the deposit, none preselected; the API refuses a missing cadre and the old value (« Choisissez le cadre de l'analyse. »).
+- [x] « Autre » opens « Préciser (facultatif) »: série 6/26 typed in the browser prints « Autre — Contrôle trimestriel » on the recap, the reception side panel and the protocol PDF; the lab changes the cadre (PATCH Convention, then back to Autre + note).
+- [ ] Changing the cadre on the visit page until reception — not exercised in the browser.
+- [x] « Service vétérinaire » absent (visit: Qualilab / Autre; deposit: Le client / Autre); the API refuses it (« … choisissez « Autre » et indiquez le nom. »).
+- [x] « Référence client » on the form, the recap, the reception panel and the protocol (REF-0710-NAV).
 
 ### V2 — Vocabulaire et surfaces
-- [ ] No « Ligne N » left on the circuit screens (visit, deposit, reception, programme, bench, validation, PDFs): « Échantillon N », plurals right; errors read « Échantillon 2 — … » and scroll to the card; invoice, import and criteria lines unchanged.
-- [ ] A Surface sample asks « Désignation »*, « État de la surface »* (Aseptique / En cours de travail / Nettoyé) and « Surface prélevée (cm²) » (100 by default); these fields are absent on the other types. The state prints in the protocol's « Remarques », on the bon, the programme sheet, « Corriger la fiche », the validation page and the report (« Planche verte — surface nettoyée »).
-- [ ] The protocol prints « Échantillon annulé » / « Détruit à réception »; the bon prints « — annulé » / « — détruit ».
+- [x] « Échantillon N » on the visit form (cards, buttons « Ajouter un échantillon », « Continuer — Vérifier (3 échantillons) »), the success screen, the reception (« Valider la réception (4 échantillons) », « 4 échantillons numérotés »), the programmation queue and sheet; form error « Échantillon 3 — choisissez la méthode de prélèvement de l'air. » with the card ringed red.
+- [ ] Bench and validation screens' wording — not opened in this recette (covered by the build sweep).
+- [x] A Surface sample asks « Désignation »*, « État de la surface »* (three buttons) and « Surface prélevée (cm²) » (100 by default), absent on the other types; the state prints in the protocol's « Remarques » (« Nettoyé »), the reception card, the programmation queue, « Corriger la fiche » and the report (« Plan de travail — surface aseptique »).
+- [ ] The bon de réception's wording and « Échantillon annulé / Détruit à réception » on the protocol — not exercised.
 
 ### V3 — Familles par échantillon
-- [ ] Two boxes « Analyses microbiologiques » / « Analyses physico-chimiques » per sample instead of the nature select; a family the type does not allow is greyed (« Non proposées pour ce type »).
-- [ ] Both ticked → two samples « …-1M » and « …-1P », two N° de contrôle, two rows on the bon, two cards at reception (an error on 1P highlights 1P only), two programme sheets; the protocol prints one row with the analyses in both columns and its boxes ticked from the samples.
-- [ ] Deposit with both ticked: minimum quantities 100 g / 300 g checked per family (« Physico-chimie : … »), the API names « Échantillon 1P ».
-- [ ] Programme sheet: « Nature d'analyse » offers the natures of the same family only; picking one reloads the analyses and names those removed; saving writes the new nature and type.
+- [x] Two boxes per sample instead of the nature select; physico-chimie greyed on an Air sample (« Non proposées pour ce type »).
+- [x] Both ticked → 6/26-1M and 6/26-1P (natures MICRO_ALIMENTS / PC_ALIMENTS, the micro analyses on 1M only), two cards at reception with 100 g / 300 g minimums, N° de contrôle 11/26 and 12/26, two programme sheets; the protocol prints one row « 1 » and ticks both boxes.
+- [x] Deposit (API, BC) with both ticked → 5/26-1M / 5/26-1P with their N° de contrôle.
+- [x] Programme sheet « Nature d'analyse »: after the fix, a food sample is offered the food natures of its family only (aliments, cosmétiques, compléments, aliments liquides, nettoyage); an air nature is refused (« … concerne un autre type d'échantillon … »); the referential is recomputed for a fine nature (GET ?natureId).
 
 ### V4 — Air
-- [ ] An Air sample requires « Méthode de prélèvement »* (Boîte exposée 30 min / Biocollecteur); printed in the protocol's « Surface prélevée » column, on the bon, the programme sheet, « Corriger la fiche » and the report. (Air parameters in the catalogue: waiting for Q50.)
+- [x] An Air sample requires « Méthode de prélèvement »* (form and API); « Biocollecteur » prints in the protocol's « Surface prélevée » column, on the reception card and the programmation queue; « Corriger la fiche » refuses a method on a surface sample.
+- [ ] Air parameters in the catalogue — waiting for Q50.
 
 ### V5 — Sites des clients
-- [ ] `/admin/import` « Sites de l'ancien logiciel »: « Analyser » writes nothing and lists the counts and examples; « Rattacher les sites » writes; a second run writes nothing.
-- [ ] The largest chain client lists its restaurants as sites; the restaurants imported as clients by mistake are archived, their places, products and addresses moved to the site; a client with history is only reported.
-- [ ] The visit's client → site cascade proposes the sites; the report prints a « Site » row and the e-mail subject « Rapport d'analyse N — Client — Site — … »; `/recherche` filters by site (and « Siège (sans site) »), the Excel export gains a « Site » column.
-- [ ] `/admin/journal` reads « Sites de l'ancien logiciel rattachés ».
+- [x] Import « Sites de l'ancien logiciel » (same endpoint as the /admin/import card, posted by `.ui-tests/import-sites.mjs` — the browser pane cannot upload a file): analyse → 420 to create, 345 clients to attach and archive, 75 doubtful names untouched, 5 rows with an ambiguous parent, 1 duplicate; commit → 420 sites, 345 clients archived, 1 address moved; a second analysis → 0 to create, 420 present.
+- [x] The largest chain client offers its 84 restaurants in the visit's client → site cascade; its restaurants are gone from the client list (1 517 → 1 172 active clients).
+- [x] Five site names that are also real clients of the old software are never archived (column `alsoClient`, fix of this recette): 4 were planned for archiving before the fix.
+- [x] The report prints « Site : Site démo recette » (série 7/26, RAP-2026-00003, read at the image); `/admin/journal` reads « Sites de l'ancien logiciel rattachés », « Site créé », « Client archivé »; `/recherche` has the « Site » filter (enabled once a client is chosen).
+- [ ] E-mail subject with the site — delivery simulated until DNS.
 
 ### V6 — Le laboratoire décide des analyses
-- [ ] A visit saves with no analysis and no product type (no type selector on the visit; it stays on the deposit); a deposit saves with no analysis; the programme sheet refuses to confirm without analysis; the bench never opens an unprogrammed sample.
+- [x] A visit saves with no analysis on the surface and air samples and no product-type selector (it stays on the deposit); a deposit saves with no analysis (API); the programme sheet refuses to confirm without analysis (« Choisissez au moins une analyse avant de confirmer le programme. »).
+
+### Défauts trouvés par cette recette et corrigés le jour même (`e83421c`)
+- A new sample inherited « Analyses physico-chimiques » from the previous one (a surface became two samples) → a new sample starts on microbiology; « Dupliquer » still copies all.
+- The programme sheet offered water and air natures to a food sample → same family **and** same kind of sample.
+- « Corriger la fiche »: the reason's label was not linked to its field.
+- The received série's summary kept the reception's answer after a correction → it reads the database after the refresh.
+- The sites import would have archived 4 real clients whose name is also a site's (merged by the import of 01/10) → `alsoClient` column, never archived; the extraction adds the city (VILLES).
 
 ## Checkpoint U — « Une journée du laboratoire » en production (2026-10-06)
 

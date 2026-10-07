@@ -271,6 +271,11 @@ in `PLAN.md`, opened one at a time.
 
 ## Session Log
 
+### 2026-10-07 — tranches V1 → V6 en production (TESTPLAN V)
+- Built in one workflow (foundation: schema + migration, série core, shared line editor, lab APIs; then préleveur, réception, documents, lab screens and sites import in parallel; then gates): 84 files, 616 tests. Deployed (`e30c2b0`), migration `20261007100000_retour_labo_v` applied.
+- Recette on production: API script 29/29 and the real screens in the browser (série 6/26 typed as pre1, received as recep1, corrected, programmed as param1; report with its site, série 7/26). Five defects found and fixed the same day (`e83421c`): inherited physico-chimie box, programme natures of another kind, unlinked label, stale received summary, and the sites import that would have archived 4 real clients.
+- Sites import run on production: 420 sites under 36 clients, 345 duplicate clients archived, idempotent. Real client names removed from the public docs. Left to the lab: air / physico-chimie parameters (Q50), document versions, Q45–Q52.
+
 ### 2026-10-07 (night) — V1 → V6 built (`RETOUR-LABO-06-10.md` §5)
 - One migration (cadre widened → séries set to AUTRE → narrowed; `cadreNote`, `surfaceState`, `airMethod`, `AnalysisParameter.family`). Cadre required with four choices, « Service vétérinaire » refused at creation; « Échantillon N » on the circuit and in the messages; Désignation + « État de la surface »; two families per sample → twin samples « …M » / « …P »; air sampling method; sites import + site filter + « Client — Site » on the report and e-mail; analyses optional on visit and deposit.
 - Gates green locally: prisma generate, `tsc --noEmit`, `eslint src --max-warnings=0`, vitest (49 files, 614 tests), `npm run build`. Not deployed, not tried in a browser: TESTPLAN V on production.
