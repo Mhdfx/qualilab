@@ -1,4 +1,4 @@
-import type { Family, ProgrammePriority, SampleStatus, SampleType } from "@/generated/prisma/enums";
+import type { Family, LineKind, ProgrammePriority, SampleStatus, SampleType } from "@/generated/prisma/enums";
 import { ANALYSIS_FAMILY_LABELS, SAMPLE_STATUS_LABELS } from "./labels";
 import { PROGRAMMABLE_STATUSES } from "./sample-status";
 import { MAX_UNITS } from "./series";
@@ -48,6 +48,8 @@ export type ProgrammeNatureRef = {
   family: Family;
   /** The category the nature maps to: it becomes `Sample.type` and decides the parameters offered. */
   legacyType: SampleType;
+  /** The kind of sample the nature is for: a change keeps the line's kind (a food stays a food). */
+  defaultLineKind?: LineKind;
   active: boolean;
 };
 
@@ -75,6 +77,8 @@ export type ProgrammeContext = {
   /** The line's current nature and its family — a change stays in that family. */
   natureId: string;
   natureFamily: Family;
+  /** The kind of sample the current nature is for: the new nature must be for the same kind. */
+  natureLineKind?: LineKind;
   /**
    * The natures the request may name: at least the active ones of the line's
    * family and the requested one, so a refusal can say why (unknown,
@@ -117,7 +121,7 @@ export type NatureResolution =
  */
 export function resolveProgrammeNature(
   raw: unknown,
-  ctx: Pick<ProgrammeContext, "natureId" | "natureFamily" | "natures">
+  ctx: Pick<ProgrammeContext, "natureId" | "natureFamily" | "natureLineKind" | "natures">
 ): NatureResolution {
   const requested =
     typeof raw === "object" && raw !== null && !Array.isArray(raw)
@@ -134,6 +138,12 @@ export function resolveProgrammeNature(
     return {
       ok: false,
       error: `Choisissez une nature de la même famille (${ANALYSIS_FAMILY_LABELS[ctx.natureFamily].toLowerCase()}) : l'autre famille fait l'objet d'un autre échantillon.`,
+    };
+  }
+  if (ctx.natureLineKind && nature.defaultLineKind && nature.defaultLineKind !== ctx.natureLineKind) {
+    return {
+      ok: false,
+      error: `La nature « ${nature.label} » concerne un autre type d'échantillon : choisissez une nature de ce type.`,
     };
   }
   if (!nature.active) {

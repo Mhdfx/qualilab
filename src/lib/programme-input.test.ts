@@ -438,6 +438,15 @@ describe("resolveProgrammeNature", () => {
     }
   });
 
+  it("keeps the kind of sample: a food line never becomes a water nature", () => {
+    const kinded = natures.map((n) => ({ ...n, defaultLineKind: n.legacyType === "EAU" ? ("EAU" as const) : ("ALIMENT" as const) }));
+    const kindCtx = { natureId: "nat-micro-aliments", natureFamily: "MICRO" as const, natureLineKind: "ALIMENT" as const, natures: kinded };
+    const refused = resolveProgrammeNature({ natureId: "nat-micro-eaux" }, kindCtx);
+    expect(refused).toMatchObject({ ok: false });
+    if (!refused.ok) expect(refused.error).toMatch(/autre type d'échantillon/);
+    expect(resolveProgrammeNature({ natureId: "nat-micro-fine" }, kindCtx)).toMatchObject({ ok: true, natureId: "nat-micro-fine" });
+  });
+
   it("keeps a family of its own for « Autres analyses »", () => {
     const other = { natureId: "nat-sensorielle", natureFamily: "AUTRE" as const, natures };
     const refused = resolveProgrammeNature({ natureId: "nat-micro-fine" }, other);

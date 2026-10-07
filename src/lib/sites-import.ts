@@ -24,7 +24,7 @@
 
 /** Columns of the export, in the order the extraction script writes them. */
 export const SITE_FILE_HEADER =
-  "legacySiteId;site;adresse;ville;telephone;email;obsolete;legacyClientId;client;clientObsolete";
+  "legacySiteId;site;adresse;ville;telephone;email;obsolete;legacyClientId;client;clientObsolete;alsoClient";
 
 /** How many examples each category of the analysis shows. */
 export const MAX_EXAMPLES = 30;
@@ -61,6 +61,8 @@ const COLUMN_NAMES = {
   legacyClientId: ["legacyclientid", "idclient", "clientid"],
   client: ["client", "nomclient"],
   clientObsolete: ["clientobsolete"],
+  /** 1 when the old software also has a real client (type 101) of the site's name. */
+  alsoClient: ["alsoclient", "aussiclient"],
 } as const;
 
 export type SiteColumn = keyof typeof COLUMN_NAMES;
@@ -98,6 +100,12 @@ export type SiteRow = {
   legacyClientId: number | null;
   client: string;
   clientObsolete: boolean;
+  /**
+   * The old software also has a real client of this name (not only a site):
+   * the client of that name in the database may be that real client, merged
+   * with the site by the import of 01/10 — it is never archived (recette 07/10).
+   */
+  alsoClient: boolean;
 };
 
 export type RejectedRow = { line: number; site: string; client: string; reason: string };
@@ -143,6 +151,7 @@ export function readSiteRows(rows: string[][], columns: SiteColumns): { rows: Si
       legacyClientId: legacyId(cell("legacyClientId")),
       client,
       clientObsolete: isFlagSet(cell("clientObsolete")),
+      alsoClient: isFlagSet(cell("alsoClient")),
     });
   });
   return { rows: kept, rejected };
@@ -355,6 +364,8 @@ export function planSiteImport(
         note("ambiguousSite", row, `${candidates.length} clients actifs portent ce nom : aucun n'est touché.`);
       } else if (parentNames.has(siteKey)) {
         note("ambiguousSite", row, `« ${candidates[0].name} » est aussi un client parent du fichier : il n'est pas touché.`);
+      } else if (row.alsoClient) {
+        note("ambiguousSite", row, `« ${candidates[0].name} » est aussi un client à part entière dans l'ancien logiciel : il n'est pas touché.`);
       } else if (hasHistory(candidates[0].history)) {
         note("withHistory", row, `« ${candidates[0].name} » : ${historyText(candidates[0].history)}.`);
       } else {

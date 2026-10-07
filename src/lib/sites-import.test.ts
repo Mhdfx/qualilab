@@ -39,6 +39,7 @@ const row = (legacySiteId: number, site: string, parent: string, extra: Partial<
   legacyClientId: null,
   client: parent,
   clientObsolete: false,
+  alsoClient: false,
   ...extra,
 });
 
@@ -75,6 +76,7 @@ describe("guessSiteColumns", () => {
       legacyClientId: 7,
       client: 8,
       clientObsolete: 9,
+      alsoClient: 10,
     });
     expect(guessSiteColumns(["CLIENT", "Site", "LEGACY_SITE_ID", "Téléphone"])).toMatchObject({ legacySiteId: 2, site: 1, client: 0, phone: 3, city: -1 });
   });
@@ -110,6 +112,7 @@ describe("readSiteRows", () => {
         legacyClientId: 7,
         client: "Chaîne Démo",
         clientObsolete: false,
+        alsoClient: false,
       },
       {
         line: 6,
@@ -122,6 +125,7 @@ describe("readSiteRows", () => {
         legacyClientId: null,
         client: "Chaîne Démo",
         clientObsolete: true,
+        alsoClient: false,
       },
     ]);
     expect(rejected).toEqual([
@@ -167,6 +171,17 @@ describe("planSiteImport", () => {
     ]);
     expect(plan.examples.attach).toEqual([{ line: 2, site: "Restaurant Test Centre", client: "CHAINE DEMO", detail: "RESTAURANT TEST CENTRE" }]);
     expect(planWrites(plan)).toBe(true);
+  });
+
+  it("never archives a client whose name is also a real client of the old software", () => {
+    nextLine = 2;
+    const plan = planSiteImport([row(102, "Restaurant Test Centre", "CHAINE DEMO", { alsoClient: true })], {
+      clients: [chain, centre, other],
+      sites: [],
+    });
+    expect(plan.counts).toMatchObject({ create: 1, attach: 0, ambiguousSite: 1 });
+    expect(plan.sites[0].pseudo).toBeNull();
+    expect(plan.examples.ambiguousSite[0].detail).toMatch(/client à part entière/);
   });
 
   it("only reports a client that has a history", () => {

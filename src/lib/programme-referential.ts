@@ -1,5 +1,5 @@
 import "server-only";
-import type { Family, SampleType } from "@/generated/prisma/enums";
+import type { Family, LineKind, SampleType } from "@/generated/prisma/enums";
 import { prisma } from "./prisma";
 import { buildCatalogueIndex, catalogueKey, type CatalogueEntry } from "./billing";
 import { toMoney } from "./money";
@@ -33,7 +33,7 @@ export const PROGRAMME_SAMPLE_SELECT = {
   client: { select: { id: true, name: true } },
   serie: { select: { id: true, serialNumber: true, kind: true, receivedAt: true } },
   natureId: true,
-  nature: { select: { id: true, code: true, label: true, family: true, legacyType: true, active: true } },
+  nature: { select: { id: true, code: true, label: true, family: true, legacyType: true, defaultLineKind: true, active: true } },
   produit: true,
   numeroLot: true,
   lieu: true,
@@ -146,21 +146,34 @@ export type ProgrammeNatureOption = ProgrammeNatureRef & { code: string; current
  * for a PUT, the one the request names (so a refusal can say why).
  */
 export async function loadProgrammeNatures(
-  sample: { natureId: string; nature: { family: Family } },
+  sample: { natureId: string; nature: { family: Family; defaultLineKind?: LineKind } },
   requestedId?: string | null
 ): Promise<ProgrammeNatureOption[]> {
   const ids = [sample.natureId, ...(requestedId ? [requestedId] : [])];
   const rows = await prisma.analysisNature.findMany({
-    where: { OR: [{ active: true, family: sample.nature.family }, { id: { in: ids } }] },
-    select: { id: true, code: true, label: true, family: true, legacyType: true, active: true },
+    where: {
+      OR: [
+        {
+          active: true,
+          family: sample.nature.family,
+          ...(sample.nature.defaultLineKind ? { defaultLineKind: sample.nature.defaultLineKind } : {}),
+        },
+        { id: { in: ids } },
+      ],
+    },
+    select: { id: true, code: true, label: true, family: true, legacyType: true, defaultLineKind: true, active: true },
     orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
   });
   return rows.map((row) => ({ ...row, current: row.id === sample.natureId }));
 }
 
-/** The natures the fiche offers: the current one and the active ones of its family. */
-export function selectableNatures(natures: readonly ProgrammeNatureOption[], family: Family) {
-  return natures.filter((nature) => nature.current || (nature.active && nature.family === family));
+/** The natures the fiche offers: the current one and the active ones of its family and its kind of sample. */
+export function selectableNatures(natures: readonly ProgrammeNatureOption[], family: Family, lineKind?: LineKind) {
+  return natures.filter(
+    (nature) =>
+      nature.current ||
+      (nature.active && nature.family === family && (!lineKind || !nature.defaultLineKind || nature.defaultLineKind === lineKind))
+  );
 }
 
 export type NormVersionOption = {
@@ -243,14 +256,15 @@ export async function loadProgrammeReferential(
     clientId: string;
     type: SampleType;
     natureId: string;
-    nature: { family: Family };
+    nature: { family: Family; defaultLineKind?: LineKind };
     parameters: { parameterId: string; normVersionId: string | null }[];
   },
   options: { natureId?: string | null; natures?: ProgrammeNatureOption[] } = {}
 ) {
   const natures = selectableNatures(
     options.natures ?? (await loadProgrammeNatures(sample)),
-    sample.nature.family
+    sample.nature.family,
+    sample.nature.defaultLineKind
   );
   const target =
     (options.natureId && natures.find((nature) => nature.id === options.natureId)) ||

@@ -381,7 +381,10 @@ function sameFamilies(a: readonly LineFamily[], b: readonly LineFamily[]) {
  */
 export function emptyLine(natures: readonly NatureOption[], previous?: LineDraft): LineDraft {
   const kind: LineKind = previous?.lineKind ?? "ALIMENT";
-  const families = resolveFamilies(natures, kind, previous ? lineFamilies(previous) : undefined);
+  // A new sample starts on its type's default box (microbiology): the
+  // physico-chimie box is ticked on purpose, never inherited — inherited, it
+  // silently doubled the next sample (recette 07/10). « Dupliquer » copies all.
+  const families = resolveFamilies(natures, kind);
   return {
     key: newKey(),
     natureId: primaryNature(natures, kind, families)?.id ?? "",

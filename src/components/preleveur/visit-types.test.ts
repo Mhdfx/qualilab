@@ -161,6 +161,9 @@ describe("a new sample", () => {
     });
     const surface = emptyLine(NATURES, line({ lineKind: "SURFACE", surfaceState: "NETTOYE" }));
     expect(surface).toMatchObject({ surfaceState: "", surfaceAreaCm2: "100" });
+    // The physico-chimie box is never inherited (recette 07/10): the next sample starts on micro.
+    const both = line({ analysesMicro: true, analysesChimie: true, parameterIds: ["p-micro-1"] });
+    expect(emptyLine(NATURES, both)).toMatchObject({ analysesMicro: true, analysesChimie: false, parameterIds: [] });
   });
 
   it("gives no nature and no box when the catalogue is empty", () => {

@@ -41,7 +41,7 @@ export async function GET(
   const natures = await loadProgrammeNatures(sample, requested);
   const nature = resolveProgrammeNature(
     { natureId: requested },
-    { natureId: sample.natureId, natureFamily: sample.nature.family, natures }
+    { natureId: sample.natureId, natureFamily: sample.nature.family, natureLineKind: sample.nature.defaultLineKind, natures }
   );
   if (!nature.ok) return NextResponse.json({ error: nature.error }, { status: 400 });
 
@@ -124,7 +124,7 @@ export async function PUT(
     sample,
     typeof input.natureId === "string" && input.natureId ? input.natureId : null
   );
-  const natureCtx = { natureId: sample.natureId, natureFamily: sample.nature.family, natures };
+  const natureCtx = { natureId: sample.natureId, natureFamily: sample.nature.family, natureLineKind: sample.nature.defaultLineKind, natures };
   const resolved = resolveProgrammeNature(body, natureCtx);
   const newNature = resolved.ok ? resolved.changed : null;
   const category = newNature ? newNature.legacyType : sample.type;

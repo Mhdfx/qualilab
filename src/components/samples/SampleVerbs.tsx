@@ -401,8 +401,8 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
         </div>
 
         <div className="mt-3">
-          <label className="block text-xs font-medium text-slate-600">Motif de la correction *</label>
-          <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} className="input-field mt-1 resize-none px-3" placeholder="Ex. : lot mal lu sur le protocole" />
+          <label htmlFor="correct-reason" className="block text-xs font-medium text-slate-600">Motif de la correction *</label>
+          <textarea id="correct-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={2} className="input-field mt-1 resize-none px-3" placeholder="Ex. : lot mal lu sur le protocole" />
         </div>
         {input("remarks", "Remarques")}
 

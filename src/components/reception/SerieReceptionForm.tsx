@@ -378,9 +378,13 @@ export function SerieReceptionForm({
   }
 
   if (result || pending.length === 0) {
+    // Once the page data shows the série received (after a refresh — a
+    // « Corriger la fiche » refreshes it), the summary reads the database,
+    // not the answer of the reception kept in memory (recette 07/10).
     const received: ReceivedLine[] =
-      result ??
-      alreadyReceived.map((s) => ({
+      result && pending.length > 0
+        ? result
+        : alreadyReceived.map((s) => ({
         id: s.id,
         code: s.code,
         lineNumber: s.lineNumber,
