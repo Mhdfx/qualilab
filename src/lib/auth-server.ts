@@ -58,6 +58,17 @@ export const auth = betterAuth({
         defaultValue: "PRELEVEUR",
         input: false,
       },
+      // PORTAIL.md §1: the client a CLIENT (portal) account belongs to. Set
+      // by the administrator only (POST /api/admin/users passes it to
+      // createUser, so the account and its client are written in one
+      // insert); `input: false` keeps it out of the self-service
+      // update-user endpoint. The portal reads it again from the database
+      // on every request (src/lib/portal-server.ts), never from the cookie.
+      clientId: {
+        type: "string",
+        required: false,
+        input: false,
+      },
     },
   },
   session: {
@@ -67,7 +78,25 @@ export const auth = betterAuth({
   // Accounts are disabled, never deleted: every signature in the circuit
   // (validatedById, approvedById, audit actors…) points at a user row, and
   // the admin plugin's hard delete would null them all. 404 on that path.
-  disabledPaths: ["/admin/remove-user"],
+  //
+  // Self-service endpoints no screen uses are closed over HTTP too — every
+  // account, a client's portal account included (PORTAIL.md §3), changes
+  // only what the application's own audited routes let it change:
+  // - /update-user: would let any account rename itself or change its
+  //   identifier, which the administrator manages (/admin/utilisateurs);
+  // - /update-session: no session field is meant to be written;
+  // - /change-password: the portal's « Mon compte » goes through
+  //   POST /api/portail/compte/mot-de-passe (journal USER_PASSWORD_CHANGED,
+  //   French messages), which calls `auth.api.changePassword` server-side —
+  //   `disabledPaths` only applies to HTTP requests, not to `auth.api.*`;
+  // - /is-username-available: an anonymous oracle of who has an account.
+  disabledPaths: [
+    "/admin/remove-user",
+    "/update-user",
+    "/update-session",
+    "/change-password",
+    "/is-username-available",
+  ],
   advanced: {
     cookiePrefix: "qualilab",
     useSecureCookies:

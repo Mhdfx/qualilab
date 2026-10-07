@@ -18,6 +18,12 @@ export type BilledSample = {
   code: string;
   controlCode: string | null;
   status: SampleStatus;
+  /**
+   * True while its report is reopened for amendment (AMENDEMENT.md §2): the
+   * sample is back to RESULTATS_SAISIS, but its results were approved and a
+   * report issued before — it was not « facturé avant résultat ».
+   */
+  amendmentPending?: boolean;
 };
 
 export type InvoiceNoticeKind = "BEFORE_RESULT" | "CANCELLED";
@@ -28,10 +34,16 @@ export type InvoiceNotice = {
   references: string[];
 };
 
-/** The notice of one billed sample, or null when nothing needs saying. */
-export function sampleBillingNotice(status: SampleStatus): InvoiceNoticeKind | null {
+/**
+ * The notice of one billed sample, or null when nothing needs saying. A
+ * sample reopened for amendment had its result already: no banner.
+ */
+export function sampleBillingNotice(
+  status: SampleStatus,
+  amendmentPending = false
+): InvoiceNoticeKind | null {
   if (status === "ANNULE") return "CANCELLED";
-  if (billedBeforeResult(status)) return "BEFORE_RESULT";
+  if (billedBeforeResult(status) && !amendmentPending) return "BEFORE_RESULT";
   return null;
 }
 
@@ -43,7 +55,7 @@ export function invoiceNotices(items: { sample?: BilledSample | null }[]): Invoi
     const sample = item.sample;
     if (!sample || seen.has(sample.id)) continue;
     seen.add(sample.id);
-    const kind = sampleBillingNotice(sample.status);
+    const kind = sampleBillingNotice(sample.status, sample.amendmentPending === true);
     if (!kind) continue;
     byKind.set(kind, [...(byKind.get(kind) ?? []), sample.controlCode ?? sample.code]);
   }

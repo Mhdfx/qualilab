@@ -9,6 +9,8 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ClientSiteFilter } from "@/components/recherche/ClientSiteFilter";
+import { ReportActions } from "@/components/validation/ReportActions";
+import { amendedNumber } from "@/lib/report-amendment";
 
 export const metadata = { title: "Recherche des analyses" };
 
@@ -57,6 +59,15 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
   const pages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
   const canExport = session.role !== "TECHNICIEN";
   const canReport = ["VALIDATEUR", "GESTIONNAIRE", "COMPTABLE", "ADMIN"].includes(session.role);
+  // AMENDEMENT.md §4: the number of the version in force and any amendment
+  // in progress, for the report actions of each row.
+  const reports = canReport
+    ? await prisma.report.findMany({
+        where: { sampleId: { in: result.rows.filter((r) => r.hasReport).map((r) => r.id) } },
+        select: { sampleId: true, number: true, version: true, amendmentPending: true },
+      })
+    : [];
+  const reportBySample = new Map(reports.map((r) => [r.sampleId, r]));
   const iso = (d: Date | null) =>
     d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : "";
 
@@ -191,6 +202,29 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
                           Rapport
                         </a>
                       )}
+                      {(() => {
+                        const report = row.hasReport && canReport ? reportBySample.get(row.id) : undefined;
+                        if (!report) return null;
+                        const number = amendedNumber(report.number, report.version);
+                        return (
+                          <>
+                            {report.version > 0 && <span className="mt-1 block font-mono text-[11px] text-slate-500">{number}</span>}
+                            {report.amendmentPending && (
+                              <span className="mt-1 inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
+                                Amendement en cours
+                              </span>
+                            )}
+                            <ReportActions
+                              compact
+                              sampleId={row.id}
+                              role={session.role}
+                              status={row.status}
+                              number={number}
+                              amendmentPending={report.amendmentPending}
+                            />
+                          </>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}

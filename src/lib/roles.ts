@@ -31,7 +31,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   GESTIONNAIRE: "Gestionnaire commercial",
   COMPTABLE: "Comptable",
   ADMIN: "Administrateur",
-  CLIENT: "Client",
+  CLIENT: "Client (portail)",
   MAGASINIER: "Magasinier",
 };
 
@@ -50,13 +50,25 @@ export const ROLE_HOME: Record<Role, string> = {
 };
 
 /**
- * Roles an administrator can give to an account today. CLIENT is reserved for
- * the client portal (Phase 8): its home page does not exist yet, so handing it
- * out would only produce a dead end after login.
+ * The client portal role (PORTAIL.md): an account of a client of the
+ * laboratory, tied to that client by `User.clientId`. It only ever opens
+ * `/portail` and `/api/portail/**`; every laboratory guard leaves it out.
  */
-export const ASSIGNABLE_ROLES: readonly Role[] = ROLES.filter(
-  (role) => role !== "CLIENT"
-);
+export const PORTAL_ROLE = "CLIENT" satisfies Role;
+
+/** The laboratory's own roles — everyone except the portal accounts. */
+export const LAB_ROLES: readonly Role[] = ROLES.filter((role) => role !== PORTAL_ROLE);
+
+/**
+ * Roles an administrator can give to an account. Since the portal exists
+ * (PORTAIL.md §1), CLIENT is one of them — with a required client, checked by
+ * the /admin/utilisateurs routes (`userClientRefusal` in portal-access.ts).
+ */
+export const ASSIGNABLE_ROLES: readonly Role[] = ROLES;
+
+export function isPortalRole(value: unknown): boolean {
+  return value === PORTAL_ROLE;
+}
 
 export function isRole(value: unknown): value is Role {
   return typeof value === "string" && (ROLES as readonly string[]).includes(value);
@@ -64,4 +76,14 @@ export function isRole(value: unknown): value is Role {
 
 export function getDashboardPath(role: unknown): string {
   return isRole(role) ? ROLE_HOME[role] : "/login";
+}
+
+/**
+ * The authorization decision of every guard (`requireRole`, `requireApiRole`
+ * in auth.ts): the role must be one of `allowed`. An empty list means « any
+ * laboratory account » — never the portal (PORTAIL.md §3): a guard written
+ * without roles must not open a laboratory screen to a client's account.
+ */
+export function roleAllowed(role: Role, allowed: readonly Role[]): boolean {
+  return (allowed.length > 0 ? allowed : LAB_ROLES).includes(role);
 }

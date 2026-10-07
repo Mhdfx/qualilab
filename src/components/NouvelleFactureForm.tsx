@@ -12,6 +12,7 @@ import {
   Percent,
   FileText,
   AlertCircle,
+  Send,
 } from "lucide-react";
 import { useInvoiceBasePath } from "@/lib/invoice-paths";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -28,6 +29,8 @@ import {
   BillableSamples,
   type BillableLine,
 } from "@/components/invoices/BillableSamples";
+import { ConfirmDialog, sendJson } from "@/components/invoices/InvoiceDialogs";
+import type { DraftFormInvoice } from "@/components/invoices/invoice-view";
 
 type ClientOption = {
   id: string;
@@ -58,31 +61,60 @@ function newLine(): LineItem {
   };
 }
 
-export function NouvelleFactureForm() {
+function draftLines(draft: DraftFormInvoice | undefined): LineItem[] {
+  if (!draft || draft.items.length === 0) return [newLine()];
+  return draft.items.map((item) => {
+    lineCounter += 1;
+    return {
+      key: `line-${lineCounter}`,
+      serviceId: "",
+      description: item.description,
+      quantity: String(item.quantity),
+      unitPrice: item.unitPrice ? item.unitPrice.toFixed(2) : "",
+      sampleId: item.sampleId,
+    };
+  });
+}
+
+/**
+ * The invoice form (FACTURATION.md §1, §5): a new invoice, or a draft being
+ * edited. « Enregistrer le brouillon » keeps it without a number (its
+ * samples are reserved); « Émettre » draws the number and freezes it.
+ */
+export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}) {
   const router = useRouter();
   const base = useInvoiceBasePath();
-  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [clients, setClients] = useState<ClientOption[]>(() =>
+    draft ? [{ id: draft.clientId, name: draft.clientName }] : []
+  );
   const [services, setServices] = useState<LabServiceOption[]>([]);
-  const [clientId, setClientId] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [taxRate, setTaxRate] = useState("20");
-  const [notes, setNotes] = useState("");
-  const [items, setItems] = useState<LineItem[]>(() => [newLine()]);
+  const [clientId, setClientId] = useState(draft?.clientId ?? "");
+  const [dueDate, setDueDate] = useState(draft?.dueDate ?? "");
+  const [taxRate, setTaxRate] = useState(draft ? String(draft.taxRate) : "20");
+  const [notes, setNotes] = useState(draft?.notes ?? "");
+  const [items, setItems] = useState<LineItem[]>(() => draftLines(draft));
   const [submitting, setSubmitting] = useState(false);
+  const [confirmIssue, setConfirmIssue] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     fetch("/api/clients")
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) setClients(data);
+        if (!Array.isArray(data)) return;
+        // A draft keeps its client even if it left the selection lists.
+        setClients(
+          draft && !data.some((c: ClientOption) => c.id === draft.clientId)
+            ? [{ id: draft.clientId, name: draft.clientName }, ...data]
+            : data
+        );
       });
     fetch("/api/lab-services")
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) setServices(data);
       });
-  }, []);
+  }, [draft]);
 
   const servicesByCategory = useMemo(() => {
     const grouped = new Map<string, LabServiceOption[]>();
@@ -136,56 +168,87 @@ export function NouvelleFactureForm() {
     setItems((prev) => (prev.length > 1 ? prev.filter((i) => i.key !== key) : prev));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-
-    if (!clientId) {
-      setError("Veuillez sélectionner un client.");
-      return;
-    }
-
+  /** The form as the API takes it, or the French error to show. */
+  function payload(): { error: string } | { body: Record<string, unknown> } {
+    if (!clientId) return { error: "Veuillez sélectionner un client." };
     const validItems = items.filter(
       (item) => item.description.trim() && Number(item.quantity) > 0
     );
     if (validItems.length === 0) {
-      setError("Ajoutez au moins une ligne de prestation valide.");
+      return { error: "Ajoutez au moins une ligne de prestation valide." };
+    }
+    return {
+      body: {
+        clientId,
+        dueDate: dueDate || undefined,
+        notes,
+        taxRate: Number(taxRate) || 0,
+        items: validItems.map((item) => ({
+          description: item.description,
+          quantity: Number(item.quantity),
+          unitPrice: Number(item.unitPrice) || 0,
+          sampleId: item.sampleId ?? null,
+        })),
+      },
+    };
+  }
+
+  /**
+   * Saves the draft (issue: false) or issues the invoice (issue: true).
+   * A new invoice is created in one call; an edited draft is saved, then
+   * issued. Throws the French message on failure.
+   */
+  async function save(issue: boolean) {
+    const built = payload();
+    if ("error" in built) throw new Error(built.error);
+    if (!draft) {
+      const invoice = await sendJson("/api/invoices", "POST", { ...built.body, issue });
+      router.push(`${base}/${invoice.id}`);
+      router.refresh();
       return;
     }
+    await sendJson(`/api/invoices/${draft.id}`, "PATCH", built.body);
+    if (issue) {
+      try {
+        await sendJson(`/api/invoices/${draft.id}/issue`, "POST");
+      } catch (e) {
+        throw new Error(
+          `Le brouillon est enregistré, mais la facture n'a pas pu être émise : ${(e as Error).message}`
+        );
+      }
+    }
+    router.push(`${base}/${draft.id}`);
+    router.refresh();
+  }
 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (submitting) return;
+    setError("");
     setSubmitting(true);
     try {
-      const res = await fetch("/api/invoices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientId,
-          dueDate: dueDate || undefined,
-          notes,
-          taxRate: Number(taxRate) || 0,
-          items: validItems.map((item) => ({
-            description: item.description,
-            quantity: Number(item.quantity),
-            unitPrice: Number(item.unitPrice) || 0,
-            sampleId: item.sampleId ?? null,
-          })),
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error ?? "Impossible de créer la facture.");
-        setSubmitting(false);
-        return;
-      }
-
-      const invoice = await res.json();
-      router.push(`${base}/${invoice.id}`);
-    } catch {
-      setError("Une erreur réseau est survenue.");
+      await save(false);
+    } catch (err) {
+      setError(
+        err instanceof Error && err.message !== "Failed to fetch"
+          ? err.message
+          : "Une erreur réseau est survenue."
+      );
       setSubmitting(false);
     }
   }
+
+  function askIssue() {
+    setError("");
+    const built = payload();
+    if ("error" in built) {
+      setError(built.error);
+      return;
+    }
+    setConfirmIssue(true);
+  }
+
+  const listedSamples = items.flatMap((item) => (item.sampleId ? [item.sampleId] : []));
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -199,19 +262,24 @@ export function NouvelleFactureForm() {
 
       <PageHeader
         badge="Facturation"
-        title="Nouvelle facture"
-        subtitle="Sélectionnez un client, ajoutez les prestations et générez la facture"
+        title={draft ? "Modifier le brouillon" : "Nouvelle facture"}
+        subtitle={
+          draft
+            ? "Le brouillon n'a pas encore de numéro : corrigez-le librement, puis émettez-le"
+            : "Sélectionnez un client, ajoutez les prestations, puis enregistrez un brouillon ou émettez la facture"
+        }
       />
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="p-5 sm:p-6">
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div>
-              <label className="section-title mb-2">
-                <Building2 className="h-4 w-4" />
+              <label htmlFor="invoice-client" className="section-title mb-2">
+                <Building2 className="h-4 w-4" aria-hidden="true" />
                 Client
               </label>
               <select
+                id="invoice-client"
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
                 className="input-field px-4"
@@ -227,11 +295,12 @@ export function NouvelleFactureForm() {
             </div>
 
             <div>
-              <label className="section-title mb-2">
-                <CalendarClock className="h-4 w-4" />
+              <label htmlFor="invoice-due-date" className="section-title mb-2">
+                <CalendarClock className="h-4 w-4" aria-hidden="true" />
                 Échéance (optionnel)
               </label>
               <input
+                id="invoice-due-date"
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
@@ -272,6 +341,8 @@ export function NouvelleFactureForm() {
             <div className="mb-4">
               <BillableSamples
                 clientId={clientId}
+                draftId={draft?.id}
+                listed={listedSamples}
                 onAdd={(lines: BillableLine[]) =>
                   setItems((prev) => {
                     const added = lines.map((line) => {
@@ -391,8 +462,9 @@ export function NouvelleFactureForm() {
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card className="p-5 sm:p-6">
-            <label className="section-title mb-2">Notes (optionnel)</label>
+            <label htmlFor="invoice-notes" className="section-title mb-2">Notes (optionnel)</label>
             <textarea
+              id="invoice-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
@@ -442,7 +514,7 @@ export function NouvelleFactureForm() {
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          <div role="alert" className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
             <AlertCircle className="h-4 w-4 shrink-0" />
             {error}
           </div>
@@ -451,16 +523,30 @@ export function NouvelleFactureForm() {
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
           <SecondaryButton
             type="button"
-            onClick={() => router.push(base)}
+            onClick={() => router.push(draft ? `${base}/${draft.id}` : base)}
             className="px-6 py-3"
           >
             Annuler
           </SecondaryButton>
-          <PrimaryButton type="submit" disabled={submitting} className="px-8 py-3">
-            {submitting ? "Génération…" : "Générer la facture"}
+          <SecondaryButton type="submit" disabled={submitting} className="px-6 py-3">
+            {submitting ? "Enregistrement…" : "Enregistrer le brouillon"}
+          </SecondaryButton>
+          <PrimaryButton type="button" onClick={askIssue} disabled={submitting} className="px-8 py-3">
+            <Send className="h-4 w-4" aria-hidden="true" />
+            Émettre
           </PrimaryButton>
         </div>
       </form>
+
+      {confirmIssue && (
+        <ConfirmDialog
+          title="Émettre la facture"
+          message={`La facture de ${formatCurrency(total)} TTC recevra le prochain numéro FAC-AAAA-NNNN et ne pourra plus jamais être modifiée. Une erreur se corrige ensuite par un avoir.`}
+          confirmLabel="Émettre la facture"
+          onConfirm={() => save(true)}
+          onClose={() => setConfirmIssue(false)}
+        />
+      )}
     </div>
   );
 }

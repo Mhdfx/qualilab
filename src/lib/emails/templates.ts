@@ -2,6 +2,7 @@ import type { LineKind } from "@/generated/prisma/enums";
 import { COMPANY } from "@/lib/company";
 import { designationHeading } from "@/lib/document-html";
 import { formatDate } from "@/lib/labels";
+import { amendedReportSubject, amendmentHeader } from "@/lib/report-amendment";
 
 /**
  * The two messages the laboratory sends.
@@ -69,6 +70,13 @@ export type ReportEmailInput = {
   alert: boolean;
   /** True when the conclusion is the indicative one (too few units). */
   indicative: boolean;
+  /** An amended report (AMENDEMENT.md §2.3): the version it cancels and
+   *  replaces, and the reason — the subject reads « Rapport amendé … ». */
+  amendment?: {
+    previousNumber: string;
+    previousIssuedAt: Date | string;
+    note?: string | null;
+  } | null;
 };
 
 const TH = "border:1px solid #9aa9b3;padding:6px 8px;text-align:left;font-weight:bold;background:#eef0e2";
@@ -84,7 +92,8 @@ const TD = "border:1px solid #9aa9b3;padding:6px 8px";
  */
 export function reportEmail(input: ReportEmailInput) {
   const site = input.siteName?.trim() || null;
-  const subject = `Rapport d'analyse ${input.reportNumber}${site ? ` — ${input.clientName} — ${site}` : ""} — ${COMPANY.name}`;
+  const amendment = input.amendment ? amendmentHeader(input.amendment) : null;
+  const subject = `${amendment ? amendedReportSubject(input.reportNumber) : `Rapport d'analyse ${input.reportNumber}`}${site ? ` — ${input.clientName} — ${site}` : ""} — ${COMPANY.name}`;
   const rows: [string, string][] = [
     ["N° dossier", input.serialNumber],
     ["N° de contrôle", input.controlCode ?? "—"],
@@ -100,8 +109,16 @@ export function reportEmail(input: ReportEmailInput) {
   const html = shell(`
     <p style="font-size:15px;margin:0 0 14px">Bonjour,</p>
     <p style="font-size:14px;line-height:1.6;margin:0 0 14px">
-      Veuillez trouver ci-joint le rapport d'analyse <b>${escape(input.reportNumber)}</b>.
+      Veuillez trouver ci-joint le rapport d'analyse ${amendment ? "amendé " : ""}<b>${escape(input.reportNumber)}</b>.
     </p>
+    ${
+      amendment
+        ? `<p style="font-size:13px;line-height:1.6;margin:0 0 14px;padding:10px 12px;background:#fbf1f3;border-left:3px solid #a5203a;color:#5c1222">
+             <b>${escape(amendment.title)}</b> — ${escape(amendment.replaces.charAt(0).toLowerCase() + amendment.replaces.slice(1))}.
+             ${amendment.note ? `<br>${escape(amendment.note)}` : ""}
+           </p>`
+        : ""
+    }
     <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;margin:0 0 14px">
       <tbody>
         ${rows.map(([k, v]) => `<tr><td style="${TH}">${k}</td><td style="${TD}">${escape(v)}</td></tr>`).join("")}

@@ -241,15 +241,19 @@ seed (`prisma/seed.ts`) in step so a fresh DB always demos end-to-end.
 - Provisional until NEEDEDINFO 13–15: equipment list, périodicités, bornes
   and EIL perimeter are data entry on the built screens.
 
-### Phase 8 — Portail client & Réclamations *(later track)*
+### Phase 8 — Portail client & Réclamations *(portal built 2026-10-08, not deployed; réclamations later)*
 - **Client portal [client 18-08 CONFIRMED]:** `CLIENT` accounts are
   **created and managed by the ADMIN** (no self-signup — consistent with our
   disabled public sign-up). Each client logs into a scoped, read-only space:
   status tracking + results/reports of **their own** samples only.
+  **Built 2026-10-08** to spec `PORTAIL.md`: `User.clientId`, the client
+  picker in `/admin/utilisateurs`, `/portail` (dashboard, list, report PDF,
+  « Mon compte »), every lab route closed to `CLIENT`. Not deployed yet;
+  recette = TESTPLAN Z.
 - **Réclamations:** centralized complaints/claims tab linked to samples/clients.
 
 **Roles impact [settled]:** 9 profiles total — the 7 core roles + `CLIENT`
-(portal, already reserved in `lib/roles.ts`) + `MAGASINIER` (added at Phase 6).
+(portal, assignable since 2026-10-08) + `MAGASINIER` (added at Phase 6).
 
 ### Phase 9 — Mise à niveau métier ◀ IN PROGRESS — chantier 1 slices 1–5 live 2026-09-13 and slice 1b (the lab's feedback of 14/09) live 2026-09-14; the recette with the lab closes it *(analysis of 2026-09-13, after the client's feedback)*
 

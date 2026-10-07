@@ -1,24 +1,35 @@
+import type { InvoiceKind, InvoiceStatus } from "@/generated/prisma/enums";
 import { COMPANY, type CompanyInfo } from "./company";
 import { companyBrandHtml } from "./brand-html";
 import { formatDate } from "./labels";
 import { amountToFrenchWords } from "./number-to-words-fr";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
+import { balance, invoiceState, type InvoiceState } from "./invoice-lifecycle";
 
 /**
- * The invoice as a printable document.
+ * The invoice — or credit note — as a printable document.
  *
  * Rendered server-side by Chromium, like the analysis report — the prototype
  * produced it by screenshotting the page, which gave a single flattened image
  * with no selectable text and no page breaks. An invoice carries the
  * laboratory's ICE, RC and RIB and may be sent to an accountant or an
  * administration, so it has to be a real document.
+ *
+ * What it says follows its life (FACTURATION.md §5): a draft is watermarked
+ * « BROUILLON » and has no number; a cancelled invoice keeps its number under
+ * an « ANNULÉE » stamp with the date and the reason; an issued invoice shows
+ * what was settled and what is left to pay; a credit note is titled
+ * « AVOIR N° AV-… » and names the invoice it corrects.
  */
 
 export type InvoiceDocument = {
-  number: string;
+  /** FACTURE unless said otherwise. */
+  kind?: InvoiceKind;
+  /** Null while a draft. */
+  number: string | null;
   issueDate: Date;
   dueDate: Date | null;
-  status: "EN_ATTENTE" | "PAYEE";
+  status: InvoiceStatus;
   notes: string | null;
   taxRate: number;
   subtotal: number;
@@ -38,8 +49,16 @@ export type InvoiceDocument = {
     unitPrice: number;
     lineTotal: number;
   }[];
+  /** Sum of the settlements (issued invoice). */
+  paidAmount?: number;
+  /** Sum of the credit notes issued against it (issued invoice). */
+  creditedAmount?: number;
+  /** Cancellation: printed on the « ANNULÉE » stamp. */
+  cancelledAt?: Date | null;
+  cancelReason?: string | null;
+  /** Credit note: the invoice it corrects. */
+  creditedInvoice?: { number: string | null; issueDate: Date } | null;
 };
-
 
 function money(amount: number) {
   return `${new Intl.NumberFormat("fr-FR", {
@@ -48,10 +67,41 @@ function money(amount: number) {
   }).format(amount)} DH`;
 }
 
+/** The pill under the number. */
+const STATE_BADGES: Record<InvoiceState, { text: string; tone: "yes" | "no" | "off" }> = {
+  BROUILLON: { text: "BROUILLON", tone: "off" },
+  EMISE: { text: "EN ATTENTE DE RÈGLEMENT", tone: "no" },
+  PARTIELLEMENT_PAYEE: { text: "PARTIELLEMENT PAYÉE", tone: "no" },
+  PAYEE: { text: "PAYÉE", tone: "yes" },
+  ANNULEE: { text: "ANNULÉE", tone: "off" },
+  AVOIR: { text: "AVOIR", tone: "yes" },
+};
+
+/** The document's name: « Facture FAC-… », « Avoir AV-… », « Facture (brouillon) ». */
+export function invoiceDocumentTitle(invoice: Pick<InvoiceDocument, "kind" | "number">): string {
+  const kind = invoice.kind === "AVOIR" ? "Avoir" : "Facture";
+  return invoice.number ? `${kind} ${invoice.number}` : `${kind} (brouillon)`;
+}
+
 export function buildInvoiceHtml(
   invoice: InvoiceDocument,
   company: CompanyInfo = COMPANY
 ): string {
+  const isCreditNote = invoice.kind === "AVOIR";
+  const isDraft = !isCreditNote && invoice.status === "BROUILLON";
+  const isCancelled = !isCreditNote && invoice.status === "ANNULEE";
+  const paid = invoice.paidAmount ?? 0;
+  const credited = invoice.creditedAmount ?? 0;
+  const state = invoiceState({
+    status: invoice.status,
+    kind: invoice.kind ?? "FACTURE",
+    total: invoice.total,
+    paid,
+    credited,
+  });
+  const badge = STATE_BADGES[state];
+  const title = invoiceDocumentTitle(invoice);
+
   const rows = invoice.items
     .map(
       (item) => `
@@ -64,11 +114,66 @@ export function buildInvoiceHtml(
     )
     .join("");
 
+  const numberLine = invoice.number
+    ? `N° <b>${escapeHtml(invoice.number)}</b><br>`
+    : `N° <b>non attribué</b> — brouillon<br>`;
+
+  const creditedLine =
+    isCreditNote && invoice.creditedInvoice
+      ? `<div class="credited">Se rapporte à la facture <b>${escapeHtml(invoice.creditedInvoice.number ?? "—")}</b> du <b>${formatDate(invoice.creditedInvoice.issueDate)}</b>.</div>`
+      : "";
+
+  const cancelStamp =
+    isCancelled
+      ? `<div class="cancelled">
+  <div class="stamp">ANNULÉE</div>
+  <div class="why">
+    ${invoice.cancelledAt ? `Facture annulée le <b>${formatDate(invoice.cancelledAt)}</b>.<br>` : "Facture annulée.<br>"}
+    ${invoice.cancelReason ? `Motif : ${escapeHtml(invoice.cancelReason)}` : ""}
+  </div>
+</div>`
+      : "";
+
+  // Settled / left to pay — an issued invoice only (FACTURATION.md §3).
+  const settlement =
+    !isCreditNote && !isDraft && !isCancelled
+      ? `<div class="settlement">
+  <table>
+    ${credited > 0 ? `<tr><td class="label">Avoirs</td><td class="value">− ${money(credited)}</td></tr>` : ""}
+    <tr><td class="label">Réglé</td><td class="value">${money(paid)}</td></tr>
+    <tr class="due"><td>Reste à payer</td><td class="value">${money(balance(invoice.total, paid, credited))}</td></tr>
+  </table>
+</div>`
+      : "";
+
+  const words = isCreditNote
+    ? `Arrêté le présent avoir à la somme de :`
+    : `Arrêtée la présente facture à la somme de :`;
+
+  const notes = invoice.notes
+    ? `<p class="notes"><b>${isCreditNote ? "Motif de l'avoir" : "Observations"} :</b> ${escapeHtml(invoice.notes)}</p>`
+    : "";
+
+  const paymentTerms = isCreditNote
+    ? `<div class="payment">
+  <h2>Imputation</h2>
+  <div class="row">Montant à déduire de la facture ${escapeHtml(invoice.creditedInvoice?.number ?? "concernée")}, ou à rembourser si elle est déjà réglée.</div>
+</div>`
+    : `<div class="payment">
+  <h2>Modalités de règlement</h2>
+  <div class="row">Banque : <b>${escapeHtml(company.bank)}</b></div>
+  <div class="row">RIB : <b>${escapeHtml(company.rib)}</b></div>
+  <div class="row">IBAN : <b>${escapeHtml(company.iban)}</b> · SWIFT : <b>${escapeHtml(company.swift)}</b></div>
+  <div class="row" style="margin-top:5px">
+    Règlement à réception de facture, sauf accord écrit contraire.
+  </div>
+</div>`;
+
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<title>Facture ${escapeHtml(invoice.number)}</title>
+<title>${escapeHtml(title)}</title>
 <style>
   @page { size: A4; margin: 14mm 14mm 16mm; }
   * { box-sizing: border-box; }
@@ -91,6 +196,19 @@ export function buildInvoiceHtml(
     font-size: 7.6pt; font-weight: 700; }
   .paid.yes { background: #e2efe4; color: #2f6b3a; }
   .paid.no { background: #fdf0dc; color: #8a5a00; }
+  .paid.off { background: #eceff1; color: #55707d; }
+  .credited { margin: -4px 0 12px; padding: 7px 11px; border: 1px solid #d9e3e8;
+    border-left: 3px solid #1f3a4d; border-radius: 3px; font-size: 9pt; color: #41616f; }
+  .credited b { color: #1b2a33; }
+  .cancelled { display: flex; align-items: center; gap: 14px; margin: -4px 0 12px;
+    padding: 8px 12px; border: 2px solid #a12a2a; border-radius: 4px; color: #a12a2a;
+    page-break-inside: avoid; }
+  .cancelled .stamp { font-size: 18pt; font-weight: 800; letter-spacing: 3px;
+    border: 3px solid #a12a2a; padding: 2px 10px; transform: rotate(-4deg); }
+  .cancelled .why { font-size: 9pt; line-height: 1.5; }
+  .watermark { position: fixed; top: 42%; left: 0; right: 0; text-align: center;
+    font-size: 92pt; font-weight: 800; letter-spacing: 8px; color: rgba(31,58,77,.08);
+    transform: rotate(-30deg); z-index: 0; pointer-events: none; }
   .parties { display: flex; gap: 10px; margin-bottom: 14px; }
   .box { flex: 1; border: 1px solid #d9e3e8; border-radius: 4px; padding: 9px 11px; }
   .box h2 { font-size: 7.4pt; text-transform: uppercase; letter-spacing: .5px;
@@ -107,13 +225,16 @@ export function buildInvoiceHtml(
   thead { display: table-header-group; }
   .desc { font-weight: 500; }
   .strong { font-weight: 700; }
-  .totals { display: flex; justify-content: flex-end; page-break-inside: avoid; }
-  .totals table { width: 280px; font-size: 9.4pt; }
-  .totals td { padding: 5px 8px; border: 0; }
-  .totals .label { color: #55707d; }
-  .totals .value { text-align: right; font-weight: 600; }
+  .totals, .settlement { display: flex; justify-content: flex-end; page-break-inside: avoid; }
+  .totals table, .settlement table { width: 280px; font-size: 9.4pt; }
+  .totals td, .settlement td { padding: 5px 8px; border: 0; background: none !important; }
+  .totals .label, .settlement .label { color: #55707d; }
+  .totals .value, .settlement .value { text-align: right; font-weight: 600; }
   .totals .grand td { border-top: 2px solid #1f3a4d; padding-top: 7px;
     font-size: 11pt; font-weight: 700; color: #1f3a4d; }
+  .settlement table { margin-top: -6px; }
+  .settlement .due td { border-top: 1px solid #b8860b; padding-top: 6px;
+    font-size: 10.4pt; font-weight: 700; color: #8a5a00; }
   .words { margin: 12px 0 14px; padding: 8px 11px; background: #f6f9fb;
     border-left: 3px solid #b8860b; border-radius: 3px; font-size: 9pt;
     page-break-inside: avoid; }
@@ -130,6 +251,7 @@ export function buildInvoiceHtml(
 </style>
 </head>
 <body>
+${isDraft ? `<div class="watermark">BROUILLON</div>` : ""}
 <div class="band"></div>
 <header>
   <div>
@@ -141,19 +263,24 @@ export function buildInvoiceHtml(
     </div>
   </div>
   <div class="docmeta">
-    <div class="kind">Facture</div>
-    N° <b>${escapeHtml(invoice.number)}</b><br>
+    ${
+      isCreditNote
+        ? `<div class="kind">Avoir N° ${escapeHtml(invoice.number ?? "—")}</div>`
+        : `<div class="kind">${isDraft ? "Facture — brouillon" : "Facture"}</div>
+    ${numberLine}`
+    }
     En date du <b>${formatDate(invoice.issueDate)}</b><br>
-    ${invoice.dueDate ? `Échéance <b>${formatDate(invoice.dueDate)}</b><br>` : ""}
-    <span class="paid ${invoice.status === "PAYEE" ? "yes" : "no"}">
-      ${invoice.status === "PAYEE" ? "PAYÉE" : "EN ATTENTE DE RÈGLEMENT"}
-    </span>
+    ${!isCreditNote && invoice.dueDate ? `Échéance <b>${formatDate(invoice.dueDate)}</b><br>` : ""}
+    <span class="paid ${badge.tone}">${badge.text}</span>
   </div>
 </header>
 
+${creditedLine}
+${cancelStamp}
+
 <div class="parties">
   <div class="box">
-    <h2>Facturé à</h2>
+    <h2>${isCreditNote ? "Client" : "Facturé à"}</h2>
     <div class="name">${show(invoice.client.name)}</div>
     ${invoice.client.address ? `<div class="line">${escapeHtml(invoice.client.address)}</div>` : ""}
     ${invoice.client.contact ? `<div class="line">${escapeHtml(invoice.client.contact)}</div>` : ""}
@@ -162,7 +289,7 @@ export function buildInvoiceHtml(
     ${invoice.client.ice ? `<div class="line">ICE ${escapeHtml(invoice.client.ice)}</div>` : ""}
   </div>
   <div class="box">
-    <h2>Émise par</h2>
+    <h2>${isCreditNote ? "Émis par" : "Émise par"}</h2>
     <div class="name">${escapeHtml(company.name)}</div>
     <div class="line">${escapeHtml(company.tagline)}</div>
     <div class="line">${escapeHtml(company.address)}, ${escapeHtml(company.city)}</div>
@@ -198,26 +325,19 @@ export function buildInvoiceHtml(
     </tr>
   </table>
 </div>
+${settlement}
 
 <div class="words">
-  Arrêtée la présente facture à la somme de :
+  ${words}
   <b>${escapeHtml(amountToFrenchWords(invoice.total))}</b>.
 </div>
 
-${invoice.notes ? `<p class="notes"><b>Observations :</b> ${escapeHtml(invoice.notes)}</p>` : ""}
+${notes}
 
-<div class="payment">
-  <h2>Modalités de règlement</h2>
-  <div class="row">Banque : <b>${escapeHtml(company.bank)}</b></div>
-  <div class="row">RIB : <b>${escapeHtml(company.rib)}</b></div>
-  <div class="row">IBAN : <b>${escapeHtml(company.iban)}</b> · SWIFT : <b>${escapeHtml(company.swift)}</b></div>
-  <div class="row" style="margin-top:5px">
-    Règlement à réception de facture, sauf accord écrit contraire.
-  </div>
-</div>
+${paymentTerms}
 
 <footer>
-  ${escapeHtml(company.name)} — Facture ${escapeHtml(invoice.number)} ·
+  ${escapeHtml(company.name)} — ${escapeHtml(title)}${isCancelled ? " (annulée)" : ""} ·
   ICE ${escapeHtml(company.ice)} · RC ${escapeHtml(company.rc)} · ${escapeHtml(company.website)}
 </footer>
 </body>

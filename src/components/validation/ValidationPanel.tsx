@@ -11,6 +11,7 @@ import {
   Lock,
   FileDown,
   Send,
+  PencilLine,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
@@ -40,6 +41,9 @@ type ValidationPanelProps = {
   regulationRequired: boolean;
   /** The one recorded on the sample, for the approved state. */
   chosenRegulation: string | null;
+  /** An amendment in progress (AMENDEMENT.md §2): the version in force, the
+   *  one the approval will issue, and the reason. */
+  amendment?: { currentNumber: string; nextNumber: string; note: string | null } | null;
 };
 
 /**
@@ -66,6 +70,7 @@ export function ValidationPanel({
   proposedRegulationId,
   regulationRequired,
   chosenRegulation,
+  amendment = null,
 }: ValidationPanelProps) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -151,6 +156,20 @@ export function ValidationPanel({
         Validation en deux étapes
       </h2>
 
+      {amendment && state !== "APPROVED" && (
+        <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50/70 px-3 py-2.5 text-sm text-rose-900">
+          <p className="flex items-center gap-1.5 font-semibold">
+            <PencilLine className="h-4 w-4 shrink-0" aria-hidden="true" />
+            Amendement du rapport {amendment.currentNumber}
+          </p>
+          {amendment.note && <p className="mt-1">Motif : {amendment.note}</p>}
+          <p className="mt-1 text-xs text-rose-800">
+            À l&apos;approbation, le rapport {amendment.nextNumber} annulera et remplacera le rapport{" "}
+            {amendment.currentNumber}, et sera envoyé au client.
+          </p>
+        </div>
+      )}
+
       <ol className="mt-4 space-y-2.5">
         <Step
           index={1}
@@ -170,7 +189,11 @@ export function ValidationPanel({
           who="Administrateur"
           done={state === "APPROVED"}
           current={state === "AWAITING_ADMIN"}
-          detail="Déclenche le rapport et l'envoi au client"
+          detail={
+            amendment && state !== "APPROVED"
+              ? `Émet le rapport amendé ${amendment.nextNumber} et l'envoie au client`
+              : "Déclenche le rapport et l'envoi au client"
+          }
         />
       </ol>
 
@@ -212,7 +235,9 @@ export function ValidationPanel({
           <b>{nonConformes} résultat{nonConformes > 1 ? "s" : ""} non conforme
           {nonConformes > 1 ? "s" : ""}.</b>{" "}
           {alertables > 0
-            ? "Une alerte de contamination sera envoyée au client après approbation."
+            ? amendment
+              ? "Une alerte de contamination ne sera renvoyée au client que pour un résultat modifié depuis le rapport en vigueur."
+              : "Une alerte de contamination sera envoyée au client après approbation."
             : "Aucun paramètre sensible n'est dépassé : le rapport partira sans alerte de contamination."}
         </p>
       )}

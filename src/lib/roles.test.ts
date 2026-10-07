@@ -1,12 +1,20 @@
 import { describe, it, expect } from "vitest";
-import { ASSIGNABLE_ROLES, ROLES, ROLE_HOME, getDashboardPath } from "./roles";
+import { ASSIGNABLE_ROLES, LAB_ROLES, PORTAL_ROLE, ROLES, ROLE_HOME, ROLE_LABELS, getDashboardPath, isPortalRole, roleAllowed } from "./roles";
 
 describe("assignable roles", () => {
-  it("never offers a role whose landing page does not exist yet", () => {
-    // CLIENT waits for the portal (Phase 8): handing it out would strand the
-    // account on a 404 after every login.
-    expect(ASSIGNABLE_ROLES).not.toContain("CLIENT");
-    expect(ASSIGNABLE_ROLES.length).toBe(ROLES.length - 1);
+  it("offers the portal role now that /portail exists (PORTAIL.md §1)", () => {
+    expect(ASSIGNABLE_ROLES).toContain("CLIENT");
+    expect(ASSIGNABLE_ROLES.length).toBe(ROLES.length);
+    expect(ROLE_LABELS.CLIENT).toBe("Client (portail)");
+  });
+
+  it("keeps the portal role out of the laboratory's roles", () => {
+    expect(PORTAL_ROLE).toBe("CLIENT");
+    expect(LAB_ROLES).not.toContain("CLIENT");
+    expect(LAB_ROLES.length).toBe(ROLES.length - 1);
+    expect(isPortalRole("CLIENT")).toBe(true);
+    expect(isPortalRole("ADMIN")).toBe(false);
+    expect(isPortalRole(undefined)).toBe(false);
   });
 
   it("sends every assignable role to a real dashboard", () => {
@@ -21,6 +29,8 @@ describe("assignable roles", () => {
       "/comptabilite",
       "/admin",
       "/magasin",
+      // PORTAIL.md §2: the client portal.
+      "/portail",
     ]);
     for (const role of ASSIGNABLE_ROLES) {
       expect(built.has(ROLE_HOME[role]), role).toBe(true);
@@ -31,5 +41,23 @@ describe("assignable roles", () => {
   it("falls back to the login page for anything that is not a role", () => {
     expect(getDashboardPath("SOMETHING")).toBe("/login");
     expect(getDashboardPath(null)).toBe("/login");
+  });
+});
+
+describe("roleAllowed — the decision of every guard", () => {
+  it("admits only the roles listed", () => {
+    expect(roleAllowed("ADMIN", ["ADMIN"])).toBe(true);
+    expect(roleAllowed("TECHNICIEN", ["ADMIN"])).toBe(false);
+    expect(roleAllowed("CLIENT", ["CLIENT"])).toBe(true);
+    expect(roleAllowed("CLIENT", ["VALIDATEUR", "GESTIONNAIRE", "COMPTABLE", "ADMIN"])).toBe(false);
+  });
+
+  it("reads an empty list as « any laboratory account », never the portal (PORTAIL.md §3)", () => {
+    for (const role of LAB_ROLES) expect(roleAllowed(role, []), role).toBe(true);
+    expect(roleAllowed("CLIENT", [])).toBe(false);
+  });
+
+  it("refuses CLIENT for every list of laboratory roles", () => {
+    expect(roleAllowed("CLIENT", LAB_ROLES)).toBe(false);
   });
 });

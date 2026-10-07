@@ -147,12 +147,19 @@ enum CancelReason {
   AUTRE
 }
 
-/// How an advance is paid at the counter (bon de réception « Avance »).
+/// How money is paid: the advance at the counter (bon de réception « Avance »)
+/// and the settlements of an invoice (`Payment`, FACTURATION.md §3) — the old
+/// software's modes Espèces, Chèque, Effets, Carte, Virement.
 enum PaymentMode {
   ESPECES
   CHEQUE
   VIREMENT
   CARTE
+  /// Effet de commerce (lettre de change) — invoice settlements only.
+  EFFET
+  /// Only for the « Repris » settlements written by the 09/10/2026 migration
+  /// on invoices already marked paid; never offered on a screen.
+  AUTRE
 }
 
 /// Chantier 2 — how the « m » limit of a criterion reads (CRITERES.md §1).
@@ -181,9 +188,25 @@ enum NonConformityReason {
   AUTRE
 }
 
+/// FACTURATION.md §1 — BROUILLON → EN_ATTENTE (émise) → PAYEE (soldée);
+/// ANNULEE from EN_ATTENTE without any settlement. « Partiellement payée » is
+/// read from the settlements (src/lib/invoice-lifecycle.ts), never stored.
 enum InvoiceStatus {
+  /// Draft: no number yet, editable and deletable; its samples are reserved.
+  BROUILLON
+  /// Issued, something left to pay.
   EN_ATTENTE
+  /// Issued, nothing left to pay (total − credit notes − settlements = 0).
   PAYEE
+  /// Issued then cancelled: keeps its number, its samples are billable again.
+  ANNULEE
+}
+
+/// FACTURATION.md §2 — an invoice, or a credit note correcting one.
+enum InvoiceKind {
+  FACTURE
+  /// Credit note « AV-AAAA-NNNN »: issued directly, never cancelled.
+  AVOIR
 }
 
 /// Better Auth owns authentication (User/Session/Account/Verification).
@@ -206,30 +229,44 @@ model User {
   sessions Session[]
   accounts Account[]
 
-  samples          Sample[]
-  invoices         Invoice[]
-  receivedSamples  Sample[]             @relation("SampleReceivedBy")
-  assignedSamples  Sample[]             @relation("SampleTechnician")
-  validatedSamples Sample[]             @relation("SampleValidatedBy")
-  approvedSamples  Sample[]             @relation("SampleApprovedBy")
-  rejectedSamples  Sample[]             @relation("SampleRejectedBy")
-  cancelledSamples Sample[]             @relation("SampleCancelledBy")
+  /// PORTAIL.md §1 — the client a `CLIENT` (portal) account belongs to:
+  /// required for that role, forbidden for the others (checked by the
+  /// /admin/utilisateurs routes). Every portal query filters on it.
+  clientId String?
+  client   Client? @relation("PortalUserClient", fields: [clientId], references: [id], onDelete: SetNull)
+
+  samples              Sample[]
+  /// The invoices and credit notes this user created (drafts included).
+  invoices             Invoice[]            @relation("InvoiceCreatedBy")
+  /// FACTURATION.md §1 — the invoices this user cancelled.
+  cancelledInvoices    Invoice[]            @relation("InvoiceCancelledBy")
+  /// FACTURATION.md §3 — the settlements this user recorded.
+  payments             Payment[]            @relation("PaymentCreatedBy")
+  /// AMENDEMENT.md §1 — the report versions issued (approved) by this user.
+  issuedReportVersions ReportVersion[]      @relation("ReportVersionIssuedBy")
+  receivedSamples      Sample[]             @relation("SampleReceivedBy")
+  assignedSamples      Sample[]             @relation("SampleTechnician")
+  validatedSamples     Sample[]             @relation("SampleValidatedBy")
+  approvedSamples      Sample[]             @relation("SampleApprovedBy")
+  rejectedSamples      Sample[]             @relation("SampleRejectedBy")
+  cancelledSamples     Sample[]             @relation("SampleCancelledBy")
   /// PROGRAMME.md — the lines whose programme this user confirmed, and the
   /// parameters handed to this technician one by one.
-  programmedSamples    Sample[]          @relation("ProgrammedSamples")
-  parameterAssignments SampleParameter[] @relation("ParameterTechnician")
-  createdSeries    Serie[]              @relation("SerieCreatedBy")
-  sampledSeries    Serie[]              @relation("SerieSampler")
-  receivedSeries   Serie[]              @relation("SerieReceivedBy")
-  enteredResults   Result[]
-  auditLogs        AuditLog[]
-  purchaseInvoices PurchaseInvoice[]    @relation("PurchaseInvoiceCreatedBy")
-  stockMovements   StockMovement[]      @relation("StockMovementCreatedBy")
-  calibrations     CalibrationRecord[]  @relation("CalibrationCreatedBy")
-  temperatures     TemperatureReading[] @relation("TemperatureCreatedBy")
-  eilCampaigns     EilCampaign[]        @relation("EilCreatedBy")
+  programmedSamples    Sample[]             @relation("ProgrammedSamples")
+  parameterAssignments SampleParameter[]    @relation("ParameterTechnician")
+  createdSeries        Serie[]              @relation("SerieCreatedBy")
+  sampledSeries        Serie[]              @relation("SerieSampler")
+  receivedSeries       Serie[]              @relation("SerieReceivedBy")
+  enteredResults       Result[]
+  auditLogs            AuditLog[]
+  purchaseInvoices     PurchaseInvoice[]    @relation("PurchaseInvoiceCreatedBy")
+  stockMovements       StockMovement[]      @relation("StockMovementCreatedBy")
+  calibrations         CalibrationRecord[]  @relation("CalibrationCreatedBy")
+  temperatures         TemperatureReading[] @relation("TemperatureCreatedBy")
+  eilCampaigns         EilCampaign[]        @relation("EilCreatedBy")
 
   @@index([role])
+  @@index([clientId])
 }
 
 model Session {
@@ -315,6 +352,8 @@ model Client {
   products       ClientProduct[]
   profiles       AnalysisProfile[]
   productTypes   ProductType[]
+  /// PORTAIL.md §1 — the portal (`CLIENT`) accounts of this client.
+  portalUsers    User[]            @relation("PortalUserClient")
 
   @@index([archived, name])
   @@index([mergedIntoId])
@@ -532,31 +571,31 @@ model Result {
   /// The FINAL value, as printed on the report (e.g. "8,9.10²"). When the
   /// parameter has a calcFactor it is computed from the raw reading;
   /// otherwise it is exactly what the technician typed.
-  value          String?
+  value                  String?
   /// The bench reading as typed, kept when a calcFactor transformed it —
   /// null means value IS the raw entry (factor 1, today's default).
-  rawValue       String?
+  rawValue               String?
   /// The final value parsed to a number. A contamination alert compares a
   /// result to its limit, and a display string cannot be compared — so both
   /// are kept.
-  numericValue   Float?
-  unit           String?
-  threshold      String?
-  conform        Boolean?
-  workStatus     ResultWorkStatus @default(EN_COURS)
-  note           String?          @db.Text
+  numericValue           Float?
+  unit                   String?
+  threshold              String?
+  conform                Boolean?
+  workStatus             ResultWorkStatus @default(EN_COURS)
+  note                   String?          @db.Text
   /// Chantier 2 — the norm version the result was read under, its verdict
   /// and the readings per unit (n = 5…).
-  normVersionId  String?
-  normVersion    NormVersion?     @relation(fields: [normVersionId], references: [id], onDelete: SetNull)
-  interpretation Interpretation?
+  normVersionId          String?
+  normVersion            NormVersion?     @relation(fields: [normVersionId], references: [id], onDelete: SetNull)
+  interpretation         Interpretation?
   /// Fewer units taken than the plan's n: no official verdict (interpretation
   /// stays null), this indicative one goes in the e-mail (RETOUR-LABO-29-09.md).
   informalInterpretation Interpretation?
   /// The criterion the result was judged against, frozen for the report:
   /// { n, c, mKind, m, bigM } (RETOUR-LABO-29-09.md, slice C).
-  criterion      Json?
-  units          ResultUnit[]
+  criterion              Json?
+  units                  ResultUnit[]
 
   enteredById String?
   enteredBy   User?     @relation(fields: [enteredById], references: [id])
@@ -589,9 +628,55 @@ model Report {
   sentAt     DateTime?
   sentTo     String?
 
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  /// AMENDEMENT.md §1 — the current version: 0 = original, 1 = A1, 2 = A2…
+  /// The printed number is `amendedNumber(number, version)`
+  /// (src/lib/report-amendment.ts); `number` itself never changes.
+  version          Int       @default(0)
+  /// Reason of the latest amendment, printed under « Rapport amendé ».
+  amendmentNote    String?   @db.Text
+  /// When the latest amendment was approved (null: never amended).
+  amendedAt        DateTime?
+  /// True from « Rouvrir pour amendement » until the new approval: the report
+  /// shows « amendement en cours », the validation queue the badge « Amendement ».
+  amendmentPending Boolean   @default(false)
+
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
   emails    EmailLog[]
+  /// The frozen versions, one per issue (AMENDEMENT.md §1).
+  versions  ReportVersion[]
+}
+
+/// AMENDEMENT.md §1 — a report exactly as it was issued: written at each
+/// approval (the original and every amendment), never changed afterwards —
+/// with one exception: at « Rouvrir pour amendement », the conclusion of the
+/// version being replaced takes the administrator's silent correction
+/// (`/api/reports/[id]/admin-edit`, client decision of 28/07), so the frozen
+/// row matches what was printed last (`withSilentCorrection`, report-html.ts).
+model ReportVersion {
+  id            String   @id @default(cuid())
+  reportId      String
+  report        Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  /// 0 = original, 1 = A1, 2 = A2…
+  version       Int
+  /// The number printed on this version (« RAP-2026-00001 », « RAP-2026-00001-A1 »).
+  number        String
+  /// The report data as printed (`ReportData`), so the PDF can be rendered again.
+  data          Json
+  /// Reason of the amendment this version carries (null for the original).
+  note          String?  @db.Text
+  /// True for a version 0 rebuilt from the current data at the first
+  /// amendment of a report issued before versions existed (« reconstituée »).
+  reconstructed Boolean  @default(false)
+  /// When this version was issued (approved).
+  issuedAt      DateTime
+  /// Who approved it; null when unknown (reconstructed) or the user is gone.
+  issuedById    String?
+  issuedBy      User?    @relation("ReportVersionIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
+
+  /// Also serves as the index on `reportId`.
+  @@unique([reportId, version])
+  @@index([issuedById])
 }
 
 /// Delivery journal for report emails (date, recipient, status, resend).
@@ -801,13 +886,13 @@ model ClientPlace {
 
 /// A client's memory of product designations (« Salade Gaillardière »).
 model ClientProduct {
-  id              String   @id @default(cuid())
+  id              String      @id @default(cuid())
   clientId        String
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client          Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   label           String
   normalizedLabel String
-  active          Boolean  @default(true)
-  usageCount      Int      @default(0)
+  active          Boolean     @default(true)
+  usageCount      Int         @default(0)
   legacyId        Int?
   /// The last regulation chosen for this client's product: proposed next time.
   regulationId    String?
@@ -838,24 +923,24 @@ model DocumentReference {
 // ---- Chantier 2 · catalogue and criteria (CRITERES.md §3) ------------------
 
 model ProductType {
-  id             String      @id @default(cuid())
-  name           String
-  normalizedName String
-  family         Family      @default(MICRO)
+  id                String      @id @default(cuid())
+  name              String
+  normalizedName    String
+  family            Family      @default(MICRO)
   /// A client's own product (35 of the 131 types of the workbook).
-  clientId       String?
-  client         Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  active         Boolean     @default(true)
-  legacyId       Int?        @unique
+  clientId          String?
+  client            Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  active            Boolean     @default(true)
+  legacyId          Int?        @unique
   /// Slice C's free text, superseded by `regulationId` (slice I); kept, unused.
-  regulation     String?     @db.Text
+  regulation        String?     @db.Text
   /// The regulation proposed for this type's samples (slice I).
-  regulationId   String?
+  regulationId      String?
   defaultRegulation Regulation? @relation(fields: [regulationId], references: [id], onDelete: SetNull)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  criteria       Criterion[]
-  samples        Sample[]
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  criteria          Criterion[]
+  samples           Sample[]
 
   @@index([normalizedName])
   @@index([clientId, active])
@@ -869,19 +954,19 @@ model Norm {
 }
 
 model NormVersion {
-  id            String      @id @default(cuid())
-  normId        String
-  norm          Norm        @relation(fields: [normId], references: [id], onDelete: Cascade)
+  id               String            @id @default(cuid())
+  normId           String
+  norm             Norm              @relation(fields: [normId], references: [id], onDelete: Cascade)
   /// « 2021 » — empty for undated methods.
-  version       String
+  version          String
   /// As printed on the report: « NM ISO 6579 - 1:2021 ».
-  label         String
-  effectiveFrom DateTime?   @db.Date
-  supersededOn  DateTime?   @db.Date
+  label            String
+  effectiveFrom    DateTime?         @db.Date
+  supersededOn     DateTime?         @db.Date
   /// The version in force today (one per norm).
-  current       Boolean     @default(false)
-  criteria      Criterion[]
-  results       Result[]
+  current          Boolean           @default(false)
+  criteria         Criterion[]
+  results          Result[]
   /// PROGRAMME.md — the per-sample parameters programmed with this version.
   sampleParameters SampleParameter[]
 
@@ -936,14 +1021,22 @@ model ResultUnit {
   @@unique([resultId, unitIndex])
 }
 
+/// An invoice or a credit note (FACTURATION.md). Once issued it is never
+/// modified again: amounts, lines and client are frozen with the number.
 model Invoice {
   id          String        @id @default(cuid())
-  number      String        @unique
+  /// « FAC-AAAA-NNNN » (counter FACTURE) or « AV-AAAA-NNNN » (counter AVOIR),
+  /// drawn at issue; null while a draft.
+  number      String?       @unique
+  /// FACTURE, or AVOIR correcting `creditedInvoice`.
+  kind        InvoiceKind   @default(FACTURE)
   clientId    String
   client      Client        @relation(fields: [clientId], references: [id])
   createdById String
-  createdBy   User          @relation(fields: [createdById], references: [id])
+  createdBy   User          @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  /// Stored status; « Partiellement payée » is read, never stored.
   status      InvoiceStatus @default(EN_ATTENTE)
+  /// The invoice date printed on the document.
   issueDate   DateTime      @default(now())
   dueDate     DateTime?
   notes       String?       @db.Text
@@ -951,13 +1044,60 @@ model Invoice {
   taxRate     Decimal       @default(20) @db.Decimal(5, 2)
   subtotal    Decimal       @default(0) @db.Decimal(12, 2)
   taxAmount   Decimal       @default(0) @db.Decimal(12, 2)
+  /// TTC. A credit note's amounts are positive, like its lines.
   total       Decimal       @default(0) @db.Decimal(12, 2)
   items       InvoiceItem[]
   createdAt   DateTime      @default(now())
 
+  /// When the number was drawn (null: draft). The migration of 09/10/2026
+  /// set it to `issueDate` on every invoice existing then.
+  issuedAt          DateTime?
+  /// AVOIR only: the issued invoice this credit note corrects.
+  creditedInvoiceId String?
+  creditedInvoice   Invoice?  @relation("InvoiceCreditNotes", fields: [creditedInvoiceId], references: [id], onDelete: SetNull)
+  /// The credit notes issued against this invoice (their total never
+  /// exceeds this invoice's total).
+  creditNotes       Invoice[] @relation("InvoiceCreditNotes")
+  /// Cancellation (issued invoice, no settlement): the number is kept, the
+  /// document is stamped « ANNULÉE », its samples are billable again.
+  cancelledAt       DateTime?
+  cancelledById     String?
+  cancelledBy       User?     @relation("InvoiceCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  /// Mandatory reason of the cancellation, printed on the stamp.
+  cancelReason      String?   @db.Text
+  /// The settlements received (FACTURATION.md §3).
+  payments          Payment[]
+
   @@index([clientId])
   @@index([status])
   @@index([createdAt])
+  @@index([creditedInvoiceId])
+  @@index([cancelledById])
+  @@index([kind, status])
+}
+
+/// FACTURATION.md §3 — a settlement of an issued invoice. Reste à payer =
+/// total TTC − credit notes − settlements, never negative.
+model Payment {
+  id          String      @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  /// Always > 0 and never more than what is left to pay.
+  amount      Decimal     @db.Decimal(12, 2)
+  mode        PaymentMode
+  /// When the money was received (typed by the accountant).
+  paidAt      DateTime
+  /// Cheque number, transfer reference…
+  reference   String?
+  note        String?     @db.Text
+  /// Who recorded it.
+  createdById String
+  createdBy   User        @relation("PaymentCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+
+  @@index([invoiceId])
+  @@index([createdById])
+  @@index([paidAt])
 }
 
 model InvoiceItem {
@@ -1259,4 +1399,3 @@ model Regulation {
 
   @@index([normalizedTitle])
 }
-

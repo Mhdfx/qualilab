@@ -66,3 +66,40 @@ describe("alertEmail", () => {
     expect(html).toContain("Restaurant Test — Cuisine");
   });
 });
+
+describe("reportEmail — an amended report (AMENDEMENT.md §2.3)", () => {
+  const amendment = {
+    previousNumber: "RAP-2026-00001",
+    previousIssuedAt: new Date("2026-10-07T10:00:00Z"),
+    note: "Erreur de transcription du N° de lot",
+  };
+
+  it("reads « Rapport amendé … » in the subject, site included", () => {
+    expect(reportEmail({ ...base, reportNumber: "RAP-2026-00001-A1", amendment }).subject).toBe(
+      `Rapport amendé RAP-2026-00001-A1 — ${COMPANY.name}`
+    );
+    expect(reportEmail({ ...base, reportNumber: "RAP-2026-00001-A1", siteName: "Restaurant Test", amendment }).subject).toBe(
+      `Rapport amendé RAP-2026-00001-A1 — Client Démo — Restaurant Test — ${COMPANY.name}`
+    );
+  });
+
+  it("says which report it cancels and replaces, and why", () => {
+    const { html } = reportEmail({ ...base, reportNumber: "RAP-2026-00001-A1", amendment });
+    expect(html).toContain("rapport d'analyse amendé <b>RAP-2026-00001-A1</b>");
+    expect(html).toContain("annule et remplace le rapport RAP-2026-00001 du");
+    expect(html).toContain("Motif de l'amendement : Erreur de transcription du N° de lot");
+  });
+
+  it("escapes the reason", () => {
+    const { html } = reportEmail({ ...base, amendment: { ...amendment, note: "<b>lot</b>" } });
+    expect(html).toContain("&lt;b&gt;lot&lt;/b&gt;");
+  });
+
+  it("leaves an original report as it was", () => {
+    for (const value of [undefined, null]) {
+      const { subject, html } = reportEmail({ ...base, amendment: value });
+      expect(subject).toBe(`Rapport d'analyse RA-2026-0001 — ${COMPANY.name}`);
+      expect(html).not.toContain("amendé");
+    }
+  });
+});

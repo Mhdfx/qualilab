@@ -66,7 +66,34 @@ const TRANSITIONS: Transition[] = [
   { from: "ANNULE", to: "PRELEVE", roles: ["ADMIN"], requiresReason: true },
   { from: "ANNULE", to: "RECU", roles: ["ADMIN"], requiresReason: true },
   { from: "ANNULE", to: "PROGRAMME", roles: ["ADMIN"], requiresReason: true },
+  // AMENDEMENT.md §2.1 — « Rouvrir pour amendement »: an approved report
+  // goes back to the double validation. The administrator only, with the
+  // reason printed on the amended report; `/api/samples/[id]/reopen` clears
+  // both signatures (`REOPENED_SAMPLE_FIELDS`) and freezes the version.
+  { from: "VALIDE", to: "RESULTATS_SAISIS", roles: ["ADMIN"], requiresReason: true },
+  { from: "RAPPORT_ENVOYE", to: "RESULTATS_SAISIS", roles: ["ADMIN"], requiresReason: true },
 ];
+
+/**
+ * What « Rouvrir pour amendement » writes on the sample: back to results
+ * entered, and both signatures cleared — the amended report needs a new
+ * technical validation and a new approval, by two different people.
+ * `alertsSentAt` is deliberately kept: the contamination alerts already
+ * sent are not sent again for the same results (see `sendContaminationAlerts`).
+ */
+export const REOPENED_SAMPLE_FIELDS = {
+  status: "RESULTATS_SAISIS",
+  validatedById: null,
+  validatedAt: null,
+  approvedById: null,
+  approvedAt: null,
+} as const satisfies {
+  status: SampleStatus;
+  validatedById: null;
+  validatedAt: null;
+  approvedById: null;
+  approvedAt: null;
+};
 
 /** The statuses whose identification fields may still be corrected (before approval). */
 export const CORRECTABLE_STATUSES: SampleStatus[] = ["PRELEVE", "RECU", "PROGRAMME", "EN_ANALYSE", "RESULTATS_SAISIS"];
@@ -182,6 +209,32 @@ export function canValidateTechnically(
     return { ok: false, error: "La validation technique est déjà enregistrée." };
   }
   return { ok: true };
+}
+
+/**
+ * Why an amended report may not be issued now — or null when it may
+ * (AMENDEMENT.md §2.2-3). The amended version is only issued on a sample
+ * approved again through the full double validation: VALIDE (or already
+ * sent), a technical validation and an approval recorded, by two different
+ * people. The approval route is the normal caller; this is what stops any
+ * other path (a resend's self-healing, a future caller) from issuing
+ * « RAP-…-A1 » on a sample still awaiting its signatures.
+ */
+export function amendmentIssueRefusal(sample: {
+  status: SampleStatus;
+  validatedById: string | null;
+  approvedById: string | null;
+}): string | null {
+  if (sample.status !== "VALIDE" && sample.status !== "RAPPORT_ENVOYE") {
+    return "Le rapport amendé ne peut être émis qu'à l'approbation de l'échantillon.";
+  }
+  if (!sample.validatedById || !sample.approvedById) {
+    return "Le rapport amendé exige la validation technique et l'approbation.";
+  }
+  if (sample.validatedById === sample.approvedById) {
+    return "La double validation exige deux signataires différents.";
+  }
+  return null;
 }
 
 /** Guards the admin's final approval, which is what sets the status to VALIDE. */

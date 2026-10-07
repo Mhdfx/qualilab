@@ -14,7 +14,8 @@ import {
   User,
   Wind,
 } from "lucide-react";
-import { requireRole } from "@/lib/auth";
+import { requireRole, getSession } from "@/lib/auth";
+import { roleAllowed } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getLabSettings } from "@/lib/lab-settings";
 import {
@@ -40,6 +41,10 @@ import { ProgrammeSheet } from "@/components/programmation/ProgrammeSheet";
 import type { ProgrammeReferentialData, ProgrammeResponse } from "@/components/programmation/programme-sheet-types";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  // Metadata renders alongside the layout's redirect: the sample's blind
+  // reference goes in the title only for a role that may open the page.
+  const session = await getSession();
+  if (!session || !roleAllowed(session.role, ["PROGRAMMATEUR", "ADMIN"])) return { title: "Programme d'analyse" };
   const { id } = await params;
   const sample = await prisma.sample.findUnique({ where: { id }, select: { code: true, controlCode: true } });
   return { title: sample ? `Programme ${labReference(sample)}` : "Programme d'analyse" };

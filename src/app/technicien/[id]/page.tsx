@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, AlertTriangle, Building2, Package, Hash, Calendar, ClipboardList, Hourglass } from "lucide-react";
-import { requireRole } from "@/lib/auth";
+import { requireRole, getSession } from "@/lib/auth";
+import { roleAllowed } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { labReference } from "@/lib/sample-select";
 import { loadBenchPlans } from "@/lib/bench-plan";
@@ -21,6 +22,10 @@ import {
 } from "@/components/technicien/ResultEntryForm";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  // Metadata renders alongside the layout's redirect: the sample's blind
+  // reference goes in the title only for a role that may open the page.
+  const session = await getSession();
+  if (!session || !roleAllowed(session.role, ["TECHNICIEN", "ADMIN"])) return { title: "Analyse" };
   const { id } = await params;
   const sample = await prisma.sample.findUnique({ where: { id }, select: { code: true, controlCode: true } });
   return { title: sample ? `Analyse ${labReference(sample)}` : "Analyse" };

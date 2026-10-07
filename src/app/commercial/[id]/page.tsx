@@ -15,7 +15,10 @@ import {
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { formatDate, formatCurrency, INVOICE_STATUS_LABELS } from "@/lib/labels";
+import { formatDate, formatCurrency } from "@/lib/labels";
+import { holdingInvoiceItemWhere } from "@/lib/billing";
+import { InvoiceStateBadge } from "@/components/invoices/InvoiceStateBadge";
+import { documentLabel, invoiceFigures } from "@/components/invoices/invoice-view";
 import { toMoney } from "@/lib/money";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -29,7 +32,9 @@ import { BillingClientsCard } from "@/components/commercial/BillingClientsCard";
 import { archivedBanner, archivedKind, importedParentId } from "@/components/commercial/client-actions-logic";
 import { parseSampleSearch } from "@/lib/sample-search";
 import { INVOICE_NOTICE_LABELS, sampleBillingNotice } from "@/lib/invoice-notices";
+import { amendedNumber } from "@/lib/report-amendment";
 import { searchSamples } from "@/lib/sample-search-server";
+import { billingFigures } from "@/components/invoices/invoice-queries";
 
 /**
  * Fiche client 360° — everything the laboratory knows about one client on a
@@ -63,7 +68,7 @@ export default async function ClientDetailPage({
   });
   const summarySearch = parseSampleSearch(summaryParams);
 
-  const [client, samples, invoices, paid, billedAll, sampleCount, reportCount, summary, mergeEntry] =
+  const [client, samples, invoices, figures, sampleCount, reportCount, summary, mergeEntry] =
     await Promise.all([
     prisma.client.findUnique({
       where: { id },
@@ -94,9 +99,12 @@ export default async function ClientDetailPage({
         status: true,
         produit: true,
         sampledAt: true,
-        report: { select: { number: true, sentAt: true } },
+        report: { select: { number: true, version: true, sentAt: true, amendmentPending: true } },
         // Billed already? The programme lets the invoice precede the result.
-        invoiceItems: { select: { invoiceId: true }, take: 1 },
+        // Only a line that holds its sample counts (a draft or an issued
+        // invoice): a cancelled invoice gave it back, a credit note never
+        // carries one (FACTURATION.md §1–2).
+        invoiceItems: { where: holdingInvoiceItemWhere(), select: { invoiceId: true }, take: 1 },
       },
       orderBy: { sampledAt: "desc" },
       take: 25,
@@ -106,23 +114,21 @@ export default async function ClientDetailPage({
       select: {
         id: true,
         number: true,
+        kind: true,
         status: true,
         issueDate: true,
         total: true,
+        // What the invoice reads as (Émise, Partiellement payée, Annulée…).
+        payments: { select: { amount: true } },
+        creditNotes: { where: { kind: "AVOIR" }, select: { total: true } },
       },
       orderBy: { issueDate: "desc" },
       take: 25,
     }),
-    prisma.invoice.aggregate({
-      where: { clientId: id, status: "PAYEE" },
-      _sum: { total: true },
-    }),
-    // Both figures come from aggregates over ALL the client's invoices —
-    // the list on screen is only the 25 most recent.
-    prisma.invoice.aggregate({
-      where: { clientId: id },
-      _sum: { total: true },
-    }),
+    // « Facturé » and « Encaissé » over ALL the client's invoices — the list
+    // on screen is only the 25 most recent. FACTURATION.md §4: billed =
+    // issued, not cancelled, less the credit notes; collected = settlements.
+    billingFigures({ clientId: id }),
     prisma.sample.count({ where: { clientId: id } }),
     prisma.report.count({ where: { sample: { clientId: id } } }),
     searchSamples(summarySearch, { take: 5000 }),
@@ -136,7 +142,6 @@ export default async function ClientDetailPage({
 
   if (!client) notFound();
 
-  const billed = toMoney(billedAll._sum.total);
   // A client archived by the import of the sites before `mergedIntoId`
   // existed (07/10): its journal entry names the parent it became a site of.
   let importedParent: { id: string; name: string } | null = null;
@@ -212,8 +217,8 @@ export default async function ClientDetailPage({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="Échantillons" value={sampleCount} icon={FlaskConical} accent="blue" />
           <StatCard label="Rapports" value={reportCount} icon={FileText} accent="emerald" />
-          <StatCard label="Facturé" value={formatCurrency(billed)} icon={FileText} accent="brand" />
-          <StatCard label="Encaissé" value={formatCurrency(toMoney(paid._sum.total))} icon={FileText} accent="violet" />
+          <StatCard label="Facturé" value={formatCurrency(figures.billed)} icon={FileText} accent="brand" />
+          <StatCard label="Encaissé" value={formatCurrency(figures.collected)} icon={FileText} accent="violet" />
         </div>
       </section>
 
@@ -304,7 +309,10 @@ export default async function ClientDetailPage({
                 {samples.map((sample) => {
                   // « Facturé avant résultat » / « annulé après facturation »
                   // (PROGRAMME.md §6) — only once an invoice line names it.
-                  const notice = sample.invoiceItems.length > 0 ? sampleBillingNotice(sample.status) : null;
+                  const notice =
+                    sample.invoiceItems.length > 0
+                      ? sampleBillingNotice(sample.status, sample.report?.amendmentPending === true)
+                      : null;
                   return (
                   <li key={sample.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
                     <div className="min-w-0">
@@ -339,7 +347,7 @@ export default async function ClientDetailPage({
                         rel="noopener noreferrer"
                         className="rounded-lg px-2 py-1 font-mono text-xs font-semibold text-brand transition hover:bg-brand-light focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                       >
-                        {sample.report.number}
+                        {amendedNumber(sample.report.number, sample.report.version)}
                       </a>
                     )}
                   </li>
@@ -357,7 +365,15 @@ export default async function ClientDetailPage({
               <Empty>Aucune facture pour ce client.</Empty>
             ) : (
               <ul className="divide-y divide-slate-100">
-                {invoices.map((invoice) => (
+                {invoices.map((invoice) => {
+                  const { state } = invoiceFigures({
+                    status: invoice.status,
+                    kind: invoice.kind,
+                    total: invoice.total,
+                    payments: invoice.payments.map((payment) => payment.amount),
+                    creditNotes: invoice.creditNotes.map((note) => note.total),
+                  });
+                  return (
                   <li key={invoice.id} className="flex items-center justify-between gap-3 py-2.5">
                     <Link
                       href={invoiceHref(invoice.id)}
@@ -365,28 +381,32 @@ export default async function ClientDetailPage({
                       className="min-w-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                     >
                       <p className="font-mono text-sm font-semibold text-slate-900">
-                        {invoice.number}
+                        {documentLabel(invoice)}
                       </p>
                       <p className="mt-0.5 text-xs text-slate-500">
                         {formatDate(invoice.issueDate)}
                       </p>
                     </Link>
                     <div className="text-right">
-                      <p className="text-sm font-semibold text-slate-900">
-                        {formatCurrency(toMoney(invoice.total))}
-                      </p>
                       <p
-                        className={`mt-0.5 text-[11px] font-medium ${
-                          invoice.status === "PAYEE"
-                            ? "text-emerald-700"
-                            : "text-amber-700"
+                        className={`text-sm font-semibold ${
+                          state === "ANNULEE"
+                            ? "text-slate-400 line-through decoration-slate-300"
+                            : state === "BROUILLON"
+                              ? "text-slate-500"
+                              : "text-slate-900"
                         }`}
                       >
-                        {INVOICE_STATUS_LABELS[invoice.status]}
+                        {state === "AVOIR" ? "− " : ""}
+                        {formatCurrency(toMoney(invoice.total))}
+                      </p>
+                      <p className="mt-0.5">
+                        <InvoiceStateBadge state={state} size="sm" />
                       </p>
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </Card>

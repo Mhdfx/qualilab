@@ -24,7 +24,7 @@ function hrefs(sections: NavSection[]) {
 
 describe("navFor", () => {
   it("lists the role's own home in every assignable role's menu", () => {
-    // CLIENT is not assignable: its portal (Phase 8) has no home page yet.
+    // CLIENT included: its home is the portal (PORTAIL.md §2).
     for (const role of ASSIGNABLE_ROLES) {
       expect(hrefs(navFor(role)), role).toContain(ROLE_HOME[role]);
     }
@@ -52,8 +52,10 @@ describe("navFor", () => {
     expect(sections.map((section) => section.title)).toContain("Système qualité");
   });
 
-  it("has nothing to show the client portal yet", () => {
-    expect(navFor("CLIENT")).toEqual([]);
+  it("gives the client portal its own screens and nothing of the laboratory", () => {
+    const all = hrefs(navFor("CLIENT"));
+    expect(all).toEqual(["/portail", "/portail/echantillons", "/portail/compte"]);
+    for (const href of all) expect(href.startsWith("/portail")).toBe(true);
   });
 
   it("gives the responsable des paramètres the programme, the search and the bench sheet", () => {

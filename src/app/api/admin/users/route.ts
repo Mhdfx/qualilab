@@ -4,14 +4,16 @@ import { auth } from "@/lib/auth-server";
 import { internalEmailFor } from "@/lib/auth-server";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { ASSIGNABLE_ROLES, type Role } from "@/lib/roles";
+import { PASSWORD_MAX_LENGTH, readClientId, userClientRefusal } from "@/lib/portal-access";
+import { ASSIGNABLE_ROLES, PORTAL_ROLE, type Role } from "@/lib/roles";
 
 /**
  * The laboratory's user accounts.
  *
  * Accounts are provisioned here by the admin — public sign-up is disabled.
  * Creation goes through Better Auth so the credentials are hashed exactly as
- * the runtime expects.
+ * the runtime expects. A « Client (portail) » account carries its client
+ * (PORTAIL.md §1): required for that role, refused for every other one.
  */
 export async function GET() {
   const session = await requireApiRole("ADMIN");
@@ -25,6 +27,8 @@ export async function GET() {
       role: true,
       banned: true,
       createdAt: true,
+      clientId: true,
+      client: { select: { id: true, name: true, archived: true, mergedIntoId: true } },
     },
     orderBy: [{ role: "asc" }, { name: "asc" }],
   });
@@ -43,11 +47,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
 
-  const { name, username, password, role } = (body ?? {}) as {
+  const { name, username, password, role, clientId } = (body ?? {}) as {
     name?: unknown;
     username?: unknown;
     password?: unknown;
     role?: unknown;
+    clientId?: unknown;
   };
 
   const cleanName = typeof name === "string" ? name.trim() : "";
@@ -72,8 +77,26 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+  if (password.length > PASSWORD_MAX_LENGTH) {
+    return NextResponse.json(
+      { error: `Le mot de passe ne peut pas dépasser ${PASSWORD_MAX_LENGTH} caractères.` },
+      { status: 400 }
+    );
+  }
   if (typeof role !== "string" || !ASSIGNABLE_ROLES.includes(role as Role)) {
     return NextResponse.json({ error: "Rôle invalide." }, { status: 400 });
+  }
+
+  const cleanClientId = readClientId(clientId);
+  const client = cleanClientId
+    ? await prisma.client.findUnique({
+        where: { id: cleanClientId },
+        select: { id: true, name: true, archived: true, mergedIntoId: true },
+      })
+    : null;
+  const clientRefusal = userClientRefusal(role, cleanClientId, client);
+  if (clientRefusal) {
+    return NextResponse.json({ error: clientRefusal }, { status: 400 });
   }
 
   const taken = await prisma.user.findFirst({
@@ -96,7 +119,13 @@ export async function POST(request: Request) {
         email: internalEmailFor(cleanUsername),
         password,
         role: role as never,
-        data: { username: cleanUsername, displayUsername: cleanUsername },
+        // The client is written with the account, in the same insert
+        // (`clientId` is a Better Auth additional field, auth-server.ts).
+        data: {
+          username: cleanUsername,
+          displayUsername: cleanUsername,
+          ...(role === PORTAL_ROLE && client ? { clientId: client.id } : {}),
+        },
       },
     });
   } catch (error) {
@@ -110,16 +139,29 @@ export async function POST(request: Request) {
     );
   }
 
+  // Belt and braces: should the auth layer ever drop the additional field,
+  // the portal account still gets its client (a no-op when it is set).
+  if (role === PORTAL_ROLE && client) {
+    await prisma.user.updateMany({
+      where: { id: created.user.id, clientId: null },
+      data: { clientId: client.id },
+    });
+  }
+
   await logAudit({
     actorId: session.id,
     action: "USER_CREATED",
     entity: "User",
     entityId: created.user.id,
-    metadata: { username: cleanUsername, role },
+    metadata: {
+      username: cleanUsername,
+      role,
+      ...(client ? { clientId: client.id, clientName: client.name } : {}),
+    },
   });
 
   return NextResponse.json(
-    { id: created.user.id, username: cleanUsername, role },
+    { id: created.user.id, username: cleanUsername, role, clientId: client?.id ?? null },
     { status: 201 }
   );
 }

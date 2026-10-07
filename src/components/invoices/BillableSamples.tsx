@@ -31,6 +31,8 @@ type BillableSample = SampleProvenance & {
   status: SampleStatus;
   programmedAt: string | null;
   validatedAt: string | null;
+  /** Its report is reopened for amendment (AMENDEMENT.md): results were approved before. */
+  amendmentPending?: boolean;
   parameters: { name: string }[];
 };
 
@@ -45,22 +47,32 @@ type BillableSample = SampleProvenance & {
  */
 export function BillableSamples({
   clientId,
+  draftId,
+  listed = [],
   onAdd,
 }: {
   clientId: string;
+  /** The draft being edited: its own samples are offered again (one removed can be put back). */
+  draftId?: string;
+  /** Samples already on the invoice's lines: not offered twice. */
+  listed?: readonly string[];
   onAdd: (lines: BillableLine[]) => void;
 }) {
   // Keyed by client: choosing another one remounts the panel, so its state
   // resets by construction rather than by clearing it in an effect.
   if (!clientId) return null;
-  return <BillableSamplesFor key={clientId} clientId={clientId} onAdd={onAdd} />;
+  return <BillableSamplesFor key={clientId} clientId={clientId} draftId={draftId} listed={listed} onAdd={onAdd} />;
 }
 
 function BillableSamplesFor({
   clientId,
+  draftId,
+  listed,
   onAdd,
 }: {
   clientId: string;
+  draftId?: string;
+  listed: readonly string[];
   onAdd: (lines: BillableLine[]) => void;
 }) {
   const [samples, setSamples] = useState<BillableSample[]>([]);
@@ -71,7 +83,8 @@ function BillableSamplesFor({
   useEffect(() => {
     let cancelled = false;
 
-    fetch(`/api/clients/${clientId}/billable`)
+    const query = draftId ? `?brouillon=${encodeURIComponent(draftId)}` : "";
+    fetch(`/api/clients/${clientId}/billable${query}`)
       .then((response) => response.json())
       .then((data) => {
         if (cancelled) return;
@@ -88,7 +101,7 @@ function BillableSamplesFor({
     return () => {
       cancelled = true;
     };
-  }, [clientId]);
+  }, [clientId, draftId]);
 
   if (loading) {
     return (
@@ -99,7 +112,9 @@ function BillableSamplesFor({
     );
   }
 
-  if (samples.length === 0) {
+  const offered = samples.filter((sample) => !listed.includes(sample.id));
+
+  if (offered.length === 0) {
     return (
       <p className="rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-500">
         Aucune analyse en attente de facturation pour ce client.
@@ -107,7 +122,9 @@ function BillableSamplesFor({
     );
   }
 
-  const selectedLines = lines.filter((line) => chosen.has(line.sampleId));
+  const selectedLines = lines.filter(
+    (line) => chosen.has(line.sampleId) && !listed.includes(line.sampleId)
+  );
   const selectedTotal = selectedLines.reduce(
     (sum, line) => sum + line.quantity * line.unitPrice,
     0
@@ -133,19 +150,19 @@ function BillableSamplesFor({
           type="button"
           onClick={() =>
             setChosen(
-              chosen.size === samples.length
+              chosen.size === offered.length
                 ? new Set()
-                : new Set(samples.map((sample) => sample.id))
+                : new Set(offered.map((sample) => sample.id))
             )
           }
           className="rounded text-xs font-medium text-brand underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
         >
-          {chosen.size === samples.length ? "Tout désélectionner" : "Tout sélectionner"}
+          {chosen.size === offered.length ? "Tout désélectionner" : "Tout sélectionner"}
         </button>
       </div>
 
       <ul className="mt-3 space-y-1.5">
-        {samples.map((sample) => {
+        {offered.map((sample) => {
           const sampleLines = lines.filter((line) => line.sampleId === sample.id);
           const amount = sampleLines.reduce(
             (sum, line) => sum + line.quantity * line.unitPrice,
@@ -153,7 +170,7 @@ function BillableSamplesFor({
           );
           const missingPrice = sampleLines.some((line) => line.unpriced);
           // Programmed or on the bench: billed before its results are validated.
-          const beforeResult = billedBeforeResult(sample.status);
+          const beforeResult = billedBeforeResult(sample.status) && !sample.amendmentPending;
           const via = viaSiteLabel(sample, clientId);
 
           return (

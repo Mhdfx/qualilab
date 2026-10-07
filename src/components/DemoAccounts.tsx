@@ -31,7 +31,8 @@ const DEMO_ACCOUNTS: { username: string; role: Role; name: string }[] = [
 
 // Fails the build if a role ever loses its demo account.
 const COVERED = new Set(DEMO_ACCOUNTS.map((a) => a.role));
-// CLIENT (portal, Phase 8) deliberately has no demo account yet.
+// CLIENT (portal, PORTAIL.md) deliberately has no demo account: a portal
+// account belongs to one client, so the admin creates it in /admin/utilisateurs.
 const MISSING = ROLES.filter((role) => role !== "CLIENT" && !COVERED.has(role));
 
 type DemoAccountsProps = {

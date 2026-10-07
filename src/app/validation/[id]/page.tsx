@@ -10,7 +10,8 @@ import {
   XCircle,
   AlertTriangle,
 } from "lucide-react";
-import { requireRole } from "@/lib/auth";
+import { requireRole, getSession } from "@/lib/auth";
+import { roleAllowed } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getLabSettings } from "@/lib/lab-settings";
 import { needsRegulation, proposeRegulation } from "@/lib/regulation";
@@ -28,8 +29,14 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
 import { ValidationPanel } from "@/components/validation/ValidationPanel";
+import { ReportActions } from "@/components/validation/ReportActions";
+import { amendedNumber } from "@/lib/report-amendment";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  // Metadata renders alongside the layout's redirect: the sample's blind
+  // reference goes in the title only for a role that may open the page.
+  const session = await getSession();
+  if (!session || !roleAllowed(session.role, ["VALIDATEUR", "ADMIN"])) return { title: "Contrôle qualité" };
   const { id } = await params;
   const sample = await prisma.sample.findUnique({ where: { id }, select: { code: true, controlCode: true } });
   return { title: sample ? `Contrôle ${labReference(sample)}` : "Contrôle qualité" };
@@ -88,7 +95,7 @@ export default async function ValidationDetailPage({
       serie: { select: { serialNumber: true } },
       technician: { select: { name: true } },
       validatedBy: { select: { name: true } },
-      report: { select: { number: true, sentTo: true } },
+      report: { select: { number: true, version: true, sentTo: true, amendmentPending: true, amendmentNote: true } },
       results: {
         select: {
           id: true,
@@ -114,6 +121,18 @@ export default async function ValidationDetailPage({
   if (!sample) notFound();
 
   const state = approvalState(sample);
+  // AMENDEMENT.md: the number printed on the version in force (« -A1 »…),
+  // and the amendment in progress, if any.
+  const report = sample.report;
+  const printedNumber = report ? amendedNumber(report.number, report.version) : null;
+  const amendment =
+    report?.amendmentPending
+      ? {
+          currentNumber: amendedNumber(report.number, report.version),
+          nextNumber: amendedNumber(report.number, report.version + 1),
+          note: report.amendmentNote,
+        }
+      : null;
 
   // « Réglementation en vigueur » (slice I): proposed from what is known,
   // confirmed or changed by the validator.
@@ -278,6 +297,7 @@ export default async function ValidationDetailPage({
                   code: sample.code,
                   controlCode: sample.controlCode,
                   status: sample.status,
+                  hasReport: report !== null,
                   type: sample.type,
                   lineKind: sample.lineKind,
                   produit: sample.produit,
@@ -350,24 +370,41 @@ export default async function ValidationDetailPage({
           </Card>
         </div>
 
-        <ValidationPanel
-          sampleId={sample.id}
-          role={session.role}
-          state={state}
-          validatedBy={sample.validatedBy?.name ?? null}
-          validatedAt={sample.validatedAt ? formatDateTime(sample.validatedAt) : null}
-          nonConformes={nonConformes}
-          alertables={alertables}
-          reportNumber={sample.report?.number ?? null}
-          sentTo={sample.report?.sentTo ?? null}
-          emailLive={!!process.env.RESEND_API_KEY}
-          validatedById={sample.validatedById}
-          userId={session.id}
-          regulations={regulations}
-          proposedRegulationId={proposedRegulationId}
-          regulationRequired={needsRegulation(sample)}
-          chosenRegulation={sample.regulation?.title ?? null}
-        />
+        <div className="space-y-5">
+          <ValidationPanel
+            sampleId={sample.id}
+            role={session.role}
+            state={state}
+            validatedBy={sample.validatedBy?.name ?? null}
+            validatedAt={sample.validatedAt ? formatDateTime(sample.validatedAt) : null}
+            nonConformes={nonConformes}
+            alertables={alertables}
+            reportNumber={printedNumber}
+            sentTo={sample.report?.sentTo ?? null}
+            emailLive={!!process.env.RESEND_API_KEY}
+            validatedById={sample.validatedById}
+            userId={session.id}
+            regulations={regulations}
+            proposedRegulationId={proposedRegulationId}
+            regulationRequired={needsRegulation(sample)}
+            chosenRegulation={sample.regulation?.title ?? null}
+            amendment={amendment}
+          />
+          {report && printedNumber && (
+            <Card className="p-5">
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Rapport {printedNumber}
+              </h2>
+              <ReportActions
+                sampleId={sample.id}
+                role={session.role}
+                status={sample.status}
+                number={printedNumber}
+                amendmentPending={report.amendmentPending}
+              />
+            </Card>
+          )}
+        </div>
       </div>
     </div>
   );

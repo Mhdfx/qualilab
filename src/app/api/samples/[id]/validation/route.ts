@@ -8,7 +8,7 @@ import {
   canValidateTechnically,
 } from "@/lib/sample-status";
 import {
-  createReportFor,
+  issueReportFor,
   sendReport,
   sendContaminationAlerts,
 } from "@/lib/report-dispatch";
@@ -24,6 +24,10 @@ import { needsRegulation } from "@/lib/regulation";
  *                       the status to VALIDE.
  * `action: "reject"`    Either desk sends it back to the technician with a
  *                       mandatory reason (`RESULTATS_SAISIS → EN_ANALYSE`).
+ *
+ * Amendment (AMENDEMENT.md §2): a sample reopened for amendment goes
+ * through the same two steps; its approval issues the amended version of
+ * the existing report (`issueReportFor`) instead of creating one.
  *
  * « Réglementation en vigueur » (RETOUR-LABO-30-09.md, slice I): validate
  * and approve accept `regulationId`. A sample judged against criteria cannot
@@ -51,6 +55,7 @@ export async function POST(
       productId: true,
       regulationId: true,
       regulation: { select: { title: true } },
+      report: { select: { amendmentPending: true } },
     },
   });
 
@@ -187,9 +192,10 @@ export async function POST(
 
     // Approval is what makes the report official, so it is created here — with
     // the names frozen as they stand today, so a report downloaded next year
-    // still shows who actually signed it.
+    // still shows who actually signed it. A report reopened for amendment is
+    // not recreated: its next version (« -A1 ») is issued.
     await recordRegulation();
-    const report = await createReportFor(sample.id);
+    const report = await issueReportFor(sample.id, session.id);
 
     // The client is served straight away: the report, then an alert if a
     // sensitive parameter is over its limit. Neither may break the approval,
@@ -211,6 +217,9 @@ export async function POST(
       );
       if (alerts.ok) dispatch.alerts = alerts.sent;
       else dispatch.error = [dispatch.error, alerts.error].filter(Boolean).join(" ");
+    } else {
+      // The approval stands; the send retries the issue (`sendReport`).
+      dispatch.error = "Le rapport n'a pas pu être émis : utilisez « Générer et envoyer le rapport » ou « Renvoyer au client ».";
     }
 
     await logAudit({
@@ -224,6 +233,7 @@ export async function POST(
         code: sample.code,
         step: "2/2",
         reportNumber: report?.number ?? null,
+        ...(report?.amended ? { amendment: true } : {}),
       },
     });
 
@@ -262,7 +272,10 @@ export async function POST(
           validatedById: null,
           validatedAt: null,
           // Sent back to the bench: the next results deserve their own alert.
-          alertsSentAt: null,
+          // Not during an amendment: the alerts sent for the report being
+          // amended stand, and only a changed result is alerted again
+          // (`sendContaminationAlerts`).
+          ...(sample.report?.amendmentPending ? {} : { alertsSentAt: null }),
         },
         select: { id: true, code: true, status: true },
       });

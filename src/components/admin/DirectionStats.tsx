@@ -7,7 +7,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { toMoney } from "@/lib/money";
+import { billingFigures } from "@/components/invoices/invoice-queries";
 import { formatCurrency, SAMPLE_STATUS_LABELS, SAMPLE_TYPE_LABELS } from "@/lib/labels";
 import { Card } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
@@ -26,7 +26,7 @@ export async function DirectionStats() {
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
 
-  const [byStatus, byType, delays, billed, collected, alertsThisMonth, blocked] =
+  const [byStatus, byType, delays, billing, alertsThisMonth, blocked] =
     await Promise.all([
       prisma.sample.groupBy({ by: ["status"], _count: { _all: true } }),
       prisma.sample.groupBy({
@@ -41,11 +41,10 @@ export async function DirectionStats() {
         orderBy: { approvedAt: "desc" },
         take: 100,
       }),
-      prisma.invoice.aggregate({ _sum: { total: true } }),
-      prisma.invoice.aggregate({
-        where: { status: "PAYEE" },
-        _sum: { total: true },
-      }),
+      // FACTURATION.md §4: issued, non-cancelled invoices minus credit notes;
+      // collected = the sum of the settlements (one source with the
+      // comptable's list and the client fiche).
+      billingFigures(),
       prisma.emailLog.count({
         where: {
           type: "ALERTE_CONTAMINATION",
@@ -116,8 +115,8 @@ export async function DirectionStats() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="En cours de traitement" value={inPipeline} icon={FlaskConical} accent="blue" />
         <StatCard label="Délai moyen (réception → validation)" value={turnaround} icon={Clock} accent="violet" />
-        <StatCard label="Facturé" value={formatCurrency(toMoney(billed._sum.total))} icon={TrendingUp} accent="brand" />
-        <StatCard label="Encaissé" value={formatCurrency(toMoney(collected._sum.total))} icon={Wallet} accent="emerald" />
+        <StatCard label="Facturé" value={formatCurrency(billing.billed)} icon={TrendingUp} accent="brand" />
+        <StatCard label="Encaissé" value={formatCurrency(billing.collected)} icon={Wallet} accent="emerald" />
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">

@@ -33,6 +33,8 @@ export default async function ValidationPage() {
         serie: { select: { serialNumber: true } },
         technician: { select: { name: true } },
         results: { select: { conform: true, workStatus: true } },
+        // AMENDEMENT.md §2: a reopened report shows the badge « Amendement ».
+        report: { select: { amendmentPending: true } },
       },
       orderBy: { receivedAt: "asc" },
     }),

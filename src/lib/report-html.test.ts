@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildReportHtml, type ReportData } from "./report-html";
+import {
+  buildReportHtml,
+  germFingerprints,
+  germsToRealert,
+  reportDataFromJson,
+  reportDataToJson,
+  withSilentCorrection,
+  type AlertReading,
+  type ReportData,
+} from "./report-html";
 
 const base: ReportData = {
   number: "RA-2026-0001",
@@ -162,5 +171,158 @@ describe("buildReportHtml — the laboratory's model", () => {
     expect(html).toContain('<th rowspan="2" class="rep">Résultat</th>');
     expect(html).toContain('<td class="rep no">1,2.10<sup>2</sup></td>');
     expect(html).toContain("&lt; 10 ufc/g");
+  });
+});
+
+describe("buildReportHtml — amendment and duplicate (AMENDEMENT.md)", () => {
+  const amended: ReportData = {
+    ...base,
+    number: "RAP-2026-00001-A1",
+    amendment: {
+      previousNumber: "RAP-2026-00001",
+      previousIssuedAt: new Date("2026-10-07T10:00:00Z"),
+      note: "Erreur de transcription du N° de lot",
+    },
+  };
+
+  it("prints « Rapport amendé — annule et remplace … » and the reason at the top", () => {
+    const html = buildReportHtml(amended);
+    expect(html).toContain("<b>Rapport amendé</b> — annule et remplace le rapport RAP-2026-00001 du");
+    expect(html).toMatch(/Motif de l(&#39;|&#x27;|')amendement : Erreur de transcription du N° de lot/);
+    expect(html).toContain("Rapport d'analyse amendé —");
+    expect(html).toContain("N° <b>RAP-2026-00001-A1</b>");
+    expect(html.indexOf('<div class="amended">')).toBeGreaterThan(html.indexOf("<h1>"));
+    expect(html.indexOf('<div class="amended">')).toBeLessThan(html.indexOf('<div class="grid">'));
+  });
+
+  it("prints no amendment block on an original report", () => {
+    for (const data of [base, { ...base, amendment: null }]) {
+      const html = buildReportHtml(data);
+      expect(html).not.toContain('<div class="amended">');
+      expect(html).not.toContain("Rapport amendé");
+    }
+  });
+
+  it("marks a duplicate « DUPLICATA — édité le … » at the head and the foot", () => {
+    const html = buildReportHtml(base, undefined, { duplicataAt: new Date("2026-10-08T09:00:00Z") });
+    expect(count(html, "DUPLICATA — édité le")).toBe(2);
+    expect(html).toContain('<span class="mark duplicata">');
+    expect(html).toContain('<span class="dup">');
+    expect(buildReportHtml(base)).not.toContain("DUPLICATA");
+  });
+
+  it("marks a superseded version, and a reconstructed one", () => {
+    const html = buildReportHtml(base, undefined, { supersededBy: "RAP-2026-00001-A1", reconstructed: true });
+    expect(html).toContain('<span class="mark superseded">Version remplacée par RAP-2026-00001-A1</span>');
+    expect(html).toContain('<span class="mark superseded">Version reconstituée</span>');
+    expect(buildReportHtml(base, undefined, { supersededBy: "RAP-2026-00001-A2" })).not.toContain("reconstituée");
+  });
+
+  it("escapes the reason", () => {
+    const html = buildReportHtml({ ...amended, amendment: { ...amended.amendment!, note: "<script>" } });
+    expect(html).not.toContain("<script>");
+    expect(html).toContain("&lt;script&gt;");
+  });
+});
+
+describe("frozen versions — ReportData to JSON and back", () => {
+  it("gives back the same data, dates included", () => {
+    const amended: ReportData = {
+      ...base,
+      amendment: { previousNumber: "RAP-2026-00001", previousIssuedAt: new Date("2026-10-07T10:00:00Z"), note: null },
+    };
+    const stored = JSON.parse(JSON.stringify(reportDataToJson(amended)));
+    const back = reportDataFromJson(stored);
+    expect(back).toEqual(amended);
+    expect(back?.sampledAt).toBeInstanceOf(Date);
+    expect(back?.amendment?.previousIssuedAt).toBeInstanceOf(Date);
+    // …so it prints exactly as it was issued.
+    const at = { duplicataAt: new Date("2026-10-08T09:00:00Z") };
+    expect(buildReportHtml(back!, undefined, at).replace(/Édité le <b>[^<]*<\/b>/, "")).toBe(
+      buildReportHtml(amended, undefined, at).replace(/Édité le <b>[^<]*<\/b>/, "")
+    );
+  });
+
+  it("keeps the missing dates and amendment empty", () => {
+    const back = reportDataFromJson(reportDataToJson({ ...base, receivedAt: null, validatedAt: null }));
+    expect(back?.receivedAt).toBeNull();
+    expect(back?.validatedAt).toBeNull();
+    expect(back?.amendment).toBeNull();
+  });
+
+  it("refuses what is not a report", () => {
+    expect(reportDataFromJson(null)).toBeNull();
+    expect(reportDataFromJson([])).toBeNull();
+    expect(reportDataFromJson({ number: "RAP-1" })).toBeNull();
+    expect(reportDataFromJson({ ...reportDataToJson(base), sampledAt: "pas une date" })).toBeNull();
+  });
+});
+
+describe("contamination alerts on an amended report — only what changed", () => {
+  const listeria: AlertReading = {
+    parameter: "Listeria",
+    value: "Présence",
+    unit: "/25 g",
+    threshold: "Absence /25 g",
+    conform: false,
+    interpretation: "NON_SATISFAISANT",
+  };
+  const ecoli: AlertReading = {
+    parameter: "E. coli",
+    value: "2.10³",
+    unit: "ufc/g",
+    threshold: "m = 10 · M = 10² ufc/g",
+    conform: false,
+    interpretation: "NON_SATISFAISANT",
+  };
+
+  it("does not alert again for the same results already alerted with the version replaced", () => {
+    expect(germsToRealert({ current: [listeria], alerted: [], replaced: [listeria, { ...ecoli, conform: true }] })).toEqual([]);
+  });
+
+  it("does not alert again a result whose alert is already recorded", () => {
+    const fingerprint = germFingerprints([listeria]).get("Listeria")!;
+    expect(germsToRealert({ current: [listeria], alerted: [{ germ: "Listeria", fingerprint }], replaced: null })).toEqual([]);
+  });
+
+  it("alerts a changed value, a changed verdict or a new germ", () => {
+    expect(germsToRealert({ current: [{ ...ecoli, value: "5.10³" }], alerted: [], replaced: [ecoli] })).toEqual(["E. coli"]);
+    expect(
+      germsToRealert({ current: [ecoli], alerted: [], replaced: [{ ...ecoli, conform: true, interpretation: "ACCEPTABLE" }] })
+    ).toEqual(["E. coli"]);
+    expect(germsToRealert({ current: [listeria, ecoli], alerted: [], replaced: [listeria] })).toEqual(["E. coli"]);
+  });
+
+  it("alerts everything when nothing was sent for the version replaced", () => {
+    expect(germsToRealert({ current: [listeria, ecoli], alerted: [], replaced: null })).toEqual(["Listeria", "E. coli"]);
+  });
+
+  it("ignores surrounding spaces, not the result, and never mixes germs", () => {
+    expect(germsToRealert({ current: [{ ...listeria, value: " Présence " }], alerted: [], replaced: [listeria] })).toEqual([]);
+    const listeriaPrint = germFingerprints([listeria]).get("Listeria")!;
+    expect(
+      germsToRealert({ current: [ecoli], alerted: [{ germ: "Listeria", fingerprint: listeriaPrint }], replaced: null })
+    ).toEqual(["E. coli"]);
+  });
+});
+
+describe("the administrator's silent correction on a frozen version", () => {
+  it("prints the conclusion standing on the report, the rest as frozen", () => {
+    const corrected = withSilentCorrection(base, "Conclusion corrigée par l'administrateur.");
+    expect(corrected).not.toBe(base);
+    expect(corrected.conclusion).toBe("Conclusion corrigée par l'administrateur.");
+    expect({ ...corrected, conclusion: base.conclusion }).toEqual(base);
+    expect(buildReportHtml(withSilentCorrection(base, "Conclusion corrigée."))).toContain("Conclusion corrigée.");
+  });
+
+  it("returns the very same data when nothing was corrected, so a caller knows nothing to rewrite", () => {
+    expect(withSilentCorrection(base, base.conclusion)).toBe(base);
+    expect(withSilentCorrection(base, null)).toBe(base);
+    expect(withSilentCorrection(base, undefined)).toBe(base);
+  });
+
+  it("survives the freeze: a refreshed version reads back with the correction", () => {
+    const corrected = withSilentCorrection(base, "Nouvelle conclusion.");
+    expect(reportDataFromJson(JSON.parse(JSON.stringify(reportDataToJson(corrected))))?.conclusion).toBe("Nouvelle conclusion.");
   });
 });

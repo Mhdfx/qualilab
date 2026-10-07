@@ -5,6 +5,7 @@ import { ROLE_LABELS } from "@/lib/roles";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import type { Role } from "@/lib/roles";
+import type { AuditAction } from "@/lib/audit";
 
 export const metadata = { title: "Journal d'audit" };
 
@@ -15,8 +16,28 @@ export const metadata = { title: "Journal d'audit" };
  * the newest are shown first because that is what an investigation looks at.
  */
 
+/**
+ * FACTURATION.md, AMENDEMENT.md, PORTAIL.md — typed against `AUDIT_ACTIONS`,
+ * so a new action of those slices cannot reach the journal unlabelled.
+ */
+const SLICE_ACTION_LABELS = {
+  INVOICE_DRAFT_CREATED: "Brouillon de facture enregistré",
+  INVOICE_DRAFT_UPDATED: "Brouillon de facture modifié",
+  INVOICE_DRAFT_DELETED: "Brouillon de facture supprimé",
+  INVOICE_ISSUED: "Facture émise",
+  INVOICE_CANCELLED: "Facture annulée",
+  CREDIT_NOTE_ISSUED: "Avoir émis",
+  PAYMENT_RECORDED: "Règlement enregistré",
+  PAYMENT_DELETED: "Règlement supprimé",
+  REPORT_REOPENED: "Rapport rouvert pour amendement",
+  REPORT_AMENDED: "Rapport amendé approuvé",
+  REPORT_DUPLICATE: "Duplicata de rapport édité",
+  PORTAL_LOGIN: "Connexion au portail client",
+} satisfies Record<AuditAction, string>;
+
 /** Plain French for each recorded action. */
 const ACTION_LABELS: Record<string, string> = {
+  ...SLICE_ACTION_LABELS,
   SAMPLE_CREATED: "Échantillon créé",
   SERIE_CREATED: "Visite enregistrée",
   DEPOT_CREATED: "Dépôt enregistré",
@@ -47,6 +68,7 @@ const ACTION_LABELS: Record<string, string> = {
   REPORT_SENT: "Rapport envoyé",
   REPORT_DOWNLOADED: "Rapport téléchargé",
   CONTAMINATION_ALERT_SENT: "Alerte de contamination envoyée",
+  // Entries written before FACTURATION.md (kept readable in the journal).
   INVOICE_CREATED: "Facture émise",
   INVOICE_DOWNLOADED: "Facture téléchargée",
   INVOICE_PAID: "Facture encaissée",
@@ -83,16 +105,28 @@ const ACTION_LABELS: Record<string, string> = {
   USER_CREATED: "Utilisateur créé",
   USER_ROLE_CHANGED: "Rôle d'un utilisateur modifié",
   USER_PASSWORD_RESET: "Mot de passe réinitialisé",
+  USER_PASSWORD_CHANGED: "Mot de passe modifié par l'utilisateur",
+  USER_CLIENT_CHANGED: "Client d'un compte portail modifié",
+  USER_DISABLED: "Compte désactivé",
+  USER_ENABLED: "Compte réactivé",
   EQUIPMENT_CREATED: "Équipement créé",
   EQUIPMENT_UPDATED: "Équipement modifié",
+  EQUIPMENT_ARCHIVED: "Équipement archivé",
+  EQUIPMENT_RESTORED: "Équipement réactivé",
+  TEMPERATURE_RECORDED: "Température relevée",
+  TEMPERATURE_OUT_OF_RANGE: "Température hors limites relevée",
   CALIBRATION_RECORDED: "Étalonnage enregistré",
   EIL_CREATED: "Campagne EIL créée",
   EIL_UPDATED: "Campagne EIL modifiée",
   SUPPLIER_CREATED: "Fournisseur créé",
   SUPPLIER_UPDATED: "Fournisseur modifié",
+  SUPPLIER_ARCHIVED: "Fournisseur archivé",
+  SUPPLIER_RESTORED: "Fournisseur réactivé",
   PURCHASE_INVOICE_CREATED: "Facture fournisseur enregistrée",
   STOCK_ITEM_CREATED: "Article de stock créé",
   STOCK_ITEM_UPDATED: "Article de stock modifié",
+  STOCK_ITEM_ARCHIVED: "Article de stock archivé",
+  STOCK_ITEM_RESTORED: "Article de stock réactivé",
   STOCK_MOVEMENT: "Mouvement de stock",
 };
 
@@ -136,6 +170,7 @@ export default async function JournalPage() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-800">
                       {ACTION_LABELS[entry.action] ?? entry.action}
+                      {metadata.portal === true && " (portail client)"}
                       {reference && (
                         <span className="ml-2 font-mono text-xs text-slate-500">
                           {reference}

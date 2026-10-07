@@ -1,10 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Ban, Check, KeyRound, Plus, RotateCcw, UserCog, X } from "lucide-react";
+import { Ban, Building2, Check, KeyRound, Plus, RotateCcw, Search, UserCog, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { ASSIGNABLE_ROLES, ROLE_LABELS, type Role } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, PORTAL_ROLE, ROLE_LABELS, type Role } from "@/lib/roles";
+
+/** The client of a « Client (portail) » account (PORTAIL.md §1). */
+export type UserClient = {
+  id: string;
+  name: string;
+  archived: boolean;
+  mergedIntoId: string | null;
+};
 
 export type UserRow = {
   id: string;
@@ -12,7 +20,43 @@ export type UserRow = {
   username: string | null;
   role: string | null;
   banned: boolean | null;
+  /** Optional: read from GET /api/admin/users when the page does not pass it. */
+  clientId?: string | null;
+  client?: UserClient | null;
 };
+
+type PickedClient = { id: string; name: string };
+
+/**
+ * The portal clients of the accounts, by user id. /admin/utilisateurs selects
+ * them with the users; a caller that does not (no `client` key on its rows)
+ * gets them from GET /api/admin/users, read again whenever the list changes
+ * (after a creation or a role change, `router.refresh()`).
+ */
+function useAccountClients(users: UserRow[]): Record<string, UserClient | null> {
+  const [clients, setClients] = useState<Record<string, UserClient | null>>({});
+  const signature = users.map((user) => `${user.id}:${user.role}`).join("|");
+  const provided = users.every((user) => user.client !== undefined);
+
+  useEffect(() => {
+    if (provided) return;
+    let cancelled = false;
+    fetch("/api/admin/users", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((rows: UserRow[] | null) => {
+        if (cancelled || !Array.isArray(rows)) return;
+        setClients(Object.fromEntries(rows.map((row) => [row.id, row.client ?? null])));
+      })
+      .catch(() => {
+        // The list still works without the client names.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [signature, provided]);
+
+  return clients;
+}
 
 /**
  * The laboratory's accounts.
@@ -32,6 +76,10 @@ export function UsersManager({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [resetFor, setResetFor] = useState<string | null>(null);
+  // The account whose client is being chosen: on the way to « Client
+  // (portail) », or to move a portal account to another client.
+  const [clientFor, setClientFor] = useState<string | null>(null);
+  const accountClients = useAccountClients(users);
 
   async function patch(id: string, body: Record<string, unknown>, tag: string) {
     if (busy) return;
@@ -95,6 +143,9 @@ export function UsersManager({
         <ul className="divide-y divide-slate-100">
           {users.map((user) => {
             const isSelf = user.id === selfId;
+            const isPortal = user.role === PORTAL_ROLE;
+            const client = user.client ?? accountClients[user.id] ?? null;
+            const clientClosed = !!client && (client.archived || client.mergedIntoId !== null);
             return (
               <li key={user.id} className="px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -115,6 +166,25 @@ export function UsersManager({
                         </span>
                       )}
                     </p>
+                    {isPortal && (
+                      <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                        <Building2 className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+                        {client ? (
+                          <>
+                            Portail de <span className="font-medium text-slate-700">{client.name}</span>
+                            {clientClosed && (
+                              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
+                                {client.mergedIntoId ? "client fusionné" : "client archivé"} — portail fermé
+                              </span>
+                            )}
+                          </>
+                        ) : user.id in accountClients ? (
+                          <span className="font-medium text-rose-600">Aucun client rattaché — portail fermé</span>
+                        ) : (
+                          <span>Client (portail)</span>
+                        )}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
@@ -125,9 +195,16 @@ export function UsersManager({
                       id={`role-${user.id}`}
                       value={user.role ?? ""}
                       disabled={isSelf || !!busy}
-                      onChange={(event) =>
-                        patch(user.id, { role: event.target.value }, `role-${user.id}`)
-                      }
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        // A portal account needs its client first (PORTAIL.md §1).
+                        if (next === PORTAL_ROLE) {
+                          setClientFor(user.id);
+                          return;
+                        }
+                        setClientFor(null);
+                        patch(user.id, { role: next }, `role-${user.id}`);
+                      }}
                       className="min-h-[36px] rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50 disabled:text-slate-400"
                     >
                       {ASSIGNABLE_ROLES.map((role) => (
@@ -136,6 +213,18 @@ export function UsersManager({
                         </option>
                       ))}
                     </select>
+
+                    {isPortal && (
+                      <button
+                        type="button"
+                        disabled={isSelf || !!busy}
+                        onClick={() => setClientFor(clientFor === user.id ? null : user.id)}
+                        className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40"
+                      >
+                        <Building2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        Client
+                      </button>
+                    )}
 
                     <button
                       type="button"
@@ -174,6 +263,37 @@ export function UsersManager({
                   </div>
                 </div>
 
+                {clientFor === user.id && (
+                  <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                    <p className="mb-2 text-xs text-slate-600">
+                      {isPortal
+                        ? "Choisissez le client dont ce compte consultera les échantillons et les rapports. Ses sessions seront déconnectées."
+                        : "Un compte « Client (portail) » consulte les échantillons et les rapports d'un seul client : choisissez lequel. Ses sessions seront déconnectées."}
+                    </p>
+                    <ClientPicker
+                      id={`client-${user.id}`}
+                      value={null}
+                      onChange={async (picked) => {
+                        if (!picked) return;
+                        const ok = await patch(
+                          user.id,
+                          isPortal ? { clientId: picked.id } : { role: PORTAL_ROLE, clientId: picked.id },
+                          `client-${user.id}`
+                        );
+                        if (ok) setClientFor(null);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setClientFor(null)}
+                      className="mt-2 inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+                    >
+                      <X className="h-3.5 w-3.5" aria-hidden="true" />
+                      Annuler
+                    </button>
+                  </div>
+                )}
+
                 {resetFor === user.id && (
                   <ResetPasswordForm
                     onSubmit={async (password) => {
@@ -203,17 +323,28 @@ function CreateUserForm({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<string>("PRELEVEUR");
+  const [client, setClient] = useState<PickedClient | null>(null);
   const [saving, setSaving] = useState(false);
 
   async function save() {
     if (saving) return;
+    if (role === PORTAL_ROLE && !client) {
+      onError("Choisissez le client de ce compte portail.");
+      return;
+    }
     setSaving(true);
     onError("");
     try {
       const response = await fetch("/api/admin/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, username, password, role }),
+        body: JSON.stringify({
+          name,
+          username,
+          password,
+          role,
+          ...(role === PORTAL_ROLE && client ? { clientId: client.id } : {}),
+        }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -269,6 +400,17 @@ function CreateUserForm({
           </select>
         </div>
       </div>
+      {role === PORTAL_ROLE && (
+        <div className="mt-3">
+          <p className="mb-1 text-xs font-medium text-slate-600">
+            Client <span className="text-rose-600">*</span>
+          </p>
+          <ClientPicker id="u-client" value={client} onChange={setClient} />
+          <p className="mt-1 text-[11px] text-slate-500">
+            Le compte ne verra que les échantillons et les rapports de ce client.
+          </p>
+        </div>
+      )}
       <div className="mt-3 flex gap-2">
         <button
           type="button"
@@ -354,6 +496,115 @@ function Field({
         className="mt-1 min-h-[38px] w-full rounded-lg border border-slate-300 px-2.5 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
       />
       {hint && <p className="mt-0.5 text-[11px] text-slate-500">{hint}</p>}
+    </div>
+  );
+}
+
+/**
+ * Picks the client of a portal account: a search on the active clients
+ * (an archived or merged one never opens the portal), 20 results at most.
+ */
+function ClientPicker({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: PickedClient | null;
+  onChange: (client: PickedClient | null) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<{ id: string; name: string; ice: string | null }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (value) return;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      setFailed(false);
+      try {
+        const response = await fetch(`/api/admin/users/clients?q=${encodeURIComponent(query.trim())}`, {
+          cache: "no-store",
+        });
+        const data = response.ok ? await response.json() : null;
+        if (!cancelled) {
+          setResults(Array.isArray(data) ? data : []);
+          setFailed(!response.ok);
+        }
+      } catch {
+        if (!cancelled) setFailed(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query, value]);
+
+  if (value) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+        <Building2 className="h-4 w-4 text-brand" aria-hidden="true" />
+        <span className="font-medium text-slate-800">{value.name}</span>
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className="ml-auto text-xs font-medium text-brand hover:underline"
+        >
+          Changer
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <label htmlFor={id} className="sr-only">
+        Rechercher un client
+      </label>
+      <div className="relative">
+        <Search
+          className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+          aria-hidden="true"
+        />
+        <input
+          id={id}
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Rechercher un client (nom ou ICE)…"
+          autoComplete="off"
+          className="min-h-[38px] w-full rounded-lg border border-slate-300 bg-white pl-8 pr-2.5 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        />
+      </div>
+      <div className="mt-1 max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white" aria-live="polite">
+        {failed ? (
+          <p className="px-3 py-2 text-xs text-rose-600">La liste des clients n&apos;a pas pu être chargée.</p>
+        ) : loading && results.length === 0 ? (
+          <p className="px-3 py-2 text-xs text-slate-500">Recherche…</p>
+        ) : results.length === 0 ? (
+          <p className="px-3 py-2 text-xs text-slate-500">Aucun client actif ne correspond.</p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {results.map((result) => (
+              <li key={result.id}>
+                <button
+                  type="button"
+                  onClick={() => onChange({ id: result.id, name: result.name })}
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
+                >
+                  <span className="truncate">{result.name}</span>
+                  {result.ice && <span className="shrink-0 font-mono text-[11px] text-slate-400">ICE {result.ice}</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

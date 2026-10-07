@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ShieldCheck, AlertTriangle, Clock } from "lucide-react";
+import { ArrowRight, ShieldCheck, AlertTriangle, Clock, PencilLine } from "lucide-react";
 import type { AirMethod, LineKind, SampleType, SurfaceState } from "@/generated/prisma/client";
 import { formatDate } from "@/lib/labels";
 import { labReference } from "@/lib/sample-select";
@@ -31,6 +31,8 @@ export type ValidationItem = {
   results: { conform: boolean | null; workStatus: string }[];
   updatedAt?: Date;
   receivedAt: Date | null;
+  /** A report reopened for amendment (AMENDEMENT.md §2): badge « Amendement ». */
+  report?: { amendmentPending: boolean } | null;
 };
 
 /** Samples whose results are submitted and awaiting one of the two approvals, grouped by série. */
@@ -93,6 +95,12 @@ export function ValidationQueue({ items }: { items: ValidationItem[] }) {
                               ? "Validé — attente admin"
                               : "À valider"}
                           </span>
+                          {item.report?.amendmentPending && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
+                              <PencilLine className="h-3 w-3" aria-hidden="true" />
+                              Amendement
+                            </span>
+                          )}
                           {nonConformes > 0 && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
                               <AlertTriangle className="h-3 w-3" aria-hidden="true" />

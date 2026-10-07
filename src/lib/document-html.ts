@@ -13,6 +13,7 @@ import { COMPANY, type CompanyInfo } from "./company";
 import { companyBrandHtml } from "./brand-html";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
 import type { DocumentRef } from "./document-types";
+import { PAYMENT_MODE_LABELS } from "./invoice-lifecycle";
 import {
   AIR_METHOD_LABELS,
   ANALYSIS_FAMILY_LABELS,
@@ -112,12 +113,8 @@ export type SerieDocumentData = {
   reference: DocumentRef;
 };
 
-export const PAYMENT_MODE_LABELS: Record<PaymentMode, string> = {
-  ESPECES: "Espèces",
-  CHEQUE: "Chèque",
-  VIREMENT: "Virement",
-  CARTE: "Carte",
-};
+/** One list of payment-mode labels for the whole app: invoice-lifecycle.ts owns it. */
+export { PAYMENT_MODE_LABELS };
 
 /** Footer template for Chromium: page numbers plus the reference. */
 export function documentFooter(reference: DocumentRef, company: CompanyInfo) {

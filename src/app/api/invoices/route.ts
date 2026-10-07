@@ -1,29 +1,63 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@/generated/prisma/client";
+import type { InvoiceKind, InvoiceStatus } from "@/generated/prisma/enums";
 import { requireApiRole } from "@/lib/auth";
-import { logAudit } from "@/lib/audit";
+import { AUDIT_ACTIONS, logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { pageParams, toPage } from "@/lib/pagination";
-import { serializeInvoice } from "@/lib/invoice-serialize";
-import { isValidAmount } from "@/lib/money";
-import { retryOnDuplicate } from "@/lib/retry-unique";
-import { generateInvoiceNumber } from "@/lib/invoice-number";
+import { drawDocumentNumber } from "@/lib/invoice-number";
 import { computeInvoiceTotals } from "@/lib/invoice-math";
-import { BILLABLE_STATUSES } from "@/lib/billing-status";
-import { invoiceSampleRefusal } from "@/lib/client-merge-rules";
+import { statusAfterPayments } from "@/lib/invoice-lifecycle";
+import {
+  INVOICE_DETAIL_INCLUDE,
+  INVOICE_LIST_INCLUDE,
+  checkSampleLines,
+  errorResponse,
+  invoiceView,
+  parseDraftFields,
+  readBody,
+} from "./invoice-store";
 
+const STATUSES: readonly InvoiceStatus[] = ["BROUILLON", "EN_ATTENTE", "PAYEE", "ANNULEE"];
+const KINDS: readonly InvoiceKind[] = ["FACTURE", "AVOIR"];
+
+/**
+ * The invoices and credit notes, newest first, one page at a time.
+ * `?status=` (BROUILLON | EN_ATTENTE | PAYEE | ANNULEE, several separated by
+ * commas) and `?kind=` (FACTURE | AVOIR) narrow the list — drafts and
+ * cancelled invoices are listed apart (FACTURATION.md §4–5).
+ */
 export async function GET(request: Request) {
   const session = await requireApiRole("COMPTABLE", "ADMIN");
   if (session instanceof NextResponse) return session;
 
+  const url = new URL(request.url);
+  const where: Prisma.InvoiceWhereInput = {};
+
+  const statusParam = url.searchParams.get("status");
+  if (statusParam) {
+    const statuses = statusParam.split(",").map((value) => value.trim().toUpperCase());
+    if (!statuses.every((value) => (STATUSES as readonly string[]).includes(value))) {
+      return NextResponse.json({ error: "Statut de facture inconnu." }, { status: 400 });
+    }
+    where.status = { in: statuses as InvoiceStatus[] };
+  }
+
+  const kindParam = url.searchParams.get("kind");
+  if (kindParam) {
+    const kind = kindParam.trim().toUpperCase();
+    if (!(KINDS as readonly string[]).includes(kind)) {
+      return NextResponse.json({ error: "Type de document inconnu." }, { status: 400 });
+    }
+    where.kind = kind as InvoiceKind;
+  }
+
   const { take, cursor, skip } = pageParams(request);
 
   const rows = await prisma.invoice.findMany({
-    include: {
-      client: true,
-      createdBy: { select: { id: true, name: true } },
-      items: true,
-    },
-    orderBy: { createdAt: "desc" },
+    where,
+    include: INVOICE_LIST_INCLUDE,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: take + 1,
     cursor,
     skip,
@@ -32,238 +66,88 @@ export async function GET(request: Request) {
   const page = toPage(rows, take);
   return NextResponse.json({
     ...page,
-    items: page.items.map(serializeInvoice),
+    items: page.items.map(invoiceView),
   });
 }
 
-type IncomingItem = {
-  description?: string;
-  quantity?: number | string;
-  unitPrice?: number | string;
-  /** Set when the line bills a validated analysis. */
-  sampleId?: string | null;
-};
-
+/**
+ * A new invoice: `{ clientId, items, taxRate, dueDate?, notes?, issue }`.
+ * `issue: false` saves a draft — no number, its samples reserved;
+ * `issue: true` (also when `issue` is absent, the behaviour before drafts)
+ * issues it at once with the next « FAC-AAAA-NNNN », drawn in the same
+ * transaction as the row (FACTURATION.md §1).
+ */
 export async function POST(request: Request) {
   const session = await requireApiRole("COMPTABLE", "ADMIN");
   if (session instanceof NextResponse) return session;
 
+  const body = await readBody(request);
+  if (body instanceof NextResponse) return body;
+
   try {
-    const body = await request.json();
-    const { clientId, dueDate, notes, taxRate, status, items } = body as {
-      clientId?: string;
-      dueDate?: string;
-      notes?: string;
-      taxRate?: number | string;
-      status?: string;
-      items?: IncomingItem[];
-    };
-
-    const invoiceStatus = status === "PAYEE" ? "PAYEE" : "EN_ATTENTE";
-
-    const due = dueDate ? new Date(dueDate) : null;
-    if (due && Number.isNaN(due.getTime())) {
-      return NextResponse.json(
-        { error: "Date d'échéance invalide." },
-        { status: 400 }
-      );
+    if (body.issue !== undefined && typeof body.issue !== "boolean") {
+      return NextResponse.json({ error: "Le champ « issue » doit valoir true ou false." }, { status: 400 });
     }
+    const issue = body.issue === undefined ? true : body.issue;
+    const fields = parseDraftFields(body, { issue });
 
-    if (!clientId) {
-      return NextResponse.json(
-        { error: "Veuillez sélectionner un client." },
-        { status: 400 }
-      );
-    }
-
-    const cleanItems = (items ?? []).map((item) => ({
-      description: (item.description ?? "").trim(),
-      quantity: Number(item.quantity),
-      // Centimes are the unit of money: a typed 12.345 is stored as 12.35.
-      unitPrice: Math.round(Number(item.unitPrice) * 100) / 100,
-      // Present when the line came from a validated analysis rather than being
-      // typed by hand; it is what ties the invoice back to the sample.
-      sampleId:
-        typeof item.sampleId === "string" && item.sampleId ? item.sampleId : null,
-    }));
-
-    // An invoice is a legal document: a negative or nonsensical amount must be
-    // refused here, not quietly coerced to zero.
-    for (const item of cleanItems) {
-      if (!item.description) continue;
-      if (item.description.length > 191) {
-        return NextResponse.json(
-          { error: `Désignation trop longue (191 caractères max) : « ${item.description.slice(0, 40)}… ».` },
-          { status: 400 }
-        );
-      }
-      if (!isValidAmount(item.quantity) || item.quantity <= 0) {
-        return NextResponse.json(
-          { error: `Quantité invalide pour « ${item.description} ».` },
-          { status: 400 }
-        );
-      }
-      // A line that bills an analysis at 0 consumes the sample for good: the
-      // catalogue price is missing (the screen badges « prix à saisir »), and
-      // a silent zero would never be noticed on the invoice.
-      if (item.sampleId && item.unitPrice <= 0) {
-        return NextResponse.json(
-          {
-            error: `Tarif manquant pour « ${item.description} ». Saisissez le prix de cette analyse (ou complétez le catalogue) avant d'émettre la facture.`,
-          },
-          { status: 400 }
-        );
-      }
-      if (!isValidAmount(item.unitPrice)) {
-        return NextResponse.json(
-          { error: `Prix unitaire invalide pour « ${item.description} ».` },
-          { status: 400 }
-        );
-      }
-      if (item.quantity > 100000 || item.unitPrice > 10000000) {
-        return NextResponse.json(
-          { error: `Montant hors limites pour « ${item.description} ».` },
-          { status: 400 }
-        );
-      }
-    }
-
-    const billable = cleanItems.filter(
-      (item) => item.description && item.quantity > 0
-    );
-
-    if (billable.length === 0) {
-      return NextResponse.json(
-        { error: "Ajoutez au moins une ligne de prestation valide." },
-        { status: 400 }
-      );
-    }
-
-    const client = await prisma.client.findUnique({ where: { id: clientId } });
+    const client = await prisma.client.findUnique({
+      where: { id: fields.clientId },
+      select: { id: true, name: true },
+    });
     if (!client) {
-      return NextResponse.json(
-        { error: "Client introuvable." },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Client introuvable." }, { status: 404 });
     }
 
-    // Lines claiming to bill an analysis are checked against reality: the
-    // sample must be billed to this client — its own, unless its site is
-    // billed to another client, or one of a site billed to it
-    // (CLIENTS-FUSION.md §4, client facturé) —, be billable (programme
-    // confirmed, never cancelled: PROGRAMME.md §6, the statuses the billable
-    // list offers), and not already appear on another invoice.
-    const sampleIds = Array.from(
-      new Set(billable.map((item) => item.sampleId).filter(Boolean) as string[])
-    );
+    const { subtotal, taxAmount, total } = computeInvoiceTotals(fields.lines, fields.taxRate);
 
-    if (sampleIds.length > 0) {
-      const samples = await prisma.sample.findMany({
-        where: { id: { in: sampleIds } },
-        select: {
-          id: true,
-          code: true,
-          clientId: true,
-          status: true,
-          serie: { select: { site: { select: { billingClientId: true, billingClient: { select: { name: true } } } } } },
-          invoiceItems: { select: { invoiceId: true }, take: 1 },
-        },
-      });
-
-      if (samples.length !== sampleIds.length) {
-        return NextResponse.json(
-          { error: "Un échantillon référencé est introuvable." },
-          { status: 400 }
-        );
-      }
-
-      for (const sample of samples) {
-        // One client per sample: its site's billing client, else its own
-        // client — never both (CLIENTS-FUSION.md §4).
-        const refusal = invoiceSampleRefusal(
-          {
-            code: sample.code,
-            clientId: sample.clientId,
-            siteBillingClientId: sample.serie.site?.billingClientId ?? null,
-            siteBillingClientName: sample.serie.site?.billingClient?.name ?? null,
+    const { invoice, samples } = await prisma.$transaction(
+      async (tx) => {
+        const samples = await checkSampleLines(tx, fields.lines, fields.clientId);
+        const now = new Date();
+        const number = issue ? await drawDocumentNumber(tx, "FACTURE", now) : null;
+        const invoice = await tx.invoice.create({
+          data: {
+            number,
+            kind: "FACTURE",
+            clientId: fields.clientId,
+            createdById: session.id,
+            // An issued invoice of 0,00 has nothing left to pay.
+            status: issue ? statusAfterPayments(total, 0, 0) : "BROUILLON",
+            issueDate: now,
+            issuedAt: issue ? now : null,
+            dueDate: fields.dueDate,
+            notes: fields.notes,
+            taxRate: fields.taxRate,
+            subtotal,
+            taxAmount,
+            total,
+            items: { create: fields.lines },
           },
-          clientId
-        );
-        if (refusal) {
-          return NextResponse.json({ error: refusal }, { status: 400 });
-        }
-        if (!BILLABLE_STATUSES.includes(sample.status)) {
-          return NextResponse.json(
-            {
-              error: `L'échantillon ${sample.code} n'est pas facturable : son programme d'analyse n'est pas confirmé, ou il est annulé.`,
-            },
-            { status: 409 }
-          );
-        }
-        if (sample.invoiceItems.length > 0) {
-          return NextResponse.json(
-            { error: `L'échantillon ${sample.code} est déjà facturé.` },
-            { status: 409 }
-          );
-        }
-      }
-    }
-
-    // VAT is a percentage, not an arbitrary number.
-    const rate = Math.round(Math.min(100, Math.max(0, Number(taxRate) || 0)) * 100) / 100;
-    const { subtotal, taxAmount, total } = computeInvoiceTotals(billable, rate);
-    const itemsWithTotals = billable.map((item) => ({
-      ...item,
-      lineTotal: Math.round(item.quantity * item.unitPrice * 100) / 100,
-    }));
-
-    // Two accountants invoicing at the same second would otherwise collide on
-    // the sequential number; the unique constraint catches it and we retry.
-    const invoice = await retryOnDuplicate(async () =>
-      prisma.invoice.create({
-      data: {
-        number: await generateInvoiceNumber(),
-        clientId,
-        createdById: session.id,
-        status: invoiceStatus,
-        dueDate: due,
-        notes: notes?.trim() || null,
-        taxRate: rate,
-        subtotal,
-        taxAmount,
-        total,
-        items: { create: itemsWithTotals },
+          include: INVOICE_DETAIL_INCLUDE,
+        });
+        return { invoice, samples };
       },
-      include: {
-        client: true,
-        createdBy: { select: { id: true, name: true } },
-        items: true,
-      },
-      })
+      { timeout: 20_000 }
     );
 
-    // A money document: who issued it, for whom and for how much.
     await logAudit({
       actorId: session.id,
-      action: "INVOICE_CREATED",
+      action: issue ? AUDIT_ACTIONS.INVOICE_ISSUED : AUDIT_ACTIONS.INVOICE_DRAFT_CREATED,
       entity: "Invoice",
       entityId: invoice.id,
       metadata: {
         number: invoice.number,
-        client: invoice.client.name,
+        client: client.name,
         total,
-        lines: itemsWithTotals.length,
-        samples: sampleIds.length,
-        status: invoiceStatus,
+        lines: fields.lines.length,
+        samples,
+        status: invoice.status,
       },
     });
 
-    return NextResponse.json(serializeInvoice(invoice), { status: 201 });
+    return NextResponse.json(invoiceView(invoice), { status: 201 });
   } catch (error) {
-    console.error("Invoice creation failed:", error);
-    return NextResponse.json(
-      { error: "Impossible de créer la facture." },
-      { status: 500 }
-    );
+    return errorResponse(error, "Impossible de créer la facture.", { route: "POST /api/invoices" });
   }
 }

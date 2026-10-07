@@ -8,7 +8,9 @@
 
 ## ▶ NEXT ACTION
 
-**Clients en double / sites / clients facturés : construits le 07/10, pas encore déployés** (`CLIENTS-FUSION.md`). Next: commit + deploy (migration `20261008100000_clients_fusion` with `prisma migrate deploy`), then **TESTPLAN W** on production with invented « TEST UI W … » clients only. The real duplicates, outlets and billing entities are processed only after the laboratory validates `doublons-clients.xlsx` (Q54).
+**Facturation (cycle complet), amendement / duplicata des rapports et portail client : construits le 08/10, pas encore déployés** (`FACTURATION.md`, `AMENDEMENT.md`, `PORTAIL.md`). Next: commit + deploy (one migration, `20261009100000_facturation_rapports_portail`, with `prisma migrate deploy`), then **TESTPLAN X, Y, Z** on production on the kept test client « TEST UI 2026-10-06 Traiteur » and invented « TEST UI X / Z » clients only. To confirm with the lab: an invoice of 0,00 stored « Payée » at issue; « rapports amendés en tête de liste » on the portal read as the dashboard's « Rapports récents ».
+
+_Previous next action:_ **Clients en double / sites / clients facturés : construits le 07/10, pas encore déployés** (`CLIENTS-FUSION.md`). Next: commit + deploy (migration `20261008100000_clients_fusion` with `prisma migrate deploy`), then **TESTPLAN W** on production with invented « TEST UI W … » clients only. The real duplicates, outlets and billing entities are processed only after the laboratory validates `doublons-clients.xlsx` (Q54).
 
 _Previous next action:_ **Retours du laboratoire 05 → 07/10 : V1 → V6 construits le 07/10, pas encore déployés** (`RETOUR-LABO-06-10.md` §5). Next: commit + deploy (the migration `20261007100000_retour_labo_v` runs with `prisma migrate deploy`), then **TESTPLAN V** on production (V0 → V6), the « Sites de l'ancien logiciel » import (extract `sites.csv` with `scripts/legacy/extract-legacy.py`, analyse, commit), a new version of PG04/EN01 and PG05/EN04 in `/admin/documents`. Waiting on the lab: Q45 (sending by site), Q50 (air and physico-chemistry parameters in the catalogue).
 
@@ -272,6 +274,13 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-10-08 — facturation, amendement / duplicata, portail client built (not deployed)
+- `FACTURATION.md`: drafts without a number that reserve their samples, « Émettre » drawing `FAC-AAAA-NNNN` in the transaction, cancellation with reason, credit notes `AV-AAAA-NNNN`, settlements (`Payment`) with « Reste à payer », invoice PDF (watermark, stamp, « Réglé »), list filters by state and type, one source for « Facturé / Encaissé » (`billingFigures()`, now also on the vue direction and the commercial dashboard).
+- `AMENDEMENT.md`: « Rouvrir pour amendement » (ADMIN), frozen `ReportVersion`s, `-A1` amended reports « annule et remplace », duplicata and version history, alerts re-sent only for changed results; a sample with an issued report can no longer be cancelled, and a reopened sample no longer reads « Facturé avant résultat ».
+- `PORTAIL.md`: `CLIENT` accounts tied to a client from `/admin/utilisateurs`, `/portail` (dashboard, list, report PDF, password), lab routes closed to the role (guards with no roles admit lab roles only).
+- Gate pass: shared label maps completed (`PAYMENT_MODE_LABELS` from `invoice-lifecycle.ts`, `INVOICE_STATUS_LABELS`), journal labels for every action written in the code, lab pages' titles no longer read a sample for another role, the users page selects the portal client, HANDOFF §1/§3/§4/§5/§8/§9 and TESTPLAN X / Y / Z written.
+- Gates: prisma generate, tsc 0, eslint 0, vitest 61 files / 878 tests, `npm run build` green. Not deployed.
 
 ### 2026-10-08 — client tools live (TESTPLAN W), open checks of V closed
 - `CLIENTS-FUSION.md` deployed (`722da85`, migration `20261008100000_clients_fusion`): merge, attach as site, billing entity (« client facturé ») with « Facturé à » per site, near-duplicate warning. Production recette 36/36 on invented TEST UI W clients (archived afterwards) plus the screens in the browser (actions, preview, banners — including the clients archived by the sites import —, near-duplicate hint). The gate review fixed a real double-invoicing path (a sample of a site billed to a franchisee was still accepted for the principal).

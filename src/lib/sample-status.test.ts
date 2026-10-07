@@ -8,8 +8,11 @@ import {
   reactivationTarget,
   CORRECTABLE_STATUSES,
   PROGRAMMABLE_STATUSES,
+  REOPENED_SAMPLE_FIELDS,
   SAMPLE_STATUS_ORDER,
+  amendmentIssueRefusal,
 } from "./sample-status";
+import { REOPENABLE_STATUSES, REOPENED_STATUS } from "./report-amendment";
 
 /**
  * The state machine is the laboratory's traceability guarantee: a sample may
@@ -213,5 +216,69 @@ describe("canApprove — two different signatories", () => {
 
   it("accepts a different ADMIN as second signatory", () => {
     expect(canApprove(validated, "ADMIN", "user-admin").ok).toBe(true);
+  });
+});
+
+describe("« Rouvrir pour amendement » (AMENDEMENT.md §2.1)", () => {
+  it("sends an approved report back to the double validation, ADMIN only, with a reason", () => {
+    for (const from of REOPENABLE_STATUSES) {
+      expect(canTransition(from, REOPENED_STATUS, "ADMIN", "erreur de lot").ok).toBe(true);
+      expect(canTransition(from, REOPENED_STATUS, "ADMIN").ok).toBe(false);
+      expect(canTransition(from, REOPENED_STATUS, "ADMIN", "  ").ok).toBe(false);
+      for (const role of ["VALIDATEUR", "GESTIONNAIRE", "TECHNICIEN", "COMPTABLE"] as const) {
+        expect(canTransition(from, REOPENED_STATUS, role, "motif").ok).toBe(false);
+      }
+    }
+  });
+
+  it("opens no other way back from an approved report", () => {
+    expect(canTransition("VALIDE", "EN_ANALYSE", "ADMIN", "motif").ok).toBe(false);
+    expect(canTransition("RAPPORT_ENVOYE", "VALIDE", "ADMIN", "motif").ok).toBe(false);
+    expect(canTransition("RAPPORT_ENVOYE", "ANNULE", "ADMIN", "motif").ok).toBe(false);
+    expect(canTransition("VALIDE", "ANNULE", "ADMIN", "motif").ok).toBe(false);
+  });
+
+  it("clears both signatures, so the amended report needs two new ones", () => {
+    expect(REOPENED_SAMPLE_FIELDS).toEqual({
+      status: "RESULTATS_SAISIS",
+      validatedById: null,
+      validatedAt: null,
+      approvedById: null,
+      approvedAt: null,
+    });
+    expect(
+      approvalState({ validatedById: REOPENED_SAMPLE_FIELDS.validatedById, approvedById: REOPENED_SAMPLE_FIELDS.approvedById })
+    ).toBe("AWAITING_TECHNICAL");
+    expect(canValidateTechnically({ status: REOPENED_SAMPLE_FIELDS.status, validatedById: null }, "VALIDATEUR").ok).toBe(true);
+  });
+
+  it("keeps the contamination-alert claim (no alertsSentAt reset)", () => {
+    expect(Object.keys(REOPENED_SAMPLE_FIELDS)).not.toContain("alertsSentAt");
+  });
+});
+
+describe("issuing the amended report — never without the double validation", () => {
+  const approved = { status: "VALIDE" as const, validatedById: "user-validateur", approvedById: "user-admin" };
+
+  it("issues on a sample approved again by two different people", () => {
+    expect(amendmentIssueRefusal(approved)).toBeNull();
+    expect(amendmentIssueRefusal({ ...approved, status: "RAPPORT_ENVOYE" })).toBeNull();
+  });
+
+  it("refuses a sample just reopened, or awaiting its approval", () => {
+    expect(amendmentIssueRefusal({ ...REOPENED_SAMPLE_FIELDS })).not.toBeNull();
+    expect(amendmentIssueRefusal({ ...approved, status: "RESULTATS_SAISIS", approvedById: null })).not.toBeNull();
+  });
+
+  it("refuses an approval without a technical validation, or by the same signer", () => {
+    expect(amendmentIssueRefusal({ ...approved, validatedById: null })).not.toBeNull();
+    expect(amendmentIssueRefusal({ ...approved, approvedById: null })).not.toBeNull();
+    expect(amendmentIssueRefusal({ ...approved, approvedById: "user-validateur" })).toMatch(/deux signataires différents/);
+  });
+
+  it("refuses any status other than approved", () => {
+    for (const status of ["PRELEVE", "RECU", "PROGRAMME", "EN_ANALYSE", "RESULTATS_SAISIS", "ANNULE"] as const) {
+      expect(amendmentIssueRefusal({ ...approved, status })).not.toBeNull();
+    }
   });
 });

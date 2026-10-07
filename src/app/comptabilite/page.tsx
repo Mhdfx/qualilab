@@ -1,37 +1,30 @@
 import { requireRole } from "@/lib/auth";
-import { FileText, Clock, CheckCircle2, Wallet } from "lucide-react";
-import { prisma } from "@/lib/prisma";
+import { FilePen, Hourglass, FileBarChart, Wallet } from "lucide-react";
 import { RoleDashboard } from "@/components/RoleDashboard";
 import { formatCurrency } from "@/lib/labels";
-import { toMoney } from "@/lib/money";
+import { billingFigures } from "@/components/invoices/invoice-queries";
 
 export const metadata = { title: "Comptabilité" };
 
 export default async function ComptabilitePage() {
   // Belt and braces with the layout guard: a page must be safe on its own.
   await requireRole("COMPTABLE", "ADMIN");
-  const [factures, enAttente, payees, encaisse] = await Promise.all([
-    prisma.invoice.count(),
-    prisma.invoice.count({ where: { status: "EN_ATTENTE" } }),
-    prisma.invoice.count({ where: { status: "PAYEE" } }),
-    prisma.invoice.aggregate({
-      where: { status: "PAYEE" },
-      _sum: { total: true },
-    }),
-  ]);
+  // FACTURATION.md §4: drafts apart, billed = issued − credit notes,
+  // collected = settlements.
+  const figures = await billingFigures();
 
   return (
     <RoleDashboard
       badge="Espace comptabilité"
       title="Facturation & paiements"
-      subtitle="Générez les factures à partir des échantillons validés et suivez les règlements."
+      subtitle="Préparez les factures à partir des échantillons programmés ou validés, émettez-les et suivez les règlements."
       stats={[
-        { label: "Factures", value: factures, icon: FileText, accent: "brand" },
-        { label: "En attente", value: enAttente, icon: Clock, accent: "amber" },
-        { label: "Payées", value: payees, icon: CheckCircle2, accent: "emerald" },
-        { label: "Encaissé", value: formatCurrency(toMoney(encaisse._sum.total)), icon: Wallet, accent: "blue" },
+        { label: "Brouillons", value: figures.draftCount, icon: FilePen, accent: "violet" },
+        { label: "En attente de règlement", value: figures.awaitingCount, icon: Hourglass, accent: "amber" },
+        { label: "Facturé (net d'avoirs)", value: formatCurrency(figures.billed), icon: FileBarChart, accent: "brand" },
+        { label: "Encaissé", value: formatCurrency(figures.collected), icon: Wallet, accent: "emerald" },
       ]}
-      mission="Vous générez les factures à partir des échantillons validés d'un client : les analyses réalisées deviennent les lignes de facture, aux prix du catalogue. Vous suivez les statuts de paiement et exportez les factures en PDF."
+      mission="Vous préparez les factures d'un client à partir de ses analyses : un brouillon se corrige librement, puis vous l'émettez et il reçoit son numéro. Vous enregistrez les règlements (espèces, chèque, effet, carte, virement), corrigez une facture émise par un avoir ou l'annulez tant qu'aucun règlement n'est reçu, et exportez chaque document en PDF."
     />
   );
 }

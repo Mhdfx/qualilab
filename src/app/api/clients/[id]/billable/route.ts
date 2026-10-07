@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { proposeLines, type CatalogueEntry } from "@/lib/billing";
+import { holdingInvoiceItemWhere, proposeLines, type CatalogueEntry } from "@/lib/billing";
 import { BILLABLE_STATUSES } from "@/lib/billing-status";
 import { toMoney } from "@/lib/money";
 
@@ -10,8 +10,9 @@ import { toMoney } from "@/lib/money";
  *
  * Since the programme d'analyse (PROGRAMME.md §6), a line is billable from
  * its confirmed programme on — `BILLABLE_STATUSES`, never a cancelled line —
- * and only those no invoice line already refers to: that link is what stops
- * the laboratory billing the same analysis twice. The status travels with
+ * and only those no draft or issued invoice line holds: that link is what
+ * stops the laboratory billing the same analysis twice. A cancelled invoice
+ * gives its samples back (FACTURATION.md §1). The status travels with
  * each line so the accountant sees which ones are invoiced before result.
  *
  * Billing clients (CLIENTS-FUSION.md §4): what is billable to a client is
@@ -21,13 +22,24 @@ import { toMoney } from "@/lib/money";
  * own samples carry `via: null`.
  */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await requireApiRole("COMPTABLE", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;
+
+  // `?brouillon=<id>`: the draft being edited. Its own samples are offered
+  // again, so a line removed from it can be put back before saving. Only a
+  // draft of this client is honoured; anything else is ignored.
+  const draftId = new URL(request.url).searchParams.get("brouillon")?.trim() || null;
+  const draft = draftId
+    ? await prisma.invoice.findFirst({
+        where: { id: draftId, clientId: id, kind: "FACTURE", status: "BROUILLON" },
+        select: { id: true },
+      })
+    : null;
 
   const [samples, services] = await Promise.all([
     prisma.sample.findMany({
@@ -42,8 +54,10 @@ export async function GET(
           { serie: { is: { site: { is: { billingClientId: id } } } } },
         ],
         status: { in: [...BILLABLE_STATUSES] },
-        // Not already on an invoice.
-        invoiceItems: { none: {} },
+        // Not held by an invoice line: a draft reserves its samples, an
+        // issued invoice bills them; a cancelled invoice releases them and a
+        // credit note never holds one (FACTURATION.md §1–2).
+        invoiceItems: { none: holdingInvoiceItemWhere(draft?.id) },
       },
       select: {
         id: true,
@@ -55,6 +69,7 @@ export async function GET(
         programmedAt: true,
         validatedAt: true,
         clientId: true,
+        report: { select: { amendmentPending: true } },
         client: { select: { name: true } },
         serie: { select: { site: { select: { name: true } } } },
         parameters: { select: { parameter: { select: { name: true } } } },
@@ -76,6 +91,8 @@ export async function GET(
     status: sample.status,
     programmedAt: sample.programmedAt,
     validatedAt: sample.validatedAt,
+    // Reopened for amendment: back to RESULTATS_SAISIS, but not « avant résultat ».
+    amendmentPending: sample.report?.amendmentPending === true,
     via:
       sample.clientId === id
         ? null

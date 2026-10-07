@@ -4,7 +4,7 @@
 > "where do I change X" map. Read after `AGENTS.md`. **Keep this current** — it
 > is what lets any AI on any platform continue without archaeology.
 >
-> Last updated: **2026-10-07** · Branch: `master` · Remote:
+> Last updated: **2026-10-08** · Branch: `master` · Remote:
 > `github.com/Mhdfx/qualilab.git`
 
 ---
@@ -14,8 +14,8 @@
 | Block | Module | State |
 |---|---|---|
 | Préleveur | Field intake (mobile 3-step, param by domain, history) | ✅ **Built & client-approved** |
-| Facturation | Manual invoice: catalog, `FAC-YYYY-NNNN`, 20% VAT, statuses, PDF export | ✅ **Built & client-approved** |
-| Auth | **Better Auth** (username + admin plugins), **9 roles**: 7 core + `MAGASINIER` (Phase 6) + `CLIENT` (reserved, Phase 8) | ✅ **Phase 1 done** |
+| Facturation | Manual invoice: catalog, `FAC-YYYY-NNNN`, 20% VAT, statuses, PDF export | ✅ **Built & client-approved** — superseded by the « Facturation : cycle complet » row below |
+| Auth | **Better Auth** (username + admin plugins), **9 roles**: 7 core + `MAGASINIER` (Phase 6) + `CLIENT` (portal, `PORTAIL.md`) | ✅ **Phase 1 done** |
 | Authorization | Central `requireRole()` / `requireApiRole()` on every page + route | ✅ **Phase 1 done** |
 | Role spaces | 7 dashboards with live indicators | ✅ **Phase 1 done** |
 | Data model | **26 tables** — LIMS core, invoicing, `CompanySettings`/`LabSettings`, Achat & Stock, Qualité | ✅ |
@@ -38,6 +38,10 @@
 | **Programme d'analyse (05/10) — live 05/10 night, TESTPLAN T** | rôle « Responsable des paramètres », statut PROGRAMME entre réception et paillasse, fiche de programme (type, analyses, nombres, méthodes, technicien par paramètre, délai, consignes), facturation dès le programme — spec **`PROGRAMME.md`** | ✅ **live 2026-10-05 night** — migration `20261006100000_programme` appliquée en production, recette TESTPLAN T (22 checks API + navigateur comme param1), un plantage de la fiche corrigé le soir même ; questions Q41–Q42 au laboratoire ; **parcours complet d'un prélèvement en production le 06/10 (TESTPLAN U, `RECETTE-06-10-PARCOURS.md`)**, réception sans technicien par défaut depuis le 06/10 |
 | **Retours du laboratoire 05/10 → 07/10 — live 07/10, TESTPLAN V** | cadre Autre / Devis validé / BC / Convention, « Service vétérinaire » retiré, « Échantillon » au lieu de « Ligne », Désignation + « État de la surface », deux familles par échantillon (1M / 1P, nature masquée), méthode de prélèvement de l'air, sites des clients repris de l'ancien logiciel, analyses et type de produit décidés par le laboratoire — spec **`RETOUR-LABO-06-10.md`** (§5 décisions, §6 livré) | ✅ **V1 → V6 live 2026-10-07** (`e30c2b0`, `e83421c`), migration `20261007100000_retour_labo_v` ; import des sites exécuté en production (420 sites, 345 doublons archivés) ; reste au laboratoire : paramètres d'air et de physico-chimie (Q50), versions des documents, Q45–Q52 |
 | **Clients en double / sites / clients facturés** | « Fusionner avec… » et « Rattacher comme site de… » (ADMIN, aperçu puis confirmation, une transaction, fiche archivée avec `mergedIntoId`), client facturé d'un client principal et « Facturé à » par site (facturation : un échantillon n'est proposé qu'à un seul client), quasi-doublon à la création et au renommage (409 + « Ce n'est pas le même client ») — spec **`CLIENTS-FUSION.md`** (`RETOUR-LABO-06-10.md` §7) | ✅ **live 2026-10-08** (`722da85`) — migration `20261008100000_clients_fusion` appliquée ; recette TESTPLAN W 36/36 en production sur des clients de test (archivés ensuite) ; **exécution sur les vrais clients seulement après validation de `doublons-clients.xlsx` (Q54)** |
+
+| **Facturation : cycle complet** | brouillon sans numéro (échantillons réservés), « Émettre » (numéro `FAC-AAAA-NNNN` tiré du compteur `FACTURE` dans la transaction), annulation motivée, avoirs `AV-AAAA-NNNN`, règlements (`Payment`, modes Espèces / Chèque / Effet / Carte / Virement), reste à payer, PDF filigrane / tampon / bloc réglé, liste filtrée par état et type, chiffres « Facturé / Encaissé » uniques (`billingFigures()`) — spec **`FACTURATION.md`** | ◀ **built 2026-10-08, not deployed** — migration `20261009100000_facturation_rapports_portail` (shared with the two rows below) ; recette planned: TESTPLAN X |
+| **Rapports : amendement et duplicata** | « Rouvrir pour amendement » (ADMIN, motif), double validation de nouveau, version `-A1` « annule et remplace », versions figées (`ReportVersion`), « Duplicata (PDF) », « Versions du rapport », badge « Amendement » dans la file — spec **`AMENDEMENT.md`** | ◀ **built 2026-10-08, not deployed** — recette planned: TESTPLAN Y |
+| **Portail client** | comptes `CLIENT` rattachés à un client (`User.clientId`), `/portail` : tableau de bord 12 mois, liste filtrée (50 par page), rapport PDF à `RAPPORT_ENVOYE`, « Mon compte » (mot de passe) ; tout le reste du laboratoire refusé au rôle `CLIENT` — spec **`PORTAIL.md`** (PLAN Phase 8) | ◀ **built 2026-10-08, not deployed** — recette planned: TESTPLAN Z |
 
 **Bottom line:** the five core phases are code-complete. The whole circuit runs
 — field intake to report, alert and invoice — and the lab configures everything
@@ -184,6 +188,24 @@ wrong. Role → landing page mapping lives in `src/lib/roles.ts` (`ROLE_HOME`).
 **Client components** use `authClient` from `src/lib/auth-client.ts`
 (`signIn.username(...)`, `signOut()`).
 
+**The portal role (`CLIENT`, PORTAIL.md) — since 2026-10-08:**
+- A guard called with **no roles** (`requireRole()`, `requireApiRole()`,
+  `requireSession()`) admits the **laboratory roles only** (`LAB_ROLES`),
+  never `CLIENT` (`roleAllowed()` in `roles.ts`). Every lab page and route still
+  names its roles; `src/lib/portal-guards.test.ts` fails the build of the tests
+  if one lists `CLIENT` or relies on the empty list.
+- `/portail` pages use `requirePortalPage()`, `/api/portail/**` routes use
+  `requirePortalApi()` (`src/lib/portal-server.ts`). The client id always comes
+  from the signed-in account's database row (`User.clientId`), never from the
+  request; another client's sample answers 404.
+- `getSession()` returns `null` for an account whose ban is still active.
+- Better Auth's HTTP `/update-user`, `/update-session`, `/change-password` and
+  `/is-username-available` answer 404 for every role (`disabledPaths` in
+  `auth-server.ts`). A password change goes through an audited route of ours
+  that calls `auth.api.changePassword` server-side
+  (`POST /api/portail/compte/mot-de-passe` for the portal); a future staff
+  « change my password » screen must do the same.
+
 ## 3b. Traceability & workflow foundations
 
 - **`logAudit({actorId, action, entity, entityId, metadata})`** (`lib/audit.ts`)
@@ -197,7 +219,8 @@ wrong. Role → landing page mapping lives in `src/lib/roles.ts` (`ROLE_HOME`).
 
 **Auth (Better Auth):** `User` · `Session` · `Account` (credentials) ·
 `Verification`.
-`User` carries `username`, `role` (string, mirrors the `Role` enum), `banned`.
+`User` carries `username`, `role` (string, mirrors the `Role` enum), `banned`,
+and `clientId` (the client of a `CLIENT` portal account; null for staff).
 
 **LIMS:** `Client` · `AnalysisParameter`(category, unit, threshold) ·
 `LabService` · `Sample` · `SampleParameter`(join) · `Result` · `Report` ·
@@ -207,6 +230,14 @@ wrong. Role → landing page mapping lives in `src/lib/roles.ts` (`ROLE_HOME`).
 (assigned **at reception**, never shown to the préleveur), `receivedById` /
 `receivedAt` / `conformity` / `conformityNote`, `technicianId` / `assignedAt`,
 `validatedById` / `validatedAt` / `rejectionReason`.
+
+Since 2026-10-08 (migration `20261009100000_facturation_rapports_portail`):
+`Invoice.number` nullable (a draft has none), `Invoice.kind` (`FACTURE` |
+`AVOIR`), `creditedInvoiceId`, `issuedAt`, `cancelledAt / cancelledById /
+cancelReason`; table `Payment` (settlements; mode `AUTRE` only for the
+migrated « Repris » rows); `InvoiceStatus` gains `BROUILLON` and `ANNULEE`;
+`Report.version / amendmentNote / amendedAt / amendmentPending`; table
+`ReportVersion` (frozen issued versions); `User.clientId`.
 
 Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 `SampleStatus`(6) · `ResultWorkStatus`(EN_COURS|TERMINE|ANOMALIE) ·
@@ -264,8 +295,23 @@ Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|E
 | Health probe | `src/app/api/health/route.ts` |
 
 | The laboratory's clock (printed times, day cut-offs) | `TZ` in `docker-compose.yml` (app service) and `LAB_TIME_ZONE` in `src/lib/labels.ts` — keep them equal |
-| Which roles an admin may hand out | `ASSIGNABLE_ROLES` in `src/lib/roles.ts` (CLIENT stays out until `/portail` exists) |
-| Marking a client invoice settled | `PATCH /api/invoices/[id]/payment` (COMPTABLE, ADMIN) — the button lives in `FactureDetail` |
+| Which roles an admin may hand out | `ASSIGNABLE_ROLES` in `src/lib/roles.ts` (all roles, `CLIENT` included since the portal exists); `PORTAL_ROLE`, `LAB_ROLES`, `roleAllowed()` there |
+| Recording / deleting a settlement (« Enregistrer un règlement ») | `POST /api/invoices/[id]/payments`, `DELETE /api/invoices/[id]/payments/[paymentId]` `{ reason }` (COMPTABLE, ADMIN); rules `checkPayment`, `statusAfterPayments` in `src/lib/invoice-lifecycle.ts`; dialog `PaymentDialog` in `src/components/invoices/InvoiceDialogs.tsx`. The old `PATCH /api/invoices/[id]/payment` only answers 410 |
+| An invoice's life (draft, issue, cancel, credit note) — what is allowed, what it reads as | `src/lib/invoice-lifecycle.ts` (pure, tested: `invoiceState`, `cancelRefusal`, `balance`, `remainingCreditable`, labels `INVOICE_STATE_LABELS`, `PAYMENT_MODE_LABELS`) |
+| Invoice routes (FACTURATION.md §4) | `POST /api/invoices` (`issue: boolean`), `PATCH` / `DELETE /api/invoices/[id]` (draft only), `POST …/issue`, `POST …/cancel` `{ reason }`, `POST …/credit-notes`; shared helpers (locks, sample checks, view, 409 on lock conflict) in `src/app/api/invoices/invoice-store.ts` |
+| Which samples a draft reserves / an invoice holds | `holdingInvoiceItemWhere()`, `SAMPLE_HOLDING_STATUSES` in `src/lib/billing.ts`; billable list `GET /api/clients/[id]/billable` (`?brouillon=<draftId>` adds that draft's samples) |
+| Invoice and credit-note numbers (`FAC-` / `AV-`) | counters `FACTURE` / `AVOIR` drawn in the issuing transaction: `drawDocumentNumber()` in `src/lib/invoice-number.ts`, `nextNumber()` in `src/lib/counters.ts` (`generateInvoiceNumber` is gone) |
+| Money rounding (half away from zero, no float drift) | `roundMoney()` in `src/lib/invoice-math.ts` |
+| Invoice screens (fiche, list, new / edit draft) | `src/components/invoices/`: `invoice-view.ts` (pure: `invoiceFigures`, `invoiceActions`, list filters), `invoice-queries.ts` (server: `loadInvoiceDetail`, `loadInvoiceList`), `InvoiceManagement.tsx`, `InvoiceDialogs.tsx`, `InvoiceStateBadge.tsx`; pages `/…/factures/[id]/modifier` |
+| « Facturé / Encaissé » on any dashboard or fiche | `billingFigures({ clientId? })` in `src/components/invoices/invoice-queries.ts` — the only source (comptabilité, vue direction, fiche client) |
+| The invoice PDF (watermark, « ANNULÉE » stamp, « Réglé / Reste à payer », avoir title) | `src/lib/invoice-html.ts` |
+| Reopen a report for amendment / issue the amended version | `POST /api/samples/[id]/reopen` `{ reason }` (ADMIN); `reopenForAmendment`, `amendReportFor`, `issueReportFor` in `src/lib/report-dispatch.ts`; rules `reopenRefusal`, `amendedNumber` in `src/lib/report-amendment.ts`; transitions in `sample-status.ts` (`REOPENED_SAMPLE_FIELDS`, `amendmentIssueRefusal`) |
+| Duplicata / an older version of a report | `GET /api/samples/[id]/report?duplicata=1` / `?version=N`; list `GET /api/samples/[id]/report/versions`; marks (`ReportMarks`), frozen JSON (`reportDataToJson` / `reportDataFromJson`) and `withSilentCorrection` in `src/lib/report-html.ts`; buttons in `src/components/validation/ReportActions.tsx` |
+| Which contamination alerts an amendment re-sends | `germsToRealert` / `germFingerprints` in `src/lib/report-html.ts` (only changed results) |
+| Why a sample with an issued report cannot be cancelled | `cancelRefusalForReport` in `src/lib/report-amendment.ts`, used by `POST /api/samples/[id]/cancel` and `verbsFor` (`src/lib/sample-verbs.ts`) |
+| Portal accounts (create, change client) | `/admin/utilisateurs` (`UsersManager.tsx`), `POST /api/admin/users`, `PATCH /api/admin/users/[id]`, client search `GET /api/admin/users/clients?q=`; rules `portalAccess`, `userClientRefusal` in `src/lib/portal-access.ts` |
+| What a portal account sees | `src/lib/portal-query.ts` (pure: filters, `portalSampleWhere`, `toPortalRow`), `src/lib/portal-status.ts` (stages), `src/lib/portal-server.ts` (server: guards and loads); pages `src/app/portail/**`, routes `src/app/api/portail/**` |
+
 | The cadre's four values, their labels, « Autre — texte » | `Cadre` enum + `CADRE_LABELS` / `CADRE_CHOICES` / `formatCadre` in `src/lib/labels.ts`; checked by `validateSerie` (`src/lib/serie-input.ts`) and `PATCH /api/series/[id]` |
 | The nature of a sample (type × family, greyed cells) | `src/lib/nature-family.ts` (pure, tested) — the form, the API and the programme sheet all read it |
 | The two samples of a two-family line (codes « …M » / « …P ») | `sampleCodeFor` / `twinFor` in `src/lib/sample-code.ts`; created by `planLineSamples` (`serie-input.ts`) + `src/lib/serie-create.ts` |
@@ -436,6 +482,33 @@ Found by the end-to-end recette of 06/10 (`RECETTE-06-10-PARCOURS.md`).
 - `POST /api/invoices` accepts the statuses of `BILLABLE_STATUSES` (programme confirmed → rapport envoyé), as the billable list offers them (PROGRAMME.md §6); it used to refuse anything before VALIDE.
 - Near-duplicates warn, never block: the exact name stays refused as before (now also on a rename), a close client returns 409 `{ error, similar }` until `confirmDuplicate: true` (« Ce n'est pas le même client », journalled as `confirmedNotDuplicate`).
 
+### 2026-10-08 — facturation : brouillon, émission, annulation, avoirs, règlements (`FACTURATION.md`), as built
+- One migration for the three modules of the day, `20261009100000_facturation_rapports_portail` (**not deployed yet**). Invoices already `PAYEE` get one settlement « Repris » of their total (mode `AUTRE`, never offered on screen); the `FACTURE` counter of each year starts at the highest `FAC-` number already issued; `issuedAt` = `issueDate` on existing invoices.
+- A draft has no number and **reserves** its samples (`SAMPLE_HOLDING_STATUSES` = BROUILLON, EN_ATTENTE, PAYEE). Issue draws `FAC-AAAA-NNNN` inside the transaction (no gap on failure), re-checks every sample (billable status, one billing client per sample — `CLIENTS-FUSION.md` §4 —, not held elsewhere) and refuses an analysis line at 0. `issueDate` = `issuedAt` = the moment of issue.
+- Every state-changing request locks the invoice row (`FOR UPDATE`); draft writes also lock the sample rows and read the holders with `FOR SHARE` (a plain read in REPEATABLE READ would miss a draft committed meanwhile). A deadlock / lock timeout answers 409 « réessayez » (`isLockConflict`), never a 500.
+- « Partiellement payée », « Émise », « Avoir » are read, never stored (`invoiceState`). Reste à payer = total − avoirs − règlements, never negative; a settlement above it is refused; amounts compared in centimes; `roundMoney` rounds half away from zero.
+- Cancel: issued invoice with no settlement and no credit note, reason ≥ 3 characters; the number stays, the samples become billable again. A credit note never gives a sample back. Credit-note lines taken from an invoice line may lower quantity or price, never raise them; the total of credit notes never exceeds the invoice total; the invoice switches to PAYEE in the same transaction when nothing is left to pay.
+- An issued invoice of 0,00 is stored `PAYEE` at once (nothing to pay) and therefore cannot be cancelled — **lab decision pending** (EN_ATTENTE would make it cancellable).
+- « Facturé » = issued, non-cancelled invoices − credit notes; « Encaissé » = sum of settlements: `billingFigures()` is the only source (comptabilité, vue direction, fiche client); the commercial dashboard counts issued invoices only.
+- The old « Marquer encaissée » (`PATCH /api/invoices/[id]/payment`) answers 410 with a French message, so a page left open across the deploy explains itself; delete it one release later.
+
+### 2026-10-08 — rapports : amendement et duplicata (`AMENDEMENT.md`), as built
+- New transitions VALIDE → RESULTATS_SAISIS and RAPPORT_ENVOYE → RESULTATS_SAISIS, ADMIN only, reason required, through `POST /api/samples/[id]/reopen` only. Reopen clears both signatures, keeps `alertsSentAt`, sets `Report.amendmentPending` and freezes the version in force if it has no `ReportVersion` yet (« reconstituée » for a report issued before versions existed).
+- Approval of a reopened sample amends the **same** report row: `version + 1`, printed `RAP-…-A1` (the stored `Report.number` never changes — screens print `amendedNumber(number, version)`), header « Rapport amendé — annule et remplace … », new `ReportVersion`, sent as « Rapport amendé ». Two distinct signers are still required (`amendmentIssueRefusal`).
+- While an amendment is pending, every download (lab, portal) serves the frozen version in force plus any silent admin correction (`withSilentCorrection`); at reopen the frozen row's conclusion takes that correction (the single exception to « never changed », see the schema comment).
+- Contamination alerts on an amendment: only germs whose results changed are re-alerted (`germsToRealert`, fingerprint stored in the `CONTAMINATION_ALERT_SENT` metadata).
+- A sample with an issued report cannot be cancelled (`cancelRefusalForReport`): it is corrected by amendment. The « Annuler » verb is hidden for it.
+- A reopened, already-invoiced sample does **not** show « Facturé avant résultat » (`sampleBillingNotice(status, amendmentPending)`).
+- `REPORT_DOWNLOADED` and `REPORT_DUPLICATE` are journalled with `entityId` = the report id (older `REPORT_DOWNLOADED` rows carry the sample id; nothing links by it).
+
+### 2026-10-08 — portail client (`PORTAIL.md`, PLAN Phase 8), as built
+- `CLIENT` is assignable in `/admin/utilisateurs` with a client picker (active, non-merged clients); a client is required for `CLIENT` and refused for any other role; moving to another role clears it. An archived or merged client, or no client, closes the portal (`portalAccess`).
+- Reads filter `clientId` at the top level, taken from the account's row; results, report number and PDF only at `RAPPORT_ENVOYE` and never while an amendment is pending (the sample is back to « En analyse » during an amendment — accepted, PORTAIL.md §2). No prices, no invoices, no staff names outside the report.
+- « Les rapports amendés en tête de liste » is read as: first in the dashboard's « Rapports récents », with a « Rapport amendé » badge everywhere; the main list stays sorted by sampling date (stable paging). **To confirm with the lab.**
+- Period filter and 12-month dashboard use the sampling date; PRELEVE counts as « Reçu ».
+- No demo `CLIENT` account in the seed: a portal account belongs to one client; the recette uses a TEST UI portal account created by the admin (TESTPLAN Z).
+- Lab pages' `generateMetadata` (programmation, technicien, validation `[id]`) check the role before reading the sample, so the blind reference never reaches another role's page title.
+
 ## 8c. A lesson written down (2026-08-25)
 
 Importing anything that touches Prisma from a **client** component drags the
@@ -498,6 +571,15 @@ importing a server module.
 - **Admin silent report edit** (client 28-07) intentionally bypasses the audit
   trail for ADMIN only. This is a deliberate client choice; keep it scoped to
   ADMIN + report edits and nothing else.
+
+- **Billing, after 2026-10-08 (FACTURATION.md):**
+  - An issued invoice prints the client's **current** name and address: a later rename or a merge (`/api/clients/[id]/merge` moves the invoices) changes what an issued invoice and its PDF show. Strict immutability needs snapshot columns on `Invoice` (migration not written).
+  - Credit-note lines are not linked to the invoice line they take back (no `InvoiceItem.creditedItemId`): repeated credit notes on one line are bounded only by the invoice's remaining creditable total.
+  - Totals stored before the rounding fix may differ by 0,01 at 7/10/14 % VAT; a credit note taking back every line of such an invoice can be refused by one centime (lower one price by 0,01).
+  - `src/lib/invoice-types.ts` is no longer imported; `GET /api/invoices` and `/api/invoices/stats` are no longer called by the screens (they read through `invoice-queries.ts`); `PATCH /api/invoices/[id]/payment` only answers 410. Retire them in a later clean-up.
+  - The counters screen (`src/app/api/admin/counters/route.ts`) shows SERIE and CONTROLE only; FACTURE / AVOIR are set by the migration and drawn at issue. Add them (with a `FAC-` / `AV-` parser) if the lab wants to continue the old software's invoice numbers.
+- **Reports, after 2026-10-08 (AMENDEMENT.md):** a version frozen at issue does not take a later silent admin correction until the next reopen (the current version renders live, so screens and downloads show it). If `loadReportData` cannot read a pending report's frozen JSON (damaged row), it falls back to the live data (logged).
+- **Portal, after 2026-10-08 (PORTAIL.md):** `POST /api/portail/compte/mot-de-passe` calls `auth.api.changePassword` server-side, outside Better Auth's HTTP rate limit (low risk: needs a stolen session; add a per-user attempt counter if wanted). Better Auth's rate limiter keys on the client IP: behind nginx, check `x-forwarded-for` is trusted (`advanced.ipAddress`), or every user shares one bucket.
 
 ## 10. Scope additions — client meeting 2026-07-28
 

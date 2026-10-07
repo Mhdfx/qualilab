@@ -15,6 +15,10 @@ export default async function UtilisateursPage() {
       username: true,
       role: true,
       banned: true,
+      // The client of a « Client (portail) » account (PORTAIL.md §1), with
+      // what closes its portal (archived or merged).
+      clientId: true,
+      client: { select: { id: true, name: true, archived: true, mergedIntoId: true } },
     },
     orderBy: [{ role: "asc" }, { name: "asc" }],
   });

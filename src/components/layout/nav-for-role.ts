@@ -3,6 +3,7 @@ import type { NavSection } from "./nav-types";
 import { adminNav } from "./admin-nav";
 import { preleveurNav } from "./preleveur-nav";
 import { programmationNav } from "./programmation-nav";
+import { portailNav } from "./portail-nav";
 import {
   receptionNav,
   technicienNav,
@@ -39,8 +40,8 @@ const NAVS: Record<Role, NavSection[]> = {
   GESTIONNAIRE: commercialNav,
   COMPTABLE: comptabiliteNav,
   MAGASINIER: magasinNav,
-  // The client portal (Phase 8) has no screens yet: nothing to list.
-  CLIENT: [],
+  // The client portal (PORTAIL.md §2): its own screens only.
+  CLIENT: portailNav,
 };
 
 /** Sidebar sections for a role. */

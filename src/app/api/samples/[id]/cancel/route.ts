@@ -4,6 +4,7 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { canTransition } from "@/lib/sample-status";
+import { cancelRefusalForReport } from "@/lib/report-amendment";
 
 const REASONS: CancelReason[] = ["NON_EXPLOITABLE", "QUANTITE_INSUFFISANTE", "DOUBLON", "ANNULATION_CLIENT", "AUTRE"];
 
@@ -23,9 +24,23 @@ export async function POST(
   const { id } = await params;
   const sample = await prisma.sample.findUnique({
     where: { id },
-    select: { id: true, code: true, controlCode: true, status: true, serie: { select: { serialNumber: true } } },
+    select: {
+      id: true,
+      code: true,
+      controlCode: true,
+      status: true,
+      serie: { select: { serialNumber: true } },
+      report: { select: { amendmentPending: true } },
+    },
   });
   if (!sample) return NextResponse.json({ error: "Échantillon introuvable." }, { status: 404 });
+
+  // A sample reopened for amendment is back to RESULTATS_SAISIS, which the
+  // state machine lets an admin cancel — but its report was issued
+  // (AMENDEMENT.md): it is corrected by amendment, never cancelled. The
+  // status guard of the write below covers a concurrent reopen.
+  const reportRefusal = cancelRefusalForReport(sample.report);
+  if (reportRefusal) return NextResponse.json({ error: reportRefusal }, { status: 409 });
 
   const transition = canTransition(sample.status, "ANNULE", session.role);
   if (!transition.ok) return NextResponse.json({ error: transition.error }, { status: 409 });

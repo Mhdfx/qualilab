@@ -20,6 +20,12 @@ describe("sampleBillingNotice", () => {
     expect(sampleBillingNotice("VALIDE")).toBeNull();
     expect(sampleBillingNotice("RAPPORT_ENVOYE")).toBeNull();
   });
+
+  it("says nothing for a sample reopened for amendment (AMENDEMENT.md §2)", () => {
+    expect(sampleBillingNotice("RESULTATS_SAISIS", true)).toBeNull();
+    // A cancellation still shows, whatever the report.
+    expect(sampleBillingNotice("ANNULE", true)).toBe("CANCELLED");
+  });
 });
 
 describe("invoiceNotices", () => {
@@ -43,6 +49,12 @@ describe("invoiceNotices", () => {
       { kind: "CANCELLED", references: ["00013"] },
       { kind: "BEFORE_RESULT", references: ["00012", "CODE-d"] },
     ]);
+  });
+
+  it("leaves out a sample whose report is being amended", () => {
+    expect(
+      invoiceNotices([{ sample: { ...sample("e", "RESULTATS_SAISIS", "00015"), amendmentPending: true } }])
+    ).toEqual([]);
   });
 
   it("is empty for an invoice typed by hand or fully validated", () => {

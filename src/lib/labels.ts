@@ -234,9 +234,16 @@ export function futureMessage(what: string): string {
   return `${what} est dans le futur : il est ${legal} (heure légale du Maroc, GMT depuis le 20/09/2026). Un appareil non mis à jour affiche une heure de plus — gardez l'heure proposée.`;
 }
 
+/**
+ * The STORED status only. Screens show the derived state instead
+ * (INVOICE_STATE_LABELS in invoice-lifecycle.ts: « Émise », « Partiellement
+ * payée », « Avoir »…); this map is kept for exports and the journal.
+ */
 export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
+  BROUILLON: "Brouillon",
   EN_ATTENTE: "En attente",
   PAYEE: "Payée",
+  ANNULEE: "Annulée",
 };
 
 export const CURRENCY = "DH";

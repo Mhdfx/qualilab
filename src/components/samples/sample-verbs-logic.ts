@@ -20,6 +20,8 @@ export type VerbSample = {
   code: string;
   controlCode: string | null;
   status: SampleStatus;
+  /** A report was issued (a sample reopened for amendment): no « Annuler ». */
+  hasReport?: boolean;
   type: SampleType;
   lineKind: LineKind;
   produit: string | null;

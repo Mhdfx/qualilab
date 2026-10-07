@@ -6,6 +6,7 @@ import { fmt, singleLimit, type Plan } from "./interpretation";
 import { repetitionLabel } from "./series";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
 import { designationHeading } from "./document-html";
+import { RECONSTRUCTED_LABEL, amendmentHeader, duplicataMention, supersededMention } from "./report-amendment";
 
 /**
  * The official analysis report.
@@ -72,6 +73,31 @@ export type ReportData = {
     criterion: Plan | null;
     units: ReportUnit[];
   }[];
+  /** An amended version (AMENDEMENT.md §2.3): the version it cancels and
+   *  replaces, and the reason. Absent or null on an original report. */
+  amendment?: ReportAmendment | null;
+};
+
+export type ReportAmendment = {
+  /** The printed number of the version replaced (« RAP-2026-00001 », then « -A1 »…). */
+  previousNumber: string;
+  /** When that version was issued. */
+  previousIssuedAt: Date | string;
+  /** « Motif de l'amendement », as written when the report was reopened. */
+  note: string | null;
+};
+
+/**
+ * What a given print adds to the report, never frozen with it
+ * (AMENDEMENT.md §3): the duplicate mark, and the marks of an old version.
+ */
+export type ReportMarks = {
+  /** « DUPLICATA — édité le … », head and foot. */
+  duplicataAt?: Date | null;
+  /** The printed number of the current version, when this one is no longer it. */
+  supersededBy?: string | null;
+  /** Version 0 rebuilt at the first amendment of a report issued before versions existed. */
+  reconstructed?: boolean;
 };
 
 export type ReportUnit = { display: string; value: number | null; detected: boolean | null };
@@ -176,9 +202,39 @@ function resultsTable(data: ReportData, from: number, to: number, first: boolean
   return `<table class="results"><colgroup>${cols}</colgroup><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
 
+/**
+ * The marks of a given print, on the title line — they cost no height, so
+ * the report still fits on one page: « DUPLICATA — édité le … » (repeated in
+ * the footer), « Version remplacée par … », « Version reconstituée ».
+ */
+function marksHtml(marks: ReportMarks): string {
+  const parts: string[] = [];
+  if (marks.duplicataAt) {
+    parts.push(`<span class="mark duplicata">${escapeHtml(duplicataMention(marks.duplicataAt))}</span>`);
+  }
+  if (marks.supersededBy) {
+    parts.push(`<span class="mark superseded">${escapeHtml(supersededMention(marks.supersededBy))}</span>`);
+  }
+  if (marks.reconstructed) {
+    parts.push(`<span class="mark superseded">${escapeHtml(RECONSTRUCTED_LABEL)}</span>`);
+  }
+  return parts.join("");
+}
+
+/** « Rapport amendé — annule et remplace le rapport … du … » and the reason (AMENDEMENT.md §2.3). */
+function amendmentHtml(data: ReportData): string {
+  if (!data.amendment) return "";
+  const header = amendmentHeader(data.amendment);
+  const replaces = header.replaces.charAt(0).toLowerCase() + header.replaces.slice(1);
+  return `<div class="amended"><b>${escapeHtml(header.title)}</b> — ${escapeHtml(replaces)}.${
+    header.note ? ` <span>${escapeHtml(header.note)}</span>` : ""
+  }</div>`;
+}
+
 export function buildReportHtml(
   data: ReportData,
-  company: CompanyInfo = COMPANY
+  company: CompanyInfo = COMPANY,
+  marks: ReportMarks = {}
 ): string {
   const nonConformes = data.results.filter((r) => r.conform === false).length;
   const alert = nonConformes > 0 || data.interpretation === "NON_SATISFAISANT";
@@ -315,6 +371,22 @@ export function buildReportHtml(
   .sig .when { font-size: 7.8pt; color: #55707d; margin-top: 1px; }
   footer { position: fixed; bottom: 0; left: 0; right: 0; font-size: 7pt; color: #7d929c;
     text-align: center; border-top: 1px solid #e3eaee; padding-top: 4px; }
+  footer .dup { font-weight: 700; color: #a5203a; letter-spacing: .3px; }
+  /* One line still, with the duplicate mark in front. */
+  footer.with-dup { font-size: 6.6pt; white-space: nowrap; }
+  .titlebar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 10px; }
+  .titlebar h1, body.dense .titlebar h1 { margin: 0; flex: 1 1 auto; }
+  .mark { border-radius: 4px; padding: 2px 8px; font-size: 7.8pt; font-weight: 700;
+    letter-spacing: .4px; white-space: nowrap; }
+  .mark.duplicata { border: 1.5px solid #a5203a; color: #a5203a; }
+  .mark.superseded { border: 1.5px solid #9a6700; color: #9a6700; background: #fff8e6; }
+  .amended { border: 1px solid #d9e3e8; border-left: 4px solid #a5203a; border-radius: 4px;
+    padding: 5px 10px; margin-bottom: 10px; font-size: 8.6pt; line-height: 1.35; page-break-inside: avoid; }
+  .amended b { color: #a5203a; text-transform: uppercase; letter-spacing: .4px; }
+  .amended span { color: #3d5663; }
+  body.dense .titlebar { margin-bottom: 6px; }
+  body.dense .mark { font-size: 7pt; padding: 1px 6px; }
+  body.dense .amended { padding: 2px 8px; margin-bottom: 5px; font-size: 7.2pt; line-height: 1.25; }
 </style>
 </head>
 <body class="${density}">
@@ -338,7 +410,12 @@ export function buildReportHtml(
   </div>
 </header>
 
-<h1>Rapport d'analyse — ${escapeHtml(SAMPLE_TYPE_LABELS[data.type])}</h1>
+<div class="titlebar">
+  <h1>${data.amendment ? "Rapport d'analyse amendé" : "Rapport d'analyse"} — ${escapeHtml(SAMPLE_TYPE_LABELS[data.type])}</h1>
+  ${marksHtml(marks)}
+</div>
+
+${amendmentHtml(data)}
 
 <div class="grid">
   <div class="box">
@@ -390,8 +467,14 @@ ${bands.join("\n")}
   </div>
 </div>
 
-<footer>
-  ${escapeHtml(company.name)} — Rapport ${escapeHtml(data.number)} ·
+<footer${marks.duplicataAt ? ' class="with-dup"' : ""}>
+  ${
+    // On a duplicate the mark takes the place of the company name (printed
+    // in the header), so the footer stays on one line whatever the name.
+    marks.duplicataAt
+      ? `<span class="dup">${escapeHtml(duplicataMention(marks.duplicataAt))}</span> ·`
+      : `${escapeHtml(company.name)} —`
+  } Rapport ${escapeHtml(data.number)} ·
   Ce rapport ne concerne que l'échantillon soumis à l'analyse.
   Reproduction interdite sauf en intégralité.
 </footer>
@@ -411,4 +494,119 @@ export function buildConclusion(
 
   const names = nonConformes.map((r) => r.parameter).join(", ");
   return `L'échantillon analysé est NON CONFORME aux critères microbiologiques de référence pour : ${names}. Une action corrective est recommandée.`;
+}
+
+/* ------------------------------ frozen versions ----------------------------- */
+
+/**
+ * A `ReportData` as stored in `ReportVersion.data` (AMENDEMENT.md §1): plain
+ * JSON, the dates as ISO strings. `reportDataFromJson` gives it back with
+ * its dates, so a frozen version prints exactly as it was issued.
+ */
+export function reportDataToJson(data: ReportData): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
+}
+
+function reviveDate(value: unknown): Date | null {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value !== "string" || !value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * The version in force with the administrator's silent correction
+ * (`/api/reports/[id]/admin-edit`, decision of 28/07) applied. That route
+ * writes the report's conclusion only, never a frozen version — so the
+ * conclusion standing on the report row is what the version in force prints
+ * today. Returns the same object when there is nothing to apply, so a caller
+ * can tell whether the frozen data is still what is printed (`!==`).
+ */
+export function withSilentCorrection(data: ReportData, conclusion: string | null | undefined): ReportData {
+  if (typeof conclusion !== "string" || conclusion === data.conclusion) return data;
+  return { ...data, conclusion };
+}
+
+/** The frozen data back as a `ReportData`; null when it is not one (a damaged row). */
+export function reportDataFromJson(json: unknown): ReportData | null {
+  if (!json || typeof json !== "object" || Array.isArray(json)) return null;
+  const raw = json as Record<string, unknown>;
+  if (typeof raw.number !== "string" || !Array.isArray(raw.results)) return null;
+  if (!raw.client || typeof raw.client !== "object") return null;
+  const sampledAt = reviveDate(raw.sampledAt);
+  if (!sampledAt) return null;
+  let amendment: ReportAmendment | null = null;
+  if (raw.amendment && typeof raw.amendment === "object") {
+    const a = raw.amendment as Record<string, unknown>;
+    const previousIssuedAt = reviveDate(a.previousIssuedAt);
+    if (typeof a.previousNumber === "string" && previousIssuedAt) {
+      amendment = {
+        previousNumber: a.previousNumber,
+        previousIssuedAt,
+        note: typeof a.note === "string" ? a.note : null,
+      };
+    }
+  }
+  return {
+    ...(raw as unknown as ReportData),
+    sampledAt,
+    receivedAt: reviveDate(raw.receivedAt),
+    validatedAt: reviveDate(raw.validatedAt),
+    amendment,
+  };
+}
+
+/* ------------------------- contamination alerts again ----------------------- */
+
+/** What a contamination alert says about one germ — and what makes it new. */
+export type AlertReading = {
+  parameter: string;
+  value: string | null;
+  unit: string | null;
+  threshold: string | null;
+  conform: boolean | null;
+  interpretation: Interpretation | null;
+};
+
+/** The fingerprint of one result as an alert reports it. */
+function readingKey(r: AlertReading): string {
+  return JSON.stringify([
+    (r.value ?? "").trim(),
+    (r.unit ?? "").trim(),
+    (r.threshold ?? "").trim(),
+    r.conform,
+    r.interpretation,
+  ]);
+}
+
+/** One fingerprint per germ (a germ read twice keeps both readings). */
+export function germFingerprints(readings: AlertReading[]): Map<string, string> {
+  const byGerm = new Map<string, string[]>();
+  for (const r of readings) byGerm.set(r.parameter, [...(byGerm.get(r.parameter) ?? []), readingKey(r)]);
+  return new Map([...byGerm].map(([germ, keys]) => [germ, keys.sort().join("|")]));
+}
+
+/**
+ * The germs an amended report must alert on again (AMENDEMENT.md — decided
+ * with the amendment slice): only those whose result changed. A germ is NOT
+ * alerted again when
+ *  - an alert already left for exactly this result (`alerted`: the
+ *    fingerprints recorded with each successful CONTAMINATION_ALERT_SENT), or
+ *  - the version replaced carried exactly this result and the sample's
+ *    alerts went out (`replaced`, passed only when `alertsSentAt` is set —
+ *    this covers alerts recorded before fingerprints existed).
+ * A new germ over its limit, another value, unit, criterion or verdict is a
+ * new alert.
+ */
+export function germsToRealert(input: {
+  current: AlertReading[];
+  alerted: { germ: string; fingerprint: string }[];
+  replaced: AlertReading[] | null;
+}): string[] {
+  const current = germFingerprints(input.current);
+  const replaced = input.replaced ? germFingerprints(input.replaced) : new Map<string, string>();
+  const sent = new Set(input.alerted.map((a) => JSON.stringify([a.germ, a.fingerprint])));
+  return [...current]
+    .filter(([germ, fingerprint]) => !sent.has(JSON.stringify([germ, fingerprint])) && replaced.get(germ) !== fingerprint)
+    .map(([germ]) => germ);
 }

@@ -27,7 +27,9 @@ export default async function CommercialPage() {
     }),
     prisma.sample.count(),
     prisma.sample.count({ where: { status: "RAPPORT_ENVOYE" } }),
-    prisma.invoice.count(),
+    // Issued invoices only: drafts, cancelled invoices and credit notes are
+    // not « factures » for this figure (FACTURATION.md §4).
+    prisma.invoice.count({ where: { kind: "FACTURE", status: { in: ["EN_ATTENTE", "PAYEE"] } } }),
   ]);
 
   const active = clients.filter((client) => !client.archived).length;
@@ -45,7 +47,7 @@ export default async function CommercialPage() {
           <StatCard label="Clients actifs" value={active} icon={Building2} accent="brand" />
           <StatCard label="Échantillons" value={echantillons} icon={FlaskConical} accent="blue" />
           <StatCard label="Rapports envoyés" value={rapportsEnvoyes} icon={Send} accent="emerald" />
-          <StatCard label="Factures" value={factures} icon={FileText} accent="violet" />
+          <StatCard label="Factures émises" value={factures} icon={FileText} accent="violet" />
         </div>
       </section>
 
