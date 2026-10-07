@@ -273,6 +273,11 @@ in `PLAN.md`, opened one at a time.
 
 ## Session Log
 
+### 2026-10-08 — client tools live (TESTPLAN W), open checks of V closed
+- `CLIENTS-FUSION.md` deployed (`722da85`, migration `20261008100000_clients_fusion`): merge, attach as site, billing entity (« client facturé ») with « Facturé à » per site, near-duplicate warning. Production recette 36/36 on invented TEST UI W clients (archived afterwards) plus the screens in the browser (actions, preview, banners — including the clients archived by the sites import —, near-duplicate hint). The gate review fixed a real double-invoicing path (a sample of a site billed to a franchisee was still accepted for the principal).
+- Checkpoint V: cadre change on the visit page, wording of bench / validation / programmation / reception, bon de réception with twins, protocol with a cancelled twin, sampler form at phone width — all verified on production. The two « unused libraries » of HANDOFF §9 were already gone. The restore test was not re-run: ssh is limited to the deploy line.
+- Real clients untouched: the merges wait for the lab's validation of `doublons-clients.xlsx` (Q54).
+
 ### 2026-10-07 (night) — clients en double, sites, clients facturés built (`CLIENTS-FUSION.md`)
 - Schema + additive migration `20261008100000_clients_fusion` (`Client.mergedIntoId`, `Client.billedForId`, `Site.billingClientId`); pure rules `src/lib/client-identity.ts` (near-duplicates) and `src/lib/client-merge-rules.ts` (merge, attach, billing links, which client a sample is invoiced to), shared server moves `src/lib/client-transfer.ts` (also used by the sites import now).
 - Routes: `POST /api/clients/[id]/merge`, `POST /api/clients/[id]/attach-as-site` (ADMIN, preview = the same writes rolled back), `PUT /api/clients/[id]/billed-for`, `GET /api/clients/similar`, « Facturé à » on `PATCH …/sites/[siteId]`, 409 `{ error, similar }` + `confirmDuplicate` on create and rename. Screens: « Actions sur la fiche », « Clients facturés », « Facturé à » per site, « Clients proches » in the client form, « via le site … » on the billable list, archived-fiche banner.

@@ -1,5 +1,7 @@
 # Clients en double, sites et clients facturés — spec (07/10/2026)
 
+> **Statut : en production le 08/10/2026** (`722da85`, recette TESTPLAN W 36/36 sur des clients de test). Pas encore exécuté sur les vrais clients : attend la validation de `doublons-clients.xlsx` (Q54).
+
 Pourquoi : l'analyse du 07/10 (`RETOUR-LABO-06-10.md` §7) trouve, parmi les
 clients actifs, des fiches en double (même société, orthographe différente),
 des points de vente enregistrés comme clients, et des « clients facturés »

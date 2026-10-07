@@ -1018,10 +1018,9 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 - The germs of a chosen type are listed « non programmé » when a profile chip replaces the ticked analyses afterwards: visible and deliberate, but the lab may prefer the type's germs to stay ticked (to confirm).
 - Q41 (« les nombres », numbering) and Q42 (one sample split between technicians) in NEEDEDINFO.
 
-## Checkpoint W — Clients : fusion, site, client facturé, quasi-doublon (planned — `CLIENTS-FUSION.md`)
+## Checkpoint W — Clients : fusion, site, client facturé, quasi-doublon (live 08/10 — `CLIENTS-FUSION.md`)
 
-Built 07/10, **not deployed**: migration `20261008100000_clients_fusion`
-ships with the next release. To run on production after the deploy, as
+Deployed 08/10 (`722da85`, migration `20261008100000_clients_fusion` applied). Verified on production with `.ui-tests/recette-w.mjs` (36/36, run « TEST UI W2 … ») and in the browser as admin; every TEST UI W / W2 fiche archived afterwards.
 `admin` (merge, attach) and as a gestionnaire (links, near-duplicates),
 **on invented test clients only** — create them first, never touch a real
 client (the real duplicates wait for `doublons-clients.xlsx`, Q54):
@@ -1032,36 +1031,38 @@ Nord »), « TEST UI W Chaîne Test Agence Sud » (one série, one invoice),
 « TEST UI W Franchisé Démo ». Afterwards: archive every TEST UI W fiche.
 
 ### W0 — Deployment
-- [ ] The migration applies (migrate container exits 0); `/commercial` still lists the same active clients; a fiche opens.
-- [ ] A client archived by the sites import of 07/10 (before the column) reads « Rattachée comme site de X » with the link (journal fallback).
+- [x] The migration applies (migrate container exits 0); `/commercial` still lists the same active clients; a fiche opens.
+- [x] A client archived by the sites import of 07/10 (before the column) reads « Rattachée comme site de X » with the link (journal fallback).
 
 ### W1 — Quasi-doublon (gestionnaire)
-- [ ] Typing « TEST UI W Client Demo SA » in « Nouveau client » lists « TEST UI W Client Démo SARL » and « TEST UI W Client Demo » under « Clients proches », each with its reason and a link (new tab).
-- [ ] « Créer le client » → the amber box « Ces clients ressemblent beaucoup à celui-ci », the button disabled until « Ce n'est pas le même client » is ticked; then « Créer quand même » creates it; `/admin/journal` « Client créé » carries `confirmedNotDuplicate`. Archive it.
-- [ ] The exact name « TEST UI W Client Demo » (any case or accent) is still refused outright: « Un client porte déjà cette raison sociale. »
-- [ ] Same ICE under another name → reason « même ICE ». Renaming a fiche to a near name asks the same confirmation; changing only case or accents does not.
+- [x] Typing « TEST UI W Client Demo SA » in « Nouveau client » lists « TEST UI W Client Démo SARL » and « TEST UI W Client Demo » under « Clients proches », each with its reason and a link (new tab).
+- [x] « Créer le client » → the amber box « Ces clients ressemblent beaucoup à celui-ci », the button disabled until « Ce n'est pas le même client » is ticked; then « Créer quand même » creates it; `/admin/journal` « Client créé » carries `confirmedNotDuplicate`. Archive it.
+- [x] The exact name « TEST UI W Client Demo » (any case or accent) is still refused outright: « Un client porte déjà cette raison sociale. »
+- [x] Same ICE under another name → reason « même ICE ». Renaming a fiche to a near name asks the same confirmation; changing only case or accents does not.
 
 ### W2 — Fusionner avec… (admin, on « TEST UI W Client Demo », keep « TEST UI W Client Démo SARL »)
-- [ ] « Actions sur la fiche » appears for `admin` only, never on an archived fiche; the picker hides this fiche and archived clients.
-- [ ] « Voir l'aperçu » writes nothing (reload both fiches: unchanged) and reads « 2 échantillons, 1 série et 1 facture passeront à … », « 1 site déplacé », the warning about the missing ICE; the red box « La fiche … sera archivée et renverra vers … » and « Cette opération ne se défait pas depuis l'application. »
-- [ ] Changing the target clears the preview. Picking a client with another ICE is refused (« … deux ICE différents : ce sont deux sociétés … »).
-- [ ] « Fusionner dans … » opens the kept fiche: the série, the samples, the invoice (now in its name, PDF re-rendered with that name), the site « Agence Nord », the addresses (no duplicate) are there; empty fields completed, nothing overwritten.
-- [ ] The archived fiche reads « Fusionnée dans … » with the link, has no « Réactiver », and `PATCH archived:false` answers 409; it is gone from `/commercial` and from the pickers.
-- [ ] `/admin/journal`: « Clients en double fusionnés » on both fiches with the counts.
+- [x] « Actions sur la fiche » appears for `admin` only, never on an archived fiche; the picker hides this fiche and archived clients.
+- [x] « Voir l'aperçu » writes nothing (reload both fiches: unchanged) and reads « 2 échantillons, 1 série et 1 facture passeront à … », « 1 site déplacé », the warning about the missing ICE; the red box « La fiche … sera archivée et renverra vers … » and « Cette opération ne se défait pas depuis l'application. »
+- [x] Changing the target clears the preview. Picking a client with another ICE is refused (« … deux ICE différents : ce sont deux sociétés … »).
+- [x] « Fusionner dans … » opens the kept fiche: the série, the samples, the invoice (now in its name, PDF re-rendered with that name), the site « Agence Nord », the addresses (no duplicate) are there; empty fields completed, nothing overwritten.
+- [x] The archived fiche reads « Fusionnée dans … » with the link, has no « Réactiver », and `PATCH archived:false` answers 409; it is gone from `/commercial` and from the pickers.
+- [x] `/admin/journal`: « Clients en double fusionnés » on both fiches with the counts.
 
 ### W3 — Rattacher comme site de… (admin, « TEST UI W Chaîne Test Agence Sud » → « TEST UI W Chaîne Test »)
-- [ ] Preview: « Le site « TEST UI W Chaîne Test Agence Sud » sera créé chez … », « 1 facture reste au nom de … », the addresses' boxes unticked; choosing the existing site « Agence Nord » says « existe déjà … il sera utilisé ».
-- [ ] Commit: the série has the site, the sample shows in the parent's search with the site filter; the moved addresses have « Rapports » and « Alertes » unticked; **the invoice stays on the archived fiche**.
-- [ ] A client that has sites is refused (« … un client qui a des sites ne devient pas un site. Fusionnez-le plutôt. »).
-- [ ] The archived fiche reads « Rattachée comme site de … »; journal « Client rattaché comme site d'un autre client ».
+- [x] Preview: « Le site « TEST UI W Chaîne Test Agence Sud » sera créé chez … », « 1 facture reste au nom de … », the addresses' boxes unticked; choosing the existing site « Agence Nord » says « existe déjà … il sera utilisé ».
+- [x] Commit: the série has the site, the sample shows in the parent's search with the site filter; the moved addresses have « Rapports » and « Alertes » unticked; **the invoice stays on the archived fiche**.
+- [x] A client that has sites is refused (« … un client qui a des sites ne devient pas un site. Fusionnez-le plutôt. »).
+- [x] The archived fiche reads « Rattachée comme site de … »; journal « Client rattaché comme site d'un autre client ».
 
 ### W4 — Client facturé (gestionnaire, « TEST UI W Franchisé Démo » for « TEST UI W Chaîne Test »)
-- [ ] On the principal: « Clients facturés » → « Lier un client facturé » → the franchisé; on the franchisé: « Client facturé de … » and « Retirer le lien ».
-- [ ] Refused: linking a client to itself, to an archived client, to a client that is itself a client facturé, or a client facturé that has its own.
-- [ ] « Facturé à » on the site « Agence Nord » offers the principal and the franchisé; choosing the franchisé is journalled « « Facturé à » d'un site modifié ».
-- [ ] New invoice for the franchisé: the samples of « Agence Nord » are offered with the badge « via le site Agence Nord de … »; the principal's billable list no longer offers them; `POST /api/invoices` for the principal with one of them is refused (« … est facturé à … : son site lui est attribué »); invoicing it twice is refused.
-- [ ] « Retirer le lien » (or archiving the franchisé) gives « Agence Nord » back to the principal: its samples reappear in the principal's billable list.
-- [ ] The reports and their recipients do not change.
+- [x] On the principal: « Clients facturés » → « Lier un client facturé » → the franchisé; on the franchisé: « Client facturé de … » and « Retirer le lien ».
+- [x] Refused: linking a client to itself, to an archived client, to a client that is itself a client facturé, or a client facturé that has its own.
+- [x] « Facturé à » on the site « Agence Nord » offers the principal and the franchisé; choosing the franchisé is journalled « « Facturé à » d'un site modifié ».
+- [x] New invoice for the franchisé: the samples of « Agence Nord » are offered with the badge « via le site Agence Nord de … »; the principal's billable list no longer offers them; `POST /api/invoices` for the principal with one of them is refused (« … est facturé à … : son site lui est attribué »); invoicing it twice is refused.
+- [x] « Retirer le lien » (or archiving the franchisé) gives « Agence Nord » back to the principal: its samples reappear in the principal's billable list.
+- [x] The reports and their recipients do not change (no report code touched).
+- Observed in the browser: the archived fiche of a merged test client reads « Fusionnée dans … »; a client archived by the sites import of 07/10 reads « Rattachée comme site de … » (journal fallback); an active fiche shows « Fusionner avec… », « Rattacher comme site de… », « Lier un client facturé », « Lier à un client principal »; the merge preview reads the counts, the missing-ICE warning, « La fiche … sera archivée … » and « Cette opération ne se défait pas depuis l'application. » (cancelled, nothing written); typing a near name in « Nouveau client » lists « Clients proches » with links.
+- Also verified: an invoice can be created for a sample at the PROGRAMME stage (FAC-2026-0004, before any result), as PROGRAMME.md §6 intends.
 
 ## Checkpoint V — Retours du laboratoire des 05 → 07/10 (live 07/10 — `RETOUR-LABO-06-10.md` §5, §6)
 
@@ -1079,15 +1080,16 @@ the test client « TEST UI 2026-10-06 Traiteur »: an API script
 ### V1 — En-tête de la visite
 - [x] « Cadre »* offers Autre / Devis validé / BC / Convention on the visit and the deposit, none preselected; the API refuses a missing cadre and the old value (« Choisissez le cadre de l'analyse. »).
 - [x] « Autre » opens « Préciser (facultatif) »: série 6/26 typed in the browser prints « Autre — Contrôle trimestriel » on the recap, the reception side panel and the protocol PDF; the lab changes the cadre (PATCH Convention, then back to Autre + note).
-- [ ] Changing the cadre on the visit page until reception — not exercised in the browser.
+- [x] Changing the cadre on the visit page until reception (08/10, série 9/26: « Devis validé » → « BC », saved, read back after reload; « Modifiable tant que le laboratoire n'a pas réceptionné la série »).
 - [x] « Service vétérinaire » absent (visit: Qualilab / Autre; deposit: Le client / Autre); the API refuses it (« … choisissez « Autre » et indiquez le nom. »).
 - [x] « Référence client » on the form, the recap, the reception panel and the protocol (REF-0710-NAV).
 
 ### V2 — Vocabulaire et surfaces
+- [x] Phone width (375 px, 08/10): the new sampler form has no horizontal scroll; the surface state chips wrap (40 px targets), Désignation / Surface prélevée fill the width, the air method chips fit one line, physico-chimie greyed on Air.
 - [x] « Échantillon N » on the visit form (cards, buttons « Ajouter un échantillon », « Continuer — Vérifier (3 échantillons) »), the success screen, the reception (« Valider la réception (4 échantillons) », « 4 échantillons numérotés »), the programmation queue and sheet; form error « Échantillon 3 — choisissez la méthode de prélèvement de l'air. » with the card ringed red.
-- [ ] Bench and validation screens' wording — not opened in this recette (covered by the build sweep).
+- [x] Bench, validation, programmation and reception screens (lists and detail pages) fetched as tech1 / valid1 / param1 / recep1 on 08/10: no « Ligne » left, « échantillon » throughout.
 - [x] A Surface sample asks « Désignation »*, « État de la surface »* (three buttons) and « Surface prélevée (cm²) » (100 by default), absent on the other types; the state prints in the protocol's « Remarques » (« Nettoyé »), the reception card, the programmation queue, « Corriger la fiche » and the report (« Plan de travail — surface aseptique »).
-- [ ] The bon de réception's wording and « Échantillon annulé / Détruit à réception » on the protocol — not exercised.
+- [x] 08/10: the bon of deposit 5/26 prints rows « 1M » / « 1P » with their N° de contrôle and family, « Cadre : BC », « Référence client »; after cancelling 6/26-1P the protocol prints « 1M : — / 1P : Échantillon annulé » in red and the corrected surface state.
 
 ### V3 — Familles par échantillon
 - [x] Two boxes per sample instead of the nature select; physico-chimie greyed on an Air sample (« Non proposées pour ce type »).
