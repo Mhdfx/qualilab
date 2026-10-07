@@ -170,11 +170,11 @@ visite du client ?) — Q52.
 
 | Tranche | Contenu | Effort | Attend |
 |---|---|---|---|
-| **V1 — En-tête de la visite** | Cadre à quatre valeurs + texte sur « Autre » (8) ; « Service vétérinaire » retiré (2) ; « Référence client » (05/10 n° 4) ; protocole PDF re-versionné | 11,5 h | rien (Q46, Q52 tranchées par défaut) |
+| **V1 — En-tête de la visite** | Cadre : « Autocontrôle » / « Contrôle officiel » remplacés par Autre, Devis validé, BC, Convention + texte sur « Autre » (8) ; « Service vétérinaire » retiré (2) ; « Référence client » (05/10 n° 4) ; protocole PDF re-versionné | 11,5 h | rien (Q46, Q52 tranchées par défaut) |
 | **V2 — Vocabulaire et surfaces** | « Échantillon » partout (3) ; « Désignation » et « Surface prélevée (cm²) » (4) ; « État de la surface » (9) | 7,5 h | rien (Q47, Q51 tranchées par défaut) |
-| **V3 — Familles par échantillon** | Deux cases par échantillon, nature masquée et déduite, deux échantillons quand les deux sont cochées, nature fine à la réception / au programme (5, 7) | 10 h | Q48, Q49 |
-| **V4 — Air** | Méthode de prélèvement (6) ; paramètres d'air au catalogue | 5 h + catalogue | Q50 |
-| **V5 — Sites des clients** | Reprise des 426 sites, faux clients archivés, site sur le rapport et l'e-mail, filtre par site (1) | 10 h | Q45 |
+| **V3 — Familles par échantillon** | « Analyses microbiologiques » et « Analyses physico-chimiques » sur chaque échantillon (7), « Nature d'analyse » masquée et déduite (5), deux échantillons quand les deux sont cochées, nature fine à la réception / au programme (5, 7) | 10 h | Q48, Q49 |
+| **V4 — Air** | Microbiologie de l'air : « Méthode de prélèvement » Boîte exposée 30 min / Biocollecteur (6) ; paramètres d'air au catalogue | 5 h + catalogue | Q50 |
+| **V5 — Sites des clients** | Sites de prélèvement affectés au client (ex. McDonald's, 84 restaurants) : reprise des 426 sites, faux clients archivés, site sur le rapport et l'e-mail, filtre par site (1) | 10 h | Q45 |
 | **V6 — Le laboratoire décide des analyses** | Analyses facultatives et type de produit retiré du préleveur (05/10 n° 8 et 9) : la fiche de programme fait déjà ce travail depuis le 05/10, il reste à lever l'obligation côté visite et à bloquer la programmation sans analyse | 6 h (au lieu de 17 h) | 05/10 Q6 |
 | **V7 — Recette** | TESTPLAN V en production, documents | 3 h | V1 → V6 |
 
