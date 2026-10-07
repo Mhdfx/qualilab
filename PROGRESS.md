@@ -271,6 +271,9 @@ in `PLAN.md`, opened one at a time.
 
 ## Session Log
 
+### 2026-10-07 (night) — clients en double : analyse complète
+- Every active client checked against the old database (types client / site / client facturé, parents, ICE, e-mail, phone, city) with strong and weak evidence, three agent passes (classify, refute, consolidate): 355 clients concerned — 74 duplicates, 109 billing entities to link, 14 outlets to attach as sites, 27 to confirm. File for the lab: `legacy-export/doublons-clients.xlsx` (outside the repo). Nothing changed in production; merge / attach actions and the billing-entity link wait for the lab's validation (Q54). `RETOUR-LABO-06-10.md` §7.
+
 ### 2026-10-07 — tranches V1 → V6 en production (TESTPLAN V)
 - Built in one workflow (foundation: schema + migration, série core, shared line editor, lab APIs; then préleveur, réception, documents, lab screens and sites import in parallel; then gates): 84 files, 616 tests. Deployed (`e30c2b0`), migration `20261007100000_retour_labo_v` applied.
 - Recette on production: API script 29/29 and the real screens in the browser (série 6/26 typed as pre1, received as recep1, corrected, programmed as param1; report with its site, série 7/26). Five defects found and fixed the same day (`e83421c`): inherited physico-chimie box, programme natures of another kind, unlinked label, stale received summary, and the sites import that would have archived 4 real clients.

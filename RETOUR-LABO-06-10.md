@@ -294,3 +294,32 @@ correction → programme → rapport), sur le client de test.
   la nouvelle version des documents PG04/EN01 et PG05/EN04 dans
   `/admin/documents` ; les réponses Q45–Q52 (envoi et facturation par site,
   confirmation des choix par défaut).
+
+## 7. Clients en double ou éclatés — analyse complète (07/10, après l'import des sites)
+
+Lecture seule ; rien n'a été modifié en production. Fichier pour le
+laboratoire : `legacy-export/doublons-clients.xlsx` (hors dépôt : noms de
+clients). Scripts : `.ui-tests/dup-candidates.mjs`, `build-doublons-xlsx.py`.
+
+- **Cause :** l'ancien logiciel a trois sortes de fiches — 1 022 clients,
+  426 sites et **945 « clients facturés »** (la société qui reçoit les
+  factures d'une chaîne : franchisé, holding, société de gestion). L'import
+  du 01/10 a tout mis à plat en clients ; le laboratoire a aussi saisi
+  certaines sociétés deux fois.
+- **Méthode :** indices forts (même nom sans forme juridique ni accents,
+  même ICE, rattachement de l'ancien logiciel, nom d'un site) et faibles
+  (début de nom, téléphone, e-mail, adresse, orthographe voisine) ; chaque
+  client classé, chaque fusion ou rattachement contre-vérifié, puis une
+  réponse cohérente par groupe.
+- **Résultat sur 1 172 clients actifs :** 355 examinés — 74 doublons à
+  fusionner, 109 clients facturés à garder et à lier à leur client
+  principal, 14 points de vente à rattacher comme sites (dont 2 chaînes sans
+  fiche principale, à créer), 27 cas à confirmer par le laboratoire ;
+  130 fiches principales et 1 fiche distincte restent telles quelles. Aucun
+  doublon proposé n'a deux ICE différents.
+- **À construire après validation du labo :** une action « Fusionner avec… »
+  et une action « Rattacher comme site de… » (avec aperçu, journal, et
+  transfert de l'historique), le lien **client facturé → client principal**
+  (absent de l'application : la facture d'un site doit pouvoir aller au
+  franchisé), et un avertissement de quasi-doublon à la création d'un
+  client. Estimation : ≈ 12 h.

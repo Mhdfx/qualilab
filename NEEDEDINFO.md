@@ -158,6 +158,7 @@ préleveur photographie la feuille signée depuis le téléphone.
 | Q51 | Ligne Surface : la désignation (« Planche verte ») reste et « État de la surface » (Aseptique / En cours de travail / Nettoyé) s'ajoute en choix obligatoire — c'est bien la lecture ? | Visite — `RETOUR-LABO-06-10.md` §2.4 |
 | Q52 | Cadre (Autre / Devis validé / BC / Convention) : valeur par défaut (aucune ou celle de la dernière visite du client) ? Le N° du BC ou du devis va-t-il dans « Référence client » ? | Série — `RETOUR-LABO-06-10.md` §2.8 |
 | Q53 | Sites : 75 noms de site douteux (même nom chez plusieurs clients, ex. une ville) et 5 sites dont le client parent existe en double n'ont rien archivé ; faut-il les rattacher à la main depuis la fiche client, ou fusionner les clients en double ? (liste dans l'analyse de l'import, `/admin/import`) | Clients — `RETOUR-LABO-06-10.md` §6 |
+| Q54 | Clients en double : valider le fichier `doublons-clients.xlsx` (colonne « Décision du labo ») — 74 fusions, 109 clients facturés à lier, 14 sites, 27 cas à trancher. Un client facturé (franchisé) doit-il recevoir les rapports, les factures, ou les deux ? | Clients — `RETOUR-LABO-06-10.md` §7 |
 
 ## 2. Ready to send — current batch
 
