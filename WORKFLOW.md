@@ -506,7 +506,7 @@ construit) :
   (deux N° de contrôle), comme dans l'ancien logiciel.
 - **Air (V4).** Une ligne Air porte sa méthode : boîte exposée 30 min ou
   biocollecteur.
-- **Sites (V5).** Les sites des chaînes (McDonald's, Rezoroute, Sodexo…)
+- **Sites (V5).** Les sites des chaînes de restauration et de collectivités
   sont des sites du client, plus des clients séparés ; le rapport imprime
   « Client — Site ».
 - **Analyses (V6).** Le préleveur peut ne cocher aucune analyse ni type de

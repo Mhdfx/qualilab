@@ -12,7 +12,7 @@ la surface). Chaque point est vérifié dans le code, en production
 
 | # | Remarque | Faisable | Effort | Recoupe 05/10 | Tranche |
 |---|---|---|---|---|---|
-| 1 | Affecter les sites de prélèvement au client (ex. McDonald's) | oui — c'est une reprise de données | 10 h | — (sites reportés au chantier 6) | V5 |
+| 1 | Affecter les sites de prélèvement au client (ex. une chaîne de restauration) | oui — c'est une reprise de données | 10 h | — (sites reportés au chantier 6) | V5 |
 | 2 | Retirer « Service vétérinaire » de « Prélèvement effectué par » | oui | 1,5 h | demande 3 (confirmée) | V1 |
 | 3 | « Ligne 1 » → « Échantillon 1 » | oui | 3 h | — | V2 |
 | 4 | « Surface prélevée » → « Désignation » | oui | 1,5 h | demande 7a | V2 |
@@ -29,11 +29,11 @@ est au §4.
 ## 2. Ce que chaque remarque change
 
 **1 — Sites des clients.** L'ancien logiciel range 426 sites sous 36 clients
-« parents » (table CLIENTS, type 102, champ ID_HAUTE) : McDonald's 84
-restaurants, Rezoroute 77, Sodexo 55, Delipat 30, Little Mamma 30, Acima 27,
-La Grillardière 17… L'import du 01/10 a pris chaque site pour un client :
-en production, « MARINA », « CASA PORT », « AGADIR DRIVE », « AIN SEBAA »
-sont des clients, et le client « MC DONALDS » n'a **aucun site**. Le modèle
+« parents » (table CLIENTS, type 102, champ ID_HAUTE) : la plus grande
+chaîne de restauration en compte 84, les suivantes 77, 55, 30, 30, 27, 17…
+L'import du 01/10 a pris chaque site pour un client : en production, chaque
+restaurant de la chaîne est un client à part, et le client « chaîne » n'a
+**aucun site**. Le modèle
 `Site` existe déjà (fiche client, cascade client → site de la visite,
 « + Nouveau site… », destinataires par site) ; il manque la reprise :
 - export des 426 sites depuis l'ancienne base (parent, nom, adresse, ville,
@@ -45,8 +45,8 @@ sont des clients, et le client « MC DONALDS » n'a **aucun site**. Le modèle
   fait) : l'ajouter au bloc client du rapport et à l'objet de l'e-mail,
   indispensable pour 84 restaurants d'un même client ;
 - filtre par site dans la recherche et l'export Excel.
-Risques : rapprochement par nom (accents : « AÏN SEBAÂ », « AIN SEBAA » ;
-homonymes : « PAUL MARJANE CALIFORNIE ») — l'import montre un aperçu à
+Risques : rapprochement par nom (accents ; homonymes : un même nom de
+quartier porté par les sites de deux chaînes) — l'import montre un aperçu à
 valider avant d'écrire. La facturation par site (« forfait par site » de
 l'ancien logiciel) n'est pas incluse.
 
@@ -146,7 +146,7 @@ visite du client ?) — Q52.
 ## 3. Questions au laboratoire (NEEDEDINFO Q45–Q52)
 
 1. **Q45 — Sites.** On rattache les 426 sites de l'ancien logiciel à leurs
-   36 clients (McDonald's 84…) et on archive les « clients » créés à tort
+   36 clients (84 restaurants pour la plus grande chaîne…) et on archive les « clients » créés à tort
    pour chaque site ? Le rapport imprime « Client — Site » ; faut-il aussi
    envoyer les rapports par site et facturer par site ?
 2. **Q46 — Service vétérinaire.** Retirer aussi du dépôt au comptoir
@@ -174,7 +174,7 @@ visite du client ?) — Q52.
 | **V2 — Vocabulaire et surfaces** | « Échantillon » partout (3) ; « Désignation » et « Surface prélevée (cm²) » (4) ; « État de la surface » (9) | 7,5 h | rien (Q47, Q51 tranchées par défaut) |
 | **V3 — Familles par échantillon** | « Analyses microbiologiques » et « Analyses physico-chimiques » sur chaque échantillon (7), « Nature d'analyse » masquée et déduite (5), deux échantillons quand les deux sont cochées, nature fine à la réception / au programme (5, 7) | 10 h | Q48, Q49 |
 | **V4 — Air** | Microbiologie de l'air : « Méthode de prélèvement » Boîte exposée 30 min / Biocollecteur (6) ; paramètres d'air au catalogue | 5 h + catalogue | Q50 |
-| **V5 — Sites des clients** | Sites de prélèvement affectés au client (ex. McDonald's, 84 restaurants) : reprise des 426 sites, faux clients archivés, site sur le rapport et l'e-mail, filtre par site (1) | 10 h | Q45 |
+| **V5 — Sites des clients** | Sites de prélèvement affectés au client (ex. la chaîne de restauration aux 84 restaurants) : reprise des 426 sites, faux clients archivés, site sur le rapport et l'e-mail, filtre par site (1) | 10 h | Q45 |
 | **V6 — Le laboratoire décide des analyses** | Analyses facultatives et type de produit retiré du préleveur (05/10 n° 8 et 9) : la fiche de programme fait déjà ce travail depuis le 05/10, il reste à lever l'obligation côté visite et à bloquer la programmation sans analyse | 6 h (au lieu de 17 h) | 05/10 Q6 |
 | **V7 — Recette** | TESTPLAN V en production, documents | 3 h | V1 → V6 |
 
@@ -186,3 +186,85 @@ ne la remplace pas : elle porte sur l'état, pas sur la désignation.
 
 Ordre : V1 et V2 d'abord (une migration chacune, aucun choix en suspens),
 puis V3 → V6 au fil des réponses, V7 à la fin.
+
+## 5. Décisions de construction (07/10) — ce qui est construit maintenant
+
+Construit tout ce qui ne dépend pas d'une donnée du laboratoire, avec les
+choix par défaut ci-dessous (chacun réversible si la réponse diffère).
+Hors construction : paramètres d'air et de physico-chimie au catalogue
+(données du laboratoire, Q50 — le catalogue de production ne contient que de
+la microbiologie), volume aspiré du biocollecteur (Q50), envoi et
+facturation par site (Q45).
+
+**Migration `20261007100000_retour_labo_v`** (une seule, additive sauf le
+cadre) :
+- `Cadre` : `AUTRE`, `DEVIS_VALIDE`, `BON_COMMANDE`, `CONVENTION` — ENUM
+  élargi, séries existantes passées à `AUTRE`, puis ENUM réduit ; défaut
+  `AUTRE` en base.
+- `Serie.cadreNote` VARCHAR(191) NULL — précision libre, proposée quand le
+  cadre est « Autre », facultative.
+- `SurfaceState` (`ASEPTIQUE`, `EN_COURS_DE_TRAVAIL`, `NETTOYE`) et
+  `Sample.surfaceState` NULL.
+- `AirMethod` (`BOITE_EXPOSEE_30MIN`, `BIOCOLLECTEUR`) et `Sample.airMethod`
+  NULL.
+- `AnalysisParameter.family` (`Family`, défaut `MICRO`) : la famille d'un
+  paramètre, réglable dans `/admin/parametres`.
+
+**V1 — en-tête.** Le cadre est un choix obligatoire (quatre boutons, aucun
+présélectionné) sur la visite et le dépôt ; « Autre » ouvre « Préciser
+(facultatif) ». Libellés : Autre, Devis validé, BC, Convention. Plus aucune
+déduction depuis « qui prélève ». « Service vétérinaire » disparaît de la
+visite et du dépôt ; l'API refuse la valeur à la création (« choisissez
+« Autre » et indiquez le nom ») ; les séries anciennes gardent leur libellé.
+« N° de factures » devient « Référence client » partout.
+
+**V2 — vocabulaire et surfaces.** « Ligne N » d'une série devient
+« Échantillon N » sur tous les écrans du circuit et dans les messages
+(« Échantillon 2 — … ») ; restent « ligne » les lignes de facture, d'import
+et de critères ; les identifiants de code ne changent pas. Une ligne
+Surface demande « Désignation »* (ex-« Surface prélevée », colonne
+`surfaceLabel`), « État de la surface »* (trois boutons) et « Surface
+prélevée (cm²) » (ex-« Aire prélevée »). Ces champs ne s'affichent plus sur
+les autres types de ligne (Q47 par défaut) ; les données anciennes restent
+lisibles. L'état s'imprime dans « Remarques » du protocole, sur le bon, la
+fiche de programme, « Corriger la fiche », la validation et le rapport
+(« Planche verte — nettoyée »).
+
+**V3 — familles par échantillon.** Deux cases « Analyses microbiologiques »
+et « Analyses physico-chimiques » par échantillon, au moins une cochée ; la
+liste « Nature d'analyse » disparaît du formulaire. La nature est déduite
+(type × famille) : aliment → MICRO_ALIMENTS / PC_ALIMENTS ; surface →
+MICRO_SURFACES / PC_SURFACES ; mains → MICRO_SURFACES / — ; eau →
+MICRO_EAUX / PC_EAUX ; air → MICRO_AIR / — ; autre → — / EFFET_ASEPTISANT
+(« — » = case grisée). Les deux cases cochées créent **deux échantillons**
+au même numéro de ligne (Q48 par défaut, comme l'ancien logiciel) : codes
+« 1/26-1M » et « 1/26-1P » (un seul échantillon garde « 1/26-1 »), chacun
+sa nature, son N° de contrôle, son programme et son rapport. Les analyses
+proposées sont groupées par famille (`AnalysisParameter.family`) et partent
+vers l'échantillon de leur famille. Le protocole imprime une ligne par
+numéro et les analyses dans les deux colonnes ; les cases de la série sont
+calculées. La nature fine (cosmétiques…) se change sur la fiche de
+programme, dans la même famille (Q49 par défaut).
+
+**V4 — air.** « Méthode de prélèvement »* (Boîte exposée 30 min /
+Biocollecteur) sur une ligne Air ; affichée et imprimée là où la ligne
+l'est (colonne « Surface prélevée » du protocole, vide pour l'air).
+
+**V5 — sites.** Import « Sites de l'ancien logiciel » dans `/admin/import`
+(CSV exporté de la base Firebird : `legacySiteId;site;adresse;ville;
+telephone;email;obsolete;legacyClientId;client;clientObsolete`, fichier
+hors dépôt), en deux temps analyse / écriture, idempotent (`Site.legacyId`).
+Le parent est trouvé par son nom normalisé. Quand le nom d'un site désigne
+**un seul** client actif et **un seul** site du fichier, ce client est le
+site importé à tort : ses lieux et produits mémorisés et ses adresses passent
+au site, puis il est archivé — sauf s'il porte des séries, échantillons ou
+factures (alors seulement signalé). Les cas ambigus créent le site sans
+toucher aux clients. Le rapport et l'objet de l'e-mail impriment « Client —
+Site » ; la recherche filtre par site.
+
+**V6 — le laboratoire décide des analyses.** Une visite s'enregistre sans
+analyse ni type de produit (le sélecteur de type quitte le formulaire du
+préleveur ; il reste sur le dépôt) ; un dépôt aussi peut s'enregistrer sans
+analyse. La fiche de programme refuse déjà de confirmer sans analyse et la
+paillasse n'ouvre qu'un échantillon programmé : rien à ajouter côté
+laboratoire.

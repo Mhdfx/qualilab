@@ -1039,7 +1039,7 @@ Planned acceptance, to tick on production as each slice ships.
 - [ ] An Air line requires « Boîte exposée 30 min » or « Biocollecteur »; printed on the protocol, the programme sheet and the report; air parameters exist in the catalogue with their units.
 
 ### V5 — Sites des clients
-- [ ] « MC DONALDS » lists its 84 restaurants as sites; the restaurants are no longer clients (archived, memory moved); the visit's client → site cascade proposes them; the report and the e-mail print « Client — Site »; search filters by site.
+- [ ] The largest chain client lists its 84 restaurants as sites; the restaurants are no longer clients (archived, memory moved); the visit's client → site cascade proposes them; the report and the e-mail print « Client — Site »; search filters by site.
 
 ### V6 — Le laboratoire décide des analyses
 - [ ] A visit saves with no analysis and no product type; the programme sheet refuses to confirm without analysis; the bench never opens an unprogrammed sample.

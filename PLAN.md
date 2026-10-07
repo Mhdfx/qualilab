@@ -330,7 +330,7 @@ work**, in this order:
 | V2 | Wording and surfaces: « Échantillon » instead of « Ligne », « Désignation » and « Surface prélevée (cm²) », « État de la surface » (Aseptique / En cours de travail / Nettoyé) | 7.5 | — |
 | V3 | Two analysis families per sample, nature hidden and derived, two samples when both are ticked, fine nature chosen in the lab | 10 | Q48, Q49 |
 | V4 | Air sampling method (exposed plate 30 min / biocollector) and the air parameters in the catalogue | 5 + catalogue | Q50 |
-| V5 | Client sites: the old software's 426 sites under their 36 clients (McDonald's 84), sites imported as clients archived, site on the report and the e-mail | 10 | Q45 |
+| V5 | Client sites: the old software's 426 sites under their 36 clients (84 for the largest chain), sites imported as clients archived, site on the report and the e-mail | 10 | Q45 |
 | V6 | The lab decides the analyses: analyses optional and product type off the sampler's form (the programme sheet already does the job) | 6 | 05/10 Q6 |
 | V7 | Recette (TESTPLAN V) and documents | 3 | V1 → V6 |
 
