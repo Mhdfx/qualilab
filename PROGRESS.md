@@ -275,6 +275,10 @@ in `PLAN.md`, opened one at a time.
 
 ## Session Log
 
+### 2026-10-09 — billing, report amendment and client portal live (TESTPLAN X, Y, Z)
+- `FACTURATION.md`, `AMENDEMENT.md`, `PORTAIL.md` built in one workflow (foundation, four parallel builders, three hostile reviewers, gates — 878 tests) and deployed (`b938b10`, migration `20261009100000_facturation_rapports_portail`). The reviews fixed a money-rounding bug (half-centimes rounded down at 7/10/14 %), the invoice sheet recomputing totals, an empty role guard that would have admitted CLIENT, cancellation of a sample whose report is issued, page titles leaking the blind code, dashboards counting drafts.
+- Production: billing 21/21 (draft → FAC-2026-0007, payments, AV-2026-0001, cancel FAC-2026-0008, PDFs read), amendment 11/11 (RAP-2026-00003-A1, duplicata, versions; reopen without reason now 400), portal 15/16 + checks (only the test client's samples, 19 lab routes refused, no self-escalation, password change). Portal demo account « portail.test » kept for the lab.
+
 ### 2026-10-08 — facturation, amendement / duplicata, portail client built (not deployed)
 - `FACTURATION.md`: drafts without a number that reserve their samples, « Émettre » drawing `FAC-AAAA-NNNN` in the transaction, cancellation with reason, credit notes `AV-AAAA-NNNN`, settlements (`Payment`) with « Reste à payer », invoice PDF (watermark, stamp, « Réglé »), list filters by state and type, one source for « Facturé / Encaissé » (`billingFigures()`, now also on the vue direction and the commercial dashboard).
 - `AMENDEMENT.md`: « Rouvrir pour amendement » (ADMIN), frozen `ReportVersion`s, `-A1` amended reports « annule et remplace », duplicata and version history, alerts re-sent only for changed results; a sample with an issued report can no longer be cancelled, and a reopened sample no longer reads « Facturé avant résultat ».

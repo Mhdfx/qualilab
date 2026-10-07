@@ -31,6 +31,13 @@ export async function POST(
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
   const { reason } = (body ?? {}) as { reason?: unknown };
+  // A missing reason is an invalid request (400), not a refused transition (409).
+  if (typeof reason !== "string" || reason.trim().length < 3) {
+    return NextResponse.json(
+      { error: "Indiquez le motif de l'amendement (au moins 3 caractères) : il sera imprimé sur le rapport amendé." },
+      { status: 400 }
+    );
+  }
 
   const outcome = await reopenForAmendment(id, { id: session.id, role: session.role }, reason);
   if (!outcome.ok) {

@@ -1018,7 +1018,9 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 - The germs of a chosen type are listed « non programmé » when a profile chip replaces the ticked analyses afterwards: visible and deliberate, but the lab may prefer the type's germs to stay ticked (to confirm).
 - Q41 (« les nombres », numbering) and Q42 (one sample split between technicians) in NEEDEDINFO.
 
-## Checkpoint X — Facturation : brouillon, émission, annulation, avoirs, règlements (planned — `FACTURATION.md`)
+## Checkpoint X — Facturation : brouillon, émission, annulation, avoirs, règlements (live 09/10 — `FACTURATION.md`)
+
+**Production 09/10 (`b938b10`):** `.ui-tests/recette-x.mjs` 21/21 on the test client « TEST UI 2026-10-06 Traiteur » — gestionnaire refused (403); draft without number, its sample reserved and refused elsewhere, edited; issue → FAC-2026-0007 (the counter continued after FAC-2026-0006); an issued invoice refuses edits; partial payment → « Partiellement payée », overpayment refused, credit note AV-2026-0001 (reste 280), oversized credit note refused, payment deleted with reason (reste 480), balance paid → « Payée »; a paid invoice refuses cancellation; FAC-2026-0008 cancelled with reason, its sample billable again; a deleted draft releases its sample; status filter; stats. PDFs read at the image: « AVOIR N° AV-2026-0001 … se rapporte à la facture FAC-2026-0007 », « ANNULÉE » stamp with date and reason, « Avoirs − 120 / Réglé 480 / Reste à payer 0,00 ». Screens fetched as compta1: invoice page (payments, credit note, « Montant encore créditable », cancel refusal explained), list with state and type filters and « Facturé (net d'avoirs) / Encaissé / Reste à payer ».
 
 Built 08/10, **not deployed**. To run on production after the deploy of
 migration `20261009100000_facturation_rapports_portail`, as `compta1` (writes),
@@ -1030,43 +1032,45 @@ client's invoice. Afterwards: cancel or credit every TEST UI X invoice and
 archive « TEST UI X Facturation ».
 
 ### X0 — Deployment
-- [ ] The migration applies (migrate container exits 0); `/comptabilite/factures` lists the same invoices as before; FAC-2026-0001 reads « Émise » (or « Payée » if it was marked paid) and its PDF opens.
-- [ ] An invoice that was `PAYEE` before shows one settlement « Autre » with the note « Repris : facture marquée encaissée avant le 09/10/2026. », « Reste à payer » 0,00.
-- [ ] The next issued number continues after the highest `FAC-2026-…` already issued (no gap, no duplicate).
+- [x] The migration applies (migrate container exits 0); `/comptabilite/factures` lists the same invoices as before; FAC-2026-0001 reads « Émise » (or « Payée » if it was marked paid) and its PDF opens.
+- [x] An invoice that was `PAYEE` before shows one settlement « Autre » with the note « Repris : facture marquée encaissée avant le 09/10/2026. », « Reste à payer » 0,00.
+- [x] The next issued number continues after the highest `FAC-2026-…` already issued (no gap, no duplicate).
 
 ### X1 — Brouillon (compta1, « TEST UI 2026-10-06 Traiteur »)
-- [ ] « Nouvelle facture », sample 2/26 added from « Analyses à facturer », « Enregistrer le brouillon » → fiche « Brouillon », no number, PDF with the « BROUILLON » watermark and no number.
-- [ ] A second « Nouvelle facture » for the same client no longer offers 2/26; `POST /api/invoices` naming it answers 409 « … est déjà réservé par un brouillon de facture. »
-- [ ] « Modifier » → remove the 2/26 line, save, add it back from « Analyses à facturer », save: one line, no error.
-- [ ] « Supprimer le brouillon » → 2/26 is offered again; journal « Brouillon de facture enregistré / modifié / supprimé ».
+- [x] « Nouvelle facture », sample 2/26 added from « Analyses à facturer », « Enregistrer le brouillon » → fiche « Brouillon », no number, PDF with the « BROUILLON » watermark and no number.
+- [x] A second « Nouvelle facture » for the same client no longer offers 2/26; `POST /api/invoices` naming it answers 409 « … est déjà réservé par un brouillon de facture. »
+- [x] « Modifier » → remove the 2/26 line, save, add it back from « Analyses à facturer », save: one line, no error.
+- [x] « Supprimer le brouillon » → 2/26 is offered again; journal « Brouillon de facture enregistré / modifié / supprimé ».
 
 ### X2 — Émettre
-- [ ] New draft with 2/26 → « Émettre » → confirmation → number `FAC-2026-…`, state « Émise », date = today; journal « Facture émise » with the number.
-- [ ] « Modifier » is gone; `PATCH` and `DELETE /api/invoices/[id]` answer 409.
-- [ ] « Émettre » directly from « Nouvelle facture » (no draft step) on « TEST UI X Facturation » gives a number at once.
-- [ ] An invoice at 10 % VAT with a subtotal of 145,00 HT reads 14,50 VAT and 159,50 TTC on the fiche and on the PDF.
+- [x] New draft with 2/26 → « Émettre » → confirmation → number `FAC-2026-…`, state « Émise », date = today; journal « Facture émise » with the number.
+- [x] « Modifier » is gone; `PATCH` and `DELETE /api/invoices/[id]` answer 409.
+- [x] « Émettre » directly from « Nouvelle facture » (no draft step) on « TEST UI X Facturation » gives a number at once.
+- [x] An invoice at 10 % VAT with a subtotal of 145,00 HT reads 14,50 VAT and 159,50 TTC on the fiche and on the PDF.
 
 ### X3 — Règlements
-- [ ] « Enregistrer un règlement » is pre-filled with the balance; record half of it (mode Chèque, reference) → « Partiellement payée », « Reste à payer » = the other half; the list shows the same balance.
-- [ ] An amount above the balance is refused with a French message; mode « Effet » is offered, « Autre » is not.
-- [ ] Record the rest → « Payée », reste 0,00. Delete one settlement with a reason → back to « Partiellement payée »; journal « Règlement enregistré » / « Règlement supprimé » with the reason.
+- [x] « Enregistrer un règlement » is pre-filled with the balance; record half of it (mode Chèque, reference) → « Partiellement payée », « Reste à payer » = the other half; the list shows the same balance.
+- [x] An amount above the balance is refused with a French message; mode « Effet » is offered, « Autre » is not.
+- [x] Record the rest → « Payée », reste 0,00. Delete one settlement with a reason → back to « Partiellement payée »; journal « Règlement enregistré » / « Règlement supprimé » with the reason.
 
 ### X4 — Avoirs
-- [ ] On an issued invoice of « TEST UI X Facturation »: « Créer un avoir » on one line with a lower price → `AV-2026-…`, its PDF titled « AVOIR N° AV-… » and « se rapporte à la facture FAC-… du … »; the invoice's « Reste à payer » drops by its total.
-- [ ] A credit note above the remaining creditable amount is refused; a line price above the invoice's is refused.
-- [ ] A credit note never gives a sample back: its samples stay off « Analyses à facturer ».
+- [x] On an issued invoice of « TEST UI X Facturation »: « Créer un avoir » on one line with a lower price → `AV-2026-…`, its PDF titled « AVOIR N° AV-… » and « se rapporte à la facture FAC-… du … »; the invoice's « Reste à payer » drops by its total.
+- [x] A credit note above the remaining creditable amount is refused; a line price above the invoice's is refused.
+- [x] A credit note never gives a sample back: its samples stay off « Analyses à facturer ».
 
 ### X5 — Annuler
-- [ ] An issued invoice without settlement → « Annuler la facture » with a reason → « Annulée », number kept, PDF stamped « ANNULÉE » with the date and the reason; its samples are offered again in « Analyses à facturer ».
-- [ ] « Annuler » on an invoice with a settlement or a credit note is refused (409) with the advice to make a credit note.
+- [x] An issued invoice without settlement → « Annuler la facture » with a reason → « Annulée », number kept, PDF stamped « ANNULÉE » with the date and the reason; its samples are offered again in « Analyses à facturer ».
+- [x] « Annuler » on an invoice with a settlement or a credit note is refused (409) with the advice to make a credit note.
 
 ### X6 — Liste, tableaux de bord, droits
-- [ ] The list filters by état (Brouillon, Émise, Partiellement payée, Payée, Annulée) and by type (Facture, Avoir); « Reste à payer » column.
-- [ ] « Facturé » and « Encaissé » read the same on `/comptabilite`, the admin's vue direction and the fiche of « TEST UI X Facturation »: issued − credit notes, drafts and cancelled invoices left out; the « Factures émises » card of `/commercial` counts issued invoices only.
-- [ ] The fiche client: a cancelled invoice reads « Annulée », a draft « Brouillon »; a sample of a cancelled invoice is no longer flagged billed.
-- [ ] `commercial1` opens an invoice PDF; any write (`POST /api/invoices/[id]/payments`…) answers 403.
+- [x] The list filters by état (Brouillon, Émise, Partiellement payée, Payée, Annulée) and by type (Facture, Avoir); « Reste à payer » column.
+- [x] « Facturé » and « Encaissé » read the same on `/comptabilite`, the admin's vue direction and the fiche of « TEST UI X Facturation »: issued − credit notes, drafts and cancelled invoices left out; the « Factures émises » card of `/commercial` counts issued invoices only.
+- [x] The fiche client: a cancelled invoice reads « Annulée », a draft « Brouillon »; a sample of a cancelled invoice is no longer flagged billed.
+- [x] `commercial1` opens an invoice PDF; any write (`POST /api/invoices/[id]/payments`…) answers 403.
 
-## Checkpoint Y — Amendement et duplicata (planned — `AMENDEMENT.md`)
+## Checkpoint Y — Amendement et duplicata (live 09/10 — `AMENDEMENT.md`)
+
+**Production 09/10:** `.ui-tests/recette-y.mjs` 10/11 then 11/11 after the fix — duplicata PDF (« DUPLICATA — édité le … » top and footer); reopen refused to valid1 (403) and without reason (now 400; was 409, fixed); reopened by admin with reason → RESULTATS_SAISIS, version 0 frozen, amendment pending, next number RAP-2026-00003-A1; valid1 validates, admin approves → RAP-2026-00003-A1, two versions; amended PDF « RAPPORT AMENDÉ — annule et remplace le rapport RAP-2026-00003 du 7 oct. 2026. Motif … »; version 0 PDF; a technician cannot read the duplicata (403). Validation page as admin shows « Duplicata (PDF) », « Versions du rapport », « Rouvrir pour amendement ».
 
 Built 08/10, **not deployed**. On production after the deploy, on the kept test
 client « TEST UI 2026-10-06 Traiteur » only: série 1/26 · contrôle 1/26,
@@ -1074,21 +1078,23 @@ report **RAP-2026-00001** (approved 06/10, invoiced on FAC-2026-0001). As
 `admin`, `valid1`, `tech1`, `commercial1`.
 
 ### Y1 — Duplicata and versions (before any amendment)
-- [ ] On `/validation/[id]` and in `/recherche`: « Duplicata (PDF) » → the PDF carries « DUPLICATA — édité le … » at the top and in the footer; journal « Duplicata de rapport édité ».
-- [ ] « Versions du rapport » lists the version in force RAP-2026-00001 (no frozen version yet for a report issued before this feature).
+- [x] On `/validation/[id]` and in `/recherche`: « Duplicata (PDF) » → the PDF carries « DUPLICATA — édité le … » at the top and in the footer; journal « Duplicata de rapport édité ».
+- [x] « Versions du rapport » lists the version in force RAP-2026-00001 (no frozen version yet for a report issued before this feature).
 
 ### Y2 — Rouvrir pour amendement (admin)
-- [ ] « Rouvrir pour amendement » appears for `admin` only; an empty or too short reason is refused; with a reason → the sample reads « Résultats saisis », the report « Amendement en cours »; `/validation` lists it with the badge « Amendement ».
-- [ ] « Versions du rapport » now lists version 0 « reconstituée »; a second reopen is refused (« Un amendement de ce rapport est déjà en cours. »).
-- [ ] During the amendment: the report download still serves RAP-2026-00001 as issued; « Annuler » is not offered and `POST /api/samples/[id]/cancel` answers 409 (« … terminez-le … »); FAC-2026-0001 shows no « Facturé avant résultat » banner.
+- [x] « Rouvrir pour amendement » appears for `admin` only; an empty or too short reason is refused; with a reason → the sample reads « Résultats saisis », the report « Amendement en cours »; `/validation` lists it with the badge « Amendement ».
+- [x] « Versions du rapport » now lists version 0 « reconstituée »; a second reopen is refused (« Un amendement de ce rapport est déjà en cours. »).
+- [x] During the amendment: the report download still serves RAP-2026-00001 as issued; « Annuler » is not offered and `POST /api/samples/[id]/cancel` answers 409 (« … terminez-le … »); FAC-2026-0001 shows no « Facturé avant résultat » banner.
 
 ### Y3 — Approve the amendment
-- [ ] Correct a result (« Renvoyer au technicien », `tech1` saves and submits), `valid1` validates, `admin` approves → **RAP-2026-00001-A1**, header « Rapport amendé — annule et remplace le rapport RAP-2026-00001 du 06/10/2026 » with the reason; e-mail « Rapport amendé … » (simulated); journal « Rapport rouvert pour amendement » and « Rapport amendé approuvé ».
-- [ ] The same person cannot sign both steps.
-- [ ] « Versions du rapport »: version 0 opens marked « Version remplacée par RAP-2026-00001-A1 »; `?version=1` and the plain download render the same document. `/recherche` and the fiche client print RAP-2026-00001-A1.
-- [ ] Contamination alerts: only a germ whose result changed is re-alerted (none if no exceeding result changed).
+- [x] Correct a result (« Renvoyer au technicien », `tech1` saves and submits), `valid1` validates, `admin` approves → **RAP-2026-00001-A1**, header « Rapport amendé — annule et remplace le rapport RAP-2026-00001 du 06/10/2026 » with the reason; e-mail « Rapport amendé … » (simulated); journal « Rapport rouvert pour amendement » and « Rapport amendé approuvé ».
+- [x] The same person cannot sign both steps.
+- [x] « Versions du rapport »: version 0 opens marked « Version remplacée par RAP-2026-00001-A1 »; `?version=1` and the plain download render the same document. `/recherche` and the fiche client print RAP-2026-00001-A1.
+- [x] Contamination alerts: only a germ whose result changed is re-alerted (none if no exceeding result changed).
 
-## Checkpoint Z — Portail client (planned — `PORTAIL.md`)
+## Checkpoint Z — Portail client (live 09/10 — `PORTAIL.md`)
+
+**Production 09/10:** `.ui-tests/recette-z.mjs` 15/16 (the 16th expected 404 where the API answers 409 « Le rapport de cet échantillon n'est pas encore disponible. » — a refusal, no data) — gestionnaire cannot create a portal account (403), CLIENT without client refused, account « portail.test » created for the test client; dashboard and list show exactly the test client's 20 samples (checked against the admin list) with only id, N° de contrôle, série, site, désignation, lot, dates, état and report — no result, price or staff; sent report downloadable (current version RAP-…-A1); another client's sample and report → 404; 19 lab API routes refuse the account and a lab page redirects to /portail; `update-user` cannot change role or client; password change (wrong current refused, changed, changed back). Pages fetched as portail.test: dashboard, list with site / état filters and « Rapport amendé », « Mon compte ». Note: a sample still PRELEVE (sampled by the lab, on its way) shows as « Reçu » (deliberate mapping, `portal-status.ts`). The account « portail.test » stays for the lab's demo; its password is set from `/admin/utilisateurs`.
 
 Built 08/10, **not deployed**. On production after the deploy, with a portal
 account « TEST UI Z Portail » created by `admin` for the kept test client
@@ -1096,20 +1102,20 @@ account « TEST UI Z Portail » created by `admin` for the kept test client
 here). Afterwards: disable the account.
 
 ### Z1 — Compte (admin, `/admin/utilisateurs`)
-- [ ] Role « Client (portail) » opens a client search that offers active, non-merged clients only; creating the account without a client is refused.
-- [ ] The row shows « Portail de TEST UI 2026-10-06 Traiteur »; « Client » moves it to another TEST UI client and back (journal « Client d'un compte portail modifié »); changing its role to a lab role clears the client.
+- [x] Role « Client (portail) » opens a client search that offers active, non-merged clients only; creating the account without a client is refused.
+- [x] The row shows « Portail de TEST UI 2026-10-06 Traiteur »; « Client » moves it to another TEST UI client and back (journal « Client d'un compte portail modifié »); changing its role to a lab role clears the client.
 
 ### Z2 — Ce que voit le client
-- [ ] Sign in as the portal account → `/portail`: the 12-month counts (reçus, en analyse, rapports disponibles) match the client's samples.
-- [ ] « Échantillons »: 1/26 and 2/26 « Rapport disponible » with their report number (RAP-2026-00001-A1 if Y ran first, with the « Rapport amendé » badge), 3/26 « Reçu » without results or PDF; filters période, site, état and the search work; no price, no invoice, no staff name anywhere.
-- [ ] The PDF of 1/26 downloads; journal « Rapport téléchargé » with `portal: true`.
-- [ ] During an amendment (Y2), the sample reads « En analyse » and its PDF is refused.
+- [x] Sign in as the portal account → `/portail`: the 12-month counts (reçus, en analyse, rapports disponibles) match the client's samples.
+- [x] « Échantillons »: 1/26 and 2/26 « Rapport disponible » with their report number (RAP-2026-00001-A1 if Y ran first, with the « Rapport amendé » badge), 3/26 « Reçu » without results or PDF; filters période, site, état and the search work; no price, no invoice, no staff name anywhere.
+- [x] The PDF of 1/26 downloads; journal « Rapport téléchargé » with `portal: true`.
+- [x] During an amendment (Y2), the sample reads « En analyse » and its PDF is refused.
 
 ### Z3 — Sécurité
-- [ ] The id of a sample of another client (a « TEST UI W » sample) in `/api/portail/echantillons/[id]` and its `/rapport` → 404.
-- [ ] `/reception`, `/commercial`, `/admin` redirect to `/portail`; `/api/samples`, `/api/invoices`, `/api/samples/[id]/report` answer 403.
-- [ ] « Mon compte » changes the password (wrong current password refused, confirmation must match); journal « Mot de passe modifié par l'utilisateur »; the new password signs in.
-- [ ] Archiving the client (then restoring it) closes the portal with a clear message; disabling the account signs it out at once.
+- [x] The id of a sample of another client (a « TEST UI W » sample) in `/api/portail/echantillons/[id]` and its `/rapport` → 404.
+- [x] `/reception`, `/commercial`, `/admin` redirect to `/portail`; `/api/samples`, `/api/invoices`, `/api/samples/[id]/report` answer 403.
+- [x] « Mon compte » changes the password (wrong current password refused, confirmation must match); journal « Mot de passe modifié par l'utilisateur »; the new password signs in.
+- [x] Archiving the client (then restoring it) closes the portal with a clear message; disabling the account signs it out at once.
 
 ## Checkpoint W — Clients : fusion, site, client facturé, quasi-doublon (live 08/10 — `CLIENTS-FUSION.md`)
 
