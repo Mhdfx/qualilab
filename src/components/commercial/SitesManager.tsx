@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, MapPin, Pencil, Plus, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { siteBillingOptions } from "./client-actions-logic";
 
 export type SiteRow = {
   id: string;
@@ -14,6 +15,9 @@ export type SiteRow = {
   phone: string | null;
   contact: string | null;
   active: boolean;
+  /** CLIENTS-FUSION.md §4: null = billed to the site's own client. */
+  billingClientId?: string | null;
+  billingClient?: { id: string; name: string } | null;
 };
 
 /**
@@ -23,12 +27,17 @@ export type SiteRow = {
  */
 export function SitesManager({
   clientId,
+  clientName = "",
   initial,
   canEdit,
+  billingClients = [],
 }: {
   clientId: string;
+  clientName?: string;
   initial: SiteRow[];
   canEdit: boolean;
+  /** The client's active billing clients — the « Facturé à » choices. */
+  billingClients?: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
@@ -114,6 +123,17 @@ export function SitesManager({
                     {site.contact ? ` · ${site.contact}` : ""}
                     {site.phone ? ` · ${site.phone}` : ""}
                   </p>
+                  {(billingClients.length > 0 || site.billingClientId) && (
+                    <SiteBilling
+                      clientId={clientId}
+                      clientName={clientName}
+                      site={site}
+                      billingClients={billingClients}
+                      canEdit={canEdit}
+                      onSaved={() => router.refresh()}
+                      onError={setError}
+                    />
+                  )}
                 </div>
                 {canEdit && (
                   <button
@@ -135,6 +155,94 @@ export function SitesManager({
         </ul>
       )}
     </Card>
+  );
+}
+
+/**
+ * « Facturé à » (CLIENTS-FUSION.md §4): the site's samples are invoiced to
+ * its client, or to one of the client's billing clients. Saved on change.
+ */
+function SiteBilling({
+  clientId,
+  clientName,
+  site,
+  billingClients,
+  canEdit,
+  onSaved,
+  onError,
+}: {
+  clientId: string;
+  clientName: string;
+  site: SiteRow;
+  billingClients: { id: string; name: string }[];
+  canEdit: boolean;
+  onSaved: () => void;
+  onError: (message: string) => void;
+}) {
+  const selectId = useId();
+  const stored = site.billingClientId ?? "";
+  const [value, setValue] = useState(stored);
+  const [saving, setSaving] = useState(false);
+  const current =
+    site.billingClientId != null
+      ? { id: site.billingClientId, name: site.billingClient?.name ?? "Client facturé" }
+      : null;
+  const options = siteBillingOptions(clientName || "Ce client", billingClients, current);
+
+  async function save(next: string) {
+    const previous = value;
+    setValue(next);
+    setSaving(true);
+    onError("");
+    try {
+      const response = await fetch(`/api/clients/${clientId}/sites/${site.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ billingClientId: next || null }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setValue(previous);
+        onError(data.error ?? "Enregistrement impossible.");
+        return;
+      }
+      onSaved();
+    } catch {
+      setValue(previous);
+      onError("Une erreur réseau est survenue. Réessayez.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!canEdit) {
+    return (
+      <p className="mt-1 text-xs text-slate-500">
+        Facturé à : <span className="font-medium text-slate-700">{options.find((o) => o.value === stored)?.label}</span>
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+      <label htmlFor={selectId} className="text-xs font-medium text-slate-600">
+        Facturé à
+      </label>
+      <select
+        id={selectId}
+        value={value}
+        disabled={saving}
+        onChange={(event) => save(event.target.value)}
+        className="min-h-[32px] max-w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-800 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      {saving && <span className="text-xs text-slate-500" aria-live="polite">Enregistrement…</span>}
+    </div>
   );
 }
 

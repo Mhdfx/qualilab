@@ -8,6 +8,8 @@ import { isValidAmount } from "@/lib/money";
 import { retryOnDuplicate } from "@/lib/retry-unique";
 import { generateInvoiceNumber } from "@/lib/invoice-number";
 import { computeInvoiceTotals } from "@/lib/invoice-math";
+import { BILLABLE_STATUSES } from "@/lib/billing-status";
+import { invoiceSampleRefusal } from "@/lib/client-merge-rules";
 
 export async function GET(request: Request) {
   const session = await requireApiRole("COMPTABLE", "ADMIN");
@@ -146,8 +148,11 @@ export async function POST(request: Request) {
     }
 
     // Lines claiming to bill an analysis are checked against reality: the
-    // sample must belong to this client, have been validated, and not already
-    // appear on another invoice.
+    // sample must be billed to this client — its own, unless its site is
+    // billed to another client, or one of a site billed to it
+    // (CLIENTS-FUSION.md §4, client facturé) —, be billable (programme
+    // confirmed, never cancelled: PROGRAMME.md §6, the statuses the billable
+    // list offers), and not already appear on another invoice.
     const sampleIds = Array.from(
       new Set(billable.map((item) => item.sampleId).filter(Boolean) as string[])
     );
@@ -160,6 +165,7 @@ export async function POST(request: Request) {
           code: true,
           clientId: true,
           status: true,
+          serie: { select: { site: { select: { billingClientId: true, billingClient: { select: { name: true } } } } } },
           invoiceItems: { select: { invoiceId: true }, take: 1 },
         },
       });
@@ -172,15 +178,25 @@ export async function POST(request: Request) {
       }
 
       for (const sample of samples) {
-        if (sample.clientId !== clientId) {
-          return NextResponse.json(
-            { error: `L'échantillon ${sample.code} appartient à un autre client.` },
-            { status: 400 }
-          );
+        // One client per sample: its site's billing client, else its own
+        // client — never both (CLIENTS-FUSION.md §4).
+        const refusal = invoiceSampleRefusal(
+          {
+            code: sample.code,
+            clientId: sample.clientId,
+            siteBillingClientId: sample.serie.site?.billingClientId ?? null,
+            siteBillingClientName: sample.serie.site?.billingClient?.name ?? null,
+          },
+          clientId
+        );
+        if (refusal) {
+          return NextResponse.json({ error: refusal }, { status: 400 });
         }
-        if (sample.status !== "VALIDE" && sample.status !== "RAPPORT_ENVOYE") {
+        if (!BILLABLE_STATUSES.includes(sample.status)) {
           return NextResponse.json(
-            { error: `L'échantillon ${sample.code} n'est pas validé.` },
+            {
+              error: `L'échantillon ${sample.code} n'est pas facturable : son programme d'analyse n'est pas confirmé, ou il est annulé.`,
+            },
             { status: 409 }
           );
         }

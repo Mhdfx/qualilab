@@ -3,6 +3,7 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { validateClient, validateClientEmails } from "@/lib/client-validation";
+import { findSimilarClients } from "@/lib/client-identity";
 
 /**
  * The client base.
@@ -45,6 +46,9 @@ export async function GET(request: Request) {
     // Phase 9: the préleveur picks the site from the client's list.
     include: {
       sites: { where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } },
+      // CLIENTS-FUSION.md §4 and §6: « client facturé de » and « fusionnée dans ».
+      billedFor: { select: { id: true, name: true } },
+      mergedInto: { select: { id: true, name: true } },
     },
   });
 
@@ -62,8 +66,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
 
-  const { emails, ...fields } = (body ?? {}) as {
+  const { emails, confirmDuplicate, ...fields } = (body ?? {}) as {
     emails?: unknown;
+    confirmDuplicate?: unknown;
     [key: string]: unknown;
   };
 
@@ -89,6 +94,23 @@ export async function POST(request: Request) {
     );
   }
 
+  // A near-duplicate (same name under another spelling, same ICE, a typing
+  // error away) is only a warning: the gestionnaire checks the list and
+  // confirms « Ce n'est pas le même client » (CLIENTS-FUSION.md §5).
+  if (confirmDuplicate !== true) {
+    const candidates = await prisma.client.findMany({
+      where: { archived: false },
+      select: { id: true, name: true, ice: true },
+    });
+    const similar = findSimilarClients({ name: validated.value.name, ice: validated.value.ice }, candidates);
+    if (similar.length > 0) {
+      return NextResponse.json(
+        { error: "Des clients très proches existent déjà : vérifiez avant de créer.", similar },
+        { status: 409 }
+      );
+    }
+  }
+
   const client = await prisma.client.create({
     data: {
       ...validated.value,
@@ -102,7 +124,11 @@ export async function POST(request: Request) {
     action: "CLIENT_CREATED",
     entity: "Client",
     entityId: client.id,
-    metadata: { name: client.name, emails: list.value.length },
+    metadata: {
+      name: client.name,
+      emails: list.value.length,
+      ...(confirmDuplicate === true ? { confirmedNotDuplicate: true } : {}),
+    },
   });
 
   return NextResponse.json(client, { status: 201 });

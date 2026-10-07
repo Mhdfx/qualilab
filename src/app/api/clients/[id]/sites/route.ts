@@ -13,6 +13,8 @@ const SITE_SELECT = {
   phone: true,
   contact: true,
   active: true,
+  // CLIENTS-FUSION.md §4: « Facturé à » (null: the site's own client).
+  billingClient: { select: { id: true, name: true } },
 } as const;
 
 /** A client's sampling sites — the list the préleveur picks from on site. */

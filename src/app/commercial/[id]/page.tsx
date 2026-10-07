@@ -11,6 +11,7 @@ import {
   FileText,
   Archive,
   Pencil,
+  GitMerge,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -23,6 +24,9 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
 import { SitesManager } from "@/components/commercial/SitesManager";
 import { ClientSummary } from "@/components/commercial/ClientSummary";
+import { ClientMergeActions } from "@/components/commercial/ClientMergeActions";
+import { BillingClientsCard } from "@/components/commercial/BillingClientsCard";
+import { archivedBanner, archivedKind, importedParentId } from "@/components/commercial/client-actions-logic";
 import { parseSampleSearch } from "@/lib/sample-search";
 import { INVOICE_NOTICE_LABELS, sampleBillingNotice } from "@/lib/invoice-notices";
 import { searchSamples } from "@/lib/sample-search-server";
@@ -59,13 +63,25 @@ export default async function ClientDetailPage({
   });
   const summarySearch = parseSampleSearch(summaryParams);
 
-  const [client, samples, invoices, paid, billedAll, sampleCount, reportCount, summary] =
+  const [client, samples, invoices, paid, billedAll, sampleCount, reportCount, summary, mergeEntry] =
     await Promise.all([
     prisma.client.findUnique({
       where: { id },
       include: {
         emails: { orderBy: { email: "asc" } },
-        sites: { orderBy: [{ active: "desc" }, { name: "asc" }] },
+        sites: {
+          orderBy: [{ active: "desc" }, { name: "asc" }],
+          include: { billingClient: { select: { id: true, name: true } } },
+        },
+        // CLIENTS-FUSION.md §2–4: where an archived duplicate went, and the
+        // billing clients on either side of the link.
+        mergedInto: { select: { id: true, name: true } },
+        billedFor: { select: { id: true, name: true } },
+        billingClients: { select: { id: true, name: true, archived: true }, orderBy: { name: "asc" } },
+        billedSites: {
+          select: { id: true, name: true, client: { select: { id: true, name: true } } },
+          orderBy: { name: "asc" },
+        },
       },
     }),
     prisma.sample.findMany({
@@ -110,11 +126,38 @@ export default async function ClientDetailPage({
     prisma.sample.count({ where: { clientId: id } }),
     prisma.report.count({ where: { sample: { clientId: id } } }),
     searchSamples(summarySearch, { take: 5000 }),
+    // « Fusionnée dans » or « Rattachée comme site de »: the journal knows which.
+    prisma.auditLog.findFirst({
+      where: { entity: "Client", entityId: id, action: { in: ["CLIENT_MERGED", "CLIENT_ATTACHED_AS_SITE"] } },
+      orderBy: { createdAt: "desc" },
+      select: { action: true },
+    }),
   ]);
 
   if (!client) notFound();
 
   const billed = toMoney(billedAll._sum.total);
+  // A client archived by the import of the sites before `mergedIntoId`
+  // existed (07/10): its journal entry names the parent it became a site of.
+  let importedParent: { id: string; name: string } | null = null;
+  if (client.archived && !client.mergedInto) {
+    const archivedEntry = await prisma.auditLog.findFirst({
+      where: { entity: "Client", entityId: id, action: "CLIENT_ARCHIVED" },
+      orderBy: { createdAt: "desc" },
+      select: { metadata: true },
+    });
+    const parentId = importedParentId(archivedEntry?.metadata);
+    if (parentId && parentId !== id) {
+      importedParent = await prisma.client.findUnique({ where: { id: parentId }, select: { id: true, name: true } });
+    }
+  }
+  const keptRecord = client.mergedInto ?? importedParent;
+  const banner = client.mergedInto
+    ? archivedBanner(archivedKind(mergeEntry?.action), client.mergedInto.name)
+    : importedParent
+      ? archivedBanner("attached", importedParent.name)
+      : null;
+  const activeBillingClients = client.billingClients.filter((row) => !row.archived);
 
   return (
     <div>
@@ -141,7 +184,23 @@ export default async function ClientDetailPage({
         }
       />
 
-      {client.archived && (
+      {keptRecord && banner && (
+        <p className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-brand/20 bg-brand-light/40 px-3 py-2.5 text-sm text-slate-700">
+          <GitMerge className="h-4 w-4 shrink-0 text-brand" aria-hidden="true" />
+          {banner.lead}{" "}
+          <Link
+            href={`/commercial/${keptRecord.id}`}
+            className="rounded font-semibold text-brand underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            {banner.name}
+          </Link>
+          <span className="text-slate-500">
+            — cette fiche est archivée ; son historique reste consultable ici.
+          </span>
+        </p>
+      )}
+
+      {client.archived && !keptRecord && (
         <p className="mb-6 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
           <Archive className="h-4 w-4 shrink-0" aria-hidden="true" />
           Ce client est archivé : il n&apos;apparaît plus dans les listes de
@@ -212,7 +271,27 @@ export default async function ClientDetailPage({
         <div className="space-y-5">
           <ClientSummary search={summarySearch} rows={summary.rows} total={summary.total} />
 
-          <SitesManager clientId={client.id} initial={client.sites} canEdit={!client.archived} />
+          <SitesManager
+            clientId={client.id}
+            clientName={client.name}
+            initial={client.sites}
+            canEdit={!client.archived}
+            billingClients={activeBillingClients.map(({ id, name }) => ({ id, name }))}
+          />
+
+          <BillingClientsCard
+            clientId={client.id}
+            clientName={client.name}
+            canEdit={!client.archived}
+            billedFor={client.billedFor}
+            billingClients={client.billingClients.map((row) => ({
+              ...row,
+              sites: client.sites
+                .filter((site) => site.billingClientId === row.id)
+                .map((site) => ({ id: site.id, name: site.name })),
+            }))}
+            billedSites={client.billedSites}
+          />
 
           <Card className="p-5">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -311,6 +390,10 @@ export default async function ClientDetailPage({
               </ul>
             )}
           </Card>
+
+          {session.role === "ADMIN" && !client.archived && (
+            <ClientMergeActions clientId={client.id} clientName={client.name} />
+          )}
         </div>
       </div>
     </div>

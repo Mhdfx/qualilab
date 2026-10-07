@@ -6,6 +6,7 @@ import { formatCurrency, formatDate } from "@/lib/labels";
 import { SAMPLE_STATUS_LABELS, SAMPLE_TYPE_LABELS } from "@/lib/labels";
 import { billedBeforeResult } from "@/lib/billing-status";
 import type { SampleStatus, SampleType } from "@/generated/prisma/client";
+import { viaSiteLabel, type SampleProvenance } from "@/components/commercial/client-actions-logic";
 
 export type BillableLine = {
   sampleId: string;
@@ -15,7 +16,12 @@ export type BillableLine = {
   unpriced: boolean;
 };
 
-type BillableSample = {
+/**
+ * A billing client is billed for the samples of its principal's sites
+ * (CLIENTS-FUSION.md §4): those carry their provenance, shown as « via le
+ * site S de P ».
+ */
+type BillableSample = SampleProvenance & {
   id: string;
   code: string;
   controlCode: string | null;
@@ -148,6 +154,7 @@ function BillableSamplesFor({
           const missingPrice = sampleLines.some((line) => line.unpriced);
           // Programmed or on the bench: billed before its results are validated.
           const beforeResult = billedBeforeResult(sample.status);
+          const via = viaSiteLabel(sample, clientId);
 
           return (
             <li key={sample.id}>
@@ -169,6 +176,11 @@ function BillableSamplesFor({
                     {missingPrice && (
                       <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
                         prix à saisir
+                      </span>
+                    )}
+                    {via && (
+                      <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 ring-1 ring-violet-200">
+                        {via}
                       </span>
                     )}
                     {beforeResult && (

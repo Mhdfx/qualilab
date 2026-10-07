@@ -278,29 +278,47 @@ model Verification {
 }
 
 model Client {
-  id           String            @id @default(cuid())
-  name         String
-  contact      String?
+  id             String            @id @default(cuid())
+  name           String
+  contact        String?
   /// Primary address, kept for the existing screens.
-  email        String?
-  phone        String?
-  address      String?
-  ice          String?
+  email          String?
+  phone          String?
+  address        String?
+  ice            String?
   /// Clients are archived, never deleted: samples, reports and invoices refer
   /// to them and the laboratory's history must stay readable.
-  archived     Boolean           @default(false)
-  createdAt    DateTime          @default(now())
-  emails       ClientEmail[]
-  samples      Sample[]
-  invoices     Invoice[]
-  sites        Site[]
-  series       Serie[]
-  places       ClientPlace[]
-  products     ClientProduct[]
-  profiles     AnalysisProfile[]
-  productTypes ProductType[]
+  archived       Boolean           @default(false)
+  createdAt      DateTime          @default(now())
+  /// CLIENTS-FUSION.md §2–3: the record kept when this client was merged into
+  /// another one or attached as one of its sites. Set on the archived record
+  /// only; « Fusionnée dans X » / « Rattachée comme site de X » on its fiche.
+  mergedIntoId   String?
+  mergedInto     Client?           @relation("ClientMergedInto", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  /// The archived records merged into (or attached as a site of) this one.
+  mergedFrom     Client[]          @relation("ClientMergedInto")
+  /// CLIENTS-FUSION.md §4: « client facturé de » — this client (a franchisee,
+  /// a holding, a management company) receives the invoices for the samples of
+  /// its principal client's sites that are billed to it.
+  billedForId    String?
+  billedFor      Client?           @relation("ClientBilledFor", fields: [billedForId], references: [id], onDelete: SetNull)
+  /// The billing clients of this principal client (`billedForId` = this one).
+  billingClients Client[]          @relation("ClientBilledFor")
+  /// The sites (of the principal client) whose samples are billed to this client.
+  billedSites    Site[]            @relation("SiteBillingClient")
+  emails         ClientEmail[]
+  samples        Sample[]
+  invoices       Invoice[]
+  sites          Site[]
+  series         Serie[]
+  places         ClientPlace[]
+  products       ClientProduct[]
+  profiles       AnalysisProfile[]
+  productTypes   ProductType[]
 
   @@index([archived, name])
+  @@index([mergedIntoId])
+  @@index([billedForId])
 }
 
 /// A client receives mail at several addresses: the client asked for reports
@@ -693,23 +711,28 @@ model Serie {
 
 /// A client's sampling site (a restaurant of a chain, a plant…).
 model Site {
-  id       String        @id @default(cuid())
-  clientId String
-  client   Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  code     String?
-  name     String
-  address  String?
-  city     String?
-  phone    String?
-  contact  String?
-  active   Boolean       @default(true)
-  legacyId Int?          @unique
-  emails   ClientEmail[]
-  series   Serie[]
-  places   ClientPlace[]
+  id              String        @id @default(cuid())
+  clientId        String
+  client          Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  code            String?
+  name            String
+  address         String?
+  city            String?
+  phone           String?
+  contact         String?
+  active          Boolean       @default(true)
+  legacyId        Int?          @unique
+  /// CLIENTS-FUSION.md §4: the billing client (a client facturé of the site's
+  /// client) the samples of this site are invoiced to. Null: the site's client.
+  billingClientId String?
+  billingClient   Client?       @relation("SiteBillingClient", fields: [billingClientId], references: [id], onDelete: SetNull)
+  emails          ClientEmail[]
+  series          Serie[]
+  places          ClientPlace[]
 
   @@unique([clientId, name])
   @@index([clientId, active])
+  @@index([billingClientId])
 }
 
 /// One of the laboratory's analysis natures (16 in use); drives the line form.

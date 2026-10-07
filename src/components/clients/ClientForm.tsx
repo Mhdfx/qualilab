@@ -1,10 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Trash2, Archive, ArchiveRestore, ExternalLink, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
+import type { SimilarClient } from "@/lib/client-identity";
+import {
+  SIMILAR_DEBOUNCE_MS,
+  shouldCheckSimilar,
+  similarQuery,
+} from "@/components/commercial/client-actions-logic";
 
 export type EmailRow = {
   email: string;
@@ -28,6 +34,12 @@ type ClientFormProps = {
   clientId?: string;
   initial: ClientFormValues;
   archived?: boolean;
+  /**
+   * Set when the fiche was merged into, or attached as a site of, another
+   * client (CLIENTS-FUSION.md §6): reactivating it would bring the duplicate
+   * back, so the button is not offered.
+   */
+  mergedInto?: { id: string; name: string } | null;
 };
 
 const EMPTY_EMAIL: EmailRow = {
@@ -37,15 +49,50 @@ const EMPTY_EMAIL: EmailRow = {
   forAlerts: true,
 };
 
-export function ClientForm({ clientId, initial, archived }: ClientFormProps) {
+export function ClientForm({ clientId, initial, archived, mergedInto }: ClientFormProps) {
   const router = useRouter();
   const [values, setValues] = useState<ClientFormValues>(initial);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+  // CLIENTS-FUSION.md §5: close clients while typing, and the server's 409.
+  const [nearby, setNearby] = useState<SimilarClient[]>([]);
+  const [conflict, setConflict] = useState<SimilarClient[] | null>(null);
+  const [notSame, setNotSame] = useState(false);
+  const conflictRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      if (!shouldCheckSimilar(values.name, clientId ? initial.name : null, values.ice, clientId ? initial.ice : null)) {
+        setNearby([]);
+        return;
+      }
+      fetch(`/api/clients/similar?${similarQuery(values.name, values.ice, clientId)}`, {
+        signal: controller.signal,
+      })
+        .then((response) => (response.ok ? response.json() : []))
+        // `{ similar: [...] }` (a bare array is accepted too).
+        .then((data: unknown) => {
+          const list = Array.isArray(data) ? data : (data as { similar?: unknown } | null)?.similar;
+          setNearby(Array.isArray(list) ? (list as SimilarClient[]) : []);
+        })
+        // A failed suggestion is not an error: the server checks again on save.
+        .catch(() => undefined);
+    }, SIMILAR_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [values.name, values.ice, clientId, initial.name, initial.ice]);
 
   function set<K extends keyof ClientFormValues>(key: K, value: ClientFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
     setError("");
+    if (key === "name" || key === "ice") {
+      // Another name or ICE: the previous « not the same client » no longer holds.
+      setConflict(null);
+      setNotSame(false);
+    }
   }
 
   function setEmail(index: number, patch: Partial<EmailRow>) {
@@ -78,12 +125,20 @@ export function ClientForm({ clientId, initial, archived }: ClientFormProps) {
             ...values,
             // Rows the user started and abandoned are not an error.
             emails: values.emails.filter((row) => row.email.trim()),
+            ...(conflict && notSame ? { confirmDuplicate: true } : {}),
           }),
         }
       );
 
       const data = await response.json();
       if (!response.ok) {
+        if (response.status === 409 && Array.isArray(data.similar) && data.similar.length > 0) {
+          setConflict(data.similar as SimilarClient[]);
+          setNotSame(false);
+          setError("");
+          setTimeout(() => conflictRef.current?.focus(), 0);
+          return;
+        }
         setError(data.error ?? "Enregistrement impossible.");
         return;
       }
@@ -137,6 +192,15 @@ export function ClientForm({ clientId, initial, archived }: ClientFormProps) {
             onChange={(v) => set("name", v)}
             className="sm:col-span-2"
           />
+          {!conflict && nearby.length > 0 && (
+            <div className="sm:col-span-2" aria-live="polite">
+              <p className="flex items-center gap-1.5 text-xs font-medium text-amber-800">
+                <Users className="h-3.5 w-3.5" aria-hidden="true" />
+                Clients proches :
+              </p>
+              <SimilarList clients={nearby} compact />
+            </div>
+          )}
           <Field id="contact" label="Contact" value={values.contact} onChange={(v) => set("contact", v)} />
           <Field
             id="ice"
@@ -234,6 +298,35 @@ export function ClientForm({ clientId, initial, archived }: ClientFormProps) {
         </button>
       </Card>
 
+      {conflict && (
+        <div
+          ref={conflictRef}
+          tabIndex={-1}
+          role="alert"
+          className="rounded-xl border border-amber-200 bg-amber-50 p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+        >
+          <p className="text-sm font-semibold text-amber-900">
+            {conflict.length > 1
+              ? "Ces clients ressemblent beaucoup à celui-ci :"
+              : "Ce client ressemble beaucoup à celui-ci :"}
+          </p>
+          <p className="mt-0.5 text-xs text-amber-800">
+            Ouvrez leur fiche pour vérifier. Si c&apos;est la même société,
+            utilisez la fiche existante plutôt que d&apos;en créer une seconde.
+          </p>
+          <SimilarList clients={conflict} />
+          <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm font-medium text-amber-900">
+            <input
+              type="checkbox"
+              checked={notSame}
+              onChange={(event) => setNotSame(event.target.checked)}
+              className="h-4 w-4 rounded border-amber-400 text-brand focus:ring-brand"
+            />
+            Ce n&apos;est pas le même client
+          </label>
+        </div>
+      )}
+
       {error && (
         <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {error}
@@ -241,14 +334,22 @@ export function ClientForm({ clientId, initial, archived }: ClientFormProps) {
       )}
 
       <div className="flex flex-col gap-3 sm:flex-row-reverse">
-        <PrimaryButton type="submit" disabled={!!busy} className="sm:flex-1">
-          {busy === "save" ? "Enregistrement…" : clientId ? "Enregistrer" : "Créer le client"}
+        <PrimaryButton type="submit" disabled={!!busy || (!!conflict && !notSame)} className="sm:flex-1">
+          {busy === "save"
+            ? "Enregistrement…"
+            : conflict && notSame
+              ? clientId
+                ? "Enregistrer quand même"
+                : "Créer quand même"
+              : clientId
+                ? "Enregistrer"
+                : "Créer le client"}
         </PrimaryButton>
         <SecondaryButton type="button" onClick={() => router.back()} disabled={!!busy}>
           Annuler
         </SecondaryButton>
 
-        {clientId && (
+        {clientId && !(archived && mergedInto) && (
           <button
             type="button"
             onClick={toggleArchive}
@@ -270,6 +371,38 @@ export function ClientForm({ clientId, initial, archived }: ClientFormProps) {
         )}
       </div>
     </form>
+  );
+}
+
+/** Close clients, each with the reason and a link to its fiche (new tab). */
+function SimilarList({ clients, compact = false }: { clients: SimilarClient[]; compact?: boolean }) {
+  return (
+    <ul className={compact ? "mt-1 flex flex-wrap gap-1.5" : "mt-2 space-y-1.5"}>
+      {clients.map((client) => (
+        <li key={client.id} className={compact ? "" : "flex flex-wrap items-center gap-2"}>
+          <a
+            href={`/commercial/${client.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={
+              compact
+                ? "inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900 ring-1 ring-amber-200 transition hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                : "inline-flex items-center gap-1.5 rounded text-sm font-semibold text-brand underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            }
+          >
+            {client.name}
+            {compact && <span className="font-normal text-amber-700">· {client.reason}</span>}
+            <ExternalLink className="h-3 w-3" aria-hidden="true" />
+            <span className="sr-only">(ouvre la fiche dans un nouvel onglet)</span>
+          </a>
+          {!compact && (
+            <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
+              {client.reason}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 

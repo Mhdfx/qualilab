@@ -13,6 +13,12 @@ import { toMoney } from "@/lib/money";
  * and only those no invoice line already refers to: that link is what stops
  * the laboratory billing the same analysis twice. The status travels with
  * each line so the accountant sees which ones are invoiced before result.
+ *
+ * Billing clients (CLIENTS-FUSION.md §4): what is billable to a client is
+ * its own samples — except those of its sites billed to another client —
+ * plus the samples of the sites billed to it (its principal client's). Such
+ * a sample carries `via: { siteName, clientId, clientName }`; the client's
+ * own samples carry `via: null`.
  */
 export async function GET(
   _request: Request,
@@ -26,7 +32,15 @@ export async function GET(
   const [samples, services] = await Promise.all([
     prisma.sample.findMany({
       where: {
-        clientId: id,
+        OR: [
+          {
+            clientId: id,
+            // Not those of its sites billed to another client.
+            NOT: { serie: { is: { site: { is: { billingClientId: { not: null }, NOT: { billingClientId: id } } } } } },
+          },
+          // The sites of its principal client billed to it.
+          { serie: { is: { site: { is: { billingClientId: id } } } } },
+        ],
         status: { in: [...BILLABLE_STATUSES] },
         // Not already on an invoice.
         invoiceItems: { none: {} },
@@ -40,6 +54,9 @@ export async function GET(
         status: true,
         programmedAt: true,
         validatedAt: true,
+        clientId: true,
+        client: { select: { name: true } },
+        serie: { select: { site: { select: { name: true } } } },
         parameters: { select: { parameter: { select: { name: true } } } },
       },
       orderBy: [{ validatedAt: "asc" }, { programmedAt: "asc" }],
@@ -59,6 +76,10 @@ export async function GET(
     status: sample.status,
     programmedAt: sample.programmedAt,
     validatedAt: sample.validatedAt,
+    via:
+      sample.clientId === id
+        ? null
+        : { siteName: sample.serie.site?.name ?? null, clientId: sample.clientId, clientName: sample.client.name },
     parameters: sample.parameters.map(({ parameter }) => ({
       name: parameter.name,
     })),

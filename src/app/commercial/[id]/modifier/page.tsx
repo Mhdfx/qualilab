@@ -18,7 +18,10 @@ export default async function ModifierClientPage({
 
   const client = await prisma.client.findUnique({
     where: { id },
-    include: { emails: { orderBy: { email: "asc" } } },
+    include: {
+      emails: { orderBy: { email: "asc" } },
+      mergedInto: { select: { id: true, name: true } },
+    },
   });
 
   if (!client) notFound();
@@ -43,6 +46,7 @@ export default async function ModifierClientPage({
         <ClientForm
           clientId={client.id}
           archived={client.archived}
+          mergedInto={client.mergedInto}
           initial={{
             name: client.name,
             contact: client.contact ?? "",

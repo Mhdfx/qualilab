@@ -8,7 +8,9 @@
 
 ## ▶ NEXT ACTION
 
-**Retours du laboratoire 05 → 07/10 : V1 → V6 construits le 07/10, pas encore déployés** (`RETOUR-LABO-06-10.md` §5). Next: commit + deploy (the migration `20261007100000_retour_labo_v` runs with `prisma migrate deploy`), then **TESTPLAN V** on production (V0 → V6), the « Sites de l'ancien logiciel » import (extract `sites.csv` with `scripts/legacy/extract-legacy.py`, analyse, commit), a new version of PG04/EN01 and PG05/EN04 in `/admin/documents`. Waiting on the lab: Q45 (sending by site), Q50 (air and physico-chemistry parameters in the catalogue).
+**Clients en double / sites / clients facturés : construits le 07/10, pas encore déployés** (`CLIENTS-FUSION.md`). Next: commit + deploy (migration `20261008100000_clients_fusion` with `prisma migrate deploy`), then **TESTPLAN W** on production with invented « TEST UI W … » clients only. The real duplicates, outlets and billing entities are processed only after the laboratory validates `doublons-clients.xlsx` (Q54).
+
+_Previous next action:_ **Retours du laboratoire 05 → 07/10 : V1 → V6 construits le 07/10, pas encore déployés** (`RETOUR-LABO-06-10.md` §5). Next: commit + deploy (the migration `20261007100000_retour_labo_v` runs with `prisma migrate deploy`), then **TESTPLAN V** on production (V0 → V6), the « Sites de l'ancien logiciel » import (extract `sites.csv` with `scripts/legacy/extract-legacy.py`, analyse, commit), a new version of PG04/EN01 and PG05/EN04 in `/admin/documents`. Waiting on the lab: Q45 (sending by site), Q50 (air and physico-chemistry parameters in the catalogue).
 
 _Previous next action:_ **Tranche PROGRAMME livrée (TESTPLAN T, 05/10 night).** Next: les tranches L1–L3 de `RETOUR-LABO-05-10.md` (en-tête du protocole, familles, surfaces) après les réponses du laboratoire.
 
@@ -270,6 +272,12 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-10-07 (night) — clients en double, sites, clients facturés built (`CLIENTS-FUSION.md`)
+- Schema + additive migration `20261008100000_clients_fusion` (`Client.mergedIntoId`, `Client.billedForId`, `Site.billingClientId`); pure rules `src/lib/client-identity.ts` (near-duplicates) and `src/lib/client-merge-rules.ts` (merge, attach, billing links, which client a sample is invoiced to), shared server moves `src/lib/client-transfer.ts` (also used by the sites import now).
+- Routes: `POST /api/clients/[id]/merge`, `POST /api/clients/[id]/attach-as-site` (ADMIN, preview = the same writes rolled back), `PUT /api/clients/[id]/billed-for`, `GET /api/clients/similar`, « Facturé à » on `PATCH …/sites/[siteId]`, 409 `{ error, similar }` + `confirmDuplicate` on create and rename. Screens: « Actions sur la fiche », « Clients facturés », « Facturé à » per site, « Clients proches » in the client form, « via le site … » on the billable list, archived-fiche banner.
+- Gate review fixes: a principal could invoice a sample of a site billed to its client facturé (now refused, one billing client per sample); archiving a client facturé gives its sites back; merge / attach repoint the fiches already merged into B; the sites import sets `mergedIntoId`, and the clients it archived on 07/10 find their parent in the journal.
+- Gates: prisma generate, tsc 0, eslint 0, vitest 52 files / 674 tests, `npm run build` green. Not deployed; TESTPLAN W planned.
 
 ### 2026-10-07 (night) — clients en double : analyse complète
 - Every active client checked against the old database (types client / site / client facturé, parents, ICE, e-mail, phone, city) with strong and weak evidence, three agent passes (classify, refute, consolidate): 355 clients concerned — 74 duplicates, 109 billing entities to link, 14 outlets to attach as sites, 27 to confirm. File for the lab: `legacy-export/doublons-clients.xlsx` (outside the repo). Nothing changed in production; merge / attach actions and the billing-entity link wait for the lab's validation (Q54). `RETOUR-LABO-06-10.md` §7.

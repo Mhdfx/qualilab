@@ -37,6 +37,7 @@
 
 | **Programme d'analyse (05/10) — live 05/10 night, TESTPLAN T** | rôle « Responsable des paramètres », statut PROGRAMME entre réception et paillasse, fiche de programme (type, analyses, nombres, méthodes, technicien par paramètre, délai, consignes), facturation dès le programme — spec **`PROGRAMME.md`** | ✅ **live 2026-10-05 night** — migration `20261006100000_programme` appliquée en production, recette TESTPLAN T (22 checks API + navigateur comme param1), un plantage de la fiche corrigé le soir même ; questions Q41–Q42 au laboratoire ; **parcours complet d'un prélèvement en production le 06/10 (TESTPLAN U, `RECETTE-06-10-PARCOURS.md`)**, réception sans technicien par défaut depuis le 06/10 |
 | **Retours du laboratoire 05/10 → 07/10 — live 07/10, TESTPLAN V** | cadre Autre / Devis validé / BC / Convention, « Service vétérinaire » retiré, « Échantillon » au lieu de « Ligne », Désignation + « État de la surface », deux familles par échantillon (1M / 1P, nature masquée), méthode de prélèvement de l'air, sites des clients repris de l'ancien logiciel, analyses et type de produit décidés par le laboratoire — spec **`RETOUR-LABO-06-10.md`** (§5 décisions, §6 livré) | ✅ **V1 → V6 live 2026-10-07** (`e30c2b0`, `e83421c`), migration `20261007100000_retour_labo_v` ; import des sites exécuté en production (420 sites, 345 doublons archivés) ; reste au laboratoire : paramètres d'air et de physico-chimie (Q50), versions des documents, Q45–Q52 |
+| **Clients en double / sites / clients facturés** | « Fusionner avec… » et « Rattacher comme site de… » (ADMIN, aperçu puis confirmation, une transaction, fiche archivée avec `mergedIntoId`), client facturé d'un client principal et « Facturé à » par site (facturation : un échantillon n'est proposé qu'à un seul client), quasi-doublon à la création et au renommage (409 + « Ce n'est pas le même client ») — spec **`CLIENTS-FUSION.md`** (`RETOUR-LABO-06-10.md` §7) | ◀ **built, not deployed** (2026-10-07) — migration `20261008100000_clients_fusion` à appliquer avec la prochaine mise en production ; recette TESTPLAN W (planifiée, clients de test uniquement) ; **exécution sur les vrais clients seulement après validation de `doublons-clients.xlsx` (Q54)** |
 
 **Bottom line:** the five core phases are code-complete. The whole circuit runs
 — field intake to report, alert and invoice — and the lab configures everything
@@ -277,6 +278,13 @@ Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|E
 | Legacy sites → client sites (import) | `/admin/import` « Sites de l'ancien logiciel »; `src/lib/sites-import.ts` (pure plan, tests) + `POST /api/admin/import/sites` |
 | Search / export by site | `src/lib/sample-search.ts` (`siteId`, `SIEGE`) + `src/components/recherche/ClientSiteFilter.tsx`; Excel « Site » column in `src/app/api/samples/export/route.ts` |
 | What a série's JSON carries (cadreNote, surfaceState, airMethod, twin order) | `src/lib/serie-select.ts` |
+| Merge two clients (« Fusionner avec… ») — what moves, refusals | `POST /api/clients/[id]/merge` (ADMIN; `[id]` = the fiche that disappears) + `checkMerge` / `mergeFill` in `src/lib/client-merge-rules.ts` (pure, tested); screen `src/components/commercial/ClientMergeActions.tsx` |
+| Attach a client as a site (« Rattacher comme site de… ») | `POST /api/clients/[id]/attach-as-site` (ADMIN) + `checkAttachAsSite`; the invoices stay with the archived fiche |
+| How a client's memory (places, products, addresses, types, profiles) moves to another client | `src/lib/client-transfer.ts` (server-only) — shared by the merge, the attach and the sites import |
+| Client facturé (« client facturé de ») and « Facturé à » per site | `PUT /api/clients/[id]/billed-for`, `PATCH /api/clients/[id]/sites/[siteId]` (`billingClientId`); rules `checkBilledFor` / `checkSiteBilling`; screens `BillingClientsCard.tsx`, `SitesManager.tsx` |
+| Which client a sample is invoiced to | `sampleBillingClientId` / `invoiceSampleRefusal` (`src/lib/client-merge-rules.ts`) — the billable list `GET /api/clients/[id]/billable` and `POST /api/invoices` follow the same rule |
+| « Ce client existe peut-être déjà » (near-duplicate) | `findSimilarClients` / `clientCoreName` / `normalIce` in `src/lib/client-identity.ts` (pure, tested); `GET /api/clients/similar`; the 409 `{ error, similar }` of `POST /api/clients` and of a rename by `PATCH /api/clients/[id]`, lifted by `confirmDuplicate: true` |
+| The sentences of the merge / attach preview, « Facturé à » choices, archived-fiche banner | `src/components/commercial/client-actions-logic.ts` (pure, tested) |
 
 ## 6. Environment variables
 
@@ -419,6 +427,15 @@ Found by the end-to-end recette of 06/10 (`RECETTE-06-10-PARCOURS.md`).
 - « Corriger la fiche » sends only the fields of the sample's kind and never empties a stored value it does not mention (it used to clear a product type set by the programme on a non-food sample, and its results with it).
 - Addresses moved by the sites import arrive with « Reçoit les rapports / alertes » unticked: `recipientsFor` ignores `ClientEmail.siteId` (sending by site = Q45). Editing the client's fiche keeps the site of an address still listed (`PATCH /api/clients/[id]`).
 
+### 2026-10-07 — clients en double, sites, clients facturés (`CLIENTS-FUSION.md`), as built
+- Migration `20261008100000_clients_fusion` (additive): `Client.mergedIntoId`, `Client.billedForId`, `Site.billingClientId`, each nullable, indexed, `ON DELETE SET NULL`. **Not deployed yet**: it ships with the next release.
+- A merge or an attach never deletes a client: the fiche is archived with `mergedIntoId`, cannot be reactivated (409), and its page says « Fusionnée dans X » / « Rattachée comme site de X » (which one: the latest `CLIENT_MERGED` / `CLIENT_ATTACHED_AS_SITE` entry; none = the sites import). Clients archived by the 07/10 import before the column existed find their parent in their `CLIENT_ARCHIVED` journal entry (`importedParentId`); the import now sets `mergedIntoId` itself.
+- Merge and attach run the preview and the commit through the same code in one `prisma.$transaction`, rows locked `FOR UPDATE`; the preview is rolled back on purpose, so its counts are exactly the commit's. Merge moves séries, samples, invoices, sites (same normalised name: merged), addresses (duplicates deleted), places, products, types, profiles and the links pointing at B (`billedForId`, `Site.billingClientId`, `mergedIntoId`); different ICEs are refused. Attach keeps the invoices on B and unticks « Rapports » / « Alertes » on the moved addresses.
+- When B is a client facturé and A is not, A takes B's principal (`adoptBilledForId`), so the sites billed to B stay billed to a client facturé of their client. Three more refusals keep the links valid (see `checkMerge`).
+- A sample is invoiced to **one** client: its site's billing client, else its own client (`sampleBillingClientId`). `POST /api/invoices` now also refuses a principal invoicing a site billed to its client facturé (it used to accept it, so the same sample could be offered to two clients). Unlinking a client facturé, or archiving it, gives its sites back to their client in the same transaction.
+- `POST /api/invoices` accepts the statuses of `BILLABLE_STATUSES` (programme confirmed → rapport envoyé), as the billable list offers them (PROGRAMME.md §6); it used to refuse anything before VALIDE.
+- Near-duplicates warn, never block: the exact name stays refused as before (now also on a rename), a close client returns 409 `{ error, similar }` until `confirmDuplicate: true` (« Ce n'est pas le même client », journalled as `confirmedNotDuplicate`).
+
 ## 8c. A lesson written down (2026-08-25)
 
 Importing anything that touches Prisma from a **client** component drags the
@@ -449,8 +466,8 @@ importing a server module.
 - Sample status still only ever reaches `PRELEVE` in practice — Phase 2 wires the
   transitions. The state machine (`canTransition`) already exists: **use it**,
   never write `status` directly.
-- `bcryptjs` and `jose` are still in package.json but unused by the app since
-  Better Auth took over hashing/sessions — remove when convenient.
+- ~~`bcryptjs` and `jose` are still in package.json~~ → **removed**: Better Auth
+  does the hashing and the sessions; neither is a dependency any more.
 - `src/generated/prisma/` is gitignored — regenerated by `prisma generate` on
   install/build. Never edit or import it as if hand-written source.
 - ~~Sample numbering moves to reception~~ → **done (2026-08-23).** The official

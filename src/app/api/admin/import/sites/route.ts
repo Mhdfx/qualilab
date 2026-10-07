@@ -3,7 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { isEmail } from "@/lib/client-validation";
+import { moveEmails, movePlaces, moveProducts, moveTypesAndProfiles } from "@/lib/client-transfer";
 import { detectDelimiter, parseCsv } from "@/lib/csv";
 import {
   guessSiteColumns,
@@ -239,7 +239,7 @@ async function writeParent(
   // makes the client real, and it is then left alone.
   const current = await tx.client.findMany({
     where: { id: { in: planned.map((s) => s.pseudo!.id) } },
-    select: { id: true, archived: true, email: true, _count: { select: { series: true, samples: true, invoices: true, sites: true } } },
+    select: { id: true, archived: true, _count: { select: { series: true, samples: true, invoices: true, sites: true } } },
   });
   const real = (c: (typeof current)[number]) => c._count.series + c._count.samples + c._count.invoices + c._count.sites > 0;
   const stillPseudo = new Map(current.filter((c) => !c.archived && !real(c)).map((c) => [c.id, c]));
@@ -250,122 +250,46 @@ async function writeParent(
 
   const ids = attached.map((s) => s.pseudo!.id);
   const siteFor = new Map(attached.map((s) => [s.pseudo!.id, { id: siteIdOf(s)!, name: s.name }]));
-  const moved = new Map(ids.map((id) => [id, { places: 0, products: 0, emails: 0 }]));
-  const order = new Map(ids.map((id, i) => [id, i]));
-  const byClientOrder = <T extends { clientId: string }>(a: T, b: T) => order.get(a.clientId)! - order.get(b.clientId)!;
+  const siteIdFor = (clientId: string) => siteFor.get(clientId)!.id;
+  // The shared moves of src/lib/client-transfer.ts (same rules as the merge of
+  // two clients and « Rattacher comme site de… », CLIENTS-FUSION.md §2–3).
 
   // Products: one per label and client — merged into the parent's when it has the label.
-  const [parentProducts, pseudoProducts] = [
-    await tx.clientProduct.findMany({ where: { clientId: parentId }, select: { id: true, normalizedLabel: true, regulationId: true } }),
-    await tx.clientProduct.findMany({
-      where: { clientId: { in: ids } },
-      select: { id: true, clientId: true, normalizedLabel: true, usageCount: true, regulationId: true },
-    }),
-  ];
-  const productByLabel = new Map(parentProducts.map((p) => [p.normalizedLabel, { id: p.id, regulationId: p.regulationId }]));
-  const productMoves: string[] = [];
-  const productMerges = new Map<string, string>(); // merged row → the row it joins
-  const productAdds = new Map<string, { count: number; regulationId: string | null }>();
-  for (const p of [...pseudoProducts].sort(byClientOrder)) {
-    moved.get(p.clientId)!.products += 1;
-    const target = productByLabel.get(p.normalizedLabel);
-    if (!target) {
-      productMoves.push(p.id);
-      productByLabel.set(p.normalizedLabel, { id: p.id, regulationId: p.regulationId });
-      continue;
-    }
-    const add = productAdds.get(target.id) ?? { count: 0, regulationId: null };
-    add.count += p.usageCount;
-    // The regulation remembered for the product is kept; a merged row only fills a blank.
-    if (!target.regulationId && p.regulationId) {
-      target.regulationId = p.regulationId;
-      add.regulationId = p.regulationId;
-    }
-    productAdds.set(target.id, add);
-    productMerges.set(p.id, target.id);
-  }
-  if (productMerges.size > 0) {
-    await repointSamples(tx, "productId", productMerges);
-    await tx.clientProduct.deleteMany({ where: { id: { in: [...productMerges.keys()] } } });
-  }
-  if (productMoves.length > 0) await tx.clientProduct.updateMany({ where: { id: { in: productMoves } }, data: { clientId: parentId } });
-  for (const [id, add] of productAdds) {
-    await tx.clientProduct.update({
-      where: { id },
-      data: { usageCount: { increment: add.count }, ...(add.regulationId ? { regulationId: add.regulationId } : {}) },
-    });
-  }
-  written.products.moved += productMoves.length;
-  written.products.merged += productMerges.size;
+  const products = await moveProducts(tx, ids, parentId);
+  written.products.moved += products.moved;
+  written.products.merged += products.merged;
 
   // Places: onto the site, merged with a place of the same label already on it.
-  const siteIds = [...new Set([...siteFor.values()].map((s) => s.id))];
-  const [parentPlaces, pseudoPlaces] = [
-    await tx.clientPlace.findMany({ where: { clientId: parentId, siteId: { in: siteIds } }, select: { id: true, siteId: true, normalizedLabel: true } }),
-    await tx.clientPlace.findMany({ where: { clientId: { in: ids } }, select: { id: true, clientId: true, normalizedLabel: true, usageCount: true } }),
-  ];
-  const placeByKey = new Map(parentPlaces.map((p) => [`${p.siteId}|${p.normalizedLabel}`, p.id]));
-  const placeMoves = new Map<string, string[]>(); // client → its rows moving to its site
-  const placeMerges = new Map<string, string>();
-  const placeAdds = new Map<string, number>();
-  for (const p of [...pseudoPlaces].sort(byClientOrder)) {
-    moved.get(p.clientId)!.places += 1;
-    const site = siteFor.get(p.clientId)!;
-    const key = `${site.id}|${p.normalizedLabel}`;
-    const target = placeByKey.get(key);
-    if (!target) {
-      placeMoves.set(p.clientId, [...(placeMoves.get(p.clientId) ?? []), p.id]);
-      placeByKey.set(key, p.id);
-      continue;
-    }
-    placeAdds.set(target, (placeAdds.get(target) ?? 0) + p.usageCount);
-    placeMerges.set(p.id, target);
-  }
-  if (placeMerges.size > 0) {
-    await repointSamples(tx, "placeId", placeMerges);
-    await tx.clientPlace.deleteMany({ where: { id: { in: [...placeMerges.keys()] } } });
-  }
-  for (const [clientId, placeIds] of placeMoves) {
-    await tx.clientPlace.updateMany({ where: { id: { in: placeIds } }, data: { clientId: parentId, siteId: siteFor.get(clientId)!.id } });
-    written.places.moved += placeIds.length;
-  }
-  for (const [id, count] of placeAdds) await tx.clientPlace.update({ where: { id }, data: { usageCount: { increment: count } } });
-  written.places.merged += placeMerges.size;
+  const places = await movePlaces(tx, ids, parentId, siteIdFor);
+  written.places.moved += places.moved;
+  written.places.merged += places.merged;
 
   // Addresses: onto the site, boxes unticked (see the header). An address the
-  // parent already has stays on the archived client.
-  const known = new Set(
-    (await tx.clientEmail.findMany({ where: { clientId: parentId }, select: { email: true } })).map((e) => e.email.trim().toLowerCase())
+  // parent already has stays on the archived client. The address on the
+  // client record itself is added when it is not in its list.
+  const emails = await moveEmails(tx, ids, parentId, {
+    siteIdFor,
+    label: (clientId) => siteFor.get(clientId)!.name,
+    untickBoxes: true,
+    duplicates: "keep",
+    recordEmail: true,
+  });
+  written.emails += emails.moved + emails.created;
+  const moved = new Map(
+    ids.map((id) => [
+      id,
+      { places: places.byClient.get(id) ?? 0, products: products.byClient.get(id) ?? 0, emails: emails.byClient.get(id) ?? 0 },
+    ])
   );
-  const pseudoEmails = await tx.clientEmail.findMany({ where: { clientId: { in: ids } }, select: { id: true, clientId: true, email: true, label: true } });
-  for (const e of [...pseudoEmails].sort(byClientOrder)) {
-    const address = e.email.trim().toLowerCase();
-    if (known.has(address)) continue;
-    known.add(address);
-    const site = siteFor.get(e.clientId)!;
-    await tx.clientEmail.update({
-      where: { id: e.id },
-      data: { clientId: parentId, siteId: site.id, label: siteLabel(site.name, e.label), forReports: false, forAlerts: false },
-    });
-    moved.get(e.clientId)!.emails += 1;
-  }
-  // The address on the client record itself, when it is not in its list.
-  for (const s of attached) {
-    const address = stillPseudo.get(s.pseudo!.id)!.email?.trim().toLowerCase() ?? "";
-    if (!address || !isEmail(address) || address.length > 191 || known.has(address)) continue;
-    known.add(address);
-    const site = siteFor.get(s.pseudo!.id)!;
-    await tx.clientEmail.create({ data: { clientId: parentId, siteId: site.id, email: address, label: site.name, forReports: false, forAlerts: false } });
-    moved.get(s.pseudo!.id)!.emails += 1;
-  }
-  written.emails += [...moved.values()].reduce((n, m) => n + m.emails, 0);
 
   // The client's own product types and profiles belong to the parent now.
-  written.productTypes += (await tx.productType.updateMany({ where: { clientId: { in: ids } }, data: { clientId: parentId } })).count;
-  written.profiles += (await tx.analysisProfile.updateMany({ where: { clientId: { in: ids } }, data: { clientId: parentId } })).count;
+  const owned = await moveTypesAndProfiles(tx, ids, parentId);
+  written.productTypes += owned.productTypes;
+  written.profiles += owned.profiles;
 
   // ---- archived, never deleted -------------------------------------------------------------
-  await tx.client.updateMany({ where: { id: { in: ids } }, data: { archived: true } });
+  // `mergedIntoId`: the fiche says « Rattachée comme site de » its parent (CLIENTS-FUSION.md §6).
+  await tx.client.updateMany({ where: { id: { in: ids } }, data: { archived: true, mergedIntoId: parentId } });
   written.attached += ids.length;
   for (const s of attached) {
     const site = siteFor.get(s.pseudo!.id)!;
@@ -386,31 +310,4 @@ async function writeParent(
     });
   }
   return audit;
-}
-
-/**
- * The label of an address moved onto a site: the site's name first, so the
- * client fiche still tells the addresses apart (it does not show the site).
- */
-function siteLabel(siteName: string, label: string | null): string {
-  const own = label?.trim();
-  return (own && own !== siteName ? `${siteName} — ${own}` : siteName).slice(0, 191);
-}
-
-/**
- * A memory row merged into another is deleted; any sample still pointing at
- * it follows to the row it joined (a client created by mistake has no
- * sample, so this is a safety net rather than a step).
- */
-async function repointSamples(tx: Prisma.TransactionClient, field: "productId" | "placeId", merges: Map<string, string>) {
-  const merged = [...merges.keys()];
-  const samples = await tx.sample.findMany({
-    where: field === "productId" ? { productId: { in: merged } } : { placeId: { in: merged } },
-    select: { id: true, productId: true, placeId: true },
-  });
-  for (const sample of samples) {
-    const target = merges.get((field === "productId" ? sample.productId : sample.placeId) ?? "");
-    if (!target) continue;
-    await tx.sample.update({ where: { id: sample.id }, data: field === "productId" ? { productId: target } : { placeId: target } });
-  }
 }
