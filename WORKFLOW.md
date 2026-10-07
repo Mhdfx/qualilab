@@ -484,7 +484,7 @@ réception n'attribue plus obligatoirement un technicien. La facturation peut
 la ligne n'est pas validée). Journal : `SAMPLE_PROGRAMMED`,
 `SAMPLE_PROGRAMME_UPDATED`. Recette : TESTPLAN T.
 
-## 17. Retours du laboratoire des 05, 06 et 07/10 — construits le 07/10 (`RETOUR-LABO-06-10.md` §5)
+## 17. Retours du laboratoire des 05, 06 et 07/10 — en production le 07/10 (`RETOUR-LABO-06-10.md` §5, §6 ; TESTPLAN V)
 
 Ce que le circuit change, tranche par tranche — construit le 07/10 avec les
 choix par défaut de §5, à déployer puis à recetter en production
