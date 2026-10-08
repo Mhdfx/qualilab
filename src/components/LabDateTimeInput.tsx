@@ -99,7 +99,9 @@ export function LabDateTimeInput({
 
   return (
     <div className={className}>
-      <div className={nowButton ? "flex gap-2" : undefined}>
+      {/* the native field keeps its content width in a flex row: let it shrink
+          to 13rem, then « Maintenant » wraps under it on a narrow column */}
+      <div className={nowButton ? "flex flex-wrap gap-2" : undefined}>
         <input
           id={id}
           type="datetime-local"
@@ -109,7 +111,7 @@ export function LabDateTimeInput({
           disabled={disabled}
           aria-describedby={describedBy}
           aria-invalid={errorId ? true : undefined}
-          className={inputClassName}
+          className={nowButton ? `${inputClassName} min-w-[13rem] flex-1 basis-52` : inputClassName}
         />
         {nowButton && (
           <button
@@ -132,8 +134,8 @@ export function LabDateTimeInput({
           <p id={hintId} className="mt-1 flex items-start gap-1.5 text-xs text-amber-800">
             <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <span>
-              Cet appareil {drift > 0 ? "avance" : "retarde"} {driftAmount(drift)} sur l&apos;heure légale du Maroc
-              (GMT depuis le 20/09/2026) : tapez l&apos;heure qu&apos;il affiche, elle est convertie
+              {/* one string: the compiled JSX dropped the space after {driftAmount(drift)} (« d'1 hsur ») */}
+              {`Cet appareil ${drift > 0 ? "avance" : "retarde"} ${driftAmount(drift)} sur l'heure légale du Maroc (GMT depuis le 20/09/2026) : tapez l'heure qu'il affiche, elle est convertie`}
               {value ? (
                 <>
                   {" "}(
