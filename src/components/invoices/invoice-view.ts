@@ -6,6 +6,7 @@ import {
   cancelRefusal,
   canEditDraft,
   checkCreditNote,
+  INVOICE_STATE_LABELS,
   invoiceState,
   isIssued,
   remainingCreditable,
@@ -287,6 +288,49 @@ export const LIST_STATE_FILTERS = [
 ] as const satisfies readonly InvoiceState[];
 export type ListStateFilter = (typeof LIST_STATE_FILTERS)[number];
 
+/**
+ * Groups of documents a dashboard figure is made of (« comme un tri »), on
+ * top of the exact states. They are not states — an invoice reads as one
+ * state, but belongs to several groups — so they stay out of
+ * `LIST_STATE_FILTERS`; the list's `?etat=` takes either.
+ *
+ * - `A_REGLER` « À régler »: the issued invoices with something left to pay,
+ *   i.e. « Émise » ∪ « Partiellement payée » — « Reste à payer », « En attente
+ *   de règlement ».
+ * - `EMISES` « Émises »: every issued document that is not cancelled,
+ *   invoices and credit notes — the documents « Facturé (net d'avoirs) » is
+ *   computed from (`billingFigures`); with `?type=FACTURE`, « Factures émises ».
+ * - `AVEC_REGLEMENT` « Avec règlement »: the invoices that received at least
+ *   one settlement — those that carry « Encaissé ».
+ */
+export const LIST_GROUP_FILTERS = ["A_REGLER", "EMISES", "AVEC_REGLEMENT"] as const;
+export type ListGroupFilter = (typeof LIST_GROUP_FILTERS)[number];
+
+export const LIST_GROUP_FILTER_LABELS: Record<ListGroupFilter, string> = {
+  A_REGLER: "À régler",
+  EMISES: "Émises",
+  AVEC_REGLEMENT: "Avec règlement",
+};
+
+/** What each group holds, printed after its label (« À régler : … »). */
+export const LIST_GROUP_FILTER_HINTS: Record<ListGroupFilter, string> = {
+  A_REGLER: "factures émises ou partiellement payées, dont il reste un montant à encaisser.",
+  EMISES: "factures et avoirs émis, hors brouillons et factures annulées.",
+  AVEC_REGLEMENT: "factures ayant reçu au moins un règlement.",
+};
+
+/** What `?etat=` may hold: one exact state, or one group. */
+export type ListFilter = ListStateFilter | ListGroupFilter;
+
+export function isListGroupFilter(value: ListFilter | null): value is ListGroupFilter {
+  return value !== null && (LIST_GROUP_FILTERS as readonly string[]).includes(value);
+}
+
+/** The label of a `?etat=` value, exact state or group. */
+export function listFilterLabel(filter: ListFilter): string {
+  return isListGroupFilter(filter) ? LIST_GROUP_FILTER_LABELS[filter] : INVOICE_STATE_LABELS[filter];
+}
+
 export const LIST_KIND_FILTERS = ["FACTURE", "AVOIR"] as const satisfies readonly InvoiceKind[];
 
 export const LIST_KIND_FILTER_LABELS: Record<InvoiceKind, string> = {
@@ -295,7 +339,8 @@ export const LIST_KIND_FILTER_LABELS: Record<InvoiceKind, string> = {
 };
 
 export type ListFilters = {
-  state: ListStateFilter | null;
+  /** `?etat=`: an exact state or a group (`LIST_GROUP_FILTERS`). */
+  state: ListFilter | null;
   kind: InvoiceKind | null;
   q: string;
 };
@@ -303,12 +348,14 @@ export type ListFilters = {
 type RawParams = Record<string, string | string[] | undefined>;
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value) ?? "";
 
+const LIST_FILTERS: readonly string[] = [...LIST_STATE_FILTERS, ...LIST_GROUP_FILTERS];
+
 /** Reads `?etat=&type=&q=` — anything unknown is simply no filter. */
 export function parseListFilters(params: RawParams): ListFilters {
   const state = first(params.etat);
   const kind = first(params.type);
   return {
-    state: (LIST_STATE_FILTERS as readonly string[]).includes(state) ? (state as ListStateFilter) : null,
+    state: LIST_FILTERS.includes(state) ? (state as ListFilter) : null,
     kind: (LIST_KIND_FILTERS as readonly string[]).includes(kind) ? (kind as InvoiceKind) : null,
     q: first(params.q).trim().slice(0, 100),
   };
@@ -325,18 +372,54 @@ export function listFiltersQuery(filters: ListFilters): string {
 }
 
 /**
- * The stored columns a state filter narrows to, before the exact state is
+ * The link of a filtered invoice list, for a tile or a figure:
+ * `invoiceListHref("/comptabilite/factures", { state: "A_REGLER" })` →
+ * `/comptabilite/factures?etat=A_REGLER`. `base` is the list of the space
+ * the viewer is in — `/comptabilite/factures` (COMPTABLE, ADMIN) or
+ * `/admin/factures` (ADMIN only); a client component reads it with
+ * `useInvoiceBasePath()`.
+ */
+export function invoiceListHref(base: string, filters: Partial<ListFilters> = {}): string {
+  return `${base}${listFiltersQuery({ state: null, kind: null, q: "", ...filters })}`;
+}
+
+/** Whether the list shows exactly these filters — for a tile's `active`. */
+export function sameListFilters(a: ListFilters, b: Partial<ListFilters>): boolean {
+  return a.state === (b.state ?? null) && a.kind === (b.kind ?? null) && a.q === (b.q ?? "");
+}
+
+/** The part of an invoice `where` a list filter sets (assignable to Prisma's `InvoiceWhereInput`). */
+export type InvoiceFilterWhere = {
+  kind?: InvoiceKind;
+  status?: { in?: InvoiceStatus[]; notIn?: InvoiceStatus[] };
+  payments?: { some: Record<string, never> };
+  OR?: InvoiceFilterWhere[];
+};
+
+/**
+ * The stored columns a list filter narrows to, before the exact state is
  * read from the amounts: « Émise » and « Partiellement payée » are both
  * EN_ATTENTE and differ by their settlements; « Payée » may also be an
- * EN_ATTENTE invoice fully covered by credit notes.
+ * EN_ATTENTE invoice fully covered by credit notes. A group may hold both
+ * kinds (`EMISES`): the caller AND-s it with the type filter and the search,
+ * never spreads it into a `where` that has its own `OR`.
  */
-export function stateFilterWhere(state: ListStateFilter | null): {
-  kind?: InvoiceKind;
-  status?: { in: InvoiceStatus[] };
-} {
+export function stateFilterWhere(state: ListFilter | null): InvoiceFilterWhere {
   switch (state) {
     case null:
       return {};
+    case "A_REGLER":
+      return { kind: "FACTURE", status: { in: ["EN_ATTENTE"] } };
+    case "EMISES":
+      // The same two sets `billingFigures` sums for « Facturé (net d'avoirs) ».
+      return {
+        OR: [
+          { kind: "FACTURE", status: { in: ["EN_ATTENTE", "PAYEE"] } },
+          { kind: "AVOIR", status: { notIn: ["BROUILLON", "ANNULEE"] } },
+        ],
+      };
+    case "AVEC_REGLEMENT":
+      return { payments: { some: {} } };
     case "BROUILLON":
       return { kind: "FACTURE", status: { in: ["BROUILLON"] } };
     case "ANNULEE":
@@ -346,6 +429,24 @@ export function stateFilterWhere(state: ListStateFilter | null): {
     case "EMISE":
     case "PARTIELLEMENT_PAYEE":
       return { kind: "FACTURE", status: { in: ["EN_ATTENTE"] } };
+  }
+}
+
+/**
+ * Whether a row the database returned belongs to the filter, once its exact
+ * state is read from its amounts (the second half of `stateFilterWhere`).
+ */
+export function matchesListFilter(state: InvoiceState, filter: ListFilter | null): boolean {
+  switch (filter) {
+    case null:
+    case "AVEC_REGLEMENT":
+      return true;
+    case "A_REGLER":
+      return state === "EMISE" || state === "PARTIELLEMENT_PAYEE";
+    case "EMISES":
+      return state === "EMISE" || state === "PARTIELLEMENT_PAYEE" || state === "PAYEE" || state === "AVOIR";
+    default:
+      return state === filter;
   }
 }
 

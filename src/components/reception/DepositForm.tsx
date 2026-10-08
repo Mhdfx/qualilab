@@ -70,7 +70,6 @@ import {
 } from "@/components/preleveur/visit-types";
 import { Checklist, ConformityChip } from "./reception-widgets";
 import { countLabel, depositLineChecks, familiesSummary, lineSampleRefs, sampleCount } from "./reception-logic";
-import type { TechnicianOption } from "./types";
 
 const subscribeNoop = () => () => {};
 
@@ -78,14 +77,14 @@ const subscribeNoop = () => () => {};
  * What the counter records on top of the sample itself. Keyed by the line:
  * when both families are ticked the line becomes two samples (« 2M »,
  * « 2P ») and `POST /api/series` gives both the same temperature,
- * conformity, decision and technician.
+ * conformity and decision. No technician (RETOUR-LABO-06-10.md §9.3): the
+ * responsable des paramètres assigns it on the programme sheet.
  */
 type LineIntake = {
   temperature: string;
   conformityChoice: boolean | null;
   reason: NonConformityReason | "";
   note: string;
-  technicianId: string;
   /** Non-conform only: « Détruire » instead of « Analyser malgré tout ». */
   destroy: boolean;
 };
@@ -113,7 +112,6 @@ type CreatedDeposit = {
     conformityReason: NonConformityReason | null;
     cancelReason: CancelReason | null;
     nature: { label: string; family: Family };
-    technician: { name: string } | null;
   }[];
 };
 
@@ -174,19 +172,9 @@ function depositLine(natures: readonly NatureOption[], previous?: LineDraft): Li
  * deposit is numbered and received in the same transaction (WORKFLOW.md
  * §3.2).
  */
-export function DepositForm({
-  technicians,
-  thresholds,
-}: {
-  technicians: TechnicianOption[];
-  thresholds: ReceptionThresholds;
-}) {
+export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds }) {
   const router = useRouter();
   const isMounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
-  // Nobody is pre-assigned: the responsable des paramètres attributes the
-  // bench at the programme stage (PROGRAMME.md); a technician picked here is
-  // only a hint.
-  const defaultTechnician = "";
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [natures, setNatures] = useState<NatureOption[]>([]);
@@ -308,7 +296,7 @@ export function DepositForm({
   }
 
   function intakeOf(key: string): LineIntake {
-    return intake[key] ?? { temperature: "", conformityChoice: null, reason: "", note: "", technicianId: defaultTechnician, destroy: false };
+    return intake[key] ?? { temperature: "", conformityChoice: null, reason: "", note: "", destroy: false };
   }
 
   function updateIntake(key: string, patch: Partial<LineIntake>) {
@@ -454,7 +442,6 @@ export function DepositForm({
               conformityReason: conformity ? undefined : reason,
               conformityNote: extra.note,
               decision: destroy ? "DETRUIRE" : "ANALYSER",
-              technicianId: destroy ? undefined : extra.technicianId,
             };
           }),
         }),
@@ -515,8 +502,7 @@ export function DepositForm({
                   <th className="pb-2 pr-3 font-medium">Échantillon</th>
                   <th className="pb-2 pr-3 font-medium">N° de contrôle</th>
                   <th className="pb-2 pr-3 font-medium">Unités</th>
-                  <th className="pb-2 pr-3 font-medium">Conformité</th>
-                  <th className="pb-2 font-medium">Technicien</th>
+                  <th className="pb-2 font-medium">Conformité</th>
                 </tr>
               </thead>
               <tbody>
@@ -534,7 +520,7 @@ export function DepositForm({
                     <td className="py-2.5 pr-3 text-slate-600">
                       {s.unitCount > 1 ? `${s.unitCount} (${repetitionRange(s.unitCount)})` : "1"}
                     </td>
-                    <td className="py-2.5 pr-3">
+                    <td className="py-2.5">
                       {s.status === "ANNULE" ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
                           Échantillon détruit
@@ -552,7 +538,6 @@ export function DepositForm({
                         </span>
                       )}
                     </td>
-                    <td className="py-2.5 text-slate-700">{s.technician?.name ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -868,8 +853,8 @@ export function DepositForm({
                   {twins && (
                     <p className="mt-1 text-xs text-slate-500">
                       Deux familles cochées : deux échantillons, {microRef} (microbiologie) et {chimieRef}{" "}
-                      (physico-chimie), chacun avec son N° de contrôle. La température, la conformité et le technicien
-                      saisis ici valent pour les deux.
+                      (physico-chimie), chacun avec son N° de contrôle. La température, la conformité et la décision
+                      saisies ici valent pour les deux.
                     </p>
                   )}
                   <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -887,25 +872,6 @@ export function DepositForm({
                         className="input-field px-4"
                       />
                     </div>
-                    {!destroy && (
-                      <div>
-                        <label htmlFor={`tech-${line.key}`} className="mb-1.5 block text-sm font-semibold text-slate-700">
-                          Technicien{" "}
-                          <span className="font-normal text-slate-500">(facultatif — le responsable des paramètres attribue)</span>
-                        </label>
-                        <select
-                          id={`tech-${line.key}`}
-                          value={extra.technicianId}
-                          onChange={(e) => updateIntake(line.key, { technicianId: e.target.value })}
-                          className="input-field px-4"
-                        >
-                          <option value="">À attribuer à la programmation</option>
-                          {technicians.map((t) => (
-                            <option key={t.id} value={t.id}>{t.name} — {t.load} en cours</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
                   </div>
 
                   <Checklist checks={checks} />
@@ -1016,11 +982,6 @@ export function DepositForm({
             Continuer — Vérifier ({countLabel(lines.length, "échantillon")}
             {samplesToCreate > lines.length ? ` · ${samplesToCreate} N° de contrôle` : ""})
           </PrimaryButton>
-          {technicians.length === 0 && (
-            <p className="text-sm text-amber-700">
-              Aucun technicien actif : le responsable des paramètres attribuera les échantillons à la programmation.
-            </p>
-          )}
         </div>
       )}
 
@@ -1042,7 +1003,6 @@ export function DepositForm({
               {lines.map((line, i) => {
                 const number = i + 1;
                 const { families, twins, names, conformity, reason, extra, destroy } = evaluate(line);
-                const technician = technicians.find((t) => t.id === extra.technicianId);
                 return (
                   <li key={line.key} className="px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
@@ -1059,7 +1019,6 @@ export function DepositForm({
                           {line.quantity ? `${line.quantity} ${line.quantityUnit === "UNITE" ? "unité(s)" : line.quantityUnit.toLowerCase()}` : "quantité non pesée"}
                           {extra.temperature ? ` · ${extra.temperature} °C à l'arrivée` : ""}
                           {line.unitCount > 1 ? ` · n = ${line.unitCount}` : ""}
-                          {destroy ? "" : technician ? ` · ${technician.name}` : " · technicien attribué à la programmation"}
                         </p>
                       </div>
                       <span

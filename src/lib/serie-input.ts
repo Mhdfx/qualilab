@@ -43,7 +43,9 @@ import { twinFor, type SampleTwin } from "./sample-code";
  *
  * A dépôt (bon de réception) is received on the spot, so its lines also
  * carry what the reception of a visit records later: temperature at
- * arrival, conformity with a coded motif, technician.
+ * arrival, conformity with a coded motif, decision. Never a technician
+ * (RETOUR-LABO-06-10.md §9.3): the responsable des paramètres assigns it on
+ * the programme sheet; a `technicianId` still sent is ignored.
  *
  * Messages: `validateLine` returns the bare sentence (« Choisissez l'état de
  * la surface. ») with the line number aside — « Corriger la fiche » shows it
@@ -164,7 +166,6 @@ export type CleanLine = {
   conformityNote: string | null;
   /** A non-conform deposit line destroyed at the counter (slice E). */
   destroy: boolean;
-  technicianId: string | null;
 };
 
 export type CleanSerie = {
@@ -389,7 +390,6 @@ export function validateLine(
   let conformity = true;
   let conformityReason: NonConformityReason | null = null;
   let conformityNote: string | null = null;
-  let technicianId: string | null = null;
   let destroy = false;
   if (deposit) {
     if (input.conformity !== undefined && typeof input.conformity !== "boolean") {
@@ -409,7 +409,8 @@ export function validateLine(
     if (decision !== "ANALYSER" && decision !== "DETRUIRE") return fail("Décision inconnue pour l'échantillon.");
     if (decision === "DETRUIRE" && conformity) return fail("Seul un échantillon non conforme peut être détruit.");
     destroy = decision === "DETRUIRE";
-    technicianId = destroy ? null : text(input.technicianId) || null;
+    // `input.technicianId` is deliberately not read (§9.3): the counter
+    // assigns nobody, the programme does.
   }
 
   return {
@@ -448,7 +449,6 @@ export function validateLine(
       conformityReason,
       conformityNote,
       destroy,
-      technicianId,
     },
   };
 }

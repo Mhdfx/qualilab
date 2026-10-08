@@ -22,10 +22,9 @@ export async function GET(
   const { id } = await params;
   const serie = await prisma.serie.findUnique({
     where: { id },
+    // No client, no site: the labels go to the bench (blind numbering).
     select: {
       serialNumber: true,
-      client: { select: { name: true } },
-      site: { select: { name: true } },
       samples: {
         where: { controlCode: { not: null }, status: { not: "ANNULE" } },
         select: {
@@ -61,8 +60,6 @@ export async function GET(
     natureLabel: s.nature.label,
     // « Planche verte — surface nettoyée », « Salle — Boîte exposée 30 min ».
     designation: sampleDesignation(s) ?? "",
-    clientName: serie.client.name,
-    siteName: serie.site?.name ?? null,
     receivedAt: s.receivedAt,
   }));
 

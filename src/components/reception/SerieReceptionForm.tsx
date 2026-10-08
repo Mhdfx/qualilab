@@ -47,7 +47,6 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { fromLocalInput, toLocalInput } from "@/components/preleveur/visit-types";
-import type { TechnicianOption } from "./types";
 import { Checklist, ConformityChip } from "./reception-widgets";
 import { sampleRef } from "@/lib/reception-input";
 import { SampleVerbs, type VerbSample } from "@/components/samples/SampleVerbs";
@@ -66,10 +65,14 @@ import {
  * The header carries what the cooler tells (arrival, temperature); every
  * sample (« Échantillon N », RETOUR-LABO-06-10.md §5, V2) shows what the
  * préleveur wrote, what the réceptionniste measures, the acceptance
- * checklist computed live from the lab's rules, the conformity with its
- * coded motif and the technician. The two samples of a two-family line
- * (« 2M », « 2P » — V3) are received one by one, each with its own rules
- * (100 g micro, 300 g physico-chimie). One button numbers everything.
+ * checklist computed live from the lab's rules and the conformity with its
+ * coded motif. The two samples of a two-family line (« 2M », « 2P » — V3)
+ * are received one by one, each with its own rules (100 g micro, 300 g
+ * physico-chimie). One button numbers everything.
+ *
+ * No technician here (retour du 08/10, RETOUR-LABO-06-10.md §9.3): the
+ * responsable des paramètres picks the sample from the global queue and
+ * assigns the bench on the programme sheet.
  */
 
 export type ReceptionLineData = {
@@ -154,7 +157,10 @@ type ReceivedLine = {
   airMethod?: AirMethod | null;
   personName: string | null;
   nature: { label: string };
-  technician: { id: string; name: string } | null;
+  /** Read from the database on a série already received — whoever the
+   * programme (or, before 08/10, the reception) assigned; never in the
+   * answer of the reception itself. */
+  technician?: { id: string; name: string } | null;
 };
 
 type LineState = {
@@ -168,7 +174,6 @@ type LineState = {
   conformityChoice: boolean | null;
   reason: NonConformityReason | "";
   note: string;
-  technicianId: string;
   /** Non-conform only: « Détruire » instead of « Analyser malgré tout ». */
   destroy: boolean;
 };
@@ -226,22 +231,16 @@ function unitsLabel(unitCount: number) {
 
 export function SerieReceptionForm({
   serie,
-  technicians,
   thresholds,
   role,
 }: {
   serie: ReceptionSerieData;
-  technicians: TechnicianOption[];
   thresholds: ReceptionThresholds;
   role: Role;
 }) {
   const router = useRouter();
   const pending = serie.samples.filter((s) => s.status === "PRELEVE");
   const alreadyReceived = serie.samples.filter((s) => s.status !== "PRELEVE");
-  // Nobody is pre-assigned: the responsable des paramètres attributes the
-  // bench at the programme stage (PROGRAMME.md); a technician picked here is
-  // only a hint.
-  const defaultTechnician = "";
 
   // LEGAL wall time ("YYYY-MM-DDTHH:mm"): LabDateTimeInput converts a drifting device's hour.
   const [arrivedAt, setArrivedAt] = useState(
@@ -273,7 +272,6 @@ export function SerieReceptionForm({
       conformityChoice: null,
       reason: "",
       note: "",
-      technicianId: defaultTechnician,
       destroy: false,
     }))
   );
@@ -308,10 +306,6 @@ export function SerieReceptionForm({
   function updateLine(sampleId: string, patch: Partial<LineState>) {
     setLines((current) => current.map((line) => (line.sampleId === sampleId ? { ...line, ...patch } : line)));
     setError(null);
-  }
-
-  function applyTechnicianToAll(technicianId: string) {
-    setLines((current) => current.map((line) => ({ ...line, technicianId })));
   }
 
   /** The live evaluation of one sample: checks, proposal, effective choice. */
@@ -362,7 +356,6 @@ export function SerieReceptionForm({
             conformityReason: conformity ? undefined : reason,
             conformityNote: line.note,
             decision: !conformity && line.destroy ? "DETRUIRE" : "ANALYSER",
-            technicianId: !conformity && line.destroy ? undefined : line.technicianId,
           };
         }),
       };
@@ -610,32 +603,12 @@ export function SerieReceptionForm({
                   </fieldset>
                 )}
 
-                {!conformity && line.destroy ? (
+                {!conformity && line.destroy && (
                   <p className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                     Échantillon détruit : numéroté et imprimé sur le bon de réception avec sa non-conformité, puis annulé
                     (motif « Détruit à réception »). Aucune analyse, rien n&apos;est facturé.
                   </p>
-                ) : (
-                  <div className="mt-3">
-                    <label htmlFor={`tech-${line.sampleId}`} className="block text-sm font-medium text-slate-700">
-                      Technicien{" "}
-                      <span className="font-normal text-slate-500">(facultatif — le responsable des paramètres attribue)</span>
-                    </label>
-                    <select
-                      id={`tech-${line.sampleId}`}
-                      value={line.technicianId}
-                      onChange={(e) => updateLine(line.sampleId, { technicianId: e.target.value })}
-                      className="input-field mt-1.5 px-3"
-                    >
-                      <option value="">À attribuer à la programmation</option>
-                      {technicians.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name} — {t.load} en cours
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                 )}
               </Card>
             );
@@ -742,29 +715,6 @@ export function SerieReceptionForm({
               <FileText className="h-4 w-4" aria-hidden="true" />
               Voir le protocole de prélèvement (PDF)
             </a>
-            <div className="mt-3">
-              <label htmlFor="allTech" className="block text-sm font-medium text-slate-700">
-                Technicien pour tous les échantillons
-              </label>
-              <select
-                id="allTech"
-                defaultValue={defaultTechnician}
-                onChange={(e) => applyTechnicianToAll(e.target.value)}
-                className="input-field mt-1.5 px-3"
-              >
-                <option value="">À attribuer à la programmation</option>
-                {technicians.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} — {t.load} en cours
-                  </option>
-                ))}
-              </select>
-              {technicians.length === 0 && (
-                <p className="mt-1.5 text-sm text-amber-700">
-                  Aucun technicien actif : le responsable des paramètres attribuera les échantillons à la programmation.
-                </p>
-              )}
-            </div>
           </Card>
 
           <Card className="p-5">
@@ -772,6 +722,7 @@ export function SerieReceptionForm({
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden="true" />
               <p>
                 La validation attribue un <b>N° de contrôle</b>{" "}à chaque échantillon, en une seule opération. Les étiquettes s&apos;impriment ensuite.
+                Le technicien est attribué par le responsable des paramètres, à la programmation.
               </p>
             </div>
             {error && (
@@ -821,6 +772,9 @@ function ReceivedSummary({
 }) {
   const units = lines.reduce((n, l) => n + Math.max(1, l.unitCount), 0);
   const byId = new Map(serie.samples.map((s) => [s.id, s]));
+  // The reception assigns nobody (§9.3): the column only shows once the
+  // programme — or a reception before 08/10 — named a technician.
+  const showTechnician = lines.some((line) => line.technician);
   return (
     <div>
       <PageHeader
@@ -851,7 +805,7 @@ function ReceivedSummary({
                 <th className="pb-2 pr-3 font-medium">N° de contrôle</th>
                 <th className="pb-2 pr-3 font-medium">Unités</th>
                 <th className="pb-2 pr-3 font-medium">Conformité</th>
-                <th className="pb-2 pr-3 font-medium">Technicien</th>
+                {showTechnician && <th className="pb-2 pr-3 font-medium">Technicien</th>}
                 <th className="pb-2 font-medium"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
@@ -898,7 +852,7 @@ function ReceivedSummary({
                         </span>
                       )}
                     </td>
-                    <td className="py-2.5 pr-3 text-slate-700">{line.technician?.name ?? "—"}</td>
+                    {showTechnician && <td className="py-2.5 pr-3 text-slate-700">{line.technician?.name ?? "—"}</td>}
                     <td className="py-2.5">
                       {byId.get(line.id) && (
                         <SampleVerbs

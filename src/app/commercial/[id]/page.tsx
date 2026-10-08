@@ -18,7 +18,13 @@ import { prisma } from "@/lib/prisma";
 import { formatDate, formatCurrency } from "@/lib/labels";
 import { holdingInvoiceItemWhere } from "@/lib/billing";
 import { InvoiceStateBadge } from "@/components/invoices/InvoiceStateBadge";
-import { documentLabel, invoiceFigures } from "@/components/invoices/invoice-view";
+import {
+  documentLabel,
+  invoiceFigures,
+  LIST_GROUP_FILTER_HINTS,
+  matchesListFilter,
+  stateFilterWhere,
+} from "@/components/invoices/invoice-view";
 import { toMoney } from "@/lib/money";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -30,7 +36,15 @@ import { ClientSummary } from "@/components/commercial/ClientSummary";
 import { ClientMergeActions } from "@/components/commercial/ClientMergeActions";
 import { BillingClientsCard } from "@/components/commercial/BillingClientsCard";
 import { archivedBanner, archivedKind, importedParentId } from "@/components/commercial/client-actions-logic";
-import { parseSampleSearch } from "@/lib/sample-search";
+import { parseSampleSearch, rechercheHref } from "@/lib/sample-search";
+import { parseView } from "@/lib/dashboard-view";
+import {
+  CLIENT_INVOICE_VIEW_FILTERS,
+  CLIENT_INVOICE_VIEWS,
+  CLIENT_INVOICES_ANCHOR,
+  clientFicheHref,
+} from "@/lib/management-views";
+import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
 import { INVOICE_NOTICE_LABELS, sampleBillingNotice } from "@/lib/invoice-notices";
 import { amendedNumber } from "@/lib/report-amendment";
 import { searchSamples } from "@/lib/sample-search-server";
@@ -43,6 +57,10 @@ import { billingFigures } from "@/components/invoices/invoice-queries";
  */
 
 export const metadata = { title: "Fiche client" };
+
+/** How many invoices the « Factures » card shows, newest first. */
+const RECENT_INVOICES = 25;
+
 export default async function ClientDetailPage({
   params,
   searchParams,
@@ -67,6 +85,11 @@ export default async function ClientDetailPage({
     au: typeof raw.au === "string" ? raw.au : `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
   });
   const summarySearch = parseSampleSearch(summaryParams);
+  // « Facturé » and « Encaissé » filter the « Factures » card below to the
+  // documents each figure is made of (« comme un tri », ?vue=).
+  const invoiceView = parseView(raw.vue, CLIENT_INVOICE_VIEWS);
+  const invoiceGroup = invoiceView ? CLIENT_INVOICE_VIEW_FILTERS[invoiceView] : null;
+  const period = { du: raw.du, au: raw.au };
 
   const [client, samples, invoices, figures, sampleCount, reportCount, summary, mergeEntry] =
     await Promise.all([
@@ -110,7 +133,8 @@ export default async function ClientDetailPage({
       take: 25,
     }),
     prisma.invoice.findMany({
-      where: { clientId: id },
+      // AND-ed: the « Facturé » group carries its own OR.
+      where: { AND: [{ clientId: id }, stateFilterWhere(invoiceGroup)] },
       select: {
         id: true,
         number: true,
@@ -123,7 +147,8 @@ export default async function ClientDetailPage({
         creditNotes: { where: { kind: "AVOIR" }, select: { total: true } },
       },
       orderBy: { issueDate: "desc" },
-      take: 25,
+      // One more than shown: says whether older ones exist.
+      take: RECENT_INVOICES + 1,
     }),
     // « Facturé » and « Encaissé » over ALL the client's invoices — the list
     // on screen is only the 25 most recent. FACTURATION.md §4: billed =
@@ -163,6 +188,23 @@ export default async function ClientDetailPage({
       ? archivedBanner("attached", importedParent.name)
       : null;
   const activeBillingClients = client.billingClients.filter((row) => !row.archived);
+
+  // What each invoice reads as (Émise, Partiellement payée, Annulée…); a
+  // view keeps the documents of its group.
+  const invoiceRows = invoices
+    .map((invoice) => ({
+      ...invoice,
+      state: invoiceFigures({
+        status: invoice.status,
+        kind: invoice.kind,
+        total: invoice.total,
+        payments: invoice.payments.map((payment) => payment.amount),
+        creditNotes: invoice.creditNotes.map((note) => note.total),
+      }).state,
+    }))
+    .filter((invoice) => matchesListFilter(invoice.state, invoiceGroup))
+    .slice(0, RECENT_INVOICES);
+  const olderInvoices = invoices.length > RECENT_INVOICES;
 
   return (
     <div>
@@ -215,10 +257,36 @@ export default async function ClientDetailPage({
 
       <section aria-label="Indicateurs" className="mb-8">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Échantillons" value={sampleCount} icon={FlaskConical} accent="blue" />
-          <StatCard label="Rapports" value={reportCount} icon={FileText} accent="emerald" />
-          <StatCard label="Facturé" value={formatCurrency(figures.billed)} icon={FileText} accent="brand" />
-          <StatCard label="Encaissé" value={formatCurrency(figures.collected)} icon={FileText} accent="violet" />
+          <StatCard
+            label="Échantillons"
+            value={sampleCount}
+            icon={FlaskConical}
+            accent="blue"
+            href={rechercheHref({ clientId: client.id })}
+          />
+          <StatCard
+            label="Rapports"
+            value={reportCount}
+            icon={FileText}
+            accent="emerald"
+            href={rechercheHref({ clientId: client.id, withReport: true })}
+          />
+          <StatCard
+            label="Facturé"
+            value={formatCurrency(figures.billed)}
+            icon={FileText}
+            accent="brand"
+            href={clientFicheHref(client.id, "facture", period)}
+            active={invoiceView === "facture"}
+          />
+          <StatCard
+            label="Encaissé"
+            value={formatCurrency(figures.collected)}
+            icon={FileText}
+            accent="violet"
+            href={clientFicheHref(client.id, "encaisse", period)}
+            active={invoiceView === "encaisse"}
+          />
         </div>
       </section>
 
@@ -357,59 +425,82 @@ export default async function ClientDetailPage({
             )}
           </Card>
 
-          <Card className="p-5">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Factures
-            </h2>
-            {invoices.length === 0 ? (
-              <Empty>Aucune facture pour ce client.</Empty>
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                {invoices.map((invoice) => {
-                  const { state } = invoiceFigures({
-                    status: invoice.status,
-                    kind: invoice.kind,
-                    total: invoice.total,
-                    payments: invoice.payments.map((payment) => payment.amount),
-                    creditNotes: invoice.creditNotes.map((note) => note.total),
-                  });
-                  return (
-                  <li key={invoice.id} className="flex items-center justify-between gap-3 py-2.5">
-                    <Link
-                      href={invoiceHref(invoice.id)}
-                      target={session.role === "ADMIN" ? undefined : "_blank"}
-                      className="min-w-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-                    >
-                      <p className="font-mono text-sm font-semibold text-slate-900">
-                        {documentLabel(invoice)}
-                      </p>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        {formatDate(invoice.issueDate)}
-                      </p>
-                    </Link>
-                    <div className="text-right">
-                      <p
-                        className={`text-sm font-semibold ${
-                          state === "ANNULEE"
-                            ? "text-slate-400 line-through decoration-slate-300"
-                            : state === "BROUILLON"
-                              ? "text-slate-500"
-                              : "text-slate-900"
-                        }`}
+          <section
+            id={CLIENT_INVOICES_ANCHOR}
+            aria-labelledby="client-invoices-title"
+            className="scroll-mt-24"
+          >
+            <Card className="p-5">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2
+                  id="client-invoices-title"
+                  className="text-sm font-semibold uppercase tracking-wide text-slate-500"
+                >
+                  Factures
+                </h2>
+                {invoiceView && (
+                  <ViewFilterNotice
+                    label={CLIENT_INVOICE_VIEWS[invoiceView]}
+                    resetHref={clientFicheHref(client.id, null, period)}
+                  />
+                )}
+              </div>
+              {invoiceGroup && (
+                <p className="-mt-1 mb-3 text-xs text-slate-500">
+                  Les {LIST_GROUP_FILTER_HINTS[invoiceGroup]}
+                </p>
+              )}
+              {invoiceRows.length === 0 ? (
+                <Empty>
+                  {invoiceView ? "Aucune facture ne correspond à ce filtre." : "Aucune facture pour ce client."}
+                </Empty>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {invoiceRows.map((invoice) => {
+                    const { state } = invoice;
+                    return (
+                    <li key={invoice.id} className="flex items-center justify-between gap-3 py-2.5">
+                      <Link
+                        href={invoiceHref(invoice.id)}
+                        target={session.role === "ADMIN" ? undefined : "_blank"}
+                        className="min-w-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                       >
-                        {state === "AVOIR" ? "− " : ""}
-                        {formatCurrency(toMoney(invoice.total))}
-                      </p>
-                      <p className="mt-0.5">
-                        <InvoiceStateBadge state={state} size="sm" />
-                      </p>
-                    </div>
-                  </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Card>
+                        <p className="font-mono text-sm font-semibold text-slate-900">
+                          {documentLabel(invoice)}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {formatDate(invoice.issueDate)}
+                        </p>
+                      </Link>
+                      <div className="text-right">
+                        <p
+                          className={`text-sm font-semibold ${
+                            state === "ANNULEE"
+                              ? "text-slate-400 line-through decoration-slate-300"
+                              : state === "BROUILLON"
+                                ? "text-slate-500"
+                                : "text-slate-900"
+                          }`}
+                        >
+                          {state === "AVOIR" ? "− " : ""}
+                          {formatCurrency(toMoney(invoice.total))}
+                        </p>
+                        <p className="mt-0.5">
+                          <InvoiceStateBadge state={state} size="sm" />
+                        </p>
+                      </div>
+                    </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {olderInvoices && (
+                <p className="mt-3 text-xs text-slate-500">
+                  Les {RECENT_INVOICES} plus récentes sont affichées.
+                </p>
+              )}
+            </Card>
+          </section>
 
           {session.role === "ADMIN" && !client.archived && (
             <ClientMergeActions clientId={client.id} clientName={client.name} />

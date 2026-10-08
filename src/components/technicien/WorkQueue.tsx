@@ -38,27 +38,46 @@ export type WorkItem = {
   results: { parameterId: string; value: string | null; workStatus: string; interpretation: string | null }[];
 };
 
+const DEFAULT_EMPTY = {
+  title: "Aucune analyse en attente",
+  text: "Les échantillons que le responsable des paramètres vous attribue au programme d'analyse apparaîtront ici.",
+};
+
+/** The sheet's verb: start a programmed sample, continue one under analysis, read any other step. */
+function actionOf(status: SampleStatus) {
+  if (status === "PROGRAMME") return "Commencer";
+  if (status === "EN_ANALYSE") return "Continuer";
+  return "Consulter";
+}
+
 /**
  * The samples on this technician's bench, grouped by série, oldest first.
  *
  * `viewerId` is the technician looking at their own queue: a sample shared
  * with a colleague (PROGRAMME.md §6) says how many of its parameters are
  * theirs. Null for the admin, who oversees every sample whole.
+ *
+ * A dashboard view (`?vue=`, « Anomalies », « Résultats soumis ») may bring
+ * samples already off the bench: their sheet opens read-only
+ * (« Consulter »), and `empty` says what an empty view means.
  */
-export function WorkQueue({ items, viewerId = null }: { items: WorkItem[]; viewerId?: string | null }) {
+export function WorkQueue({
+  items,
+  viewerId = null,
+  empty = DEFAULT_EMPTY,
+}: {
+  items: WorkItem[];
+  viewerId?: string | null;
+  empty?: { title: string; text: string };
+}) {
   if (items.length === 0) {
     return (
       <Card className="p-10 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
           <FlaskConical className="h-6 w-6 text-slate-400" aria-hidden="true" />
         </div>
-        <p className="mt-3 font-semibold text-slate-700">
-          Aucune analyse en attente
-        </p>
-        <p className="mt-1 text-sm text-slate-500">
-          Les échantillons que le responsable des paramètres vous attribue au
-          programme d&apos;analyse apparaîtront ici.
-        </p>
+        <p className="mt-3 font-semibold text-slate-700">{empty.title}</p>
+        <p className="mt-1 text-sm text-slate-500">{empty.text}</p>
       </Card>
     );
   }
@@ -127,7 +146,7 @@ export function WorkQueue({ items, viewerId = null }: { items: WorkItem[]; viewe
                       </div>
 
                       <span className="inline-flex shrink-0 items-center gap-1.5 self-center rounded-xl bg-brand-light px-3 py-2 text-sm font-semibold text-brand transition-colors group-hover:bg-brand group-hover:text-white">
-                        {item.status === "PROGRAMME" ? "Commencer" : "Continuer"}
+                        {actionOf(item.status)}
                         <ArrowRight className="h-4 w-4" aria-hidden="true" />
                       </span>
                     </div>

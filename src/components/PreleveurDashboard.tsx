@@ -8,8 +8,11 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { Card } from "@/components/ui/Card";
+import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
 import { formatDateTime } from "@/lib/labels";
 import { SERIE_STATUS_LABELS, type SerieProgress, type SerieStatus } from "@/lib/series";
+import { viewHref } from "@/lib/dashboard-view";
+import { PRELEVEUR_VIEWS, visitsInView, type PreleveurView } from "@/lib/circuit-views";
 
 type VisitSummary = {
   id: string;
@@ -26,6 +29,21 @@ type VisitSummary = {
 
 type PreleveurDashboardProps = {
   userName: string;
+  /** The tile chosen as a sort (`?vue=`, read by the server page); null = every visit. */
+  view: PreleveurView | null;
+  /** Every sample of every visit of theirs, counted on the server. */
+  totalSamples: number;
+};
+
+/** The most recent visits the dashboard loads: one page, not the archive. */
+const VISIT_LIMIT = 50;
+
+const PATH = "/preleveur";
+const ANCHOR = "visites";
+
+const EMPTY: Record<PreleveurView, string> = {
+  aujourdhui: "Aucune visite aujourd'hui.",
+  semaine: "Aucune visite cette semaine.",
 };
 
 const STATUS_STYLES: Record<SerieStatus, string> = {
@@ -38,36 +56,59 @@ const STATUS_STYLES: Record<SerieStatus, string> = {
 /**
  * The préleveur's home: their visits, most recent first. A visit is one
  * protocol with several samples; the numbers here count what they carry.
+ * Each tile is a sort of « Mes visites » (`?vue=`): today's visits, the
+ * week's, or all of them — filtered with the rule the tile counts with.
  */
-export function PreleveurDashboard({ userName }: PreleveurDashboardProps) {
+export function PreleveurDashboard({ userName, view, totalSamples }: PreleveurDashboardProps) {
   const [visits, setVisits] = useState<VisitSummary[]>([]);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Paginated: the dashboard shows the most recent page, not the archive.
-    fetch("/api/series?mine=1&limit=50")
+    fetch(`/api/series?mine=1&limit=${VISIT_LIMIT}`)
       .then((r) => r.json())
-      .then((data) => setVisits(data.items ?? []))
+      .then((data) => {
+        setVisits(data.items ?? []);
+        setHasMore(Boolean(data.nextCursor));
+      })
       .finally(() => setLoading(false));
   }, []);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const weekAgo = new Date(today);
-  weekAgo.setDate(weekAgo.getDate() - 7);
-
-  const todayVisits = visits.filter((v) => new Date(v.startedAt) >= today).length;
-  const weekSamples = visits
-    .filter((v) => new Date(v.startedAt) >= weekAgo)
-    .reduce((n, v) => n + v.progress.total, 0);
-  const totalSamples = visits.reduce((n, v) => n + v.progress.total, 0);
+  // One clock for the tiles and the list, so a tile and its view agree.
+  const now = new Date();
+  const todayVisits = visitsInView(visits, "aujourdhui", now).length;
+  const weekSamples = visitsInView(visits, "semaine", now).reduce((n, v) => n + v.progress.total, 0);
+  const shown = visitsInView(visits, view, now);
 
   const firstName = userName.split(" ")[0];
 
   const stats = [
-    { label: "Visites aujourd'hui", value: todayVisits, icon: Calendar, accent: "blue" as const },
-    { label: "Échantillons cette semaine", value: weekSamples, icon: ClipboardList, accent: "emerald" as const },
-    { label: "Échantillons au total", value: totalSamples, icon: FlaskConical, accent: "violet" as const },
+    {
+      label: "Visites aujourd'hui",
+      value: todayVisits,
+      icon: Calendar,
+      accent: "blue" as const,
+      href: viewHref(PATH, "aujourdhui", ANCHOR),
+      active: view === "aujourdhui",
+    },
+    {
+      label: "Échantillons cette semaine",
+      value: weekSamples,
+      icon: ClipboardList,
+      accent: "emerald" as const,
+      href: viewHref(PATH, "semaine", ANCHOR),
+      active: view === "semaine",
+    },
+    {
+      label: "Échantillons au total",
+      value: totalSamples,
+      icon: FlaskConical,
+      accent: "violet" as const,
+      // Every visit: the whole list, no view.
+      href: viewHref(PATH, null, ANCHOR),
+      active: false,
+    },
   ];
 
   return (
@@ -85,29 +126,39 @@ export function PreleveurDashboard({ userName }: PreleveurDashboardProps) {
       />
 
       <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
-        {stats.map(({ label, value, icon, accent }) => (
-          <StatCard key={label} label={label} value={value} icon={icon} accent={accent} />
+        {stats.map(({ label, value, icon, accent, href, active }) => (
+          <StatCard key={label} label={label} value={value} icon={icon} accent={accent} href={href} active={active} />
         ))}
       </div>
 
-      <div id="visites" className="mb-5 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-800">Mes visites</h2>
-        {!loading && (
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
-            {visits.length} visite{visits.length !== 1 ? "s" : ""}
-          </span>
+      <div id={ANCHOR} className="mb-5 scroll-mt-24">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-slate-800">{view ? PRELEVEUR_VIEWS[view] : "Mes visites"}</h2>
+          {!loading && (
+            <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
+              {shown.length} visite{shown.length !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+        {view && (
+          <ViewFilterNotice label={PRELEVEUR_VIEWS[view]} resetHref={viewHref(PATH, null, ANCHOR)} className="mt-2" />
+        )}
+        {!loading && hasMore && (
+          <p className="mt-2 text-xs text-slate-500">
+            Parmi vos {VISIT_LIMIT} visites les plus récentes.
+          </p>
         )}
       </div>
 
       {loading ? (
         <LoadingState />
-      ) : visits.length === 0 ? (
+      ) : shown.length === 0 ? (
         <Card className="p-8 text-center text-sm text-slate-500">
-          Aucune visite pour l&apos;instant. Commencez par « Nouvelle visite ».
+          {view ? EMPTY[view] : "Aucune visite pour l'instant. Commencez par « Nouvelle visite »."}
         </Card>
       ) : (
         <ul className="space-y-3">
-          {visits.map((visit) => (
+          {shown.map((visit) => (
             <li key={visit.id}>
               <Link
                 href={`/preleveur/visites/${visit.id}`}

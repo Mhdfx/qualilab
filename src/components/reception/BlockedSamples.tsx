@@ -35,7 +35,8 @@ export function BlockedSamples({
   if (samples.length === 0) return null;
 
   return (
-    <section aria-label="Échantillons bloqués" className="mt-8">
+    // `#bloques`: the vue direction's « N échantillons bloqués » banner lands here.
+    <section id="bloques" aria-label="Échantillons bloqués" className="mt-8 scroll-mt-24">
       <div className="mb-3 flex items-baseline justify-between">
         <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
           <AlertTriangle className="h-5 w-5 text-amber-500" aria-hidden="true" />

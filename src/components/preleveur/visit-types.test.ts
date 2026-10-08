@@ -66,9 +66,11 @@ function line(patch: Partial<LineDraft> = {}): LineDraft {
 }
 
 describe("the two boxes", () => {
-  it("grey out the cells the table leaves empty, and the natures the catalogue lacks", () => {
-    expect(familyStatus(NATURES, "MAINS", "CHIMIE")).toBe("NOT_FOR_KIND");
+  it("offer both boxes on every type, and grey out the natures the catalogue lacks", () => {
+    // « Mains du personnel » takes physico-chimie since the 08/10 feedback (§9.2).
+    expect(familyStatus(NATURES, "MAINS", "CHIMIE")).toBe("OK");
     expect(familyStatus(NATURES, "MAINS", "MICRO")).toBe("OK");
+    expect(availableFamilies(NATURES, "MAINS")).toEqual(["MICRO", "CHIMIE"]);
     // Air and « Autre » take both families since the 08/10 feedback (§8.2).
     expect(familyStatus(NATURES, "AIR", "CHIMIE")).toBe("OK");
     expect(familyStatus(NATURES, "AUTRE", "MICRO")).toBe("OK");
@@ -90,7 +92,8 @@ describe("the two boxes", () => {
     expect(resolveFamilies(NATURES, "EAU", ["CHIMIE", "MICRO"])).toEqual(["MICRO", "CHIMIE"]);
     expect(resolveFamilies(NATURES, "AIR", ["CHIMIE"])).toEqual(["CHIMIE"]);
     expect(resolveFamilies(NATURES, "AIR")).toEqual(["MICRO"]);
-    expect(resolveFamilies(NATURES, "MAINS", ["CHIMIE"])).toEqual(["MICRO"]);
+    expect(resolveFamilies(NATURES, "MAINS")).toEqual(["MICRO"]);
+    expect(resolveFamilies(NATURES, "MAINS", ["CHIMIE"])).toEqual(["CHIMIE"]);
   });
 
   it("derive the primary nature, micro first", () => {
@@ -133,11 +136,11 @@ describe("the two boxes", () => {
     expect(familiesPatch(NATURES, both, [], FOOD_PARAMETERS)).toMatchObject({ natureId: "", parameterIds: [] });
   });
 
-  it("ignore a box the type does not allow", () => {
+  it("let a hands sample tick both boxes (08/10, §9.2)", () => {
     const hands = line({ lineKind: "MAINS" });
     expect(familiesPatch(NATURES, hands, ["MICRO", "CHIMIE"])).toMatchObject({
       analysesMicro: true,
-      analysesChimie: false,
+      analysesChimie: true,
       natureId: byCode("MICRO_SURFACES").id,
     });
   });
@@ -231,15 +234,17 @@ describe("changing the type", () => {
       parameterIds: [],
       quantityUnit: "L",
     });
-    expect(kindPatch(NATURES, both, "MAINS")).toMatchObject({ analysesMicro: true, analysesChimie: false });
+    // Hands keep both boxes since 08/10 (§9.2).
+    expect(kindPatch(NATURES, both, "MAINS")).toMatchObject({ analysesMicro: true, analysesChimie: true });
   });
 
   it("applies the new type's default when no ticked box remains", () => {
     const chimie = line({ analysesMicro: false, analysesChimie: true, natureId: byCode("PC_ALIMENTS").id });
+    // Hands have a physico-chimie box since 08/10 (§9.2): the ticked box stays.
     expect(kindPatch(NATURES, chimie, "MAINS")).toMatchObject({
-      analysesMicro: true,
-      analysesChimie: false,
-      natureId: byCode("MICRO_SURFACES").id,
+      analysesMicro: false,
+      analysesChimie: true,
+      natureId: byCode("PC_SURFACES").id,
     });
     // Air has a physico-chimie box since 08/10: the ticked box stays.
     expect(kindPatch(NATURES, chimie, "AIR")).toMatchObject({
@@ -268,8 +273,9 @@ describe("changing the type", () => {
       { id: "s-micro", name: "Surface micro", family: "MICRO" },
       { id: "s-chimie", name: "Surface chimie", family: "CHIMIE" },
     ];
+    // Hands keep both boxes since 08/10 (§9.2), hence both analyses.
     expect(kindPatch(NATURES, surface, "MAINS", { parameters: params })).toMatchObject({
-      parameterIds: ["s-micro"],
+      parameterIds: ["s-micro", "s-chimie"],
       surfaceState: "",
       surfaceAreaCm2: "",
     });
@@ -323,9 +329,8 @@ describe("before saving", () => {
     expect(lineDraftError({ ...air, airMethod: "BIOCOLLECTEUR", analysesChimie: true }, NATURES)).toBeNull();
     const hands = { ...base, lineKind: "MAINS" as const, personName: "Personne test" };
     expect(lineDraftError(hands, NATURES)).toBeNull();
-    expect(lineDraftError({ ...hands, analysesChimie: true }, NATURES)).toBe(
-      "Les analyses physico-chimiques ne sont pas proposées pour ce type de prélèvement."
-    );
+    // Physico-chimie on hands since 08/10 (§9.2).
+    expect(lineDraftError({ ...hands, analysesChimie: true }, NATURES)).toBeNull();
     // Analyses are no longer required (V6).
     expect(lineDraftError({ ...base, parameterIds: [] }, NATURES)).toBeNull();
   });

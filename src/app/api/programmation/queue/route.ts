@@ -49,8 +49,12 @@ export async function GET() {
       serie: { select: { id: true, serialNumber: true, kind: true, receivedAt: true } },
       parameters: { select: { parameterId: true } },
     },
-    // The two samples of a two-family line share their number: « …M » before « …P ».
-    orderBy: [{ receivedAt: "asc" }, { serieId: "asc" }, { lineNumber: "asc" }, { code: "asc" }],
+    // First in, first out (RETOUR-LABO-06-10.md §9.3), as `orderQueue` shows
+    // it: RECU before PROGRAMME (MySQL sorts an ENUM by its declared order),
+    // then the oldest reception — so a truncated queue keeps the oldest
+    // samples still to programme. The two samples of a two-family line share
+    // their number: « …M » before « …P ».
+    orderBy: [{ status: "asc" }, { receivedAt: "asc" }, { serieId: "asc" }, { lineNumber: "asc" }, { code: "asc" }],
     take: QUEUE_LIMIT,
   });
 

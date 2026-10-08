@@ -5,6 +5,7 @@ import { Award, Pencil } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { EIL_STATUSES, type EilStatusValue } from "@/lib/quality-validation";
 import { formatDayShort } from "@/lib/labels";
+import { withStatuses } from "@/lib/management-views";
 
 /** EIL campaigns — the proficiency-testing register an auditor asks for. */
 
@@ -37,7 +38,18 @@ const STATUS_BADGES: Record<EilStatusValue, string> = {
 
 const inputClass = "input-field px-3 text-sm" as const;
 
-export function EilManager({ initialCampaigns }: { initialCampaigns: EilRow[] }) {
+export function EilManager({
+  initialCampaigns,
+  statuses = null,
+}: {
+  initialCampaigns: EilRow[];
+  /**
+   * A view of the register (`?vue=` of the page): only these statuses are
+   * shown. Applied when rendering, so it survives the reload below, which
+   * reads every campaign.
+   */
+  statuses?: readonly EilStatusValue[] | null;
+}) {
   const [campaigns, setCampaigns] = useState(initialCampaigns);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -48,11 +60,13 @@ export function EilManager({ initialCampaigns }: { initialCampaigns: EilRow[] })
     if (response.ok) setCampaigns(await response.json());
   }, []);
 
+  const visible = withStatuses(campaigns, statuses);
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-500">
-          {campaigns.length} campagne{campaigns.length > 1 ? "s" : ""}
+          {visible.length} campagne{visible.length > 1 ? "s" : ""}
         </p>
         <button
           type="button"
@@ -80,13 +94,15 @@ export function EilManager({ initialCampaigns }: { initialCampaigns: EilRow[] })
         </p>
       )}
 
-      {campaigns.length === 0 ? (
+      {visible.length === 0 ? (
         <Card className="p-10 text-center text-sm text-slate-500">
-          Aucune campagne EIL — enregistrez la première (BIPEA, LNCM…).
+          {statuses
+            ? "Aucune campagne ne correspond à ce filtre."
+            : "Aucune campagne EIL — enregistrez la première (BIPEA, LNCM…)."}
         </Card>
       ) : (
         <ul className="space-y-3">
-          {campaigns.map((campaign) => (
+          {visible.map((campaign) => (
             <li key={campaign.id}>
               <Card className="p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">

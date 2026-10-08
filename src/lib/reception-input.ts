@@ -21,9 +21,12 @@ import {
  * (it prints on the bon de réception), then cancelled with the motif
  * « Détruit à réception ».
  *
- * The technician is indicative only since the programme d'analyse
- * (PROGRAMME.md §6): the responsable des paramètres assigns the bench when
- * confirming the programme, so a line may be received without one.
+ * The technician is not the réceptionniste's to choose (retour du 08/10,
+ * RETOUR-LABO-06-10.md §9.3): the responsable des paramètres picks the
+ * sample from the global queue and assigns the bench on the programme sheet
+ * (PROGRAMME.md §6). A `technicianId` still sent — a page opened before the
+ * change — is ignored, never refused: the reception goes through, without
+ * a technician.
  *
  * Messages name the sample (« Échantillon 2 : … », RETOUR-LABO-06-10.md §5,
  * V2); the two samples of a two-family line share the line number and are
@@ -74,8 +77,6 @@ export type CleanReceptionLine = {
   conformityNote: string | null;
   /** « Détruire » on a non-conform line: no analysis, cancelled at once. */
   destroy: boolean;
-  /** Indicative (PROGRAMME.md §6): may be null; always null for a destroyed line. */
-  technicianId: string | null;
   checks: Check[];
 };
 
@@ -210,10 +211,8 @@ export function validateReception(
       return fail(`Échantillon ${ref} : seul un échantillon non conforme peut être détruit.`, n, ref);
     }
     const destroy = decision === "DETRUIRE";
-    // An empty choice is kept as null, never refused: the responsable des
-    // paramètres assigns at programming time. A destroyed line has none,
-    // whatever the browser sent.
-    const technicianId = destroy ? null : text(rawLine.technicianId) || null;
+    // `rawLine.technicianId` is deliberately not read (§9.3): the
+    // responsable des paramètres assigns the bench at programming time.
 
     lines.push({
       sampleId,
@@ -227,7 +226,6 @@ export function validateReception(
       conformityReason,
       conformityNote,
       destroy,
-      technicianId,
       checks,
     });
   }

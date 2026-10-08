@@ -11,9 +11,12 @@ import { notifyDestroyed } from "@/lib/destruction-notice";
  * Reception of a série in one go — WORKFLOW.md rule 4.
  *
  * One button, one transaction: every sample still `PRELEVE` gets its
- * N° de contrôle (yearly counter, locked), its temperature, quantity,
- * conformity with a coded motif and its technician; the série records who
- * received it and when. A non-conform sample the réceptionniste destroys is
+ * N° de contrôle (yearly counter, locked), its temperature, quantity and
+ * conformity with a coded motif; the série records who received it and when.
+ * No technician: the responsable des paramètres assigns the bench on the
+ * programme sheet (RETOUR-LABO-06-10.md §9.3) — a `technicianId` still sent
+ * by an old page is ignored (`validateReception`), and `Sample.technicianId`
+ * is never written here. A non-conform sample the réceptionniste destroys is
  * received and numbered too (it prints on the bon de réception), then
  * cancelled in the same transaction with the motif DETRUIT_A_RECEPTION.
  * Either every sample is received or none is — two réceptionnistes on the
@@ -99,22 +102,6 @@ export async function POST(
   }
   const input = validation.value;
 
-  // Every technician named must exist and be active — one query for all.
-  const technicianIds = [
-    ...new Set(input.lines.map((l) => l.technicianId).filter((t): t is string => t !== null)),
-  ];
-  const technicians =
-    technicianIds.length === 0
-      ? []
-      : await prisma.user.findMany({
-          where: { id: { in: technicianIds }, role: "TECHNICIEN", banned: { not: true } },
-          select: { id: true, name: true },
-        });
-  if (technicians.length !== technicianIds.length) {
-    return NextResponse.json({ error: "Technicien invalide." }, { status: 400 });
-  }
-  const technicianName = new Map(technicians.map((t) => [t.id, t.name]));
-
   const receivedAt = new Date();
   const year = receivedAt.getFullYear();
 
@@ -144,8 +131,6 @@ export async function POST(
                 conformityReason: line.conformityReason,
                 conformityNote: line.conformityNote,
                 analysisBlocked: false,
-                technicianId: line.technicianId,
-                assignedAt: line.technicianId ? receivedAt : null,
                 ...(line.destroy
                   ? { status: "ANNULE" as const, cancelledAt: receivedAt, cancelledById: session.id, cancelReason: "DETRUIT_A_RECEPTION" as const }
                   : {}),
@@ -165,7 +150,6 @@ export async function POST(
                 airMethod: true,
                 personName: true,
                 nature: { select: { label: true } },
-                technician: { select: { id: true, name: true } },
                 status: true,
                 cancelReason: true,
               },
@@ -216,8 +200,6 @@ export async function POST(
             quantity: line.quantity,
             quantityUnit: line.quantityUnit,
             checks: line.checks.filter((c) => c.level !== "OK"),
-            technicianId: line.technicianId,
-            technicianName: line.technicianId ? technicianName.get(line.technicianId) ?? null : null,
           },
         })
       ),

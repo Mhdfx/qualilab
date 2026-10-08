@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupQueue, orderQueue, type QueueLineRef } from "./programmation-queue";
+import { compareSerialNumbers, groupQueue, orderQueue, type QueueLineRef } from "./programmation-queue";
 
 /**
  * PROGRAMME.md §5 — the queue reads by série, the lines still to programme
@@ -48,6 +48,23 @@ describe("orderQueue", () => {
     expect(ordered.map((l) => l.id)).toEqual(["a1", "b1", "b2"]);
   });
 
+  it("on the same reception time, reads the lab's numbers as numbers: « 9/26 » before « 10/26 » (§9.3)", () => {
+    const at = "2026-10-08T09:00:00.000Z";
+    const s9 = { id: "s9", serialNumber: "9/26", kind: "VISITE" as const, receivedAt: at };
+    const s10 = { id: "s10", serialNumber: "10/26", kind: "DEPOT" as const, receivedAt: at };
+    const s2780 = { id: "s2780", serialNumber: "2780/25", kind: "VISITE" as const, receivedAt: at };
+    const ordered = orderQueue([line("ten", "RECU", s10, 1), line("nine", "RECU", s9, 1), line("last-year", "RECU", s2780, 1)]);
+    expect(ordered.map((l) => l.id)).toEqual(["last-year", "nine", "ten"]);
+  });
+
+  it("puts « …M » before « …P » when a whole line ties", () => {
+    const ordered = orderQueue([
+      { ...line("2P", "RECU", serie1, 2), code: "1/26-2P" },
+      { ...line("2M", "RECU", serie1, 2), code: "1/26-2M" },
+    ]);
+    expect(ordered.map((l) => l.id)).toEqual(["2M", "2P"]);
+  });
+
   it("keeps a line without a reception date at the end", () => {
     const ordered = orderQueue([
       { ...line("undated", "RECU", serie1, 1), receivedAt: null },
@@ -60,6 +77,18 @@ describe("orderQueue", () => {
     const lines = [line("b", "PROGRAMME", serie1, 1), line("a", "RECU", serie1, 2)];
     orderQueue(lines);
     expect(lines.map((l) => l.id)).toEqual(["b", "a"]);
+  });
+});
+
+describe("compareSerialNumbers — the série entered first", () => {
+  it("orders by year, then by sequence", () => {
+    const sorted = ["10/26", "2780/25", "9/26", "1/26", "0002/26"].sort(compareSerialNumbers);
+    expect(sorted).toEqual(["2780/25", "1/26", "0002/26", "9/26", "10/26"]);
+  });
+
+  it("falls back to a numeric text comparison for another format", () => {
+    expect(compareSerialNumbers("S-9", "S-10")).toBeLessThan(0);
+    expect(compareSerialNumbers("1/26", "1/26")).toBe(0);
   });
 });
 

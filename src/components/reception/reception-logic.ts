@@ -195,7 +195,7 @@ export type DepositLineInput = {
  * The acceptance rules of a deposit line, run for each sample it becomes —
  * as `POST /api/series` runs them before writing — and the proposal that
  * follows: a blocking rule on either sample makes the line non-conform (the
- * counter's conformity, temperature and technician apply to both samples).
+ * counter's conformity, temperature and decision apply to both samples).
  */
 export function depositLineChecks(line: DepositLineInput, thresholds: ReceptionThresholds) {
   const families: (LineFamily | null)[] = line.families.length > 0 ? [...line.families] : [null];

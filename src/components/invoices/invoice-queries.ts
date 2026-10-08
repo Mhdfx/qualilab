@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { toMoney } from "@/lib/money";
 import {
   invoiceFigures,
+  matchesListFilter,
   netBilled,
   stateFilterWhere,
   type InvoiceDetailView,
@@ -135,25 +136,34 @@ export async function loadInvoiceDetail(id: string): Promise<InvoiceDetailView |
   };
 }
 
-/** The most recent invoices matching the filters, newest first. */
+/**
+ * The most recent invoices matching the filters, newest first. `etat` may
+ * be an exact state or a group (`A_REGLER`, `EMISES`, `AVEC_REGLEMENT`):
+ * the database narrows on the stored columns, then each row's state read
+ * from its amounts decides (`matchesListFilter`).
+ */
 export async function loadInvoiceList(
   filters: ListFilters,
   take = 100
 ): Promise<{ rows: InvoiceListRow[]; truncated: boolean }> {
-  const narrowed = stateFilterWhere(filters.state);
-  const where: Prisma.InvoiceWhereInput = {
-    ...(narrowed.status ? { status: narrowed.status } : {}),
-    ...(filters.kind || narrowed.kind ? { kind: filters.kind ?? narrowed.kind } : {}),
-    ...(filters.kind && narrowed.kind && filters.kind !== narrowed.kind ? { id: { in: [] } } : {}),
+  // AND-ed, never spread: a group (EMISES) and the search each carry an OR.
+  // A type that contradicts the filter (an « À régler » credit note) simply
+  // matches nothing.
+  const and: Prisma.InvoiceWhereInput[] = [
+    stateFilterWhere(filters.state),
+    ...(filters.kind ? [{ kind: filters.kind }] : []),
     ...(filters.q
-      ? {
-          OR: [
-            { number: { contains: filters.q } },
-            { client: { name: { contains: filters.q } } },
-          ],
-        }
-      : {}),
-  };
+      ? [
+          {
+            OR: [
+              { number: { contains: filters.q } },
+              { client: { name: { contains: filters.q } } },
+            ],
+          },
+        ]
+      : []),
+  ].filter((part) => Object.keys(part).length > 0);
+  const where: Prisma.InvoiceWhereInput = and.length > 0 ? { AND: and } : {};
 
   const found = await prisma.invoice.findMany({
     where,
@@ -184,7 +194,7 @@ export async function loadInvoiceList(
     });
     // « Émise » and « Partiellement payée » share a stored status: the
     // exact state is read from the amounts.
-    if (filters.state && figures.state !== filters.state) return [];
+    if (!matchesListFilter(figures.state, filters.state)) return [];
     const open = figures.state === "EMISE" || figures.state === "PARTIELLEMENT_PAYEE" || figures.state === "PAYEE";
     return [
       {

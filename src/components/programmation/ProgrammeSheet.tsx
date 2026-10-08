@@ -28,7 +28,15 @@ import {
   formatDateTime,
 } from "@/lib/labels";
 import { fmt } from "@/lib/interpretation";
-import { DUE_AT_TOLERANCE_MS, MAX_PARAMETER_NOTE, MAX_PROGRAMME_NOTE, MAX_TEST_PORTION, PROGRAMME_PRIORITIES } from "@/lib/programme-input";
+import {
+  DUE_AT_TOLERANCE_MS,
+  MAX_PARAMETER_NOTE,
+  MAX_PROGRAMME_NOTE,
+  MAX_TEST_PORTION,
+  MISSING_TECHNICIAN_MESSAGE,
+  PROGRAMME_PRIORITIES,
+  lacksTechnician,
+} from "@/lib/programme-input";
 import type { ReceptionThresholds } from "@/lib/reception-rules";
 import type { Role } from "@/lib/roles";
 import { MAX_UNITS } from "@/lib/series";
@@ -288,6 +296,15 @@ export function ProgrammeSheet({
     setNotice("");
     if ((confirm || confirmed) && draft.parameterIds.length === 0) {
       setError("Choisissez au moins une analyse avant de confirmer le programme.");
+      return;
+    }
+    // The route's own rule (§9.3), told before sending, next to the default technician.
+    if (
+      (confirm || confirmed) &&
+      lacksTechnician(draft.technicianId, draft.parameterIds.map((id) => settingOf(draft, id).technicianId))
+    ) {
+      setError(MISSING_TECHNICIAN_MESSAGE);
+      document.getElementById("programme-technician")?.focus();
       return;
     }
     if (draft.dueAt) {
@@ -804,8 +821,12 @@ export function ProgrammeSheet({
                 <option key={technician.id} value={technician.id}>{technician.name}</option>
               ))}
             </select>
+            {/* The reception assigns nobody since 08/10 (RETOUR-LABO-06-10.md §9.3):
+                a saved technician comes from the programme, or from a reception before. */}
             {sample.technician && sample.technician.id !== draft.technicianId && (
-              <p className="mt-1 text-xs text-slate-500">Attribué à la réception : {sample.technician.name}.</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {sample.programmedAt ? "Attribué au programme" : "Attribué à la réception"} : {sample.technician.name}.
+              </p>
             )}
           </div>
           <div>

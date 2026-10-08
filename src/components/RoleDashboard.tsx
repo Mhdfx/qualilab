@@ -2,13 +2,19 @@ import type { LucideIcon } from "lucide-react";
 import { ArrowRight } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { StatCard } from "@/components/ui/StatCard";
+import { StatCard, type StatAccent } from "@/components/ui/StatCard";
 
 type Stat = {
   label: string;
   value: number | string;
   icon: LucideIcon;
-  accent?: "blue" | "emerald" | "violet" | "amber" | "brand";
+  accent?: StatAccent;
+  /** The list the figure counts — the tile becomes a link (see StatCard). */
+  href?: string;
+  /** The tile's view is the one on screen. */
+  active?: boolean;
+  /** A short precision under the figure. */
+  hint?: string;
 };
 
 type NextStep = {
@@ -58,6 +64,9 @@ export function RoleDashboard({
               value={stat.value}
               icon={stat.icon}
               accent={stat.accent}
+              href={stat.href}
+              active={stat.active}
+              hint={stat.hint}
             />
           ))}
         </div>

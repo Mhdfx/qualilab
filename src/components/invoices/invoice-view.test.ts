@@ -8,8 +8,15 @@ import {
   documentLabel,
   invoiceActions,
   invoiceFigures,
+  invoiceListHref,
+  isListGroupFilter,
+  LIST_GROUP_FILTERS,
+  LIST_STATE_FILTERS,
+  listFilterLabel,
   listFiltersQuery,
+  matchesListFilter,
   netBilled,
+  sameListFilters,
   parseAmount,
   parseListFilters,
   stateFilterWhere,
@@ -176,6 +183,73 @@ describe("list filters", () => {
     expect(stateFilterWhere("EMISE").status?.in).toEqual(["EN_ATTENTE"]);
     // Fully credited but stored EN_ATTENTE still reads « Payée ».
     expect(stateFilterWhere("PAYEE").status?.in).toEqual(["PAYEE", "EN_ATTENTE"]);
+  });
+});
+
+describe("list groups — the figures as a sort (À régler, Émises, Avec règlement)", () => {
+  it("reads a group from the address like a state, and keeps it out of the states", () => {
+    expect(parseListFilters({ etat: "A_REGLER" }).state).toBe("A_REGLER");
+    expect(parseListFilters({ etat: "EMISES", type: "FACTURE" })).toEqual({ state: "EMISES", kind: "FACTURE", q: "" });
+    expect(parseListFilters({ etat: "AVEC_REGLEMENT" }).state).toBe("AVEC_REGLEMENT");
+    expect(parseListFilters({ etat: "a_regler" }).state).toBeNull();
+    for (const group of LIST_GROUP_FILTERS) expect(LIST_STATE_FILTERS as readonly string[]).not.toContain(group);
+    expect(isListGroupFilter("EMISES")).toBe(true);
+    expect(isListGroupFilter("EMISE")).toBe(false);
+    expect(isListGroupFilter(null)).toBe(false);
+  });
+
+  it("labels a state or a group", () => {
+    expect(listFilterLabel("A_REGLER")).toBe("À régler");
+    expect(listFilterLabel("EMISES")).toBe("Émises");
+    expect(listFilterLabel("AVEC_REGLEMENT")).toBe("Avec règlement");
+    expect(listFilterLabel("EMISE")).toBe("Émise");
+  });
+
+  it("« À régler » = issued invoices with something left: Émise ∪ Partiellement payée", () => {
+    expect(stateFilterWhere("A_REGLER")).toEqual({ kind: "FACTURE", status: { in: ["EN_ATTENTE"] } });
+    expect(matchesListFilter("EMISE", "A_REGLER")).toBe(true);
+    expect(matchesListFilter("PARTIELLEMENT_PAYEE", "A_REGLER")).toBe(true);
+    // EN_ATTENTE but fully covered by credit notes: nothing left to pay.
+    expect(matchesListFilter("PAYEE", "A_REGLER")).toBe(false);
+    expect(matchesListFilter("AVOIR", "A_REGLER")).toBe(false);
+  });
+
+  it("« Émises » = the issued, not cancelled, invoices and credit notes « Facturé » sums", () => {
+    expect(stateFilterWhere("EMISES")).toEqual({
+      OR: [
+        { kind: "FACTURE", status: { in: ["EN_ATTENTE", "PAYEE"] } },
+        { kind: "AVOIR", status: { notIn: ["BROUILLON", "ANNULEE"] } },
+      ],
+    });
+    for (const state of ["EMISE", "PARTIELLEMENT_PAYEE", "PAYEE", "AVOIR"] as const) {
+      expect(matchesListFilter(state, "EMISES")).toBe(true);
+    }
+    expect(matchesListFilter("BROUILLON", "EMISES")).toBe(false);
+    expect(matchesListFilter("ANNULEE", "EMISES")).toBe(false);
+  });
+
+  it("« Avec règlement » = the invoices that received a settlement, whatever their state", () => {
+    expect(stateFilterWhere("AVEC_REGLEMENT")).toEqual({ payments: { some: {} } });
+    expect(matchesListFilter("PAYEE", "AVEC_REGLEMENT")).toBe(true);
+    expect(matchesListFilter("PARTIELLEMENT_PAYEE", "AVEC_REGLEMENT")).toBe(true);
+  });
+
+  it("keeps the exact states exact", () => {
+    expect(matchesListFilter("EMISE", "EMISE")).toBe(true);
+    expect(matchesListFilter("PARTIELLEMENT_PAYEE", "EMISE")).toBe(false);
+    expect(matchesListFilter("BROUILLON", null)).toBe(true);
+  });
+
+  it("builds the list link of a tile and tells when the list shows it", () => {
+    expect(invoiceListHref("/comptabilite/factures", { state: "A_REGLER" })).toBe("/comptabilite/factures?etat=A_REGLER");
+    expect(invoiceListHref("/admin/factures", { state: "EMISES", kind: "FACTURE" })).toBe(
+      "/admin/factures?etat=EMISES&type=FACTURE"
+    );
+    expect(invoiceListHref("/admin/factures")).toBe("/admin/factures");
+    const shown = parseListFilters({ etat: "EMISES", type: "FACTURE" });
+    expect(sameListFilters(shown, { state: "EMISES", kind: "FACTURE" })).toBe(true);
+    expect(sameListFilters(shown, { state: "EMISES" })).toBe(false);
+    expect(sameListFilters(parseListFilters({}), {})).toBe(true);
   });
 });
 

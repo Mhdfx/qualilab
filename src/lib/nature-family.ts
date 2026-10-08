@@ -6,8 +6,9 @@ import type { Family, LineKind } from "@/generated/prisma/enums";
  *
  * Each sample of a série ticks « Analyses microbiologiques » and / or
  * « Analyses physico-chimiques »; its nature follows from its type (the line
- * kind) and the ticked family. A cell without a nature (mains ×
- * physico-chimie) is a greyed-out box. When both boxes are ticked the line
+ * kind) and the ticked family. Every type offers both families since the
+ * 08/10 feedback (§8.2, §9.2); a cell whose nature is archived or missing
+ * from the catalogue is a greyed-out box. When both boxes are ticked the line
  * becomes two samples, one per family, each with the nature of its family.
  *
  * The finer natures (cosmetics, supplements…) are not in this table: the
@@ -27,8 +28,9 @@ export const LINE_FAMILIES: readonly LineFamily[] = ["MICRO", "CHIMIE"];
 export const NATURE_CODE_BY_KIND: Readonly<Record<LineKind, Readonly<Record<LineFamily, string | null>>>> = {
   ALIMENT: { MICRO: "MICRO_ALIMENTS", CHIMIE: "PC_ALIMENTS" },
   SURFACE: { MICRO: "MICRO_SURFACES", CHIMIE: "PC_SURFACES" },
-  /** Hands belong to surface microbiology; no physico-chemistry. */
-  MAINS: { MICRO: "MICRO_SURFACES", CHIMIE: null },
+  /** Hands are sampled as a surface: surface microbiology and, since the
+   * 08/10 feedback (§9.2), surface physico-chemistry. */
+  MAINS: { MICRO: "MICRO_SURFACES", CHIMIE: "PC_SURFACES" },
   EAU: { MICRO: "MICRO_EAUX", CHIMIE: "PC_EAUX" },
   /** Both families since the 08/10 feedback (§8.2): « Physico-chimie de l'air ». */
   AIR: { MICRO: "MICRO_AIR", CHIMIE: "PC_AIR" },

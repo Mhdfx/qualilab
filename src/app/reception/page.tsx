@@ -3,6 +3,8 @@ import { PrimaryLink } from "@/components/PrimaryButton";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
 import { formatDateTime } from "@/lib/labels";
+import { serverIsoDay, viewHref } from "@/lib/dashboard-view";
+import { rechercheHref } from "@/lib/sample-search";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { SerieQueue, type QueueSerie } from "@/components/reception/SerieQueue";
@@ -14,17 +16,30 @@ import type { TechnicianOption } from "@/components/reception/types";
 
 export const metadata = { title: "Réception" };
 
+/** The queue shows the oldest séries first; the tiles count them all. */
+const QUEUE_LIMIT = 100;
+
+/**
+ * The queue is made of séries (WORKFLOW.md rule 1): a série waits as long as
+ * one of its samples is still PRELEVE. Every sample belongs to a série, so
+ * the PRELEVE samples are exactly the samples these séries wait with.
+ */
+const PENDING_SERIE = { samples: { some: { status: "PRELEVE" as const } } };
+
 export default async function ReceptionPage() {
+  // The day as /recherche reads `du` / `au` back: server midnight to
+  // 23:59:59.999 on the server clock (TZ = LAB_TIME_ZONE), so the tile's
+  // link is written with `serverIsoDay`, the same clock.
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(startOfDay);
+  endOfDay.setHours(23, 59, 59, 999);
 
-  const [session, pending, blocked, recusAujourdhui, enAnalyse, aProgrammer] = await Promise.all([
+  const [session, pending, pendingSeries, pendingSamples, blocked, recusAujourdhui, enAnalyse, aProgrammer] = await Promise.all([
     // Belt and braces with the layout guard.
     requireRole("RECEPTIONNISTE", "ADMIN"),
-    // The queue is made of séries (WORKFLOW.md rule 1): a série waits as
-    // long as one of its samples is still PRELEVE.
     prisma.serie.findMany({
-      where: { samples: { some: { status: "PRELEVE" } } },
+      where: PENDING_SERIE,
       select: {
         id: true,
         serialNumber: true,
@@ -43,8 +58,11 @@ export default async function ReceptionPage() {
         },
       },
       orderBy: { startedAt: "asc" },
-      take: 100,
+      take: QUEUE_LIMIT,
     }),
+    // Counted, not read off the capped list: the tiles stay true past 100 séries.
+    prisma.serie.count({ where: PENDING_SERIE }),
+    prisma.sample.count({ where: { status: "PRELEVE" } }),
     prisma.sample.findMany({
       where: { analysisBlocked: true, status: "RECU" },
       select: {
@@ -58,16 +76,15 @@ export default async function ReceptionPage() {
       },
       orderBy: { receivedAt: "asc" },
     }),
-    prisma.sample.count({ where: { receivedAt: { gte: startOfDay } } }),
+    // Exactly the samples /recherche lists for today's reception date.
+    prisma.sample.count({ where: { receivedAt: { gte: startOfDay, lte: endOfDay } } }),
     prisma.sample.count({ where: { status: "EN_ANALYSE" } }),
     // Received samples waiting for the responsable des paramètres (PROGRAMME.md §6).
     prisma.sample.count({ where: { status: "RECU" } }),
   ]);
 
-  const pendingSamples = pending.reduce(
-    (n, serie) => n + serie.samples.filter((s) => s.status === "PRELEVE").length,
-    0
-  );
+  const queueTruncated = pendingSeries > pending.length;
+  const queueHref = viewHref("/reception", null, "file");
 
   // The release control needs the technician list; only fetched when a
   // blocked sample actually exists.
@@ -121,19 +138,40 @@ export default async function ReceptionPage() {
 
       <section aria-label="Indicateurs" className="mb-8">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <StatCard label="Séries à réceptionner" value={pending.length} icon={Inbox} accent="amber" />
-          <StatCard label="Échantillons en attente" value={pendingSamples} icon={Layers} accent="brand" />
-          <StatCard label="Reçus aujourd'hui" value={recusAujourdhui} icon={ClipboardCheck} accent="emerald" />
-          <StatCard label="À programmer" value={aProgrammer} icon={ListChecks} accent="violet" />
-          <StatCard label="En analyse" value={enAnalyse} icon={FlaskConical} accent="blue" />
+          {/* Each tile opens the list it counts (« comme un tri »): the queue below, or /recherche. */}
+          <StatCard label="Séries à réceptionner" value={pendingSeries} icon={Inbox} accent="amber" href={queueHref} />
+          <StatCard label="Échantillons en attente" value={pendingSamples} icon={Layers} accent="brand" href={queueHref} />
+          <StatCard
+            label="Reçus aujourd'hui"
+            value={recusAujourdhui}
+            icon={ClipboardCheck}
+            accent="emerald"
+            href={rechercheHref({ from: serverIsoDay(startOfDay), to: serverIsoDay(startOfDay) })}
+          />
+          <StatCard
+            label="À programmer"
+            value={aProgrammer}
+            icon={ListChecks}
+            accent="violet"
+            href={rechercheHref({ status: "RECU" })}
+          />
+          <StatCard
+            label="En analyse"
+            value={enAnalyse}
+            icon={FlaskConical}
+            accent="blue"
+            href={rechercheHref({ status: "EN_ANALYSE" })}
+          />
         </div>
       </section>
 
-      <section id="file" aria-label="File d'attente">
-        <div className="mb-3 flex items-baseline justify-between">
+      <section id="file" aria-label="File d'attente" className="scroll-mt-24">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <h2 className="text-lg font-semibold text-slate-900">En attente de réception</h2>
           <span className="text-sm text-slate-500">
-            {pending.length} série{pending.length > 1 ? "s" : ""}
+            {pendingSeries} série{pendingSeries > 1 ? "s" : ""} · {pendingSamples} échantillon
+            {pendingSamples > 1 ? "s" : ""}
+            {queueTruncated ? ` · les ${pending.length} premières affichées` : ""}
           </span>
         </div>
         <SerieQueue series={pending as QueueSerie[]} />

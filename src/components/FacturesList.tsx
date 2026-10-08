@@ -3,9 +3,11 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Plus, Search, Receipt, Wallet, FileBarChart, Hourglass } from "lucide-react";
+import { FileText, Plus, Search, Receipt, Wallet, FileBarChart, Hourglass, type LucideIcon } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { StatCard } from "@/components/ui/StatCard";
+import { StatCard, type StatAccent } from "@/components/ui/StatCard";
+import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
+import { INVOICE_LIST_ANCHOR, invoiceTileHref } from "@/lib/management-views";
 import { useInvoiceBasePath } from "@/lib/invoice-paths";
 import { PrimaryLink } from "@/components/PrimaryButton";
 import { formatCurrency, formatDate } from "@/lib/labels";
@@ -14,13 +16,19 @@ import type { InvoiceKind } from "@/generated/prisma/enums";
 import { InvoiceStateBadge } from "@/components/invoices/InvoiceStateBadge";
 import {
   documentLabel,
+  isListGroupFilter,
+  LIST_GROUP_FILTER_HINTS,
+  LIST_GROUP_FILTER_LABELS,
+  LIST_GROUP_FILTERS,
   LIST_KIND_FILTER_LABELS,
   LIST_KIND_FILTERS,
   LIST_STATE_FILTERS,
+  listFilterLabel,
   listFiltersQuery,
+  sameListFilters,
   type InvoiceListRow,
+  type ListFilter,
   type ListFilters,
-  type ListStateFilter,
 } from "@/components/invoices/invoice-view";
 
 /** The headline figures the list shows (FACTURATION.md §4), computed by the page. */
@@ -40,6 +48,10 @@ export type InvoiceListFigures = {
  * « Reste à payer » column, and figures where drafts and cancelled invoices
  * stay apart and credit notes are deducted. The page reads the rows on the
  * server; the filters live in the address, so a filtered list can be shared.
+ *
+ * Each figure is a sort (« comme un tri »): it filters the list below to the
+ * documents it is made of (`invoice-view.ts`, `LIST_GROUP_FILTERS`), and is
+ * highlighted while that filter is on screen.
  */
 export function FacturesList({
   rows,
@@ -56,6 +68,14 @@ export function FacturesList({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [search, setSearch] = useState(filters.q);
+  // A figure's link or « Tout afficher » changes the address, not this box:
+  // follow the address so the next filter change does not bring back an old
+  // search (React's « adjusting state when a prop changes »).
+  const [searchFromAddress, setSearchFromAddress] = useState(filters.q);
+  if (filters.q !== searchFromAddress) {
+    setSearchFromAddress(filters.q);
+    setSearch(filters.q);
+  }
 
   function apply(next: Partial<ListFilters>) {
     const query = listFiltersQuery({ ...filters, q: search.trim(), ...next });
@@ -64,12 +84,40 @@ export function FacturesList({
 
   const filtered = filters.state !== null || filters.kind !== null || filters.q !== "";
 
-  const stats = [
-    { label: "Factures émises", value: figures.issuedCount, icon: Receipt, accent: "brand" as const },
-    { label: "Facturé (net d'avoirs)", value: formatCurrency(figures.billed), icon: FileBarChart, accent: "blue" as const },
-    { label: "Encaissé", value: formatCurrency(figures.collected), icon: Wallet, accent: "emerald" as const },
-    { label: "Reste à payer", value: formatCurrency(figures.outstanding), icon: Hourglass, accent: "amber" as const },
+  const stats: {
+    label: string;
+    value: number | string;
+    icon: LucideIcon;
+    accent: StatAccent;
+    /** The documents the figure is made of. */
+    view: Partial<ListFilters>;
+  }[] = [
+    {
+      label: "Factures émises",
+      value: figures.issuedCount,
+      icon: Receipt,
+      accent: "brand",
+      view: { state: "EMISES", kind: "FACTURE" },
+    },
+    {
+      label: "Facturé (net d'avoirs)",
+      value: formatCurrency(figures.billed),
+      icon: FileBarChart,
+      accent: "blue",
+      view: { state: "EMISES" },
+    },
+    { label: "Encaissé", value: formatCurrency(figures.collected), icon: Wallet, accent: "emerald", view: { state: "AVEC_REGLEMENT" } },
+    { label: "Reste à payer", value: formatCurrency(figures.outstanding), icon: Hourglass, accent: "amber", view: { state: "A_REGLER" } },
   ];
+
+  // What the list is narrowed to, as the notice beside its heading reads it.
+  const filterLabel = [
+    filters.state ? listFilterLabel(filters.state) : null,
+    filters.kind ? LIST_KIND_FILTER_LABELS[filters.kind] : null,
+    filters.q ? `« ${filters.q} »` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -86,8 +134,16 @@ export function FacturesList({
       />
 
       <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
-        {stats.map(({ label, value, icon, accent }) => (
-          <StatCard key={label} label={label} value={value} icon={icon} accent={accent} />
+        {stats.map(({ label, value, icon, accent, view }) => (
+          <StatCard
+            key={label}
+            label={label}
+            value={value}
+            icon={icon}
+            accent={accent}
+            href={invoiceTileHref(base, view)}
+            active={sameListFilters(filters, view)}
+          />
         ))}
       </div>
       <p className="mb-8 text-xs text-slate-500">
@@ -97,14 +153,26 @@ export function FacturesList({
         {figures.creditNoteCount !== 1 ? "s" : ""} déduit{figures.creditNoteCount !== 1 ? "s" : ""}.
       </p>
 
-      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-slate-800">
-            {filtered ? "Factures filtrées" : "Toutes les factures"}
-          </h2>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500" aria-live="polite">
-            {pending ? "Chargement…" : `${rows.length} résultat${rows.length !== 1 ? "s" : ""}`}
-          </span>
+      <div
+        id={INVOICE_LIST_ANCHOR}
+        className="mb-5 flex scroll-mt-24 flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"
+      >
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-lg font-semibold text-slate-800">
+              {filtered ? "Factures filtrées" : "Toutes les factures"}
+            </h2>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500" aria-live="polite">
+              {pending ? "Chargement…" : `${rows.length} résultat${rows.length !== 1 ? "s" : ""}`}
+            </span>
+            {filtered && <ViewFilterNotice label={filterLabel} resetHref={invoiceTileHref(base)} />}
+          </div>
+          {isListGroupFilter(filters.state) && (
+            <p className="mt-1 text-sm text-slate-500">
+              <span className="font-medium text-slate-700">{LIST_GROUP_FILTER_LABELS[filters.state]}</span> :{" "}
+              {LIST_GROUP_FILTER_HINTS[filters.state]}
+            </p>
+          )}
         </div>
         <form
           role="search"
@@ -122,15 +190,24 @@ export function FacturesList({
             <select
               id="invoice-filter-state"
               value={filters.state ?? ""}
-              onChange={(e) => apply({ state: (e.target.value || null) as ListStateFilter | null })}
+              onChange={(e) => apply({ state: (e.target.value || null) as ListFilter | null })}
               className="input-field py-2.5 pl-3 pr-8 sm:w-48"
             >
               <option value="">Tous les statuts</option>
-              {LIST_STATE_FILTERS.map((state) => (
-                <option key={state} value={state}>
-                  {INVOICE_STATE_LABELS[state]}
-                </option>
-              ))}
+              <optgroup label="Par statut">
+                {LIST_STATE_FILTERS.map((state) => (
+                  <option key={state} value={state}>
+                    {INVOICE_STATE_LABELS[state]}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Regroupements">
+                {LIST_GROUP_FILTERS.map((group) => (
+                  <option key={group} value={group}>
+                    {LIST_GROUP_FILTER_LABELS[group]}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
           <div>

@@ -5,6 +5,7 @@ import { CheckCircle2, ReceiptText, RotateCcw } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { formatCurrency, formatDate } from "@/lib/labels";
 import type { DueState } from "@/lib/stock";
+import { withStatuses } from "@/lib/management-views";
 
 /**
  * Supplier invoices: recorded once, then only their payment status moves.
@@ -31,18 +32,28 @@ const inputClass = "input-field px-3 text-sm" as const;
 export function PurchaseInvoicesManager({
   initialInvoices,
   suppliers,
+  viewStatus = null,
 }: {
   initialInvoices: PurchaseInvoiceRow[];
   suppliers: SupplierOption[];
+  /**
+   * A view of the list (`?vue=a_payer` of the page): only the invoices in
+   * this status. The reload asks the API for the same status, and the rows
+   * are filtered again when rendering — an invoice marked paid leaves the
+   * « à payer » view at once.
+   */
+  viewStatus?: PurchaseInvoiceRow["status"] | null;
 }) {
-  const [invoices, setInvoices] = useState(initialInvoices);
+  const [rows, setRows] = useState(initialInvoices);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
   const reload = useCallback(async () => {
-    const response = await fetch("/api/purchase-invoices");
-    if (response.ok) setInvoices(await response.json());
-  }, []);
+    const response = await fetch(`/api/purchase-invoices${viewStatus ? `?status=${viewStatus}` : ""}`);
+    if (response.ok) setRows(await response.json());
+  }, [viewStatus]);
+
+  const invoices = withStatuses(rows, viewStatus ? [viewStatus] : null);
 
   async function setStatus(invoice: PurchaseInvoiceRow, status: "PAYEE" | "A_PAYER") {
     setError("");
@@ -61,12 +72,22 @@ export function PurchaseInvoicesManager({
 
   const unpaid = invoices.filter((invoice) => invoice.status === "A_PAYER");
   const paid = invoices.filter((invoice) => invoice.status === "PAYEE");
+  // The magasin's « Montant à payer », computed the same way (cents).
+  const unpaidTotal = Math.round(unpaid.reduce((sum, invoice) => sum + invoice.amount, 0) * 100) / 100;
 
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-500">
-          {unpaid.length} à payer · {paid.length} payée{paid.length > 1 ? "s" : ""}
+          {viewStatus === "A_PAYER" ? (
+            <>
+              {unpaid.length} à payer · <span className="font-semibold text-slate-700">{formatCurrency(unpaidTotal)}</span>
+            </>
+          ) : (
+            <>
+              {unpaid.length} à payer · {paid.length} payée{paid.length > 1 ? "s" : ""}
+            </>
+          )}
         </p>
         <button
           type="button"
@@ -104,7 +125,11 @@ export function PurchaseInvoicesManager({
 
       {invoices.length === 0 ? (
         <Card className="p-10 text-center text-sm text-slate-500">
-          Aucune facture fournisseur enregistrée.
+          {viewStatus === "A_PAYER"
+            ? "Aucune facture fournisseur à payer."
+            : viewStatus
+              ? "Aucune facture ne correspond à ce filtre."
+              : "Aucune facture fournisseur enregistrée."}
         </Card>
       ) : (
         <Card className="overflow-hidden p-0">

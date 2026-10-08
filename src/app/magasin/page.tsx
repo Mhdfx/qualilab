@@ -14,6 +14,8 @@ import { formatCurrency, formatDate } from "@/lib/labels";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
+import { viewHref } from "@/lib/dashboard-view";
+import type { PurchaseInvoiceView } from "@/lib/management-views";
 
 export const metadata = { title: "Achat & Stock" };
 
@@ -50,6 +52,10 @@ export default async function MagasinPage() {
     (sum, invoice) => sum + toMoney(invoice.amount),
     0
   );
+  // Each figure opens exactly what it counts (« comme un tri »): the stock,
+  // the card below, the supplier invoices still to pay — the ones the
+  // amount adds up.
+  const unpaidHref = viewHref("/magasin/factures", "a_payer" satisfies PurchaseInvoiceView);
 
   return (
     <div>
@@ -61,54 +67,57 @@ export default async function MagasinPage() {
 
       <section aria-label="Indicateurs" className="mb-8">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Articles en stock" value={items.length} icon={Boxes} accent="brand" />
-          <StatCard label="Sous le seuil" value={lowItems.length} icon={PackageMinus} accent="amber" />
-          <StatCard label="Factures à payer" value={unpaid.length} icon={ReceiptText} accent="blue" />
+          <StatCard label="Articles en stock" value={items.length} icon={Boxes} accent="brand" href="/magasin/stock" />
+          <StatCard label="Sous le seuil" value={lowItems.length} icon={PackageMinus} accent="amber" href="#sous-seuil" />
+          <StatCard label="Factures à payer" value={unpaid.length} icon={ReceiptText} accent="blue" href={unpaidHref} />
           <StatCard
             label="Montant à payer"
             value={formatCurrency(Math.round(unpaidTotal * 100) / 100)}
             icon={Clock}
             accent="violet"
+            href={unpaidHref}
           />
         </div>
       </section>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <Card className="p-5">
-          <div className="flex items-baseline justify-between gap-3">
-            <h2 className="section-title">
-              <AlertTriangle className="h-4 w-4 text-amber-500" aria-hidden="true" />
-              Stock sous le seuil
-            </h2>
-            <Link
-              href="/magasin/stock"
-              className="rounded text-sm font-medium text-brand transition hover:text-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-            >
-              Gérer le stock
-            </Link>
-          </div>
-          {lowItems.length === 0 ? (
-            <p className="mt-4 rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-              Aucun article sous son seuil — rien à recommander.
-            </p>
-          ) : (
-            <ul className="mt-3 divide-y divide-slate-100">
-              {lowItems.map((item) => (
-                <li key={item.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-800">{item.name}</p>
-                    {item.category && (
-                      <p className="text-xs text-slate-500">{item.category}</p>
-                    )}
-                  </div>
-                  <p className="shrink-0 text-sm font-semibold tabular-nums text-amber-700">
-                    {item.quantityNum} / seuil {item.minNum} {item.unit}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+        <section id="sous-seuil" aria-labelledby="sous-seuil-title" className="scroll-mt-24">
+          <Card className="h-full p-5">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 id="sous-seuil-title" className="section-title">
+                <AlertTriangle className="h-4 w-4 text-amber-500" aria-hidden="true" />
+                Stock sous le seuil
+              </h2>
+              <Link
+                href="/magasin/stock"
+                className="rounded text-sm font-medium text-brand transition hover:text-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              >
+                Gérer le stock
+              </Link>
+            </div>
+            {lowItems.length === 0 ? (
+              <p className="mt-4 rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                Aucun article sous son seuil — rien à recommander.
+              </p>
+            ) : (
+              <ul className="mt-3 divide-y divide-slate-100">
+                {lowItems.map((item) => (
+                  <li key={item.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-800">{item.name}</p>
+                      {item.category && (
+                        <p className="text-xs text-slate-500">{item.category}</p>
+                      )}
+                    </div>
+                    <p className="shrink-0 text-sm font-semibold tabular-nums text-amber-700">
+                      {item.quantityNum} / seuil {item.minNum} {item.unit}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </section>
 
         <Card className="p-5">
           <div className="flex items-baseline justify-between gap-3">

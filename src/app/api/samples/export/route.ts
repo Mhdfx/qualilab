@@ -23,8 +23,9 @@ export async function GET(request: Request) {
   if (session instanceof NextResponse) return session;
 
   const search = parseSampleSearch(new URL(request.url).searchParams);
-  // A cancelled line is not an analysis: it is left out unless asked for.
-  const excludeCancelled = search.state === null;
+  // A cancelled line is not an analysis: it is left out unless asked for
+  // (« Annulées », or the exact step « Annulé »).
+  const excludeCancelled = search.state === null && search.status === null;
   const { rows, total } = await searchSamples(search, { take: MAX_ROWS, excludeCancelled });
   if (total > MAX_ROWS) {
     return NextResponse.json(
@@ -95,6 +96,9 @@ export async function GET(request: Request) {
       from: search.from ? formatIsoDay(search.from) : null,
       to: search.to ? formatIsoDay(search.to) : null,
       state: search.state,
+      status: search.status,
+      type: search.type,
+      withReport: search.withReport,
       natureId: search.natureId,
       q: search.q,
     },

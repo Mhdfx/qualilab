@@ -34,18 +34,19 @@ export default async function PortailPage() {
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Link href={list()} className="rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
-          <StatCard label="Échantillons (12 mois)" value={counts.total - counts.ANNULE} icon={Layers} accent="brand" />
-        </Link>
-        <Link href={list({ stage: "RECU" })} className="rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
-          <StatCard label="Reçus" value={counts.RECU} icon={Inbox} accent="blue" />
-        </Link>
-        <Link href={list({ stage: "EN_ANALYSE" })} className="rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
-          <StatCard label="En analyse" value={counts.EN_ANALYSE} icon={FlaskConical} accent="amber" />
-        </Link>
-        <Link href={list({ stage: "RAPPORT_DISPONIBLE" })} className="rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
-          <StatCard label="Rapports disponibles" value={counts.RAPPORT_DISPONIBLE} icon={CheckCircle2} accent="emerald" />
-        </Link>
+        {/* Each tile opens the list on exactly what it counts. The first one is
+            the whole list of the 12 months, which shows the cancelled samples
+            too (état « Annulé »), so it counts them. */}
+        <StatCard href={list()} label="Échantillons (12 mois)" value={counts.total} icon={Layers} accent="brand" />
+        <StatCard href={list({ stage: "RECU" })} label="Reçus" value={counts.RECU} icon={Inbox} accent="blue" />
+        <StatCard href={list({ stage: "EN_ANALYSE" })} label="En analyse" value={counts.EN_ANALYSE} icon={FlaskConical} accent="amber" />
+        <StatCard
+          href={list({ stage: "RAPPORT_DISPONIBLE" })}
+          label="Rapports disponibles"
+          value={counts.RAPPORT_DISPONIBLE}
+          icon={CheckCircle2}
+          accent="emerald"
+        />
       </div>
 
       <Card className="mt-5 p-5">

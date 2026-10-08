@@ -35,20 +35,30 @@ export type ValidationItem = {
   report?: { amendmentPending: boolean } | null;
 };
 
-/** Samples whose results are submitted and awaiting one of the two approvals, grouped by série. */
-export function ValidationQueue({ items }: { items: ValidationItem[] }) {
+const DEFAULT_EMPTY = {
+  title: "Aucun échantillon à valider",
+  text: "Les résultats soumis par les techniciens apparaîtront ici.",
+};
+
+/**
+ * Samples whose results are submitted and awaiting one of the two approvals,
+ * grouped by série. `empty` says what an empty dashboard view (`?vue=`) means.
+ */
+export function ValidationQueue({
+  items,
+  empty = DEFAULT_EMPTY,
+}: {
+  items: ValidationItem[];
+  empty?: { title: string; text: string };
+}) {
   if (items.length === 0) {
     return (
       <Card className="p-10 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
           <ShieldCheck className="h-6 w-6 text-slate-400" aria-hidden="true" />
         </div>
-        <p className="mt-3 font-semibold text-slate-700">
-          Aucun échantillon à valider
-        </p>
-        <p className="mt-1 text-sm text-slate-500">
-          Les résultats soumis par les techniciens apparaîtront ici.
-        </p>
+        <p className="mt-3 font-semibold text-slate-700">{empty.title}</p>
+        <p className="mt-1 text-sm text-slate-500">{empty.text}</p>
       </Card>
     );
   }

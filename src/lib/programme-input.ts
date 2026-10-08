@@ -70,6 +70,24 @@ export type ProgrammeInput = {
   parameters: ProgrammeParameter[];
 };
 
+/**
+ * Since the 08/10 feedback (RETOUR-LABO-06-10.md §9.3) the reception assigns
+ * nobody: the responsable des paramètres picks the technician here. A
+ * confirmed programme with an analysis nobody holds would sit on no bench
+ * (only the administrator sees it), so confirming asks for one.
+ */
+export const MISSING_TECHNICIAN_MESSAGE =
+  "Choisissez le technicien (par défaut ou pour chaque analyse) avant de confirmer le programme.";
+
+/** True when some programmed analysis has neither its own technician nor the default one. */
+export function lacksTechnician(
+  defaultTechnicianId: string | null | undefined,
+  analysisTechnicianIds: readonly (string | null | undefined)[]
+): boolean {
+  if (defaultTechnicianId) return false;
+  return analysisTechnicianIds.length === 0 || analysisTechnicianIds.some((id) => !id);
+}
+
 export type ProgrammeContext = {
   /** The line's current status: only RECU and PROGRAMME accept a programme. */
   status: SampleStatus;
@@ -368,6 +386,9 @@ export function validateProgramme(raw: unknown, ctx: ProgrammeContext): Programm
         note: null,
       }
   );
+  if (confirming && lacksTechnician(technicianId, parameters.map((p) => p.technicianId))) {
+    return fail(MISSING_TECHNICIAN_MESSAGE);
+  }
 
   return {
     ok: true,

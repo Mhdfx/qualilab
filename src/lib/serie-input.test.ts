@@ -170,10 +170,21 @@ describe("les familles d'analyses par échantillon (RETOUR-LABO-06-10 §5, V3)",
     ).toMatchObject({ ok: true, value: { natures: [{ family: "MICRO", natureId: "micro-autre" }] } });
   });
 
-  it("refuse une famille grisée pour le type", () => {
+  it("mains : les deux familles depuis le 08/10 (§9.2), « -M » / « -P »", () => {
+    const withPcSurfaces = new Map(NATURE_LIST.map((n) => [n.id, n.id === "pc-surfaces" ? { ...n, active: true } : n]));
+    const r = validateLine({ ...mains, analysesChimie: true }, 0, withPcSurfaces);
+    expect(r.ok && r.value.natures).toEqual([
+      { family: "MICRO", natureId: "surfaces" },
+      { family: "CHIMIE", natureId: "pc-surfaces" },
+    ]);
+  });
+
+  it("refuse une famille dont la nature est archivée", () => {
+    // The fixture keeps « Physico-chimie des surfaces » archived.
     expect(validateLine({ ...mains, analysesChimie: true }, 0, natures)).toMatchObject({
       ok: false,
-      error: "« Analyses physico-chimiques » ne s'applique pas à un échantillon « Mains du personnel ».",
+      error:
+        "« Analyses physico-chimiques » : la nature d'analyse d'un échantillon « Mains du personnel » est archivée ou absente du catalogue — prévenez l'administrateur.",
     });
   });
 
@@ -188,7 +199,7 @@ describe("les familles d'analyses par échantillon (RETOUR-LABO-06-10 §5, V3)",
     });
     expect(validateLine({ ...mains, analysesMicro: false }, 0, natures)).toMatchObject({
       ok: false,
-      error: "Cochez « Analyses microbiologiques ».",
+      error: "Cochez « Analyses microbiologiques » ou « Analyses physico-chimiques ».",
     });
   });
 
@@ -393,7 +404,8 @@ describe("validateSerie — the visit as a whole", () => {
     expect(validateSerie({ ...visit, lines: [{ ...mains, analysesChimie: true }] }, natures, { kind: "VISITE" })).toMatchObject({
       ok: false,
       line: 1,
-      error: "Échantillon 1 — « Analyses physico-chimiques » ne s'applique pas à un échantillon « Mains du personnel ».",
+      error:
+        "Échantillon 1 — « Analyses physico-chimiques » : la nature d'analyse d'un échantillon « Mains du personnel » est archivée ou absente du catalogue — prévenez l'administrateur.",
     });
   });
 
@@ -536,7 +548,6 @@ describe("validateSerie — the deposit at the counter", () => {
       receptionTemperature: 4,
       conformity: true,
       conformityReason: null,
-      technicianId: "t1",
     });
     expect(result.value.lines[1]).toMatchObject({
       conformity: false,
@@ -566,7 +577,16 @@ describe("validateSerie — the deposit at the counter", () => {
     const conform = validateSerie({ ...deposit, lines: [{ ...deposit.lines[0], decision: "DETRUIRE" }] }, natures, { kind: "DEPOT" });
     expect(conform).toMatchObject({ ok: false, line: 1, error: "Échantillon 1 — seul un échantillon non conforme peut être détruit." });
     const destroyed = validateSerie({ ...deposit, lines: [{ ...deposit.lines[1], decision: "DETRUIRE" }] }, natures, { kind: "DEPOT" });
-    expect(destroyed).toMatchObject({ ok: true, value: { lines: [{ destroy: true, technicianId: null }] } });
+    expect(destroyed).toMatchObject({ ok: true, value: { lines: [{ destroy: true }] } });
+  });
+
+  it("never takes a technician at the counter — the programme assigns it (RETOUR-LABO-06-10 §9.3)", () => {
+    // Both lines still send `technicianId` (a page opened before 08/10):
+    // the deposit goes through, the technician is dropped.
+    const result = validateSerie(deposit, natures, { kind: "DEPOT" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    for (const line of result.value.lines) expect(line).not.toHaveProperty("technicianId");
   });
 
   it("ignores reception data on a visit", () => {
@@ -579,7 +599,8 @@ describe("validateSerie — the deposit at the counter", () => {
     if (visit.ok) {
       expect(visit.value.samplerKind).toBe("CLIENT");
       expect(visit.value.advanceAmount).toBeNull();
-      expect(visit.value.lines[1]).toMatchObject({ conformity: true, conformityReason: null, technicianId: null });
+      expect(visit.value.lines[1]).toMatchObject({ conformity: true, conformityReason: null });
+      expect(visit.value.lines[1]).not.toHaveProperty("technicianId");
     }
   });
 });
@@ -672,12 +693,13 @@ describe("planLineSamples — d'une ligne à ses échantillons", () => {
     });
   });
 
-  it("refuse une analyse qu'aucune case du type ne peut porter", () => {
+  it("refuse une analyse de la case non cochée, et une analyse qu'aucune case ne peut porter", () => {
+    // Hands take physico-chimie since 08/10 (§9.2): the box just has to be ticked.
     const mainsLine = line({ lineKind: "MAINS", natures: [{ family: "MICRO", natureId: "surfaces" }], parameterIds: ["dosage-air"] });
     expect(planLineSamples(mainsLine, 3, NATURE_ROWS, PARAMETERS)).toMatchObject({
       ok: false,
       line: 3,
-      error: "Échantillon 3 — l'analyse « Dosage air test » ne se demande pas sur un échantillon « Mains du personnel ».",
+      error: "Échantillon 3 — « Dosage air test » est une analyse physico-chimique : cochez « Analyses physico-chimiques » ou retirez-la.",
     });
     expect(planLineSamples(line({ parameterIds: ["sensoriel"] }), 1, NATURE_ROWS, PARAMETERS)).toMatchObject({ ok: false });
   });

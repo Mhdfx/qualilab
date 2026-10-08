@@ -4,10 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { SampleTable, type SampleRow } from "@/components/SampleTable";
 import { SampleDetailPanel } from "@/components/SampleDetailPanel";
 import { SAMPLE_TYPE_LABELS } from "@/lib/labels";
+import { rechercheHref } from "@/lib/sample-search";
 import type { SampleType } from "@/generated/prisma/client";
-import { Search, Users, FlaskConical, Droplets } from "lucide-react";
+import { Search, Users, FlaskConical, Droplets, type LucideIcon } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { StatCard } from "@/components/ui/StatCard";
+import { StatCard, type StatAccent } from "@/components/ui/StatCard";
 import { LoadingState } from "@/components/ui/LoadingState";
 
 export function AdminDashboard() {
@@ -52,14 +53,18 @@ export function AdminDashboard() {
     [samples, typeFilter]
   );
 
-  const stats = [
-    { label: "Prélèvements", value: totals?.total ?? "…", icon: FlaskConical, accent: "brand" as const },
-    { label: "Préleveurs actifs", value: totals?.activePreleveurs ?? "…", icon: Users, accent: "emerald" as const },
+  // Each figure opens the search on exactly what it counts (the list below
+  // is only the 50 newest rows). « Préleveurs actifs » counts the accounts
+  // that ever created a sample — no screen lists those: a plain figure.
+  const stats: { label: string; value: number | string; icon: LucideIcon; accent: StatAccent; href?: string }[] = [
+    { label: "Prélèvements", value: totals?.total ?? "…", icon: FlaskConical, accent: "brand", href: rechercheHref() },
+    { label: "Préleveurs actifs", value: totals?.activePreleveurs ?? "…", icon: Users, accent: "emerald" },
     {
       label: "Analyses eau",
       value: totals?.byType.EAU ?? "…",
       icon: Droplets,
-      accent: "blue" as const,
+      accent: "blue",
+      href: rechercheHref({ type: "EAU" }),
     },
   ];
 
@@ -72,8 +77,8 @@ export function AdminDashboard() {
       />
 
       <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
-        {stats.map(({ label, value, icon, accent }) => (
-          <StatCard key={label} label={label} value={value} icon={icon} accent={accent} />
+        {stats.map(({ label, value, icon, accent, href }) => (
+          <StatCard key={label} label={label} value={value} icon={icon} accent={accent} href={href} />
         ))}
       </div>
 

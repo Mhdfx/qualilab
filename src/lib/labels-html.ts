@@ -10,6 +10,10 @@ import { repetitionLabel } from "./series";
  * self-adhesive format). Each label carries the N° de contrôle and the unit
  * repetition (R1 … Rn), both as text and as a Code128 barcode, so the tube is identified
  * at the bench without retyping anything.
+ *
+ * Blind numbering: a label never names the client nor the site of the
+ * prélèvement (retour du laboratoire du 08/10) — the bench reads the N° de
+ * contrôle, not who the sample belongs to.
  */
 
 export type LabelLine = {
@@ -17,8 +21,6 @@ export type LabelLine = {
   unitCount: number;
   natureLabel: string;
   designation: string;
-  clientName: string;
-  siteName: string | null;
   receivedAt: Date | null;
 };
 
@@ -75,7 +77,7 @@ export function buildLabelsHtml(
         </div>
         <div class="barcode">${barcodeSvg(unit.barcodeText)}</div>
         <div class="designation">${escapeHtml(unit.designation)}</div>
-        <div class="client">${escapeHtml(unit.clientName)}${unit.siteName ? ` · ${escapeHtml(unit.siteName)}` : ""}<span class="serie">série ${escapeHtml(serialNumber)}</span></div>
+        <div class="serie">série ${escapeHtml(serialNumber)}</div>
       </div>`
       )
       .join("");
@@ -109,8 +111,7 @@ export function buildLabelsHtml(
   .barcode svg { height: 9mm; width: auto; max-width: 100%; display: block; }
   .designation { margin-top: 0.8mm; font-size: 8.4pt; font-weight: 600; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; }
-  .client { font-size: 7pt; color: #55707d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .serie { float: right; margin-left: 2mm; }
+  .serie { font-size: 7pt; color: #55707d; text-align: right; white-space: nowrap; }
 </style>
 </head>
 <body>

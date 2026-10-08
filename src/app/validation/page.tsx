@@ -1,15 +1,41 @@
 import { requireRole } from "@/lib/auth";
 import { ShieldCheck, ClipboardList, FileCheck2, Send } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { VIEW_PARAM, parseView, viewHref } from "@/lib/dashboard-view";
+import { VALIDATION_VIEWS, inValidationView, type ValidationView } from "@/lib/circuit-views";
+import { rechercheHref } from "@/lib/sample-search";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
+import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
 import { ValidationQueue } from "@/components/validation/ValidationQueue";
 
 export const metadata = { title: "Validation qualité" };
 
-export default async function ValidationPage() {
+const PATH = "/validation";
+const ANCHOR = "file";
+
+/** What an empty list says, per view. */
+const EMPTY: Record<ValidationView, { title: string; text: string }> = {
+  a_valider: {
+    title: "Aucun échantillon à valider",
+    text: "Les résultats soumis par les techniciens attendent ici leur validation technique.",
+  },
+  attente_admin: {
+    title: "Aucun échantillon en attente d'approbation",
+    text: "Les échantillons validés techniquement attendent ici l'approbation de l'administrateur.",
+  },
+};
+
+export default async function ValidationPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   // Belt and braces with the layout guard: a page must be safe on its own.
   await requireRole("VALIDATEUR", "ADMIN");
+  // A tile is a sort (« comme un tri »): `?vue=` narrows the queue below to
+  // exactly what that tile counts (`inValidationView`, one rule for both).
+  const view = parseView((await searchParams)[VIEW_PARAM], VALIDATION_VIEWS);
   const [items, valides, rapports, envoyes] = await Promise.all([
     prisma.sample.findMany({
       where: { status: "RESULTATS_SAISIS" },
@@ -43,7 +69,11 @@ export default async function ValidationPage() {
     prisma.sample.count({ where: { status: "RAPPORT_ENVOYE" } }),
   ]);
 
-  const awaitingAdmin = items.filter((item) => item.validatedById).length;
+  // The whole queue is loaded (it is the current work, never the history):
+  // the tiles count it, the view only narrows what is shown.
+  const toValidate = items.filter((item) => inValidationView("a_valider", item)).length;
+  const awaitingAdmin = items.filter((item) => inValidationView("attente_admin", item)).length;
+  const shown = view ? items.filter((item) => inValidationView(view, item)) : items;
 
   return (
     <div>
@@ -55,24 +85,48 @@ export default async function ValidationPage() {
 
       <section aria-label="Indicateurs" className="mb-8">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="À valider" value={items.length - awaitingAdmin} icon={ClipboardList} accent="amber" />
-          <StatCard label="Attente admin" value={awaitingAdmin} icon={ShieldCheck} accent="violet" />
-          <StatCard label="Validés" value={valides} icon={FileCheck2} accent="emerald" />
-          <StatCard label="Rapports envoyés" value={envoyes} icon={Send} accent="brand" />
+          {/* The queue's two steps filter it in place; the steps after it open /recherche. */}
+          <StatCard
+            label={VALIDATION_VIEWS.a_valider}
+            value={toValidate}
+            icon={ClipboardList}
+            accent="amber"
+            href={viewHref(PATH, "a_valider", ANCHOR)}
+            active={view === "a_valider"}
+          />
+          <StatCard
+            label={VALIDATION_VIEWS.attente_admin}
+            value={awaitingAdmin}
+            icon={ShieldCheck}
+            accent="violet"
+            href={viewHref(PATH, "attente_admin", ANCHOR)}
+            active={view === "attente_admin"}
+          />
+          <StatCard label="Validés" value={valides} icon={FileCheck2} accent="emerald" href={rechercheHref({ status: "VALIDE" })} />
+          <StatCard
+            label="Rapports envoyés"
+            value={envoyes}
+            icon={Send}
+            accent="brand"
+            href={rechercheHref({ status: "RAPPORT_ENVOYE" })}
+          />
         </div>
       </section>
 
-      <section id="file" aria-label="File de validation">
-        <div className="mb-3 flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">
-            En attente de validation
+      <section id={ANCHOR} aria-labelledby="file-title" className="scroll-mt-24">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <h2 id="file-title" className="text-lg font-semibold text-slate-900">
+            {view ? VALIDATION_VIEWS[view] : "En attente de validation"}
           </h2>
           <span className="text-sm text-slate-500">
-            {items.length} échantillon{items.length > 1 ? "s" : ""}
-            {rapports > 0 && ` · ${rapports} rapport${rapports > 1 ? "s" : ""}`}
+            {shown.length} échantillon{shown.length > 1 ? "s" : ""}
+            {!view && rapports > 0 && ` · ${rapports} rapport${rapports > 1 ? "s" : ""}`}
           </span>
         </div>
-        <ValidationQueue items={items} />
+        {view && (
+          <ViewFilterNotice label={VALIDATION_VIEWS[view]} resetHref={viewHref(PATH, null, ANCHOR)} className="mb-3" />
+        )}
+        <ValidationQueue items={shown} empty={view ? EMPTY[view] : undefined} />
       </section>
     </div>
   );

@@ -49,7 +49,7 @@ describe("the type × family table", () => {
   it.each([
     ["ALIMENT", "MICRO_ALIMENTS", "PC_ALIMENTS"],
     ["SURFACE", "MICRO_SURFACES", "PC_SURFACES"],
-    ["MAINS", "MICRO_SURFACES", null],
+    ["MAINS", "MICRO_SURFACES", "PC_SURFACES"],
     ["EAU", "MICRO_EAUX", "PC_EAUX"],
     ["AIR", "MICRO_AIR", "PC_AIR"],
     ["AUTRE", "MICRO_AUTRE", "EFFET_ASEPTISANT"],
@@ -72,7 +72,7 @@ describe("familiesFor", () => {
   it.each([
     ["ALIMENT", ["MICRO", "CHIMIE"]],
     ["SURFACE", ["MICRO", "CHIMIE"]],
-    ["MAINS", ["MICRO"]],
+    ["MAINS", ["MICRO", "CHIMIE"]],
     ["EAU", ["MICRO", "CHIMIE"]],
     ["AIR", ["MICRO", "CHIMIE"]],
     ["AUTRE", ["MICRO", "CHIMIE"]],
@@ -112,6 +112,9 @@ describe("natureFor", () => {
     expect(natureFor(NATURES, "ALIMENT", "CHIMIE")?.id).toBe("nat-pc_aliments");
     expect(natureFor(NATURES, "SURFACE", "MICRO")?.id).toBe("nat-micro_surfaces");
     expect(natureFor(NATURES, "MAINS", "MICRO")?.id).toBe("nat-micro_surfaces");
+    // Hands × physico-chimie since 08/10 (§9.2), on a catalogue where PC_SURFACES is active.
+    const pcSurfacesActive = NATURES.map((n) => (n.code === "PC_SURFACES" ? { ...n, active: true } : n));
+    expect(natureFor(pcSurfacesActive, "MAINS", "CHIMIE")?.id).toBe("nat-pc_surfaces");
     expect(natureFor(NATURES, "EAU", "MICRO")?.id).toBe("nat-micro_eaux");
     expect(natureFor(NATURES, "EAU", "CHIMIE")?.id).toBe("nat-pc_eaux");
     expect(natureFor(NATURES, "AIR", "MICRO")?.id).toBe("nat-micro_air");
@@ -121,7 +124,6 @@ describe("natureFor", () => {
   });
 
   it("returns undefined for a greyed-out cell", () => {
-    expect(natureFor(NATURES, "MAINS", "CHIMIE")).toBeUndefined();
     expect(natureFor(NATURES, "ALIMENT", "AUTRE")).toBeUndefined();
   });
 

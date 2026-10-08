@@ -32,6 +32,7 @@ const candidates: ReceptionCandidate[] = [
 const good = {
   arrivedAt: "2026-09-13T10:30:00.000Z",
   coolerTemperature: "3,5",
+  // `technicianId`: what a page opened before 08/10 still sends — ignored (§9.3).
   lines: [
     { sampleId: "s1", receptionTemperature: "4", quantity: "250", quantityUnit: "G", conformity: true, technicianId: "t1" },
     { sampleId: "s2", conformity: true, technicianId: "t1" },
@@ -121,29 +122,33 @@ describe("validateReception", () => {
     if (ok.ok) expect(ok.value.lines[0]).toMatchObject({ conformityReason: "AUTRE", conformityNote: "Sachet percé" });
   });
 
-  it("keeps the technician optional — the responsable des paramètres assigns (PROGRAMME.md §6)", () => {
-    const without = validate({ ...good, lines: [{ ...good.lines[0], technicianId: "" }, { sampleId: "s2", conformity: true }] });
-    expect(without.ok).toBe(true);
-    if (without.ok) {
-      expect(without.value.lines[0]).toMatchObject({ conformity: true, destroy: false, technicianId: null });
-      expect(without.value.lines[1]).toMatchObject({ technicianId: null });
+  it("never takes a technician — the responsable des paramètres assigns (RETOUR-LABO-06-10 §9.3)", () => {
+    // A page opened before the change still sends one: the reception goes
+    // through, and the technician is dropped, never refused.
+    const sent = validate(good);
+    expect(sent.ok).toBe(true);
+    if (sent.ok) {
+      for (const line of sent.value.lines) expect(line).not.toHaveProperty("technicianId");
     }
-    // An indicative choice still travels.
-    const with1 = validate(good);
-    expect(with1.ok && with1.value.lines[0]).toMatchObject({ technicianId: "t1" });
+    const unknown = validate({ ...good, lines: [{ ...good.lines[0], technicianId: "pas-un-technicien" }, good.lines[1]] });
+    expect(unknown.ok && unknown.value.lines[0]).not.toHaveProperty("technicianId");
+
+    const none = validate({ ...good, lines: [{ ...good.lines[0], technicianId: undefined }, { sampleId: "s2", conformity: true }] });
+    expect(none.ok).toBe(true);
+    if (none.ok) expect(none.value.lines[0]).toMatchObject({ conformity: true, destroy: false });
   });
 
   it("decides a non-conform line case by case: analysed anyway, or destroyed", () => {
-    const line = { ...good.lines[0], conformity: false, conformityReason: "EMBALLAGE", technicianId: "" };
-    // Analysed anyway (the default) no longer waits for a technician.
+    const line = { ...good.lines[0], conformity: false, conformityReason: "EMBALLAGE" };
+    // Analysed anyway (the default) waits for its technician at the programme.
     const analysed = validate({ ...good, lines: [line, good.lines[1]] });
-    expect(analysed.ok && analysed.value.lines[0]).toMatchObject({ destroy: false, technicianId: null });
-    const withTech = validate({ ...good, lines: [{ ...line, decision: "ANALYSER", technicianId: "t1" }, good.lines[1]] });
-    expect(withTech.ok && withTech.value.lines[0]).toMatchObject({ destroy: false, technicianId: "t1" });
+    expect(analysed.ok && analysed.value.lines[0]).toMatchObject({ destroy: false });
+    const explicit = validate({ ...good, lines: [{ ...line, decision: "ANALYSER" }, good.lines[1]] });
+    expect(explicit.ok && explicit.value.lines[0]).toMatchObject({ destroy: false });
 
-    // Destroyed: no technician, whatever the browser sent.
-    const destroyed = validate({ ...good, lines: [{ ...line, decision: "DETRUIRE", technicianId: "t1" }, good.lines[1]] });
-    expect(destroyed.ok && destroyed.value.lines[0]).toMatchObject({ destroy: true, technicianId: null });
+    const destroyed = validate({ ...good, lines: [{ ...line, decision: "DETRUIRE" }, good.lines[1]] });
+    expect(destroyed.ok && destroyed.value.lines[0]).toMatchObject({ destroy: true });
+    expect(destroyed.ok && destroyed.value.lines[0]).not.toHaveProperty("technicianId");
 
     // A conform sample cannot be destroyed; an unknown decision is refused.
     expect(validate({ ...good, lines: [{ ...good.lines[0], decision: "DETRUIRE" }, good.lines[1]] })).toMatchObject({

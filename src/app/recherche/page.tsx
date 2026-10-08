@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Download, FileText, Search } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { formatDate } from "@/lib/labels";
+import { SAMPLE_STATUS_LABELS, SAMPLE_TYPE_LABELS, formatDate } from "@/lib/labels";
 import { parseSampleSearch, searchQueryString, type Conclusion } from "@/lib/sample-search";
 import { searchSamples } from "@/lib/sample-search-server";
 import { Card } from "@/components/ui/Card";
@@ -27,8 +27,11 @@ const TONES: Record<Conclusion["tone"], string> = {
 /**
  * Finding the analyses done or in progress (RETOUR-LABO-29-09.md, slice F):
  * by client and site (RETOUR-LABO-06-10.md §5, V5), period (reception or
- * sampling), type of analysis and state, plus free text. A plain GET form:
- * the URL is the search, so it can be bookmarked or sent to a colleague.
+ * sampling), domain, type of analysis, state or exact step, with or without
+ * a report, plus free text. A plain GET form: the URL is the search, so it
+ * can be bookmarked or sent to a colleague — and the dashboards' tiles open
+ * it on exactly what they count (`rechercheHref`); every filter a tile can
+ * set has its field here, so « Rechercher » again keeps it.
  * Server-side and paginated.
  */
 export default async function RecherchePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -40,11 +43,18 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
   const page = Math.max(1, Number.parseInt(params.get("page") ?? "1", 10) || 1);
   const searched = [...params.keys()].some((k) => k !== "page");
 
-  const [clients, sites, natures, result] = await Promise.all([
-    prisma.client.findMany({ where: { archived: false }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    // Every site of the active clients, inactive ones included: old analyses were done there.
+  // The active clients — plus the one in the address even if archived (the
+  // link of its fiche), so submitting the form again keeps it.
+  const chosenClient = search.clientId ? [{ id: search.clientId }] : [];
+  const [clientRows, sites, natures, result] = await Promise.all([
+    prisma.client.findMany({
+      where: { OR: [{ archived: false }, ...chosenClient] },
+      select: { id: true, name: true, archived: true },
+      orderBy: { name: "asc" },
+    }),
+    // Every site of those clients, inactive ones included: old analyses were done there.
     prisma.site.findMany({
-      where: { client: { archived: false } },
+      where: { OR: [{ client: { archived: false } }, ...chosenClient.map(({ id }) => ({ clientId: id }))] },
       select: { id: true, clientId: true, name: true, active: true },
       orderBy: [{ active: "desc" }, { name: "asc" }],
     }),
@@ -56,6 +66,7 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
       technicianId: session.role === "TECHNICIEN" ? session.id : undefined,
     }),
   ]);
+  const clients = clientRows.map((c) => ({ id: c.id, name: c.archived ? `${c.name} (archivé)` : c.name }));
   const pages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
   const canExport = session.role !== "TECHNICIEN";
   const canReport = ["VALIDATEUR", "GESTIONNAIRE", "COMPTABLE", "ADMIN"].includes(session.role);
@@ -76,7 +87,7 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
       <PageHeader
         badge="Recherche"
         title="Recherche des analyses"
-        subtitle={`Les analyses terminées ou en cours, par client et site, période, type d'analyse et état.${canExport ? " Exportez le résultat en Excel." : ""}`}
+        subtitle={`Les analyses terminées ou en cours, par client et site, période, domaine, type d'analyse, état ou étape.${canExport ? " Exportez le résultat en Excel." : ""}`}
       />
 
       <Card className="p-5">
@@ -93,6 +104,15 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
             clientId={search.clientId}
             siteId={search.siteId}
           />
+          <div>
+            <label htmlFor="type" className="block text-sm font-medium text-slate-700">Domaine</label>
+            <select id="type" name="type" defaultValue={search.type ?? ""} className="input-field mt-1.5 px-3">
+              <option value="">Tous</option>
+              {(Object.keys(SAMPLE_TYPE_LABELS) as (keyof typeof SAMPLE_TYPE_LABELS)[]).map((type) => (
+                <option key={type} value={type}>{SAMPLE_TYPE_LABELS[type]}</option>
+              ))}
+            </select>
+          </div>
           <div>
             <label htmlFor="nature" className="block text-sm font-medium text-slate-700">Type d&apos;analyse</label>
             <select id="nature" name="nature" defaultValue={search.natureId ?? ""} className="input-field mt-1.5 px-3">
@@ -112,6 +132,16 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
             </select>
           </div>
           <div>
+            <label htmlFor="statut" className="block text-sm font-medium text-slate-700">Étape</label>
+            {/* One exact step: it takes precedence over « État » (parseSampleSearch). */}
+            <select id="statut" name="statut" defaultValue={search.status ?? ""} className="input-field mt-1.5 px-3">
+              <option value="">Toutes</option>
+              {(Object.keys(SAMPLE_STATUS_LABELS) as (keyof typeof SAMPLE_STATUS_LABELS)[]).map((status) => (
+                <option key={status} value={status}>{SAMPLE_STATUS_LABELS[status]}</option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label htmlFor="date" className="block text-sm font-medium text-slate-700">Période sur la date de</label>
             <select id="date" name="date" defaultValue={search.dateField} className="input-field mt-1.5 px-3">
               <option value="reception">Réception</option>
@@ -126,7 +156,17 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
             <label htmlFor="au" className="block text-sm font-medium text-slate-700">Au</label>
             <input id="au" name="au" type="date" defaultValue={iso(search.to)} className="input-field mt-1.5 px-3" />
           </div>
-          <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-3">
+          <fieldset>
+            <legend className="block text-sm font-medium text-slate-700">Rapport</legend>
+            <label
+              htmlFor="rapport"
+              className="mt-1.5 flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-3.5 text-sm text-slate-800 transition-colors hover:border-slate-300"
+            >
+              <input id="rapport" name="rapport" type="checkbox" value="1" defaultChecked={search.withReport} className="h-4 w-4 accent-brand" />
+              Avec rapport seulement
+            </label>
+          </fieldset>
+          <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-4">
             <button type="submit" className="inline-flex min-h-[42px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark">
               <Search className="h-4 w-4" aria-hidden="true" />
               Rechercher

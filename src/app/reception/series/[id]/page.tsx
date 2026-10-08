@@ -10,7 +10,6 @@ import {
   SerieReceptionForm,
   type ReceptionSerieData,
 } from "@/components/reception/SerieReceptionForm";
-import type { TechnicianOption } from "@/components/reception/types";
 
 export const metadata = { title: "Réception de la série" };
 
@@ -23,33 +22,14 @@ export default async function SerieReceptionPage({
   const session = await requireRole("RECEPTIONNISTE", "ADMIN");
   const { id } = await params;
 
-  const [serie, technicians, workload, settings] = await Promise.all([
+  // No technician list: the reception assigns nobody (RETOUR-LABO-06-10.md
+  // §9.3), the responsable des paramètres does at programming time.
+  const [serie, settings] = await Promise.all([
     prisma.serie.findUnique({ where: { id }, select: SERIE_LAB_SELECT }),
-    prisma.user.findMany({
-      where: { role: "TECHNICIEN", banned: { not: true } },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.sample.groupBy({
-      by: ["technicianId"],
-      where: { status: { in: ["RECU", "PROGRAMME", "EN_ANALYSE"] } },
-      _count: { _all: true },
-    }),
     getLabSettings(),
   ]);
 
   if (!serie) notFound();
-
-  const loadByTechnician = new Map(
-    workload.map((row) => [row.technicianId, row._count._all])
-  );
-  const technicianOptions: TechnicianOption[] = technicians
-    .map((technician) => ({
-      id: technician.id,
-      name: technician.name,
-      load: loadByTechnician.get(technician.id) ?? 0,
-    }))
-    .sort((a, b) => a.load - b.load || a.name.localeCompare(b.name, "fr"));
 
   const data = JSON.parse(
     JSON.stringify(serializeSerie(serie, serieStatus(serie.samples)))
@@ -66,7 +46,6 @@ export default async function SerieReceptionPage({
       </Link>
       <SerieReceptionForm
         serie={data}
-        technicians={technicianOptions}
         thresholds={settings}
         role={session.role}
       />

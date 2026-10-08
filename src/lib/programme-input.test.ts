@@ -9,6 +9,7 @@ import {
   validateProgramme,
   type ProgrammeContext,
   type ProgrammeNatureRef,
+  lacksTechnician,
 } from "./programme-input";
 import { MAX_UNITS } from "./series";
 
@@ -243,9 +244,31 @@ describe("validateProgramme — the numbers", () => {
 describe("validateProgramme — the organisation", () => {
   it("accepts an active technician or none as the default", () => {
     expect(validateProgramme({ ...good, technicianId: "tech2" }, ctx).ok).toBe(true);
-    const none = validateProgramme({ ...good, technicianId: null }, ctx);
+    // No default on a draft…
+    const none = validateProgramme({ ...good, confirm: false, technicianId: null }, ctx);
     expect(none.ok).toBe(true);
     if (none.ok) expect(none.value.technicianId).toBeNull();
+    // …or on a confirmation where every analysis has its own technician.
+    const each = validateProgramme(
+      { ...good, technicianId: null, parameters: good.parameters.map((p) => ({ ...p, technicianId: "tech2" })) },
+      ctx
+    );
+    expect(each.ok).toBe(true);
+  });
+
+  it("asks for a technician before confirming (08/10, §9.3: the reception assigns nobody)", () => {
+    // p-ecoli has no technician of its own and there is no default.
+    expectError({ ...good, technicianId: null }, /Choisissez le technicien \(par défaut ou pour chaque analyse\)/);
+    expectError({ ...good, technicianId: "", parameters: [] }, /Choisissez le technicien/);
+    // A confirmed programme keeps the rule on every edit.
+    expect(validateProgramme({ ...good, confirm: false, technicianId: null }, { ...ctx, status: "PROGRAMME" }).ok).toBe(false);
+  });
+
+  it("lacksTechnician: the default covers every analysis", () => {
+    expect(lacksTechnician("t1", [null, null])).toBe(false);
+    expect(lacksTechnician(null, ["t1", "t2"])).toBe(false);
+    expect(lacksTechnician(null, ["t1", null])).toBe(true);
+    expect(lacksTechnician("", [])).toBe(true);
   });
 
   it("refuses a banned account, another role, or an unknown user", () => {

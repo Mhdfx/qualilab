@@ -19,8 +19,10 @@ import type { Role } from "./roles";
  *
  * The N° de série is drawn inside the transaction, so a failed creation
  * never burns a number. A deposit (kind DEPOT) is received on the spot: its
- * samples are born RECU with their N° de contrôle, their conformity and their
- * technician; a visit's samples are born PRELEVE and get theirs at reception.
+ * samples are born RECU with their N° de contrôle and their conformity; a
+ * visit's samples are born PRELEVE and get theirs at reception. Neither
+ * names a technician (RETOUR-LABO-06-10.md §9.3): `Sample.technicianId` is
+ * set by the programme sheet only.
  *
  * A line becomes one sample per ticked family (RETOUR-LABO-06-10.md §5, V3):
  * the two samples of a two-family line share the line number and everything
@@ -209,23 +211,6 @@ export async function createSerie(
   const analysesMicro = families.has("MICRO");
   const analysesChimie = families.has("CHIMIE");
 
-  // A deposit's lines may name an indicative technician (PROGRAMME.md §6 —
-  // the responsable des paramètres assigns the bench): every one named must
-  // exist and be active — one query for all.
-  const technicianIds = isDeposit
-    ? [...new Set(input.lines.map((l) => l.technicianId).filter((t): t is string => t !== null))]
-    : [];
-  if (isDeposit) {
-    const found =
-      technicianIds.length === 0
-        ? []
-        : await prisma.user.findMany({
-            where: { id: { in: technicianIds }, role: "TECHNICIEN", banned: { not: true } },
-            select: { id: true },
-          });
-    if (found.length !== technicianIds.length) throw new SerieCreationError("Technicien invalide.");
-  }
-
   const now = new Date();
   const year = now.getFullYear();
 
@@ -271,13 +256,12 @@ export async function createSerie(
         const product = line.produit ? await resolveProduct(tx, client.id, line.produit) : null;
         const place = await resolvePlace(tx, client.id, siteId, line.lieu);
         const produit = product?.label ?? line.produit;
-        // A destroyed line is received, numbered and cancelled at once. A
-        // line received without a technician is no longer held: it waits in
-        // the programmation queue (RECU) for the responsable des paramètres,
-        // who assigns the bench (PROGRAMME.md §1 — the deposit follows the
-        // same path as a visit).
+        // A destroyed line is received, numbered and cancelled at once. The
+        // others wait in the programmation queue (RECU), without a
+        // technician, for the responsable des paramètres, who assigns the
+        // bench (PROGRAMME.md §1 — the deposit follows the same path as a
+        // visit).
         const destroyed = isDeposit && line.destroy;
-        const technicianId = isDeposit && !destroyed ? line.technicianId : null;
 
         for (const planned of plans[index]) {
           const controlCode = isDeposit ? (await nextNumber(tx, "CONTROLE", year)).formatted : null;
@@ -331,8 +315,6 @@ export async function createSerie(
               conformityReason: isDeposit ? line.conformityReason : null,
               conformityNote: isDeposit ? line.conformityNote : null,
               analysisBlocked: false,
-              technicianId,
-              assignedAt: technicianId ? now : null,
               parameters: { create: planned.parameterIds.map((parameterId) => ({ parameterId })) },
             },
             select: { id: true },

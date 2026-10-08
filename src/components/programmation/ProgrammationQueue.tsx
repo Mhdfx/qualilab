@@ -4,6 +4,7 @@ import type { AirMethod, Family, LineKind, ProgrammePriority, SampleStatus, Seri
 import { LINE_KIND_LABELS, SERIE_KIND_LABELS, formatDateTime, formatDayTime } from "@/lib/labels";
 import { labReference } from "@/lib/sample-select";
 import { groupQueue } from "@/lib/programmation-queue";
+import { isLate } from "@/lib/circuit-views";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
 import { Card } from "@/components/ui/Card";
@@ -39,23 +40,45 @@ export type QueueLine = {
   parameterCount: number;
 };
 
+/** The sheet's verb: programme a received sample, amend a programmed one, read any later step. */
+function actionOf(status: SampleStatus) {
+  if (status === "RECU") return "Programmer";
+  if (status === "PROGRAMME") return "Modifier";
+  return "Consulter";
+}
+
+const DEFAULT_EMPTY = {
+  title: "Aucun échantillon à programmer",
+  text: "Les échantillons réceptionnés apparaîtront ici dès leur numérotation.",
+};
+
 /**
  * The samples to programme and the programmed ones, grouped by série
  * (PROGRAMME.md §5): the received ones first, the oldest receptions at the
  * head. Each sample — « Échantillon N » of its série, « NM » / « NP » for
  * the two samples of a two-family line — opens its programme sheet.
+ *
+ * A dashboard view (`?vue=`, « Programmés aujourd'hui », « En retard ») may
+ * bring samples already past the queue: their sheet opens read-only
+ * (« Consulter »), and `empty` says what an empty view means.
  */
-export function ProgrammationQueue({ lines, now }: { lines: QueueLine[]; now: Date }) {
+export function ProgrammationQueue({
+  lines,
+  now,
+  empty = DEFAULT_EMPTY,
+}: {
+  lines: QueueLine[];
+  now: Date;
+  empty?: { title: string; text: string };
+}) {
   if (lines.length === 0) {
     return (
       <Card className="p-10 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
           <ClipboardList className="h-6 w-6 text-slate-400" aria-hidden="true" />
         </div>
-        <p className="mt-3 font-semibold text-slate-700">Aucun échantillon à programmer</p>
-        <p className="mt-1 text-sm text-slate-500">
-          Les échantillons réceptionnés apparaîtront ici dès leur numérotation.
-        </p>
+        <p className="mt-3 font-semibold text-slate-700">{empty.title}</p>
+        <p className="mt-1 text-sm text-slate-500">{empty.text}</p>
       </Card>
     );
   }
@@ -80,8 +103,7 @@ export function ProgrammationQueue({ lines, now }: { lines: QueueLine[]; now: Da
             </div>
             <ul className="space-y-3">
               {group.lines.map((line) => {
-                const late = line.dueAt !== null && line.dueAt.getTime() < now.getTime();
-                const toProgramme = line.status === "RECU";
+                const late = isLate(line, now);
                 return (
                   <li key={line.id}>
                     <Link
@@ -152,7 +174,7 @@ export function ProgrammationQueue({ lines, now }: { lines: QueueLine[]; now: Da
                         </div>
 
                         <span className="inline-flex shrink-0 items-center gap-1.5 self-center rounded-xl bg-brand-light px-3 py-2 text-sm font-semibold text-brand transition-colors group-hover:bg-brand group-hover:text-white">
-                          {toProgramme ? "Programmer" : "Modifier"}
+                          {actionOf(line.status)}
                           <ArrowRight className="h-4 w-4" aria-hidden="true" />
                         </span>
                       </div>
