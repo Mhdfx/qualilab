@@ -8,7 +8,9 @@
 
 ## ▶ NEXT ACTION
 
-**Retour du 08/10 (`RETOUR-LABO-06-10.md` §8) : construit, pas encore déployé.** Next: commit + deploy (migration `20261010100000_natures_air_autre`, data only, with `prisma migrate deploy`), then **TESTPLAN V8** on production, including a phone whose clock is one hour ahead. To confirm with the lab: « Autre » starts on physico-chimie; parameters / profiles for « Physico-chimie de l'air » and « Microbiologie — autres prélèvements » (Q50).
+**Retour du 08/10 (`RETOUR-LABO-06-10.md` §8) : en production depuis le 08/10** (`a5925b6` + `b0defab`, migration `20261010100000_natures_air_autre`; TESTPLAN V8 — recette-v8 27/27, recette-v8b 20/20 on an emulated device one hour ahead and an up-to-date one). Next, waiting on the lab: parameters / profiles for « Physico-chimie de l'air » and « Microbiologie — autres prélèvements » (Q50 — the samples can be created, not yet programmed), the merges of `doublons-clients.xlsx` (Q54), Q45–Q53, legal details for the documents. Every PC / phone of the lab should still be updated (zone data 2026c): the fields now cope with a device one hour ahead, but a correct clock is the real fix.
+
+_Previous next action:_ **Retour du 08/10 (`RETOUR-LABO-06-10.md` §8) : construit, pas encore déployé.** Next: commit + deploy, then TESTPLAN V8 on production.
 
 _Previous next action:_ **Facturation (cycle complet), amendement / duplicata des rapports et portail client : construits le 08/10, pas encore déployés** (`FACTURATION.md`, `AMENDEMENT.md`, `PORTAIL.md`). Next: commit + deploy (one migration, `20261009100000_facturation_rapports_portail`, with `prisma migrate deploy`), then **TESTPLAN X, Y, Z** on production on the kept test client « TEST UI 2026-10-06 Traiteur » and invented « TEST UI X / Z » clients only. To confirm with the lab: an invoice of 0,00 stored « Payée » at issue; « rapports amendés en tête de liste » on the portal read as the dashboard's « Rapports récents ».
 
@@ -276,6 +278,10 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-10-08 — retour du 08/10 live (TESTPLAN V8)
+- Deployed `a5925b6` (migration `20261010100000_natures_air_autre` applied), recette `.ui-tests/recette-v8.mjs` 27/27 with headless Chrome emulating a device one hour ahead and an up-to-date one: typed device hour stored as the legal hour, future end refused at « Continuer », Air with both boxes → `MICRO_AIR` + `PC_AIR`, « Autre » both → `MICRO_AUTRE` + `EFFET_ASEPTISANT`, Mains physico-chimie refused, no profile / no série analyses block on the visit.
+- The screenshots showed « avance d'1 hsur » (the compiled JSX dropped the space after the expression — the sentence is now one string) and « Maintenant » spilling over the next column at 900 px (the native field kept its width; it now shrinks to 13rem and the button wraps). Fixed in `b0defab`, deployed; `.ui-tests/recette-v8b.mjs` 20/20 on the other screens: visit fiche (stored 00:22 shown 01:22, future arrival refused, « Maintenant » → stored 00:43), reception (future refused, série not received), deposit (future refused, profiles still offered), programme « Délai » hint, layout at 900 px.
 
 ### 2026-10-09 — retour du 08/10 corrections built (`RETOUR-LABO-06-10.md` §8, not deployed)
 - §8.1: one date-time field, `LabDateTimeInput` (`src/lib/device-time.ts`), everywhere — visit, visit fiche, deposit, reception, programme « Délai ». A device still on UTC+1 types the hour it reads; the field converts it to the legal hour (« = 18:06 heure légale »), « Maintenant » on end / arrival, « dans le futur » caught next to the field before sending. `LegalTimeHint` deleted.

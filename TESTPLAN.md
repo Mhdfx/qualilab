@@ -1018,20 +1018,24 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 - The germs of a chosen type are listed « non programmé » when a profile chip replaces the ticked analyses afterwards: visible and deliberate, but the lab may prefer the type's germs to stay ticked (to confirm).
 - Q41 (« les nombres », numbering) and Q42 (one sample split between technicians) in NEEDEDINFO.
 
-## Checkpoint V8 — Corrections du 08/10 (planned — `RETOUR-LABO-06-10.md` §8)
+## Checkpoint V8 — Corrections du 08/10 (live 08/10 — `RETOUR-LABO-06-10.md` §8)
 
-Built 08–09/10, not deployed. Gates green (tsc 0, eslint 0, vitest 911,
-build). Run on production after deploy, test client « TEST UI 2026-10-06
-Traiteur » only, on an up-to-date device **and** on a phone / PC whose
-clock is one hour ahead (zone data from before 20/09/2026).
+**Production 08/10 (`a5925b6`, then `b0defab`):** `.ui-tests/recette-v8.mjs`
+27/27 and `.ui-tests/recette-v8b.mjs` 20/20, headless Chrome emulating a
+device **one hour ahead** (zone Africa/Lagos = a Moroccan PC that missed the
+return to GMT) and an up-to-date device (Africa/Abidjan), on the test client
+« TEST UI 2026-10-06 Traiteur » only (visits 18/26 and 19/26 kept). The
+screenshots showed two display defects, fixed in `b0defab` and re-checked:
+« avance d'1 hsur » (the compiled JSX lost a space) and the « Maintenant »
+button spilling over the next column at 900 px.
 
-- [ ] V8.0 — Migration `20261010100000_natures_air_autre` applied: « Physico-chimie de l'air » and « Microbiologie — autres prélèvements » listed, both domain « Ambiance ».
-- [ ] V8.1 — Up-to-date device: each date-time field (visit start / end / arrival, visit fiche, deposit « Prélevé le », reception « Arrivée au laboratoire », programme « Délai ») reads « Heure légale (GMT) : HH:MM »; no hydration warning in the console.
-- [ ] V8.2 — Device one hour ahead: the field shows the device's hour, the amber hint reads « Cet appareil avance d'1 h … (= HH:MM heure légale) »; typing the hour read on the device saves without refusal and the recap / protocol / reception print the legal hour. « Maintenant » (end, arrival, reception) fills the device's current hour, stored as legal now. A September date (visit fiche of an old visit) is shown unshifted.
-- [ ] V8.3 — An hour 10 min ahead of the legal clock: « Continuer » (visit, deposit), « Enregistrer » (visit fiche) and the reception refuse it next to the field (« … est dans le futur : il est HH:MM (heure légale du Maroc). Vérifiez l'heure saisie. »), the field is scrolled into view and ringed; editing the field clears it. The programme « Délai » accepts a future date.
-- [ ] V8.4 — Air and Autre offer both boxes, Mains micro only; an Air line with both boxes → « …M » / « …P »; an Autre line with both boxes saves its analyses (same domain on both samples).
-- [ ] V8.5 — Visit form: no « Profil d'analyses », no série-level « Analyses à effectuer » card; the recap line and the protocol PDF still tick the families from the samples; the deposit still offers profiles.
-- [ ] V8.6 — Air line: no « T° produit » (a value typed before switching to Air is not saved); the « 5 … 9 pour l'histamine » help on food lines only.
+- [x] V8.0 — Migration `20261010100000_natures_air_autre` applied (migrate container exited 0): an air line with both boxes gets `PC_AIR`, an « Autre » line `MICRO_AUTRE`.
+- [x] V8.1 — Up-to-date device: « Heure légale (GMT) : HH:MM » under the visit fields, no console error. Device one hour ahead: the amber hint on every date-time field — new visit (start / end / arrival), visit fiche (end / arrival), deposit « Prélevé le », reception « Arrivée au laboratoire », programme « Délai » — no console error on any of the five screens.
+- [x] V8.2 — Device one hour ahead: « Prélevé le » proposed at the device's hour (01:32 for a legal 00:32); typing the device's 01:22 shows « = 00:22 heure légale » and is stored 00:22 (start 23:52); the visit fiche shows the stored legal end 00:22 as 01:22 with « = 00:22 heure légale »; « Maintenant » (fiche, reception) fills the device's 01:43 and the fiche stores 00:43. Correct device: typed 00:22, stored 00:22. _Not checked on production: a September date shown unshifted (unit-tested), the protocol PDF's printed hours._
+- [x] V8.3 — An hour 40 min ahead is refused next to the field with « … est dans le futur : il est 00:43 (heure légale du Maroc). Vérifiez l'heure saisie. »: visit « Continuer », visit fiche « Enregistrer l'arrivée » (nothing stored), deposit « Continuer », reception « Valider la réception » (série stays « À réceptionner »); « Maintenant » clears the reception error. _Not checked: a future « Délai » accepted on the programme sheet._
+- [x] V8.4 — Air: « Analyses physico-chimiques » available; both boxes → 18/26-1M and 18/26-1P, natures `MICRO_AIR` + `PC_AIR`. « Autre » with both boxes (API) → `MICRO_AUTRE` + `EFFET_ASEPTISANT` (201). « Mains » with physico-chimie (API) → 400 « Échantillon 1 — « Analyses physico-chimiques » ne s'applique pas à un échantillon « Mains du personnel ». »
+- [x] V8.5 — Visit form: no « Profil d'analyses », no série-level « Analyses à effectuer » card; the deposit still offers the profiles. _Recap line and protocol PDF not re-read._
+- [x] V8.6 — Air line: no « T° produit », no « … 9 pour l'histamine » help (the payload drops a T° typed before switching to Air: unit test).
 
 ## Checkpoint X — Facturation : brouillon, émission, annulation, avoirs, règlements (live 09/10 — `FACTURATION.md`)
 
