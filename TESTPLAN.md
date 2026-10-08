@@ -1018,6 +1018,16 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 - The germs of a chosen type are listed « non programmé » when a profile chip replaces the ticked analyses afterwards: visible and deliberate, but the lab may prefer the type's germs to stay ticked (to confirm).
 - Q41 (« les nombres », numbering) and Q42 (one sample split between technicians) in NEEDEDINFO.
 
+## Checkpoint V9 — Retour du 08/10, suite (live 08/10 — `RETOUR-LABO-06-10.md` §9)
+
+**Production 08/10 (`7612a18`, `73d7119`):** test client « TEST UI 2026-10-06 Traiteur » only (visit 23/26 kept); real clients are on production now — the scripts print counts, never their names.
+
+- [x] V9.1 — New visit (`.ui-tests/v9-arrival.mjs`): no « Arrivé au laboratoire » nor « Température à l'arrivée » field; the line « L'arrivée au laboratoire (heure et température de la glacière) se saisit au retour… » instead. The visit fiche keeps both, with « Maintenant » (TESTPLAN V8b).
+- [x] V9.2 — « Mains du personnel » with both boxes → 201, 23/26-1M `MICRO_SURFACES` + 23/26-1P `PC_SURFACES`. Catalogue: 0 CHIMIE × AMBIANCE parameter — the PC sample is received, not programmable yet (Q50, Q56).
+- [x] V9.3 — Reception sent with a technician (an old tab) → 200 and no technician on any sample; reception screen (19/26) and deposit screen offer no technician and say « Le technicien est attribué par le responsable des paramètres »; programme confirmed without technician → 400 « Choisissez le technicien (par défaut ou pour chaque analyse) avant de confirmer le programme. », with tech1 → 200; programmation queue: 17 samples to programme in 8 séries, oldest reception first.
+- [x] V9.4 — Labels PDF of 23/26: nature, date, 32/26 … 34/26, designation, « série 23/26 »; no client, no site.
+- [x] V9.5 — `.ui-tests/recette-v9-dash.mjs`, 12 dashboards × their role (réception, programmation, technicien, validation, qualité, préleveur, admin, comptabilité, factures, commercial, fiche client, magasin): 51 tiles, every link opens (no error, no console error); in-page views show « Filtre : … » and highlight their tile; every /recherche link lists exactly the tile's number (7/7 reçus aujourd'hui, 17/17 à programmer, 40/40 en cours, 44/44, 3/3 rapports, 32/32 and 3/3 on the fiche client…); plain on purpose: « Délai moyen », « Préleveurs actifs », gestionnaire « Factures émises ». The EIL and supplier-invoice views open list pages without tiles (chip shown, nothing to highlight). Not checked on production: the portal tiles (unchanged links).
+
 ## Checkpoint V8 — Corrections du 08/10 (live 08/10 — `RETOUR-LABO-06-10.md` §8)
 
 **Production 08/10 (`a5925b6`, then `b0defab`):** `.ui-tests/recette-v8.mjs`

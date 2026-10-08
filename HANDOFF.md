@@ -23,7 +23,7 @@
 | Clients | CRUD, archive, recipient lists, fiche 360° | ✅ **Phase 4 · E1 done** |
 | Facturation liée | invoices from validated analyses, server-side PDF | ✅ **Phase 4 · E2 done** |
 | Administration | users, parameters, catalogue, entreprise, journal | ✅ **Phase 4 · E3 done** |
-| LIMS core — **réception** | queue, verify, conformity, assignment, **blind numbering** | ✅ **Phase 2 · C1 done** |
+| LIMS core — **réception** | queue, verify, conformity, **blind numbering** (no technician since 08/10 — the programme assigns) | ✅ **Phase 2 · C1 done** |
 | LIMS core — **saisie résultats** | bench sheet, automatic conformity, submit | ✅ **Phase 2 · C2 done** |
 | LIMS core — **validation** | double validation (validateur + admin), rejet motivé | ✅ **Phase 2 · C3 done** |
 | LIMS core — **rapport PDF** | official report, 3 signatures, on-demand render | ✅ **Phase 3 · started** |
@@ -38,6 +38,7 @@
 | **Programme d'analyse (05/10) — live 05/10 night, TESTPLAN T** | rôle « Responsable des paramètres », statut PROGRAMME entre réception et paillasse, fiche de programme (type, analyses, nombres, méthodes, technicien par paramètre, délai, consignes), facturation dès le programme — spec **`PROGRAMME.md`** | ✅ **live 2026-10-05 night** — migration `20261006100000_programme` appliquée en production, recette TESTPLAN T (22 checks API + navigateur comme param1), un plantage de la fiche corrigé le soir même ; questions Q41–Q42 au laboratoire ; **parcours complet d'un prélèvement en production le 06/10 (TESTPLAN U, `RECETTE-06-10-PARCOURS.md`)**, réception sans technicien par défaut depuis le 06/10 |
 | **Retours du laboratoire 05/10 → 07/10 — live 07/10, TESTPLAN V** | cadre Autre / Devis validé / BC / Convention, « Service vétérinaire » retiré, « Échantillon » au lieu de « Ligne », Désignation + « État de la surface », deux familles par échantillon (1M / 1P, nature masquée), méthode de prélèvement de l'air, sites des clients repris de l'ancien logiciel, analyses et type de produit décidés par le laboratoire — spec **`RETOUR-LABO-06-10.md`** (§5 décisions, §6 livré) | ✅ **V1 → V6 live 2026-10-07** (`e30c2b0`, `e83421c`), migration `20261007100000_retour_labo_v` ; import des sites exécuté en production (420 sites, 345 doublons archivés) ; reste au laboratoire : paramètres d'air et de physico-chimie (Q50), versions des documents, Q45–Q52 |
 | **Retour du 08/10 — live 08/10, TESTPLAN V8** | champs date-heure qui lisent l'heure de l'appareil et enregistrent l'heure légale (`LabDateTimeInput`, « = HH:MM heure légale », « dans le futur » refusé à côté du champ), Air et Autre en deux familles (`PC_AIR`, `MICRO_AUTRE`), « Profil d'analyses » et bloc « Analyses à effectuer » de la visite retirés, pas de « T° produit » sur l'air — spec **`RETOUR-LABO-06-10.md`** §8 | ✅ **live 2026-10-08** (`a5925b6`, `b0defab`), migration `20261010100000_natures_air_autre` ; recettes v8 27/27 + v8b 20/20 sur un appareil émulé à +1 h ; reste au laboratoire : paramètres de physico-chimie de l'air et de « Autre » (Q50), mise à jour des appareils |
+| **Retour du 08/10 (suite) — live 08/10, TESTPLAN V9** | arrivée au laboratoire saisie au retour (plus à la création de la visite), mains en deux familles, réception sans technicien (le programme ne se confirme qu'avec un technicien, file la plus ancienne en tête), étiquettes sans client ni site, chaque bloc chiffré des tableaux de bord cliquable — spec **`RETOUR-LABO-06-10.md`** §9 | ✅ **live 2026-10-08** (`7612a18`, `73d7119`) ; recettes v9 + v9b 12/12, tableaux de bord 51 blocs cliqués en production ; reste au laboratoire : paramètres de physico-chimie d'ambiance (0 au catalogue, Q50) |
 | **Clients en double / sites / clients facturés** | « Fusionner avec… » et « Rattacher comme site de… » (ADMIN, aperçu puis confirmation, une transaction, fiche archivée avec `mergedIntoId`), client facturé d'un client principal et « Facturé à » par site (facturation : un échantillon n'est proposé qu'à un seul client), quasi-doublon à la création et au renommage (409 + « Ce n'est pas le même client ») — spec **`CLIENTS-FUSION.md`** (`RETOUR-LABO-06-10.md` §7) | ✅ **live 2026-10-08** (`722da85`) — migration `20261008100000_clients_fusion` appliquée ; recette TESTPLAN W 36/36 en production sur des clients de test (archivés ensuite) ; **exécution sur les vrais clients seulement après validation de `doublons-clients.xlsx` (Q54)** |
 
 | **Facturation : cycle complet** | brouillon sans numéro (échantillons réservés), « Émettre » (numéro `FAC-AAAA-NNNN` tiré du compteur `FACTURE` dans la transaction), annulation motivée, avoirs `AV-AAAA-NNNN`, règlements (`Payment`, modes Espèces / Chèque / Effet / Carte / Virement), reste à payer, PDF filigrane / tampon / bloc réglé, liste filtrée par état et type, chiffres « Facturé / Encaissé » uniques (`billingFigures()`) — spec **`FACTURATION.md`** | ✅ **live 2026-10-09** (`b938b10`, migration `20261009100000_facturation_rapports_portail`, shared with the two rows below) — recette TESTPLAN X 21/21 en production |
@@ -69,7 +70,7 @@ src/
     api/
       auth/[...all]/           ★ Better Auth handler (sign-in/out, session, admin)
       samples/                 GET (audience-scoped) · POST (PRELEVEUR creates)
-      samples/[id]/reception/  ★ PRELEVE → RECU: numbering, conformity, assignment
+      samples/[id]/reception/  ★ PRELEVE → RECU: numbering, conformity (no technician since 08/10)
       samples/[id]/results/    ★ PUT save (RECU → EN_ANALYSE) · submit/ POST (→ RESULTATS_SAISIS)
       samples/[id]/validation/ ★ POST validate | approve (→ VALIDE) | reject (→ EN_ANALYSE)
       samples/[id]/report/     ★ GET — renders the official PDF on demand
@@ -322,6 +323,7 @@ Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|E
 | The fine nature of a sample (Q49) | programme sheet « Nature d'analyse »: `ProgrammeSheet.tsx` + `programme-sheet-logic.ts`; `PUT /api/samples/[id]/programme` (`natureId`) + `resolveProgrammeNature` (`src/lib/programme-input.ts`) |
 | A parameter's family | `/admin/parametres` (filter + « Famille »), `AnalysisParameter.family`, `src/lib/parameter-validation.ts`; short labels `FAMILY_SHORT_LABELS` |
 | How a sample is named on the PDFs, report, e-mails, labels, bench sheet (state, method) | `sampleDesignation` / `designationHeading` in `src/lib/document-html.ts`; twins on the protocol / bon: `protocolRows` there |
+| What a sample label prints (nature, date, N° de contrôle + Rn, Code128, designation, série — **no client, no site**: blind numbering, retour du 08/10) | `src/lib/labels-html.ts` (tested) + `GET /api/series/[id]/labels` |
 | Legacy sites → client sites (import) | `/admin/import` « Sites de l'ancien logiciel »; `src/lib/sites-import.ts` (pure plan, tests) + `POST /api/admin/import/sites` |
 | Search / export by site | `src/lib/sample-search.ts` (`siteId`, `SIEGE`) + `src/components/recherche/ClientSiteFilter.tsx`; Excel « Site » column in `src/app/api/samples/export/route.ts` |
 | What a série's JSON carries (cadreNote, surfaceState, airMethod, twin order) | `src/lib/serie-select.ts` |
@@ -334,8 +336,15 @@ Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|E
 | The sentences of the merge / attach preview, « Facturé à » choices, archived-fiche banner | `src/components/commercial/client-actions-logic.ts` (pure, tested) |
 | Any date-time field (shows the device's hour, stores the legal one, « Maintenant », hint, `errorId`) | `src/components/LabDateTimeInput.tsx` — the only date-time field (visit, visit fiche, deposit, reception, programme « Délai »); conversions `fieldDisplayWall` / `fieldLegalWall`, drift `deviceDriftMinutes` / `driftForWall` in `src/lib/device-time.ts` (pure, tested). State and payload stay LEGAL wall strings (`toLocalInput` / `fromLocalInput`) |
 | « … est dans le futur » next to a field (client) / at the API (server) | `futureFieldError` in `src/lib/device-time.ts` (5 min tolerance) / `futureMessage` in `src/lib/labels.ts` + the checks in `src/lib/serie-input.ts` — same wording, keep them aligned |
-| Which boxes a sample type offers (Air / Autre: both; Mains: micro) | `NATURE_CODE_BY_KIND` in `src/lib/nature-family.ts` + one nature row per cell (migration `20261010100000_natures_air_autre`). The two natures of a type **must share one `legacyType`** (the line loads one parameter list; `planLineSamples` refuses another domain) |
+| Which boxes a sample type offers (every type both since 08/10; Mains = surface natures) | `NATURE_CODE_BY_KIND` in `src/lib/nature-family.ts` + one nature row per cell (migration `20261010100000_natures_air_autre`). The two natures of a type **must share one `legacyType`** (the line loads one parameter list; `planLineSamples` refuses another domain) |
 | « Profil d'analyses » on a sample card | `showProfiles` prop of `LineEditor` — `false` on the préleveur's visit, default `true` at the counter |
+| A dashboard tile's link / active state, a plain tile | `StatCard` `href` / `active` / `hint` (`src/components/ui/StatCard.tsx`; without `href` it is a plain div, no hover lift); `RoleDashboard` passes them through |
+| An in-page dashboard view (`?vue=…`, « Filtre : X », « Tout afficher ») | `parseView` / `viewHref` / `serverIsoDay` in `src/lib/dashboard-view.ts`, `ViewFilterNotice`; the views' exact `where`s in `src/lib/circuit-views.ts` (réception, programmation, technicien, validation, préleveur) and `src/lib/management-views.ts` (direction, comptabilité, commercial, qualité, magasin) — a tile and its list must share the same `where` |
+| /recherche filters a tile can link to (étape, domaine, avec rapport) | `statut` / `type` / `rapport=1` in `src/lib/sample-search.ts` (`rechercheHref()` builds links; shared by `/api/samples` and the export) |
+| Invoice list groups (« À régler », « Émises », « Avec règlement ») | `LIST_GROUP_FILTERS`, `stateFilterWhere`, `invoiceListHref` in `src/components/invoices/invoice-view.ts`; `loadInvoiceList` post-filters with `matchesListFilter` |
+| Who may confirm a programme without a technician (nobody since 08/10) | `lacksTechnician` / `MISSING_TECHNICIAN_MESSAGE` in `src/lib/programme-input.ts` (route + sheet) |
+| The programme queue's order (oldest reception first, série « 9/26 » before « 10/26 ») | `orderQueue` / `compareSerialNumbers` in `src/lib/programmation-queue.ts`; status-first `orderBy` in `/programmation` and `GET /api/programmation/queue` |
+| What a sample label prints | `src/lib/labels-html.ts` (no client, no site since 08/10 — blind bench) |
 
 ## 6. Environment variables
 
@@ -519,6 +528,13 @@ Found by the end-to-end recette of 06/10 (`RECETTE-06-10-PARCOURS.md`).
 - **Families (§8.2).** Air and Autre take both boxes; Mains stays micro only. Migration `20261010100000_natures_air_autre` (data only, `INSERT IGNORE`) adds `PC_AIR` and `MICRO_AUTRE`, both `legacyType` **AMBIANCE** — the gate review changed `MICRO_AUTRE` from ALIMENTAIRE: two domains on one type made an « Autre » line with both boxes load food analyses that the server then refused. Until the migration runs, the new boxes are greyed and the API answers « … est archivée ou absente du catalogue — prévenez l'administrateur » (400, tested). Every type, « Autre » included, starts on microbiology (`defaultFamiliesFor`, decided 08/10 for one rule everywhere).
 - **Visit form (§8.3–§8.5).** « Profil d'analyses » hidden on the visit only (`showProfiles={false}`; counter and programme sheet keep profiles). The série-level « Analyses à effectuer » card is gone from the visit; the recap line and the protocol PDF still show both boxes, computed from the samples (`serie-create.ts`). No « T° produit » on an Air line, and `linePayload` no longer sends one typed before switching to Air. The « 5 / 9 » help on n shows on food lines only.
 
+### 2026-10-08 — retour du 08/10 (suite) (`RETOUR-LABO-06-10.md` §9) — live 08/10 (`7612a18`, `73d7119`, TESTPLAN V9)
+- **Arrival not at creation.** The visit form is filled at the client's: an arrival typed ahead is in the future and blocked « Continuer ». Arrival time and cooler temperature are entered on return (visit fiche « Maintenant ») or by the reception, which falls back to its own time.
+- **Mains: both families.** `MAINS → PC_SURFACES` (no migration: the nature exists, AMBIANCE like `MICRO_SURFACES`). Every type now offers both boxes; « greyed » only means an archived / missing nature. The catalogue has 0 CHIMIE × AMBIANCE parameters (Q50): such samples are created and received, not programmable yet.
+- **Reception assigns nobody.** Selects removed from reception and deposit; `validateReception` / the deposit path drop a `technicianId` an old tab still sends (ignored, not refused). Consequence handled: a programme is refused at confirmation when an analysis has neither its own nor the default technician (`lacksTechnician`), else a PROGRAMME sample would sit on no bench. Queue: status first, oldest reception, then série by year and rank (text order put « 10/26 » before « 9/26 »).
+- **Labels blind.** `labels-html.ts` no longer prints client · site. The bench sheet (`bench-sheet-html.ts`) still prints the client — asked to the lab (NEEDEDINFO Q55).
+- **Clickable dashboards.** One `StatCard` with `href`; in-page `?vue=` views filtered server-side (shareable, survive reload) or a filtered list (/recherche, invoices). A tile and its list share one `where` (`circuit-views.ts`, `management-views.ts`); the caps that made them disagree were removed (reception 100 séries, excursions 20, EIL 10, technician anomalies counted as results). No list → plain tile: « Délai moyen », « Préleveurs actifs », « Alertes de contamination »; the gestionnaire's invoice tiles link for ADMIN only. Client components that hold a list in state are keyed on the view (Next keeps them mounted across `?vue=` changes). The portal's « Échantillons (12 mois) » now counts cancelled samples too, like the list it opens.
+
 ## 8c. A lesson written down (2026-08-25)
 
 Importing anything that touches Prisma from a **client** component drags the
@@ -529,6 +545,9 @@ MySQL driver into the browser bundle and breaks the build with
 importing a server module.
 
 ## 9. Known debt / watch-outs
+
+- **Day cuts and stale tz data (08/10).** `setHours(0,0,0,0)` cuts (dashboard « aujourd'hui » tiles, /recherche `du`/`au`) follow the runtime's zone data; on an image whose tzdata predates Morocco's return to GMT, « aujourd'hui » starts at 23:00 UTC. Tiles and lists still agree (both use the server clock — `serverIsoDay`), but upgrade the image's tzdata (2026c+) and re-check.
+- **`Sample.sampledAt` has no index** (« Ce mois-ci » and /recherche `date=prelevement` scan). Fine at today's volume; add `@@index([sampledAt])` with the next migration.
 
 - ~~Role checks hardcoded per file~~ → **resolved:** everything now goes through
   `requireRole` / `requireApiRole`. Keep it that way; never re-introduce an

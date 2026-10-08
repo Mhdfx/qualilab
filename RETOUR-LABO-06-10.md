@@ -348,3 +348,37 @@ clients). Scripts : `.ui-tests/dup-candidates.mjs`, `build-doublons-xlsx.py`.
    d'après les échantillons.
 5. Ligne Air : pas de « T° produit » ; l'aide « 5 pour la plupart des
    aliments, 9 pour l'histamine » seulement sur un aliment.
+
+## 9. Retour du 08/10 (suite, en production) — corrections livrées le 08/10
+
+Remarques envoyées le 08/10 pendant l'utilisation réelle (captures d'écran).
+
+1. **« Arrivé au laboratoire » retiré de la création de la visite.** Le
+   formulaire est rempli chez le client, avant le retour : une heure
+   d'arrivée tapée d'avance est dans le futur et bloquait « Continuer ».
+   L'heure d'arrivée et la température de la glacière se saisissent au
+   retour, sur la fiche de la visite (« Maintenant ») ou par la réception,
+   qui prend sa propre heure à défaut. Une ligne l'indique à la place des
+   champs. **En production le 08/10** (`7612a18`).
+2. **Mains du personnel : les deux familles.** La case « Analyses
+   physico-chimiques » était grisée ; toutes les natures d'échantillon
+   proposent maintenant les deux cases (mains = surface dans le catalogue :
+   « Physico-chimie des surfaces »).
+3. **Le réceptionniste n'affecte plus de technicien.** Le choix du
+   technicien disparaît de la réception et du dépôt (et l'API de réception
+   ne l'accepte plus) ; le responsable des paramètres l'attribue sur la
+   fiche de programme, en choisissant dans la liste globale — la plus
+   ancienne entrée en tête.
+4. **Étiquettes : sans client ni site** (numérotation aveugle) ; nature,
+   date, N° de contrôle et répétition, code-barres, désignation et série
+   restent.
+5. **Tableaux de bord : chaque bloc chiffré est cliquable** et affiche les
+   éléments qu'il compte (filtre de la liste en dessous, ou liste filtrée).
+   Restent simples, faute de liste : « Délai moyen », « Préleveurs actifs »,
+   « Alertes de contamination ».
+
+**Points 2 à 5 en production le 08/10** (`73d7119`, TESTPLAN V9). Le
+programme ne se confirme plus sans technicien (conséquence du point 3).
+Aucune analyse de physico-chimie d'ambiance (surfaces, mains, air) n'est
+encore au catalogue (Q50) : ces échantillons se créent et se réceptionnent,
+la programmation attend la liste du laboratoire.

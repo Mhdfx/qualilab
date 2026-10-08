@@ -223,7 +223,7 @@ facturation au forfait, notification au technicien (e-mail), planning.
 - **P2 — écrans** : `/programmation` (tableau de bord + file) et
   `/programmation/[id]` (fiche), composants sous `src/components/programmation/`,
   menu.
-- **P3 — adaptations** : réception (technicien facultatif), paillasse (file,
+- **P3 — adaptations** : réception (technicien facultatif — retiré le 08/10, `RETOUR-LABO-06-10.md` §9.3), paillasse (file,
   fiche, results, submit, bench-sheet, dilution), rapport (techniciens,
   méthode), facturation (statuts, bandeaux), recherche / tableaux de bord /
   badges, journal.

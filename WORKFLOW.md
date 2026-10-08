@@ -125,12 +125,14 @@ The reception queue lists **séries** (client · site · préleveur · lines ·
 arrived at), not samples, plus an « À corriger » lane. The screen shows the
 header (cooler temperature, times) and every line: reception temperature
 (pre-filled with the cooler's), quantity, the **computed acceptance
-checklist**, conformity with a coded motif, technician proposed by family
-(micro / chimie) and editable per line. **One button** « Valider la
+checklist**, conformity with a coded motif. No technician: since the lab's
+feedback of 08/10 the receptionist assigns nobody, the responsable des
+paramètres does it on the programme sheet. **One button** « Valider la
 réception » runs a single transaction: N° de contrôle for each line, status
 `RECU`, audit. Then « Imprimer les étiquettes »: one label per unit
-(N° de contrôle + unit letter, Code128 barcode, nature, short product,
-client / site, reception date).
+(N° de contrôle + repetition R1 … Rn, Code128 barcode, nature, short product,
+reception date, série). Since the lab's feedback of 08/10 the label names
+neither the client nor the site: the bench works blind.
 
 ### 3.4 After reception
 
@@ -479,7 +481,8 @@ méthodes (version de norme par paramètre), organisation (technicien par
 paramètre, priorité, délai, consignes). La ligne passe RECU → **PROGRAMME** ;
 la paillasse ne démarre qu'une ligne programmée, chaque technicien ne saisit
 que ses paramètres et la soumission attend que tout soit terminé. La
-réception n'attribue plus obligatoirement un technicien. La facturation peut
+réception n'attribue plus de technicien (retour du 08/10, §9.3) : le
+programme ne se confirme qu'avec un technicien. La facturation peut
 être préparée dès le programme confirmé (mention « avant résultat » tant que
 la ligne n'est pas validée). Journal : `SAMPLE_PROGRAMMED`,
 `SAMPLE_PROGRAMME_UPDATED`. Recette : TESTPLAN T.

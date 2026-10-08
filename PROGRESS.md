@@ -8,7 +8,9 @@
 
 ## ▶ NEXT ACTION
 
-**Retour du 08/10 (`RETOUR-LABO-06-10.md` §8) : en production depuis le 08/10** (`a5925b6` + `b0defab`, migration `20261010100000_natures_air_autre`; TESTPLAN V8 — recette-v8 27/27, recette-v8b 20/20 on an emulated device one hour ahead and an up-to-date one). Next, waiting on the lab: parameters / profiles for « Physico-chimie de l'air » and « Microbiologie — autres prélèvements » (Q50 — the samples can be created, not yet programmed), the merges of `doublons-clients.xlsx` (Q54), Q45–Q53, legal details for the documents. Every PC / phone of the lab should still be updated (zone data 2026c): the fields now cope with a device one hour ahead, but a correct clock is the real fix.
+**Retour du 08/10, suite (`RETOUR-LABO-06-10.md` §9) : en production depuis le 08/10** (`7612a18`, `73d7119`; TESTPLAN V9). Waiting on the lab: physico-chimie parameters for surfaces / hands / air (Q50, Q56 — those samples cannot be programmed yet), the bench sheet's client line (Q55), the duplicates file (Q54), Q45–Q53, legal details for documents; the lab's devices still need their clock update.
+
+_Previous next action:_ **Retour du 08/10 (`RETOUR-LABO-06-10.md` §8) : en production depuis le 08/10** (`a5925b6` + `b0defab`, migration `20261010100000_natures_air_autre`; TESTPLAN V8 — recette-v8 27/27, recette-v8b 20/20 on an emulated device one hour ahead and an up-to-date one). Next, waiting on the lab: parameters / profiles for « Physico-chimie de l'air » and « Microbiologie — autres prélèvements » (Q50 — the samples can be created, not yet programmed), the merges of `doublons-clients.xlsx` (Q54), Q45–Q53, legal details for the documents. Every PC / phone of the lab should still be updated (zone data 2026c): the fields now cope with a device one hour ahead, but a correct clock is the real fix.
 
 _Previous next action:_ **Retour du 08/10 (`RETOUR-LABO-06-10.md` §8) : construit, pas encore déployé.** Next: commit + deploy, then TESTPLAN V8 on production.
 
@@ -278,6 +280,11 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-10-08 — retour du 08/10, suite, live (TESTPLAN V9)
+- Real samples are now entered on production. Five remarks from the lab's first day of use: arrival time no longer asked at visit creation (`7612a18`, deployed first: it blocked « Continuer »); Mains in both families; no technician at reception (and a programme cannot be confirmed without one; queue oldest first); labels without client / site; every dashboard tile clickable (`73d7119`).
+- Built with two workflows (3 builders + 3 hostile reviewers; dashboards: scout of 55 tiles, foundation, 2 builders, 2 reviewers, completeness check). Gates: tsc 0, eslint 0, vitest 66 files / 990 tests, build. Production: recette-v9 + v9b 12/12, recette-v9-dash 51 tiles clicked (48 + 3 views whose page has no tile to highlight).
+- Server health checked (read-only): disk 77 % (42.7 GB of Docker build cache reclaimable), SSH password login open with ~21 000 failed attempts a day, backups only on the same disk, reboot pending — reported to the user, nothing changed.
 
 ### 2026-10-08 — retour du 08/10 live (TESTPLAN V8)
 - Deployed `a5925b6` (migration `20261010100000_natures_air_autre` applied), recette `.ui-tests/recette-v8.mjs` 27/27 with headless Chrome emulating a device one hour ahead and an up-to-date one: typed device hour stored as the legal hour, future end refused at « Continuer », Air with both boxes → `MICRO_AIR` + `PC_AIR`, « Autre » both → `MICRO_AUTRE` + `EFFET_ASEPTISANT`, Mains physico-chimie refused, no profile / no série analyses block on the visit.
