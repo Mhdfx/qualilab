@@ -10,7 +10,6 @@ import {
   Hash,
   MapPin,
   Plus,
-  Thermometer,
   User,
 } from "lucide-react";
 import type {
@@ -95,7 +94,7 @@ const SAMPLER_CHOICES = [
 const CADRE_NOTE_MAX = 191;
 
 /** The three times of the visit, by the id of their field. */
-type TimeField = "visit-started" | "visit-ended" | "visit-arrived";
+type TimeField = "visit-started" | "visit-ended";
 
 /** The id of the card of « Échantillon N », to bring an error into view. */
 const sampleAnchor = (lineNumber: number) => `visit-sample-${lineNumber}`;
@@ -158,8 +157,6 @@ export function VisitForm({ me }: { me: Preleveur }) {
   // signed-in account, never a colleague picked from a list.
   const samplerUserId = me.id;
   const [samplerName, setSamplerName] = useState("");
-  const [arrivedAt, setArrivedAt] = useState("");
-  const [cooler, setCooler] = useState("");
   const [clientReference, setClientReference] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([]);
@@ -342,7 +339,6 @@ export function VisitForm({ me }: { me: Preleveur }) {
     for (const [field, label, value] of [
       ["visit-started", "L'heure du prélèvement", startedAt],
       ["visit-ended", "L'heure de fin", endedAt],
-      ["visit-arrived", "L'heure d'arrivée", arrivedAt],
     ] as const) {
       const future = futureFieldError(label, value, now);
       if (future) return setFieldError(field, future);
@@ -356,7 +352,6 @@ export function VisitForm({ me }: { me: Preleveur }) {
     if (samplerKind === "QUALILAB" && !samplerUserId) return setStepError("Indiquez qui a effectué le prélèvement.");
     if (samplerKind !== "QUALILAB" && !samplerName.trim()) return setStepError("Indiquez qui a effectué le prélèvement.");
     if (endedAt && startedAt && localInputDate(endedAt)! < localInputDate(startedAt)!) return setFieldError("visit-ended", "L'heure de fin précède le début du prélèvement.");
-    if (arrivedAt && endedAt && localInputDate(arrivedAt)! < localInputDate(endedAt)!) return setFieldError("visit-arrived", "L'arrivée au laboratoire précède la fin du prélèvement.");
     for (const [i, line] of lines.entries()) {
       // Families, place, designation, surface state, air method — no analysis
       // is required any more: the programme sheet fixes them (V6).
@@ -388,8 +383,6 @@ export function VisitForm({ me }: { me: Preleveur }) {
           cadreNote: cadre === "AUTRE" ? cadreNote.trim() || undefined : undefined,
           startedAt: fromLocalInput(startedAt) ?? undefined,
           endedAt: fromLocalInput(endedAt) ?? undefined,
-          arrivedAt: fromLocalInput(arrivedAt) ?? undefined,
-          coolerTemperature: cooler || undefined,
           notes,
           // Each sample's families, state and method; the série's boxes are
           // computed by the server from them.
@@ -749,46 +742,18 @@ export function VisitForm({ me }: { me: Preleveur }) {
                 )}
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="visit-arrived" className="section-title mb-2">
-                    <Clock className="h-4 w-4" />
-                    Arrivé au laboratoire le … à …
-                  </label>
-                  {isMounted ? (
-                    <LabDateTimeInput
-                      id="visit-arrived"
-                      value={arrivedAt}
-                      onChange={(v) => {
-                        setArrivedAt(v);
-                        clearFieldError("visit-arrived");
-                      }}
-                      nowButton
-                      inputClassName={`input-field px-4 ${fieldRing("visit-arrived")}`}
-                      errorId={errorField === "visit-arrived" && error ? "visit-arrived-error" : undefined}
-                    />
-                  ) : (
-                    <div className="input-field px-4" aria-hidden="true" />
-                  )}
-                  {fieldError("visit-arrived")}
-                </div>
-                <div>
-                  <label htmlFor="visit-cooler" className="section-title mb-2">
-                    <Thermometer className="h-4 w-4" />
-                    Température à l&apos;arrivée (°C)
-                  </label>
-                  <input
-                    id="visit-cooler"
-                    type="text"
-                    inputMode="decimal"
-                    value={cooler}
-                    onChange={(e) => setCooler(e.target.value)}
-                    placeholder="Ex. : 1"
-                    className="input-field px-4"
-                  />
-                  <p className="mt-1 text-xs text-slate-500">Glacière à l&apos;arrivée ; la réception la reprend.</p>
-                </div>
-              </div>
+              {/* No arrival here (retour du 08/10, §9): this form is filled at the
+                  client's, before the trip back. The arrival time and the
+                  cooler's temperature are entered on return — visit fiche
+                  (« Maintenant ») or reception, which falls back to its own
+                  time. */}
+              <p className="flex items-start gap-2 rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-600 ring-1 ring-slate-100">
+                <MapPin className="mt-px h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
+                <span>
+                  L&apos;arrivée au laboratoire (heure et température de la glacière) se saisit au retour : sur la fiche
+                  de la visite, avec « Maintenant », ou par la réception.
+                </span>
+              </p>
 
               <div>
                 <label htmlFor="visit-reference" className="section-title mb-2">
@@ -883,8 +848,6 @@ export function VisitForm({ me }: { me: Preleveur }) {
               <Row label="Prélevé le" value={isMounted && startedAt ? formatDateTime(localInputDate(startedAt)!) : "—"} />
               <Row label="Heure de fin" value={isMounted && endedAt ? formatDateTime(localInputDate(endedAt)!) : "—"} />
               <Row label="Prélèvement effectué par" value={samplerLabel} />
-              <Row label="Arrivée au laboratoire" value={isMounted && arrivedAt ? formatDateTime(localInputDate(arrivedAt)!) : "—"} />
-              <Row label="T° à l'arrivée" value={cooler ? `${cooler} °C` : "—"} />
               {clientReference && <Row label="Référence client" value={clientReference} />}
               <Row
                 label="Analyses à effectuer"
