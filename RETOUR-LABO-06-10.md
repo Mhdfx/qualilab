@@ -323,3 +323,28 @@ clients). Scripts : `.ui-tests/dup-candidates.mjs`, `build-doublons-xlsx.py`.
   (absent de l'application : la facture d'un site doit pouvoir aller au
   franchisé), et un avertissement de quasi-doublon à la création d'un
   client. Estimation : ≈ 12 h.
+
+## 8. Retour du 08/10 — corrections décidées
+
+1. **Heures saisies sur un appareil non mis à jour.** Cause : « Prélevé le »
+   est proposé en heure légale, mais « Heure de fin » et « Arrivé au
+   laboratoire » sont tapées à la main ; sur un appareil qui avance d'une
+   heure, l'utilisateur tape l'heure qu'il lit, refusée « dans le futur »
+   quand elle tombe dans l'heure écoulée — et enregistrée une heure trop
+   tard, sans refus, quand elle est plus ancienne. Correction : un seul
+   champ date-heure (`LabDateTimeInput`) partout ; l'écart de l'appareil est
+   détecté, le champ affiche et lit l'heure **de l'appareil** et la convertit
+   en heure légale (« = 18:06 heure légale ») ; bouton « Maintenant » sur la
+   fin et l'arrivée ; contrôle « dans le futur » dès « Continuer », à côté du
+   champ. L'état interne et le serveur restent en heure légale.
+2. **Air et Autre : les deux familles.** Natures ajoutées : « Physico-chimie
+   de l'air » (air × physico-chimie) et « Microbiologie — autres
+   prélèvements » (autre × microbiologie). Mains : microbiologie seule.
+3. **« Profil d'analyses » retiré du formulaire du préleveur** (les profils
+   restent sur la fiche de programme et au dépôt). « Nombre d'unités (n) »
+   reste.
+4. **Bloc « Analyses à effectuer » de la visite retiré** : les cases sont sur
+   chaque échantillon ; le protocole PDF garde ses deux cases, cochées
+   d'après les échantillons.
+5. Ligne Air : pas de « T° produit » ; l'aide « 5 pour la plupart des
+   aliments, 9 pour l'histamine » seulement sur un aliment.

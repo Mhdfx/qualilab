@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
-  Clock,
   Printer,
   FileText,
   ShieldCheck,
@@ -41,8 +40,9 @@ import {
 } from "@/lib/labels";
 import { evaluateReception, proposedConformity, type ReceptionThresholds } from "@/lib/reception-rules";
 import { repetitionRange } from "@/lib/series";
+import { futureFieldError } from "@/lib/device-time";
 import { Card } from "@/components/ui/Card";
-import { LegalTimeHint } from "@/components/LegalTimeHint";
+import { LabDateTimeInput } from "@/components/LabDateTimeInput";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
@@ -243,9 +243,12 @@ export function SerieReceptionForm({
   // only a hint.
   const defaultTechnician = "";
 
+  // LEGAL wall time ("YYYY-MM-DDTHH:mm"): LabDateTimeInput converts a drifting device's hour.
   const [arrivedAt, setArrivedAt] = useState(
     serie.arrivedAt ? toLocalInput(new Date(serie.arrivedAt)) : ""
   );
+  // The « dans le futur » refusal, shown under « Arrivée au laboratoire » (§8.1).
+  const [arrivedError, setArrivedError] = useState<string | null>(null);
   const [cooler, setCooler] = useState(
     serie.coolerTemperature === null ? "" : String(serie.coolerTemperature).replace(".", ",")
   );
@@ -334,6 +337,14 @@ export function SerieReceptionForm({
 
   async function submit() {
     if (busy) return;
+    // The server's own check (5 min of tolerance), told next to the field first (§8.1).
+    const future = futureFieldError("L'heure d'arrivée", arrivedAt);
+    setArrivedError(future);
+    if (future) {
+      setError({ message: future, lineNumber: null });
+      document.getElementById("arrivedAt")?.focus();
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -686,24 +697,26 @@ export function SerieReceptionForm({
               <label htmlFor="arrivedAt" className="block text-sm font-medium text-slate-700">
                 Arrivée au laboratoire
               </label>
-              <LegalTimeHint className="mb-1" />
-              <div className="mt-1.5 flex gap-2">
-                <input
-                  id="arrivedAt"
-                  type="datetime-local"
-                  value={arrivedAt}
-                  onChange={(e) => setArrivedAt(e.target.value)}
-                  className="input-field px-3"
-                />
-                <button
-                  type="button"
-                  onClick={() => setArrivedAt(toLocalInput(new Date()))}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-                  Maintenant
-                </button>
-              </div>
+              <LabDateTimeInput
+                id="arrivedAt"
+                value={arrivedAt}
+                onChange={(legalWall) => {
+                  setArrivedAt(legalWall);
+                  if (arrivedError) {
+                    setArrivedError(null);
+                    setError(null);
+                  }
+                }}
+                nowButton
+                className="mt-1.5"
+                inputClassName="input-field px-3"
+                errorId={arrivedError ? "arrivedAt-error" : undefined}
+              />
+              {arrivedError && (
+                <p id="arrivedAt-error" className="mt-1 text-xs font-medium text-rose-700">
+                  {arrivedError}
+                </p>
+              )}
             </div>
             <div className="mt-3">
               <label htmlFor="cooler" className="block text-sm font-medium text-slate-700">

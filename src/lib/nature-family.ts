@@ -6,8 +6,8 @@ import type { Family, LineKind } from "@/generated/prisma/enums";
  *
  * Each sample of a série ticks « Analyses microbiologiques » and / or
  * « Analyses physico-chimiques »; its nature follows from its type (the line
- * kind) and the ticked family. A cell without a nature (air × physico-chimie,
- * autre × micro…) is a greyed-out box. When both boxes are ticked the line
+ * kind) and the ticked family. A cell without a nature (mains ×
+ * physico-chimie) is a greyed-out box. When both boxes are ticked the line
  * becomes two samples, one per family, each with the nature of its family.
  *
  * The finer natures (cosmetics, supplements…) are not in this table: the
@@ -30,9 +30,11 @@ export const NATURE_CODE_BY_KIND: Readonly<Record<LineKind, Readonly<Record<Line
   /** Hands belong to surface microbiology; no physico-chemistry. */
   MAINS: { MICRO: "MICRO_SURFACES", CHIMIE: null },
   EAU: { MICRO: "MICRO_EAUX", CHIMIE: "PC_EAUX" },
-  AIR: { MICRO: "MICRO_AIR", CHIMIE: null },
-  /** The aseptic effect is filed under physico-chemistry. */
-  AUTRE: { MICRO: null, CHIMIE: "EFFET_ASEPTISANT" },
+  /** Both families since the 08/10 feedback (§8.2): « Physico-chimie de l'air ». */
+  AIR: { MICRO: "MICRO_AIR", CHIMIE: "PC_AIR" },
+  /** The aseptic effect is filed under physico-chemistry; microbiology of
+   * other samples since the 08/10 feedback (§8.2). */
+  AUTRE: { MICRO: "MICRO_AUTRE", CHIMIE: "EFFET_ASEPTISANT" },
 };
 
 /** The minimal shape of a nature this module reads. */
@@ -53,8 +55,8 @@ export function familiesFor(kind: LineKind): LineFamily[] {
   return LINE_FAMILIES.filter((family) => natureCodeFor(kind, family) !== null);
 }
 
-/** The box ticked on a new sample: microbiology when the type has it,
- * physico-chemistry otherwise (« Autre »). */
+/** The box ticked on a new sample: microbiology when the type has it (every
+ * type since 08/10, §8.2 — « Autre » included), otherwise the first box. */
 export function defaultFamiliesFor(kind: LineKind): LineFamily[] {
   const available = familiesFor(kind);
   return available.includes("MICRO") ? ["MICRO"] : available.slice(0, 1);

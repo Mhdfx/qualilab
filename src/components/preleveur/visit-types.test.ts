@@ -46,6 +46,8 @@ const NATURES: NatureOption[] = [
   nature("MICRO_EAUX", "MICRO", "EAU", "EAU"),
   nature("PC_EAUX", "CHIMIE", "EAU", "EAU"),
   nature("MICRO_AIR", "MICRO", "AIR", "AMBIANCE"),
+  nature("PC_AIR", "CHIMIE", "AIR", "AMBIANCE"),
+  nature("MICRO_AUTRE", "MICRO", "AUTRE", "AMBIANCE"),
   nature("EFFET_ASEPTISANT", "CHIMIE", "AUTRE", "AMBIANCE"),
   nature("NATURE_FINE_TEST", "MICRO", "ALIMENT", "ALIMENTAIRE"),
 ];
@@ -65,25 +67,38 @@ function line(patch: Partial<LineDraft> = {}): LineDraft {
 
 describe("the two boxes", () => {
   it("grey out the cells the table leaves empty, and the natures the catalogue lacks", () => {
-    expect(familyStatus(NATURES, "AIR", "CHIMIE")).toBe("NOT_FOR_KIND");
-    expect(familyStatus(NATURES, "AUTRE", "MICRO")).toBe("NOT_FOR_KIND");
+    expect(familyStatus(NATURES, "MAINS", "CHIMIE")).toBe("NOT_FOR_KIND");
     expect(familyStatus(NATURES, "MAINS", "MICRO")).toBe("OK");
+    // Air and « Autre » take both families since the 08/10 feedback (§8.2).
+    expect(familyStatus(NATURES, "AIR", "CHIMIE")).toBe("OK");
+    expect(familyStatus(NATURES, "AUTRE", "MICRO")).toBe("OK");
+    expect(availableFamilies(NATURES, "AIR")).toEqual(["MICRO", "CHIMIE"]);
+    expect(availableFamilies(NATURES, "AUTRE")).toEqual(["MICRO", "CHIMIE"]);
+    // A database not migrated yet greys them out as missing, not as forbidden.
+    const before = NATURES.filter((n) => n.code !== "PC_AIR" && n.code !== "MICRO_AUTRE");
+    expect(familyStatus(before, "AIR", "CHIMIE")).toBe("MISSING");
+    expect(familyStatus(before, "AUTRE", "MICRO")).toBe("MISSING");
     const withoutPcSurfaces = NATURES.filter((n) => n.code !== "PC_SURFACES");
     expect(familyStatus(withoutPcSurfaces, "SURFACE", "CHIMIE")).toBe("MISSING");
     expect(availableFamilies(withoutPcSurfaces, "SURFACE")).toEqual(["MICRO"]);
   });
 
-  it("default to micro, physico-chimie for « Autre »", () => {
+  it("default to micro on every type, « Autre » included (08/10)", () => {
     expect(resolveFamilies(NATURES, "ALIMENT")).toEqual(["MICRO"]);
-    expect(resolveFamilies(NATURES, "AUTRE")).toEqual(["CHIMIE"]);
+    expect(resolveFamilies(NATURES, "AUTRE")).toEqual(["MICRO"]);
+    expect(resolveFamilies(NATURES, "AUTRE", ["CHIMIE"])).toEqual(["CHIMIE"]);
     expect(resolveFamilies(NATURES, "EAU", ["CHIMIE", "MICRO"])).toEqual(["MICRO", "CHIMIE"]);
-    expect(resolveFamilies(NATURES, "AIR", ["CHIMIE"])).toEqual(["MICRO"]);
+    expect(resolveFamilies(NATURES, "AIR", ["CHIMIE"])).toEqual(["CHIMIE"]);
+    expect(resolveFamilies(NATURES, "AIR")).toEqual(["MICRO"]);
+    expect(resolveFamilies(NATURES, "MAINS", ["CHIMIE"])).toEqual(["MICRO"]);
   });
 
   it("derive the primary nature, micro first", () => {
     expect(primaryNature(NATURES, "EAU", ["CHIMIE", "MICRO"])?.code).toBe("MICRO_EAUX");
     expect(primaryNature(NATURES, "EAU", ["CHIMIE"])?.code).toBe("PC_EAUX");
     expect(primaryNature(NATURES, "AIR", [])).toBeUndefined();
+    expect(primaryNature(NATURES, "AIR", ["CHIMIE"])?.code).toBe("PC_AIR");
+    expect(primaryNature(NATURES, "AUTRE", ["MICRO", "CHIMIE"])?.code).toBe("MICRO_AUTRE");
     expect(lineNatureIds(NATURES, { lineKind: "ALIMENT", analysesMicro: true, analysesChimie: true })).toEqual([
       byCode("MICRO_ALIMENTS").id,
       byCode("PC_ALIMENTS").id,
@@ -94,6 +109,16 @@ describe("the two boxes", () => {
     expect(kindCategory(NATURES, "MAINS")).toBe("AMBIANCE");
     expect(lineCategory(NATURES, { natureId: "", lineKind: "EAU" })).toBe("EAU");
     expect(lineCategory(NATURES, { natureId: byCode("PC_ALIMENTS").id, lineKind: "ALIMENT" })).toBe("ALIMENTAIRE");
+  });
+
+  it("an « Autre » line keeps ONE category whatever its boxes (§8.2: MICRO_AUTRE shares EFFET_ASEPTISANT's)", () => {
+    // The line loads one parameter list; the server refuses an analysis of another domain.
+    expect(kindCategory(NATURES, "AUTRE")).toBe("AMBIANCE");
+    for (const natureId of [byCode("MICRO_AUTRE").id, byCode("EFFET_ASEPTISANT").id]) {
+      expect(lineCategory(NATURES, { natureId, lineKind: "AUTRE" })).toBe("AMBIANCE");
+    }
+    expect(kindCategory(NATURES, "AIR")).toBe("AMBIANCE");
+    expect(lineCategory(NATURES, { natureId: byCode("PC_AIR").id, lineKind: "AIR" })).toBe("AMBIANCE");
   });
 
   it("drop the analyses of an unticked box and follow with the nature", () => {
@@ -109,12 +134,25 @@ describe("the two boxes", () => {
   });
 
   it("ignore a box the type does not allow", () => {
+    const hands = line({ lineKind: "MAINS" });
+    expect(familiesPatch(NATURES, hands, ["MICRO", "CHIMIE"])).toMatchObject({
+      analysesMicro: true,
+      analysesChimie: false,
+      natureId: byCode("MICRO_SURFACES").id,
+    });
+  });
+
+  it("let an air sample tick both boxes", () => {
     const air = line({ lineKind: "AIR" });
     expect(familiesPatch(NATURES, air, ["MICRO", "CHIMIE"])).toMatchObject({
       analysesMicro: true,
-      analysesChimie: false,
+      analysesChimie: true,
       natureId: byCode("MICRO_AIR").id,
     });
+    expect(lineNatureIds(NATURES, { lineKind: "AIR", analysesMicro: true, analysesChimie: true })).toEqual([
+      byCode("MICRO_AIR").id,
+      byCode("PC_AIR").id,
+    ]);
   });
 
   it("make the série's boxes a summary of its samples", () => {
@@ -198,16 +236,22 @@ describe("changing the type", () => {
 
   it("applies the new type's default when no ticked box remains", () => {
     const chimie = line({ analysesMicro: false, analysesChimie: true, natureId: byCode("PC_ALIMENTS").id });
-    expect(kindPatch(NATURES, chimie, "AIR")).toMatchObject({
+    expect(kindPatch(NATURES, chimie, "MAINS")).toMatchObject({
       analysesMicro: true,
       analysesChimie: false,
-      natureId: byCode("MICRO_AIR").id,
+      natureId: byCode("MICRO_SURFACES").id,
+    });
+    // Air has a physico-chimie box since 08/10: the ticked box stays.
+    expect(kindPatch(NATURES, chimie, "AIR")).toMatchObject({
+      analysesMicro: false,
+      analysesChimie: true,
+      natureId: byCode("PC_AIR").id,
     });
   });
 
-  it("does not leave a food sample in physico-chimie after a tap on « Autre » and back", () => {
+  it("keeps the microbiology box through a tap on « Autre » and back", () => {
     const autre = line({ ...kindPatch(NATURES, line(), "AUTRE") });
-    expect(autre).toMatchObject({ analysesMicro: false, analysesChimie: true });
+    expect(autre).toMatchObject({ analysesMicro: true, analysesChimie: false });
     expect(kindPatch(NATURES, autre, "ALIMENT")).toMatchObject({ analysesMicro: true, analysesChimie: false });
   });
 
@@ -276,7 +320,10 @@ describe("before saving", () => {
     const air = { ...base, lineKind: "AIR" as const };
     expect(lineDraftError(air, NATURES)).toBe("Choisissez la méthode de prélèvement de l'air.");
     expect(lineDraftError({ ...air, airMethod: "BIOCOLLECTEUR" }, NATURES)).toBeNull();
-    expect(lineDraftError({ ...air, airMethod: "BIOCOLLECTEUR", analysesChimie: true }, NATURES)).toBe(
+    expect(lineDraftError({ ...air, airMethod: "BIOCOLLECTEUR", analysesChimie: true }, NATURES)).toBeNull();
+    const hands = { ...base, lineKind: "MAINS" as const, personName: "Personne test" };
+    expect(lineDraftError(hands, NATURES)).toBeNull();
+    expect(lineDraftError({ ...hands, analysesChimie: true }, NATURES)).toBe(
       "Les analyses physico-chimiques ne sont pas proposées pour ce type de prélèvement."
     );
     // Analyses are no longer required (V6).
@@ -305,6 +352,9 @@ describe("before saving", () => {
       productTypeId: "",
     });
     expect(linePayload({ ...food, lineKind: "AIR" }).airMethod).toBe("BIOCOLLECTEUR");
+    // §8.5: no « T° produit » on an air line — a value typed before the switch is dropped.
+    expect(linePayload({ ...food, productTemperature: "4", lineKind: "AIR" }).productTemperature).toBe("");
+    expect(linePayload({ ...food, productTemperature: "4" }).productTemperature).toBe("4");
     expect(linePayload({ ...food, lineKind: "MAINS", handsState: "" }).handsState).toBeUndefined();
   });
 });

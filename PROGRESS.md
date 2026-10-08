@@ -8,7 +8,9 @@
 
 ## ▶ NEXT ACTION
 
-**Facturation (cycle complet), amendement / duplicata des rapports et portail client : construits le 08/10, pas encore déployés** (`FACTURATION.md`, `AMENDEMENT.md`, `PORTAIL.md`). Next: commit + deploy (one migration, `20261009100000_facturation_rapports_portail`, with `prisma migrate deploy`), then **TESTPLAN X, Y, Z** on production on the kept test client « TEST UI 2026-10-06 Traiteur » and invented « TEST UI X / Z » clients only. To confirm with the lab: an invoice of 0,00 stored « Payée » at issue; « rapports amendés en tête de liste » on the portal read as the dashboard's « Rapports récents ».
+**Retour du 08/10 (`RETOUR-LABO-06-10.md` §8) : construit, pas encore déployé.** Next: commit + deploy (migration `20261010100000_natures_air_autre`, data only, with `prisma migrate deploy`), then **TESTPLAN V8** on production, including a phone whose clock is one hour ahead. To confirm with the lab: « Autre » starts on physico-chimie; parameters / profiles for « Physico-chimie de l'air » and « Microbiologie — autres prélèvements » (Q50).
+
+_Previous next action:_ **Facturation (cycle complet), amendement / duplicata des rapports et portail client : construits le 08/10, pas encore déployés** (`FACTURATION.md`, `AMENDEMENT.md`, `PORTAIL.md`). Next: commit + deploy (one migration, `20261009100000_facturation_rapports_portail`, with `prisma migrate deploy`), then **TESTPLAN X, Y, Z** on production on the kept test client « TEST UI 2026-10-06 Traiteur » and invented « TEST UI X / Z » clients only. To confirm with the lab: an invoice of 0,00 stored « Payée » at issue; « rapports amendés en tête de liste » on the portal read as the dashboard's « Rapports récents ».
 
 _Previous next action:_ **Clients en double / sites / clients facturés : construits le 07/10, pas encore déployés** (`CLIENTS-FUSION.md`). Next: commit + deploy (migration `20261008100000_clients_fusion` with `prisma migrate deploy`), then **TESTPLAN W** on production with invented « TEST UI W … » clients only. The real duplicates, outlets and billing entities are processed only after the laboratory validates `doublons-clients.xlsx` (Q54).
 
@@ -274,6 +276,12 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-10-09 — retour du 08/10 corrections built (`RETOUR-LABO-06-10.md` §8, not deployed)
+- §8.1: one date-time field, `LabDateTimeInput` (`src/lib/device-time.ts`), everywhere — visit, visit fiche, deposit, reception, programme « Délai ». A device still on UTC+1 types the hour it reads; the field converts it to the legal hour (« = 18:06 heure légale »), « Maintenant » on end / arrival, « dans le futur » caught next to the field before sending. `LegalTimeHint` deleted.
+- §8.2–§8.5: Air and Autre take both families (migration `20261010100000_natures_air_autre`: `PC_AIR`, `MICRO_AUTRE`); « Profil d'analyses » and the série-level « Analyses à effectuer » card gone from the visit only; no « T° produit » on Air.
+- Gate review fixed: `MICRO_AUTRE` was filed ALIMENTAIRE while `EFFET_ASEPTISANT` is AMBIANCE — an « Autre » line with both boxes loaded food analyses the server then refused (now AMBIANCE, invariant tested); `linePayload` sent a hidden « T° produit » on Air; client and server « dans le futur » wording aligned; field errors now set `aria-invalid` / `aria-describedby` (`errorId`); the field's two conversions extracted and tested (ahead, behind, midnight, pre-switch).
+- Gates: prisma generate, tsc 0, eslint 0, vitest 62 files / 911 tests, `npm run build` green. Not deployed — TESTPLAN V8 is the checkpoint.
 
 ### 2026-10-09 — billing, report amendment and client portal live (TESTPLAN X, Y, Z)
 - `FACTURATION.md`, `AMENDEMENT.md`, `PORTAIL.md` built in one workflow (foundation, four parallel builders, three hostile reviewers, gates — 878 tests) and deployed (`b938b10`, migration `20261009100000_facturation_rapports_portail`). The reviews fixed a money-rounding bug (half-centimes rounded down at 7/10/14 %), the invoice sheet recomputing totals, an empty role guard that would have admitted CLIENT, cancellation of a sample whose report is issued, page titles leaking the blind code, dashboards counting drafts.

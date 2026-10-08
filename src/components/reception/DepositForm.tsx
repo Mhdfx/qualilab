@@ -39,11 +39,12 @@ import { type ReceptionThresholds } from "@/lib/reception-rules";
 import { sampleRef } from "@/lib/reception-input";
 import { SERIE_MESSAGES, sampleLineMessage } from "@/lib/serie-input";
 import { repetitionRange } from "@/lib/series";
+import { futureFieldError } from "@/lib/device-time";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StepIndicator } from "@/components/ui/StepIndicator";
 import { Card } from "@/components/ui/Card";
-import { LegalTimeHint } from "@/components/LegalTimeHint";
+import { LabDateTimeInput } from "@/components/LabDateTimeInput";
 import { LineEditor } from "@/components/preleveur/LineEditor";
 import {
   duplicateDraft,
@@ -207,7 +208,10 @@ export function DepositForm({
   const [samplerName, setSamplerName] = useState("");
   const [interlocutor, setInterlocutor] = useState("");
   const [clientReference, setClientReference] = useState("");
+  // LEGAL wall time ("YYYY-MM-DDTHH:mm"): LabDateTimeInput converts a drifting device's hour.
   const [startedAt, setStartedAt] = useState(() => toLocalInput(new Date()));
+  // The « dans le futur » refusal, shown under « Prélevé le » (§8.1).
+  const [startedError, setStartedError] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [advanceAmount, setAdvanceAmount] = useState("");
   const [advanceMode, setAdvanceMode] = useState<PaymentMode | "">("");
@@ -396,6 +400,13 @@ export function DepositForm({
       return setStepError("Indiquez qui a effectué le prélèvement.");
     }
     if (!cadre) return setStepError(SERIE_MESSAGES.cadreMissing);
+    // The server's own check (5 min of tolerance), told next to the field before « Continuer » (§8.1).
+    const future = futureFieldError("L'heure du prélèvement", startedAt);
+    setStartedError(future);
+    if (future) {
+      reveal("deposit-started");
+      return setStepError(future);
+    }
     if (advanceAmount.trim() && !advanceMode) return setStepError("Indiquez le mode de paiement de l'avance.");
     for (const [i, line] of lines.entries()) {
       const n = i + 1;
@@ -748,18 +759,28 @@ export function DepositForm({
                     <Clock className="h-4 w-4" />
                     Prélevé le
                   </label>
+                  {/* Prefilled with « now »: rendered once mounted so the server's minute never disagrees. */}
                   {isMounted ? (
-                    <input
+                    <LabDateTimeInput
                       id="deposit-started"
-                      type="datetime-local"
                       value={startedAt}
-                      onChange={(e) => setStartedAt(e.target.value)}
-                      className="input-field px-4"
+                      onChange={(legalWall) => {
+                        setStartedAt(legalWall);
+                        if (startedError) {
+                          setStartedError(null);
+                          clearError();
+                        }
+                      }}
+                      errorId={startedError ? "deposit-started-error" : undefined}
                     />
                   ) : (
                     <div className="input-field px-4" aria-hidden="true" />
                   )}
-                  <LegalTimeHint />
+                  {startedError && (
+                    <p id="deposit-started-error" className="mt-1 text-xs font-medium text-rose-700">
+                      {startedError}
+                    </p>
+                  )}
                 </div>
               </div>
 

@@ -226,12 +226,12 @@ export function formatDayShort(date: Date | string) {
 
 /**
  * The refusal of a time ahead of the clock, with the legal time it was
- * compared to: a device that missed Morocco's return to GMT (20/09/2026)
- * shows one hour more, and its user retypes that hour in good faith.
+ * compared to. The date-time fields convert a drifting device's hour
+ * (LabDateTimeInput, §8.1), so this now means a real typing error.
  */
 export function futureMessage(what: string): string {
   const legal = formatDayTime(new Date()).slice(-5);
-  return `${what} est dans le futur : il est ${legal} (heure légale du Maroc, GMT depuis le 20/09/2026). Un appareil non mis à jour affiche une heure de plus — gardez l'heure proposée.`;
+  return `${what} est dans le futur : il est ${legal} (heure légale du Maroc). Vérifiez l'heure saisie.`;
 }
 
 /**

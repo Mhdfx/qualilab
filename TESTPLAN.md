@@ -1018,6 +1018,21 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 - The germs of a chosen type are listed « non programmé » when a profile chip replaces the ticked analyses afterwards: visible and deliberate, but the lab may prefer the type's germs to stay ticked (to confirm).
 - Q41 (« les nombres », numbering) and Q42 (one sample split between technicians) in NEEDEDINFO.
 
+## Checkpoint V8 — Corrections du 08/10 (planned — `RETOUR-LABO-06-10.md` §8)
+
+Built 08–09/10, not deployed. Gates green (tsc 0, eslint 0, vitest 911,
+build). Run on production after deploy, test client « TEST UI 2026-10-06
+Traiteur » only, on an up-to-date device **and** on a phone / PC whose
+clock is one hour ahead (zone data from before 20/09/2026).
+
+- [ ] V8.0 — Migration `20261010100000_natures_air_autre` applied: « Physico-chimie de l'air » and « Microbiologie — autres prélèvements » listed, both domain « Ambiance ».
+- [ ] V8.1 — Up-to-date device: each date-time field (visit start / end / arrival, visit fiche, deposit « Prélevé le », reception « Arrivée au laboratoire », programme « Délai ») reads « Heure légale (GMT) : HH:MM »; no hydration warning in the console.
+- [ ] V8.2 — Device one hour ahead: the field shows the device's hour, the amber hint reads « Cet appareil avance d'1 h … (= HH:MM heure légale) »; typing the hour read on the device saves without refusal and the recap / protocol / reception print the legal hour. « Maintenant » (end, arrival, reception) fills the device's current hour, stored as legal now. A September date (visit fiche of an old visit) is shown unshifted.
+- [ ] V8.3 — An hour 10 min ahead of the legal clock: « Continuer » (visit, deposit), « Enregistrer » (visit fiche) and the reception refuse it next to the field (« … est dans le futur : il est HH:MM (heure légale du Maroc). Vérifiez l'heure saisie. »), the field is scrolled into view and ringed; editing the field clears it. The programme « Délai » accepts a future date.
+- [ ] V8.4 — Air and Autre offer both boxes, Mains micro only; an Air line with both boxes → « …M » / « …P »; an Autre line with both boxes saves its analyses (same domain on both samples).
+- [ ] V8.5 — Visit form: no « Profil d'analyses », no série-level « Analyses à effectuer » card; the recap line and the protocol PDF still tick the families from the samples; the deposit still offers profiles.
+- [ ] V8.6 — Air line: no « T° produit » (a value typed before switching to Air is not saved); the « 5 … 9 pour l'histamine » help on food lines only.
+
 ## Checkpoint X — Facturation : brouillon, émission, annulation, avoirs, règlements (live 09/10 — `FACTURATION.md`)
 
 **Production 09/10 (`b938b10`):** `.ui-tests/recette-x.mjs` 21/21 on the test client « TEST UI 2026-10-06 Traiteur » — gestionnaire refused (403); draft without number, its sample reserved and refused elsewhere, edited; issue → FAC-2026-0007 (the counter continued after FAC-2026-0006); an issued invoice refuses edits; partial payment → « Partiellement payée », overpayment refused, credit note AV-2026-0001 (reste 280), oversized credit note refused, payment deleted with reason (reste 480), balance paid → « Payée »; a paid invoice refuses cancellation; FAC-2026-0008 cancelled with reason, its sample billable again; a deleted draft releases its sample; status filter; stats. PDFs read at the image: « AVOIR N° AV-2026-0001 … se rapporte à la facture FAC-2026-0007 », « ANNULÉE » stamp with date and reason, « Avoirs − 120 / Réglé 480 / Reste à payer 0,00 ». Screens fetched as compta1: invoice page (payments, credit note, « Montant encore créditable », cancel refusal explained), list with state and type filters and « Facturé (net d'avoirs) / Encaissé / Reste à payer ».

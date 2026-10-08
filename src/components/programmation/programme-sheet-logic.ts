@@ -48,7 +48,10 @@ export type ProgrammeDraft = {
   /** "" = no default technician. */
   technicianId: string;
   priority: ProgrammePriority;
-  /** `datetime-local` wall time on the laboratory's clock; "" = none. */
+  /**
+   * LEGAL wall time ("YYYY-MM-DDTHH:mm", laboratory's clock); "" = none.
+   * `LabDateTimeInput` shows it on the device's clock and hands back the legal one.
+   */
   dueAt: string;
   programmeNote: string;
   /** Kept for every parameter, ticked or not: unticking then re-ticking loses nothing. */

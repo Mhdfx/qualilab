@@ -14,8 +14,10 @@ import {
 
 /**
  * Invented catalogue: the natures of the type × family table
- * (nature-family.ts), a finer nature an older caller may name, an archived
- * one, and physico-chemistry of surfaces archived to show a greyed-out cell.
+ * (nature-family.ts) — air and « autre » with both families since the
+ * 08/10 (RETOUR-LABO-06-10.md §8.2) —, a finer nature an older caller may
+ * name, an archived one, and physico-chemistry of surfaces archived to show
+ * a greyed-out cell.
  */
 const NATURE_LIST: NatureRef[] = [
   { id: "aliments", code: "MICRO_ALIMENTS", family: "MICRO", defaultLineKind: "ALIMENT", active: true },
@@ -25,6 +27,8 @@ const NATURE_LIST: NatureRef[] = [
   { id: "eaux", code: "MICRO_EAUX", family: "MICRO", defaultLineKind: "EAU", active: true },
   { id: "pc-eaux", code: "PC_EAUX", family: "CHIMIE", defaultLineKind: "EAU", active: true },
   { id: "air", code: "MICRO_AIR", family: "MICRO", defaultLineKind: "AIR", active: true },
+  { id: "pc-air", code: "PC_AIR", family: "CHIMIE", defaultLineKind: "AIR", active: true },
+  { id: "micro-autre", code: "MICRO_AUTRE", family: "MICRO", defaultLineKind: "AUTRE", active: true },
   { id: "aseptisant", code: "EFFET_ASEPTISANT", family: "CHIMIE", defaultLineKind: "AUTRE", active: true },
   { id: "fine", code: "NATURE_FINE_TEST", family: "MICRO", defaultLineKind: "ALIMENT", active: true },
   { id: "dormant", code: "NATURE_DORMANTE_TEST", family: "MICRO", defaultLineKind: "ALIMENT", active: false },
@@ -147,18 +151,30 @@ describe("les familles d'analyses par échantillon (RETOUR-LABO-06-10 §5, V3)",
     ]);
   });
 
-  it("refuse une famille grisée pour le type", () => {
+  it("air et « autre » prennent les deux familles (§8.2)", () => {
     expect(validateLine({ ...air, analysesChimie: true }, 0, natures)).toMatchObject({
-      ok: false,
-      error: "« Analyses physico-chimiques » ne s'applique pas à un échantillon « Air ».",
+      ok: true,
+      value: {
+        natures: [
+          { family: "MICRO", natureId: "air" },
+          { family: "CHIMIE", natureId: "pc-air" },
+        ],
+      },
     });
+    expect(validateLine({ ...air, analysesMicro: false, analysesChimie: true }, 0, natures)).toMatchObject({
+      ok: true,
+      value: { natures: [{ family: "CHIMIE", natureId: "pc-air" }] },
+    });
+    expect(
+      validateLine({ lineKind: "AUTRE", analysesMicro: true, produit: "Désinfectant test", lieu: "Plonge" }, 0, natures)
+    ).toMatchObject({ ok: true, value: { natures: [{ family: "MICRO", natureId: "micro-autre" }] } });
+  });
+
+  it("refuse une famille grisée pour le type", () => {
     expect(validateLine({ ...mains, analysesChimie: true }, 0, natures)).toMatchObject({
       ok: false,
       error: "« Analyses physico-chimiques » ne s'applique pas à un échantillon « Mains du personnel ».",
     });
-    expect(
-      validateLine({ lineKind: "AUTRE", analysesMicro: true, produit: "Désinfectant test", lieu: "Plonge" }, 0, natures)
-    ).toMatchObject({ ok: false, error: "« Analyses microbiologiques » ne s'applique pas à un échantillon « Autre »." });
   });
 
   it("exige au moins une case, en ne proposant que celles du type", () => {
@@ -168,6 +184,10 @@ describe("les familles d'analyses par échantillon (RETOUR-LABO-06-10 §5, V3)",
     });
     expect(validateLine({ ...air, analysesMicro: false }, 0, natures)).toMatchObject({
       ok: false,
+      error: "Cochez « Analyses microbiologiques » ou « Analyses physico-chimiques ».",
+    });
+    expect(validateLine({ ...mains, analysesMicro: false }, 0, natures)).toMatchObject({
+      ok: false,
       error: "Cochez « Analyses microbiologiques ».",
     });
   });
@@ -176,6 +196,16 @@ describe("les familles d'analyses par échantillon (RETOUR-LABO-06-10 §5, V3)",
     const r = validateLine({ ...surface, analysesChimie: true }, 0, natures);
     expect(r).toMatchObject({ ok: false });
     if (!r.ok) expect(r.error).toContain("archivée ou absente du catalogue");
+  });
+
+  it("migration §8.2 pas encore jouée : air × physico-chimie refusé en clair, pas une erreur 500", () => {
+    const before = new Map([...natures].filter(([, n]) => n.code !== "PC_AIR" && n.code !== "MICRO_AUTRE"));
+    expect(validateLine({ ...air, analysesChimie: true }, 0, before)).toMatchObject({
+      ok: false,
+      error: expect.stringContaining(
+        "« Analyses physico-chimiques » : la nature d'analyse d'un échantillon « Air » est archivée ou absente du catalogue — prévenez l'administrateur."
+      ),
+    });
   });
 
   it("ignore la nature envoyée quand les familles sont cochées", () => {
@@ -360,10 +390,10 @@ describe("validateSerie — the visit as a whole", () => {
       line: 3,
       error: "Échantillon 3 — choisissez la méthode de prélèvement de l'air.",
     });
-    expect(validateSerie({ ...visit, lines: [{ ...air, analysesChimie: true }] }, natures, { kind: "VISITE" })).toMatchObject({
+    expect(validateSerie({ ...visit, lines: [{ ...mains, analysesChimie: true }] }, natures, { kind: "VISITE" })).toMatchObject({
       ok: false,
       line: 1,
-      error: "Échantillon 1 — « Analyses physico-chimiques » ne s'applique pas à un échantillon « Air ».",
+      error: "Échantillon 1 — « Analyses physico-chimiques » ne s'applique pas à un échantillon « Mains du personnel ».",
     });
   });
 
@@ -559,6 +589,8 @@ describe("planLineSamples — d'une ligne à ses échantillons", () => {
     ["aliments", { id: "aliments", family: "MICRO", legacyType: "ALIMENTAIRE" }],
     ["pc-aliments", { id: "pc-aliments", family: "CHIMIE", legacyType: "ALIMENTAIRE" }],
     ["air", { id: "air", family: "MICRO", legacyType: "AMBIANCE" }],
+    ["pc-air", { id: "pc-air", family: "CHIMIE", legacyType: "AMBIANCE" }],
+    ["surfaces", { id: "surfaces", family: "MICRO", legacyType: "AMBIANCE" }],
     ["fine", { id: "fine", family: "MICRO", legacyType: "ALIMENTAIRE" }],
   ]);
   const PARAMETERS = new Map<string, ParameterRef>(
@@ -616,12 +648,36 @@ describe("planLineSamples — d'une ligne à ses échantillons", () => {
     });
   });
 
-  it("refuse une analyse qu'aucune case du type ne peut porter", () => {
+  it("air : une analyse physico-chimique demande sa case, puis va à l'échantillon « P » (§8.2)", () => {
     const airLine = line({ lineKind: "AIR", natures: [{ family: "MICRO", natureId: "air" }], parameterIds: ["dosage-air"] });
     expect(planLineSamples(airLine, 3, NATURE_ROWS, PARAMETERS)).toMatchObject({
       ok: false,
       line: 3,
-      error: "Échantillon 3 — l'analyse « Dosage air test » ne se demande pas sur un échantillon « Air ».",
+      error: "Échantillon 3 — « Dosage air test » est une analyse physico-chimique : cochez « Analyses physico-chimiques » ou retirez-la.",
+    });
+    const bothAir = line({
+      lineKind: "AIR",
+      natures: [
+        { family: "MICRO", natureId: "air" },
+        { family: "CHIMIE", natureId: "pc-air" },
+      ],
+      parameterIds: ["dosage-air"],
+    });
+    expect(planLineSamples(bothAir, 3, NATURE_ROWS, PARAMETERS)).toEqual({
+      ok: true,
+      samples: [
+        { family: "MICRO", natureId: "air", type: "AMBIANCE", twin: "M", parameterIds: [] },
+        { family: "CHIMIE", natureId: "pc-air", type: "AMBIANCE", twin: "P", parameterIds: ["dosage-air"] },
+      ],
+    });
+  });
+
+  it("refuse une analyse qu'aucune case du type ne peut porter", () => {
+    const mainsLine = line({ lineKind: "MAINS", natures: [{ family: "MICRO", natureId: "surfaces" }], parameterIds: ["dosage-air"] });
+    expect(planLineSamples(mainsLine, 3, NATURE_ROWS, PARAMETERS)).toMatchObject({
+      ok: false,
+      line: 3,
+      error: "Échantillon 3 — l'analyse « Dosage air test » ne se demande pas sur un échantillon « Mains du personnel ».",
     });
     expect(planLineSamples(line({ parameterIds: ["sensoriel"] }), 1, NATURE_ROWS, PARAMETERS)).toMatchObject({ ok: false });
   });

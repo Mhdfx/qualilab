@@ -35,7 +35,7 @@ import { MAX_UNITS } from "@/lib/series";
 import { matchesQuery } from "@/lib/similar";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
-import { LegalTimeHint } from "@/components/LegalTimeHint";
+import { LabDateTimeInput } from "@/components/LabDateTimeInput";
 import { Checklist } from "@/components/reception/reception-widgets";
 import { fromLocalInput } from "@/components/preleveur/visit-types";
 import { SampleVerbs, type VerbSample } from "@/components/samples/SampleVerbs";
@@ -927,15 +927,14 @@ export function ProgrammeSheet({
           </fieldset>
           <div>
             <label htmlFor="programme-due" className="mb-1.5 block text-sm font-semibold text-slate-700">Délai de rendu promis</label>
-            <input
+            {/* A promised date is in the future by nature: no « dans le futur » check, no « Maintenant » (§8.1). */}
+            <LabDateTimeInput
               id="programme-due"
-              type="datetime-local"
               value={draft.dueAt}
-              onChange={(e) => patch({ dueAt: e.target.value })}
+              onChange={(legalWall) => patch({ dueAt: legalWall })}
               disabled={readOnly}
-              className="input-field px-3 disabled:bg-slate-50"
+              inputClassName="input-field px-3 disabled:bg-slate-50"
             />
-            <LegalTimeHint />
             <p className="mt-1 text-xs text-slate-500">Facultatif — jamais dans le passé.</p>
           </div>
         </div>

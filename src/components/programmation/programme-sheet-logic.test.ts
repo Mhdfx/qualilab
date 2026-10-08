@@ -442,6 +442,16 @@ describe("toRequestBody", () => {
     });
   });
 
+  it("keeps the due date on the LEGAL clock either side of the return to GMT (20/09/2026, §8.1)", () => {
+    // Before the switch the legal clock was UTC+1; after it, GMT — whatever the device says.
+    const september = initialDraft({ ...received, dueAt: "2026-09-10T12:00:00.000Z" }, referential);
+    expect(september.dueAt).toBe("2026-09-10T13:00");
+    expect(toRequestBody(september, false).dueAt).toBe("2026-09-10T12:00:00.000Z");
+    const october = initialDraft({ ...received, dueAt: "2026-10-20T08:30:00.000Z" }, referential);
+    expect(october.dueAt).toBe("2026-10-20T08:30");
+    expect(toRequestBody(october, false).dueAt).toBe("2026-10-20T08:30:00.000Z");
+  });
+
   it("a draft may be empty and carry no due date", () => {
     const body = toRequestBody({ ...initialDraft(received, referential), parameterIds: [], technicianId: "", dueAt: "" }, false);
     expect(body).toMatchObject({ confirm: false, parameterIds: [], technicianId: null, dueAt: null, productTypeId: null, parameters: [] });

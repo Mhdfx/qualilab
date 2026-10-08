@@ -25,7 +25,7 @@ const nature = (code: string, family: NatureRef["family"], active = true): Natur
   active,
 });
 
-/** An invented catalogue: the eight natures of the table, one finer nature
+/** An invented catalogue: the ten natures of the table, one finer nature
  * and the chemistry of surfaces archived. */
 const NATURES: NatureRef[] = [
   nature("MICRO_ALIMENTS", "MICRO"),
@@ -35,6 +35,8 @@ const NATURES: NatureRef[] = [
   nature("MICRO_EAUX", "MICRO"),
   nature("PC_EAUX", "CHIMIE"),
   nature("MICRO_AIR", "MICRO"),
+  nature("PC_AIR", "CHIMIE"),
+  nature("MICRO_AUTRE", "MICRO"),
   nature("EFFET_ASEPTISANT", "CHIMIE"),
   nature("NATURE_FINE_TEST", "MICRO"),
 ];
@@ -49,8 +51,8 @@ describe("the type × family table", () => {
     ["SURFACE", "MICRO_SURFACES", "PC_SURFACES"],
     ["MAINS", "MICRO_SURFACES", null],
     ["EAU", "MICRO_EAUX", "PC_EAUX"],
-    ["AIR", "MICRO_AIR", null],
-    ["AUTRE", null, "EFFET_ASEPTISANT"],
+    ["AIR", "MICRO_AIR", "PC_AIR"],
+    ["AUTRE", "MICRO_AUTRE", "EFFET_ASEPTISANT"],
   ] as const)("%s → micro %s, physico-chimie %s", (kind, micro, chimie) => {
     expect(natureCodeFor(kind, "MICRO")).toBe(micro);
     expect(natureCodeFor(kind, "CHIMIE")).toBe(chimie);
@@ -72,8 +74,8 @@ describe("familiesFor", () => {
     ["SURFACE", ["MICRO", "CHIMIE"]],
     ["MAINS", ["MICRO"]],
     ["EAU", ["MICRO", "CHIMIE"]],
-    ["AIR", ["MICRO"]],
-    ["AUTRE", ["CHIMIE"]],
+    ["AIR", ["MICRO", "CHIMIE"]],
+    ["AUTRE", ["MICRO", "CHIMIE"]],
   ] as const)("%s → %j", (kind, families) => {
     expect(familiesFor(kind)).toEqual(families);
   });
@@ -90,7 +92,7 @@ describe("defaultFamiliesFor", () => {
     ["MAINS", ["MICRO"]],
     ["EAU", ["MICRO"]],
     ["AIR", ["MICRO"]],
-    ["AUTRE", ["CHIMIE"]],
+    ["AUTRE", ["MICRO"]],
   ] as const)("%s → %j", (kind, families) => {
     expect(defaultFamiliesFor(kind)).toEqual(families);
   });
@@ -113,14 +115,20 @@ describe("natureFor", () => {
     expect(natureFor(NATURES, "EAU", "MICRO")?.id).toBe("nat-micro_eaux");
     expect(natureFor(NATURES, "EAU", "CHIMIE")?.id).toBe("nat-pc_eaux");
     expect(natureFor(NATURES, "AIR", "MICRO")?.id).toBe("nat-micro_air");
+    expect(natureFor(NATURES, "AIR", "CHIMIE")?.id).toBe("nat-pc_air");
+    expect(natureFor(NATURES, "AUTRE", "MICRO")?.id).toBe("nat-micro_autre");
     expect(natureFor(NATURES, "AUTRE", "CHIMIE")?.id).toBe("nat-effet_aseptisant");
   });
 
   it("returns undefined for a greyed-out cell", () => {
     expect(natureFor(NATURES, "MAINS", "CHIMIE")).toBeUndefined();
-    expect(natureFor(NATURES, "AIR", "CHIMIE")).toBeUndefined();
-    expect(natureFor(NATURES, "AUTRE", "MICRO")).toBeUndefined();
     expect(natureFor(NATURES, "ALIMENT", "AUTRE")).toBeUndefined();
+  });
+
+  it("returns undefined for air × physico-chimie on a catalogue without the 08/10 natures", () => {
+    const before = NATURES.filter((n) => n.code !== "PC_AIR" && n.code !== "MICRO_AUTRE");
+    expect(natureFor(before, "AIR", "CHIMIE")).toBeUndefined();
+    expect(natureFor(before, "AUTRE", "MICRO")).toBeUndefined();
   });
 
   it("skips an archived nature rather than proposing it", () => {
@@ -152,6 +160,8 @@ describe("familyOfNature", () => {
   it("falls back on the table for a nature known only by its code", () => {
     expect(familyOfNature({ code: "MICRO_SURFACES" })).toBe("MICRO");
     expect(familyOfNature({ code: "EFFET_ASEPTISANT" })).toBe("CHIMIE");
+    expect(familyOfNature({ code: "PC_AIR" })).toBe("CHIMIE");
+    expect(familyOfNature({ code: "MICRO_AUTRE" })).toBe("MICRO");
     expect(familyOfNature({ code: "PC_EAUX", family: null })).toBe("CHIMIE");
   });
 

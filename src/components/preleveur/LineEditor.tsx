@@ -66,6 +66,10 @@ type LineEditorProps = {
    *  the editor keeps those of the ticked boxes' natures that have an
    *  analysis to show. */
   profiles?: ProfileOption[];
+  /** The « Profil d'analyses » block. Default true; the préleveur's visit
+   *  passes false (RETOUR-LABO-06-10.md §8.3) — the profiles stay on the
+   *  programme sheet and at the counter. */
+  showProfiles?: boolean;
   /** The catalogue's product types (the client's own first). The selector
    *  appears on a food sample only when this list is not empty — the
    *  counter passes it, the préleveur's visit does not (V6). */
@@ -188,6 +192,7 @@ export function LineEditor({
   knownPlaces = [],
   knownProducts = [],
   profiles = [],
+  showProfiles = true,
   productTypes = [],
   quantityUnitFallback = "UNITE",
 }: LineEditorProps) {
@@ -200,9 +205,9 @@ export function LineEditor({
   const ticked = lineFamilies(line);
   const shown = visibleParameters(parameters, ticked);
   const natureIds = lineNatureIds(natures, line);
-  const lineProfiles = profiles.filter(
-    (p) => natureIds.includes(p.natureId) && profileParameterIds(p, parameters, ticked).length > 0
-  );
+  const lineProfiles = showProfiles
+    ? profiles.filter((p) => natureIds.includes(p.natureId) && profileParameterIds(p, parameters, ticked).length > 0)
+    : [];
 
   const placeTwin = knownTwin(line.lieu, placeSuggestions);
   const productTwin = knownTwin(line.produit, productSuggestions);
@@ -572,21 +577,24 @@ export function LineEditor({
             <DidYouMean options={placeNear} onPick={(v) => onChange({ lieu: v })} />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field
-              label={kind === "MAINS" || kind === "SURFACE" ? "T° relevée (°C)" : "T° produit (°C)"}
-              htmlFor={id("product-temperature")}
-            >
-              <input
-                id={id("product-temperature")}
-                type="text"
-                inputMode="decimal"
-                value={line.productTemperature}
-                onChange={(e) => onChange({ productTemperature: e.target.value })}
-                placeholder="Ex. : 4"
-                className="input-field px-4"
-              />
-            </Field>
+          {/* Air : pas de produit, donc pas de « T° produit » (§8.5). */}
+          <div className={kind === "AIR" ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-2 gap-3"}>
+            {kind !== "AIR" && (
+              <Field
+                label={kind === "MAINS" || kind === "SURFACE" ? "T° relevée (°C)" : "T° produit (°C)"}
+                htmlFor={id("product-temperature")}
+              >
+                <input
+                  id={id("product-temperature")}
+                  type="text"
+                  inputMode="decimal"
+                  value={line.productTemperature}
+                  onChange={(e) => onChange({ productTemperature: e.target.value })}
+                  placeholder="Ex. : 4"
+                  className="input-field px-4"
+                />
+              </Field>
+            )}
             <Field label="T° ambiante (°C)" htmlFor={id("ambient-temperature")}>
               <input
                 id={id("ambient-temperature")}
@@ -637,7 +645,9 @@ export function LineEditor({
                 className="input-field w-24 px-3"
               />
             </div>
-            <p className="mt-1 text-xs text-slate-500">5 pour la plupart des aliments, 9 pour l&apos;histamine.</p>
+            {kind === "ALIMENT" && (
+              <p className="mt-1 text-xs text-slate-500">5 pour la plupart des aliments, 9 pour l&apos;histamine.</p>
+            )}
           </div>
 
           {/* Les deux cases de l'échantillon (V3) : la nature en est déduite,

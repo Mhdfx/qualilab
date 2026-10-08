@@ -25,7 +25,8 @@ import type { LineFamily } from "@/lib/nature-family";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
-import { LegalTimeHint } from "@/components/LegalTimeHint";
+import { LabDateTimeInput } from "@/components/LabDateTimeInput";
+import { futureFieldError } from "@/lib/device-time";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { fromLocalInput, lineDesignation, toLocalInput } from "./visit-types";
 import { familiesLabel, groupByLine, sampleFamily } from "./visit-samples";
@@ -137,9 +138,17 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
   const [hasPhoto, setHasPhoto] = useState(false);
 
   async function save() {
+    setSaved(false);
+    // « Dans le futur » before sending, as the server would refuse it (§8.1).
+    const now = new Date();
+    const future =
+      futureFieldError("L'heure de fin", endedAt, now) ?? futureFieldError("L'heure d'arrivée", arrivedAt, now);
+    if (future) {
+      setError(future);
+      return;
+    }
     setBusy(true);
     setError("");
-    setSaved(false);
     const note = cadre === "AUTRE" ? cadreNote.trim() : "";
     const cadreChanged = cadre !== visit.cadre;
     const noteChanged = note !== storedNote(visit);
@@ -319,12 +328,17 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
             <div className="mt-4 space-y-4">
               <div>
                 <label htmlFor="endedAt" className="mb-1.5 block text-sm font-semibold text-slate-700">Fin du prélèvement</label>
-                <input id="endedAt" type="datetime-local" value={endedAt} onChange={(e) => setEndedAt(e.target.value)} className="input-field px-3" />
+                <LabDateTimeInput id="endedAt" value={endedAt} onChange={setEndedAt} nowButton inputClassName="input-field px-3" />
               </div>
               <div>
                 <label htmlFor="arrivedAt" className="mb-1.5 block text-sm font-semibold text-slate-700">Arrivée au laboratoire</label>
-                <input id="arrivedAt" type="datetime-local" value={arrivedAt} onChange={(e) => setArrivedAt(e.target.value)} className="input-field px-3" />
-                <LegalTimeHint />
+                <LabDateTimeInput
+                  id="arrivedAt"
+                  value={arrivedAt}
+                  onChange={setArrivedAt}
+                  nowButton
+                  inputClassName="input-field px-3"
+                />
               </div>
               <div>
                 <p id="visit-cadre" className="mb-1.5 block text-sm font-semibold text-slate-700">Cadre</p>

@@ -5,10 +5,8 @@ import { useRouter } from "next/navigation";
 import {
   Building2,
   CheckCircle2,
-  Circle,
   ClipboardList,
   Clock,
-  FlaskConical,
   Hash,
   MapPin,
   Plus,
@@ -25,7 +23,6 @@ import type {
   SurfaceState,
 } from "@/generated/prisma/enums";
 import {
-  ANALYSIS_FAMILY_LABELS,
   CADRE_CHOICES,
   CADRE_LABELS,
   LINE_KIND_LABELS,
@@ -33,7 +30,8 @@ import {
   formatDateTime,
 } from "@/lib/labels";
 import { SERIE_MESSAGES, sampleLineMessage } from "@/lib/serie-input";
-import { LegalTimeHint } from "@/components/LegalTimeHint";
+import { LabDateTimeInput } from "@/components/LabDateTimeInput";
+import { futureFieldError } from "@/lib/device-time";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StepIndicator } from "@/components/ui/StepIndicator";
@@ -96,6 +94,9 @@ const SAMPLER_CHOICES = [
 
 const CADRE_NOTE_MAX = 191;
 
+/** The three times of the visit, by the id of their field. */
+type TimeField = "visit-started" | "visit-ended" | "visit-arrived";
+
 /** The id of the card of « Échantillon N », to bring an error into view. */
 const sampleAnchor = (lineNumber: number) => `visit-sample-${lineNumber}`;
 
@@ -140,6 +141,8 @@ export function VisitForm({ me }: { me: Preleveur }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [errorLine, setErrorLine] = useState<number | null>(null);
+  /** The time field the current error is about (its message shows under it). */
+  const [errorField, setErrorField] = useState<TimeField | null>(null);
   const [created, setCreated] = useState<CreatedSerie | null>(null);
 
   // ---- the header, in the paper's order --------------------------------------
@@ -245,10 +248,9 @@ export function VisitForm({ me }: { me: Preleveur }) {
     [memory.products, lines]
   );
 
-  // The série's two boxes follow the samples' families — no hand override.
+  // The série's two boxes follow the samples' families — no hand override;
+  // the recap sums them up on one line (§8.4: no block of its own any more).
   const analyses = serieAnalyses(lines);
-  // One sample per ticked family once at the laboratory.
-  const labSampleCount = lines.reduce((n, line) => n + Math.max(1, lineFamilies(line).length), 0);
 
   function updateLine(key: string, patch: Partial<LineDraft>) {
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -312,11 +314,39 @@ export function VisitForm({ me }: { me: Preleveur }) {
   function setStepError(message: string, line: number | null = null) {
     setError(message);
     setErrorLine(line);
+    setErrorField(null);
     if (line !== null) reveal(sampleAnchor(line));
     return false;
   }
 
+  /** An error about one of the three times: shown under the field, brought into view. */
+  function setFieldError(field: TimeField, message: string) {
+    setError(message);
+    setErrorLine(null);
+    setErrorField(field);
+    reveal(field);
+    return false;
+  }
+
+  /** A time edited: its error, now stale, goes. */
+  function clearFieldError(field: TimeField) {
+    if (errorField !== field) return;
+    setError("");
+    setErrorField(null);
+  }
+
   function validateStep1() {
+    // « Dans le futur » first, next to the field, as the server would refuse
+    // it (§8.1): the commonest slip on a device whose clock is off.
+    const now = new Date();
+    for (const [field, label, value] of [
+      ["visit-started", "L'heure du prélèvement", startedAt],
+      ["visit-ended", "L'heure de fin", endedAt],
+      ["visit-arrived", "L'heure d'arrivée", arrivedAt],
+    ] as const) {
+      const future = futureFieldError(label, value, now);
+      if (future) return setFieldError(field, future);
+    }
     if (!clientId) return setStepError("Choisissez le client.");
     if (!cadre) {
       // The cadre sits at the top of a long form: bring it into view.
@@ -325,8 +355,8 @@ export function VisitForm({ me }: { me: Preleveur }) {
     }
     if (samplerKind === "QUALILAB" && !samplerUserId) return setStepError("Indiquez qui a effectué le prélèvement.");
     if (samplerKind !== "QUALILAB" && !samplerName.trim()) return setStepError("Indiquez qui a effectué le prélèvement.");
-    if (endedAt && startedAt && localInputDate(endedAt)! < localInputDate(startedAt)!) return setStepError("L'heure de fin précède le début du prélèvement.");
-    if (arrivedAt && endedAt && localInputDate(arrivedAt)! < localInputDate(endedAt)!) return setStepError("L'arrivée au laboratoire précède la fin du prélèvement.");
+    if (endedAt && startedAt && localInputDate(endedAt)! < localInputDate(startedAt)!) return setFieldError("visit-ended", "L'heure de fin précède le début du prélèvement.");
+    if (arrivedAt && endedAt && localInputDate(arrivedAt)! < localInputDate(endedAt)!) return setFieldError("visit-arrived", "L'arrivée au laboratoire précède la fin du prélèvement.");
     for (const [i, line] of lines.entries()) {
       // Families, place, designation, surface state, air method — no analysis
       // is required any more: the programme sheet fixes them (V6).
@@ -335,6 +365,7 @@ export function VisitForm({ me }: { me: Preleveur }) {
     }
     setError("");
     setErrorLine(null);
+    setErrorField(null);
     return true;
   }
 
@@ -383,6 +414,16 @@ export function VisitForm({ me }: { me: Preleveur }) {
 
   const samplerLabel = samplerKind === "QUALILAB" ? me.name : `Autre — ${samplerName}`;
   const cadreMissing = !cadre && error === SERIE_MESSAGES.cadreMissing;
+
+  /** The error under a time field, when it is about that field. */
+  const fieldError = (field: TimeField) =>
+    errorField === field && error ? (
+      <p id={`${field}-error`} className="mt-1 text-xs text-rose-600">
+        {error}
+      </p>
+    ) : null;
+  const fieldRing = (field: TimeField) =>
+    errorField === field && error ? "ring-2 ring-rose-300" : "";
 
   if (step === 3 && created) {
     const groups = groupByLine(created.samples);
@@ -623,17 +664,20 @@ export function VisitForm({ me }: { me: Preleveur }) {
                     Prélevé le … à …
                   </label>
                   {isMounted ? (
-                    <input
+                    <LabDateTimeInput
                       id="visit-started"
-                      type="datetime-local"
                       value={startedAt}
-                      onChange={(e) => setStartedAt(e.target.value)}
-                      className="input-field px-4"
+                      onChange={(v) => {
+                        setStartedAt(v);
+                        clearFieldError("visit-started");
+                      }}
+                      inputClassName={`input-field px-4 ${fieldRing("visit-started")}`}
+                      errorId={errorField === "visit-started" && error ? "visit-started-error" : undefined}
                     />
                   ) : (
                     <div className="input-field px-4" aria-hidden="true" />
                   )}
-                  <LegalTimeHint />
+                  {fieldError("visit-started")}
                 </div>
                 <div>
                   <label htmlFor="visit-ended" className="section-title mb-2">
@@ -641,16 +685,21 @@ export function VisitForm({ me }: { me: Preleveur }) {
                     Heure de fin
                   </label>
                   {isMounted ? (
-                    <input
+                    <LabDateTimeInput
                       id="visit-ended"
-                      type="datetime-local"
                       value={endedAt}
-                      onChange={(e) => setEndedAt(e.target.value)}
-                      className="input-field px-4"
+                      onChange={(v) => {
+                        setEndedAt(v);
+                        clearFieldError("visit-ended");
+                      }}
+                      nowButton
+                      inputClassName={`input-field px-4 ${fieldRing("visit-ended")}`}
+                      errorId={errorField === "visit-ended" && error ? "visit-ended-error" : undefined}
                     />
                   ) : (
                     <div className="input-field px-4" aria-hidden="true" />
                   )}
+                  {fieldError("visit-ended")}
                   <p className="mt-1 text-xs text-slate-500">Facultatif sur place ; complétable ensuite.</p>
                 </div>
               </div>
@@ -707,16 +756,21 @@ export function VisitForm({ me }: { me: Preleveur }) {
                     Arrivé au laboratoire le … à …
                   </label>
                   {isMounted ? (
-                    <input
+                    <LabDateTimeInput
                       id="visit-arrived"
-                      type="datetime-local"
                       value={arrivedAt}
-                      onChange={(e) => setArrivedAt(e.target.value)}
-                      className="input-field px-4"
+                      onChange={(v) => {
+                        setArrivedAt(v);
+                        clearFieldError("visit-arrived");
+                      }}
+                      nowButton
+                      inputClassName={`input-field px-4 ${fieldRing("visit-arrived")}`}
+                      errorId={errorField === "visit-arrived" && error ? "visit-arrived-error" : undefined}
                     />
                   ) : (
                     <div className="input-field px-4" aria-hidden="true" />
                   )}
+                  {fieldError("visit-arrived")}
                 </div>
                 <div>
                   <label htmlFor="visit-cooler" className="section-title mb-2">
@@ -776,6 +830,7 @@ export function VisitForm({ me }: { me: Preleveur }) {
                   knownPlaces={memory.places}
                   knownProducts={memory.products}
                   profiles={profiles}
+                  showProfiles={false}
                 />
               </div>
             );
@@ -785,42 +840,6 @@ export function VisitForm({ me }: { me: Preleveur }) {
             <Plus className="h-4 w-4" />
             Ajouter un échantillon
           </SecondaryButton>
-
-          <Card className="p-4 sm:p-6">
-            <p className="section-title mb-2">
-              <FlaskConical className="h-4 w-4" />
-              Analyses à effectuer
-            </p>
-            <ul className="grid gap-2 sm:grid-cols-2">
-              {(
-                [
-                  ["MICRO", analyses.analysesMicro],
-                  ["CHIMIE", analyses.analysesChimie],
-                ] as const
-              ).map(([family, on]) => (
-                <li
-                  key={family}
-                  className={`flex min-h-[48px] items-center gap-3 rounded-xl border px-4 text-sm font-medium ${
-                    on ? "border-brand/40 bg-brand-light/60 text-brand" : "border-slate-200 bg-slate-50 text-slate-500"
-                  }`}
-                >
-                  {on ? (
-                    <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  ) : (
-                    <Circle className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
-                  )}
-                  {ANALYSIS_FAMILY_LABELS[family]}
-                  <span className="sr-only">{on ? " : oui" : " : non"}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-2 text-xs text-slate-500">
-              Déduites des échantillons : cochez les familles sur chaque échantillon.
-              {labSampleCount > lines.length
-                ? ` ${labSampleCount} échantillons au laboratoire (un par famille cochée).`
-                : ""}
-            </p>
-          </Card>
 
           <Card className="p-4 sm:p-6">
             <label htmlFor="visit-notes" className="mb-2 block text-sm font-semibold text-slate-700">

@@ -510,6 +510,9 @@ export function linePayload(line: LineDraft): LinePayload {
     personRole: hands ? rest.personRole : "",
     handsState: hands && handsState ? handsState : undefined,
     productTypeId: line.lineKind === "ALIMENT" ? rest.productTypeId : "",
+    // An air line has no product, so no « T° produit » field (§8.5): a value
+    // typed before switching the type to Air is not sent.
+    productTemperature: line.lineKind === "AIR" ? "" : rest.productTemperature,
   };
 }
 
