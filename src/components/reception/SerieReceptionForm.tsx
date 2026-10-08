@@ -38,7 +38,13 @@ import {
   formatDateTime,
   formatDecimal,
 } from "@/lib/labels";
-import { evaluateReception, proposedConformity, type ReceptionThresholds } from "@/lib/reception-rules";
+import {
+  EXPLOITABLE_MESSAGES,
+  parameterSpellings,
+  proposedConformity,
+  receptionChecklist,
+  type ReceptionThresholds,
+} from "@/lib/reception-rules";
 import { repetitionRange } from "@/lib/series";
 import { futureFieldError } from "@/lib/device-time";
 import { Card } from "@/components/ui/Card";
@@ -48,7 +54,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { fromLocalInput, toLocalInput } from "@/components/preleveur/visit-types";
 import { Checklist, ConformityChip } from "./reception-widgets";
-import { sampleRef } from "@/lib/reception-input";
+import { receptionLineMessage, sampleRef } from "@/lib/reception-input";
 import { SampleVerbs, type VerbSample } from "@/components/samples/SampleVerbs";
 import type { Role } from "@/lib/roles";
 import {
@@ -65,10 +71,13 @@ import {
  * The header carries what the cooler tells (arrival, temperature); every
  * sample (« Échantillon N », RETOUR-LABO-06-10.md §5, V2) shows what the
  * préleveur wrote, what the réceptionniste measures, the acceptance
- * checklist computed live from the lab's rules and the conformity with its
- * coded motif. The two samples of a two-family line (« 2M », « 2P » — V3)
- * are received one by one, each with its own rules (100 g micro, 300 g
- * physico-chimie). One button numbers everything.
+ * checklist — the seven rules of the bon de réception, computed live with
+ * the lab's thresholds — and the conformity with its coded motif. Rule (1),
+ * « exploitable or not », is the réceptionniste's answer, one per sample,
+ * required before the série can be received (retour du 08/10). The two
+ * samples of a two-family line (« 2M », « 2P » — V3) are received one by
+ * one, each with its own rules (100 g micro, 300 g physico-chimie). One
+ * button numbers everything.
  *
  * No technician here (retour du 08/10, RETOUR-LABO-06-10.md §9.3): the
  * responsable des paramètres picks the sample from the global queue and
@@ -111,7 +120,8 @@ export type ReceptionLineData = {
   cancelReason: CancelReason | null;
   nature: { id: string; code: string; label: string; family: Family };
   productType: { id: string; name: string } | null;
-  parameters: { parameter: { id: string; name: string; unit: string | null } }[];
+  /** `aliases` (one per line): histamine and Salmonella are recognised on them too. */
+  parameters: { parameter: { id: string; name: string; unit: string | null; aliases?: string | null } }[];
   technician: { id: string; name: string } | null;
 };
 
@@ -170,6 +180,8 @@ type LineState = {
   temperatureTouched: boolean;
   quantity: string;
   quantityUnit: QuantityUnit;
+  /** Rule (1) of the bon: null until the réceptionniste answers. */
+  exploitable: boolean | null;
   /** The réceptionniste's own choice; null = follow the rules' proposal. */
   conformityChoice: boolean | null;
   reason: NonConformityReason | "";
@@ -269,6 +281,8 @@ export function SerieReceptionForm({
           : s.lineKind === "EAU"
             ? "L"
             : "G",
+      // Never pre-answered: each sample is looked at (no « tous exploitables »).
+      exploitable: null,
       conformityChoice: null,
       reason: "",
       note: "",
@@ -308,25 +322,45 @@ export function SerieReceptionForm({
     setError(null);
   }
 
-  /** The live evaluation of one sample: checks, proposal, effective choice. */
+  /**
+   * Rule (1) answered. « Non exploitable » makes the sample non conform with
+   * the motif of rule (1); answering « Exploitable » afterwards drops that
+   * motif, the rules propose again.
+   */
+  function answerExploitable(line: LineState, exploitable: boolean) {
+    updateLine(
+      line.sampleId,
+      exploitable
+        ? { exploitable, reason: line.reason === "NON_EXPLOITABLE" ? "" : line.reason }
+        : { exploitable, reason: "NON_EXPLOITABLE" }
+    );
+  }
+
+  /** The live evaluation of one sample: the seven rules, proposal, effective choice. */
   function evaluate(line: LineState) {
     const sample = byId.get(line.sampleId)!;
-    const checks = evaluateReception(
+    const quantity = numberOrNull(line.quantity);
+    const rows = receptionChecklist(
       {
         lineKind: sample.lineKind,
         family: sample.nature.family,
-        parameterNames: sample.parameters.map((p) => p.parameter.name),
-        quantity: numberOrNull(line.quantity),
-        quantityUnit: numberOrNull(line.quantity) === null ? null : line.quantityUnit,
+        parameterNames: sample.parameters.flatMap((p) => parameterSpellings(p.parameter)),
+        quantity,
+        quantityUnit: quantity === null ? null : line.quantityUnit,
         receptionTemperature: numberOrNull(line.temperature),
         unitCount: sample.unitCount,
       },
-      thresholds
+      thresholds,
+      {
+        exploitable: line.exploitable,
+        // The cooler pre-fills every sample until one is measured apart.
+        fromCooler: !line.temperatureTouched && cooler.trim() !== "",
+      }
     );
-    const proposal = proposedConformity(checks);
+    const proposal = proposedConformity(rows);
     const conformity = proposal.forced ? false : (line.conformityChoice ?? proposal.conformity);
     const reason: NonConformityReason | "" = conformity ? "" : line.reason || proposal.reason || "";
-    return { sample, checks, proposal, conformity, reason };
+    return { sample, rows, proposal, conformity, reason };
   }
 
   async function submit() {
@@ -337,6 +371,22 @@ export function SerieReceptionForm({
     if (future) {
       setError({ message: future, lineNumber: null });
       document.getElementById("arrivedAt")?.focus();
+      return;
+    }
+    // Rule (1) is answered for every sample — the API refuses otherwise.
+    const unanswered = lines.find((line) => line.exploitable === null);
+    if (unanswered) {
+      const sample = byId.get(unanswered.sampleId)!;
+      const ref = sampleRef(sample.lineNumber, sample.code);
+      setError({
+        message: receptionLineMessage(ref, EXPLOITABLE_MESSAGES.missing),
+        lineNumber: sample.lineNumber,
+        ref,
+      });
+      const target = document.getElementById(`exploitable-${unanswered.sampleId}`);
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      target?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+      target?.focus({ preventScroll: true });
       return;
     }
     setBusy(true);
@@ -352,6 +402,7 @@ export function SerieReceptionForm({
             receptionTemperature: line.temperature,
             quantity: line.quantity,
             quantityUnit: line.quantityUnit,
+            exploitable: line.exploitable,
             conformity,
             conformityReason: conformity ? undefined : reason,
             conformityNote: line.note,
@@ -438,7 +489,7 @@ export function SerieReceptionForm({
           )}
 
           {lines.map((line) => {
-            const { sample, checks, proposal, conformity, reason } = evaluate(line);
+            const { sample, rows, proposal, conformity, reason } = evaluate(line);
             const highlighted = errorConcernsSample(error, sample);
             return (
               <Card
@@ -518,7 +569,15 @@ export function SerieReceptionForm({
                   </div>
                 </div>
 
-                <Checklist checks={checks} />
+                <Checklist
+                  rows={rows}
+                  exploitable={{
+                    value: line.exploitable,
+                    onChange: (exploitable) => answerExploitable(line, exploitable),
+                    id: `exploitable-${line.sampleId}`,
+                    invalid: highlighted && line.exploitable === null,
+                  }}
+                />
 
                 <fieldset className="mt-4">
                   <legend className="text-sm font-medium text-slate-700">Conformité</legend>
@@ -540,7 +599,9 @@ export function SerieReceptionForm({
                   </div>
                   {proposal.forced && (
                     <p className="mt-1.5 text-xs text-rose-700">
-                      Une règle bloquante s&apos;applique : corrigez la mesure ou réceptionnez l&apos;échantillon comme non conforme.
+                      {proposal.rule === 1
+                        ? "Échantillon non exploitable (règle 1) : il est réceptionné non conforme."
+                        : `La règle (${proposal.rule}) n'est pas respectée : corrigez la mesure ou réceptionnez l'échantillon comme non conforme.`}
                     </p>
                   )}
                 </fieldset>
@@ -558,7 +619,7 @@ export function SerieReceptionForm({
                         className="input-field mt-1.5 px-3"
                       >
                         <option value="">Choisir un motif</option>
-                        {REASONS.map((r) => (
+                        {REASONS.filter((r) => r !== "NON_EXPLOITABLE" || line.exploitable === false).map((r) => (
                           <option key={r} value={r}>
                             {NON_CONFORMITY_REASON_LABELS[r]}
                           </option>

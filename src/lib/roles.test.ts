@@ -1,5 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { ASSIGNABLE_ROLES, LAB_ROLES, PORTAL_ROLE, ROLES, ROLE_HOME, ROLE_LABELS, getDashboardPath, isPortalRole, roleAllowed } from "./roles";
+import {
+  ASSIGNABLE_ROLES,
+  LAB_FUNCTION_ROLES,
+  LAB_ROLES,
+  PORTAL_ROLE,
+  ROLES,
+  ROLE_FUNCTIONS,
+  ROLE_HOME,
+  ROLE_LABELS,
+  getDashboardPath,
+  isPortalRole,
+  roleAllowed,
+  roleFunction,
+} from "./roles";
 
 describe("assignable roles", () => {
   it("offers the portal role now that /portail exists (PORTAIL.md §1)", () => {
@@ -41,6 +54,44 @@ describe("assignable roles", () => {
   it("falls back to the login page for anything that is not a role", () => {
     expect(getDashboardPath("SOMETHING")).toBe("/login");
     expect(getDashboardPath(null)).toBe("/login");
+  });
+});
+
+describe("role wording — the laboratory's list of 08/10", () => {
+  it("gives every laboratory role a non-empty label, each one distinct", () => {
+    for (const role of LAB_ROLES) expect(ROLE_LABELS[role].trim(), role).not.toBe("");
+    const labels = ROLES.map((role) => ROLE_LABELS[role]);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it("names the step-1 signer « Validateur technique »", () => {
+    expect(ROLE_LABELS.VALIDATEUR).toBe("Validateur technique");
+  });
+
+  it("maps the six functions to the six circuit roles, in the lab's order", () => {
+    expect(LAB_FUNCTION_ROLES).toEqual(["PRELEVEUR", "RECEPTIONNISTE", "PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "ADMIN"]);
+    expect(LAB_FUNCTION_ROLES.map((role) => ROLE_FUNCTIONS[role])).toEqual([
+      "Prélèvement des échantillons",
+      "Réception des échantillons",
+      "Enregistrement des paramètres",
+      "Saisie des résultats",
+      "Validation technique des résultats",
+      "Validation administrative et administration du système",
+    ]);
+    for (const role of LAB_FUNCTION_ROLES) {
+      expect(ROLES, role).toContain(role);
+      expect(ROLE_FUNCTIONS[role].trim(), role).not.toBe("");
+      expect(roleFunction(role)).toBe(ROLE_FUNCTIONS[role]);
+    }
+  });
+
+  it("gives no function to the roles outside the circuit, nor to a non-role", () => {
+    for (const role of ["GESTIONNAIRE", "COMPTABLE", "MAGASINIER", "CLIENT"] as const) {
+      expect(roleFunction(role), role).toBeNull();
+    }
+    expect(roleFunction("SOMETHING")).toBeNull();
+    expect(roleFunction(null)).toBeNull();
+    expect(roleFunction(undefined)).toBeNull();
   });
 });
 

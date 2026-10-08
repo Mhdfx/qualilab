@@ -34,8 +34,8 @@ const good = {
   coolerTemperature: "3,5",
   // `technicianId`: what a page opened before 08/10 still sends — ignored (§9.3).
   lines: [
-    { sampleId: "s1", receptionTemperature: "4", quantity: "250", quantityUnit: "G", conformity: true, technicianId: "t1" },
-    { sampleId: "s2", conformity: true, technicianId: "t1" },
+    { sampleId: "s1", receptionTemperature: "4", quantity: "250", quantityUnit: "G", exploitable: true, conformity: true, technicianId: "t1" },
+    { sampleId: "s2", exploitable: true, conformity: true, technicianId: "t1" },
   ],
 };
 
@@ -54,6 +54,18 @@ describe("validateReception", () => {
     ]);
     expect(result.value.lines[0].checks.map((c) => c.level)).toEqual(["OK", "OK"]);
     expect(result.value.lines[1].destroy).toBe(false);
+    // The seven rules travel with each line, for the audit.
+    expect(result.value.lines[0].checklist.map((r) => [r.n, r.status])).toEqual([
+      [1, "CONFORME"],
+      [2, "CONFORME"],
+      [3, "SANS_OBJET"],
+      [4, "SANS_OBJET"],
+      [5, "SANS_OBJET"],
+      [6, "CONFORME"],
+      [7, "SANS_OBJET"],
+    ]);
+    expect(result.value.lines[1].checklist).toHaveLength(7);
+    expect(result.value.lines.map((l) => l.exploitable)).toEqual([true, true]);
   });
 
   it("refuses a série already received and a line sent twice or missing", () => {
@@ -72,7 +84,7 @@ describe("validateReception", () => {
       error: "L'échantillon 2 n'est pas renseigné — la série se réceptionne en une fois.",
     });
 
-    const stranger = validate({ ...good, lines: [...good.lines, { sampleId: "zz", conformity: true }] });
+    const stranger = validate({ ...good, lines: [...good.lines, { sampleId: "zz", exploitable: true, conformity: true }] });
     expect(stranger).toMatchObject({ ok: false, error: "Un échantillon envoyé n'appartient pas à cette série." });
   });
 
@@ -133,7 +145,7 @@ describe("validateReception", () => {
     const unknown = validate({ ...good, lines: [{ ...good.lines[0], technicianId: "pas-un-technicien" }, good.lines[1]] });
     expect(unknown.ok && unknown.value.lines[0]).not.toHaveProperty("technicianId");
 
-    const none = validate({ ...good, lines: [{ ...good.lines[0], technicianId: undefined }, { sampleId: "s2", conformity: true }] });
+    const none = validate({ ...good, lines: [{ ...good.lines[0], technicianId: undefined }, { sampleId: "s2", exploitable: true, conformity: true }] });
     expect(none.ok).toBe(true);
     if (none.ok) expect(none.value.lines[0]).toMatchObject({ conformity: true, destroy: false });
   });
@@ -170,6 +182,82 @@ describe("validateReception", () => {
   });
 });
 
+describe("validateReception — rule (1), exploitable or not (retour du 08/10)", () => {
+  it("refuses a line without the answer — what a page opened before the checklist sends", () => {
+    const oldTab = { sampleId: "s1", receptionTemperature: "4", quantity: "250", quantityUnit: "G", conformity: true };
+    expect(validate({ ...good, lines: [oldTab, good.lines[1]] })).toEqual({
+      ok: false,
+      error: "Échantillon 1 : indiquez s'il est exploitable (règle 1). Si les boutons « Exploitable » / « Non exploitable » n'apparaissent pas, rechargez la page.",
+      lineNumber: 1,
+      ref: "1",
+    });
+    expect(validate({ ...good, lines: [good.lines[0], { ...good.lines[1], exploitable: "oui" }] })).toMatchObject({
+      ok: false,
+      lineNumber: 2,
+      error: "Échantillon 2 : indiquez s'il est exploitable (règle 1). Si les boutons « Exploitable » / « Non exploitable » n'apparaissent pas, rechargez la page.",
+    });
+  });
+
+  it("never declares a non-exploitable sample conform", () => {
+    expect(validate({ ...good, lines: [{ ...good.lines[0], exploitable: false }, good.lines[1]] })).toEqual({
+      ok: false,
+      error: "Échantillon 1 : un échantillon non exploitable ne peut pas être déclaré conforme (règle 1).",
+      lineNumber: 1,
+      ref: "1",
+    });
+  });
+
+  it("accepts the motif « non exploitable », analysed anyway or destroyed", () => {
+    const line = { ...good.lines[0], exploitable: false, conformity: false, conformityReason: "NON_EXPLOITABLE" };
+    const result = validate({ ...good, lines: [{ ...line, decision: "DETRUIRE" }, good.lines[1]] });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.lines[0]).toMatchObject({
+      exploitable: false,
+      conformity: false,
+      conformityReason: "NON_EXPLOITABLE",
+      destroy: true,
+    });
+    expect(result.value.lines[0].checklist[0]).toMatchObject({ n: 1, status: "NON_CONFORME", reason: "NON_EXPLOITABLE" });
+    // Another motif may be chosen for a non-exploitable sample.
+    expect(validate({ ...good, lines: [{ ...line, conformityReason: "EMBALLAGE" }, good.lines[1]] }).ok).toBe(true);
+  });
+
+  it("refuses the motif « non exploitable » on a sample answered exploitable", () => {
+    expect(
+      validate({
+        ...good,
+        lines: [{ ...good.lines[0], conformity: false, conformityReason: "NON_EXPLOITABLE" }, good.lines[1]],
+      })
+    ).toMatchObject({
+      ok: false,
+      lineNumber: 1,
+      error: "Échantillon 1 : le motif « non exploitable » ne va pas avec la réponse « Exploitable » (règle 1).",
+    });
+  });
+
+  it("keeps refusing a conform sample under a blocking rule, with the laboratory's thresholds", () => {
+    const strict = { ...DEFAULT_THRESHOLDS, minFoodMicroG: 300 };
+    const result = validateReception(good, candidates, strict);
+    expect(result).toMatchObject({ ok: false, lineNumber: 1 });
+    if (!result.ok) expect(result.error).toBe("Échantillon 1 : Quantité 250 g < 300 g requis. L'échantillon ne peut pas être déclaré conforme.");
+  });
+
+  it("recognises histamine under an alias of the requested analysis", () => {
+    const fish: ReceptionCandidate[] = [
+      { ...candidates[0], family: "CHIMIE", unitCount: 9, parameterNames: ["Amine biogène test", "Histamine HPLC"] },
+    ];
+    const result = validateReception(
+      { lines: [{ ...good.lines[0], quantity: "450" }] },
+      fish,
+      DEFAULT_THRESHOLDS
+    );
+    // 450 g meets rule (3) (300 g) but not rule (7) (9 × 100 g).
+    expect(result).toMatchObject({ ok: false, lineNumber: 1 });
+    if (!result.ok) expect(result.error).toContain("Poids par unité 50 g < 100 g requis.");
+  });
+});
+
 describe("sampleRef — the sample named by its line, and its letter", () => {
   it("reads « M » / « P » from the code of a two-family line", () => {
     expect(sampleRef(3, "1/26-3M")).toBe("3M");
@@ -187,7 +275,7 @@ describe("validateReception — the two samples of a two-family line (RETOUR-LAB
     { ...candidates[0], id: "m", code: "1/26-1M", family: "MICRO" },
     { ...candidates[0], id: "p", code: "1/26-1P", family: "CHIMIE" },
   ];
-  const line = { receptionTemperature: "4", quantityUnit: "G", conformity: true };
+  const line = { receptionTemperature: "4", quantityUnit: "G", exploitable: true, conformity: true };
 
   it("receives each one on its own, microbiology first, and names them by their letter", () => {
     const result = validateReception(

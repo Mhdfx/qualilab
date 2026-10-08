@@ -81,6 +81,11 @@ export const SERIE_LAB_SELECT = {
   samples: {
     select: {
       ...LINE_COMMON,
+      // The aliases too: the reception's checklist recognises histamine and
+      // Salmonella on them (rules 4 and 7 of the bon de réception).
+      parameters: {
+        select: { parameter: { select: { id: true, name: true, unit: true, aliases: true } } },
+      },
       controlCode: true,
       receptionTemperature: true,
       conformity: true,

@@ -35,7 +35,7 @@ import {
   formatCadre,
   formatDateTime,
 } from "@/lib/labels";
-import { type ReceptionThresholds } from "@/lib/reception-rules";
+import { EXPLOITABLE_MESSAGES, type ReceptionThresholds } from "@/lib/reception-rules";
 import { sampleRef } from "@/lib/reception-input";
 import { SERIE_MESSAGES, sampleLineMessage } from "@/lib/serie-input";
 import { repetitionRange } from "@/lib/series";
@@ -69,18 +69,20 @@ import {
   type ProfileOption,
 } from "@/components/preleveur/visit-types";
 import { Checklist, ConformityChip } from "./reception-widgets";
-import { countLabel, depositLineChecks, familiesSummary, lineSampleRefs, sampleCount } from "./reception-logic";
+import { countLabel, depositLineChecklist, familiesSummary, lineSampleRefs, sampleCount } from "./reception-logic";
 
 const subscribeNoop = () => () => {};
 
 /**
  * What the counter records on top of the sample itself. Keyed by the line:
  * when both families are ticked the line becomes two samples (« 2M »,
- * « 2P ») and `POST /api/series` gives both the same temperature,
- * conformity and decision. No technician (RETOUR-LABO-06-10.md §9.3): the
- * responsable des paramètres assigns it on the programme sheet.
+ * « 2P ») and `POST /api/series` gives both the same answer to rule (1),
+ * temperature, conformity and decision. No technician (RETOUR-LABO-06-10.md
+ * §9.3): the responsable des paramètres assigns it on the programme sheet.
  */
 type LineIntake = {
+  /** Rule (1) of the bon: null until the counter answers — never pre-answered. */
+  exploitable: boolean | null;
   temperature: string;
   conformityChoice: boolean | null;
   reason: NonConformityReason | "";
@@ -129,6 +131,13 @@ const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
 ];
 const REASONS = Object.keys(NON_CONFORMITY_REASON_LABELS) as NonConformityReason[];
 const CADRE_NOTE_MAX = 191;
+
+/** An analysis as `GET /api/parameters` sends it — with its aliases, which
+ * the checklist reads to recognise histamine and Salmonella. */
+type CatalogueParameter = ParameterOption & { aliases?: string | null };
+
+/** The id of « Exploitable » on the card of a line — focused when rule (1) is unanswered. */
+const exploitableAnchor = (key: string) => `exploitable-${key}`;
 
 const CHIP_ON = "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20";
 const CHIP_OFF = "border-slate-200 text-slate-600 hover:border-slate-300";
@@ -179,7 +188,7 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [natures, setNatures] = useState<NatureOption[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
-  const [parametersByType, setParametersByType] = useState<Partial<Record<SampleType, ParameterOption[]>>>({});
+  const [parametersByType, setParametersByType] = useState<Partial<Record<SampleType, CatalogueParameter[]>>>({});
   const [loadingTypes, setLoadingTypes] = useState<Set<SampleType>>(new Set());
   const requestedTypes = useRef<Set<SampleType>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -215,7 +224,7 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
     setLoadingTypes((prev) => new Set(prev).add(type));
     fetch(`/api/parameters?category=${type}`)
       .then((r) => r.json())
-      .then((data: ParameterOption[]) => {
+      .then((data: CatalogueParameter[]) => {
         setParametersByType((prev) => ({ ...prev, [type]: Array.isArray(data) ? data : [] }));
       })
       .catch(() => {
@@ -296,7 +305,21 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
   }
 
   function intakeOf(key: string): LineIntake {
-    return intake[key] ?? { temperature: "", conformityChoice: null, reason: "", note: "", destroy: false };
+    return intake[key] ?? { exploitable: null, temperature: "", conformityChoice: null, reason: "", note: "", destroy: false };
+  }
+
+  /**
+   * Rule (1) answered for the line. « Non exploitable » makes it non conform
+   * with the motif of rule (1); « Exploitable » afterwards drops that motif.
+   */
+  function answerExploitable(key: string, exploitable: boolean) {
+    const current = intakeOf(key);
+    updateIntake(
+      key,
+      exploitable
+        ? { exploitable, reason: current.reason === "NON_EXPLOITABLE" ? "" : current.reason }
+        : { exploitable, reason: "NON_EXPLOITABLE" }
+    );
   }
 
   function updateIntake(key: string, patch: Partial<LineIntake>) {
@@ -322,7 +345,13 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
     const index = lines.findIndex((l) => l.key === key);
     if (index < 0) return;
     const copy = duplicateDraft(lines[index], natures);
-    setIntake((current) => ({ ...current, [copy.key]: { ...intakeOf(key) } }));
+    // The copy is another sample: rule (1) is answered for it again, and
+    // the motif of rule (1) does not travel without its answer.
+    const source = intakeOf(key);
+    setIntake((current) => ({
+      ...current,
+      [copy.key]: { ...source, exploitable: null, reason: source.reason === "NON_EXPLOITABLE" ? "" : source.reason },
+    }));
     setLines((prev) => {
       const at = prev.findIndex((l) => l.key === key);
       return at < 0 ? prev : [...prev.slice(0, at + 1), copy, ...prev.slice(at + 1)];
@@ -335,9 +364,10 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
   }
 
   /**
-   * Live rules for one line: the acceptance rules of each sample it becomes
-   * (one per ticked family — 100 g micro, 300 g physico-chimie), the
-   * proposal and the effective conformity, shared by both samples.
+   * Live rules for one line: the seven rules of the bon for each sample it
+   * becomes (one per ticked family — 100 g micro, 300 g physico-chimie),
+   * merged into one checklist, the proposal and the effective conformity,
+   * shared by both samples.
    */
   function evaluate(line: LineDraft) {
     const category = lineCategory(natures, line);
@@ -346,15 +376,16 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
     const samples = lineNatures(natures, line);
     const families = samples.map((s) => s.family);
     const extra = intakeOf(line.key);
-    const { checks, familyBlocking, proposal } = depositLineChecks(
+    const { rows, familyBlocking, proposal } = depositLineChecklist(
       {
         lineKind: line.lineKind,
         families,
-        parameters: ticked.map((p) => ({ name: p.name, family: parameterFamily(p) })),
+        parameters: ticked.map((p) => ({ name: p.name, aliases: p.aliases ?? null, family: parameterFamily(p) })),
         quantity: numberOrNull(line.quantity),
         quantityUnit: line.quantityUnit,
         receptionTemperature: numberOrNull(extra.temperature),
         unitCount: line.unitCount,
+        exploitable: extra.exploitable,
       },
       thresholds
     );
@@ -366,7 +397,7 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
       twins: samples.length > 1,
       names: ticked.map((p) => p.name),
       extra,
-      checks,
+      rows,
       familyBlocking,
       proposal,
       conformity,
@@ -402,6 +433,12 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
       const problem = lineDraftError(line, natures, { requirePlace: false });
       if (problem) return setStepError(sampleLineMessage(n, problem), n);
       const { conformity, reason, extra } = evaluate(line);
+      // Rule (1) is answered for every line — the API refuses otherwise.
+      if (extra.exploitable === null) {
+        setStepError(sampleLineMessage(n, EXPLOITABLE_MESSAGES.missing), n);
+        requestAnimationFrame(() => document.getElementById(exploitableAnchor(line.key))?.focus({ preventScroll: true }));
+        return false;
+      }
       if (!conformity && !reason) return setStepError(sampleLineMessage(n, "Choisissez le motif de non-conformité."), n);
       if (!conformity && reason === "AUTRE" && !extra.note.trim()) {
         return setStepError(sampleLineMessage(n, "Précisez le motif « autre »."), n);
@@ -437,6 +474,7 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
             const { conformity, reason, extra, destroy } = evaluate(line);
             return {
               ...linePayload(line),
+              exploitable: extra.exploitable,
               receptionTemperature: extra.temperature,
               conformity,
               conformityReason: conformity ? undefined : reason,
@@ -818,7 +856,7 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
 
           {lines.map((line, index) => {
             const number = index + 1;
-            const { families, twins, checks, familyBlocking, proposal, conformity, reason, extra, destroy } = evaluate(line);
+            const { families, twins, rows, familyBlocking, proposal, conformity, reason, extra, destroy } = evaluate(line);
             const category = lineCategory(natures, line);
             const [microRef, chimieRef] = lineSampleRefs(number, families);
             return (
@@ -853,8 +891,8 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
                   {twins && (
                     <p className="mt-1 text-xs text-slate-500">
                       Deux familles cochées : deux échantillons, {microRef} (microbiologie) et {chimieRef}{" "}
-                      (physico-chimie), chacun avec son N° de contrôle. La température, la conformité et la décision
-                      saisies ici valent pour les deux.
+                      (physico-chimie), chacun avec son N° de contrôle. La réponse à la règle (1), la température,
+                      la conformité et la décision saisies ici valent pour les deux.
                     </p>
                   )}
                   <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -874,7 +912,15 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
                     </div>
                   </div>
 
-                  <Checklist checks={checks} />
+                  <Checklist
+                    rows={rows}
+                    exploitable={{
+                      value: extra.exploitable,
+                      onChange: (exploitable) => answerExploitable(line.key, exploitable),
+                      id: exploitableAnchor(line.key),
+                      invalid: errorLine === number && extra.exploitable === null,
+                    }}
+                  />
 
                   <fieldset className="mt-4">
                     <legend className="text-sm font-semibold text-slate-700">Conformité</legend>
@@ -884,8 +930,11 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
                     </div>
                     {proposal.forced && (
                       <p className="mt-1.5 text-xs text-rose-700">
-                        Une règle bloquante s&apos;applique : corrigez la mesure ou réceptionnez{" "}
-                        {twins ? "les deux échantillons" : "l'échantillon"} comme non conforme{twins ? "s" : ""}.
+                        {proposal.rule === 1
+                          ? `Échantillon non exploitable (règle 1) : ${twins ? "les deux échantillons sont réceptionnés non conformes" : "il est réceptionné non conforme"}.`
+                          : `La règle (${proposal.rule}) n'est pas respectée : corrigez la mesure ou réceptionnez ${
+                              twins ? "les deux échantillons" : "l'échantillon"
+                            } comme non conforme${twins ? "s" : ""}.`}
                         {twins && familyBlocking
                           ? " Elle ne concerne qu'une famille : pour réceptionner l'autre comme conforme, dupliquez l'échantillon et ne cochez qu'une famille sur chaque copie."
                           : ""}
@@ -906,7 +955,7 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
                           className="input-field px-4"
                         >
                           <option value="">Choisir un motif</option>
-                          {REASONS.map((r) => (
+                          {REASONS.filter((r) => r !== "NON_EXPLOITABLE" || extra.exploitable === false).map((r) => (
                             <option key={r} value={r}>{NON_CONFORMITY_REASON_LABELS[r]}</option>
                           ))}
                         </select>

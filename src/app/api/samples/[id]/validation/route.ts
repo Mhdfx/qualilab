@@ -183,7 +183,7 @@ export async function POST(
     } catch (error) {
       if ((error as { code?: string }).code === "P2025") {
         return NextResponse.json(
-          { error: "Cet échantillon vient d'être approuvé ou renvoyé par quelqu'un d'autre." },
+          { error: "Cet échantillon vient d'être validé administrativement ou renvoyé par quelqu'un d'autre." },
           { status: 409 }
         );
       }

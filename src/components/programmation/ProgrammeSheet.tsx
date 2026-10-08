@@ -982,9 +982,9 @@ export function ProgrammeSheet({
           index={6}
           icon={ClipboardCheck}
           title="Vérification d'entrée"
-          hint="Les règles de recevabilité de la réception, recalculées avec les analyses et les unités programmées."
+          hint="Les sept règles du bon de réception, recalculées avec les analyses et les unités programmées."
         />
-        <Checklist checks={checks} />
+        <Checklist rows={checks} />
         <p className="mt-3 text-xs text-slate-500">
           La réception a déjà accepté cet échantillon : ces rappels n&apos;empêchent pas la confirmation. Une identification à corriger ou un échantillon à annuler passe par les verbes ci-dessous.
         </p>

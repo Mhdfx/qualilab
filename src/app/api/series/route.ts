@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
 import type { Prisma, SampleStatus } from "@/generated/prisma/client";
 import { requireApiRole } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { pageParams, toPage } from "@/lib/pagination";
 import { getLabSettings } from "@/lib/lab-settings";
-import { evaluateReception } from "@/lib/reception-rules";
+import {
+  evaluateReception,
+  parameterSpellings,
+  receptionChecklist,
+  type ChecklistRow,
+  type ReceptionLine,
+} from "@/lib/reception-rules";
 import { notifyDestroyed } from "@/lib/destruction-notice";
 import { createSerie, planSerieSamples, SerieCreationError } from "@/lib/serie-create";
 import { sampleLineMessage, validateSerie, type NatureRef } from "@/lib/serie-input";
@@ -103,6 +110,13 @@ export async function GET(request: Request) {
  * A PRELEVEUR creates a VISITE (their own field work). The réception and the
  * admin may create either kind: a VISITE keyed in from a paper protocol, or
  * a DEPOT brought to the counter, received on the spot.
+ *
+ * A deposit runs the seven rules of the bon de réception as a checklist on
+ * each sample (retour du 08/10): rule (1), exploitable or not, is answered
+ * for every line (`validateSerie`); the measurable rules are recomputed here
+ * with the laboratory's thresholds — histamine and Salmonella recognised on
+ * the analyses' names and aliases — and each sample's checklist goes to its
+ * SAMPLE_RECEIVED audit, as at the reception of a visit.
  */
 export async function POST(request: Request) {
   const session = await requireApiRole("PRELEVEUR", "RECEPTIONNISTE", "ADMIN");
@@ -135,6 +149,9 @@ export async function POST(request: Request) {
   }
   const lines = checked.value.lines;
 
+  // A deposit sample's checklist, keyed « lineIndex:family » — for its audit.
+  const checklists = new Map<string, ChecklistRow[]>();
+
   try {
     // A deposit is received on the spot: the acceptance rules run here, as
     // they do for a visit at reception, on each sample the line becomes (the
@@ -149,25 +166,26 @@ export async function POST(request: Request) {
           ? []
           : await prisma.analysisParameter.findMany({
               where: { id: { in: parameterIds } },
-              select: { id: true, name: true },
+              select: { id: true, name: true, aliases: true },
             });
-      const nameOf = new Map(parameters.map((p) => [p.id, p.name]));
+      const spellingsOf = new Map(parameters.map((p) => [p.id, parameterSpellings(p)]));
       for (const [index, line] of lines.entries()) {
-        if (!line.conformity) continue;
         for (const planned of plans[index]) {
-          const checks = evaluateReception(
-            {
-              lineKind: line.lineKind,
-              family: planned.family,
-              parameterNames: planned.parameterIds.map((id) => nameOf.get(id) ?? ""),
-              quantity: line.quantity,
-              quantityUnit: line.quantityUnit,
-              receptionTemperature: line.receptionTemperature,
-              unitCount: line.unitCount,
-            },
-            settings
+          const measured: ReceptionLine = {
+            lineKind: line.lineKind,
+            family: planned.family,
+            parameterNames: planned.parameterIds.flatMap((id) => spellingsOf.get(id) ?? []),
+            quantity: line.quantity,
+            quantityUnit: line.quantityUnit,
+            receptionTemperature: line.receptionTemperature,
+            unitCount: line.unitCount,
+          };
+          checklists.set(
+            `${index}:${planned.family}`,
+            receptionChecklist(measured, settings, { exploitable: line.exploitable })
           );
-          const blocking = checks.find((c) => c.level === "BLOQUANT");
+          if (!line.conformity) continue;
+          const blocking = evaluateReception(measured, settings).find((c) => c.level === "BLOQUANT");
           if (blocking) {
             return NextResponse.json(
               {
@@ -196,6 +214,42 @@ export async function POST(request: Request) {
       where: { id: created.id },
       select: serieSelectFor(session.role),
     });
+    if (created.kind === "DEPOT") {
+      // Each deposit sample is received at its creation: its own entry, with
+      // the seven rules of the bon as checked at the counter.
+      const written = new Map(serie.samples.map((s) => [s.id, s]));
+      await Promise.all(
+        created.samples.map((sample) => {
+          const line = lines[sample.lineIndex];
+          const row = written.get(sample.id);
+          return logAudit({
+            actorId: session.id,
+            action: "SAMPLE_RECEIVED",
+            entity: "Sample",
+            entityId: sample.id,
+            metadata: {
+              from: null,
+              to: "RECU",
+              deposit: true,
+              code: row?.code ?? null,
+              controlCode: row && "controlCode" in row ? row.controlCode : null,
+              serialNumber: created.serialNumber,
+              lineNumber: sample.lineNumber,
+              ref: `${sample.lineNumber}${sample.twin ?? ""}`,
+              exploitable: line.exploitable,
+              conformity: line.conformity,
+              conformityReason: line.conformityReason,
+              conformityNote: line.conformityNote,
+              destroyed: line.destroy,
+              receptionTemperature: line.receptionTemperature,
+              quantity: line.quantity,
+              quantityUnit: line.quantityUnit,
+              checklist: checklists.get(`${sample.lineIndex}:${sample.family}`) ?? null,
+            },
+          });
+        })
+      );
+    }
     return NextResponse.json(serializeSerie(serie, serieStatus(serie.samples)), { status: 201 });
   } catch (error) {
     if (error instanceof SerieCreationError) {

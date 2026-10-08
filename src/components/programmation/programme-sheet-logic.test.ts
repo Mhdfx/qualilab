@@ -306,18 +306,66 @@ describe("technicians", () => {
 });
 
 describe("entry check and billing", () => {
-  it("recomputes the reception's rules with the programmed analyses and units, never blocking", () => {
-    const draft = initialDraft(received, referential);
-    const checks = entryChecks(sample, draft, referential, DEFAULT_THRESHOLDS);
-    // 50 g of food for microbiology would block at reception: a warning here.
-    const quantity = checks.find((c) => c.rule === "ALIMENT_MICRO_POIDS");
-    expect(quantity?.level).toBe("AVERTISSEMENT");
-    expect(checks.every((c) => c.level !== "BLOQUANT")).toBe(true);
+  const ruleRow = <T extends { n: number }>(rows: T[], n: number) => rows.find((r) => r.n === n)!;
 
-    // Histamine programmed with one unit: the rule reads the draft, not the line.
-    const histamine = entryChecks(sample, toggleParameter(draft, "p-hist", referential), referential, DEFAULT_THRESHOLDS);
-    expect(histamine.find((c) => c.rule === "HISTAMINE_UNITES")?.level).toBe("AVERTISSEMENT");
-    expect(entryChecks(sample, { ...toggleParameter(draft, "p-hist", referential), unitCount: 9 }, referential, DEFAULT_THRESHOLDS).find((c) => c.rule === "HISTAMINE_UNITES")?.level).toBe("OK");
+  it("recomputes the seven rules of the bon with the programmed analyses and units, never refusing", () => {
+    const draft = initialDraft(received, referential);
+    const rows = entryChecks({ ...sample, receptionExploitable: true }, draft, referential, DEFAULT_THRESHOLDS);
+    expect(rows.map((r) => r.n)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    // 50 g of food for microbiology would be refused at reception: « à vérifier » here.
+    expect(ruleRow(rows, 2)).toMatchObject({ status: "A_VERIFIER", reason: "QUANTITE_INSUFFISANTE", rules: ["ALIMENT_MICRO_POIDS"] });
+    expect(rows.every((r) => r.status !== "NON_CONFORME" && r.status !== "A_CONFIRMER")).toBe(true);
+    expect(ruleRow(rows, 1)).toMatchObject({ status: "CONFORME", detail: "Déclaré exploitable" });
+  });
+
+  it("shows rule (1) as the réceptionniste answered it", () => {
+    const draft = initialDraft(received, referential);
+    expect(ruleRow(entryChecks({ ...sample, receptionExploitable: false }, draft, referential, DEFAULT_THRESHOLDS), 1)).toMatchObject({
+      status: "A_VERIFIER",
+      detail: "Déclaré non exploitable",
+      reason: "NON_EXPLOITABLE",
+    });
+    // Received before the checklist: no answer, said so.
+    for (const old of [sample, { ...sample, receptionExploitable: null }]) {
+      expect(ruleRow(entryChecks(old, draft, referential, DEFAULT_THRESHOLDS), 1)).toMatchObject({
+        status: "A_VERIFIER",
+        detail: "Non renseigné : échantillon réceptionné avant la checklist",
+      });
+    }
+  });
+
+  it("checks histamine (physico-chimie) on the « P » sample, beside the 300 g, with the programmed units", () => {
+    // The fixture files histamine under CHIMIE, as the lab does: the rule
+    // follows the analysis, whatever the sample's family.
+    const chimieSample = { ...sample, nature: { ...referential.natures[3], legacyType: "ALIMENTAIRE" as const }, quantity: 900, receptionExploitable: true };
+    const draft = { ...initialDraft(received, referential), parameterIds: [] };
+    const histamine = toggleParameter(draft, "p-hist", referential);
+    const one = entryChecks(chimieSample, histamine, referential, DEFAULT_THRESHOLDS);
+    expect(ruleRow(one, 3)).toMatchObject({ status: "CONFORME", rules: ["ALIMENT_CHIMIE_POIDS"] });
+    expect(ruleRow(one, 7)).toMatchObject({ status: "A_VERIFIER", rules: ["HISTAMINE_UNITES", "HISTAMINE_POIDS"] });
+    expect(ruleRow(entryChecks(chimieSample, { ...histamine, unitCount: 9 }, referential, DEFAULT_THRESHOLDS), 7)).toMatchObject({
+      status: "CONFORME",
+    });
+    // Nothing programmed yet: rule (7) says when it applies.
+    expect(ruleRow(entryChecks(chimieSample, draft, referential, DEFAULT_THRESHOLDS), 7)).toMatchObject({
+      status: "SANS_OBJET",
+      detail: "Si l'histamine est demandée : 9 × 100 g — vérifié au programme",
+    });
+  });
+
+  it("recognises histamine under an alias of the programmed analysis", () => {
+    const withAlias: ProgrammeReferentialData = {
+      ...referential,
+      parameters: [
+        ...referential.parameters,
+        { id: "p-amine", name: "Amine biogène test", aliases: "Histamine HPLC", unit: "mg/kg", threshold: null, calcFactor: 1, family: "CHIMIE", category: "ALIMENTAIRE" },
+      ],
+    };
+    const draft = { ...initialDraft(received, withAlias), parameterIds: ["p-amine"], unitCount: 9 };
+    expect(ruleRow(entryChecks({ ...sample, quantity: 900 }, draft, withAlias, DEFAULT_THRESHOLDS), 7)).toMatchObject({
+      status: "CONFORME",
+      rules: ["HISTAMINE_UNITES", "HISTAMINE_POIDS"],
+    });
   });
 
   it("prices each programmed analysis from the catalogue and counts the ones to price by hand", () => {

@@ -2,7 +2,12 @@ import type { Family, ProgrammePriority } from "@/generated/prisma/enums";
 import { pickCriterion } from "@/lib/interpretation";
 import { ANALYSIS_FAMILY_LABELS } from "@/lib/labels";
 import { roundMoney } from "@/lib/invoice-math";
-import { evaluateReception, type Check, type ReceptionThresholds } from "@/lib/reception-rules";
+import {
+  parameterSpellings,
+  receptionChecklist,
+  type ChecklistRow,
+  type ReceptionThresholds,
+} from "@/lib/reception-rules";
 import { MAX_UNITS } from "@/lib/series";
 import { fromLocalInput, toLocalInput } from "@/components/preleveur/visit-types";
 import type {
@@ -410,22 +415,28 @@ export function billingLines(
 }
 
 /**
- * The reception's acceptance rules, recomputed with the programmed analyses
- * and units (PROGRAMME.md §4, Vérification d'entrée). Never blocking here —
- * the reception already accepted the line — so a rule the reception would
- * refuse on is only a warning.
+ * The reception's checklist — the seven rules of the bon de réception —
+ * recomputed with the programmed analyses and units (PROGRAMME.md §4,
+ * Vérification d'entrée). Every row is informative here: the reception
+ * already accepted the line, so a rule it would refuse on is only « à
+ * vérifier ». Rule (1) shows what the réceptionniste answered
+ * (`receptionExploitable`); a line received before the checklist has no
+ * answer, and says so.
  */
 export function entryChecks(
-  sample: Pick<ProgrammeSampleData, "lineKind" | "nature" | "quantity" | "quantityUnit" | "receptionTemperature">,
+  sample: Pick<ProgrammeSampleData, "lineKind" | "nature" | "quantity" | "quantityUnit" | "receptionTemperature"> & {
+    receptionExploitable?: boolean | null;
+  },
   draft: ProgrammeDraft,
   referential: ProgrammeReferentialData,
   thresholds: ReceptionThresholds
-): Check[] {
+): ChecklistRow[] {
   const parameterNames = draft.parameterIds.flatMap((id) => {
     const parameter = referential.parameters.find((candidate) => candidate.id === id);
-    return parameter ? [parameter.name] : [];
+    return parameter ? parameterSpellings(parameter) : [];
   });
-  return evaluateReception(
+  const exploitable = sample.receptionExploitable ?? null;
+  return receptionChecklist(
     {
       lineKind: sample.lineKind,
       family: sample.nature.family,
@@ -435,8 +446,14 @@ export function entryChecks(
       receptionTemperature: sample.receptionTemperature,
       unitCount: draft.unitCount,
     },
-    thresholds
-  ).map((check) => (check.level === "BLOQUANT" ? { ...check, level: "AVERTISSEMENT" } : check));
+    thresholds,
+    { exploitable }
+  ).map((row): ChecklistRow => {
+    if (row.key === "EXPLOITABLE" && exploitable === null) {
+      return { ...row, status: "A_VERIFIER", detail: "Non renseigné : échantillon réceptionné avant la checklist" };
+    }
+    return row.status === "NON_CONFORME" ? { ...row, status: "A_VERIFIER" } : row;
+  });
 }
 
 const text = (value: string) => (value.trim() ? value.trim() : null);

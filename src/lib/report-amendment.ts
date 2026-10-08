@@ -51,7 +51,7 @@ export function reopenRefusal(input: {
   if (input.role !== "ADMIN") return "Seul l'administrateur peut rouvrir un rapport pour amendement.";
   if (input.amendmentPending) return "Un amendement de ce rapport est déjà en cours.";
   if (!REOPENABLE_STATUSES.includes(input.status)) {
-    return "Seul un rapport approuvé peut être rouvert pour amendement.";
+    return "Seul un rapport validé peut être rouvert pour amendement.";
   }
   if (typeof input.reason !== "string" || input.reason.trim().length < 3) {
     return "Indiquez le motif de l'amendement (au moins 3 caractères) : il sera imprimé sur le rapport amendé.";
@@ -69,7 +69,7 @@ export function reopenRefusal(input: {
 export function cancelRefusalForReport(report: { amendmentPending: boolean } | null | undefined): string | null {
   if (!report) return null;
   return report.amendmentPending
-    ? "Un amendement de ce rapport est en cours : terminez-le (validation puis approbation) au lieu d'annuler l'échantillon."
+    ? "Un amendement de ce rapport est en cours : terminez-le (validation technique puis validation administrative) au lieu d'annuler l'échantillon."
     : "Un rapport a déjà été émis pour cet échantillon : utilisez l'amendement pour le corriger.";
 }
 

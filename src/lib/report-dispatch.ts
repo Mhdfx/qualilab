@@ -642,7 +642,7 @@ export async function sendReport(sampleId: string, actorId: string | null) {
     if (!approved) {
       return {
         ok: false as const,
-        error: "Un amendement de ce rapport est en cours : le rapport amendé partira à son approbation.",
+        error: "Un amendement de ce rapport est en cours : le rapport amendé partira à la validation administrative.",
       };
     }
     // Self-healing: the approval went through but the amended version was

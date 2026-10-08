@@ -36,10 +36,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   // Metadata renders alongside the layout's redirect: the sample's blind
   // reference goes in the title only for a role that may open the page.
   const session = await getSession();
-  if (!session || !roleAllowed(session.role, ["VALIDATEUR", "ADMIN"])) return { title: "Contrôle qualité" };
+  if (!session || !roleAllowed(session.role, ["VALIDATEUR", "ADMIN"])) return { title: "Validation des résultats" };
   const { id } = await params;
   const sample = await prisma.sample.findUnique({ where: { id }, select: { code: true, controlCode: true } });
-  return { title: sample ? `Contrôle ${labReference(sample)}` : "Contrôle qualité" };
+  return { title: sample ? `Contrôle ${labReference(sample)}` : "Validation des résultats" };
 }
 
 export default async function ValidationDetailPage({
@@ -172,7 +172,7 @@ export default async function ValidationDetailPage({
       </Link>
 
       <PageHeader
-        badge="Contrôle qualité"
+        badge="Validation des résultats"
         title={labReference(sample)}
         subtitle="Vérifiez chaque résultat face à son seuil avant de valider ou de renvoyer l'échantillon."
       />
@@ -379,6 +379,7 @@ export default async function ValidationDetailPage({
             validatedAt={sample.validatedAt ? formatDateTime(sample.validatedAt) : null}
             nonConformes={nonConformes}
             alertables={alertables}
+            alertsAtTechnical={settings.alertAfterTechnicalValidation}
             reportNumber={printedNumber}
             sentTo={sample.report?.sentTo ?? null}
             emailLive={!!process.env.RESEND_API_KEY}

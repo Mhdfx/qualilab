@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { renderPdf } from "@/lib/pdf";
-import { buildBenchSheetHtml, type BenchSheetSample } from "@/lib/bench-sheet-html";
+import { BENCH_SHEET_MARGIN, buildBenchSheetHtml, type BenchSheetSample } from "@/lib/bench-sheet-html";
+import { cartoucheTemplate } from "@/lib/cartouche-html";
 import { getCompany } from "@/lib/company-server";
 import { getDocumentReference } from "@/lib/document-reference";
+import { documentLogo } from "@/lib/document-logo";
+import { DOC_TYPE_LABELS } from "@/lib/document-types";
 import { formatIsoDay } from "@/lib/labels";
 import { labReference } from "@/lib/sample-select";
 import { loadBenchPlans } from "@/lib/bench-plan";
@@ -19,6 +22,7 @@ import { sampleDesignation } from "@/lib/document-html";
  * the bench (programmed or under analysis, PROGRAMME.md §6) that were
  * received that day; a technician only gets the échantillons they hold or
  * share, and on a shared one only their own parameters — the sheet is theirs.
+ * Every page carries the paper's quality cartouche (PG06/EN01).
  */
 export async function GET(request: Request) {
   const session = await requireApiRole("PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "ADMIN");
@@ -107,7 +111,12 @@ export async function GET(request: Request) {
 
   try {
     const [company, reference] = await Promise.all([getCompany(), getDocumentReference("FEUILLE_PAILLASSE")]);
-    const pdf = await renderPdf(buildBenchSheetHtml(start, samples, company, reference));
+    const header = cartoucheTemplate({
+      title: DOC_TYPE_LABELS.FEUILLE_PAILLASSE,
+      reference,
+      logoDataUri: await documentLogo(company),
+    });
+    const pdf = await renderPdf(buildBenchSheetHtml(start, samples), { header, margin: BENCH_SHEET_MARGIN });
     const stamp = formatIsoDay(start);
 
     return new NextResponse(new Uint8Array(pdf), {

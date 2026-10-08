@@ -102,7 +102,7 @@ export function ValidationQueue({
                           >
                             <Clock className="h-3 w-3" aria-hidden="true" />
                             {state === "AWAITING_ADMIN"
-                              ? "Validé — attente admin"
+                              ? "Validé techniquement — attente de la validation administrative"
                               : "À valider"}
                           </span>
                           {item.report?.amendmentPending && (

@@ -16,7 +16,7 @@ import {
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import type { ApprovalState } from "@/lib/sample-status";
-import type { Role } from "@/lib/roles";
+import { ROLE_LABELS, type Role } from "@/lib/roles";
 
 type ValidationPanelProps = {
   sampleId: string;
@@ -27,6 +27,8 @@ type ValidationPanelProps = {
   nonConformes: number;
   /** Non-conform results on a germ flagged « sensible » — the only ones that alert. */
   alertables: number;
+  /** LabSettings.alertAfterTechnicalValidation: the alerts leave at step 1, not step 2. */
+  alertsAtTechnical: boolean;
   reportNumber: string | null;
   sentTo: string | null;
   /** False when no mail provider is configured yet — sends are recorded, not delivered. */
@@ -61,6 +63,7 @@ export function ValidationPanel({
   validatedAt,
   nonConformes,
   alertables,
+  alertsAtTechnical,
   reportNumber,
   sentTo,
   emailLive,
@@ -164,7 +167,7 @@ export function ValidationPanel({
           </p>
           {amendment.note && <p className="mt-1">Motif : {amendment.note}</p>}
           <p className="mt-1 text-xs text-rose-800">
-            À l&apos;approbation, le rapport {amendment.nextNumber} annulera et remplacera le rapport{" "}
+            À la validation administrative, le rapport {amendment.nextNumber} annulera et remplacera le rapport{" "}
             {amendment.currentNumber}, et sera envoyé au client.
           </p>
         </div>
@@ -174,7 +177,7 @@ export function ValidationPanel({
         <Step
           index={1}
           title="Validation technique"
-          who="Validateur"
+          who={ROLE_LABELS.VALIDATEUR}
           done={state !== "AWAITING_TECHNICAL"}
           current={state === "AWAITING_TECHNICAL"}
           detail={
@@ -185,8 +188,8 @@ export function ValidationPanel({
         />
         <Step
           index={2}
-          title="Approbation finale"
-          who="Administrateur"
+          title="Validation administrative"
+          who={ROLE_LABELS.ADMIN}
           done={state === "APPROVED"}
           current={state === "AWAITING_ADMIN"}
           detail={
@@ -237,7 +240,9 @@ export function ValidationPanel({
           {alertables > 0
             ? amendment
               ? "Une alerte de contamination ne sera renvoyée au client que pour un résultat modifié depuis le rapport en vigueur."
-              : "Une alerte de contamination sera envoyée au client après approbation."
+              : alertsAtTechnical
+                ? "Une alerte de contamination est envoyée au client dès la validation technique."
+                : "Une alerte de contamination sera envoyée au client après la validation administrative."
             : "Aucun paramètre sensible n'est dépassé : le rapport partira sans alerte de contamination."}
         </p>
       )}
@@ -364,22 +369,22 @@ export function ValidationPanel({
               className="w-full"
             >
               <Stamp className="h-4 w-4" aria-hidden="true" />
-              {busy === "approve" ? "Approbation…" : "Approuver définitivement"}
+              {busy === "approve" ? "Validation…" : "Valider administrativement"}
             </PrimaryButton>
           )}
 
           {state === "AWAITING_ADMIN" && role === "ADMIN" && signedStepOne && (
             <p className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
               <Lock className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-              Vous avez signé la validation technique : l&apos;approbation finale
-              revient à un autre administrateur.
+              Vous avez signé la validation technique : la validation
+              administrative revient à un autre administrateur.
             </p>
           )}
 
           {state === "AWAITING_ADMIN" && role !== "ADMIN" && (
             <p className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
               <Lock className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-              Validé techniquement. L&apos;approbation finale revient à
+              Validé techniquement. La validation administrative revient à
               l&apos;administrateur.
             </p>
           )}

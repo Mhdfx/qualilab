@@ -311,6 +311,9 @@ export async function createSerie(
               controlCode,
               receivedById: isDeposit ? actor.id : null,
               receivedAt: isDeposit ? now : null,
+              // Rule (1) of the bon, answered at the counter for the line —
+              // both samples of a two-family line share it.
+              receptionExploitable: isDeposit ? line.exploitable : null,
               conformity: isDeposit ? line.conformity : null,
               conformityReason: isDeposit ? line.conformityReason : null,
               conformityNote: isDeposit ? line.conformityNote : null,

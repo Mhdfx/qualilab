@@ -111,13 +111,14 @@ export function benchViewWhere(view: BenchView | null, session: { id: string; ro
 /** The views of the validation queue (samples whose results are submitted). */
 export const VALIDATION_VIEWS = {
   a_valider: "À valider",
-  attente_admin: "Attente admin",
+  attente_admin: "Validation administrative",
 } as const;
 export type ValidationView = keyof typeof VALIDATION_VIEWS;
 
 /**
- * Is this submitted sample in the view? « Attente admin » once the technical
- * validation is signed, « À valider » before; no view keeps them all.
+ * Is this submitted sample in the view? « Validation administrative » once
+ * the technical validation is signed, « À valider » before; no view keeps
+ * them all.
  */
 export function inValidationView(view: ValidationView | null, item: { validatedById: string | null }): boolean {
   if (view === null) return true;

@@ -186,6 +186,10 @@ enum NonConformityReason {
   DELAI
   IDENTIFICATION
   AUTRE
+  /// Rule (1) of the bon de réception: not usable for the analysis (fish
+  /// head, bones…) — the réceptionniste's answer (retour du 08/10).
+  /// Appended last: the MariaDB ENUM grows in place, no table copy.
+  NON_EXPLOITABLE
 }
 
 /// FACTURATION.md §1 — BROUILLON → EN_ATTENTE (émise) → PAYEE (soldée);
@@ -496,6 +500,10 @@ model Sample {
   conformityNote   String?              @db.Text
   /// Coded motif of the non-conformity (Phase 9); the note keeps the detail.
   conformityReason NonConformityReason?
+  /// Rule (1) of the bon de réception, answered for every sample since the
+  /// checklist (retour du 08/10): exploitable for the analysis or not.
+  /// Null = received before the checklist existed.
+  receptionExploitable Boolean?
   /// Held at reception: non-conform while the lab's policy
   /// (LabSettings.blockNonConformAtReception) blocks such samples. It stays
   /// RECU and unassigned until an ADMIN releases it to a technician.

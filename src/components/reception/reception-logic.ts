@@ -9,9 +9,11 @@ import type {
 import { AIR_METHOD_LABELS, HANDS_STATE_LABELS, LINE_KIND_LABELS, withSurfaceState } from "@/lib/labels";
 import { LINE_FAMILIES, type LineFamily } from "@/lib/nature-family";
 import {
-  evaluateReception,
+  parameterSpellings,
   proposedConformity,
-  type Check,
+  receptionChecklist,
+  type ChecklistRow,
+  type ChecklistStatus,
   type ReceptionThresholds,
 } from "@/lib/reception-rules";
 import { sampleRef } from "@/lib/reception-input";
@@ -145,37 +147,61 @@ export function missingFamilies(serie: {
 
 // ---- the acceptance rules of a deposit line -------------------------------------
 
-/** The checks of one sample a line becomes. */
-export type FamilyChecks = { family: LineFamily | null; checks: Check[] };
+/** The checklist of one sample a line becomes. */
+export type FamilyRows = { family: LineFamily | null; rows: ChecklistRow[] };
+
+/** Which of two different rows the line shows — the one that weighs most. */
+const STATUS_WEIGHT: Record<ChecklistStatus, number> = {
+  SANS_OBJET: 0,
+  CONFORME: 1,
+  A_VERIFIER: 2,
+  A_CONFIRMER: 3,
+  NON_CONFORME: 4,
+};
+
+/** « Quantité 150 g… » → « quantité 150 g… » after a family's title. */
+function lowerFirst(text: string) {
+  const [first, second] = [...text];
+  if (!first || second === undefined || second !== second.toLocaleLowerCase("fr")) return text;
+  return first.toLocaleLowerCase("fr") + text.slice(first.length);
+}
 
 /**
- * One list for the card of a two-family line: a rule both samples share
- * (temperature at arrival, cold chain) is shown once; a rule of one family
- * (100 g micro / 300 g physico-chimie) is headed by its family.
- * `familyBlocking`: a blocking rule holds for one family only — the other
- * sample could be conform on its own.
+ * One checklist for the card of a two-family line — still the seven rules of
+ * the paper, in its order. A row both samples share (rule 1, the
+ * temperature, a quantity rule that concerns neither) is shown once; a row
+ * that differs keeps what concerns each sample, headed by its family
+ * (« Physico-chimie : quantité 150 g < 300 g requis »), and takes the
+ * weightiest status. `familyBlocking`: one sample is non conform and the
+ * other is not — the other could be received conform on its own.
  */
-export function mergeFamilyChecks(perSample: readonly FamilyChecks[]): { checks: Check[]; familyBlocking: boolean } {
-  if (perSample.length < 2) return { checks: perSample[0]?.checks ?? [], familyBlocking: false };
-  const shared = (check: Check) =>
-    perSample.every((s) => s.checks.some((c) => c.rule === check.rule && c.level === check.level));
-  const seen = new Set<string>();
-  const checks: Check[] = [];
-  let familyBlocking = false;
-  for (const { family, checks: list } of perSample) {
-    for (const check of list) {
-      const key = shared(check) ? check.rule : `${family ?? ""}:${check.rule}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      if (shared(check) || !family) {
-        checks.push(check);
-        continue;
-      }
-      if (check.level === "BLOQUANT") familyBlocking = true;
-      checks.push({ ...check, rule: key, message: `${FAMILY_TITLES[family]} : ${check.message}` });
+export function mergeFamilyRows(perSample: readonly FamilyRows[]): { rows: ChecklistRow[]; familyBlocking: boolean } {
+  if (perSample.length < 2) return { rows: perSample[0]?.rows ?? [], familyBlocking: false };
+  const failing = (s: FamilyRows) => s.rows.some((row) => row.status === "NON_CONFORME");
+  const familyBlocking = perSample.some(failing) && !perSample.every(failing);
+
+  const rows = perSample[0].rows.map((first, index): ChecklistRow => {
+    const variants = perSample.map((s) => ({ family: s.family, row: s.rows[index] }));
+    if (variants.every(({ row }) => row.status === first.status && row.detail === first.detail)) {
+      return { ...first, rules: [...new Set(variants.flatMap(({ row }) => row.rules))] };
     }
-  }
-  return { checks, familyBlocking };
+    const applicable = variants.filter(({ row }) => row.status !== "SANS_OBJET");
+    const shown = applicable.length > 0 ? applicable : variants;
+    const weightiest = shown.reduce((a, b) => (STATUS_WEIGHT[b.row.status] > STATUS_WEIGHT[a.row.status] ? b : a));
+    const headed = (family: LineFamily | null, detail: string | undefined) =>
+      detail && family ? `${FAMILY_TITLES[family]} : ${lowerFirst(detail)}` : detail;
+    const details = [...new Set(shown.map(({ family, row }) => headed(family, row.detail)).filter(Boolean))];
+    return {
+      n: first.n,
+      key: first.key,
+      text: first.text,
+      status: weightiest.row.status,
+      ...(details.length > 0 ? { detail: details.join(" · ") } : {}),
+      ...(weightiest.row.reason ? { reason: weightiest.row.reason } : {}),
+      rules: shown.flatMap(({ family, row }) => row.rules.map((rule) => (family ? `${family}:${rule}` : rule))),
+    };
+  });
+  return { rows, familyBlocking };
 }
 
 /** What the counter measured on a deposit line, as the rules read it. */
@@ -183,37 +209,43 @@ export type DepositLineInput = {
   lineKind: LineKind;
   /** The ticked families that have a nature (`lineNatures`), micro first. */
   families: readonly LineFamily[];
-  /** The ticked analyses, with their family. */
-  parameters: readonly { name: string; family: Family }[];
+  /** The ticked analyses, with their family and their aliases. */
+  parameters: readonly { name: string; aliases?: string | null; family: Family }[];
   quantity: number | null;
   quantityUnit: QuantityUnit;
   receptionTemperature: number | null;
   unitCount: number;
+  /** Rule (1), one answer for the line — both samples share it. */
+  exploitable: boolean | null;
 };
 
 /**
- * The acceptance rules of a deposit line, run for each sample it becomes —
- * as `POST /api/series` runs them before writing — and the proposal that
- * follows: a blocking rule on either sample makes the line non-conform (the
- * counter's conformity, temperature and decision apply to both samples).
+ * The checklist of a deposit line, computed for each sample it becomes — as
+ * `POST /api/series` computes it before writing — merged into one list, and
+ * the proposal that follows: a NON_CONFORME row on either sample makes the
+ * line non-conform (the counter's answer, temperature, conformity and
+ * decision apply to both samples).
  */
-export function depositLineChecks(line: DepositLineInput, thresholds: ReceptionThresholds) {
+export function depositLineChecklist(line: DepositLineInput, thresholds: ReceptionThresholds) {
   const families: (LineFamily | null)[] = line.families.length > 0 ? [...line.families] : [null];
-  const perSample: FamilyChecks[] = families.map((family) => ({
+  const perSample: FamilyRows[] = families.map((family) => ({
     family,
-    checks: evaluateReception(
+    rows: receptionChecklist(
       {
         lineKind: line.lineKind,
         family: family ?? "AUTRE",
-        parameterNames: line.parameters.filter((p) => family === null || p.family === family).map((p) => p.name),
+        parameterNames: line.parameters
+          .filter((p) => family === null || p.family === family)
+          .flatMap((p) => parameterSpellings(p)),
         quantity: line.quantity,
         quantityUnit: line.quantity === null ? null : line.quantityUnit,
         receptionTemperature: line.receptionTemperature,
         unitCount: line.unitCount,
       },
-      thresholds
+      thresholds,
+      { exploitable: line.exploitable }
     ),
   }));
-  const { checks, familyBlocking } = mergeFamilyChecks(perSample);
-  return { checks, familyBlocking, proposal: proposedConformity(checks) };
+  const { rows, familyBlocking } = mergeFamilyRows(perSample);
+  return { rows, familyBlocking, proposal: proposedConformity(rows) };
 }

@@ -2,12 +2,17 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
+import { parseIsoDay } from "@/lib/date-only";
 
+/**
+ * A calendar date (`@db.Date`): « AAAA-MM-JJ » read as the UTC midnight of
+ * that day, so a re-saved version keeps its dates — never local midnight,
+ * which is the previous UTC day on a runtime ahead of UTC.
+ */
 function dateOrNull(value: unknown): Date | null | "invalid" {
   if (value === undefined || value === null || value === "") return null;
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(value)) return "invalid";
-  const d = new Date(`${value.slice(0, 10)}T00:00:00`);
-  return Number.isNaN(d.getTime()) ? "invalid" : d;
+  if (typeof value !== "string") return "invalid";
+  return parseIsoDay(value.slice(0, 10)) ?? "invalid";
 }
 
 /** A norm version: its label, its dates, and whether it is the one in force. */

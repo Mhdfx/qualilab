@@ -8,7 +8,7 @@ import { StatCard, type StatAccent } from "@/components/ui/StatCard";
 import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
 import { WorkQueue } from "@/components/technicien/WorkQueue";
 
-export const metadata = { title: "Analyses" };
+export const metadata = { title: "Saisie des résultats" };
 
 /** A ceiling, not a page: « Anomalies » reaches the archive, the bench never should. */
 const LIST_LIMIT = 500;
@@ -40,7 +40,7 @@ const EMPTY: Record<BenchView, { title: string; text: string }> = {
   },
   soumis: {
     title: "Aucun résultat en attente de validation",
-    text: "Les échantillons soumis à la validation qualité apparaîtront ici jusqu'à leur validation.",
+    text: "Les échantillons soumis à la validation technique apparaîtront ici jusqu'à leur validation.",
   },
 };
 
@@ -115,8 +115,8 @@ export default async function TechnicienPage({
     <div>
       <PageHeader
         badge="Espace technicien"
-        title="Analyses en laboratoire"
-        subtitle="Saisissez les résultats paramètre par paramètre, puis soumettez-les à la validation qualité."
+        title="Saisie des résultats"
+        subtitle="Saisissez les résultats paramètre par paramètre, puis soumettez-les à la validation technique."
       />
 
       <section aria-label="Indicateurs" className="mb-8">

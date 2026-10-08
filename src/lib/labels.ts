@@ -3,6 +3,7 @@ import type {
   Cadre,
   Family,
   InvoiceStatus,
+  NonConformityReason,
   ProgrammePriority,
   SampleStatus,
   SampleType,
@@ -135,7 +136,14 @@ export const HANDS_STATE_LABELS = {
   NON_LAVEES: "Mains non lavées",
 } as const;
 
+/**
+ * The coded motifs of a non-conformity at reception, in the order the screens
+ * list them — rule (1) of the bon de réception first. The single source of
+ * the accepted motifs: both APIs derive their list from these keys
+ * (`NON_CONFORMITY_REASONS`, serie-input.ts).
+ */
 export const NON_CONFORMITY_REASON_LABELS = {
+  NON_EXPLOITABLE: "Échantillon non exploitable (tête de poisson, os…)",
   CHAINE_FROID: "Rupture de la chaîne du froid",
   TEMPERATURE_MANQUANTE: "Température à l'arrivée non relevée",
   QUANTITE_INSUFFISANTE: "Quantité insuffisante",
@@ -143,7 +151,7 @@ export const NON_CONFORMITY_REASON_LABELS = {
   DELAI: "Délai de transport dépassé",
   IDENTIFICATION: "Identification incomplète",
   AUTRE: "Autre motif",
-} as const;
+} as const satisfies Record<NonConformityReason, string>;
 
 export const CANCEL_REASON_LABELS = {
   NON_EXPLOITABLE: "Échantillon non exploitable",

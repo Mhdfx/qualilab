@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Ban, Building2, Check, KeyRound, Plus, RotateCcw, Search, UserCog, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { ASSIGNABLE_ROLES, PORTAL_ROLE, ROLE_LABELS, type Role } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, PORTAL_ROLE, ROLE_LABELS, roleFunction, type Role } from "@/lib/roles";
 
 /** The client of a « Client (portail) » account (PORTAIL.md §1). */
 export type UserClient = {
@@ -146,6 +146,8 @@ export function UsersManager({
             const isPortal = user.role === PORTAL_ROLE;
             const client = user.client ?? accountClients[user.id] ?? null;
             const clientClosed = !!client && (client.archived || client.mergedIntoId !== null);
+            // The lab's function of the role (08/10), under the name and read with the role picker.
+            const duty = roleFunction(user.role);
             return (
               <li key={user.id} className="px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -166,6 +168,11 @@ export function UsersManager({
                         </span>
                       )}
                     </p>
+                    {duty && (
+                      <p id={`role-duty-${user.id}`} className="mt-0.5 text-xs text-slate-500">
+                        {duty}
+                      </p>
+                    )}
                     {isPortal && (
                       <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                         <Building2 className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
@@ -194,6 +201,7 @@ export function UsersManager({
                     <select
                       id={`role-${user.id}`}
                       value={user.role ?? ""}
+                      aria-describedby={duty ? `role-duty-${user.id}` : undefined}
                       disabled={isSelf || !!busy}
                       onChange={(event) => {
                         const next = event.target.value;
@@ -325,6 +333,7 @@ function CreateUserForm({
   const [role, setRole] = useState<string>("PRELEVEUR");
   const [client, setClient] = useState<PickedClient | null>(null);
   const [saving, setSaving] = useState(false);
+  const duty = roleFunction(role);
 
   async function save() {
     if (saving) return;
@@ -390,6 +399,7 @@ function CreateUserForm({
             id="u-role"
             value={role}
             onChange={(event) => setRole(event.target.value)}
+            aria-describedby={duty ? "u-role-duty" : undefined}
             className="mt-1 min-h-[38px] w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           >
             {ASSIGNABLE_ROLES.map((r) => (
@@ -398,6 +408,11 @@ function CreateUserForm({
               </option>
             ))}
           </select>
+          {duty && (
+            <p id="u-role-duty" className="mt-0.5 text-[11px] text-slate-500">
+              {duty}
+            </p>
+          )}
         </div>
       </div>
       {role === PORTAL_ROLE && (

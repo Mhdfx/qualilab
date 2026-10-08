@@ -24,7 +24,21 @@ export const DOC_TYPE_LABELS: Record<DocType, string> = {
   ETIQUETTE: "Étiquette d'échantillon",
 };
 
-/** The cartouche printed top-right of a document. */
+/**
+ * Where the LIMS prints each document's cartouche — shown beside its row in
+ * /admin/documents, so a version is never edited for a form nothing prints.
+ * null = not printed by the LIMS yet (the paper keeps it).
+ */
+export const DOC_TYPE_PRINTED_ON: Record<DocType, string | null> = {
+  PROTOCOLE: "Protocole de prélèvement (PDF de la visite)",
+  BON_RECEPTION: "Bon de réception (PDF du dépôt)",
+  FEUILLE_PAILLASSE: "Feuille de paillasse (PDF du jour)",
+  CAHIER_PHYSICO: null,
+  RAPPORT: null,
+  ETIQUETTE: null,
+};
+
+/** The cartouche printed at the head of every page of a form (cartouche-html.ts). */
 export type DocumentRef = {
   docType: DocType;
   reference: string;

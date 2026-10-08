@@ -63,7 +63,7 @@ export async function PATCH(
   if (!sample) return NextResponse.json({ error: "Échantillon introuvable." }, { status: 404 });
   if (!CORRECTABLE_STATUSES.includes(sample.status)) {
     return NextResponse.json(
-      { error: "La fiche est figée : l'échantillon est approuvé, envoyé ou annulé." },
+      { error: "La fiche est figée : l'échantillon est validé, envoyé ou annulé." },
       { status: 409 }
     );
   }

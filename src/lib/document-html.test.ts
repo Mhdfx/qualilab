@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { pageCss } from "./cartouche-html";
 import {
+  BON_MARGIN,
+  PROTOCOL_MARGIN,
   buildBonHtml,
   buildProtocolHtml,
   designationHeading,
@@ -9,7 +12,8 @@ import {
   type DocumentLine,
   type SerieDocumentData,
 } from "./document-html";
-import { DEFAULT_THRESHOLDS } from "./reception-rules";
+import { escapeHtml } from "./html-text";
+import { DEFAULT_THRESHOLDS, RECEPTION_RULES, receptionRuleLine } from "./reception-rules";
 
 const base: SerieDocumentData = {
   serialNumber: "2754/26",
@@ -34,7 +38,6 @@ const base: SerieDocumentData = {
   advanceAmount: null,
   advanceMode: null,
   notes: null,
-  reference: { docType: "PROTOCOLE", reference: "PG04/EN01", version: "F", createdOn: new Date("2007-11-26"), updatedOn: new Date("2024-10-01") },
   lines: [
     {
       lineNumber: 1,
@@ -86,11 +89,16 @@ const base: SerieDocumentData = {
 describe("buildProtocolHtml — PG04/EN01", () => {
   const html = buildProtocolHtml(base);
 
-  it("prints the cartouche, the série number and the header fields", () => {
-    expect(html).toContain("Protocole de prélèvement");
-    expect(html).toContain("PG04/EN01");
-    expect(html).toContain("<td>F</td>");
-    expect(html).toContain("26/11/2007");
+  it("leaves the cartouche to the page header, and declares the page box it is printed with", () => {
+    expect(html).toContain("<title>Protocole de prélèvement — série 2754/26</title>");
+    expect(html).not.toContain("<header");
+    expect(html).not.toContain("Réf :");
+    expect(html).not.toContain("Version");
+    expect(html).not.toContain("Page ");
+    expect(html).toContain(pageCss(PROTOCOL_MARGIN));
+  });
+
+  it("prints the série number and the header fields", () => {
     expect(html).toContain("2754/26");
     expect(html).toContain("Référence client : <b>F-1021</b>");
     expect(html).not.toContain("N° de factures");
@@ -119,37 +127,103 @@ describe("buildProtocolHtml — PG04/EN01", () => {
   });
 });
 
-describe("buildBonHtml — PG05/EN04", () => {
+describe("buildBonHtml — PG05/EN04 version G", () => {
+  const thresholds = { ...DEFAULT_THRESHOLDS, minFoodMicroG: 150 };
   const deposit: SerieDocumentData = {
     ...base,
     samplerKind: "CLIENT",
     samplerName: null,
+    // After Morocco's return to UTC (20/09/2026): the laboratory's clock is UTC.
+    startedAt: new Date("2026-10-05T14:00:00Z"),
+    arrivedAt: new Date("2026-10-05T14:05:00Z"),
     advanceAmount: 350,
     advanceMode: "ESPECES",
-    reference: { docType: "BON_RECEPTION", reference: "PG05/EN04", version: "G", createdOn: null, updatedOn: null },
     lines: [
       { ...base.lines[0], quantity: 250, quantityUnit: "G", receptionTemperature: 4, controlCode: "20459/26", conformity: true },
-      { ...base.lines[0], lineNumber: 2, designation: "Eau du réseau", lineKind: "EAU", quantity: 0.5, quantityUnit: "L", receptionTemperature: 12, controlCode: "20460/26", conformity: false, conformityReason: "QUANTITE_INSUFFISANTE" },
+      { ...base.lines[0], lineNumber: 2, designation: "Eau du réseau", lineKind: "EAU", quantity: 0.5, quantityUnit: "L", productionDate: null, expiryDate: null, receptionTemperature: 12, controlCode: "20460/26", conformity: false, conformityReason: "QUANTITE_INSUFFISANTE" },
     ],
   };
-  const html = buildBonHtml(deposit, undefined, { ...DEFAULT_THRESHOLDS, minFoodMicroG: 150 });
+  const html = buildBonHtml(deposit, thresholds);
+  const field = (label: string, value: string) => `<span class="k">${label}</span><span class="v">${value}</span>`;
 
-  it("prints the seven rules with the lab's thresholds, the advance and the control numbers", () => {
-    expect(html).toContain("Bon de réception");
-    expect(html).toContain("PG05/EN04");
-    expect(html).toContain("Poids minimal 150 g pour les aliments (analyses microbiologiques)");
-    expect(html).toContain("si Salmonella 6 L");
-    expect(html).toContain("9 échantillons de 100 g");
-    expect(html).toContain("350,00 DH");
-    expect(html).toContain("Espèces");
-    expect(html).toContain("20459/26");
-    expect(html).toContain("Quantité insuffisante");
-    expect(html).toContain("Salma Idrissi");
-    expect(html).toContain("Signature du client");
+  it("leaves the cartouche to the page header, and declares the page box it is printed with", () => {
+    expect(html).toContain("<title>Bon de réception — série 2754/26</title>");
+    expect(html).not.toContain("PG05/EN04");
+    expect(html).not.toContain("Réf :");
+    expect(html).toContain(pageCss(BON_MARGIN));
   });
 
-  it("shows an empty cartouche date as a dash", () => {
-    expect(html).toContain("<th>Créé le</th><td>—</td>");
+  it("prints Date and Heure apart, with the year, then Reçu par and the Référence client", () => {
+    expect(html).toContain(field("Date :", "05/10/2026"));
+    expect(html).toContain(field("Heure :", "14h05"));
+    expect(html).toContain(field("Reçu par :", "Salma Idrissi"));
+    // The lab's request of 05/10: « Référence client », never « N° de factures ».
+    expect(html).toContain(field("Référence client :", "F-1021"));
+    expect(html).not.toContain("N° de factures");
+  });
+
+  it("frames the client as the paper: série, name, two address lines, phone, fax to fill by hand", () => {
+    const box = html.slice(html.indexOf('<div class="client">'), html.indexOf("<table"));
+    expect(box).toContain(field("N° de série :", "2754/26"));
+    expect(box).toContain(field("Nom du client :", "Restaurant Le Palmier — Cuisine centrale"));
+    expect(box).toContain(`${field("Adresse :", "12 rue des Orangers")}</div>\n    <div class="field"><span class="v"></span></div>`);
+    expect(box).toContain(field("N° de tél :", "05 22 00 00 00"));
+    expect(box).toContain(field("N° de fax :", ""));
+  });
+
+  it("keeps the paper's columns in its order, the N° de contrôle first", () => {
+    const headers = [...html.matchAll(/<th>([^<]*)<\/th>/g)].map((m) => m[1]);
+    expect(headers).toEqual([
+      "N° de contrôle",
+      "Désignation produit",
+      "N° Lot",
+      "DLC",
+      "Quantité/poids en (g)",
+      "T° à l'arrivée",
+      "Analyses demandées",
+    ]);
+    expect(html).toContain("20459/26");
+    expect(html).toContain("Non conforme — Quantité insuffisante");
+  });
+
+  it("pre-prints « P : » and « E : » on every line, the paper's five included", () => {
+    const body = html.slice(html.indexOf("<tbody>"), html.indexOf("</tbody>"));
+    expect((body.match(/<tr>/g) ?? []).length).toBe(5);
+    expect((body.match(/<span class="k">P :<\/span>/g) ?? []).length).toBe(5);
+    expect((body.match(/<span class="k">E :<\/span>/g) ?? []).length).toBe(5);
+    expect(body).toContain('<span class="k">P :</span> 01/09/2026</span><span><span class="k">E :</span> 04/09/2026');
+  });
+
+  it("prints the seven rules as the paper's notes (1) … (7), in order, with the lab's thresholds and no heading", () => {
+    const notes = html.slice(html.indexOf('<ul class="rules">'), html.indexOf("</ul>"));
+    const lines = [...notes.matchAll(/<li>([^<]*)<\/li>/g)].map((m) => m[1]);
+    expect(lines).toEqual(RECEPTION_RULES.map((rule) => escapeHtml(receptionRuleLine(rule, thresholds))));
+    expect(lines[0]).toMatch(/^\(1\) critères : ne pas accepter/);
+    expect(lines[1]).toBe("(2) poids minimal est de 150 g pour les aliments (analyses microbiologiques)");
+    expect(lines[3]).toContain("et si Salmonella 6 L");
+    expect(lines[6]).toBe("(7) échantillons destinés au dosage de l'histamine : 9 échantillons de 100 g");
+    expect(html).not.toMatch(/critères de recevabilité/i);
+  });
+
+  it("prints Avance (amount and mode) and Reste as lines, then the paper's signatures", () => {
+    expect(html).toContain(field("Avance :", "350,00 DH — Espèces"));
+    expect(html).toContain(field("Reste :", ""));
+    expect(html).toContain('<div class="role">Signature de client :</div>');
+    expect(html).toContain(`<div class="role">Signature de l'agent QUALILAB :</div><p class="small">Salma Idrissi</p>`);
+  });
+
+  it("leaves Avance blank when nothing was paid", () => {
+    expect(buildBonHtml({ ...deposit, advanceAmount: null, advanceMode: null })).toContain(field("Avance :", ""));
+  });
+
+  it("grows past five lines without blank rows", () => {
+    const six = buildBonHtml({
+      ...deposit,
+      lines: Array.from({ length: 6 }, (_, i) => ({ ...deposit.lines[0], lineNumber: i + 1, controlCode: `${300 + i}/26` })),
+    });
+    const body = six.slice(six.indexOf("<tbody>"), six.indexOf("</tbody>"));
+    expect((body.match(/<tr>/g) ?? []).length).toBe(6);
+    expect((body.match(/<span class="k">P :<\/span>/g) ?? []).length).toBe(6);
   });
 });
 
@@ -293,7 +367,7 @@ describe("cadre (V1)", () => {
     );
     expect(buildProtocolHtml({ ...visit, cadre: "DEVIS_VALIDE", cadreNote: null })).toContain("<b>Devis validé</b>");
     expect(buildBonHtml({ ...visit, cadre: "CONVENTION", cadreNote: null })).toContain(
-      '<span class="k">Cadre :</span> <b>Convention</b>'
+      '<span class="k">Cadre :</span><span class="v">Convention</span>'
     );
   });
 
@@ -307,7 +381,6 @@ describe("buildBonHtml — one row per sample (V3)", () => {
     ...visit,
     samplerKind: "CLIENT",
     samplerName: null,
-    reference: { docType: "BON_RECEPTION", reference: "PG05/EN04", version: "G", createdOn: null, updatedOn: null },
     lines: [
       { ...visit.lines[0], controlCode: "101/26", conformity: true },
       { ...visit.lines[1], controlCode: "102/26", conformity: true, parameters: [] },
@@ -318,17 +391,13 @@ describe("buildBonHtml — one row per sample (V3)", () => {
   const body = html.slice(html.indexOf("<tbody>"), html.indexOf("</tbody>"));
 
   it("gives each twin its own row, N° de contrôle and family", () => {
-    expect(body).toContain('<td class="num">1M</td>');
-    expect(body).toContain('<td class="num">1P</td>');
-    expect(body).toContain("101/26");
-    expect(body).toContain("102/26");
+    expect(body).toContain('<td><span class="mono">101/26</span><br><span class="small">Éch. 1M</span></td>');
+    expect(body).toContain('<td><span class="mono">102/26</span><br><span class="small">Éch. 1P</span></td>');
     expect(body).toContain('<span class="small">Analyses microbiologiques</span><br>Coliformes totaux, E. coli');
     // No analysis chosen yet (V6): the family alone.
     expect(body).toContain('<td><span class="small">Analyses physico-chimiques</span></td>');
-    // Three samples padded to five rows, numbered after the last échantillon.
-    expect(body).toContain('<td class="num">3</td>');
-    expect(body).toContain('<td class="num">4</td>');
-    expect(body).not.toContain('<td class="num">5</td>');
+    // Three samples padded to the paper's five lines.
+    expect((body.match(/<tr>/g) ?? []).length).toBe(5);
   });
 
   it("prints the surface and its state beside the designation", () => {
@@ -336,9 +405,9 @@ describe("buildBonHtml — one row per sample (V3)", () => {
   });
 
   it("prints the référence client, the cadre and the client's site", () => {
-    expect(html).toContain("Référence client : <b>F-1021</b>");
-    expect(html).toContain('<span class="k">Cadre :</span> <b>Autre</b>');
-    expect(html).toContain("<b>Client Démo — Restaurant Test</b>");
+    expect(html).toContain('<span class="k">Référence client :</span><span class="v">F-1021</span>');
+    expect(html).toContain('<span class="k">Cadre :</span><span class="v">Autre</span>');
+    expect(html).toContain('<span class="k">Nom du client :</span><span class="v">Client Démo — Restaurant Test</span>');
   });
 
   it("says a destroyed sample in the masculine of « échantillon »", () => {

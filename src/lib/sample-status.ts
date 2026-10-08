@@ -187,8 +187,8 @@ export function approvalState(sample: {
 
 export const APPROVAL_LABELS: Record<ApprovalState, string> = {
   AWAITING_TECHNICAL: "En attente de validation technique",
-  AWAITING_ADMIN: "En attente d'approbation admin",
-  APPROVED: "Approuvé",
+  AWAITING_ADMIN: "En attente de validation administrative",
+  APPROVED: "Validé (technique et administratif)",
 };
 
 /** Guards the technical validation step (which is not a status change). */
@@ -226,10 +226,10 @@ export function amendmentIssueRefusal(sample: {
   approvedById: string | null;
 }): string | null {
   if (sample.status !== "VALIDE" && sample.status !== "RAPPORT_ENVOYE") {
-    return "Le rapport amendé ne peut être émis qu'à l'approbation de l'échantillon.";
+    return "Le rapport amendé ne peut être émis qu'à la validation administrative de l'échantillon.";
   }
   if (!sample.validatedById || !sample.approvedById) {
-    return "Le rapport amendé exige la validation technique et l'approbation.";
+    return "Le rapport amendé exige la validation technique et la validation administrative.";
   }
   if (sample.validatedById === sample.approvedById) {
     return "La double validation exige deux signataires différents.";
@@ -246,14 +246,14 @@ export function canApprove(
   if (role !== "ADMIN") {
     return {
       ok: false,
-      error: "Seul un administrateur peut donner l'approbation finale.",
+      error: "Seul un administrateur peut donner la validation administrative.",
     };
   }
   if (!sample.validatedById) {
     return {
       ok: false,
       error:
-        "La validation technique du validateur est requise avant l'approbation.",
+        "La validation technique est requise avant la validation administrative.",
     };
   }
   // Two signatures means two people: whoever signed technically cannot
@@ -263,7 +263,7 @@ export function canApprove(
     return {
       ok: false,
       error:
-        "La double validation exige deux signataires différents : le validateur technique ne peut pas donner aussi l'approbation finale.",
+        "La double validation exige deux signataires différents : le validateur technique ne peut pas donner aussi la validation administrative.",
     };
   }
   return canTransition(sample.status, "VALIDE", role);

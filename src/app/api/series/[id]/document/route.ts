@@ -4,11 +4,16 @@ import { prisma } from "@/lib/prisma";
 import { renderPdf } from "@/lib/pdf";
 import { getCompany } from "@/lib/company-server";
 import { getDocumentReference } from "@/lib/document-reference";
+import { documentLogo } from "@/lib/document-logo";
+import { DOC_TYPE_LABELS } from "@/lib/document-types";
+import { cartoucheTemplate } from "@/lib/cartouche-html";
 import { getLabSettings } from "@/lib/lab-settings";
 import { HANDS_STATE_LABELS } from "@/lib/labels";
 import { sampleRef } from "@/lib/reception-input";
 import { ROLE_LABELS, type Role } from "@/lib/roles";
 import {
+  BON_MARGIN,
+  PROTOCOL_MARGIN,
   buildBonHtml,
   buildProtocolHtml,
   documentFooter,
@@ -26,6 +31,10 @@ import {
  * The two samples of an échantillon whose two families are ticked
  * (« 1M » / « 1P », RETOUR-LABO-06-10.md §5, V3) print as one row on the
  * protocol and as two rows — one N° de contrôle each — on the bon.
+ *
+ * Both carry the paper's quality cartouche at the head of every page
+ * (cartouche-html.ts); the protocol keeps the laboratory's coordinates as
+ * its footer, the bon has none, as on the paper.
  */
 export async function GET(
   _request: Request,
@@ -155,6 +164,11 @@ export async function GET(
     getDocumentReference(isDeposit ? "BON_RECEPTION" : "PROTOCOLE"),
     isDeposit ? getLabSettings() : Promise.resolve(null),
   ]);
+  const header = cartoucheTemplate({
+    title: DOC_TYPE_LABELS[reference.docType],
+    reference,
+    logoDataUri: await documentLogo(company),
+  });
 
   const data: SerieDocumentData = {
     serialNumber: serie.serialNumber,
@@ -183,17 +197,18 @@ export async function GET(
     advanceMode: serie.advanceMode,
     notes: serie.notes,
     lines,
-    reference,
   };
 
-  const html = isDeposit ? buildBonHtml(data, company, settings ?? undefined) : buildProtocolHtml(data, company);
+  const html = isDeposit ? buildBonHtml(data, settings ?? undefined) : buildProtocolHtml(data);
   const stem = isDeposit ? "bon-reception" : "protocole";
 
   try {
-    const pdf = await renderPdf(html, {
-      footer: documentFooter(reference, company),
-      margin: { top: "12mm", bottom: "16mm", left: "12mm", right: "12mm" },
-    });
+    const pdf = await renderPdf(
+      html,
+      isDeposit
+        ? { header, margin: BON_MARGIN }
+        : { header, footer: documentFooter(company), margin: PROTOCOL_MARGIN }
+    );
     return new NextResponse(new Uint8Array(pdf), {
       headers: {
         "Content-Type": "application/pdf",

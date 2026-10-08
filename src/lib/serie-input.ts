@@ -13,15 +13,18 @@ import type {
   SurfaceState,
 } from "@/generated/prisma/enums";
 import { MAX_UNITS } from "./series";
+import { parseIsoDay } from "./date-only";
 import {
   AIR_METHOD_CHOICES,
   ANALYSIS_FAMILY_LABELS,
   CADRE_CHOICES,
   LINE_KIND_LABELS,
+  NON_CONFORMITY_REASON_LABELS,
   SURFACE_STATE_CHOICES,
   futureMessage,
 } from "./labels";
 import { LINE_FAMILIES, familiesFor, familyOfNature, natureFor, type LineFamily } from "./nature-family";
+import { EXPLOITABLE_MESSAGES } from "./reception-rules";
 import { twinFor, type SampleTwin } from "./sample-code";
 
 /**
@@ -42,8 +45,9 @@ import { twinFor, type SampleTwin } from "./sample-code";
  * sample, the family of the nature).
  *
  * A dépôt (bon de réception) is received on the spot, so its lines also
- * carry what the reception of a visit records later: temperature at
- * arrival, conformity with a coded motif, decision. Never a technician
+ * carry what the reception of a visit records later: rule (1) of the bon
+ * (exploitable or not, answered for every line — retour du 08/10),
+ * temperature at arrival, conformity with a coded motif, decision. Never a technician
  * (RETOUR-LABO-06-10.md §9.3): the responsable des paramètres assigns it on
  * the programme sheet; a `technicianId` still sent is ignored.
  *
@@ -66,15 +70,8 @@ export const CADRES: readonly Cadre[] = CADRE_CHOICES;
 export const SURFACE_STATES: readonly SurfaceState[] = SURFACE_STATE_CHOICES;
 export const AIR_METHODS: readonly AirMethod[] = AIR_METHOD_CHOICES;
 export const PAYMENT_MODES: PaymentMode[] = ["ESPECES", "CHEQUE", "VIREMENT", "CARTE"];
-export const NON_CONFORMITY_REASONS: NonConformityReason[] = [
-  "CHAINE_FROID",
-  "TEMPERATURE_MANQUANTE",
-  "QUANTITE_INSUFFISANTE",
-  "EMBALLAGE",
-  "DELAI",
-  "IDENTIFICATION",
-  "AUTRE",
-];
+/** The coded motifs both APIs accept — derived from their labels, never listed twice. */
+export const NON_CONFORMITY_REASONS = Object.keys(NON_CONFORMITY_REASON_LABELS) as NonConformityReason[];
 
 export const MAX_LINES = 200;
 const TEXT = 191;
@@ -160,7 +157,9 @@ export type CleanLine = {
   parameterIds: string[];
   /** The catalogue's product type (CRITERES.md) — the criteria come from it. */
   productTypeId: string | null;
-  /** Reception data — meaningful for a dépôt only; defaults for a visit. */
+  // Reception data — meaningful for a dépôt only; defaults for a visit.
+  /** Rule (1) of the bon de réception, answered at the counter; null on a visit. */
+  exploitable: boolean | null;
   conformity: boolean;
   conformityReason: NonConformityReason | null;
   conformityNote: string | null;
@@ -224,8 +223,9 @@ function numberOrNull(value: unknown): number | null | "invalid" {
 function dateOrNull(value: unknown): Date | null | "invalid" {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string") return "invalid";
-  const plain = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value;
-  const d = new Date(plain);
+  // A plain date (DLC) is a calendar day: UTC midnight, never local (date-only.ts).
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return parseIsoDay(value) ?? "invalid";
+  const d = new Date(value);
   return Number.isNaN(d.getTime()) ? "invalid" : d;
 }
 
@@ -387,18 +387,25 @@ export function validateLine(
   const parameterIds = [...new Set(ids.filter((v): v is string => typeof v === "string" && v.length > 0))];
 
   // ---- Reception data of a deposit line ------------------------------------
+  let exploitable: boolean | null = null;
   let conformity = true;
   let conformityReason: NonConformityReason | null = null;
   let conformityNote: string | null = null;
   let destroy = false;
   if (deposit) {
+    // Rule (1) is answered for every line, one answer for its two samples —
+    // a form opened before the checklist sends none and is told so.
+    if (typeof input.exploitable !== "boolean") return fail(EXPLOITABLE_MESSAGES.missing);
+    exploitable = input.exploitable;
     if (input.conformity !== undefined && typeof input.conformity !== "boolean") {
       return fail("Indiquez la conformité de l'échantillon.");
     }
     conformity = input.conformity !== false;
+    if (!exploitable && conformity) return fail(EXPLOITABLE_MESSAGES.conform);
     if (!conformity) {
       const reason = oneOf(input.conformityReason, NON_CONFORMITY_REASONS);
       if (!reason) return fail("Choisissez le motif de non-conformité.");
+      if (reason === "NON_EXPLOITABLE" && exploitable) return fail(EXPLOITABLE_MESSAGES.reason);
       conformityReason = reason;
       const note = text(input.conformityNote, 2000);
       if (reason === "AUTRE" && !note) return fail("Précisez le motif « autre ».");
@@ -445,6 +452,7 @@ export function validateLine(
       // Criteria are written for a food product: a surface or a pair of
       // hands never carries one.
       productTypeId: lineKind === "ALIMENT" ? text(input.productTypeId) || null : null,
+      exploitable,
       conformity,
       conformityReason,
       conformityNote,

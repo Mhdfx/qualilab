@@ -64,7 +64,7 @@ export function ReportActions({
       )}
       {amendmentPending && !compact && (
         <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
-          Amendement en cours : le rapport {number} reste la version en vigueur jusqu&apos;à la nouvelle approbation.
+          Amendement en cours : le rapport {number} reste la version en vigueur jusqu&apos;à la nouvelle validation administrative.
         </p>
       )}
 
@@ -143,7 +143,7 @@ function VersionsDialog({ sampleId, onClose }: { sampleId: string; onClose: () =
           {payload.amendmentPending && (
             <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">
               <b>Amendement en cours</b>
-              {payload.nextNumber && <> — le rapport {payload.nextNumber} sera émis à l&apos;approbation</>}.
+              {payload.nextNumber && <> — le rapport {payload.nextNumber} sera émis à la validation administrative</>}.
               {payload.pendingNote && <span className="mt-0.5 block">Motif : {payload.pendingNote}</span>}
             </p>
           )}
@@ -168,7 +168,7 @@ function VersionsDialog({ sampleId, onClose }: { sampleId: string; onClose: () =
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500">
                     Émis le {formatDate(v.issuedAt)}
-                    {v.issuedBy ? ` · approuvé par ${v.issuedBy}` : ""}
+                    {v.issuedBy ? ` · validation administrative : ${v.issuedBy}` : ""}
                   </p>
                   {v.note && <p className="mt-0.5 text-xs text-slate-600">Motif de l&apos;amendement : {v.note}</p>}
                 </div>
@@ -232,9 +232,9 @@ function ReopenDialog({ sampleId, number, onClose }: { sampleId: string; number:
     <Dialog title={`Rouvrir pour amendement — ${number}`} onClose={onClose}>
       <form onSubmit={submit} noValidate>
         <p className="text-sm text-slate-600">
-          L&apos;échantillon revient à « Résultats saisis » : la validation technique et l&apos;approbation sont
-          effacées, les résultats et la fiche peuvent être corrigés. Le rapport {number} reste en vigueur jusqu&apos;à la
-          nouvelle approbation, qui émettra le rapport amendé et l&apos;enverra au client.
+          L&apos;échantillon revient à « Résultats saisis » : la validation technique et la validation administrative
+          sont effacées, les résultats et la fiche peuvent être corrigés. Le rapport {number} reste en vigueur jusqu&apos;à
+          la nouvelle validation administrative, qui émettra le rapport amendé et l&apos;enverra au client.
         </p>
         <label htmlFor="amendmentReason" className="mt-3 block text-sm font-medium text-slate-700">
           Motif de l&apos;amendement <span className="text-rose-600">*</span>

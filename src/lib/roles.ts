@@ -27,13 +27,53 @@ export const ROLE_LABELS: Record<Role, string> = {
   RECEPTIONNISTE: "Réceptionniste",
   PROGRAMMATEUR: "Responsable des paramètres",
   TECHNICIEN: "Technicien",
-  VALIDATEUR: "Validateur",
+  // Step 1 of the double validation; step 2, the « Validation
+  // administrative », is the administrator's (message of 08/10).
+  VALIDATEUR: "Validateur technique",
   GESTIONNAIRE: "Gestionnaire commercial",
   COMPTABLE: "Comptable",
   ADMIN: "Administrateur",
   CLIENT: "Client (portail)",
   MAGASINIER: "Magasinier",
 };
+
+/**
+ * The roles of the sample circuit, in the order of the laboratory's list of
+ * 08/10 (« Les rôles : 1. Prélèvement des échantillons … 6. Validation
+ * administrative »): one role per function of that list. Wording only —
+ * never a guard list: the API's own `CIRCUIT_ROLES` also admit the
+ * gestionnaire and the comptable.
+ */
+export const LAB_FUNCTION_ROLES = [
+  "PRELEVEUR",
+  "RECEPTIONNISTE",
+  "PROGRAMMATEUR",
+  "TECHNICIEN",
+  "VALIDATEUR",
+  "ADMIN",
+] as const satisfies readonly Role[];
+
+export type LabFunctionRole = (typeof LAB_FUNCTION_ROLES)[number];
+
+/**
+ * The function of each circuit role in the laboratory's own words (08/10),
+ * shown under the role in /admin/utilisateurs so accounts are created from
+ * the lab's list. Labels only: the role values, guards and audit codes are
+ * unchanged. The administrator also keeps the administration of the system.
+ */
+export const ROLE_FUNCTIONS: Record<LabFunctionRole, string> = {
+  PRELEVEUR: "Prélèvement des échantillons",
+  RECEPTIONNISTE: "Réception des échantillons",
+  PROGRAMMATEUR: "Enregistrement des paramètres",
+  TECHNICIEN: "Saisie des résultats",
+  VALIDATEUR: "Validation technique des résultats",
+  ADMIN: "Validation administrative et administration du système",
+};
+
+/** The lab's function of a role, or null for a role outside the circuit (commercial, comptabilité, magasin, portail). */
+export function roleFunction(role: unknown): string | null {
+  return (LAB_FUNCTION_ROLES as readonly unknown[]).includes(role) ? ROLE_FUNCTIONS[role as LabFunctionRole] : null;
+}
 
 /** Landing page for each role after login. */
 export const ROLE_HOME: Record<Role, string> = {

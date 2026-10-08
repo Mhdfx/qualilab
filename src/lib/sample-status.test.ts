@@ -4,6 +4,7 @@ import {
   canValidateTechnically,
   canApprove,
   approvalState,
+  APPROVAL_LABELS,
   nextStatus,
   reactivationTarget,
   CORRECTABLE_STATUSES,
@@ -178,6 +179,17 @@ describe("approvalState", () => {
     expect(approvalState({ validatedById: null, approvedById: null })).toBe("AWAITING_TECHNICAL");
     expect(approvalState({ validatedById: "u1", approvedById: null })).toBe("AWAITING_ADMIN");
     expect(approvalState({ validatedById: "u1", approvedById: "u2" })).toBe("APPROVED");
+  });
+
+  it("names step 2 in the laboratory's words, « Validation administrative » (08/10)", () => {
+    expect(APPROVAL_LABELS).toEqual({
+      AWAITING_TECHNICAL: "En attente de validation technique",
+      AWAITING_ADMIN: "En attente de validation administrative",
+      APPROVED: "Validé (technique et administratif)",
+    });
+    const refused = canApprove({ status: "RESULTATS_SAISIS", validatedById: "u1" }, "VALIDATEUR");
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error).toBe("Seul un administrateur peut donner la validation administrative.");
   });
 });
 

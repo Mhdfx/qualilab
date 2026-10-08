@@ -42,7 +42,7 @@ export const adminNav: NavSection[] = [
     items: [
       { label: "Réception", href: "/reception", icon: Inbox },
       { label: "Analyses", href: "/technicien", icon: Microscope },
-      { label: "Approbations", href: "/validation", icon: ShieldCheck },
+      { label: "Validation administrative", href: "/validation", icon: ShieldCheck },
       { label: "Recherche des analyses", href: "/recherche", icon: Search },
     ],
   },

@@ -1,6 +1,4 @@
-import { COMPANY, type CompanyInfo } from "./company";
-import type { DocumentRef } from "./document-types";
-import { companyBrandHtml } from "./brand-html";
+import { cartoucheMargin, pageCss } from "./cartouche-html";
 import { SAMPLE_TYPE_LABELS, formatDate } from "./labels";
 import type { SampleType } from "@/generated/prisma/client";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
@@ -17,7 +15,14 @@ import { repetitionLabel } from "./series";
  * Samples are identified by their blind serial number, which is what appears
  * on the tube; the two samples of a two-family échantillon (« 1M » / « 1P »)
  * are two blocks, each under its own N° de contrôle.
+ *
+ * The quality cartouche (PG06/EN01) is Chromium's header template
+ * (cartouche-html.ts), on every page with « Page n sur N »: the route prints
+ * the sheet with `BENCH_SHEET_MARGIN`, which its `@page` declares.
  */
+
+/** No footer: the sheet ends with its own « Saisie effectuée par » line. */
+export const BENCH_SHEET_MARGIN = cartoucheMargin();
 
 export type BenchSheetSample = {
   /** N° de contrôle once received, the échantillon's code before that. */
@@ -48,12 +53,7 @@ function readingHeaders(unitCount: number, width: number) {
 }
 
 
-export function buildBenchSheetHtml(
-  date: Date,
-  samples: BenchSheetSample[],
-  company: CompanyInfo = COMPANY,
-  reference?: DocumentRef
-): string {
+export function buildBenchSheetHtml(date: Date, samples: BenchSheetSample[]): string {
   const blocks = samples
     .map(
       (sample) => `
@@ -105,20 +105,16 @@ export function buildBenchSheetHtml(
 <meta charset="utf-8">
 <title>Feuille de paillasse — ${formatDate(date)}</title>
 <style>
-  @page { size: A4; margin: 12mm; }
+  ${pageCss(BENCH_SHEET_MARGIN)}
   * { box-sizing: border-box; }
   ${SUPERSCRIPT_CSS}
+  /* 1px inside the page box: a border drawn on its very edge is clipped. */
   body { font-family: "Segoe UI", Arial, sans-serif; color: #1b2a33; font-size: 9.6pt;
-    margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  header { display: flex; justify-content: space-between; align-items: flex-end;
-    border-bottom: 2px solid #1f3a4d; padding-bottom: 8px; margin-bottom: 12px; }
-  .brand { font-size: 14pt; font-weight: 700; color: #1f3a4d; }
-  .brand span { color: #b8860b; }
-  .brand-logo { height: 36px; max-width: 220px; object-fit: contain; display: block; }
-  .sub { font-size: 8pt; color: #55707d; }
-  .doc { text-align: right; font-size: 8.6pt; color: #55707d; }
-  .doc .kind { font-size: 10.5pt; font-weight: 700; color: #1f3a4d;
-    text-transform: uppercase; letter-spacing: .5px; }
+    margin: 0; padding: 0 1px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sheet { display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 2px solid #1f3a4d; padding-bottom: 4px; margin-bottom: 10px;
+    font-size: 9pt; color: #55707d; }
+  .sheet b { color: #1f3a4d; }
   .sample { border: 1px solid #d9e3e8; border-radius: 4px; padding: 8px 10px;
     margin-bottom: 10px; page-break-inside: avoid; }
   .head { display: flex; justify-content: space-between; align-items: baseline;
@@ -143,18 +139,10 @@ export function buildBenchSheetHtml(
 </style>
 </head>
 <body>
-<header>
-  <div>
-    ${companyBrandHtml(company)}
-    <div class="sub">${escapeHtml(company.tagline)}</div>
-  </div>
-  <div class="doc">
-    <div class="kind">Feuille de paillasse</div>
-    ${reference?.reference ? `Réf. <b>${escapeHtml(reference.reference)}</b> · version <b>${escapeHtml(reference.version)}</b><br>` : ""}
-    Date : <b>${formatDate(date)}</b><br>
-    ${samples.length} échantillon${samples.length > 1 ? "s" : ""}
-  </div>
-</header>
+<div class="sheet">
+  <span>Date : <b>${formatDate(date)}</b></span>
+  <span>${samples.length} échantillon${samples.length > 1 ? "s" : ""}</span>
+</div>
 
 ${
   samples.length > 0

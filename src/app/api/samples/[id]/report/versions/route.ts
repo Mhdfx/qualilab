@@ -53,7 +53,7 @@ export async function GET(
   }
   const report = sample.report;
   if (!report) {
-    return NextResponse.json({ error: "Aucun rapport : cet échantillon n'a pas encore été approuvé." }, { status: 409 });
+    return NextResponse.json({ error: "Aucun rapport : cet échantillon n'a pas encore reçu la validation administrative." }, { status: 409 });
   }
 
   const versions = report.versions.map((v) => ({

@@ -1,20 +1,30 @@
 import type { NonConformityReason, QuantityUnit } from "@/generated/prisma/enums";
 import { futureMessage } from "./labels";
 import {
+  EXPLOITABLE_MESSAGES,
   evaluateReception,
+  receptionChecklist,
   type Check,
+  type ChecklistRow,
   type ReceptionLine,
   type ReceptionThresholds,
 } from "./reception-rules";
+import { NON_CONFORMITY_REASONS } from "./serie-input";
 
 /**
  * Validating the grouped reception of a série — pure, shared by the screen
  * and by `POST /api/series/[id]/reception`.
  *
  * The API receives every line still waiting (`PRELEVE`) with what the
- * réceptionniste measured or confirmed. The rules engine runs again here:
- * a line under a blocking rule cannot be declared conform, whatever the
- * browser sent.
+ * réceptionniste measured or confirmed. The rules engine runs again here,
+ * with the laboratory's thresholds: a line under a blocking rule cannot be
+ * declared conform, whatever the browser sent.
+ *
+ * Rule (1) of the bon de réception (retour du 08/10, « les règles comme une
+ * checklist »): every line says whether the sample is exploitable for the
+ * analysis. A page opened before the checklist sends no answer and is told
+ * so; a non-exploitable sample cannot be declared conform. The seven-row
+ * checklist travels with each clean line, for the audit.
  *
  * A non-conform line is decided case by case (RETOUR-LABO-29-09.md, slice
  * E): analysed anyway, or destroyed — received and numbered like the others
@@ -34,15 +44,6 @@ import {
  */
 
 const QUANTITY_UNITS = ["UNITE", "G", "ML", "L"] as const;
-const REASONS = [
-  "CHAINE_FROID",
-  "TEMPERATURE_MANQUANTE",
-  "QUANTITE_INSUFFISANTE",
-  "EMBALLAGE",
-  "DELAI",
-  "IDENTIFICATION",
-  "AUTRE",
-] as const;
 
 /** A line of the série as the database holds it before reception. */
 export type ReceptionCandidate = ReceptionLine & {
@@ -72,12 +73,16 @@ export type CleanReceptionLine = {
   receptionTemperature: number | null;
   quantity: number | null;
   quantityUnit: QuantityUnit | null;
+  /** Rule (1): the réceptionniste's answer, written to `Sample.receptionExploitable`. */
+  exploitable: boolean;
   conformity: boolean;
   conformityReason: NonConformityReason | null;
   conformityNote: string | null;
   /** « Détruire » on a non-conform line: no analysis, cancelled at once. */
   destroy: boolean;
   checks: Check[];
+  /** The seven rules of the bon, as computed with the laboratory's thresholds — audited. */
+  checklist: ChecklistRow[];
 };
 
 export type CleanReception = {
@@ -105,6 +110,11 @@ function parseNumber(value: unknown, min: number, max: number): number | null | 
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+/** « Indiquez … » → « Échantillon 2 : indiquez … » — the reception's own form, screen and API. */
+export function receptionLineMessage(ref: string, message: string) {
+  return `Échantillon ${ref} : ${message.charAt(0).toLocaleLowerCase("fr")}${message.slice(1)}`;
 }
 
 export function validateReception(
@@ -168,24 +178,28 @@ export function validateReception(
       quantityUnit = unit;
     }
 
-    const checks = evaluateReception(
-      {
-        lineKind: candidate.lineKind,
-        family: candidate.family,
-        parameterNames: candidate.parameterNames,
-        quantity,
-        quantityUnit,
-        receptionTemperature:
-          receptionTemperature === null ? null : Math.round(receptionTemperature * 10) / 10,
-        unitCount: candidate.unitCount,
-      },
-      thresholds
-    );
+    // Rule (1) first: a page opened before the checklist sends none.
+    if (typeof rawLine.exploitable !== "boolean") return fail(receptionLineMessage(ref, EXPLOITABLE_MESSAGES.missing), n, ref);
+    const exploitable = rawLine.exploitable;
+
+    const measured: ReceptionLine = {
+      lineKind: candidate.lineKind,
+      family: candidate.family,
+      parameterNames: candidate.parameterNames,
+      quantity,
+      quantityUnit,
+      receptionTemperature:
+        receptionTemperature === null ? null : Math.round(receptionTemperature * 10) / 10,
+      unitCount: candidate.unitCount,
+    };
+    const checks = evaluateReception(measured, thresholds);
+    const checklist = receptionChecklist(measured, thresholds, { exploitable });
 
     if (typeof rawLine.conformity !== "boolean") {
       return fail(`Échantillon ${ref} : indiquez la conformité.`, n, ref);
     }
     const conformity = rawLine.conformity;
+    if (conformity && !exploitable) return fail(receptionLineMessage(ref, EXPLOITABLE_MESSAGES.conform), n, ref);
     const blocking = checks.find((c) => c.level === "BLOQUANT");
     if (conformity && blocking) {
       return fail(`Échantillon ${ref} : ${blocking.message} L'échantillon ne peut pas être déclaré conforme.`, n, ref);
@@ -195,7 +209,10 @@ export function validateReception(
     let conformityNote: string | null = null;
     if (!conformity) {
       const reason = text(rawLine.conformityReason) as NonConformityReason;
-      if (!REASONS.includes(reason)) return fail(`Échantillon ${ref} : choisissez le motif de non-conformité.`, n, ref);
+      if (!NON_CONFORMITY_REASONS.includes(reason)) {
+        return fail(`Échantillon ${ref} : choisissez le motif de non-conformité.`, n, ref);
+      }
+      if (reason === "NON_EXPLOITABLE" && exploitable) return fail(receptionLineMessage(ref, EXPLOITABLE_MESSAGES.reason), n, ref);
       conformityReason = reason;
       const note = text(rawLine.conformityNote);
       if (reason === "AUTRE" && !note) return fail(`Échantillon ${ref} : précisez le motif « autre ».`, n, ref);
@@ -222,11 +239,13 @@ export function validateReception(
         receptionTemperature === null ? null : Math.round(receptionTemperature * 10) / 10,
       quantity,
       quantityUnit,
+      exploitable,
       conformity,
       conformityReason,
       conformityNote,
       destroy,
       checks,
+      checklist,
     });
   }
 

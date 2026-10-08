@@ -59,6 +59,8 @@ export type ProgrammeSampleData = {
   conformity: boolean | null;
   conformityReason: NonConformityReason | null;
   conformityNote: string | null;
+  /** Rule (1) of the bon de réception as answered at reception; null = received before the checklist. */
+  receptionExploitable?: boolean | null;
   analysisBlocked: boolean;
   unitCount: number;
   productTypeId: string | null;
@@ -131,6 +133,8 @@ export type ParameterRef = {
   /** MICRO / CHIMIE / AUTRE, set on `/admin/parametres` — the sheet groups the analyses by it. */
   family: Family;
   category: SampleType;
+  /** Other spellings, one per line — the entry check recognises histamine and Salmonella on them. */
+  aliases?: string | null;
 };
 
 /**

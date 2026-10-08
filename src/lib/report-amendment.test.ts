@@ -52,7 +52,7 @@ describe("reopening for amendment", () => {
 
   it("explains every refusal in French", () => {
     expect(reopenRefusal({ status: "VALIDE", role: "TECHNICIEN", reason: "x".repeat(10) })).toMatch(/administrateur/);
-    expect(reopenRefusal({ status: "EN_ANALYSE", role: "ADMIN", reason: "x".repeat(10) })).toMatch(/approuvé/);
+    expect(reopenRefusal({ status: "EN_ANALYSE", role: "ADMIN", reason: "x".repeat(10) })).toMatch(/rapport validé/);
     expect(
       reopenRefusal({ status: "VALIDE", role: "ADMIN", reason: "x".repeat(10), amendmentPending: true })
     ).toMatch(/déjà en cours/);

@@ -393,7 +393,8 @@ function ParameterForm({
           </span>
           <span className="mt-0.5 block text-xs text-slate-500">
             Un dépassement de la limite déclenche une alerte de contamination
-            au client après approbation. Nécessite une limite.
+            au client, à la validation technique ou administrative selon les
+            réglages du circuit. Nécessite une limite.
           </span>
         </span>
       </label>

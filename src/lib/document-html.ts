@@ -9,11 +9,12 @@ import type {
   SamplerKind,
   SurfaceState,
 } from "@/generated/prisma/enums";
-import { COMPANY, type CompanyInfo } from "./company";
-import { companyBrandHtml } from "./brand-html";
+import type { CompanyInfo } from "./company";
+import { CARTOUCHE_INK, cartoucheMargin, pageCss } from "./cartouche-html";
+import { formatDateOnly } from "./date-only";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
-import type { DocumentRef } from "./document-types";
 import { PAYMENT_MODE_LABELS } from "./invoice-lifecycle";
+import { toLabWallTime } from "./lab-time";
 import {
   AIR_METHOD_LABELS,
   ANALYSIS_FAMILY_LABELS,
@@ -24,26 +25,29 @@ import {
   SURFACE_STATE_LABELS,
   formatCadre,
   formatCurrency,
-  formatDayShort,
   formatDayTime,
   formatDecimal,
   withSurfaceState,
 } from "./labels";
-import { DEFAULT_THRESHOLDS, type ReceptionThresholds } from "./reception-rules";
+import { DEFAULT_THRESHOLDS, RECEPTION_RULES, receptionRuleLine, type ReceptionThresholds } from "./reception-rules";
 
 /**
  * The two entry documents of the circuit, laid out like the paper forms
- * the laboratory fills today — same columns, same signature boxes, same
- * quality cartouche (Réf / version / dates, page numbers in the footer):
+ * the laboratory fills today — same columns, same signature boxes. Their
+ * quality cartouche (logo, title, « Réf : », « Version », « Page n sur N »,
+ * dates) is not in the body: it is Chromium's header template
+ * (cartouche-html.ts), repeated on every page, so the route prints these
+ * pages with `PROTOCOL_MARGIN` / `BON_MARGIN`, which their `@page` declares.
  *
  * - the **protocole de prélèvement** of a visit (PG04/EN01), printed for
  *   the interlocutor's signature — one row per échantillon number: the two
  *   samples of a line whose two families are ticked (« 1M » / « 1P »,
  *   RETOUR-LABO-06-10.md §5, V3) print as one row, their analyses in both
  *   columns under the same number;
- * - the **bon de réception** of a deposit (PG05/EN04), with the seven
- *   acceptance rules and the advance box — one row per sample, since each
- *   one carries its own N° de contrôle.
+ * - the **bon de réception** of a deposit (PG05/EN04 version G, scan of
+ *   08/10 — RETOUR-LABO-06-10.md §10), drawn in the paper's navy ink: one
+ *   row per sample, since each one carries its own N° de contrôle, then the
+ *   paper's seven notes (1) … (7), « Avance », « Reste » and signatures.
  */
 
 export type DocumentLine = {
@@ -63,6 +67,7 @@ export type DocumentLine = {
    *  like « Lavée » for hands; null on a sample entered before it existed. */
   surfaceState?: SurfaceState | null;
   numeroLot: string | null;
+  /** Calendar dates (`@db.Date`), printed from their UTC day. */
   productionDate: Date | null;
   expiryDate: Date | null;
   quantity: number | null;
@@ -110,53 +115,35 @@ export type SerieDocumentData = {
   advanceMode: PaymentMode | null;
   notes: string | null;
   lines: DocumentLine[];
-  reference: DocumentRef;
 };
 
 /** One list of payment-mode labels for the whole app: invoice-lifecycle.ts owns it. */
 export { PAYMENT_MODE_LABELS };
 
-/** Footer template for Chromium: page numbers plus the reference. */
-export function documentFooter(reference: DocumentRef, company: CompanyInfo) {
-  return `<div style="width:100%;font-family:'Segoe UI',Arial,sans-serif;font-size:7pt;color:#7d929c;
-    padding:0 14mm;display:flex;justify-content:space-between;align-items:center;">
-    <span>${escapeHtml(company.name)} · ${escapeHtml(company.address)}, ${escapeHtml(company.city)} · ICE ${escapeHtml(company.ice)}</span>
-    <span>${reference.reference ? `${escapeHtml(reference.reference)} · v. ${escapeHtml(reference.version)} · ` : ""}Page <span class="pageNumber"></span> / <span class="totalPages"></span></span>
+/** The protocol keeps a footer line (the laboratory's coordinates, as on the paper). */
+export const PROTOCOL_MARGIN = cartoucheMargin({ footer: true });
+/** The paper bon has no footer. */
+export const BON_MARGIN = cartoucheMargin();
+
+/**
+ * Footer template for Chromium: the laboratory's coordinates, as at the foot
+ * of the paper protocol. The Réf, the version and « Page n sur N » are in
+ * the cartouche.
+ */
+export function documentFooter(company: CompanyInfo) {
+  return `<div style="width:100%;box-sizing:border-box;padding:0 ${PROTOCOL_MARGIN.left};font-family:'Segoe UI',Arial,'Liberation Sans',sans-serif;font-size:7pt;color:#7d929c;text-align:center;">
+    ${escapeHtml(company.name)} · ${escapeHtml(company.address)}, ${escapeHtml(company.city)} · ICE ${escapeHtml(company.ice)}
   </div>`;
 }
 
-function cartoucheHtml(ref: DocumentRef, title: string) {
-  const cell = (k: string, v: string) => `<tr><th>${k}</th><td>${v}</td></tr>`;
-  return `<div class="cartouche">
-    <div class="kind">${escapeHtml(title)}</div>
-    <table>
-      ${cell("Réf.", show(ref.reference || null))}
-      ${cell("Version", show(ref.version || null))}
-      ${cell("Créé le", ref.createdOn ? formatDayShort(ref.createdOn) : "—")}
-      ${cell("Mis à jour le", ref.updatedOn ? formatDayShort(ref.updatedOn) : "—")}
-    </table>
-  </div>`;
-}
-
-const BASE_CSS = `
-  @page { size: A4; margin: 12mm 12mm 16mm; }
+const PROTOCOL_CSS = `
+  ${pageCss(PROTOCOL_MARGIN)}
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
+  /* 1px inside the page box: a border drawn on its very edge is clipped. */
+  html, body { margin: 0; padding: 0 1px; }
   ${SUPERSCRIPT_CSS}
   body { font-family: "Segoe UI", Arial, sans-serif; color: #1b2a33; font-size: 9.2pt; line-height: 1.4;
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  header { display: flex; justify-content: space-between; align-items: flex-start;
-    border-bottom: 2px solid #1f3a4d; padding-bottom: 8px; margin-bottom: 10px; }
-  .brand { font-size: 16pt; font-weight: 700; color: #1f3a4d; }
-  .brand span { color: #b8860b; }
-  .brand-logo { height: 42px; max-width: 240px; object-fit: contain; display: block; }
-  .tagline { font-size: 7.4pt; color: #55707d; margin-top: 2px; max-width: 250px; }
-  .cartouche { text-align: right; }
-  .cartouche .kind { font-size: 11pt; font-weight: 700; color: #1f3a4d; text-transform: uppercase;
-    letter-spacing: .6px; margin-bottom: 4px; }
-  .cartouche table { border-collapse: collapse; margin-left: auto; font-size: 7.4pt; }
-  .cartouche th, .cartouche td { border: 1px solid #d9e3e8; padding: 1px 6px; }
-  .cartouche th { text-align: left; color: #55707d; font-weight: 600; background: #f6f9fb; }
   .head { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 12px; margin-bottom: 10px;
     border: 1px solid #d9e3e8; border-radius: 4px; padding: 8px 10px; }
   .head .f { font-size: 8.6pt; }
@@ -170,17 +157,11 @@ const BASE_CSS = `
   table.lines td { border: 1px solid #d9e3e8; padding: 4px 5px; vertical-align: top; height: 26px; }
   table.lines tr { page-break-inside: avoid; }
   table.lines .num { width: 18px; text-align: center; color: #7d929c; }
-  .mono { font-family: Consolas, "DejaVu Sans Mono", monospace; font-weight: 600; }
   .small { font-size: 7.4pt; color: #55707d; }
   .analyses { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
   .box { border: 1px solid #d9e3e8; border-radius: 4px; padding: 6px 10px; min-height: 40px; }
   .box h2 { font-size: 7.4pt; text-transform: uppercase; letter-spacing: .5px; color: #7d929c; margin: 0 0 4px; font-weight: 600; }
   .box p { margin: 0 0 2px; font-size: 8.4pt; }
-  .rules { border: 1px solid #d9e3e8; border-left: 4px solid #b8860b; border-radius: 4px; padding: 6px 10px; margin-bottom: 10px; }
-  .rules h2 { font-size: 7.4pt; text-transform: uppercase; letter-spacing: .5px; color: #7d929c; margin: 0 0 3px; font-weight: 600; }
-  .rules ol { margin: 0; padding-left: 16px; font-size: 8pt; }
-  .money { display: flex; gap: 10px; margin-bottom: 10px; }
-  .money .box { flex: 1; }
   .signatures { display: flex; gap: 10px; page-break-inside: avoid; }
   .sig { flex: 1; border: 1px solid #d9e3e8; border-radius: 4px; padding: 6px 10px; min-height: 70px; }
   .sig .role { font-size: 7.4pt; text-transform: uppercase; letter-spacing: .5px; color: #7d929c; font-weight: 600; }
@@ -197,6 +178,48 @@ const BASE_CSS = `
     border: solid #fff; border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); }
 `;
 
+/**
+ * The bon as the paper draws it: labels, rules and borders in the form's
+ * navy ink, what was recorded in dark ink on the dotted lines — the form
+ * and its filling, as when it is written by hand.
+ */
+const BON_CSS = `
+  ${pageCss(BON_MARGIN)}
+  * { box-sizing: border-box; }
+  /* 1px inside the page box: a border drawn on its very edge is clipped. */
+  html, body { margin: 0; padding: 0 1px; }
+  ${SUPERSCRIPT_CSS}
+  body { font-family: Arial, "Liberation Sans", "Segoe UI", sans-serif; color: #1b2a33; font-size: 9.4pt;
+    line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .k { color: ${CARTOUCHE_INK}; font-weight: 700; white-space: nowrap; }
+  .field { display: flex; align-items: baseline; gap: 1.5mm; margin-bottom: 3mm; }
+  .field .v { flex: 1; min-height: 1.35em; border-bottom: 1px dotted ${CARTOUCHE_INK}; padding: 0 1mm; font-weight: 600; }
+  .head { display: grid; grid-template-columns: 38% 1fr; gap: 0 8mm; align-items: start; margin-bottom: 5mm; }
+  .head .left { padding-top: 5mm; }
+  .client { border: 1.2px solid ${CARTOUCHE_INK}; padding: 3mm 4mm 0.5mm; }
+  .client .serial { justify-content: center; }
+  .client .serial .v { flex: 0 1 45%; font-family: Consolas, "DejaVu Sans Mono", monospace; font-size: 11pt; font-weight: 700; }
+  table.lines { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 3mm; }
+  table.lines th { border: 1.2px solid ${CARTOUCHE_INK}; color: ${CARTOUCHE_INK}; font-weight: 700; font-size: 9pt;
+    line-height: 1.15; text-align: center; vertical-align: middle; padding: 2mm 1.2mm; }
+  table.lines td { border: 1.2px solid ${CARTOUCHE_INK}; padding: 1.2mm 1.5mm; vertical-align: top; font-size: 8.4pt; }
+  table.lines tr { page-break-inside: avoid; }
+  .pe { display: flex; flex-direction: column; justify-content: space-between; min-height: 12mm; }
+  .mono { font-family: Consolas, "DejaVu Sans Mono", monospace; font-weight: 600; }
+  .small { font-size: 7.4pt; color: #55707d; }
+  .nc { color: #a5203a; font-weight: 600; }
+  /* The seven notes stay together, as on the paper: a long bon moves them whole to the next page. */
+  .rules { list-style: none; margin: 0 0 4mm; padding: 0 0 0 2mm; color: ${CARTOUCHE_INK}; font-size: 8.4pt; font-weight: 600;
+    page-break-inside: avoid; break-inside: avoid; }
+  .rules li { padding-left: 6.5mm; text-indent: -6.5mm; margin-bottom: 0.4mm; }
+  .money { width: 62%; margin-bottom: 2mm; }
+  .notes { font-size: 8.4pt; color: #55707d; margin: 0 0 3mm; }
+  .signatures { display: flex; gap: 8mm; margin-top: 5mm; page-break-inside: avoid; }
+  .sig { flex: 1; position: relative; border: 1.2px solid ${CARTOUCHE_INK}; height: 30mm; padding: 6mm 4mm 2mm; }
+  .sig .role { position: absolute; top: -0.75em; left: 5mm; background: #fff; padding: 0 1.5mm;
+    color: ${CARTOUCHE_INK}; font-weight: 700; font-size: 11pt; line-height: 1.3; }
+`;
+
 function quantityText(quantity: number | null, unit: QuantityUnit | null) {
   if (quantity === null) return "";
   return `${formatDecimal(quantity, 2)}${unit ? ` ${QUANTITY_UNIT_LABELS[unit]}` : ""}`;
@@ -206,11 +229,21 @@ function temperatureText(value: number | null) {
   return value === null ? "" : `${formatDecimal(value)} °C`;
 }
 
+/** A DLC date, « JJ/MM/AAAA » from its calendar day. */
+function dayText(date: Date | null) {
+  return date ? formatDateOnly(date) : "";
+}
+
 function dlcText(line: DocumentLine) {
-  const p = line.productionDate ? formatDayShort(line.productionDate) : "";
-  const e = line.expiryDate ? formatDayShort(line.expiryDate) : "";
+  const p = dayText(line.productionDate);
+  const e = dayText(line.expiryDate);
   if (!p && !e) return "";
   return `P : ${p || "—"}<br>E : ${e || "—"}`;
+}
+
+/** Recorded text on a line of the bon, or nothing: the line stays free to fill by hand. */
+function filled(value: string | null | undefined) {
+  return value ? show(value) : "";
 }
 
 function samplerText(data: SerieDocumentData) {
@@ -281,16 +314,6 @@ function remarksHtml(line: DocumentLine) {
   return `<span class="nc">${cancelledText(line)}</span>${text ? ` · ${show(text)}` : ""}`;
 }
 
-function headerHtml(company: CompanyInfo, title: string, ref: DocumentRef) {
-  return `<header>
-  <div>
-    ${companyBrandHtml(company)}
-    <div class="tagline">${escapeHtml(company.tagline)}</div>
-  </div>
-  ${cartoucheHtml(ref, title)}
-</header>`;
-}
-
 /**
  * The two analyses columns: « N. analyses » per échantillon number, under
  * the family of the sample's nature — the two samples of a two-family line
@@ -329,7 +352,7 @@ function familyTicked(data: SerieDocumentData, family: Family) {
 }
 
 /** PG04/EN01 — the protocole de prélèvement of a visit. */
-export function buildProtocolHtml(data: SerieDocumentData, company: CompanyInfo = COMPANY): string {
+export function buildProtocolHtml(data: SerieDocumentData): string {
   const groups = protocolRows(data.lines);
   const rows = groups
     .map((samples) => {
@@ -354,11 +377,9 @@ export function buildProtocolHtml(data: SerieDocumentData, company: CompanyInfo 
 <head>
 <meta charset="utf-8">
 <title>Protocole de prélèvement — série ${escapeHtml(data.serialNumber)}</title>
-<style>${BASE_CSS}</style>
+<style>${PROTOCOL_CSS}</style>
 </head>
 <body>
-${headerHtml(company, "Protocole de prélèvement", data.reference)}
-
 <div class="head">
   <div class="serial"><span class="k">N° de série</span><span class="n">${escapeHtml(data.serialNumber)}</span>
     <span class="small">Référence client : <b>${show(data.clientReference)}</b></span></div>
@@ -397,12 +418,32 @@ ${data.notes ? `<p class="notes">${escapeHtml(data.notes)}</p>` : ""}
 </html>`;
 }
 
+/** The paper bon's five lines, filled by hand beyond the samples recorded. */
+const BON_ROWS = 5;
+
+/** « Date : 05/10/2026 » and « Heure : 14h05 » — two lines on the paper, the laboratory's clock. */
+function bonDayAndHour(at: Date) {
+  const wall = toLabWallTime(at); // « 2026-10-05T14:05 »
+  return {
+    day: `${wall.slice(8, 10)}/${wall.slice(5, 7)}/${wall.slice(0, 4)}`,
+    hour: `${wall.slice(11, 13)}h${wall.slice(14, 16)}`,
+  };
+}
+
+/** « Label : value » on a dotted line, as the paper prints its fields. */
+function bonField(label: string, value: string) {
+  return `<div class="field"><span class="k">${label}</span><span class="v">${value}</span></div>`;
+}
+
+/** The DLC cell: « P : » and « E : » pre-printed on every line, filled when known. */
+function bonDlcCell(line: DocumentLine | null) {
+  const p = line ? dayText(line.productionDate) : "";
+  const e = line ? dayText(line.expiryDate) : "";
+  return `<td><div class="pe"><span><span class="k">P :</span> ${p}</span><span><span class="k">E :</span> ${e}</span></div></td>`;
+}
+
 /** PG05/EN04 — the bon de réception of a deposit at the counter. */
-export function buildBonHtml(
-  data: SerieDocumentData,
-  company: CompanyInfo = COMPANY,
-  thresholds: ReceptionThresholds = DEFAULT_THRESHOLDS
-): string {
+export function buildBonHtml(data: SerieDocumentData, thresholds: ReceptionThresholds = DEFAULT_THRESHOLDS): string {
   // One row per sample: the two samples of a two-family line (« 1M » /
   // « 1P ») each carry their own N° de contrôle and their own family.
   const rows = data.lines
@@ -417,79 +458,83 @@ export function buildBonHtml(
           : l.cancelled
             ? `<br><span class="nc">${cancelledText(l)}</span>`
             : "";
+      const code = l.controlCode ? `<span class="mono">${escapeHtml(l.controlCode)}</span><br>` : "";
       return `
       <tr>
-        <td class="num">${escapeHtml(refOf(l))}</td>
+        <td>${code}<span class="small">Éch. ${escapeHtml(refOf(l))}</span></td>
         <td>${show(l.designation)}${details}${status}</td>
-        <td>${show(l.numeroLot)}</td>
-        <td>${dlcText(l)}</td>
+        <td>${filled(l.numeroLot)}</td>
+        ${bonDlcCell(l)}
         <td>${quantityText(l.quantity, l.quantityUnit)}</td>
         <td>${temperatureText(l.receptionTemperature)}</td>
-        <td class="mono">${show(l.controlCode)}</td>
         <td><span class="small">${ANALYSIS_FAMILY_LABELS[l.family]}</span>${
           l.parameters.length > 0 ? `<br>${l.parameters.map((p) => show(p)).join(", ")}` : ""
         }</td>
       </tr>`;
     })
     .join("");
+  const blankRows = Array.from(
+    { length: Math.max(0, BON_ROWS - data.lines.length) },
+    () => `<tr><td></td><td></td><td></td>${bonDlcCell(null)}<td></td><td></td><td></td></tr>`
+  ).join("");
 
-  const t = thresholds;
+  const { day, hour } = bonDayAndHour(data.arrivedAt ?? data.startedAt);
+  const client = `${escapeHtml(data.clientName)}${data.siteName ? ` — ${escapeHtml(data.siteName)}` : ""}`;
+  const depositedBy = `${escapeHtml(samplerText(data))}${data.interlocutor ? ` — ${escapeHtml(data.interlocutor)}` : ""}`;
+  const advance =
+    data.advanceAmount !== null
+      ? `${formatCurrency(data.advanceAmount)}${data.advanceMode ? ` — ${PAYMENT_MODE_LABELS[data.advanceMode]}` : ""}`
+      : "";
+
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
 <title>Bon de réception — série ${escapeHtml(data.serialNumber)}</title>
-<style>${BASE_CSS}</style>
+<style>${BON_CSS}</style>
 </head>
 <body>
-${headerHtml(company, "Bon de réception", data.reference)}
-
 <div class="head">
-  <div class="serial"><span class="k">N° de série</span><span class="n">${escapeHtml(data.serialNumber)}</span>
-    <span class="small">Référence client : <b>${show(data.clientReference)}</b></span></div>
-  <div class="f"><span class="k">Date et heure :</span> <b>${data.arrivedAt ? formatDayTime(data.arrivedAt) : formatDayTime(data.startedAt)}</b></div>
-  <div class="f"><span class="k">Reçu par :</span> <b>${show(data.receivedByName)}</b></div>
-  <div class="f"><span class="k">Déposé par :</span> <b>${escapeHtml(samplerText(data))}${data.interlocutor ? ` — ${escapeHtml(data.interlocutor)}` : ""}</b></div>
-  <div class="f"><span class="k">Client :</span> <b>${escapeHtml(data.clientName)}${data.siteName ? ` — ${escapeHtml(data.siteName)}` : ""}</b></div>
-  <div class="f"><span class="k">Adresse :</span> <b>${show(data.clientAddress)}</b></div>
-  <div class="f"><span class="k">Téléphone :</span> <b>${show(data.clientPhone)}</b></div>
-  <div class="f"><span class="k">Cadre :</span> <b>${escapeHtml(formatCadre(data.cadre, data.cadreNote))}</b></div>
+  <div class="left">
+    ${bonField("Date :", day)}
+    ${bonField("Heure :", hour)}
+    ${bonField("Reçu par :", filled(data.receivedByName))}
+    ${bonField("Référence client :", filled(data.clientReference))}
+    ${bonField("Cadre :", escapeHtml(formatCadre(data.cadre, data.cadreNote)))}
+    ${bonField("Déposé par :", depositedBy)}
+  </div>
+  <div class="client">
+    <div class="field serial"><span class="k">N° de série :</span><span class="v">${escapeHtml(data.serialNumber)}</span></div>
+    ${bonField("Nom du client :", client)}
+    ${bonField("Adresse :", filled(data.clientAddress))}
+    <div class="field"><span class="v"></span></div>
+    ${bonField("N° de tél :", filled(data.clientPhone))}
+    ${bonField("N° de fax :", "")}
+  </div>
 </div>
 
 <table class="lines">
+  <colgroup><col style="width:11%"><col style="width:21.5%"><col style="width:10%"><col style="width:13.5%"><col style="width:14%"><col style="width:10%"><col style="width:20%"></colgroup>
   <thead><tr>
-    <th class="num">N°</th><th style="width:24%">Désignation produit</th><th>N° lot</th><th>DLC</th>
-    <th>Quantité / poids</th><th>T° à l'arrivée</th><th>N° de contrôle</th><th style="width:24%">Analyses demandées</th>
+    <th>N° de contrôle</th><th>Désignation produit</th><th>N° Lot</th><th>DLC</th>
+    <th>Quantité/poids en (g)</th><th>T° à l'arrivée</th><th>Analyses demandées</th>
   </tr></thead>
-  <tbody>${rows}${padRows(5 - data.lines.length, 8, nextNumber(data.lines))}</tbody>
+  <tbody>${rows}${blankRows}</tbody>
 </table>
 
-<div class="rules">
-  <h2>Critères de recevabilité</h2>
-  <ol>
-    <li>Ne pas accepter des échantillons non exploitables lors de l'analyse (tête de poisson, os, etc.).</li>
-    <li>Poids minimal ${formatDecimal(t.minFoodMicroG)} g pour les aliments (analyses microbiologiques).</li>
-    <li>Poids minimal ${formatDecimal(t.minFoodChemG)} g pour les aliments (analyses physico-chimiques).</li>
-    <li>Volume d'eau pour analyses microbiologiques : ${formatDecimal(t.minWaterMicroL)} L, et si Salmonella ${formatDecimal(t.minWaterSalmonellaL)} L.</li>
-    <li>Volume d'eau pour analyses physico-chimiques : ${formatDecimal(t.minWaterChemL)} L.</li>
-    <li>La température à l'arrivée doit être précisée.</li>
-    <li>Échantillons destinés au dosage de l'histamine : ${t.histamineUnits} échantillons de ${formatDecimal(t.histamineUnitG)} g.</li>
-  </ol>
-</div>
+<ul class="rules">
+  ${RECEPTION_RULES.map((rule) => `<li>${escapeHtml(receptionRuleLine(rule, thresholds))}</li>`).join("\n  ")}
+</ul>
 
 <div class="money">
-  <div class="box"><h2>Avance</h2><p>${
-    data.advanceAmount !== null
-      ? `<b>${formatCurrency(data.advanceAmount)}</b>${data.advanceMode ? ` — ${PAYMENT_MODE_LABELS[data.advanceMode]}` : ""}`
-      : "……………………"
-  }</p></div>
-  <div class="box"><h2>Reste</h2><p>……………………</p></div>
+  ${bonField("Avance :", advance)}
+  ${bonField("Reste :", "")}
 </div>
 ${data.notes ? `<p class="notes">${escapeHtml(data.notes)}</p>` : ""}
 
 <div class="signatures">
-  <div class="sig"><div class="role">Signature du client</div></div>
-  <div class="sig"><div class="role">Signature de l'agent Qualilab</div><p class="small">${show(data.receivedByName)}</p></div>
+  <div class="sig"><div class="role">Signature de client :</div></div>
+  <div class="sig"><div class="role">Signature de l'agent QUALILAB :</div><p class="small">${filled(data.receivedByName)}</p></div>
 </div>
 </body>
 </html>`;

@@ -3,7 +3,7 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { listDocumentReferences } from "@/lib/document-reference";
-import { DOC_TYPES, type DocType } from "@/lib/document-types";
+import { validateDocumentReferences } from "@/lib/document-reference-input";
 
 /**
  * The cartouches of the quality documents (Réf / version / dates) — ADMIN
@@ -13,15 +13,6 @@ export async function GET() {
   const session = await requireApiRole("ADMIN");
   if (session instanceof NextResponse) return session;
   return NextResponse.json(await listDocumentReferences());
-}
-
-type Item = { docType: DocType; reference: string; version: string; createdOn: Date | null; updatedOn: Date | null };
-
-function parseDate(value: unknown, label: string): Date | null | string {
-  if (value === undefined || value === null || value === "") return null;
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(value)) return `${label} : date invalide.`;
-  const d = new Date(value.length === 10 ? `${value}T00:00:00` : value);
-  return Number.isNaN(d.getTime()) ? `${label} : date invalide.` : d;
 }
 
 export async function PUT(request: Request) {
@@ -35,35 +26,11 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
 
-  const raw = (body as { items?: unknown } | null)?.items;
-  if (!Array.isArray(raw) || raw.length === 0) {
-    return NextResponse.json({ error: "Aucun document à enregistrer." }, { status: 400 });
-  }
-
-  const items: Item[] = [];
-  for (const entry of raw as Record<string, unknown>[]) {
-    const docType = String(entry?.docType ?? "") as DocType;
-    if (!DOC_TYPES.includes(docType)) {
-      return NextResponse.json({ error: "Type de document inconnu." }, { status: 400 });
-    }
-    const reference = typeof entry.reference === "string" ? entry.reference.trim() : "";
-    const version = typeof entry.version === "string" ? entry.version.trim() : "";
-    if (reference.length > 40 || version.length > 10) {
-      return NextResponse.json({ error: `${docType} : référence (40) ou version (10) trop longue.` }, { status: 400 });
-    }
-    // Both empty = « not filled yet »; a reference without version is a half-cartouche.
-    if ((reference && !version) || (!reference && version)) {
-      return NextResponse.json({ error: `${docType} : indiquez la référence et la version.` }, { status: 400 });
-    }
-    const createdOn = parseDate(entry.createdOn, `${docType} · création`);
-    if (typeof createdOn === "string") return NextResponse.json({ error: createdOn }, { status: 400 });
-    const updatedOn = parseDate(entry.updatedOn, `${docType} · mise à jour`);
-    if (typeof updatedOn === "string") return NextResponse.json({ error: updatedOn }, { status: 400 });
-    if (createdOn && updatedOn && updatedOn < createdOn) {
-      return NextResponse.json({ error: `${docType} : la mise à jour précède la création.` }, { status: 400 });
-    }
-    items.push({ docType, reference, version, createdOn, updatedOn });
-  }
+  // The dates are calendar dates, read as the UTC midnight of their day:
+  // re-saving a row leaves its dates exactly as they were.
+  const check = validateDocumentReferences(body);
+  if (!check.ok) return NextResponse.json({ error: check.error }, { status: 400 });
+  const { items } = check;
 
   const before = await listDocumentReferences();
 

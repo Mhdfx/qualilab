@@ -44,6 +44,7 @@ export const PROGRAMME_SAMPLE_SELECT = {
   conformity: true,
   conformityReason: true,
   conformityNote: true,
+  receptionExploitable: true,
   analysisBlocked: true,
   unitCount: true,
   productTypeId: true,
@@ -304,7 +305,7 @@ export async function loadProgrammeReferential(
     }),
     prisma.analysisParameter.findMany({
       where: { category },
-      select: { id: true, name: true, unit: true, threshold: true, calcFactor: true, family: true, category: true },
+      select: { id: true, name: true, unit: true, threshold: true, calcFactor: true, family: true, category: true, aliases: true },
       orderBy: { name: "asc" },
     }),
     prisma.analysisProfile.findMany({

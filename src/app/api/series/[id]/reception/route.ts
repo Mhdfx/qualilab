@@ -4,6 +4,7 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { getLabSettings } from "@/lib/lab-settings";
 import { validateReception, type ReceptionCandidate } from "@/lib/reception-input";
+import { parameterSpellings } from "@/lib/reception-rules";
 import { assignControlCode } from "@/lib/sample-code";
 import { notifyDestroyed } from "@/lib/destruction-notice";
 
@@ -25,6 +26,12 @@ import { notifyDestroyed } from "@/lib/destruction-notice";
  * The two samples of a two-family line (« 2M », « 2P » — RETOUR-LABO-06-10.md
  * §5, V3) are received like any other, each with its own N° de contrôle,
  * microbiology first.
+ *
+ * The seven rules of the bon de réception are a checklist (retour du 08/10):
+ * rule (1) — exploitable or not — is answered for every sample and stored on
+ * it (`receptionExploitable`); the whole checklist, recomputed here with the
+ * laboratory's thresholds, goes to the SAMPLE_RECEIVED audit. Histamine and
+ * Salmonella are recognised on the analyses' names and aliases.
  */
 export async function POST(
   request: Request,
@@ -55,7 +62,7 @@ export async function POST(
           quantityUnit: true,
           receptionTemperature: true,
           nature: { select: { family: true } },
-          parameters: { select: { parameter: { select: { name: true } } } },
+          parameters: { select: { parameter: { select: { name: true, aliases: true } } } },
         },
         orderBy: [{ lineNumber: "asc" }, { code: "asc" }],
       },
@@ -84,7 +91,7 @@ export async function POST(
     status: s.status,
     lineKind: s.lineKind,
     family: s.nature.family,
-    parameterNames: s.parameters.map((p) => p.parameter.name),
+    parameterNames: s.parameters.flatMap((p) => parameterSpellings(p.parameter)),
     quantity: s.quantity === null ? null : Number(s.quantity),
     quantityUnit: s.quantityUnit,
     receptionTemperature: s.receptionTemperature,
@@ -127,6 +134,7 @@ export async function POST(
                 ...(line.quantity !== null
                   ? { quantity: line.quantity, quantityUnit: line.quantityUnit }
                   : {}),
+                receptionExploitable: line.exploitable,
                 conformity: line.conformity,
                 conformityReason: line.conformityReason,
                 conformityNote: line.conformityNote,
@@ -192,6 +200,7 @@ export async function POST(
             serialNumber: serie.serialNumber,
             lineNumber: line.lineNumber,
             ref: line.ref,
+            exploitable: line.exploitable,
             conformity: line.conformity,
             conformityReason: line.conformityReason,
             conformityNote: line.conformityNote,
@@ -200,6 +209,8 @@ export async function POST(
             quantity: line.quantity,
             quantityUnit: line.quantityUnit,
             checks: line.checks.filter((c) => c.level !== "OK"),
+            // The seven rules of the bon, as received (retour du 08/10).
+            checklist: line.checklist,
           },
         })
       ),

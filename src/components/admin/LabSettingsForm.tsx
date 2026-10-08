@@ -6,12 +6,22 @@ import { Check, ClipboardCheck, Scale, SlidersHorizontal } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import type { LabSettings } from "@/lib/lab-settings";
 import { LINE_KIND_LABELS } from "@/lib/labels";
+import {
+  RECEPTION_RULES,
+  checklistRowLabel,
+  type ReceptionRuleKey,
+  type ReceptionThresholds,
+} from "@/lib/reception-rules";
 
 /**
  * The workflow decisions the client has not made yet (NEEDEDINFO §4) and the
  * acceptance thresholds of the bon de réception (WORKFLOW.md §6). Both
  * behaviours of each switch are built — the day the laboratory answers,
  * implementing it is a click on this screen.
+ *
+ * The thresholds are named by the paper's own numbering and wording,
+ * (1) … (7) (`RECEPTION_RULES`), figures as typed; the cold chain is not on
+ * the paper — a complementary check, shown under rule (6) at reception.
  */
 
 type SwitchKey = "alertAfterTechnicalValidation";
@@ -31,21 +41,33 @@ const SWITCHES: { key: SwitchKey; title: string; on: string; off: string }[] = [
   {
     key: "alertAfterTechnicalValidation",
     title: "Moment d'envoi des alertes de contamination",
-    on: "Dès la validation technique : le client est prévenu sans attendre l'approbation finale — le choix du laboratoire (29/09).",
-    off: "Après l'approbation de l'administrateur (avec le rapport).",
+    on: "Dès la validation technique : le client est prévenu sans attendre la validation administrative — le choix du laboratoire (29/09).",
+    off: "Après la validation administrative (avec le rapport).",
   },
 ];
 
-const THRESHOLDS: { key: NumberKey; label: string; unit: string; hint: string }[] = [
-  { key: "minFoodMicroG", label: "Aliment — microbiologie", unit: "g", hint: "Règle 1 du bon de réception" },
-  { key: "minFoodChemG", label: "Aliment — physico-chimie", unit: "g", hint: "Règle 2" },
-  { key: "minWaterMicroL", label: "Eau — microbiologie", unit: "L", hint: "Règle 3" },
-  { key: "minWaterSalmonellaL", label: "Eau — recherche de Salmonella", unit: "L", hint: "Règle 3 bis" },
-  { key: "minWaterChemL", label: "Eau — physico-chimie", unit: "L", hint: "Règle 4" },
-  { key: "histamineUnits", label: "Histamine — nombre d'unités", unit: "unités", hint: "Règle 5" },
-  { key: "histamineUnitG", label: "Histamine — poids par unité", unit: "g", hint: "Règle 5" },
-  { key: "coldChainMaxC", label: "Chaîne du froid — T° maximale à l'arrivée", unit: "°C", hint: "Règle 7 (avertissement)" },
+/** Each threshold and the rule of the paper it sets — null: not on the paper. */
+const THRESHOLDS: { key: NumberKey; label: string; unit: string; rule: ReceptionRuleKey | null }[] = [
+  { key: "minFoodMicroG", label: "Aliment — microbiologie", unit: "g", rule: "ALIMENT_MICRO" },
+  { key: "minFoodChemG", label: "Aliment — physico-chimie", unit: "g", rule: "ALIMENT_CHIMIE" },
+  { key: "minWaterMicroL", label: "Eau — microbiologie", unit: "L", rule: "EAU_MICRO" },
+  { key: "minWaterSalmonellaL", label: "Eau — recherche de Salmonella", unit: "L", rule: "EAU_MICRO" },
+  { key: "minWaterChemL", label: "Eau — physico-chimie", unit: "L", rule: "EAU_CHIMIE" },
+  { key: "histamineUnits", label: "Histamine — nombre d'unités", unit: "unités", rule: "HISTAMINE" },
+  { key: "histamineUnitG", label: "Histamine — poids par unité", unit: "g", rule: "HISTAMINE" },
+  { key: "coldChainMaxC", label: "Chaîne du froid — T° maximale à l'arrivée", unit: "°C", rule: null },
 ];
+
+/** Shown under the cold-chain limit: it is the laboratory's addition, not the paper's. */
+const COLD_CHAIN_HINT = "Contrôle complémentaire, hors bon — un avertissement sous la règle (6), jamais un refus.";
+
+const RULE_OF = new Map(RECEPTION_RULES.map((rule) => [rule.key, rule]));
+
+/** « 1,5 » → 1.5; a half-typed or empty value keeps the saved one. */
+function typedNumber(value: string, saved: number) {
+  const parsed = Number(value.replace(",", "."));
+  return value.trim() && Number.isFinite(parsed) ? parsed : saved;
+}
 
 const KINDS = Object.keys(LINE_KIND_LABELS) as (keyof typeof LINE_KIND_LABELS)[];
 
@@ -72,6 +94,20 @@ export function LabSettingsForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+
+  // The paper's wording with the figures as typed, so the hints read like the bon.
+  const live: ReceptionThresholds = {
+    ...initial,
+    ...(Object.fromEntries(THRESHOLDS.map((t) => [t.key, typedNumber(numbers[t.key], initial[t.key])])) as Record<
+      NumberKey,
+      number
+    >),
+    temperatureRequiredKinds: requiredKinds.join(","),
+  };
+  const ruleLine = (key: ReceptionRuleKey) => {
+    const rule = RULE_OF.get(key)!;
+    return checklistRowLabel({ n: rule.n, text: rule.text(live) });
+  };
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -179,11 +215,17 @@ export function LabSettingsForm({
           Règles d&apos;acceptation à la réception
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          Les sept règles du bon de réception, calculées sur chaque échantillon au
-          moment de la réception. Une quantité sous le minimum ou une
-          température manquante rend l&apos;échantillon non conforme ; la réception
-          décide alors, échantillon par échantillon, de l&apos;analyser malgré tout ou de le détruire.
+          Les sept règles du bon de réception (PG05/EN04), en liste de contrôle sur chaque
+          échantillon au moment de la réception. La règle (1) est la réponse du réceptionniste ;
+          une quantité sous le minimum ou une température manquante rend l&apos;échantillon non
+          conforme ; la réception décide alors, échantillon par échantillon, de l&apos;analyser
+          malgré tout ou de le détruire.
         </p>
+        <ol className="mt-3 space-y-1 rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-600 ring-1 ring-slate-100">
+          {RECEPTION_RULES.map((rule) => (
+            <li key={rule.key}>{checklistRowLabel({ n: rule.n, text: rule.text(live) })}</li>
+          ))}
+        </ol>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {THRESHOLDS.map((item) => (
@@ -202,14 +244,14 @@ export function LabSettingsForm({
                 />
                 <span className="text-sm text-slate-500">{item.unit}</span>
               </div>
-              <p className="mt-1 text-xs text-slate-400">{item.hint}</p>
+              <p className="mt-1 text-xs text-slate-500">{item.rule ? ruleLine(item.rule) : COLD_CHAIN_HINT}</p>
             </div>
           ))}
         </div>
 
         <fieldset className="mt-4">
           <legend className="text-sm font-medium text-slate-700">
-            Température à l&apos;arrivée obligatoire pour (règle 6)
+            {ruleLine("TEMPERATURE")} — obligatoire pour :
           </legend>
           <div className="mt-2 flex flex-wrap gap-2">
             {KINDS.map((kind) => {

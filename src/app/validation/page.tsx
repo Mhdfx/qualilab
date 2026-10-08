@@ -9,7 +9,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
 import { ValidationQueue } from "@/components/validation/ValidationQueue";
 
-export const metadata = { title: "Validation qualité" };
+export const metadata = { title: "Validation des résultats" };
 
 const PATH = "/validation";
 const ANCHOR = "file";
@@ -21,8 +21,8 @@ const EMPTY: Record<ValidationView, { title: string; text: string }> = {
     text: "Les résultats soumis par les techniciens attendent ici leur validation technique.",
   },
   attente_admin: {
-    title: "Aucun échantillon en attente d'approbation",
-    text: "Les échantillons validés techniquement attendent ici l'approbation de l'administrateur.",
+    title: "Aucun échantillon en attente de validation administrative",
+    text: "Les échantillons validés techniquement attendent ici leur validation administrative.",
   },
 };
 
@@ -79,8 +79,8 @@ export default async function ValidationPage({
     <div>
       <PageHeader
         badge="Espace validation"
-        title="Validation qualité"
-        subtitle="Contrôlez les résultats face aux seuils. Chaque échantillon requiert la validation technique puis l'approbation de l'administrateur."
+        title="Validation des résultats"
+        subtitle="Contrôlez les résultats face aux seuils. Chaque échantillon requiert la validation technique puis la validation administrative."
       />
 
       <section aria-label="Indicateurs" className="mb-8">

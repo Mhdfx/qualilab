@@ -8,7 +8,7 @@ import { StatCard, type StatAccent } from "@/components/ui/StatCard";
 import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
 import { ProgrammationQueue, type QueueLine } from "@/components/programmation/ProgrammationQueue";
 
-export const metadata = { title: "Programmation des analyses" };
+export const metadata = { title: "Enregistrement des paramètres" };
 
 /** A ceiling, not a page: the queue is the current work, never the history (same as the API). */
 const QUEUE_LIMIT = 1000;
@@ -126,7 +126,7 @@ export default async function ProgrammationPage({
   return (
     <div>
       <PageHeader
-        badge="Espace programmation"
+        badge="Enregistrement des paramètres"
         title="Programme d'analyse"
         subtitle="Pour chaque échantillon réceptionné, décidez de la nature, du type de produit, des analyses, des nombres, des méthodes et de l'organisation avant la paillasse. La facturation se prépare dès la confirmation."
       />

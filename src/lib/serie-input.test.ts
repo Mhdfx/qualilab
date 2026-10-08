@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { NON_CONFORMITY_REASON_LABELS } from "./labels";
 import {
+  NON_CONFORMITY_REASONS,
   SERIE_MESSAGES,
   normalizeLabel,
   planLineSamples,
@@ -351,7 +353,7 @@ describe("« Corriger la fiche » d'un échantillon saisi avant l'état et la m�
 describe("les analyses sont facultatives (V6)", () => {
   it("accepte une ligne sans analyse, sur une visite comme sur un dépôt", () => {
     expect(validateLine({ ...aliment, parameterIds: [] }, 0, natures)).toMatchObject({ ok: true, value: { parameterIds: [] } });
-    expect(validateLine({ ...aliment, parameterIds: undefined }, 0, natures, { kind: "DEPOT" })).toMatchObject({ ok: true, value: { parameterIds: [] } });
+    expect(validateLine({ ...aliment, parameterIds: undefined, exploitable: true }, 0, natures, { kind: "DEPOT" })).toMatchObject({ ok: true, value: { parameterIds: [] } });
   });
 
   it("garde le type de produit sur une ligne aliment seulement, facultatif", () => {
@@ -396,7 +398,8 @@ describe("validateSerie — the visit as a whole", () => {
       line: 2,
       error: "Échantillon 2 — choisissez l'état de la surface.",
     });
-    expect(validateSerie({ ...visit, lines: [aliment, eau, { ...air, airMethod: null }] }, natures, { kind: "DEPOT" })).toMatchObject({
+    const answered = { exploitable: true };
+    expect(validateSerie({ ...visit, lines: [{ ...aliment, ...answered }, { ...eau, ...answered }, { ...air, airMethod: null }] }, natures, { kind: "DEPOT" })).toMatchObject({
       ok: false,
       line: 3,
       error: "Échantillon 3 — choisissez la méthode de prélèvement de l'air.",
@@ -486,7 +489,7 @@ describe("le cadre de la série (RETOUR-LABO-06-10 §5, V1)", () => {
         error: "« Service vétérinaire » n'est plus proposé : choisissez « Autre » et indiquez le nom.",
       });
     }
-    expect(validateSerie({ ...base, cadre: "AUTRE", samplerKind: "AUTRE", samplerName: "Service test" }, natures, { kind: "DEPOT" })).toMatchObject({
+    expect(validateSerie({ ...base, lines: [{ ...aliment, exploitable: true }], cadre: "AUTRE", samplerKind: "AUTRE", samplerName: "Service test" }, natures, { kind: "DEPOT" })).toMatchObject({
       ok: true,
       value: { samplerKind: "AUTRE", samplerName: "Service test" },
     });
@@ -518,7 +521,7 @@ describe("validateSerie — the deposit at the counter", () => {
     advanceAmount: "350",
     advanceMode: "ESPECES",
     lines: [
-      { ...aliment, lieu: "", quantity: "250", quantityUnit: "G", receptionTemperature: "4,04", technicianId: "t1" },
+      { ...aliment, lieu: "", quantity: "250", quantityUnit: "G", receptionTemperature: "4,04", exploitable: true, technicianId: "t1" },
       {
         lineKind: "EAU",
         analysesMicro: true,
@@ -528,6 +531,7 @@ describe("validateSerie — the deposit at the counter", () => {
         quantityUnit: "L",
         receptionTemperature: "12",
         parameterIds: ["p9"],
+        exploitable: true,
         conformity: false,
         conformityReason: "QUANTITE_INSUFFISANTE",
         technicianId: "t1",
@@ -546,6 +550,7 @@ describe("validateSerie — the deposit at the counter", () => {
     expect(result.value.lines[0]).toMatchObject({
       lieu: "Dépôt au laboratoire",
       receptionTemperature: 4,
+      exploitable: true,
       conformity: true,
       conformityReason: null,
     });
@@ -589,6 +594,48 @@ describe("validateSerie — the deposit at the counter", () => {
     for (const line of result.value.lines) expect(line).not.toHaveProperty("technicianId");
   });
 
+  it("needs rule (1) answered on every line — a form opened before the checklist is told so", () => {
+    const { exploitable: _answer, ...oldForm } = deposit.lines[0];
+    expect(_answer).toBe(true);
+    expect(validateSerie({ ...deposit, lines: [oldForm] }, natures, { kind: "DEPOT" })).toEqual({
+      ok: false,
+      line: 1,
+      error: "Échantillon 1 — indiquez s'il est exploitable (règle 1). Si les boutons « Exploitable » / « Non exploitable » n'apparaissent pas, rechargez la page.",
+    });
+    expect(validateSerie({ ...deposit, lines: [deposit.lines[0], { ...deposit.lines[1], exploitable: null }] }, natures, { kind: "DEPOT" })).toMatchObject({
+      ok: false,
+      line: 2,
+      error: "Échantillon 2 — indiquez s'il est exploitable (règle 1). Si les boutons « Exploitable » / « Non exploitable » n'apparaissent pas, rechargez la page.",
+    });
+  });
+
+  it("never declares a non-exploitable line conform", () => {
+    expect(validateSerie({ ...deposit, lines: [{ ...deposit.lines[0], exploitable: false }] }, natures, { kind: "DEPOT" })).toEqual({
+      ok: false,
+      line: 1,
+      error: "Échantillon 1 — un échantillon non exploitable ne peut pas être déclaré conforme (règle 1).",
+    });
+  });
+
+  it("accepts the motif « non exploitable », and only for a line answered so", () => {
+    const refused = { ...deposit.lines[0], exploitable: false, conformity: false, conformityReason: "NON_EXPLOITABLE", decision: "DETRUIRE" };
+    expect(validateSerie({ ...deposit, lines: [refused] }, natures, { kind: "DEPOT" })).toMatchObject({
+      ok: true,
+      value: { lines: [{ exploitable: false, conformity: false, conformityReason: "NON_EXPLOITABLE", destroy: true }] },
+    });
+    expect(validateSerie({ ...deposit, lines: [{ ...refused, exploitable: true }] }, natures, { kind: "DEPOT" })).toMatchObject({
+      ok: false,
+      line: 1,
+      error: "Échantillon 1 — le motif « non exploitable » ne va pas avec la réponse « Exploitable » (règle 1).",
+    });
+  });
+
+  it("derives the accepted motifs from their labels", () => {
+    expect(NON_CONFORMITY_REASONS).toEqual(Object.keys(NON_CONFORMITY_REASON_LABELS));
+    expect(NON_CONFORMITY_REASONS).toContain("NON_EXPLOITABLE");
+    expect(NON_CONFORMITY_REASON_LABELS.NON_EXPLOITABLE).toBe("Échantillon non exploitable (tête de poisson, os…)");
+  });
+
   it("ignores reception data on a visit", () => {
     const visit = validateSerie(
       { ...deposit, lines: deposit.lines.map((l) => ({ ...l, lieu: "Comptoir" })) },
@@ -599,7 +646,7 @@ describe("validateSerie — the deposit at the counter", () => {
     if (visit.ok) {
       expect(visit.value.samplerKind).toBe("CLIENT");
       expect(visit.value.advanceAmount).toBeNull();
-      expect(visit.value.lines[1]).toMatchObject({ conformity: true, conformityReason: null });
+      expect(visit.value.lines[1]).toMatchObject({ exploitable: null, conformity: true, conformityReason: null });
       expect(visit.value.lines[1]).not.toHaveProperty("technicianId");
     }
   });

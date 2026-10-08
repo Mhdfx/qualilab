@@ -4,21 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, FileBadge } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { DOC_TYPE_LABELS, type DocType } from "@/lib/document-types";
+import { DOC_TYPE_LABELS, DOC_TYPE_PRINTED_ON, type DocType } from "@/lib/document-types";
+import type { DocumentRow } from "@/lib/document-reference-input";
 
 /**
- * The cartouche of every printed document: Réf « PG04/EN01 », version,
- * dates. The quality manager keeps it here; the PDFs read it at print time.
+ * The cartouche of every printed form: Réf « PG04/EN01 », version, dates.
+ * The quality manager keeps it here; the PDFs read it at print time, so a
+ * reprint carries the version in force when it is printed. Each row says
+ * which PDF prints it — or that the LIMS does not print that form yet.
  */
-
-export type DocumentRow = {
-  docType: DocType;
-  reference: string;
-  version: string;
-  /** « AAAA-MM-JJ » for the date inputs, empty when unknown. */
-  createdOn: string;
-  updatedOn: string;
-};
 
 export function DocumentReferencesForm({ initial }: { initial: DocumentRow[] }) {
   const router = useRouter();
@@ -66,66 +60,77 @@ export function DocumentReferencesForm({ initial }: { initial: DocumentRow[] }) 
           Cartouches des documents
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          Référence « PGxx/ENxx », version et dates imprimées en tête de chaque
-          document, comme sur les formulaires papier. Une nouvelle version d&apos;un
-          formulaire se déclare ici — le PDF suivant la porte.
+          Référence « PGxx/ENxx », version et dates de la cartouche imprimée en tête
+          de chaque page, comme sur le formulaire papier : logo, titre, « Réf : »,
+          « Version », « Page x sur y », « Date de création », « Dernière mise à
+          jour ». Une nouvelle version se déclare ici : tout formulaire imprimé
+          ensuite par le LIMS la porte, y compris la réimpression d&apos;un document
+          plus ancien.
         </p>
 
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                 <th className="pb-2 pr-3 font-medium">Document</th>
                 <th className="pb-2 pr-3 font-medium">Référence</th>
                 <th className="pb-2 pr-3 font-medium">Version</th>
-                <th className="pb-2 pr-3 font-medium">Créé le</th>
-                <th className="pb-2 font-medium">Mis à jour le</th>
+                <th className="pb-2 pr-3 font-medium">Date de création</th>
+                <th className="pb-2 font-medium">Dernière mise à jour</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.docType} className="border-b border-slate-100">
-                  <td className="py-2 pr-3 font-medium text-slate-800">{DOC_TYPE_LABELS[row.docType]}</td>
-                  <td className="py-2 pr-3">
-                    <input
-                      type="text"
-                      value={row.reference}
-                      onChange={(e) => update(row.docType, { reference: e.target.value })}
-                      placeholder="PG04/EN01"
-                      aria-label={`Référence — ${DOC_TYPE_LABELS[row.docType]}`}
-                      className="input-field w-32 px-3 font-mono"
-                    />
-                  </td>
-                  <td className="py-2 pr-3">
-                    <input
-                      type="text"
-                      value={row.version}
-                      onChange={(e) => update(row.docType, { version: e.target.value })}
-                      placeholder="F"
-                      aria-label={`Version — ${DOC_TYPE_LABELS[row.docType]}`}
-                      className="input-field w-16 px-3 font-mono"
-                    />
-                  </td>
-                  <td className="py-2 pr-3">
-                    <input
-                      type="date"
-                      value={row.createdOn}
-                      onChange={(e) => update(row.docType, { createdOn: e.target.value })}
-                      aria-label={`Créé le — ${DOC_TYPE_LABELS[row.docType]}`}
-                      className="input-field w-40 px-3"
-                    />
-                  </td>
-                  <td className="py-2">
-                    <input
-                      type="date"
-                      value={row.updatedOn}
-                      onChange={(e) => update(row.docType, { updatedOn: e.target.value })}
-                      aria-label={`Mis à jour le — ${DOC_TYPE_LABELS[row.docType]}`}
-                      className="input-field w-40 px-3"
-                    />
-                  </td>
-                </tr>
-              ))}
+              {rows.map((row) => {
+                const printedOn = DOC_TYPE_PRINTED_ON[row.docType];
+                return (
+                  <tr key={row.docType} className="border-b border-slate-100">
+                    <td className="py-2 pr-3 align-top">
+                      <span className="block font-medium text-slate-800">{DOC_TYPE_LABELS[row.docType]}</span>
+                      <span className="mt-0.5 block text-xs text-slate-500">
+                        {printedOn ? `Imprimé sur : ${printedOn}` : "Pas encore imprimé par le LIMS"}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3">
+                      <input
+                        type="text"
+                        value={row.reference}
+                        onChange={(e) => update(row.docType, { reference: e.target.value })}
+                        placeholder="PG04/EN01"
+                        aria-label={`Référence — ${DOC_TYPE_LABELS[row.docType]}`}
+                        className="input-field w-32 px-3 font-mono"
+                      />
+                    </td>
+                    <td className="py-2 pr-3">
+                      <input
+                        type="text"
+                        value={row.version}
+                        onChange={(e) => update(row.docType, { version: e.target.value })}
+                        placeholder="F"
+                        aria-label={`Version — ${DOC_TYPE_LABELS[row.docType]}`}
+                        className="input-field w-16 px-3 font-mono"
+                      />
+                    </td>
+                    <td className="py-2 pr-3">
+                      <input
+                        type="date"
+                        value={row.createdOn}
+                        onChange={(e) => update(row.docType, { createdOn: e.target.value })}
+                        aria-label={`Date de création — ${DOC_TYPE_LABELS[row.docType]}`}
+                        className="input-field w-40 px-3"
+                      />
+                    </td>
+                    <td className="py-2">
+                      <input
+                        type="date"
+                        value={row.updatedOn}
+                        onChange={(e) => update(row.docType, { updatedOn: e.target.value })}
+                        aria-label={`Dernière mise à jour — ${DOC_TYPE_LABELS[row.docType]}`}
+                        className="input-field w-40 px-3"
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -137,7 +142,7 @@ export function DocumentReferencesForm({ initial }: { initial: DocumentRow[] }) 
         )}
         {saved && (
           <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            Cartouches enregistrés — les prochains documents les portent.
+            Cartouches enregistrées — chaque formulaire imprimé par le LIMS les porte désormais.
           </p>
         )}
 

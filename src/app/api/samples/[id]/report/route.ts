@@ -58,7 +58,7 @@ export async function GET(
     return NextResponse.json(
       {
         error: exists
-          ? "Aucun rapport : cet échantillon n'a pas encore été approuvé."
+          ? "Aucun rapport : cet échantillon n'a pas encore reçu la validation administrative."
           : "Échantillon introuvable.",
       },
       { status: exists ? 409 : 404 }

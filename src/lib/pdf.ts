@@ -56,13 +56,24 @@ async function getBrowser(): Promise<Browser> {
 
 export type PdfOptions = {
   /**
-   * Footer HTML for every page (Chromium's header/footer template): use
-   * `<span class="pageNumber"></span>` / `<span class="totalPages"></span>`
-   * for « Page 1 / 3 » — the cartouche of the quality documents needs it.
+   * Header HTML for every page (Chromium's header template): the quality
+   * cartouche of the laboratory's forms (`cartouche-html.ts`). A template
+   * inherits nothing from the page — inline styles only — and fills
+   * `<span class="pageNumber"></span>` / `<span class="totalPages"></span>`.
    */
+  header?: string;
+  /** Footer HTML for every page, same rules as `header`. */
   footer?: string;
+  /**
+   * The page box. A document's own CSS `@page { margin }` wins over this
+   * one: a document with a header or a footer declares both from the same
+   * value (`pageCss()` in cartouche-html.ts), or the body runs under them.
+   */
   margin?: { top: string; bottom: string; left: string; right: string };
 };
+
+/** What Chromium prints for the template that is not used: nothing (its default is the URL and the date). */
+const EMPTY_TEMPLATE = "<span></span>";
 
 export async function renderPdf(html: string, options: PdfOptions = {}): Promise<Buffer> {
   const browser = await getBrowser();
@@ -74,11 +85,11 @@ export async function renderPdf(html: string, options: PdfOptions = {}): Promise
       format: "A4",
       printBackground: true,
       margin: options.margin ?? { top: "14mm", bottom: "16mm", left: "14mm", right: "14mm" },
-      ...(options.footer
+      ...(options.header || options.footer
         ? {
             displayHeaderFooter: true,
-            headerTemplate: "<span></span>",
-            footerTemplate: options.footer,
+            headerTemplate: options.header ?? EMPTY_TEMPLATE,
+            footerTemplate: options.footer ?? EMPTY_TEMPLATE,
           }
         : {}),
     });
