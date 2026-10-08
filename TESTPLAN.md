@@ -1018,6 +1018,17 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 - The germs of a chosen type are listed « non programmé » when a profile chip replaces the ticked analyses afterwards: visible and deliberate, but the lab may prefer the type's germs to stay ticked (to confirm).
 - Q41 (« les nombres », numbering) and Q42 (one sample split between technicians) in NEEDEDINFO.
 
+## Checkpoint V10 — Message du 08/10 (soir) : checklist de réception, cartouche, rôles (live 09/10 — `RETOUR-LABO-06-10.md` §10)
+
+**Production 09/10 (`4a1c1e8`):** `.ui-tests/recette-v10.mjs` + `recette-v10b.mjs`, test client only (visits 26/26, 28/26, deposit 27/26 kept).
+
+- [x] V10.1 — Reception without a rule-(1) answer → 400 « Échantillon 1 : indiquez s'il est exploitable (règle 1). Si les boutons … n'apparaissent pas, rechargez la page. »; « non exploitable » declared conform → 400; answered → 200; stored per sample (26/26-1, -2M, -2P true; 26/26-3 false with motif `NON_EXPLOITABLE`).
+- [x] V10.2 — Deposit without the answer → 400; with it → 201 (27/26).
+- [x] V10.3 — PDFs (pdftotext UTF-8): bon of 27/26 « Réf : PG05/EN04 », « Version G », « Page 1 sur 1 », « Date de création 05/01/2006 », « Dernière mise à jour 01/10/2024 », notes (1)…(7), « N° de fax », « Date : », « Heure : », « Avance : », « Reste : », both signatures; protocol 26/26 PG04/EN01 F 26/11/2007 · 01/10/2024; bench sheet PG06/EN01 G 05/01/2006 · 08/10/2024. Rendered page compared with the scan.
+- [x] V10.3 — `/admin/documents`: the four last-update dates had slipped one day in production (30/09/2024, 07/10/2024, 10/10/2019) — restored to the paper values; a second identical save leaves them unchanged.
+- [x] V10.4 — Reception screen (28/26): the 7 rules listed with « Recevabilité : … », statuses in words, « Sans objet » rows greyed; « Valider la réception » refused while rule (1) is unanswered; no console error.
+- [x] V10.5 — `/validation` reads « Validation administrative » (no « Approbation finale », « Attente admin »); `/admin/utilisateurs` shows the lab's functions.
+
 ## Checkpoint V9 — Retour du 08/10, suite (live 08/10 — `RETOUR-LABO-06-10.md` §9)
 
 **Production 08/10 (`7612a18`, `73d7119`):** test client « TEST UI 2026-10-06 Traiteur » only (visit 23/26 kept); real clients are on production now — the scripts print counts, never their names.

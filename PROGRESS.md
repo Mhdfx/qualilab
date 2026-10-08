@@ -8,7 +8,9 @@
 
 ## ▶ NEXT ACTION
 
-**Retour du 08/10, suite (`RETOUR-LABO-06-10.md` §9) : en production depuis le 08/10** (`7612a18`, `73d7119`; TESTPLAN V9). Waiting on the lab: physico-chimie parameters for surfaces / hands / air (Q50, Q56 — those samples cannot be programmed yet), the bench sheet's client line (Q55), the duplicates file (Q54), Q45–Q53, legal details for documents; the lab's devices still need their clock update.
+**Message du laboratoire du 08/10 (soir) (`RETOUR-LABO-06-10.md` §10) : en production depuis le 09/10** (`4a1c1e8`; TESTPLAN V10) — reception checklist (7 rules), paper cartouche, lab role wording, date-only fix (document dates restored in production). Waiting on the lab: Q57–Q66 (bon fields, protocol version, report reference, M+P weights, histamine, temperature, rule (1) shortcut, who signs the administrative validation, report signatures), Q50/Q54–Q56, real account names.
+
+_Previous next action:_ **Retour du 08/10, suite (`RETOUR-LABO-06-10.md` §9) : en production depuis le 08/10** (`7612a18`, `73d7119`; TESTPLAN V9). Waiting on the lab: physico-chimie parameters for surfaces / hands / air (Q50, Q56 — those samples cannot be programmed yet), the bench sheet's client line (Q55), the duplicates file (Q54), Q45–Q53, legal details for documents; the lab's devices still need their clock update.
 
 _Previous next action:_ **Retour du 08/10 (`RETOUR-LABO-06-10.md` §8) : en production depuis le 08/10** (`a5925b6` + `b0defab`, migration `20261010100000_natures_air_autre`; TESTPLAN V8 — recette-v8 27/27, recette-v8b 20/20 on an emulated device one hour ahead and an up-to-date one). Next, waiting on the lab: parameters / profiles for « Physico-chimie de l'air » and « Microbiologie — autres prélèvements » (Q50 — the samples can be created, not yet programmed), the merges of `doublons-clients.xlsx` (Q54), Q45–Q53, legal details for the documents. Every PC / phone of the lab should still be updated (zone data 2026c): the fields now cope with a device one hour ahead, but a correct clock is the real fix.
 
@@ -280,6 +282,10 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-10-09 — lab message of 08/10 (evening) live (TESTPLAN V10)
+- Analysis workflow (3 read-only analysts) then build workflow (3 builders + 3 hostile reviewers). Reception: the 7 paper rules as a per-sample checklist, rule (1) required server-side, motif `NON_EXPLOITABLE`, histamine rule family-independent. Cartouche: Chromium header template reproducing the paper grid on protocol / bon / bench sheet; bon aligned on version G. Roles: lab vocabulary (labels only). Date-only parsing fixed (`date-only.ts`).
+- Gates: tsc 0, eslint 0, vitest 70 files / 1059 tests, build. Deployed `4a1c1e8` with migration `20261011100000_reception_checklist`. Production recette V10 all green after the text-encoding fix of the test itself; the four cartouche dates that had slipped one day in production were restored to the paper values.
 
 ### 2026-10-08 — retour du 08/10, suite, live (TESTPLAN V9)
 - Real samples are now entered on production. Five remarks from the lab's first day of use: arrival time no longer asked at visit creation (`7612a18`, deployed first: it blocked « Continuer »); Mains in both families; no technician at reception (and a programme cannot be confirmed without one; queue oldest first); labels without client / site; every dashboard tile clickable (`73d7119`).

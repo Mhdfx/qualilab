@@ -382,3 +382,71 @@ programme ne se confirme plus sans technicien (conséquence du point 3).
 Aucune analyse de physico-chimie d'ambiance (surfaces, mains, air) n'est
 encore au catalogue (Q50) : ces échantillons se créent et se réceptionnent,
 la programmation attend la liste du laboratoire.
+
+## 10. Message du 08/10 (soir) — bon de réception, rôles, cartouche, attestation fiscale
+
+Reçu : le formulaire papier « Bon de réception » (PG05/EN04, version G,
+créé le 05/01/2006, mis à jour le 01/10/2024) et ce message : la liste des
+six rôles, « insérer les versions à jour de tous les documents transmis et
+respecter strictement la cartouche qualité », et une note sur l'attestation
+de régularité fiscale. Demande de l'utilisateur : les règles de la réception
+sous forme de checklist.
+
+### 10.1 Analyse
+
+- **Règles de réception.** Le moteur calculait déjà les règles (2) à (7)
+  (poids, volumes, température, histamine), avec les seuils du papier
+  modifiables dans `/admin/reglages`. Mais l'écran ne listait que les règles
+  calculées, avec une numérotation différente du papier ; la règle (1)
+  « échantillon non exploitable » n'existait nulle part ; la règle (7)
+  histamine ne se déclenchait que sur un échantillon de microbiologie, alors
+  que l'histamine est un dosage physico-chimique ; Salmonella et histamine
+  n'étaient reconnues que par le nom de l'analyse.
+- **Versions des documents.** Les versions enregistrées correspondent déjà
+  aux formulaires transmis (PG04/EN01 F, PG05/EN04 G, PG06/EN01 G, PG06/EN06
+  C) : rien de nouveau à saisir. L'écart est la **cartouche** : nos PDF
+  n'avaient ni la grille du papier, ni « Page x sur y » dans la cartouche, ni
+  les libellés « Date de création » / « Dernière mise à jour », ni le logo.
+  Un défaut latent de date a été trouvé (une date sans heure lue à minuit
+  local glisse d'un jour sur un serveur dont la base des fuseaux est
+  ancienne) ; vérifié en production le 08/10 : les DLC sont correctes, le
+  défaut est corrigé par précaution.
+- **Rôles.** Les six fonctions correspondent une à une aux rôles de
+  l'application (préleveur, réceptionniste, responsable des paramètres,
+  technicien, validateur, administrateur). La « validation administrative »
+  est l'étape 2 de la double validation, signée aujourd'hui par un compte
+  administrateur.
+- **Attestation de régularité fiscale.** La note s'adresse au fournisseur
+  du LIMS (nos factures au laboratoire) : pas de changement du logiciel.
+
+### 10.2 Décisions de construction (08/10)
+
+1. **Checklist de réception** : les 7 règles du papier, toujours listées
+   pour chaque échantillon, dans l'ordre et les mots du bon, chacune avec un
+   état (Conforme, Non conforme, À vérifier, À confirmer, Sans objet). La
+   règle (1) se confirme par échantillon (« Exploitable » / « Non
+   exploitable ») ; non exploitable → non conforme, motif « Échantillon non
+   exploitable (tête de poisson, os…) ». La réception ne se valide pas tant
+   qu'une règle (1) n'est pas répondue. Histamine : règle (7) quelle que
+   soit la famille ; Salmonella et histamine reconnues aussi par les alias.
+   La chaîne du froid (8 °C) reste un contrôle complémentaire, hors bon.
+2. **Cartouche du papier** sur le protocole (PG04/EN01), le bon de
+   réception (PG05/EN04) et la feuille de paillasse (PG06/EN01) : logo,
+   titre, « Réf : », « Version », « Page x sur y », « Date de création »,
+   « Dernière mise à jour ». Le rapport, la facture et les étiquettes ne
+   changent pas (pas de référence transmise).
+3. **Bon de réception** aligné sur la version G sans contredire le 05/10 :
+   Date et Heure séparées, encadré client avec « N° de fax : » à remplir à la
+   main, colonnes et notes (1)…(7) du papier, « Avance : » / « Reste : »,
+   signatures du papier. « Référence client » (demandé le 05/10) et la
+   colonne N° de contrôle restent en attendant la réponse du laboratoire.
+4. **Vocabulaire des rôles** : « Validation administrative » au lieu
+   d'« Approbation finale », « Validateur technique », espaces « Saisie des
+   résultats » et « Enregistrement des paramètres » ; la fonction du
+   laboratoire s'affiche à la création d'un compte. Aucun droit ne change.
+
+**En production le 09/10** (`4a1c1e8`, migration `20261011100000_reception_checklist`, TESTPLAN V10). Les dates de dernière mise à jour des quatre formulaires avaient glissé d'un jour en production (un enregistrement antérieur de `/admin/documents`) : rétablies le 09/10 aux valeurs du papier (PG04/EN01 et PG05/EN04 : 01/10/2024 ; PG06/EN01 : 08/10/2024 ; PG06/EN06 : 11/10/2019).
+
+### 10.3 Questions au laboratoire
+
+Voir NEEDEDINFO Q57 à Q66.

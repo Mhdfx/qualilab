@@ -161,6 +161,16 @@ préleveur photographie la feuille signée depuis le téléphone.
 | Q54 | Clients en double : valider le fichier `doublons-clients.xlsx` (colonne « Décision du labo ») — 74 fusions, 109 clients facturés à lier, 14 sites, 27 cas à trancher. Un client facturé (franchisé) doit-il recevoir les rapports, les factures, ou les deux ? | Clients — `RETOUR-LABO-06-10.md` §7 |
 | Q55 | Numérotation aveugle : les étiquettes n'affichent plus le client ni le site (08/10). La feuille de paillasse imprime encore « Série NN · client » : faut-il l'enlever aussi ? | Paillasse — `RETOUR-LABO-06-10.md` §9.4 |
 | Q56 | Physico-chimie des surfaces / mains / air : quelles analyses (et unités) ajouter au catalogue ? Aucune aujourd'hui : ces échantillons se créent et se réceptionnent mais ne se programment pas encore (complète Q50). | Catalogue — `RETOUR-LABO-06-10.md` §9.2 |
+| Q57 | Bon de réception : « N° de factures » (version G) ou « Référence client » (votre demande du 05/10) ? Si « Référence client » reste, une version H du PG05/EN04 est-elle émise (lettre et date) ? | Bon de réception — `RETOUR-LABO-06-10.md` §10 |
+| Q58 | Le bon du LIMS ajoute le N° de contrôle, le cadre, le site, l'état de conformité : les garder (nouvelle version du PG05/EN04) ou les retirer pour coller à la version G ? Le « N° de fax » est-il à saisir sur la fiche client ou à remplir à la main ? | Bon de réception |
+| Q59 | Protocole PG04/EN01 : son contenu a changé le 05/10 (Référence client, cadre, analyses par échantillon). Nouvelle lettre de version et date de mise à jour, ou F reste ? | Protocole |
+| Q60 | Rapport d'analyse : sa référence, sa version et ses dates pour la cartouche (Q14). Facture, avoir, étiquettes : sans cartouche, confirmé ? | Documents |
+| Q61 | Réception — échantillon M + P : un seul contenant (au moins 100 g + 300 g = 400 g) ou un contenant par famille ? Les poids minimaux s'entendent-ils par échantillon ou par unité (n = 5) ? | Réception — règles (2)(3) |
+| Q62 | Réception — histamine : moins de 9 unités rend-il l'échantillon non conforme, ou seulement un avertissement ? L'histamine est-elle bien dans la famille physico-chimie du catalogue ? | Réception — règle (7) |
+| Q63 | Réception — température : obligatoire pour tous les échantillons (surfaces, mains, air aussi) ou seulement aliments et eaux ? La température de la glacière suffit-elle ? Garder le contrôle complémentaire de chaîne du froid à 8 °C ? | Réception — règle (6) |
+| Q64 | Réception — règle (1) : une réponse par échantillon (actuel), ou un bouton « tous exploitables » par série ? Un échantillon non exploitable : « Détruire » par défaut ? | Réception — règle (1) |
+| Q65 | Validation administrative : signée par la Direction, un responsable administratif ou l'administrateur du système ? Cette personne doit-elle avoir les droits d'administration (comptes, normes, fusions) ? Une même personne peut-elle tenir plusieurs fonctions ? Noms des comptes (point 9) | Rôles |
+| Q66 | Rapport PDF : remplacer « Validé par · Responsable qualité » et « Approuvé par · Direction du laboratoire » par « Validation technique » et « Validation administrative » ? Quels titres imprimer sous chaque nom ? | Rapport |
 
 ## 2. Ready to send — current batch
 
