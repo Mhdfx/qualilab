@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { correctionBody, correctionValues, type VerbSample } from "./sample-verbs-logic";
+import { cancelReasonsFor, correctionBody, correctionValues, type VerbSample } from "./sample-verbs-logic";
 import { validateIntake, type IntakeCurrent } from "@/lib/intake-input";
 
 /**
@@ -123,5 +123,19 @@ describe("correctionBody against validateIntake", () => {
     const body = correctionBody("MAINS", { ...correctionValues(sample), handsState: "LAVEES" }, ["p1", "p2"], "état");
     expect(body).toMatchObject({ personName: "Agent test", handsState: "LAVEES", parameterIds: ["p1", "p2"] });
     expect(validateIntake(body, currentOf(sample))).toMatchObject({ ok: true });
+  });
+});
+
+describe("cancelReasonsFor — the motifs « Annuler » offers", () => {
+  it("offers « Non reçu au laboratoire » on a sample still waiting for its reception only", () => {
+    expect(cancelReasonsFor("PRELEVE")).toContain("NON_RECU");
+    for (const status of ["RECU", "PROGRAMME", "EN_ANALYSE", "RESULTATS_SAISIS"] as const) {
+      expect(cancelReasonsFor(status)).not.toContain("NON_RECU");
+    }
+  });
+
+  it("never offers « Détruit à réception », the reception's own verb", () => {
+    expect(cancelReasonsFor("PRELEVE")).not.toContain("DETRUIT_A_RECEPTION");
+    expect(cancelReasonsFor("RECU")).toEqual(["NON_EXPLOITABLE", "QUANTITE_INSUFFISANTE", "DOUBLON", "ANNULATION_CLIENT", "AUTRE"]);
   });
 });

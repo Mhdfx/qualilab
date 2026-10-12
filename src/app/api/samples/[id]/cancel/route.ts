@@ -6,13 +6,17 @@ import { prisma } from "@/lib/prisma";
 import { canTransition } from "@/lib/sample-status";
 import { cancelRefusalForReport } from "@/lib/report-amendment";
 
-const REASONS: CancelReason[] = ["NON_EXPLOITABLE", "QUANTITE_INSUFFISANTE", "DOUBLON", "ANNULATION_CLIENT", "AUTRE"];
+const REASONS: CancelReason[] = ["NON_EXPLOITABLE", "QUANTITE_INSUFFISANTE", "DOUBLON", "ANNULATION_CLIENT", "AUTRE", "NON_RECU"];
 
 /**
  * « Annuler » — the terminal verb (WORKFLOW.md §8): the sample leaves every
  * queue, report and billable list, with a coded motif. The state machine
  * says who may cancel at which step; the sample keeps everything it had
  * (numbers, results) so an admin can bring it back.
+ *
+ * « Non reçu au laboratoire » (NON_RECU) only concerns a sample of a visit
+ * still waiting for its reception (PRELEVE): once received, it was received.
+ * No e-mail to the client yet (lab question).
  */
 export async function POST(
   request: Request,
@@ -56,6 +60,12 @@ export async function POST(
     ? (input.reason as CancelReason)
     : null;
   if (!reason) return NextResponse.json({ error: "Choisissez le motif d'annulation." }, { status: 400 });
+  if (reason === "NON_RECU" && sample.status !== "PRELEVE") {
+    return NextResponse.json(
+      { error: "« Non reçu au laboratoire » ne s'applique qu'à un échantillon pas encore réceptionné." },
+      { status: 400 }
+    );
+  }
   const note = typeof input.note === "string" ? input.note.trim().slice(0, 2000) : "";
   if (reason === "AUTRE" && !note) return NextResponse.json({ error: "Précisez le motif « autre »." }, { status: 400 });
 

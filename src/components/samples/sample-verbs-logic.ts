@@ -1,5 +1,6 @@
 import type {
   AirMethod,
+  CancelReason,
   HandsState,
   LineKind,
   QuantityUnit,
@@ -7,6 +8,7 @@ import type {
   SampleType,
   SurfaceState,
 } from "@/generated/prisma/enums";
+import { CANCEL_REASON_LABELS } from "@/lib/labels";
 
 /**
  * The pure half of « Corriger la fiche » (SampleVerbs.tsx): which fields a
@@ -47,6 +49,19 @@ export type VerbSample = {
   productTypeId: string | null;
   clientId: string;
 };
+
+/**
+ * The motifs « Annuler » offers for a sample, in the labels' order.
+ * « Détruit à réception » is the reception's own verb (slice E), never
+ * picked here; « Non reçu au laboratoire » only concerns a sample still
+ * waiting for its reception (PRELEVE) — the cancel route refuses it on any
+ * other status.
+ */
+export function cancelReasonsFor(status: SampleStatus): CancelReason[] {
+  return (Object.keys(CANCEL_REASON_LABELS) as CancelReason[]).filter(
+    (reason) => reason !== "DETRUIT_A_RECEPTION" && (reason !== "NON_RECU" || status === "PRELEVE")
+  );
+}
 
 /** Which identification fields a kind of sample shows — and sends. */
 export function correctionFields(kind: LineKind) {

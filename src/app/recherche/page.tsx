@@ -71,11 +71,13 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
   const canExport = session.role !== "TECHNICIEN";
   const canReport = ["VALIDATEUR", "GESTIONNAIRE", "COMPTABLE", "ADMIN"].includes(session.role);
   // AMENDEMENT.md §4: the number of the version in force and any amendment
-  // in progress, for the report actions of each row.
+  // in progress, for the report actions of each row — and whether it has
+  // left yet, for « Envoyer / Renvoyer au client » (gestionnaire, validator,
+  // administrator; finalversion.md:116).
   const reports = canReport
     ? await prisma.report.findMany({
         where: { sampleId: { in: result.rows.filter((r) => r.hasReport).map((r) => r.id) } },
-        select: { sampleId: true, number: true, version: true, amendmentPending: true },
+        select: { id: true, sampleId: true, number: true, version: true, amendmentPending: true, sentAt: true },
       })
     : [];
   const reportBySample = new Map(reports.map((r) => [r.sampleId, r]));
@@ -200,7 +202,9 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
         {result.rows.length === 0 ? (
           <p className="mt-4 rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">Aucune analyse ne correspond à ces critères.</p>
         ) : (
-          <div className="mt-4 overflow-x-auto">
+          // `relative`: the rows' screen-reader texts (absolute) stay inside
+          // the scroller instead of widening the page on a phone.
+          <div className="relative mt-4 overflow-x-auto">
             <table className="w-full min-w-[900px] text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
@@ -257,10 +261,12 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
                             <ReportActions
                               compact
                               sampleId={row.id}
+                              reportId={report.id}
                               role={session.role}
                               status={row.status}
                               number={number}
                               amendmentPending={report.amendmentPending}
+                              sent={report.sentAt !== null}
                             />
                           </>
                         );

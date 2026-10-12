@@ -99,11 +99,12 @@ export async function PUT(
       { status: 409 }
     );
   }
-  // Held at reception (LabSettings.blockNonConformAtReception): the admin's
-  // release — which needs the line still RECU — comes before any programme.
+  // Held at reception — « en attente du client » (A9), or another hold: the
+  // release (reception or admin, which needs the line still RECU) comes
+  // before any programme.
   if (sample.analysisBlocked) {
     return NextResponse.json(
-      { error: "Cet échantillon est bloqué en réception : un administrateur doit le libérer avant la programmation." },
+      { error: "Cet échantillon est bloqué en réception : il doit être libéré depuis « Bloqués » de la réception avant la programmation." },
       { status: 409 }
     );
   }

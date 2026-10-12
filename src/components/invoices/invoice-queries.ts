@@ -2,6 +2,8 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toMoney } from "@/lib/money";
+import { creditedByItem } from "@/lib/billing";
+import { invoiceClientIdentity } from "@/lib/invoice-client-identity";
 import {
   invoiceFigures,
   matchesListFilter,
@@ -38,8 +40,17 @@ export async function loadInvoiceDetail(id: string): Promise<InvoiceDetailView |
       createdBy: { select: { name: true } },
       cancelledBy: { select: { name: true } },
       // The billed sample's status: « Facturé avant résultat » and
-      // « Échantillon annulé après facturation » (PROGRAMME.md §6).
-      items: { include: { sample: billedSample } },
+      // « Échantillon annulé après facturation » (PROGRAMME.md §6); what
+      // the credit notes already took back from each line (« déjà repris »).
+      items: {
+        include: {
+          sample: billedSample,
+          creditLines: {
+            where: { invoice: { kind: "AVOIR", status: { notIn: ["BROUILLON", "ANNULEE"] } } },
+            select: { creditedItemId: true, lineTotal: true },
+          },
+        },
+      },
       payments: {
         orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }],
         include: { createdBy: { select: { name: true } } },
@@ -54,6 +65,11 @@ export async function loadInvoiceDetail(id: string): Promise<InvoiceDetailView |
   });
   if (!invoice) return null;
 
+  const credited = creditedByItem(
+    invoice.items.flatMap((item) =>
+      item.creditLines.map((line) => ({ creditedItemId: line.creditedItemId, amount: line.lineTotal }))
+    )
+  );
   const figures = invoiceFigures({
     status: invoice.status,
     kind: invoice.kind,
@@ -75,15 +91,9 @@ export async function loadInvoiceDetail(id: string): Promise<InvoiceDetailView |
     subtotal: toMoney(invoice.subtotal),
     taxAmount: toMoney(invoice.taxAmount),
     total: toMoney(invoice.total),
-    client: {
-      id: invoice.client.id,
-      name: invoice.client.name,
-      contact: invoice.client.contact,
-      email: invoice.client.email,
-      phone: invoice.client.phone,
-      address: invoice.client.address,
-      ice: invoice.client.ice,
-    },
+    // An issued document shows its client as printed at issue; the id
+    // stays the live fiche's (a merge moved the invoice to the kept one).
+    client: { id: invoice.client.id, ...invoiceClientIdentity(invoice) },
     createdBy: invoice.createdBy?.name ?? null,
     items: invoice.items.map((item) => ({
       id: item.id,
@@ -92,6 +102,7 @@ export async function loadInvoiceDetail(id: string): Promise<InvoiceDetailView |
       unitPrice: toMoney(item.unitPrice),
       lineTotal: toMoney(item.lineTotal),
       sampleId: item.sampleId,
+      creditedAmount: credited[item.id] ?? 0,
       sample: item.sample
         ? {
             id: item.sample.id,

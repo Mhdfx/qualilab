@@ -1,18 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogOut, Menu } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import type { NavSection } from "./nav-types";
 import { authClient } from "@/lib/auth-client";
+import { idleTimeoutFor } from "@/lib/idle-policy";
+import { PORTAL_ROLE, type Role } from "@/lib/roles";
+import { IdleLogout } from "./IdleLogout";
 
 type DashboardShellProps = {
   children: React.ReactNode;
   userName: string;
+  /** The signed-in role: decides the « Mon compte » link and the sign-out after inactivity. */
+  role: Role;
   roleLabel: string;
   navSections: NavSection[];
 };
+
+/**
+ * The staff's « Mon compte » (/compte). A portal account has its own page in
+ * its menu (/portail/compte) and never opens /compte, so it gets no link.
+ */
+const STAFF_ACCOUNT_HREF = "/compte";
 
 function getInitials(name: string) {
   return name
@@ -26,6 +38,7 @@ function getInitials(name: string) {
 export function DashboardShell({
   children,
   userName,
+  role,
   roleLabel,
   navSections,
 }: DashboardShellProps) {
@@ -57,9 +70,14 @@ export function DashboardShell({
   // « Dr. Nawal Bennani » is greeted as Nawal, not as « Dr. ».
   const firstName = userName.split(/\s+/).find((word) => !/^(dr|pr|m|mr|mme|mlle|me)\.?$/i.test(word)) ?? userName;
   const initials = getInitials(userName);
+  const accountHref = role === PORTAL_ROLE ? null : STAFF_ACCOUNT_HREF;
+  // Shared PCs: 30 minutes without activity close the session (not the
+  // préleveur's phone in the field) — idle-policy.ts.
+  const idleTimeout = idleTimeoutFor(role);
 
   return (
     <div className="app-bg flex min-h-screen">
+      {idleTimeout !== null && <IdleLogout timeoutMs={idleTimeout} />}
       <a
         href="#contenu"
         className="sr-only z-50 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
@@ -101,24 +119,30 @@ export function DashboardShell({
             >
               <Menu className="h-5 w-5" />
             </button>
-            <div className="min-w-0 lg:hidden">
+            <AccountLink
+              href={accountHref}
+              className="flex min-h-[44px] min-w-0 flex-col justify-center rounded-xl px-1 py-0.5 lg:hidden"
+            >
               <p className="truncate text-xs font-semibold uppercase tracking-wide text-brand">
                 {roleLabel}
               </p>
               <p className="truncate text-sm font-medium text-slate-800">{firstName}</p>
-            </div>
+            </AccountLink>
           </div>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-4">
-            <div className="hidden items-center gap-3 md:flex">
+            <AccountLink
+              href={accountHref}
+              className="hidden items-center gap-3 rounded-xl px-2 py-1 md:flex"
+            >
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-accent text-xs font-bold text-white shadow-sm">
                 {initials}
               </div>
               <div className="text-right">
                 <p className="text-sm font-medium text-slate-800">{userName}</p>
-                <p className="text-xs text-slate-400">Qualilab International</p>
+                <p className="text-xs text-slate-400">{accountHref ? "Mon compte" : "Qualilab International"}</p>
               </div>
-            </div>
+            </AccountLink>
             <button
               onClick={handleLogout}
               aria-label="Déconnexion"
@@ -135,5 +159,31 @@ export function DashboardShell({
         </main>
       </div>
     </div>
+  );
+}
+
+/**
+ * The name block of the header: a link to « Mon compte » for the staff, a
+ * plain block for a portal account (`href` null).
+ */
+function AccountLink({
+  href,
+  className,
+  children,
+}: {
+  href: string | null;
+  className: string;
+  children: React.ReactNode;
+}) {
+  if (!href) return <div className={className}>{children}</div>;
+  return (
+    <Link
+      href={href}
+      title="Mon compte"
+      className={`${className} transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40`}
+    >
+      <span className="sr-only">Mon compte : </span>
+      {children}
+    </Link>
   );
 }

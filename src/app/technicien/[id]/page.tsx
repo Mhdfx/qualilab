@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, AlertTriangle, Building2, Package, Hash, Calendar, ClipboardList, Hourglass } from "lucide-react";
+import { ArrowLeft, Building2, Package, Hash, Calendar, ClipboardList, Hourglass, Undo2 } from "lucide-react";
 import { requireRole, getSession } from "@/lib/auth";
 import { roleAllowed } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
@@ -8,7 +8,7 @@ import { labReference } from "@/lib/sample-select";
 import { loadBenchPlans } from "@/lib/bench-plan";
 import { canEditParameter, isOnBenchOf } from "@/lib/bench-access";
 import { effectiveFactor } from "@/lib/dilution";
-import { formatDate, PROGRAMME_PRIORITY_LABELS } from "@/lib/labels";
+import { formatDate, formatDateTime, PROGRAMME_PRIORITY_LABELS } from "@/lib/labels";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
 import { getDashboardPath } from "@/lib/roles";
@@ -16,6 +16,8 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
+import { ReceptionNonConformity, RECEPTION_NON_CONFORMITY_SELECT } from "@/components/samples/ReceptionNonConformity";
+import { ReceptionObservation } from "@/components/samples/ReceptionObservation";
 import {
   ResultEntryForm,
   type ParameterLine,
@@ -60,8 +62,15 @@ export default async function AnalysePage({
       airMethod: true,
       notes: true,
       receivedAt: true,
-      conformity: true,
-      conformityNote: true,
+      // The reception's decision (motif, agreement of the client) and its
+      // observation (A7, A9).
+      ...RECEPTION_NON_CONFORMITY_SELECT,
+      receptionNote: true,
+      // The validator's last « Renvoyer au technicien »: never cleared, so
+      // its date says whether it is the current one.
+      rejectionReason: true,
+      rejectedAt: true,
+      rejectedBy: { select: { name: true } },
       technicianId: true,
       technician: { select: { name: true } },
       // The programme d'analyse (PROGRAMME.md §3).
@@ -152,6 +161,8 @@ export default async function AnalysePage({
   const canEdit = sample.status === "PROGRAMME" || sample.status === "EN_ANALYSE";
   // Received but not programmed yet: nothing to type (PROGRAMME.md §6).
   const waiting = sample.status === "PRELEVE" || sample.status === "RECU";
+  // Back on the bench after a validator's « Renvoyer au technicien ».
+  const sentBack = sample.status === "EN_ANALYSE" && sample.rejectedAt !== null;
 
   return (
     <div>
@@ -168,6 +179,21 @@ export default async function AnalysePage({
         title={labReference(sample)}
         subtitle={waiting ? "En attente de programmation — le responsable des paramètres n'a pas encore confirmé le programme d'analyse." : !canEdit ? "Résultats soumis à la validation — consultation en lecture seule." : bench.plans.size > 0 ? "Lisez chaque répétition (R1 … Rn) : le verdict (satisfaisant, acceptable, non satisfaisant) suit le plan n, c, m, M du type de produit." : bench.unitCount > 1 ? "Lisez chaque répétition (R1 … Rn) : la valeur retenue est la plus défavorable, comparée à la limite de référence." : "Saisissez chaque paramètre. La conformité est calculée automatiquement à partir de la limite de référence."}
       />
+
+      {sentBack && sample.rejectedAt && (
+        <div
+          role="status"
+          className="mb-5 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          <Undo2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+          <p>
+            <b className="font-semibold">
+              Renvoyé par {sample.rejectedBy?.name ?? "le validateur"} le {formatDateTime(sample.rejectedAt)} :
+            </b>{" "}
+            <span className="whitespace-pre-line">{sample.rejectionReason?.trim() || "motif non précisé."}</span>
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px_1fr]">
         <div className="space-y-5">
@@ -232,15 +258,8 @@ export default async function AnalysePage({
               )}
             </dl>
 
-            {sample.conformity === false && (
-              <p className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  <b>Non conforme à réception.</b>
-                  {sample.conformityNote && ` ${sample.conformityNote}`}
-                </span>
-              </p>
-            )}
+            <ReceptionNonConformity sample={sample} />
+            <ReceptionObservation note={sample.receptionNote} />
 
             {sample.notes && (
               <div className="mt-4 rounded-xl bg-slate-50 p-3">

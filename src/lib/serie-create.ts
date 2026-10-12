@@ -31,6 +31,10 @@ import type { Role } from "./roles";
  * nature, their analyses and — for a deposit — their N° de contrôle. The
  * série's two boxes « Analyses à effectuer » are the union of the lines.
  *
+ * A deposit line decided « En attente du client » (A9) is received like the
+ * others, held (`analysisBlocked`) since its creation; a line analysed with
+ * the client's agreement carries it (`clientConsulted*`). Both journalled.
+ *
  * Places and products are memorised per client: the same label, however it
  * is capitalised or accented, always resolves to the same row, so the
  * history of « Poste froid » or « Salade composée » stays comparable.
@@ -234,6 +238,8 @@ export async function createSerie(
           clientReference: input.clientReference,
           startedAt: input.startedAt,
           endedAt: input.endedAt,
+          // C1: a deposit says whether its sampling time was given (null on a visit).
+          samplingTimeDeclared: isDeposit ? input.samplingTimeDeclared : null,
           arrivedAt: isDeposit ? (input.arrivedAt ?? now) : input.arrivedAt,
           coolerTemperature: input.coolerTemperature,
           advanceAmount: isDeposit ? input.advanceAmount : null,
@@ -295,6 +301,9 @@ export async function createSerie(
               productTemperature: line.productTemperature,
               ambientTemperature: line.ambientTemperature,
               receptionTemperature: isDeposit ? line.receptionTemperature : null,
+              // C2, measured at the counter: where the temperature was read and the class.
+              receptionTemperatureSource: isDeposit ? line.receptionTemperatureSource : null,
+              storageClass: isDeposit ? line.storageClass : null,
               surfaceLabel: line.surfaceLabel,
               surfaceAreaCm2: line.surfaceAreaCm2,
               surfaceState: line.surfaceState,
@@ -314,10 +323,26 @@ export async function createSerie(
               // Rule (1) of the bon, answered at the counter for the line —
               // both samples of a two-family line share it.
               receptionExploitable: isDeposit ? line.exploitable : null,
+              // C3 / C5, ticked at the counter for the line — shared like rule (1).
+              receptionPackagingOk: isDeposit ? line.packagingOk : null,
+              receptionIdentificationOk: isDeposit ? line.identificationOk : null,
               conformity: isDeposit ? line.conformity : null,
               conformityReason: isDeposit ? line.conformityReason : null,
               conformityNote: isDeposit ? line.conformityNote : null,
-              analysisBlocked: false,
+              // A7: the counter's observation, shared by the line's samples.
+              receptionNote: isDeposit ? line.receptionNote : null,
+              // A9: « En attente du client » holds the sample from its reception.
+              analysisBlocked: isDeposit && line.awaitClient,
+              awaitingClientSince: isDeposit && line.awaitClient ? now : null,
+              // A9: the client's agreement to analyse a non-conform line.
+              ...(isDeposit && line.consultation
+                ? {
+                    clientConsultedAt: line.consultation.at,
+                    clientConsultedName: line.consultation.name,
+                    clientConsultationChannel: line.consultation.channel,
+                    clientConsultationNote: line.consultation.note,
+                  }
+                : {}),
               parameters: { create: planned.parameterIds.map((parameterId) => ({ parameterId })) },
             },
             select: { id: true },
@@ -352,6 +377,7 @@ export async function createSerie(
         ? {
             nonConform: input.lines.filter((l) => !l.conformity).length,
             destroyed: input.lines.flatMap((l, i) => (l.destroy ? [i + 1] : [])),
+            awaitingClient: input.lines.flatMap((l, i) => (l.awaitClient ? [i + 1] : [])),
             advanceAmount: input.advanceAmount,
             advanceMode: input.advanceMode,
           }
@@ -359,29 +385,72 @@ export async function createSerie(
     },
   });
 
-  // A sample destroyed at the counter is a cancellation like any other.
+  // A sample destroyed at the counter is a cancellation like any other; a
+  // sample held for the client, or analysed with the client's agreement,
+  // has its own entry too (A9).
   await Promise.all(
-    result.samples.flatMap((sample) =>
-      isDeposit && input.lines[sample.lineIndex].destroy
-        ? [
-            logAudit({
-              actorId: actor.id,
-              action: "SAMPLE_CANCELLED",
-              entity: "Sample",
-              entityId: sample.id,
-              metadata: {
-                from: "RECU",
-                to: "ANNULE",
-                serialNumber: result.serialNumber,
-                lineNumber: sample.lineNumber,
-                twin: sample.twin,
-                reason: "DETRUIT_A_RECEPTION",
-                note: input.lines[sample.lineIndex].conformityNote,
-              },
-            }),
-          ]
-        : []
-    )
+    result.samples.flatMap((sample) => {
+      if (!isDeposit) return [];
+      const line = input.lines[sample.lineIndex];
+      const entries = [];
+      if (line.destroy) {
+        entries.push(
+          logAudit({
+            actorId: actor.id,
+            action: "SAMPLE_CANCELLED",
+            entity: "Sample",
+            entityId: sample.id,
+            metadata: {
+              from: "RECU",
+              to: "ANNULE",
+              serialNumber: result.serialNumber,
+              lineNumber: sample.lineNumber,
+              twin: sample.twin,
+              reason: "DETRUIT_A_RECEPTION",
+              note: line.conformityNote,
+            },
+          })
+        );
+      }
+      if (line.awaitClient) {
+        entries.push(
+          logAudit({
+            actorId: actor.id,
+            action: "SAMPLE_AWAITING_CLIENT",
+            entity: "Sample",
+            entityId: sample.id,
+            metadata: {
+              serialNumber: result.serialNumber,
+              lineNumber: sample.lineNumber,
+              twin: sample.twin,
+              conformityReason: line.conformityReason,
+              since: now,
+            },
+          })
+        );
+      }
+      if (line.consultation) {
+        entries.push(
+          logAudit({
+            actorId: actor.id,
+            action: "CLIENT_CONSULTED",
+            entity: "Sample",
+            entityId: sample.id,
+            metadata: {
+              serialNumber: result.serialNumber,
+              lineNumber: sample.lineNumber,
+              twin: sample.twin,
+              decision: "ANALYSER",
+              name: line.consultation.name,
+              channel: line.consultation.channel,
+              at: line.consultation.at,
+              note: line.consultation.note,
+            },
+          })
+        );
+      }
+      return entries;
+    })
   );
 
   return {

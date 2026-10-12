@@ -290,6 +290,7 @@ async function main() {
       createdById: admin.id,
       status: "EN_ATTENTE",
       issueDate: new Date(),
+      issuedAt: new Date(),
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       notes: "Paiement par virement bancaire sous 30 jours.\nMerci de rappeler le numéro de facture lors du règlement.",
       taxRate,
@@ -317,6 +318,7 @@ async function main() {
       createdById: admin.id,
       status: "EN_ATTENTE",
       issueDate: new Date(),
+      issuedAt: new Date(),
       taxRate,
       subtotal: subtotal2,
       taxAmount: taxAmount2,
@@ -324,6 +326,10 @@ async function main() {
       items: { create: invoice2ItemsWithTotals },
     },
   });
+  // The two demo invoices are issued: the FACTURE counter continues after
+  // them (as the 09/10 migration does on a real base), or the next issue
+  // would draw FAC-AAAA-0001 again.
+  await prisma.counter.create({ data: { kind: "FACTURE", year, last: 2 } });
 }
 
 main()

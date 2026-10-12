@@ -5,7 +5,9 @@ import { logAudit } from "@/lib/audit";
 import { CADRE_CHOICES, formatCadre } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 import { serieSelectFor, serializeSerie } from "@/lib/serie-select";
+import { arrivalRefusal } from "@/lib/serie-input";
 import { serieStatus } from "@/lib/series";
+import { IMAGE_DATA_URI, MAX_IMAGE_CHARS, canSeeProtocolPhoto } from "@/lib/protocol-photo-access";
 
 const CIRCUIT_ROLES = [
   "PRELEVEUR",
@@ -17,9 +19,13 @@ const CIRCUIT_ROLES = [
   "ADMIN",
 ] as const;
 
-/** A photo of the signed protocol: an image data URI, whole-string checked. */
-const IMAGE_DATA_URI = /^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/]+=*$/;
-const MAX_IMAGE_CHARS = 2_000_000; // ≈ 1.5 MB of image
+/**
+ * Whether the série carries a photo of its signed protocol (C6) — counted,
+ * never read: the LongText is served alone by …/protocol-photo.
+ */
+async function hasSignedProtocol(id: string) {
+  return (await prisma.serie.count({ where: { id, signedProtocolData: { not: null } } })) > 0;
+}
 
 export async function GET(
   _request: Request,
@@ -29,15 +35,23 @@ export async function GET(
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;
-  const serie = await prisma.serie.findUnique({
-    where: { id },
-    select: serieSelectFor(session.role),
-  });
+  // The photo's existence only for the roles that may open it (never the bench).
+  const showPhoto = canSeeProtocolPhoto(session.role);
+  const [serie, photo] = await Promise.all([
+    prisma.serie.findUnique({
+      where: { id },
+      select: serieSelectFor(session.role),
+    }),
+    showPhoto ? hasSignedProtocol(id) : Promise.resolve(false),
+  ]);
   if (!serie) return NextResponse.json({ error: "Série introuvable." }, { status: 404 });
   if (session.role === "PRELEVEUR" && serie.createdBy.id !== session.id) {
     return NextResponse.json({ error: "Série introuvable." }, { status: 404 });
   }
-  return NextResponse.json(serializeSerie(serie, serieStatus(serie.samples)));
+  return NextResponse.json({
+    ...serializeSerie(serie, serieStatus(serie.samples)),
+    ...(showPhoto ? { hasSignedProtocol: photo } : {}),
+  });
 }
 
 /**
@@ -98,9 +112,9 @@ export async function PATCH(
   const finalEnded = (endedAt as unknown) === "skip" ? serie.endedAt : (endedAt as Date | null);
   const finalArrived = (arrivedAt as unknown) === "skip" ? serie.arrivedAt : (arrivedAt as Date | null);
   if (finalEnded && finalEnded < serie.startedAt) return fail("L'heure de fin précède le début du prélèvement.");
-  if (finalArrived && finalEnded && finalArrived < finalEnded) {
-    return fail("L'arrivée au laboratoire précède la fin du prélèvement.");
-  }
+  // Never before the end of the sampling — nor before its start when no end was typed.
+  const arrivalProblem = finalArrived ? arrivalRefusal(finalArrived, serie.startedAt, finalEnded) : null;
+  if (arrivalProblem) return fail(arrivalProblem);
   if ((endedAt as unknown) !== "skip") data.endedAt = endedAt;
   if ((arrivedAt as unknown) !== "skip") data.arrivedAt = arrivedAt;
 
@@ -184,5 +198,7 @@ export async function PATCH(
     },
   });
 
-  return NextResponse.json(serializeSerie(updated, serieStatus(updated.samples)));
+  const photo =
+    "signedProtocolData" in data ? Boolean(data.signedProtocolData) : await hasSignedProtocol(serie.id);
+  return NextResponse.json({ ...serializeSerie(updated, serieStatus(updated.samples)), hasSignedProtocol: photo });
 }

@@ -450,7 +450,10 @@ export function CreditNoteDialog({
   const reasonId = useId();
   const summaryId = useId();
 
-  const preview = useMemo(() => creditNotePreview(lines, remaining, taxRate), [lines, remaining, taxRate]);
+  const preview = useMemo(
+    () => creditNotePreview(lines, remaining, taxRate, items),
+    [lines, remaining, taxRate, items]
+  );
 
   function update(key: string, patch: Partial<CreditNoteDraftLine>) {
     setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)));
@@ -520,6 +523,8 @@ export function CreditNoteDialog({
             {lines.map((line, index) => {
               const free = line.invoiceItemId === null;
               const position = `ligne ${index + 1}`;
+              // Nothing left to take back on this invoice line: not offered.
+              const exhausted = !free && line.remainingAmount === 0 && (line.creditedAmount ?? 0) > 0;
               return (
                 <li
                   key={line.key}
@@ -531,8 +536,9 @@ export function CreditNoteDialog({
                     type="checkbox"
                     checked={line.selected}
                     onChange={(e) => update(line.key, { selected: e.target.checked })}
+                    disabled={exhausted}
                     aria-label={`Reprendre la ${position}`}
-                    className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
+                    className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand disabled:opacity-40"
                   />
                   {free ? (
                     <input
@@ -545,7 +551,16 @@ export function CreditNoteDialog({
                       className="input-field px-3 py-2"
                     />
                   ) : (
-                    <span className="text-sm text-slate-800">{line.description}</span>
+                    <span className="text-sm text-slate-800">
+                      {line.description}
+                      {(line.creditedAmount ?? 0) > 0 && (
+                        <span className="mt-0.5 block text-xs text-slate-500">
+                          {exhausted
+                            ? `Déjà entièrement repris : ${formatCurrency(line.creditedAmount ?? 0)} HT`
+                            : `Déjà repris : ${formatCurrency(line.creditedAmount ?? 0)} HT · reste ${formatCurrency(line.remainingAmount ?? 0)} HT`}
+                        </span>
+                      )}
+                    </span>
                   )}
                   <input
                     type="text"

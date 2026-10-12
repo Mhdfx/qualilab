@@ -47,6 +47,8 @@ import {
 import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
 import { INVOICE_NOTICE_LABELS, sampleBillingNotice } from "@/lib/invoice-notices";
 import { amendedNumber } from "@/lib/report-amendment";
+import { canResendReport } from "@/lib/report-actions";
+import { ResendReportButton } from "@/components/validation/ResendReportButton";
 import { searchSamples } from "@/lib/sample-search-server";
 import { billingFigures } from "@/components/invoices/invoice-queries";
 
@@ -409,14 +411,28 @@ export default async function ClientDetailPage({
                       </p>
                     </div>
                     {sample.report && (
-                      <a
-                        href={`/api/samples/${sample.id}/report`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="rounded-lg px-2 py-1 font-mono text-xs font-semibold text-brand transition hover:bg-brand-light focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-                      >
-                        {amendedNumber(sample.report.number, sample.report.version)}
-                      </a>
+                      <div className="flex flex-col items-end gap-1">
+                        <a
+                          href={`/api/samples/${sample.id}/report`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-lg px-2 py-1 font-mono text-xs font-semibold text-brand transition hover:bg-brand-light focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                        >
+                          {amendedNumber(sample.report.number, sample.report.version)}
+                        </a>
+                        {/* The client relationship is the gestionnaire's: the
+                            report is resent from here (finalversion.md:116). */}
+                        {canResendReport(session.role, sample.status, sample.report.amendmentPending) && (
+                          <span className="px-2">
+                            <ResendReportButton
+                              compact
+                              sampleId={sample.id}
+                              number={amendedNumber(sample.report.number, sample.report.version)}
+                              sent={sample.report.sentAt !== null}
+                            />
+                          </span>
+                        )}
+                      </div>
                     )}
                   </li>
                   );

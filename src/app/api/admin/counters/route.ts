@@ -2,40 +2,23 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { parseLabNumber, type CounterKind } from "@/lib/counters";
+import { COUNTER_KINDS, formatCounterNumber } from "@/lib/counters";
+import { highestUsedNumber, loadCounterRows } from "@/lib/counter-rows";
 
 /**
- * The yearly sequences (« NNNN/AA ») the laboratory continues from its old
- * software: on switch-over day the admin types the last numbers it issued,
- * and the new system carries on from there (WORKFLOW.md §4). A counter can
- * never be set below a number already in use that year.
+ * The yearly sequences the laboratory continues from its old software: on
+ * switch-over day the admin types the last numbers it issued, and the new
+ * system carries on from there (WORKFLOW.md §4) — N° de série and N° de
+ * contrôle (« NNNN/AA »), invoices (« FAC-AAAA-NNNN ») and credit notes
+ * (« AV-AAAA-NNNN »). A counter can never be set below a number already in
+ * use that year (409).
  */
-
-const KINDS: CounterKind[] = ["SERIE", "CONTROLE"];
-
-async function highestUsed(kind: CounterKind, year: number): Promise<number> {
-  const suffix = `/${String(year % 100).padStart(2, "0")}`;
-  const numbers =
-    kind === "SERIE"
-      ? (await prisma.serie.findMany({ where: { year }, select: { serialNumber: true } })).map((s) => s.serialNumber)
-      : (await prisma.sample.findMany({ where: { controlCode: { endsWith: suffix } }, select: { controlCode: true } })).map((s) => s.controlCode ?? "");
-  return numbers.reduce((max, n) => Math.max(max, parseLabNumber(n)?.sequence ?? 0), 0);
-}
 
 export async function GET() {
   const session = await requireApiRole("ADMIN");
   if (session instanceof NextResponse) return session;
   const year = new Date().getFullYear();
-  const rows = await prisma.counter.findMany({ where: { year } });
-  const counters = await Promise.all(
-    KINDS.map(async (kind) => ({
-      kind,
-      year,
-      last: rows.find((r) => r.kind === kind)?.last ?? 0,
-      highestUsed: await highestUsed(kind, year),
-    }))
-  );
-  return NextResponse.json({ year, counters });
+  return NextResponse.json({ year, counters: await loadCounterRows(year) });
 }
 
 export async function PUT(request: Request) {
@@ -47,17 +30,19 @@ export async function PUT(request: Request) {
   } catch {
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
-  const kind = KINDS.find((k) => k === body.kind);
+  const kind = COUNTER_KINDS.find((k) => k === body.kind);
   const last = typeof body.last === "number" ? body.last : Number(body.last);
   if (!kind) return NextResponse.json({ error: "Compteur inconnu." }, { status: 400 });
   if (!Number.isInteger(last) || last < 0 || last > 999_999) {
     return NextResponse.json({ error: "Le dernier numéro doit être un entier entre 0 et 999 999." }, { status: 400 });
   }
   const year = new Date().getFullYear();
-  const used = await highestUsed(kind, year);
+  const used = await highestUsedNumber(kind, year);
   if (last < used) {
     return NextResponse.json(
-      { error: `Le numéro ${used}/${String(year % 100).padStart(2, "0")} est déjà attribué : le compteur ne peut pas descendre en dessous.` },
+      {
+        error: `Le numéro ${formatCounterNumber(kind, used, year)} est déjà attribué : le compteur ne peut pas descendre en dessous.`,
+      },
       { status: 409 }
     );
   }

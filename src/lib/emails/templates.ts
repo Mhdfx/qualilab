@@ -1,46 +1,59 @@
 import type { LineKind } from "@/generated/prisma/enums";
-import { COMPANY } from "@/lib/company";
+import { COMPANY, type CompanyInfo } from "@/lib/company";
 import { designationHeading } from "@/lib/document-html";
+import { escapeHtml as escape } from "@/lib/html-text";
 import { formatDate } from "@/lib/labels";
 import { amendedReportSubject, amendmentHeader } from "@/lib/report-amendment";
 
 /**
- * The two messages the laboratory sends.
+ * The messages the laboratory sends: the report, the contamination alert and
+ * the notice of a line destroyed at reception.
  *
  * Written as plain HTML tables with inline styles, because mail clients ignore
  * stylesheets and modern layout. The alert reproduces the model the client sent
  * on 17/08 — same columns, same order, same signature block.
+ *
+ * The identity signing them (name, phone, e-mail, address) is the one saved
+ * on /admin/entreprise: callers pass `await getCompany()`, the PDFs' source.
+ * `COMPANY` (placeholder contacts) is only the default of a test or of a
+ * caller without a database. Every field is admin-editable, so every field
+ * is escaped.
  */
 
-const SIGNATURE = `
+/** The signature block — a field left empty on /admin/entreprise is left out. */
+export function signature(company: CompanyInfo) {
+  const name = company.name.trim();
+  const phone = company.phone.trim();
+  const email = company.email.trim();
+  const place = [company.address.trim(), company.city.trim()].filter(Boolean).join(" · ");
+  return `
   <table cellpadding="0" cellspacing="0" style="margin-top:22px;border-top:1px solid #d9e3e8;padding-top:12px;font-family:Arial,sans-serif;font-size:12px;color:#55707d">
     <tr><td>
-      <div style="font-weight:bold;color:#1b2a33">${COMPANY.name}</div>
-      <div>Tél. ${COMPANY.phone}</div>
-      <div>E-mail : <a href="mailto:${COMPANY.email}" style="color:#2e5266">${COMPANY.email}</a></div>
-      <div>${COMPANY.address} · ${COMPANY.city}</div>
+      ${name ? `<div style="font-weight:bold;color:#1b2a33">${escape(name)}</div>` : ""}
+      ${phone ? `<div>Tél. ${escape(phone)}</div>` : ""}
+      ${email ? `<div>E-mail : <a href="mailto:${escape(email)}" style="color:#2e5266">${escape(email)}</a></div>` : ""}
+      ${place ? `<div>${escape(place)}</div>` : ""}
     </td></tr>
   </table>`;
+}
 
-function shell(body: string) {
+function shell(body: string, company: CompanyInfo) {
   return `<!DOCTYPE html>
 <html lang="fr"><body style="margin:0;padding:20px;background:#f5f8fa;font-family:Arial,sans-serif;color:#1b2a33">
   <table cellpadding="0" cellspacing="0" width="100%" style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:6px;padding:24px">
     <tr><td>
       <div style="height:4px;background:linear-gradient(90deg,#1f3a4d 0%,#2e5266 55%,#b8860b 100%);border-radius:2px;margin-bottom:18px"></div>
       ${body}
-      ${SIGNATURE}
+      ${signature(company)}
     </td></tr>
   </table>
 </body></html>`;
 }
 
-function escape(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+/** « … — Qualilab International » at the end of a subject (plain text, not HTML). */
+function subjectSuffix(company: CompanyInfo) {
+  const name = company.name.trim();
+  return name ? ` — ${name}` : "";
 }
 
 /* ---------------------------------- report --------------------------------- */
@@ -90,10 +103,10 @@ const TD = "border:1px solid #9aa9b3;padding:6px 8px";
  * A client with several sites (the restaurants of a chain) reads which one
  * the report is about from the subject — « Client — Site » — and the table.
  */
-export function reportEmail(input: ReportEmailInput) {
+export function reportEmail(input: ReportEmailInput, company: CompanyInfo = COMPANY) {
   const site = input.siteName?.trim() || null;
   const amendment = input.amendment ? amendmentHeader(input.amendment) : null;
-  const subject = `${amendment ? amendedReportSubject(input.reportNumber) : `Rapport d'analyse ${input.reportNumber}`}${site ? ` — ${input.clientName} — ${site}` : ""} — ${COMPANY.name}`;
+  const subject = `${amendment ? amendedReportSubject(input.reportNumber) : `Rapport d'analyse ${input.reportNumber}`}${site ? ` — ${input.clientName} — ${site}` : ""}${subjectSuffix(company)}`;
   const rows: [string, string][] = [
     ["N° dossier", input.serialNumber],
     ["N° de contrôle", input.controlCode ?? "—"],
@@ -139,7 +152,7 @@ export function reportEmail(input: ReportEmailInput) {
     <p style="font-size:14px;line-height:1.6;margin:0">
       Nous restons à votre disposition pour tout complément d'information.
     </p>
-    <p style="font-size:14px;margin:14px 0 0">Sincères salutations,</p>`);
+    <p style="font-size:14px;margin:14px 0 0">Sincères salutations,</p>`, company);
 
   return { subject, html };
 }
@@ -162,7 +175,7 @@ export type AlertRow = {
  * Contamination alert — one message per client and per germ, listing every
  * product concerned, as in the model received on 17/08.
  */
-export function alertEmail(germe: string, rows: AlertRow[]) {
+export function alertEmail(germe: string, rows: AlertRow[], company: CompanyInfo = COMPANY) {
   const subject = `Alerte de contamination par ${germe}`;
   // The unit goes into the column headers, as in the laboratory's example —
   // unless the rows disagree, then each cell keeps its own.
@@ -210,7 +223,7 @@ export function alertEmail(germe: string, rows: AlertRow[]) {
       Nous vous invitons à prendre les mesures correctives nécessaires dans les
       meilleurs délais.
     </p>
-    <p style="font-size:14px;margin:14px 0 0">Sincères salutations,</p>`);
+    <p style="font-size:14px;margin:14px 0 0">Sincères salutations,</p>`, company);
 
   return { subject, html };
 }
@@ -238,9 +251,9 @@ export type DestructionEmailInput = {
  * laboratory to Q35, RETOUR-LABO-30-09.md H3) — the same header as the
  * report e-mail, one row per destroyed line with its non-conformity.
  */
-export function destructionEmail(input: DestructionEmailInput) {
+export function destructionEmail(input: DestructionEmailInput, company: CompanyInfo = COMPANY) {
   const many = input.lines.length > 1;
-  const subject = `Échantillon${many ? "s" : ""} non analysé${many ? "s" : ""} — dossier ${input.serialNumber} — ${COMPANY.name}`;
+  const subject = `Échantillon${many ? "s" : ""} non analysé${many ? "s" : ""} — dossier ${input.serialNumber}${subjectSuffix(company)}`;
   const header: [string, string][] = [
     ["N° dossier", input.serialNumber],
     ["Date de prélèvement", formatDate(input.sampledAt)],
@@ -285,7 +298,7 @@ export function destructionEmail(input: DestructionEmailInput) {
     <p style="font-size:14px;line-height:1.6;margin:0">
       Aucune analyse n'est facturée pour ${many ? "ces échantillons" : "cet échantillon"}. N'hésitez pas à nous contacter pour organiser un nouveau prélèvement.
     </p>
-    <p style="font-size:14px;margin:14px 0 0">Sincères salutations,</p>`);
+    <p style="font-size:14px;margin:14px 0 0">Sincères salutations,</p>`, company);
 
   return { subject, html };
 }

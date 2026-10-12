@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  AlertTriangle,
   ArrowLeft,
   Building2,
   Calendar,
@@ -21,7 +20,6 @@ import { getLabSettings } from "@/lib/lab-settings";
 import {
   AIR_METHOD_LABELS,
   LINE_KIND_LABELS,
-  NON_CONFORMITY_REASON_LABELS,
   QUANTITY_UNIT_LABELS,
   SERIE_KIND_LABELS,
   SURFACE_STATE_LABELS,
@@ -37,6 +35,8 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
+import { ReceptionObservation } from "@/components/samples/ReceptionObservation";
+import { ReceptionNonConformity } from "@/components/samples/ReceptionNonConformity";
 import { ProgrammeSheet } from "@/components/programmation/ProgrammeSheet";
 import type { ProgrammeReferentialData, ProgrammeResponse } from "@/components/programmation/programme-sheet-types";
 
@@ -67,6 +67,13 @@ const IDENTITY_SELECT = {
   handsState: true,
   airMethod: true,
   remarks: true,
+  // A7: what the reception observed — the justification of an accepted doubt.
+  receptionNote: true,
+  // A9: the client's agreement to analyse a non-conform sample, or the wait for it.
+  clientConsultedName: true,
+  clientConsultationChannel: true,
+  clientConsultedAt: true,
+  awaitingClientSince: true,
 } as const;
 
 /** The programme sheet of one sample (PROGRAMME.md §4). */
@@ -196,16 +203,19 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
               </Field>
             </dl>
 
-            {sample.conformity === false && (
-              <p className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  <b>Non conforme à réception</b>
-                  {sample.conformityReason ? ` — ${NON_CONFORMITY_REASON_LABELS[sample.conformityReason]}` : ""}.
-                  {sample.conformityNote && ` ${sample.conformityNote}`}
-                </span>
-              </p>
-            )}
+            <ReceptionNonConformity
+              sample={{
+                conformity: sample.conformity,
+                conformityReason: sample.conformityReason,
+                conformityNote: sample.conformityNote,
+                clientConsultedName: identity.clientConsultedName,
+                clientConsultationChannel: identity.clientConsultationChannel,
+                clientConsultedAt: identity.clientConsultedAt,
+                awaitingClientSince: identity.awaitingClientSince,
+              }}
+            />
+
+            <ReceptionObservation note={identity.receptionNote} />
           </Card>
         </div>
 

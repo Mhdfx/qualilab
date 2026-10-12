@@ -2,37 +2,54 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, FileDown, History, PencilLine, X } from "lucide-react";
+import { Copy, FileDown, FilePen, History, PencilLine } from "lucide-react";
 import type { SampleStatus } from "@/generated/prisma/enums";
 import type { Role } from "@/lib/roles";
 import { formatDate } from "@/lib/labels";
 import { canReopen } from "@/lib/report-amendment";
+import { canEditConclusion, canResendReport } from "@/lib/report-actions";
+import { ConclusionEditDialog } from "./ConclusionEditDialog";
+import { ReportDialog as Dialog } from "./ReportDialog";
+import { ResendReportButton } from "./ResendReportButton";
 
 /**
  * The actions on an issued report (AMENDEMENT.md §4), on the validation page
- * and in the search: « Duplicata (PDF) », « Versions du rapport » and, for
- * the administrator, « Rouvrir pour amendement » with its mandatory reason.
- * The API decides again; this only hides what a role cannot do.
+ * and in the search: « Duplicata (PDF) », « Versions du rapport »,
+ * « Renvoyer au client » (gestionnaire, validator, administrator —
+ * finalversion.md:116) and, for the administrator, « Modifier la
+ * conclusion » (the silent correction, HANDOFF §8 18/08) and « Rouvrir pour
+ * amendement » with its mandatory reason. The API decides again; this only
+ * hides what a role cannot do.
  */
 export function ReportActions({
   sampleId,
+  reportId,
   role,
   status,
   number,
   amendmentPending,
+  sent = true,
   compact = false,
 }: {
   sampleId: string;
+  /** The report row, for the administrator's « Modifier la conclusion ». */
+  reportId?: string;
   role: Role;
   status: SampleStatus;
   /** The printed number of the version in force (« RAP-2026-00001-A1 »). */
   number: string;
   amendmentPending: boolean;
+  /** Whether the report has already left (« Renvoyer » rather than « Envoyer »). */
+  sent?: boolean;
   /** One line of small links, for a table row. */
   compact?: boolean;
 }) {
-  const [open, setOpen] = useState<"versions" | "reopen" | null>(null);
+  const [open, setOpen] = useState<"versions" | "reopen" | "conclusion" | null>(null);
   const reopenable = !amendmentPending && canReopen(status, role);
+  const resendable = canResendReport(role, status, amendmentPending);
+  // Hidden while an amendment is pending: its approval recomputes the
+  // conclusion and would drop the correction (the route refuses it too).
+  const conclusionEditable = reportId !== undefined && canEditConclusion(role, amendmentPending);
 
   const link = compact
     ? "inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
@@ -48,6 +65,13 @@ export function ReportActions({
         <History className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} aria-hidden="true" />
         Versions du rapport
       </button>
+      {resendable && <ResendReportButton sampleId={sampleId} number={number} sent={sent} compact={compact} />}
+      {conclusionEditable && (
+        <button type="button" onClick={() => setOpen("conclusion")} className={link}>
+          <FilePen className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} aria-hidden="true" />
+          Modifier la conclusion
+        </button>
+      )}
       {reopenable && (
         <button
           type="button"
@@ -70,27 +94,7 @@ export function ReportActions({
 
       {open === "versions" && <VersionsDialog sampleId={sampleId} onClose={() => setOpen(null)} />}
       {open === "reopen" && <ReopenDialog sampleId={sampleId} number={number} onClose={() => setOpen(null)} />}
-    </div>
-  );
-}
-
-function Dialog({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 text-left shadow-2xl">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-          <button type="button" onClick={onClose} aria-label="Fermer" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
-        {children}
-      </div>
+      {open === "conclusion" && reportId && <ConclusionEditDialog reportId={reportId} onClose={() => setOpen(null)} />}
     </div>
   );
 }

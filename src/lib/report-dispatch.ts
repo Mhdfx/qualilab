@@ -16,6 +16,7 @@ import {
 } from "./report-html";
 import { INTERPRETATION_LABELS, indicativeVerdict, legacyFailures, nothingJudged, sampleVerdict, storedPlan, unitStoredDisplay } from "./interpretation";
 import { getLabSettings } from "./lab-settings";
+import { ALERT_RESULT_WHERE } from "./contamination-alert";
 import { proposeRegulation } from "./regulation";
 import { sendEmail, recipientsFor } from "./email";
 import { reportEmail, alertEmail, type AlertRow } from "./emails/templates";
@@ -719,7 +720,7 @@ export async function sendReport(sampleId: string, actorId: string | null) {
     alert: verdict ? verdict === "NON_SATISFAISANT" : legacyNonConform,
     indicative: official === null && indicative !== null && sample.results.some((r) => r.informalInterpretation),
     amendment: data.amendment ?? null,
-  });
+  }, company);
 
   const result = await sendEmail({
     to,
@@ -831,10 +832,8 @@ export async function sendContaminationAlerts(
       results: {
         // A sensitive germ over its limit — including one judged only
         // indicatively (too few units): the contamination is real either way.
-        where: {
-          parameter: { alertOnExceed: true },
-          OR: [{ conform: false }, { informalInterpretation: "NON_SATISFAISANT" }],
-        },
+        // By verdict, never by number: « Indénombrable » has none.
+        where: ALERT_RESULT_WHERE,
         select: {
           value: true,
           unit: true,
@@ -892,8 +891,10 @@ export async function sendContaminationAlerts(
     };
   }
 
-  // The laboratory is always in copy of an alert.
-  const cc = [(await getCompany()).email].filter(Boolean);
+  // The laboratory is always in copy of an alert; the identity saved on
+  // /admin/entreprise also signs each message (read once for the batch).
+  const company = await getCompany();
+  const cc = [company.email.trim()].filter(Boolean);
 
   // Claim atomically: whoever flips alertsSentAt from null wins, a
   // concurrent caller (early-alert validation racing the admin approval) sees
@@ -955,7 +956,7 @@ export async function sendContaminationAlerts(
   const failed: string[] = [];
   try {
     for (const [germ, rows] of byGerm) {
-      const { subject, html } = alertEmail(germ, rows);
+      const { subject, html } = alertEmail(germ, rows, company);
       const result = await sendEmail({
         to,
         cc,

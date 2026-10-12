@@ -450,3 +450,180 @@ sous forme de checklist.
 ### 10.3 Questions au laboratoire
 
 Voir NEEDEDINFO Q57 à Q66.
+
+## 11. Analyse des écarts du 10/10 — contrôles de réception, paillasse, administration
+
+Le 10/10, l'application a été comparée, écran par écran, au périmètre signé
+(`finalversion.md`), aux formulaires papier, aux retours du laboratoire du
+29/09 au 09/10 et aux exigences de la norme ISO/IEC 17025 (§7.4 sur la
+réception des objets d'essai). L'analyse a donné 37 points à construire tout
+de suite, 23 sujets qui attendent une réponse du laboratoire, 12 points déjà
+en place et 8 hors périmètre. Les 37 points ont été construits le 10/10 en
+trois chantiers parallèles (réception, paillasse et validation,
+administration), chacun relu par un relecteur indépendant, puis assemblés et
+vérifiés ensemble. **Rien n'est encore déployé** : la recette en production
+est le TESTPLAN V11.
+
+### 11.1 Ce qui a été trouvé
+
+- **Réception.** Les 7 règles du bon papier sont en place depuis le 09/10,
+  mais rien ne contrôlait ce qui n'est pas sur le bon : le délai entre le
+  prélèvement et l'arrivée (C1), la température de transport selon le mode
+  de conservation et l'origine de la mesure (C2), l'état de l'emballage
+  (C3, avec le flacon au thiosulfate pour une eau traitée, C4),
+  l'identification (C5), le retour du protocole signé (C6), une DLC
+  dépassée (C7). Un échantillon jamais arrivé ne pouvait être annulé
+  qu'avec le motif « Autre ». L'heure d'arrivée pouvait précéder le
+  prélèvement. Accepter un échantillon malgré un doute ne laissait aucune
+  trace écrite, et la checklist décidée disparaissait après la réception.
+  Un non-conforme analysé ne gardait pas l'accord du client (ISO 17025
+  §7.4.3), et la libération d'un échantillon bloqué attribuait encore un
+  technicien, alors que le programme le fait depuis le 08/10.
+- **Paillasse.** Une boîte indénombrable (« > 3.10⁵ », « Indénombrable »,
+  « TNTC ») ne pouvait pas être saisie : la fiche ne se soumettait pas. Le
+  technicien ne voyait ni le motif du renvoi du validateur ni le motif codé
+  de non-conformité à réception, et ne pouvait pas relever une température.
+- **Validation et envois.** Le gestionnaire ne pouvait pas renvoyer un
+  rapport, le bouton « Modifier la conclusion » manquait, les e-mails
+  signaient avec des coordonnées provisoires, le journal des envois et le
+  parcours daté de l'échantillon n'étaient pas consultables,
+  l'« Historique des réceptions » était grisé.
+- **Administration et sécurité.** Le personnel ne pouvait pas changer son
+  mot de passe ; aucune limite de tentatives sur ce changement ; aucune
+  déconnexion des postes partagés ; le journal d'audit n'avait ni filtre ni
+  pagination ; pas d'export comptable ; compteurs de factures et d'avoirs
+  non réglables ; une facture émise changeait de client si le client était
+  renommé ou fusionné ; un avoir pouvait reprendre plusieurs fois la même
+  ligne. Côté serveur : sauvegardes sur le même disque seulement, connexion
+  SSH par mot de passe ouverte, cache Docker jamais purgé.
+
+### 11.2 Ce qui est construit (10/10)
+
+**Réception (chantier A).**
+1. Sous les 7 règles du bon, un second bloc « Contrôles complémentaires
+   (hors bon) » par échantillon : **C1** délai prélèvement → laboratoire
+   (calculé ; limites dans Réglages : 24 h en microbiologie, aucune en
+   physico-chimie ; dépassé = « à vérifier », ou non conforme si
+   l'interrupteur « Délai dépassé = non conforme » est allumé) ; **C2**
+   température de transport selon la conservation (Réfrigéré, Congelé,
+   Ambiant, Chaud — choix « Conservation » sur chaque carte) et l'origine de
+   la mesure (glacière, mesurée sur l'échantillon, flacon témoin pour les
+   eaux) ; **C3** emballage et **C5** identification, Oui / Non obligatoires
+   (« Non » = non conforme, motif Emballage ou Identification), avec
+   l'indication du contenant attendu par type (C4 : flacon stérile au
+   thiosulfate pour une eau traitée) ; **C7** DLC dépassée (aliments,
+   avertissement) ; **C6** protocole signé, une ligne de la visite (photo
+   jointe, ou « Protocole papier signé reçu ? » Oui / Non, jamais bloquant).
+   La chaîne du froid quitte la règle (6) pour C2. Pas de bouton « tout
+   cocher » par série (Q64).
+2. « Non reçu au laboratoire » : motif d'annulation d'un échantillon pas
+   encore reçu ; le protocole imprime « Non reçu ».
+3. L'arrivée au laboratoire ne peut plus précéder la fin du prélèvement
+   (formulaire et serveur).
+4. Au dépôt, « Prélevé le » n'est plus prérempli : l'heure se demande au
+   client ; laissée vide, C1 affiche « Heure de prélèvement non déclarée ».
+   La file de réception affiche « délai X h », en orange au-delà de la
+   limite.
+5. **Observation de réception** sur chaque carte ; elle devient
+   **obligatoire quand on accepte conforme un échantillon dont une ligne est
+   « à vérifier »** (« Échantillon 2 : justifiez l'acceptation (C2
+   Température de transport à vérifier). »). Elle est imprimée sur le bon et
+   visible sur la fiche de programme, la paillasse et la validation.
+6. Une série reçue montre, pour chaque échantillon, la **checklist telle
+   qu'elle a été décidée** (« Checklist à la réception »).
+7. Un non-conforme a trois décisions : « Analyser malgré tout » (avec
+   l'**accord du client** : personne, canal, date-heure, note — obligatoire
+   seulement si l'interrupteur « Accord du client obligatoire » est allumé),
+   « **En attente du client** » (reçu, numéroté, bloqué), « Détruire ». Le
+   bon imprime « analysé avec l'accord de … » ou « en attente de l'avis du
+   client ». Dans « Bloqués », la réception et l'administrateur choisissent
+   Analyser (l'échantillon rejoint la file du programme, **sans technicien**)
+   ou Détruire (le client reçoit l'e-mail de destruction).
+8. Dépôt, visite et facture : le client se **cherche** (nom, ICE, contact)
+   au lieu d'une liste de toute la base.
+9. Facture **figée à l'émission** (nom, adresse, contact, téléphone,
+   e-mail, ICE du client tels qu'imprimés) ; un **avoir reprend une ligne**
+   au plus à hauteur de son montant (« Déjà repris : X HT · reste Y HT ») ;
+   la fiche de programme affiche la **charge de chaque technicien**
+   (« Nom — 12 éch. · 3 en retard ») ; index de dates pour les listes.
+
+**Paillasse, validation, envois (chantier B).**
+10. « > x », « Indénombrable », « Incomptable », « TNTC » acceptés et jugés :
+    un « > x » sous la limite qui décide laisse la fiche « Incomplet »
+    (« lire une dilution supérieure ») ; un indénombrable dépasse toute
+    limite et déclenche l'alerte de contamination sur un germe sensible. Le
+    rapport imprime la saisie telle quelle.
+11. Le technicien voit « Renvoyé par … le … : motif » et le motif codé de
+    non-conformité à réception ; menu « Relevés de température ».
+12. « Renvoyer au client » (gestionnaire, validateur, administrateur) depuis
+    la recherche, la validation et la fiche client ; « Modifier la
+    conclusion » (administrateur, non journalisé comme décidé le 18/08) ;
+    e-mails signés avec l'identité de `/admin/entreprise` ; carte
+    « Parcours de l'échantillon » et bloc « Envois » sur la validation ;
+    journal des envois `/admin/envois` ; « Historique des réceptions »
+    `/reception/historique` ; lien vers la photo du protocole signé à la
+    validation.
+
+**Administration, facturation, exploitation (chantier C).**
+13. « Mon compte » pour tout le personnel (clic sur son nom) : changement de
+    mot de passe, les autres sessions sont fermées ; 5 erreurs en 15 minutes
+    bloquent le changement (« Trop de tentatives… »).
+14. Déconnexion après 30 minutes sans activité (avertissement 2 minutes
+    avant, « Rester connecté »), sauf le préleveur ; la page de connexion
+    indique « Session fermée après inactivité ».
+15. Journal d'audit filtré (action, utilisateur, dates, référence :
+    N° de contrôle, N° de série, facture, client) et paginé (50 par page).
+16. Menu administrateur : « Enregistrement des paramètres », « Historique
+    des réceptions », « Envois d'e-mails ». Historique complet du préleveur
+    (« Voir plus », recherche, statut).
+17. Facture à 0,00 annulable ; **export comptable** Excel (journal des
+    ventes et règlements, périodes « Mois en cours / précédent / Année ») ;
+    compteurs FAC / AV réglables pour la bascule.
+18. Exploitation : copie hors site des sauvegardes (à activer), script de
+    durcissement SSH avec fail2ban, purge du cache Docker au déploiement,
+    contrôle de la base des fuseaux horaires, procédure de redémarrage
+    (`DEPLOY.md`).
+
+**Assemblage (10/10).** L'observation de réception et l'accord du client
+s'affichent aussi sur la paillasse et la validation ; l'export comptable lit
+le client figé de chaque facture ; les nouvelles listes coupent les jours sur
+l'heure légale du laboratoire ; le serveur recalcule désormais la conformité
+d'une saisie jugée sur la seule limite du paramètre (un indénombrable ne peut
+plus être enregistré « conforme » par une page ancienne). Vérifications :
+contrôle de types, lint, 1 396 tests automatiques, construction de
+production — tout est vert. Rien n'a été vérifié dans un navigateur (pas de
+base locale) : c'est l'objet du TESTPLAN V11.
+
+### 11.3 Non fait, ou en partie
+
+- **Recette navigateur et base** : à faire en production sur le client de
+  test (TESTPLAN V11).
+- **Factures déjà émises** : pas de copie rétroactive du client (aucune
+  réécriture de données). Elles suivent encore un renommage ou une fusion :
+  à décider avant toute fusion réelle de clients (Q54).
+- **Alertes anticipées** (envoyées avant le rapport) : absentes du bloc
+  « Envois » de la validation.
+- La déconnexion après inactivité est contrôlée par le navigateur ; la
+  session serveur reste de 7 jours.
+
+### 11.4 Questions au laboratoire
+
+Voir NEEDEDINFO **Q67 à Q98** (chaque question indique le défaut déjà
+construit). Les plus urgentes, parce qu'elles changent le travail quotidien
+de la réception dès la mise en ligne : **Q67** (délai maximal), **Q69**
+(températures de transport), **Q71** (quelles lignes « à vérifier » exigent
+une observation écrite). Puis **Q75** et **Q77** (accord du client et réserve
+sur le rapport) et **Q83** (numérotation des factures avant la bascule).
+Restent ouvertes de l'envoi précédent : Q57–Q66.
+
+### 11.5 Avant la mise en ligne (exploitant)
+
+- **Urgent, avant le 14/10** : la sauvegarde de nuit actuelle supprimera le
+  point de restauration `qualilab_avant-phase-9.sql.gz` (13/09). Déployer le
+  nouveau script de sauvegarde, ou copier ce fichier hors du serveur.
+- Changer tout de suite le mot de passe de chaque compte de démonstration
+  utilisé (`/admin/utilisateurs`) : le mot de passe commun est écrit dans le
+  dépôt.
+- Prévenir la réception des nouveaux contrôles (C3 / C5 obligatoires,
+  observation obligatoire pour un doute accepté, « Prélevé le » à demander
+  au client) et rafraîchir les pages ouvertes après le déploiement.

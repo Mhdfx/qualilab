@@ -18,6 +18,7 @@ import {
   SURFACE_STATE_LABELS,
 } from "@/lib/labels";
 import {
+  cancelReasonsFor,
   correctionBody,
   correctionFields,
   correctionValues,
@@ -40,8 +41,6 @@ export type { CorrectionValues, VerbSample };
  * show is not sent, so an old value of another kind is never emptied.
  */
 
-// « Détruit à réception » is the reception's own verb (slice E), never picked here.
-const REASONS = (Object.keys(CANCEL_REASON_LABELS) as CancelReason[]).filter((r) => r !== "DETRUIT_A_RECEPTION");
 const UNITS = Object.keys(QUANTITY_UNIT_LABELS) as QuantityUnit[];
 const UNIT_CHOICES = [1, 3, 5, 9];
 const FAMILY_ORDER: Family[] = ["MICRO", "CHIMIE", "AUTRE"];
@@ -443,7 +442,7 @@ function CancelDialog({ sample, onClose, onDone }: { sample: VerbSample; onClose
         <label className="mt-3 block text-xs font-medium text-slate-600">Motif *</label>
         <select value={reason} onChange={(e) => setReason(e.target.value as CancelReason | "")} className="input-field mt-1 px-3">
           <option value="">Choisir un motif</option>
-          {REASONS.map((r) => (
+          {cancelReasonsFor(sample.status).map((r) => (
             <option key={r} value={r}>{CANCEL_REASON_LABELS[r]}</option>
           ))}
         </select>

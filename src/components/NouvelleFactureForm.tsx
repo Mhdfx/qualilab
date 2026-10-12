@@ -31,11 +31,10 @@ import {
 } from "@/components/invoices/BillableSamples";
 import { ConfirmDialog, sendJson } from "@/components/invoices/InvoiceDialogs";
 import type { DraftFormInvoice } from "@/components/invoices/invoice-view";
+import { ClientPicker, type PickedClient } from "@/components/commercial/ClientPicker";
 
-type ClientOption = {
-  id: string;
-  name: string;
-};
+/** Every active client may be invoiced. */
+const NO_EXCLUDED_CLIENTS: string[] = [];
 
 type LineItem = {
   key: string;
@@ -84,11 +83,14 @@ function draftLines(draft: DraftFormInvoice | undefined): LineItem[] {
 export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}) {
   const router = useRouter();
   const base = useInvoiceBasePath();
-  const [clients, setClients] = useState<ClientOption[]>(() =>
-    draft ? [{ id: draft.clientId, name: draft.clientName }] : []
+  // The client is searched on the server (ClientPicker), never the whole base
+  // loaded. A draft starts on its own client — even one that has since left
+  // the active list (archived, merged).
+  const [client, setClient] = useState<PickedClient | null>(() =>
+    draft ? { id: draft.clientId, name: draft.clientName, ice: null, sites: [] } : null
   );
+  const clientId = client?.id ?? "";
   const [services, setServices] = useState<LabServiceOption[]>([]);
-  const [clientId, setClientId] = useState(draft?.clientId ?? "");
   const [dueDate, setDueDate] = useState(draft?.dueDate ?? "");
   const [taxRate, setTaxRate] = useState(draft ? String(draft.taxRate) : "20");
   const [notes, setNotes] = useState(draft?.notes ?? "");
@@ -98,23 +100,12 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch("/api/clients")
-      .then((r) => r.json())
-      .then((data) => {
-        if (!Array.isArray(data)) return;
-        // A draft keeps its client even if it left the selection lists.
-        setClients(
-          draft && !data.some((c: ClientOption) => c.id === draft.clientId)
-            ? [{ id: draft.clientId, name: draft.clientName }, ...data]
-            : data
-        );
-      });
     fetch("/api/lab-services")
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) setServices(data);
       });
-  }, [draft]);
+  }, []);
 
   const servicesByCategory = useMemo(() => {
     const grouped = new Map<string, LabServiceOption[]>();
@@ -273,26 +264,17 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="p-5 sm:p-6">
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <div>
-              <label htmlFor="invoice-client" className="section-title mb-2">
-                <Building2 className="h-4 w-4" aria-hidden="true" />
-                Client
-              </label>
-              <select
-                id="invoice-client"
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-                className="input-field px-4"
-                required
-              >
-                <option value="">Sélectionner un client…</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Changing the client remounts the billable list (keyed by client). */}
+            <ClientPicker
+              label="Client"
+              labelClassName="section-title mb-2"
+              labelIcon={<Building2 className="h-4 w-4" aria-hidden="true" />}
+              placeholder="Nom, ICE ou contact (2 caractères minimum)"
+              excludeIds={NO_EXCLUDED_CLIENTS}
+              selected={client}
+              onSelect={setClient}
+              disabled={submitting}
+            />
 
             <div>
               <label htmlFor="invoice-due-date" className="section-title mb-2">

@@ -1,6 +1,6 @@
 import type { InvoiceKind, InvoiceStatus, PaymentMode } from "@/generated/prisma/enums";
 import type { BilledSample } from "@/lib/invoice-notices";
-import { computeInvoiceTotals, type InvoiceTotals } from "@/lib/invoice-math";
+import { computeInvoiceTotals, roundMoney, type InvoiceTotals } from "@/lib/invoice-math";
 import {
   balance,
   cancelRefusal,
@@ -14,6 +14,7 @@ import {
   type InvoiceState,
 } from "@/lib/invoice-lifecycle";
 import { toMoney, type MoneyInput } from "@/lib/money";
+import { creditNoteLinesRefusal, remainingLineCreditable } from "@/lib/billing";
 
 /**
  * What the invoice screens show (FACTURATION.md §5), shaped once.
@@ -47,6 +48,12 @@ export type InvoiceViewItem = {
   sampleId: string | null;
   /** The billed sample's status (PROGRAMME.md §6 banners); absent on a line typed by hand. */
   sample?: BilledSample | null;
+  /**
+   * FACTURE line: what the credit notes linked to it already took back, HT
+   * (« déjà repris »). Absent or 0 when none — credit notes issued before
+   * the link existed are not counted here.
+   */
+  creditedAmount?: number;
 };
 
 export type PaymentView = {
@@ -475,18 +482,52 @@ export type CreditNoteDraftLine = {
   description: string;
   quantity: string;
   unitPrice: string;
+  /** Invoice line: HT already taken back by earlier credit notes (« déjà repris »). */
+  creditedAmount?: number;
+  /** Invoice line: HT still creditable — 0 once entirely taken back. Absent on a free line. */
+  remainingAmount?: number;
 };
 
-/** The dialog's starting lines: every invoice line, unticked, at its quantity and price. */
+/**
+ * The quantity a credit note takes back by default from an invoice line: all
+ * of it while nothing was credited, otherwise as much as still fits at the
+ * line's price (to the hundredth, rounded down; 0 once nothing is left), so
+ * the pre-filled line is never refused.
+ */
+export function creditNoteDefaultQuantity(
+  item: Pick<InvoiceViewItem, "quantity" | "unitPrice" | "creditedAmount">,
+  remainingAmount: number
+): number {
+  if (!item.creditedAmount || item.creditedAmount <= 0 || item.unitPrice <= 0) return item.quantity;
+  if (remainingAmount <= 0) return 0;
+  let quantity = Math.min(item.quantity, Math.floor((remainingAmount / item.unitPrice) * 100 + 1e-9) / 100);
+  // Whole centimes, compared like the API: step down until the line fits.
+  while (quantity > 0 && Math.round(roundMoney(quantity * item.unitPrice) * 100) > Math.round(remainingAmount * 100)) {
+    quantity = Math.round((quantity - 0.01) * 100) / 100;
+  }
+  return Math.max(0, quantity);
+}
+
+/**
+ * The dialog's starting lines: every invoice line, unticked, at its price and
+ * at the quantity still creditable (`creditNoteDefaultQuantity`), with what
+ * was already taken back.
+ */
 export function creditNoteDraftLines(items: InvoiceViewItem[]): CreditNoteDraftLine[] {
-  return items.map((item) => ({
-    key: item.id,
-    invoiceItemId: item.id,
-    selected: false,
-    description: item.description,
-    quantity: String(item.quantity),
-    unitPrice: item.unitPrice.toFixed(2),
-  }));
+  return items.map((item) => {
+    const creditedAmount = item.creditedAmount ?? 0;
+    const remainingAmount = remainingLineCreditable(item.lineTotal, creditedAmount);
+    return {
+      key: item.id,
+      invoiceItemId: item.id,
+      selected: false,
+      description: item.description,
+      quantity: String(creditNoteDefaultQuantity(item, remainingAmount)),
+      unitPrice: item.unitPrice.toFixed(2),
+      creditedAmount,
+      remainingAmount,
+    };
+  });
 }
 
 /** The ticked lines as the API takes them (`invoiceItemId` only on a line taken back). */
@@ -503,16 +544,26 @@ export function creditNoteLines(draft: CreditNoteDraftLine[]): CreditNoteLine[] 
 
 /**
  * The live preview of the dialog: totals of the readable lines, and the
- * error the API would answer, so the button says it before the click.
+ * error the API would answer, so the button says it before the click. With
+ * the invoice's `items`, a line taken back beyond what is left on its
+ * invoice line is refused too (same rule and order as the API).
  */
 export function creditNotePreview(
   draft: CreditNoteDraftLine[],
   remaining: number,
-  taxRate: number
+  taxRate: number,
+  items?: readonly InvoiceViewItem[]
 ): { totals: InvoiceTotals; error: string | null; lines: CreditNoteLine[] } {
   const lines = creditNoteLines(draft);
   const readable = lines.filter((line) => Number.isFinite(line.quantity) && Number.isFinite(line.unitPrice));
   const totals = computeInvoiceTotals(readable, taxRate);
+  const lineRefusal = items
+    ? creditNoteLinesRefusal(
+        lines,
+        items,
+        Object.fromEntries(items.map((item) => [item.id, item.creditedAmount ?? 0]))
+      )
+    : null;
   const check = checkCreditNote(lines, remaining, taxRate);
-  return { totals, error: check.ok ? null : check.error, lines };
+  return { totals, error: lineRefusal ?? (check.ok ? null : check.error), lines };
 }

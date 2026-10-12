@@ -92,6 +92,50 @@ describe("buildReportHtml — the laboratory's model", () => {
     expect(html).toContain('<td class="rep mid">150</td>');
   });
 
+  it("prints an uncountable plate and « > x » as typed, red when over the limit", () => {
+    const html = buildReportHtml({
+      ...base,
+      interpretation: "NON_SATISFAISANT",
+      results: [{
+        ...base.results[0],
+        value: "Indénombrable",
+        interpretation: "NON_SATISFAISANT",
+        units: [
+          { display: "Indénombrable", value: null, detected: true },
+          { display: "> 1000", value: 1000, detected: null },
+          ...Array.from({ length: 3 }, () => ({ display: "< 10", value: 0, detected: null })),
+        ],
+      }],
+    });
+    // As typed, with a soft hyphen so it wraps inside its R column (it ran
+    // over the m column with five repetitions — local recette V11-B1).
+    expect(html).toContain('<td class="rep word no">Indénom­brable</td>');
+    expect(html).toContain("td.rep.word { font-size: .9em; overflow-wrap: anywhere; }");
+    expect(html).not.toContain("Détecté");
+    // « > 1000 » reaches M = 1000: above it.
+    expect(html).toContain('<td class="rep no">&gt; 1000</td>');
+  });
+
+  it("lets every uncountable spelling wrap in its R column, letters as typed", () => {
+    const html = buildReportHtml({
+      ...base,
+      interpretation: "NON_SATISFAISANT",
+      results: [{
+        ...base.results[0],
+        value: "TNTC",
+        interpretation: "NON_SATISFAISANT",
+        units: ["indenombrable", "INCOMPTABLE", "TNTC", "T.N.T.C.", "< 10"].map((display) =>
+          display === "< 10" ? { display, value: 0, detected: null } : { display, value: null, detected: true }
+        ),
+      }],
+    });
+    expect(html).toContain('<td class="rep word no">indenom­brable</td>');
+    expect(html).toContain('<td class="rep word no">INCOMP­TABLE</td>');
+    expect(html).toContain('<td class="rep word no">TNTC</td>');
+    expect(html).toContain('<td class="rep word no">T.N.T.C.</td>');
+    expect(html).toContain('<td class="rep ">&lt; 10</td>');
+  });
+
   it("never prints the product type — an internal family (Q34)", () => {
     const html = buildReportHtml(base);
     expect(html).not.toContain("Type de produit");

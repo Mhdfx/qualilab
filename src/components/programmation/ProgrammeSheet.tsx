@@ -41,6 +41,7 @@ import type { ReceptionThresholds } from "@/lib/reception-rules";
 import type { Role } from "@/lib/roles";
 import { MAX_UNITS } from "@/lib/series";
 import { matchesQuery } from "@/lib/similar";
+import { technicianLoadLabel, technicianLoadText } from "@/lib/technician-load";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { LabDateTimeInput } from "@/components/LabDateTimeInput";
@@ -80,6 +81,7 @@ import type {
   ProgrammeResponse,
   ProgrammeSampleData,
   ProgrammeState,
+  TechnicianRef,
 } from "./programme-sheet-types";
 
 /**
@@ -131,6 +133,27 @@ function SectionTitle({ index, icon: Icon, title, hint }: { index: number; icon:
         {hint && <p className="mt-0.5 text-xs text-slate-500">{hint}</p>}
       </div>
     </div>
+  );
+}
+
+/**
+ * The technicians as choices, each with their load — « Nom — 12 éch. · 3 en
+ * retard » (finalversion.md: attribution « avec visibilité sur la charge de
+ * chacun »); the full sentence as the option's tooltip.
+ */
+function TechnicianOptions({ technicians }: { technicians: TechnicianRef[] }) {
+  return (
+    <>
+      {technicians.map((technician) => (
+        <option
+          key={technician.id}
+          value={technician.id}
+          title={technician.load ? technicianLoadText(technician.load) : undefined}
+        >
+          {technicianLoadLabel(technician.name, technician.load)}
+        </option>
+      ))}
+    </>
   );
 }
 
@@ -360,7 +383,7 @@ export function ProgrammeSheet({
       return `Échantillon annulé${sample.cancelReason ? ` (${CANCEL_REASON_LABELS[sample.cancelReason]})` : ""} : seul un administrateur peut le réactiver.`;
     }
     if (saved.analysisBlocked) {
-      return "Échantillon bloqué en réception : un administrateur doit le libérer avant la programmation.";
+      return "Échantillon bloqué en réception : il doit être libéré depuis « Bloqués » de la réception avant la programmation.";
     }
     return "Fiche en lecture seule : la paillasse a commencé. Les changements passent désormais par « Corriger la fiche », avec un motif.";
   })();
@@ -817,10 +840,13 @@ export function ProgrammeSheet({
               className="input-field px-3 disabled:bg-slate-50"
             >
               <option value="">— à attribuer —</option>
-              {referential.technicians.map((technician) => (
-                <option key={technician.id} value={technician.id}>{technician.name}</option>
-              ))}
+              <TechnicianOptions technicians={referential.technicians} />
             </select>
+            {defaultTechnician?.load && !readOnly && (
+              <p className="mt-1 text-xs text-slate-500">
+                Charge de {defaultTechnician.name} : {technicianLoadText(defaultTechnician.load)}.
+              </p>
+            )}
             {/* The reception assigns nobody since 08/10 (RETOUR-LABO-06-10.md §9.3):
                 a saved technician comes from the programme, or from a reception before. */}
             {sample.technician && sample.technician.id !== draft.technicianId && (
@@ -841,9 +867,7 @@ export function ProgrammeSheet({
                 className="input-field w-auto min-w-[160px] flex-1 px-3 disabled:bg-slate-50"
               >
                 <option value="">Choisir…</option>
-                {referential.technicians.map((technician) => (
-                  <option key={technician.id} value={technician.id}>{technician.name}</option>
-                ))}
+                <TechnicianOptions technicians={referential.technicians} />
               </select>
               <button
                 type="button"
@@ -865,9 +889,7 @@ export function ProgrammeSheet({
                   className="input-field w-auto min-w-[120px] flex-1 px-3 disabled:bg-slate-50"
                 >
                   <option value="">Choisir…</option>
-                  {referential.technicians.map((technician) => (
-                    <option key={technician.id} value={technician.id}>{technician.name}</option>
-                  ))}
+                  <TechnicianOptions technicians={referential.technicians} />
                 </select>
                 <label htmlFor="programme-chimie-tech" className="text-xs text-slate-500">chimie à</label>
                 <select
@@ -878,9 +900,7 @@ export function ProgrammeSheet({
                   className="input-field w-auto min-w-[120px] flex-1 px-3 disabled:bg-slate-50"
                 >
                   <option value="">Choisir…</option>
-                  {referential.technicians.map((technician) => (
-                    <option key={technician.id} value={technician.id}>{technician.name}</option>
-                  ))}
+                  <TechnicianOptions technicians={referential.technicians} />
                 </select>
                 <button
                   type="button"
@@ -913,9 +933,7 @@ export function ProgrammeSheet({
                       className="input-field w-auto max-w-[55%] px-3 disabled:bg-slate-50"
                     >
                       <option value="">{defaultTechnician ? `— ${defaultTechnician.name} —` : "— celui de l'échantillon —"}</option>
-                      {referential.technicians.map((technician) => (
-                        <option key={technician.id} value={technician.id}>{technician.name}</option>
-                      ))}
+                      <TechnicianOptions technicians={referential.technicians} />
                     </select>
                   </li>
                 );

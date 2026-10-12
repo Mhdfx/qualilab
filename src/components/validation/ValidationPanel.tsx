@@ -329,22 +329,26 @@ export function ValidationPanel({
                 Télécharger le rapport
               </a>
             )}
-            {/* Without a report number the send also (re)creates the report. */}
-            <SecondaryButton
-              type="button"
-              onClick={() => resend()}
-              disabled={!!busy}
-              className="w-full"
-            >
-              <Send className="h-4 w-4" aria-hidden="true" />
-              {busy === "resend"
-                ? "Envoi…"
-                : !reportNumber
-                  ? "Générer et envoyer le rapport"
-                  : sentTo
-                    ? "Renvoyer au client"
-                    : "Envoyer au client"}
-            </SecondaryButton>
+            {/* The self-healing sends only: without a report the send
+                creates it, with an amendment still pending after the
+                approval it issues the amended version. An issued report
+                is (re)sent from its card, « Renvoyer au client », which
+                asks first and shows the recipients (ResendReportButton). */}
+            {(!reportNumber || amendment) && (
+              <SecondaryButton
+                type="button"
+                onClick={() => resend()}
+                disabled={!!busy}
+                className="w-full"
+              >
+                <Send className="h-4 w-4" aria-hidden="true" />
+                {busy === "resend"
+                  ? "Envoi…"
+                  : !reportNumber
+                    ? "Générer et envoyer le rapport"
+                    : "Émettre et envoyer le rapport amendé"}
+              </SecondaryButton>
+            )}
           </div>
         </div>
       ) : (

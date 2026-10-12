@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
+  FileImage,
 } from "lucide-react";
 import { requireRole, getSession } from "@/lib/auth";
 import { roleAllowed } from "@/lib/roles";
@@ -21,6 +22,7 @@ import { repetitionLabel } from "@/lib/series";
 import { VerdictBadge } from "@/components/samples/VerdictBadge";
 import { SampleVerbs } from "@/components/samples/SampleVerbs";
 import { formatDateTime } from "@/lib/labels";
+import { raisesContaminationAlert } from "@/lib/contamination-alert";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
 import { approvalState } from "@/lib/sample-status";
@@ -28,9 +30,17 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
+import { ReceptionNonConformity, RECEPTION_NON_CONFORMITY_SELECT } from "@/components/samples/ReceptionNonConformity";
+import { ReceptionObservation } from "@/components/samples/ReceptionObservation";
 import { ValidationPanel } from "@/components/validation/ValidationPanel";
 import { ReportActions } from "@/components/validation/ReportActions";
 import { amendedNumber } from "@/lib/report-amendment";
+import { sampleTimelineFor } from "@/lib/sample-timeline-server";
+import { SampleTimelineCard } from "@/components/validation/SampleTimelineCard";
+import { EmailSendsCard } from "@/components/validation/EmailSendsCard";
+
+/** The sends listed under « Envois » (newest first). */
+const SENDS_SHOWN = 20;
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   // Metadata renders alongside the layout's redirect: the sample's blind
@@ -85,17 +95,20 @@ export default async function ValidationDetailPage({
       product: { select: { regulationId: true } },
       nature: { select: { family: true } },
       parameters: { select: { parameterId: true } },
-      conformity: true,
-      conformityNote: true,
+      // The reception's decision (motif, agreement of the client) and its
+      // observation (A7, A9).
+      ...RECEPTION_NON_CONFORMITY_SELECT,
+      receptionNote: true,
       rejectionReason: true,
       validatedById: true,
       validatedAt: true,
       approvedById: true,
       client: { select: { name: true } },
+      serieId: true,
       serie: { select: { serialNumber: true } },
       technician: { select: { name: true } },
       validatedBy: { select: { name: true } },
-      report: { select: { number: true, version: true, sentTo: true, amendmentPending: true, amendmentNote: true } },
+      report: { select: { id: true, number: true, version: true, sentTo: true, sentAt: true, amendmentPending: true, amendmentNote: true } },
       results: {
         select: {
           id: true,
@@ -136,10 +149,25 @@ export default async function ValidationDetailPage({
 
   // « Réglementation en vigueur » (slice I): proposed from what is known,
   // confirmed or changed by the validator.
-  const [regulations, settings] = await Promise.all([
+  const [regulations, settings, signedProtocols, timeline, sends] = await Promise.all([
     prisma.regulation.findMany({ where: { active: true }, select: { id: true, title: true }, orderBy: [{ sortOrder: "asc" }, { title: "asc" }] }),
     getLabSettings(),
+    // Whether the visit's signed protocol was photographed — counted, never
+    // read: the photo itself is served by its own route.
+    prisma.serie.count({ where: { id: sample.serieId, signedProtocolData: { not: null } } }),
+    // « Parcours de l'échantillon »: timestamps and journal, who and when.
+    sampleTimelineFor(sample.id),
+    // « Envois »: the send journal of this report (EmailLog @@index([reportId])).
+    report
+      ? prisma.emailLog.findMany({
+          where: { reportId: report.id },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: SENDS_SHOWN + 1,
+          select: { id: true, createdAt: true, type: true, to: true, status: true, error: true },
+        })
+      : Promise.resolve(null),
   ]);
+  const protocolPhotoHref = signedProtocols > 0 ? `/api/series/${sample.serieId}/protocol-photo` : null;
   const proposedRegulationId = proposeRegulation(
     {
       sample: sample.regulationId,
@@ -151,10 +179,9 @@ export default async function ValidationDetailPage({
     new Set(regulations.map((r) => r.id))
   );
   const nonConformes = sample.results.filter((r) => r.conform === false).length;
-  // Only a sensitive germ over its limit raises a contamination alert.
-  const alertables = sample.results.filter(
-    (r) => (r.conform === false || r.informalInterpretation === "NON_SATISFAISANT") && r.parameter.alertOnExceed
-  ).length;
+  // Only a sensitive germ over its limit raises a contamination alert — the
+  // same rule as the dispatch's filter.
+  const alertables = sample.results.filter(raisesContaminationAlert).length;
   const verdict = sampleVerdict(sample.results);
   // « Planche verte — surface nettoyée »; « — » when nothing names it.
   const designation = lineDesignation(sample);
@@ -352,15 +379,23 @@ export default async function ValidationDetailPage({
               </Field>
             </dl>
 
-            {sample.conformity === false && (
-              <p className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  <b>Non conforme à réception.</b>
-                  {sample.conformityNote && ` ${sample.conformityNote}`}
-                </span>
+            {protocolPhotoHref && (
+              <p className="mt-4 text-sm">
+                <a
+                  href={protocolPhotoHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded font-medium text-brand underline-offset-2 transition hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                >
+                  <FileImage className="h-4 w-4" aria-hidden="true" />
+                  Protocole signé (photo)
+                  <span className="sr-only"> — s&apos;ouvre dans un nouvel onglet</span>
+                </a>
               </p>
             )}
+
+            <ReceptionNonConformity sample={sample} />
+            <ReceptionObservation note={sample.receptionNote} />
 
             {sample.rejectionReason && (
               <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
@@ -368,6 +403,14 @@ export default async function ValidationDetailPage({
               </p>
             )}
           </Card>
+
+          {sends && (
+            <EmailSendsCard
+              rows={sends.slice(0, SENDS_SHOWN)}
+              more={sends.length > SENDS_SHOWN}
+              journalHref={session.role === "ADMIN" ? "/admin/envois" : null}
+            />
+          )}
         </div>
 
         <div className="space-y-5">
@@ -398,13 +441,16 @@ export default async function ValidationDetailPage({
               </h2>
               <ReportActions
                 sampleId={sample.id}
+                reportId={report.id}
                 role={session.role}
                 status={sample.status}
                 number={printedNumber}
                 amendmentPending={report.amendmentPending}
+                sent={report.sentAt !== null}
               />
             </Card>
           )}
+          {timeline && <SampleTimelineCard events={timeline.events} truncated={timeline.truncated} />}
         </div>
       </div>
     </div>

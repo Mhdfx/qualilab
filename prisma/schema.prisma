@@ -119,6 +119,32 @@ enum LineKind {
   AUTRE
 }
 
+/// C2 — how a sample travels to the laboratory: the class picks the
+/// temperature range its transport is judged against. Null on a sample =
+/// the default of its kind (`defaultStorageClass`).
+enum StorageClass {
+  REFRIGERE
+  CONGELE
+  AMBIANT
+  CHAUD
+}
+
+/// Where the temperature at arrival was read: the cooler's reading copied
+/// on the sample, the sample itself, or a witness bottle (water).
+enum TemperatureSource {
+  GLACIERE
+  ECHANTILLON
+  FLACON_TEMOIN
+}
+
+/// How the client was consulted before a non-conform sample was analysed
+/// (« Accord du client », ISO/IEC 17025 §7.4.3).
+enum ConsultationChannel {
+  SUR_PLACE
+  TELEPHONE
+  EMAIL
+}
+
 enum QuantityUnit {
   UNITE
   G
@@ -145,6 +171,10 @@ enum CancelReason {
   /// Non-conform at reception and destroyed rather than analysed (29/09, point 14).
   DETRUIT_A_RECEPTION
   AUTRE
+  /// A sample of the visit that never reached the laboratory (contrôles
+  /// complémentaires, C-series) — offered on a PRELEVE sample only.
+  /// Appended last: the MariaDB ENUM grows in place, no table copy.
+  NON_RECU
 }
 
 /// How money is paid: the advance at the counter (bon de réception « Avance »)
@@ -500,14 +530,38 @@ model Sample {
   conformityNote   String?              @db.Text
   /// Coded motif of the non-conformity (Phase 9); the note keeps the detail.
   conformityReason NonConformityReason?
+  /// « Observation de réception » (≤ 1 000 characters), for every sample —
+  /// required when a row « à vérifier » is accepted conforme (its
+  /// justification). `conformityNote` stays the motif's detail.
+  receptionNote    String?              @db.Text
   /// Rule (1) of the bon de réception, answered for every sample since the
   /// checklist (retour du 08/10): exploitable for the analysis or not.
   /// Null = received before the checklist existed.
   receptionExploitable Boolean?
+  /// Contrôles complémentaires (hors bon), ticked at reception: C3 —
+  /// packaging / container intact, closed and suitable (C4, the water
+  /// bottle, is its hint) — and C5 — identification legible and matching the
+  /// fiche. Null = received before these controls (no backfill).
+  receptionPackagingOk      Boolean?
+  receptionIdentificationOk Boolean?
+  /// C2 — the conservation class chosen at reception; null = the kind's default.
+  storageClass               StorageClass?
+  /// C2 — where `receptionTemperature` was read; null = unknown (received before).
+  receptionTemperatureSource TemperatureSource?
   /// Held at reception: non-conform while the lab's policy
   /// (LabSettings.blockNonConformAtReception) blocks such samples. It stays
   /// RECU and unassigned until an ADMIN releases it to a technician.
   analysisBlocked  Boolean              @default(false)
+  /// « En attente du client » (reception decision): received non conforme
+  /// and held (`analysisBlocked`) since this instant, until the reception or
+  /// the admin releases it — analysed or destroyed. Null otherwise.
+  awaitingClientSince       DateTime?
+  /// « Accord du client » to analyse a non-conform sample: who agreed, how,
+  /// when, and a note. All null = not recorded (and on every older sample).
+  clientConsultedAt         DateTime?
+  clientConsultedName       String?              @db.VarChar(191)
+  clientConsultationChannel ConsultationChannel?
+  clientConsultationNote    String?              @db.Text
   /// When the contamination alerts for this sample actually left — the guard
   /// that stops the approval from re-sending what the technical validation
   /// already dispatched (LabSettings.alertAfterTechnicalValidation).
@@ -566,6 +620,11 @@ model Sample {
   @@index([createdAt])
   @@index([serieId, lineNumber])
   @@index([natureId])
+  // Date lists and filters (« Ce mois-ci », /recherche « date de
+  // prélèvement », réception history, the portal's list of one client).
+  @@index([sampledAt])
+  @@index([receivedAt])
+  @@index([clientId, sampledAt])
 }
 
 /// One measured value per (sample, parameter), entered by a technician.
@@ -702,6 +761,8 @@ model EmailLog {
 
   @@index([reportId])
   @@index([type, createdAt])
+  // The e-mail journal lists every type by date.
+  @@index([createdAt])
 }
 
 /// Traceability: who did what, when. Written by logAudit() on every mutation.
@@ -719,6 +780,8 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([actorId])
   @@index([createdAt])
+  // The audit journal filtered by action over a period.
+  @@index([action, createdAt])
 }
 
 model SampleParameter {
@@ -775,10 +838,20 @@ model Serie {
   clientReference    String?
   startedAt          DateTime
   endedAt            DateTime?
+  /// C1 (délai prélèvement → laboratoire): false on a deposit whose
+  /// « Prélevé le » was left empty — `startedAt` then holds the counter's
+  /// instant and the delay is « à vérifier »; true when it was typed. Null
+  /// on a visit and on the séries entered before.
+  samplingTimeDeclared Boolean?
   arrivedAt          DateTime?
   coolerTemperature  Float?
   /// Photo of the signed paper protocol (data URI), taken on the phone.
+  /// Never selected in a list: served alone by GET /api/series/[id]/protocol-photo.
   signedProtocolData String?      @db.LongText
+  /// C6 (contrôles complémentaires, visit only): the reception's answer to
+  /// « Protocole papier signé reçu » when no photo is attached. Null = a
+  /// photo is attached, nobody answered, a deposit, or a série received before.
+  signedProtocolReceived Boolean?
   /// Deposit at the counter: advance cashed on the bon de réception (Q4).
   advanceAmount      Decimal?     @db.Decimal(12, 2)
   advanceMode        PaymentMode?
@@ -800,6 +873,8 @@ model Serie {
   @@index([kind, createdAt])
   @@index([createdById, createdAt])
   @@index([year])
+  // Réception history, by the day the série was received.
+  @@index([receivedAt])
 }
 
 /// A client's sampling site (a restaurant of a chain, a plant…).
@@ -1040,6 +1115,12 @@ model Invoice {
   kind        InvoiceKind   @default(FACTURE)
   clientId    String
   client      Client        @relation(fields: [clientId], references: [id])
+  /// The client as the document prints it, frozen at issue: { name, address,
+  /// contact, phone, email, ice } (src/lib/invoice-client-identity.ts). Null
+  /// on a draft, which stays addressed to the live client; a credit note
+  /// copies its invoice's. A later rename or merge never changes an issued
+  /// document.
+  clientSnapshot Json?
   createdById String
   createdBy   User          @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
   /// Stored status; « Partiellement payée » is read, never stored.
@@ -1079,6 +1160,8 @@ model Invoice {
   @@index([clientId])
   @@index([status])
   @@index([createdAt])
+  // The accounting export filters and sorts issued documents by date of issue (C9).
+  @@index([issuedAt])
   @@index([creditedInvoiceId])
   @@index([cancelledById])
   @@index([kind, status])
@@ -1120,9 +1203,17 @@ model InvoiceItem {
   quantity    Float   @default(1)
   unitPrice   Decimal @default(0) @db.Decimal(12, 2)
   lineTotal   Decimal @default(0) @db.Decimal(12, 2)
+  /// AVOIR line: the invoice line it takes back (null: a free line, or a
+  /// credit note issued before the link existed). What the credit notes take
+  /// back from one line never exceeds its `lineTotal` (creditNoteLinesRefusal).
+  creditedItemId String?
+  creditedItem   InvoiceItem?  @relation("InvoiceItemCredits", fields: [creditedItemId], references: [id], onDelete: SetNull)
+  /// FACTURE line: the credit-note lines that take it back.
+  creditLines    InvoiceItem[] @relation("InvoiceItemCredits")
 
   @@index([invoiceId])
   @@index([sampleId])
+  @@index([creditedItemId])
 }
 
 /// The laboratory's own identity — printed on every report, invoice and email.
@@ -1185,6 +1276,27 @@ model LabSettings {
   temperatureRequiredKinds String   @default("ALIMENT,EAU")
   /// Above this temperature at arrival a food line raises a cold-chain warning (°C).
   coldChainMaxC            Float    @default(8)
+
+  // ---- Contrôles complémentaires (hors bon), C1 — délai prélèvement → laboratoire
+  /// Maximum delay between the end of the sampling and the arrival, microbiology (h).
+  maxDelayMicroH           Int      @default(24)
+  /// The same for physico-chemistry (h); null = no limit.
+  maxDelayChemH            Int?
+  /// An exceeded delay makes the sample non conforme (true) or « à vérifier » (false).
+  delayBlocking            Boolean  @default(false)
+
+  // ---- C2 — température de transport par classe de conservation (°C)
+  /// Lower bound of the chilled range (the upper one is `coldChainMaxC`).
+  coldChainMinC            Float    @default(0)
+  /// Above this a frozen sample is « à vérifier ».
+  frozenMaxC               Float    @default(-15)
+  /// Upper bound of the chilled range for water in microbiology.
+  waterMicroMaxC           Float    @default(8)
+
+  /// « Accord du client obligatoire pour analyser un non-conforme »: the name
+  /// and the channel of the client's agreement are required before a
+  /// non-conform sample is analysed (false: recorded when given).
+  consultationRequired     Boolean  @default(false)
   updatedAt                DateTime @updatedAt
 }
 

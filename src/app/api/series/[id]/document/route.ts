@@ -10,6 +10,7 @@ import { cartoucheTemplate } from "@/lib/cartouche-html";
 import { getLabSettings } from "@/lib/lab-settings";
 import { HANDS_STATE_LABELS } from "@/lib/labels";
 import { sampleRef } from "@/lib/reception-input";
+import { storedConsultation } from "@/lib/client-consultation";
 import { ROLE_LABELS, type Role } from "@/lib/roles";
 import {
   BON_MARGIN,
@@ -106,6 +107,13 @@ export async function GET(
           controlCode: true,
           conformity: true,
           conformityReason: true,
+          receptionNote: true,
+          // A9: the wait for the client, the client's agreement.
+          analysisBlocked: true,
+          awaitingClientSince: true,
+          clientConsultedName: true,
+          clientConsultationChannel: true,
+          clientConsultedAt: true,
           nature: { select: { family: true } },
           parameters: { select: { parameter: { select: { name: true } } } },
         },
@@ -127,6 +135,7 @@ export async function GET(
   const lines: DocumentLine[] = serie.samples.map((s) => ({
     cancelled: s.status === "ANNULE",
     destroyed: s.status === "ANNULE" && s.cancelReason === "DETRUIT_A_RECEPTION",
+    notReceived: s.status === "ANNULE" && s.cancelReason === "NON_RECU",
     lineNumber: s.lineNumber,
     ref: sampleRef(s.lineNumber, s.code),
     lineKind: s.lineKind,
@@ -157,6 +166,11 @@ export async function GET(
     controlCode: isDeposit ? s.controlCode : null,
     conformity: isDeposit ? s.conformity : null,
     conformityReason: isDeposit ? s.conformityReason : null,
+    // The bon prints the reception's observation under the line (A7).
+    receptionNote: isDeposit ? s.receptionNote : null,
+    // A9: « analysé avec l'accord de … », « en attente de l'avis du client ».
+    consultation: isDeposit ? storedConsultation(s) : null,
+    awaitingClient: isDeposit && s.status === "RECU" && s.analysisBlocked && s.awaitingClientSince !== null,
   }));
 
   const [company, reference, settings] = await Promise.all([

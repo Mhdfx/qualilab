@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { ArrowRight, FlaskConical, AlertTriangle, Zap } from "lucide-react";
+import { ArrowRight, FlaskConical, AlertTriangle, Undo2, Zap } from "lucide-react";
 import type { AirMethod, LineKind, ProgrammePriority, SampleStatus, SampleType, SurfaceState } from "@/generated/prisma/client";
-import { formatDate } from "@/lib/labels";
+import { formatDate, formatDateTime } from "@/lib/labels";
 import { labReference } from "@/lib/sample-select";
 import { groupBySerie } from "@/lib/serie-groups";
 import { splitParameters } from "@/lib/bench-access";
@@ -27,6 +27,8 @@ export type WorkItem = {
   airMethod: AirMethod | null;
   receivedAt: Date | null;
   conformity: boolean | null;
+  /** The validator's last « Renvoyer au technicien » (never cleared). */
+  rejectedAt: Date | null;
   /** The programme d'analyse (PROGRAMME.md §3): priority and promised date. */
   priority: ProgrammePriority;
   dueAt: Date | null;
@@ -121,6 +123,15 @@ export function WorkQueue({
                             <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
                               <Zap className="h-3 w-3" aria-hidden="true" />
                               Urgente
+                            </span>
+                          )}
+                          {item.status === "EN_ANALYSE" && item.rejectedAt && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-300"
+                              title={`Renvoyé par la validation le ${formatDateTime(item.rejectedAt)}`}
+                            >
+                              <Undo2 className="h-3 w-3" aria-hidden="true" />
+                              Renvoyé
                             </span>
                           )}
                           {item.conformity === false && (

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildInvoiceHtml, invoiceDocumentTitle, type InvoiceDocument } from "./invoice-html";
+import { clientSnapshotOf, invoiceClientIdentity } from "./invoice-client-identity";
 
 const issued: InvoiceDocument = {
   kind: "FACTURE",
@@ -132,5 +133,71 @@ describe("buildInvoiceHtml", () => {
     const page = text(buildInvoiceHtml(legacy));
     expect(page).toContain("EN ATTENTE DE RÈGLEMENT");
     expect(page).toMatch(/Reste à payer 1[\s  ]200,00 DH/);
+  });
+});
+
+describe("the client an issued invoice prints (clientSnapshot)", () => {
+  // The client as it was when FAC-2026-0042 was issued: what the issuing
+  // routes store (`clientSnapshotOf`) …
+  const atIssue = clientSnapshotOf({
+    name: "Laiterie Exemple",
+    address: "12 rue des Essais, Ville",
+    contact: null,
+    phone: null,
+    email: null,
+    ice: "000000000000012",
+  });
+  // … and the same fiche after a rename, a move and a merge.
+  const renamed = {
+    id: "client-1",
+    name: "Groupe Renommé",
+    address: "1 boulevard Après, Autre ville",
+    contact: "Mme Après",
+    phone: "0500000000",
+    email: "apres@example.test",
+    ice: "000000000000099",
+  };
+
+  it("renaming the client after issue does not change the PDF", () => {
+    const client = invoiceClientIdentity({ number: issued.number, clientSnapshot: atIssue, client: renamed });
+    const page = text(buildInvoiceHtml({ ...issued, client }));
+    expect(page).toContain("Laiterie Exemple");
+    expect(page).toContain("12 rue des Essais, Ville");
+    expect(page).toContain("ICE 000000000000012");
+    expect(page).not.toContain("Groupe Renommé");
+    expect(page).not.toContain("Autre ville");
+    expect(page).not.toContain("000000000000099");
+  });
+
+  it("a credit note copying the invoice's snapshot prints the same client", () => {
+    const invoiceIdentity = invoiceClientIdentity({ number: issued.number, clientSnapshot: atIssue, client: renamed });
+    const client = invoiceClientIdentity({
+      number: "AV-2026-0003",
+      clientSnapshot: clientSnapshotOf(invoiceIdentity),
+      client: renamed,
+    });
+    const page = text(
+      buildInvoiceHtml({
+        ...issued,
+        kind: "AVOIR",
+        number: "AV-2026-0003",
+        client,
+        creditedInvoice: { number: "FAC-2026-0042", issueDate: new Date("2026-10-07T10:00:00Z") },
+      })
+    );
+    expect(page).toContain("Laiterie Exemple");
+    expect(page).not.toContain("Groupe Renommé");
+  });
+
+  it("a draft follows the live client until it is issued", () => {
+    const client = invoiceClientIdentity({ number: null, clientSnapshot: null, client: renamed });
+    const page = text(buildInvoiceHtml({ ...issued, number: null, status: "BROUILLON", client }));
+    expect(page).toContain("Groupe Renommé");
+    expect(page).toContain("1 boulevard Après, Autre ville");
+  });
+
+  it("an invoice issued before the snapshot existed keeps printing the live client", () => {
+    const client = invoiceClientIdentity({ number: issued.number, clientSnapshot: null, client: renamed });
+    expect(text(buildInvoiceHtml({ ...issued, client }))).toContain("Groupe Renommé");
   });
 });

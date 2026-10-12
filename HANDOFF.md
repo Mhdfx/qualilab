@@ -4,7 +4,7 @@
 > "where do I change X" map. Read after `AGENTS.md`. **Keep this current** — it
 > is what lets any AI on any platform continue without archaeology.
 >
-> Last updated: **2026-10-08** · Branch: `master` · Remote:
+> Last updated: **2026-10-10** · Branch: `master` · Remote:
 > `github.com/Mhdfx/qualilab.git`
 
 ---
@@ -40,6 +40,7 @@
 | **Retour du 08/10 — live 08/10, TESTPLAN V8** | champs date-heure qui lisent l'heure de l'appareil et enregistrent l'heure légale (`LabDateTimeInput`, « = HH:MM heure légale », « dans le futur » refusé à côté du champ), Air et Autre en deux familles (`PC_AIR`, `MICRO_AUTRE`), « Profil d'analyses » et bloc « Analyses à effectuer » de la visite retirés, pas de « T° produit » sur l'air — spec **`RETOUR-LABO-06-10.md`** §8 | ✅ **live 2026-10-08** (`a5925b6`, `b0defab`), migration `20261010100000_natures_air_autre` ; recettes v8 27/27 + v8b 20/20 sur un appareil émulé à +1 h ; reste au laboratoire : paramètres de physico-chimie de l'air et de « Autre » (Q50), mise à jour des appareils |
 | **Retour du 08/10 (suite) — live 08/10, TESTPLAN V9** | arrivée au laboratoire saisie au retour (plus à la création de la visite), mains en deux familles, réception sans technicien (le programme ne se confirme qu'avec un technicien, file la plus ancienne en tête), étiquettes sans client ni site, chaque bloc chiffré des tableaux de bord cliquable — spec **`RETOUR-LABO-06-10.md`** §9 | ✅ **live 2026-10-08** (`7612a18`, `73d7119`) ; recettes v9 + v9b 12/12, tableaux de bord 51 blocs cliqués en production ; reste au laboratoire : paramètres de physico-chimie d'ambiance (0 au catalogue, Q50) |
 | **Message du 08/10 (soir) — live 09/10, TESTPLAN V10** | réception : les 7 règles du bon en checklist par échantillon (règle (1) « exploitable » exigée, motif « non exploitable »), cartouche du papier sur le protocole, le bon et la feuille de paillasse, bon aligné sur la version G, vocabulaire des rôles du laboratoire (« Validation administrative »…), dates sans heure corrigées — spec **`RETOUR-LABO-06-10.md`** §10 | ✅ **live 2026-10-09** (`4a1c1e8`, migration `20261011100000_reception_checklist`) ; dates des cartouches rétablies en production ; questions Q57–Q66 au laboratoire |
+| **Analyse des écarts du 10/10 — construit, pas déployé (TESTPLAN V11)** | réception : contrôles complémentaires hors bon C1–C7 (délai, température de transport par classe de conservation, emballage, identification, protocole signé, DLC), « Non reçu au laboratoire », observation de réception et justification d'un « à vérifier » accepté, checklist décidée visible après réception, accord du client et « En attente du client », libération sans technicien, dépôt avec recherche du client ; paillasse « > x » / « Indénombrable » / « TNTC », motif du renvoi ; renvoi du rapport par le gestionnaire, « Modifier la conclusion », e-mails signés de l'identité `/admin/entreprise`, parcours daté de l'échantillon, journal des envois, historique des réceptions, relevés de température au technicien ; « Mon compte » du personnel, limite de tentatives, déconnexion après inactivité, journal d'audit filtré et paginé, export comptable Excel, compteurs FAC / AV, facture figée à l'émission, avoir lié à la ligne reprise, charge des techniciens ; sauvegarde hors site (opt-in), durcissement SSH, purge du cache Docker — spec **`RETOUR-LABO-06-10.md` §11** | ◀ **built 2026-10-10, not deployed** — 37 items in 3 streams + integration; one additive migration `20261012100000_gaps_build`; gates green (tsc 0, eslint 0, vitest 90 files / 1 396 tests, `npm run build`); nothing checked in a browser (no local DB) → TESTPLAN V11 on production; questions Q67–Q98 au laboratoire |
 | **Clients en double / sites / clients facturés** | « Fusionner avec… » et « Rattacher comme site de… » (ADMIN, aperçu puis confirmation, une transaction, fiche archivée avec `mergedIntoId`), client facturé d'un client principal et « Facturé à » par site (facturation : un échantillon n'est proposé qu'à un seul client), quasi-doublon à la création et au renommage (409 + « Ce n'est pas le même client ») — spec **`CLIENTS-FUSION.md`** (`RETOUR-LABO-06-10.md` §7) | ✅ **live 2026-10-08** (`722da85`) — migration `20261008100000_clients_fusion` appliquée ; recette TESTPLAN W 36/36 en production sur des clients de test (archivés ensuite) ; **exécution sur les vrais clients seulement après validation de `doublons-clients.xlsx` (Q54)** |
 
 | **Facturation : cycle complet** | brouillon sans numéro (échantillons réservés), « Émettre » (numéro `FAC-AAAA-NNNN` tiré du compteur `FACTURE` dans la transaction), annulation motivée, avoirs `AV-AAAA-NNNN`, règlements (`Payment`, modes Espèces / Chèque / Effet / Carte / Virement), reste à payer, PDF filigrane / tampon / bloc réglé, liste filtrée par état et type, chiffres « Facturé / Encaissé » uniques (`billingFigures()`) — spec **`FACTURATION.md`** | ✅ **live 2026-10-09** (`b938b10`, migration `20261009100000_facturation_rapports_portail`, shared with the two rows below) — recette TESTPLAN X 21/21 en production |
@@ -77,7 +78,11 @@ src/
       samples/[id]/report/     ★ GET — renders the official PDF on demand
       samples/[id]/report/send/ POST — send or resend to the client
       bench-sheet/             GET ?date= — printable feuille de paillasse
-      reports/[id]/admin-edit/ ⚠️ PATCH — admin edit, deliberately NOT audited
+      reports/[id]/admin-edit/ ⚠️ GET · PATCH — admin conclusion edit (« Modifier la conclusion »), deliberately NOT audited
+      series/[id]/protocol-photo/ GET — the signed-protocol photo (never TECHNICIEN), journalled SERIE_PHOTO_VIEWED
+      samples/[id]/release/    POST { decision: ANALYSER | DETRUIRE } — release a held sample (no technician)
+      compte/mot-de-passe/     POST — the staff's own password change (portal: portail/compte/mot-de-passe/)
+      invoices/export/         GET ?du=&au= — accounting workbook (journal des ventes + règlements)
       clients/                 GET (searchable) · POST (GESTIONNAIRE/ADMIN)
       clients/[id]/            GET · PATCH (edit, archive, recipient list)
       clients/[id]/billable/   GET — validated analyses not yet invoiced
@@ -87,15 +92,16 @@ src/
       parameters/[id]/         PATCH (ADMIN) — audited with before/after
       lab-services/ + [id]/    read · PATCH (label, price, active)
       invoices/  invoices/[id]/   invoice CRUD (COMPTABLE + ADMIN)
-      invoices/[id]/pdf/       GET — the invoice rendered server-side
+      invoices/[id]/pdf/       GET — the invoice rendered server-side (client frozen at issue)
       health/                  liveness probe for PM2/watchdog
     preleveur/                 role space: dashboard + nouveau (3-step)
-    reception/                 queue + [id] verify screen ✅
-    technicien/                bench queue + [id] result entry sheet ✅
+    reception/                 queue + series/[id] + nouveau-depot + historique (received séries) ✅
+    technicien/                bench queue + [id] result entry sheet + temperatures ✅
+    compte/                    « Mon compte » of every lab role (password) ✅
     validation/                queue + [id] control view (two-step approval) ✅
     commercial/                client base + [id] fiche 360° + nouveau + [id]/modifier ✅
     comptabilite/              dashboard + factures (list/nouvelle/[id]) ✅
-    admin/                     dashboard + factures + parametres + utilisateurs + catalogue + entreprise + journal
+    admin/                     dashboard + factures + parametres + utilisateurs + catalogue + entreprise + journal (filtered) + envois (e-mail journal)
   components/
     layout/  RoleShell (one shell for every role: `navFor(role)` picks the
              nav, `activeHref` = longest matching prefix), DashboardShell,
@@ -110,10 +116,17 @@ src/
     commercial/ SitesManager (a client's sampling sites, on the fiche)
     reception/  SerieQueue (séries waiting), SerieReceptionForm (live rules,
                 one transaction, labels, verbs), DepositForm (bon de réception at
-                the counter), reception-widgets, types (TechnicianOption)
-    samples/    SampleVerbs (Corriger la fiche / Annuler / Réactiver dialogs)
+                the counter), BlockedSamples (« Bloqués »: analyse / détruire),
+                reception-widgets (Checklist, DecisionChips, ConsultationFields,
+                ReceptionNoteField)
+    samples/    SampleVerbs (Corriger la fiche / Annuler / Réactiver dialogs),
+                ReceptionNonConformity + ReceptionObservation (the reception's
+                decision and observation on programme, bench and validation)
     technicien/ WorkQueue, ResultEntryForm (per-parameter entry + live conformity)
-    validation/ ValidationQueue, ValidationPanel (the two approvals + rejection)
+    validation/ ValidationQueue, ValidationPanel (the two approvals + rejection),
+                ReportActions + ReportDialog, ResendReportButton,
+                ConclusionEditDialog, SampleTimelineCard, EmailSendsCard
+    layout/IdleLogout.tsx   sign-out after inactivity (mounted in DashboardShell)
     + feature components (SampleTable, SampleDetailPanel, FactureDetail, ...)
   lib/
     auth-server.ts     ★ Better Auth instance (username + admin plugins, trustedOrigins)
@@ -146,13 +159,13 @@ src/
     parameter-validation.ts ★ the norms rules — a sensitive parameter needs a limit
     invoice-html.ts    ★ the invoice as a printable document
     invoice-paths.ts   useInvoiceBasePath() — invoice links follow the role's space
-    invoice-number.ts / invoice-math.ts / invoice-types.ts / lab-services.ts / labels.ts
+    invoice-number.ts / invoice-math.ts / lab-services.ts / labels.ts (invoice-types.ts deleted 10/10)
     number-to-words-fr.ts   amount-in-words (FR) for invoices
   generated/prisma/    ★ generated Prisma client — DO NOT edit, gitignored
 prisma/
   schema.prisma  ·  seed.ts (9 demo users)  ·  migrations/ (16)  ·  disable-demo-accounts.ts (go-live)
   ⚠️ the VPS needs a Chromium for the PDF: `apt install chromium`
-scripts/         VPS ops: deploy, wait-for-db, health-watchdog, setup-autostart, setup-database, start-production, vps-setup, check-db
+scripts/         VPS ops: deploy (Docker by default, prunes the build cache once healthy), backup-db (+ opt-in off-site copy), harden-ssh (key-only SSH + fail2ban), wait-for-db, health-watchdog, setup-autostart, setup-database, start-production, vps-setup, check-db
 ```
 
 No import cycles. Path alias: `@/*` → `src/*`.
@@ -205,9 +218,27 @@ wrong. Role → landing page mapping lives in `src/lib/roles.ts` (`ROLE_HOME`).
 - Better Auth's HTTP `/update-user`, `/update-session`, `/change-password` and
   `/is-username-available` answer 404 for every role (`disabledPaths` in
   `auth-server.ts`). A password change goes through an audited route of ours
-  that calls `auth.api.changePassword` server-side
-  (`POST /api/portail/compte/mot-de-passe` for the portal); a future staff
-  « change my password » screen must do the same.
+  that calls `auth.api.changePassword` server-side: `POST
+  /api/portail/compte/mot-de-passe` (portal) and `POST /api/compte/mot-de-passe`
+  (staff, `/compte`, the 9 lab roles named one by one), both through
+  `changeOwnPassword` (`src/lib/password-change-server.ts`): other sessions
+  revoked, journal `USER_PASSWORD_CHANGED { username, portal }`, and at most
+  5 wrong current passwords per account per 15 min (`passwordChangeLimiter`,
+  `src/lib/attempt-limiter.ts`, in memory → 429 « Trop de tentatives… »).
+- Better Auth reads the client's address from `x-real-ip` first, then a
+  single-valued `x-forwarded-for` (`advanced.ipAddress` in `auth-server.ts`):
+  the live nginx site must set `proxy_set_header X-Real-IP $remote_addr`
+  (`DEPLOY.md`, read-only check at the next deploy).
+
+**Sign-out after inactivity (since 2026-10-10, not deployed yet).** Every
+role except the préleveur (a phone in the field) is signed out after 30 min
+without a click, a key, a wheel or a touch in any tab, with a 2-minute warning
+« Vous allez être déconnecté pour inactivité » (`idleTimeoutFor` in
+`src/lib/idle-policy.ts`, `IdleLogout` mounted in `DashboardShell`, last
+activity shared across tabs in `localStorage`). A tab reopened after the limit
+signs out on arrival (`expiredOnArrival`); the login page then reads « Session
+fermée après inactivité. » (`/login?motif=inactivite`). It is enforced in the
+browser only: the server session still rolls for 7 days (§9).
 
 ## 3b. Traceability & workflow foundations
 
@@ -242,6 +273,24 @@ migrated « Repris » rows); `InvoiceStatus` gains `BROUILLON` and `ANNULEE`;
 `Report.version / amendmentNote / amendedAt / amendmentPending`; table
 `ReportVersion` (frozen issued versions); `User.clientId`.
 
+Since 2026-10-10 (migration `20261012100000_gaps_build`, additive, **not
+deployed yet**): `Sample.receptionPackagingOk` / `receptionIdentificationOk`
+(C3 / C5 ticks), `storageClass` (`StorageClass`: REFRIGERE, CONGELE, AMBIANT,
+CHAUD; null = the kind's default), `receptionTemperatureSource`
+(`TemperatureSource`: GLACIERE, ECHANTILLON, FLACON_TEMOIN), `receptionNote`
+(the reception's observation), `awaitingClientSince`, `clientConsultedAt /
+clientConsultedName / clientConsultationChannel` (`ConsultationChannel`:
+SUR_PLACE, TELEPHONE, EMAIL) `/ clientConsultationNote`; `CancelReason` gains
+`NON_RECU` (last); `Serie.samplingTimeDeclared` (deposit: « Prélevé le » typed
+or not), `Serie.signedProtocolReceived` (C6 answer); `LabSettings.maxDelayMicroH`
+(24) / `maxDelayChemH` (null) / `delayBlocking` (false) / `coldChainMinC` (0) /
+`frozenMaxC` (−15) / `waterMicroMaxC` (8) / `consultationRequired` (false);
+`Invoice.clientSnapshot` JSON (the client as printed, frozen at issue — no
+backfill); `InvoiceItem.creditedItemId` (self-relation, SET NULL); indexes
+`Sample(sampledAt)`, `Sample(receivedAt)`, `Sample(clientId, sampledAt)`,
+`Serie(receivedAt)`, `EmailLog(createdAt)`, `AuditLog(action, createdAt)`,
+`Invoice(issuedAt)`, `InvoiceItem(creditedItemId)`.
+
 Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 `SampleStatus`(6) · `ResultWorkStatus`(EN_COURS|TERMINE|ANOMALIE) ·
 `ReportSendStatus` · `InvoiceStatus`.
@@ -262,7 +311,7 @@ Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|E
 | Sample numbering (field / control / blind serial) | `src/lib/sample-code.ts` |
 | How a result is judged (n, c, m, M, absence, dilutions) | `src/lib/interpretation.ts` — pure, tested; the bench, the validation screen and the report all call it |
 | The criteria themselves (a limit, a norm version, a germ) | `/admin/types-produits/[id]` — data, no code; `/admin/normes` for the versions |
-| The conclusion of ONE report, after the fact | `PATCH /api/reports/[id]/admin-edit` exists (ADMIN, deliberately unaudited at the client's request) but **no screen calls it yet** — the button remains to be added |
+| The conclusion of ONE report, after the fact | « Modifier la conclusion » (ADMIN, `ConclusionEditDialog` from `ReportActions` on /validation/[id] and /recherche) → `GET` / `PATCH /api/reports/[id]/admin-edit`; body rules `readConclusionEdit` / `canEditConclusion` / `CONCLUSION_MAX_LENGTH` (2 000) in `src/lib/report-actions.ts`. Deliberately unaudited (18/08); refused (409) and hidden while an amendment is pending |
 | The words printed under « Conclusion » | `/admin/reglages` → Échelle de conclusion (table `ConclusionScale`) |
 | How the criteria workbook is read | `src/lib/criteria-import.ts` (pure parser) + `POST /api/admin/import/criteres` |
 | Which germ a workbook label means | the parameter's « Autres libellés » on `/admin/parametres` (`AnalysisParameter.aliases`) |
@@ -299,11 +348,11 @@ Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|E
 
 | The laboratory's clock (printed times, day cut-offs) | `TZ` in `docker-compose.yml` (app service) and `LAB_TIME_ZONE` in `src/lib/labels.ts` — keep them equal |
 | Which roles an admin may hand out | `ASSIGNABLE_ROLES` in `src/lib/roles.ts` (all roles, `CLIENT` included since the portal exists); `PORTAL_ROLE`, `LAB_ROLES`, `roleAllowed()` there |
-| Recording / deleting a settlement (« Enregistrer un règlement ») | `POST /api/invoices/[id]/payments`, `DELETE /api/invoices/[id]/payments/[paymentId]` `{ reason }` (COMPTABLE, ADMIN); rules `checkPayment`, `statusAfterPayments` in `src/lib/invoice-lifecycle.ts`; dialog `PaymentDialog` in `src/components/invoices/InvoiceDialogs.tsx`. The old `PATCH /api/invoices/[id]/payment` only answers 410 |
+| Recording / deleting a settlement (« Enregistrer un règlement ») | `POST /api/invoices/[id]/payments`, `DELETE /api/invoices/[id]/payments/[paymentId]` `{ reason }` (COMPTABLE, ADMIN); rules `checkPayment`, `statusAfterPayments` in `src/lib/invoice-lifecycle.ts`; dialog `PaymentDialog` in `src/components/invoices/InvoiceDialogs.tsx` |
 | An invoice's life (draft, issue, cancel, credit note) — what is allowed, what it reads as | `src/lib/invoice-lifecycle.ts` (pure, tested: `invoiceState`, `cancelRefusal`, `balance`, `remainingCreditable`, labels `INVOICE_STATE_LABELS`, `PAYMENT_MODE_LABELS`) |
 | Invoice routes (FACTURATION.md §4) | `POST /api/invoices` (`issue: boolean`), `PATCH` / `DELETE /api/invoices/[id]` (draft only), `POST …/issue`, `POST …/cancel` `{ reason }`, `POST …/credit-notes`; shared helpers (locks, sample checks, view, 409 on lock conflict) in `src/app/api/invoices/invoice-store.ts` |
 | Which samples a draft reserves / an invoice holds | `holdingInvoiceItemWhere()`, `SAMPLE_HOLDING_STATUSES` in `src/lib/billing.ts`; billable list `GET /api/clients/[id]/billable` (`?brouillon=<draftId>` adds that draft's samples) |
-| Invoice and credit-note numbers (`FAC-` / `AV-`) | counters `FACTURE` / `AVOIR` drawn in the issuing transaction: `drawDocumentNumber()` in `src/lib/invoice-number.ts`, `nextNumber()` in `src/lib/counters.ts` (`generateInvoiceNumber` is gone) |
+| Invoice and credit-note numbers (`FAC-` / `AV-`) | counters `FACTURE` / `AVOIR` drawn in the issuing transaction: `drawDocumentNumber()` in `src/lib/invoice-number.ts`, `nextNumber()` in `src/lib/counters.ts` (`generateInvoiceNumber` is gone); set on `/admin/reglages` « Compteurs » (« Factures et avoirs », 409 below the highest number used): `loadCounterRows` / `highestUsedNumber` in `src/lib/counter-rows.ts`, `parseDocumentNumber` / `highestSequence` / `COUNTER_KINDS` in `src/lib/counters.ts`, screen `CountersForm.tsx` |
 | Money rounding (half away from zero, no float drift) | `roundMoney()` in `src/lib/invoice-math.ts` |
 | Invoice screens (fiche, list, new / edit draft) | `src/components/invoices/`: `invoice-view.ts` (pure: `invoiceFigures`, `invoiceActions`, list filters), `invoice-queries.ts` (server: `loadInvoiceDetail`, `loadInvoiceList`), `InvoiceManagement.tsx`, `InvoiceDialogs.tsx`, `InvoiceStateBadge.tsx`; pages `/…/factures/[id]/modifier` |
 | « Facturé / Encaissé » on any dashboard or fiche | `billingFigures({ clientId? })` in `src/components/invoices/invoice-queries.ts` — the only source (comptabilité, vue direction, fiche client) |
@@ -352,6 +401,48 @@ Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|E
 | A calendar date without a time (DLC, document and norm versions) | `parseIsoDay` / `isoDayOf` / `formatDateOnly` in `src/lib/date-only.ts` — never `new Date("AAAA-MM-JJT00:00:00")` (it slipped a day for UTC+1-era dates) |
 | The lab's function of a role, the step names | `ROLE_FUNCTIONS` / `LAB_FUNCTION_ROLES` in `src/lib/roles.ts`; step 2 is « Validation administrative » (labels only — ADMIN signs it) |
 
+**Added 2026-10-10 (analyse des écarts, `RETOUR-LABO-06-10.md` §11 — not deployed yet):**
+
+| I want to change… | Go to |
+|---|---|
+| The controls « hors bon » C1–C7 (codes, wording, which kinds, ticked or computed) | `COMPLEMENTARY_CHECKS` + `complementaryChecklist()` in `src/lib/reception-complementary.ts` (pure, tested); rendered as the second group of `Checklist` (`reception-widgets.tsx`); rows carry `code` and print « C3 … » (`checklistRowLabel`, `reception-rules.ts`) |
+| C1 délai prélèvement → laboratoire (limits, blocking) | `/admin/reglages` « Contrôles complémentaires (hors bon) » → `LabSettings.maxDelayMicroH` / `maxDelayChemH` / `delayBlocking`; `delayMinutes` / `delayLimitHours` / `serieDelayMinutes` in `reception-complementary.ts`; queue « délai X h » in `SerieQueue.tsx` |
+| C2 température de transport (ranges, storage class, source of the reading) | `/admin/reglages` → `coldChainMinC` / `coldChainMaxC` / `waterMicroMaxC` / `frozenMaxC` (min ≤ max checked by the PUT route); `defaultStorageClass` / `chilledRange` / `temperatureSourceSuffix` in `reception-complementary.ts`; labels `STORAGE_CLASS_LABELS` / `TEMPERATURE_SOURCE_LABELS` (`labels.ts`). Rule (6) only checks that a temperature exists now |
+| C3 emballage (C4 water-bottle hint), C5 identification, their hints | `packagingHint` / `identificationHint` in `reception-complementary.ts`; required by `validateReception` (`reception-input.ts`) and the deposit path (`serie-input.ts`), messages `COMPLEMENTARY_MESSAGES` |
+| C6 protocole signé (visit), the signed-protocol photo | `signedProtocolRow` / `storedSignedProtocolAnswer` (`reception-complementary.ts`); photo route `GET /api/series/[id]/protocol-photo` with `protocolPhotoAccess` / `PROTOCOL_PHOTO_ROLES` / `decodeImageDataUri` (`src/lib/protocol-photo-access.ts`, never TECHNICIEN); « Voir » in `VisitDetail.tsx`, on the reception série page and on /validation/[id] |
+| C7 DLC (food) | `expiredDlcNote` and the C7 row in `reception-complementary.ts`; the reception's day is `labDayOf` (`src/lib/lab-time.ts`: the lab's calendar day, never the device's), the DLC's `isoDayOf` (`date-only.ts`) |
+| « Non reçu au laboratoire » (cancel before reception) | `NON_RECU` in `CANCEL_REASON_LABELS` (`labels.ts`), `cancelReasonsFor(status)` in `src/components/samples/sample-verbs-logic.ts` (PRELEVE only), refused otherwise by `POST /api/samples/[id]/cancel`; « Non reçu » on the protocol (`document-html.ts`) |
+| The arrival can never precede the sampling | `arrivalRefusal` + `SERIE_MESSAGES` in `src/lib/serie-input.ts` — `validateSerie`, `validateReception`, `PATCH /api/series/[id]` and `SerieReceptionForm` |
+| « Observation de réception » and the justification of an accepted « à vérifier » | `Sample.receptionNote`; `RECEPTION_NOTE_MAX` / `rowToJustify` / `justifyAcceptanceMessage` in `reception-rules.ts`; field `ReceptionNoteField` (`reception-widgets.tsx`); printed on the bon, shown in the reception summary, and read-only on programme / bench / validation (`ReceptionObservation`, `src/components/samples/`) |
+| The checklist as decided at reception (received série) | `parseReceptionAudit` / `receivedChecklists` in `src/lib/reception-audit.ts` (reads `SAMPLE_RECEIVED` metadata, never throws); « Checklist à la réception » in `ReceivedSummary` (`SerieReceptionForm.tsx`) |
+| Accord du client, « En attente du client » | `src/lib/client-consultation.ts` (`parseDecision`, `parseConsultation`, `storedConsultation`, `consultationText`); switch `LabSettings.consultationRequired`; widgets `DecisionChips` / `ConsultationFields`; the decision paragraph `ReceptionNonConformity` (`src/components/samples/`) on programme / bench / validation |
+| Releasing a held sample (« Bloqués ») | `POST /api/samples/[id]/release` `{ decision: ANALYSER or DETRUIRE, consultation?, reason? }`; who may release `releaseRefusal` / `canRelease` and « depuis 2 j » `waitingSince` in `src/lib/release-rules.ts` (RECEPTIONNISTE only for « en attente du client », ADMIN always); screen `BlockedSamples.tsx`. Assigns no technician: the programme does |
+| How « > x » / « Indénombrable » / « TNTC » are read and judged | `parseLabValue` / `isUncountableText` / `suggestConformity(numeric, limit, kind)` / `factoredText` / `benchConformity` in `src/lib/result-value.ts`; both-ends judgement in `interpret` / `informalVerdict`, `suggestUnitsConformity`, `aboveBelowLimit` in `src/lib/interpretation.ts`. Without a criterion the results route stores its own suggestion (`benchConformity`), the request's choice only where there is none |
+| Which results raise a contamination alert | `ALERT_RESULT_WHERE` + `raisesContaminationAlert` in `src/lib/contamination-alert.ts` (dispatch and validation screen; by verdict / `conform`, never by `numericValue`) |
+| The validator's send-back shown at the bench | banner in `src/app/technicien/[id]/page.tsx`, « Renvoyé » badge in `WorkQueue.tsx` (EN_ANALYSE + `rejectedAt`) |
+| Resend a report (gestionnaire, validateur, admin) | `ResendReportButton` (`src/components/validation/`), rules `canResendReport` / `RESEND_REPORT_ROLES` / `resendOutcome` in `src/lib/report-actions.ts`; route `POST /api/samples/[id]/report/send` unchanged; on /recherche, /validation/[id] and the commercial fiche |
+| Signature / identity of the e-mails | `/admin/entreprise`; `signature(company)` / `shell(body, company)` in `src/lib/emails/templates.ts` (every field escaped); callers pass `getCompany()` |
+| « Parcours de l'échantillon » (validation page) | `src/lib/sample-timeline.ts` (labels `TIMELINE_ACTIONS`, merge, 5-min dedup; downloads excluded) + `sample-timeline-server.ts` (loader, 100 rows); card `SampleTimelineCard`. A new `SAMPLE_*` audit code needs a label there (a test scans the code) |
+| The e-mail journal (« Envois ») | `/admin/envois`; filters and labels `src/lib/email-log-filters.ts`; badge `src/components/emails/EmailStatusBadge.tsx`; the validation page's card `EmailSendsCard` (by `reportId`) |
+| Reception history | `/reception/historique`; `src/lib/reception-history.ts` |
+| A « du / au » day filter of a list | the lab clock for everything new: `src/lib/lab-day-range.ts` (`parseLabDayRange`: journal, export) and `src/lib/day-range.ts` (same cut, inclusive `lte` API: envois, historique). /recherche still cuts on the server clock (`serverIsoDay`) |
+| Technician temperature readings | `/technicien/temperatures`; `loadMonitoredEquipment()` in `src/lib/monitored-equipment.ts` (server-only), shared with `/qualite/temperatures` |
+| « Mon compte » (staff password) | `/compte` (`src/app/compte/*`), `POST /api/compte/mot-de-passe`; `changeOwnPassword` in `src/lib/password-change-server.ts` (shared with the portal); rule `checkPasswordChange` / `passwordErrorMessage` in `portal-access.ts`; counter `passwordChangeLimiter` in `src/lib/attempt-limiter.ts` (5 failures / 15 min, in memory) |
+| Sign-out after inactivity | `src/lib/idle-policy.ts` (30 min, 2 min warning, PRELEVEUR exempt — constants, not a réglage) + `src/components/layout/IdleLogout.tsx` (mounted in `DashboardShell`); login notice `?motif=inactivite` |
+| Client IP for Better Auth's rate limit | `advanced.ipAddress.ipAddressHeaders` in `auth-server.ts` (`x-real-ip` first) |
+| Who did what on a record (journal filters, reference) | `src/lib/audit-journal-filters.ts` + `src/app/admin/journal/page.tsx` (50 per page, cursor on date and id, indexed columns only) |
+| The wording of an audit action / a new action code | `ACTION_LABELS` in `src/lib/audit-labels.ts`; `audit-labels.test.ts` fails on any code passed to `logAudit()` without a label |
+| Accounting export (journal des ventes, règlements) | `GET /api/invoices/export` + `src/lib/sales-journal.ts` (rows, totals, presets); « Export comptable » in `src/components/FacturesList.tsx`; client name / ICE as printed (`invoiceClientIdentity`) |
+| What an issued invoice prints about its client | `Invoice.clientSnapshot`, written in the issuing transaction (`clientSnapshotOf`) on the four issue paths and copied onto credit notes; read by `invoiceClientIdentity` (`src/lib/invoice-client-identity.ts`) in the PDF, the invoice fiche and the export. Drafts, and documents issued before the deploy, read the live client |
+| What a credit note may take back from one invoice line | `InvoiceItem.creditedItemId`; `creditedByItem` / `remainingLineCreditable` / `creditNoteLinesRefusal(lines, items, alreadyCredited)` in `src/lib/billing.ts`; dialog hints `creditNoteDefaultQuantity` / `creditNotePreview` in `invoice-view.ts` |
+| Whether an invoice can be cancelled (0,00 included) | `cancelRefusal` in `src/lib/invoice-lifecycle.ts` (PAYEE with no payment and no credit note = a 0,00 invoice, cancellable) |
+| A technician's load shown at assignment | `benchLoadByTechnician` / `technicianLoadLabel` in `src/lib/technician-load.ts` (pure), loaded by `loadProgrammeReferential`; option labels in `ProgrammeSheet.tsx` |
+| Admin menu entries | `src/components/layout/admin-nav.ts` (« Enregistrement des paramètres », « Historique des réceptions », « Envois d'e-mails » added 10/10) |
+| Préleveur history beyond 50 visits | `PreleveurDashboard.tsx` (« Voir plus », search, status filter) + server-side tiles in `src/app/preleveur/page.tsx` |
+| Client search on the visit, the deposit and the invoice | `ClientPicker` (`src/components/commercial/ClientPicker.tsx`) in `VisitForm`, `DepositForm`, `NouvelleFactureForm` (no up-front `GET /api/clients`) |
+| Off-site backup copy | `scripts/backup-db.sh` (`BACKUP_REMOTE`, `BACKUP_SSH_KEY`, `BACKUP_GPG_RECIPIENT`, `RETENTION_DAYS`; §6) + `DEPLOY.md` « Backups » |
+| SSH hardening / fail2ban / deploy pruning | `scripts/harden-ssh.sh` (refuses without a working key), fail2ban jail also in `provision-vps.sh`; `bash scripts/deploy.sh` = Docker deploy, prunes the build cache once healthy (never volumes); tzdata and reboot checklists in `DEPLOY.md` |
+
 ## 6. Environment variables
 
 | Var | Purpose | Notes |
@@ -367,6 +458,10 @@ Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|E
 | `CHROMIUM_PATH` | browser used to render report PDFs | Optional. On the VPS: `apt install chromium` — the default paths are tried first |
 | `RESEND_API_KEY` | mail provider key | **Absent → sends are journalised as `SIMULE`, not delivered.** Needs the client's DNS first |
 | `EMAIL_FROM` | sender address | e.g. `Qualilab International <no-reply@qualilabinternational.com>` |
+| `BACKUP_REMOTE` | **backup cron only** (`scripts/backup-db.sh`, not the app container): off-site copy of each dump — an rclone `remote:path` (an rclone crypt remote is recommended) or `user@host:/path` (rsync over SSH) | Unset → `backup.log` says « offsite skipped (BACKUP_REMOTE not set) ». Since 2026-10-10 |
+| `BACKUP_SSH_KEY` | backup cron only: the dedicated key of the rsync form | Default `~/.ssh/qualilab_backup`; a path with spaces breaks rsync's `-e` (§9) |
+| `BACKUP_GPG_RECIPIENT` | backup cron only: encrypt each dump for this gpg key before upload | Optional; keep the private key off the VPS |
+| `RETENTION_DAYS` | backup cron only: days kept, locally and off-site | Default 30; validated by the script |
 
 **To add later:** `RESEND_API_KEY` + `EMAIL_FROM` (Phase 3 email), and any
 Playwright/Chromium path config for server-side PDF. Log new vars here **and** in
@@ -548,6 +643,18 @@ Found by the end-to-end recette of 06/10 (`RECETTE-06-10-PARCOURS.md`).
 - **Roles.** The lab's six functions map 1:1 to the existing roles; only labels change (« Validation administrative », « Validateur technique », « Saisie des résultats », « Enregistrement des paramètres »). Whether a dedicated role should sign step 2 instead of the system administrator is Q65.
 - **Attestation de régularité fiscale.** Addressed to the LIMS supplier's own invoices, not a software feature.
 
+### 2026-10-10 — analyse des écarts du 10/10, as built (`RETOUR-LABO-06-10.md` §11) — not deployed
+- **One build, three streams, one migration.** 37 items (A1–A14 reception and billing data, B1–B10 bench / validation / e-mail, C1–C13 admin / security / ops) built in parallel by file ownership, each stream reviewed by a hostile reviewer, then one integration pass. Every schema change is in one additive folder, `20261012100000_gaps_build` (the plan's five folders merged): nullable or defaulted columns, `NON_RECU` appended last to `CancelReason`, indexes, one self-FK; no data rewritten. Checked statement by statement against `prisma migrate diff` from the committed schema (a `--from-migrations` diff needs a shadow database).
+- **Reception: the paper's 7 rules stay as they are; the extra controls are a second group « Contrôles complémentaires (hors bon) », coded C1–C7** (`reception-complementary.ts`). C3 / C5 are answered Oui / Non per sample and required by both APIs (an old tab is refused with « rechargez la page »); « Non » forces non conforme with motif EMBALLAGE / IDENTIFICATION. C1 (delay), C2 (transport temperature by storage class, source glacière / échantillon / flacon témoin) and C7 (DLC, food) are computed, never refusals (C1 only when `delayBlocking` is on). The cold-chain warning left rule (6) for C2. C6 is a série row on a visit (photo or « protocole papier signé reçu »), amber when « Non », never a sample's motif. Q64 still open: no série-level « tout cocher », on purpose.
+- **An accepted doubt is written down.** A sample accepted conforme while a paper or C-row is « à vérifier » needs an « Observation de réception » (both APIs, ≤ 1 000 characters); the observation is printed on the bon and shown on programme, bench and validation. Strict on purpose until the lab answers Q71 (heavier work: e.g. every visit received the day after needs one, C1 > 24 h).
+- **ISO 17025 §7.4.3: a non-conform sample analysed anyway can carry the client's agreement** (who, channel, when, note; required only when `consultationRequired` is on, default off), or wait « en attente du client » (received, numbered, `analysisBlocked`). Releasing assigns **no technician** any more: ANALYSER returns the sample to the programme queue; DETRUIRE cancels it (`DETRUIT_A_RECEPTION`, client e-mailed). RECEPTIONNISTE may release a sample waiting for the client, ADMIN anything; the old `{ technicianId }` body is read as ANALYSER. The reception route now runs `canTransition` before writing.
+- **« > x » is a lower bound, « Indénombrable » / « TNTC » is +∞ with no number.** Each unit is judged at both ends of its interval; the verdict stands when both agree, else INCOMPLET (« lire une dilution supérieure »), which blocks submission. Kept as typed on the report (`numericValue` = x, or null). The contamination alert selects by verdict / `conform`, never by number (`contamination-alert.ts`, tested against the 09/09 lesson). Integration hardening: without a criterion, the results route now stores its own suggestion (`benchConformity`) and the request's choice only where the screen asks for one — a stale or forged request can no longer store « conforme » for an uncountable plate.
+- **Issued invoices are frozen from now on** (`Invoice.clientSnapshot` on the four issue paths, copied to credit notes; PDF, fiche and export read `invoiceClientIdentity`). **No backfill**: documents issued before the deploy keep printing the live client — decide the one-time backfill (§9) before any real client merge (Q54). A credit-note line names the invoice line it takes back; the sum taken back from one line is capped at its total (older unlinked lines stay bounded by the invoice total).
+- **Staff security**: « Mon compte » for every lab role (other sessions revoked, journalled), 5 wrong current passwords per account per 15 min (in memory), Better Auth's IP from `x-real-ip`, sign-out after 30 min idle except the préleveur (browser-enforced, cross-tab, also on reopening a tab).
+- **Day cuts of the new lists are on the laboratory's clock** (journal, export, envois, historique: `lab-day-range.ts`, `day-range.ts`), the clock their rows are printed with. The integration pass moved `/admin/envois` and `/reception/historique` from the server clock to the lab clock so that the four new lists agree; /recherche keeps the server clock (unchanged, §9).
+- **Removed**: `src/lib/invoice-types.ts` and the 410 `PATCH /api/invoices/[id]/payment` (the « one release later » of 2026-10-08); `src/components/reception/types.ts` (no technician at release). Kept: `GET /api/invoices`, `/api/invoices/stats`, `/api/programmation/queue`, `/api/preleveurs`, `/api/portail/tableau-de-bord` (recette probes).
+- **Defaults applied until the lab answers** (NEEDEDINFO Q67–Q98): C1 24 h micro / none in chemistry, à vérifier; C2 0–8 °C chilled, ≤ 8 °C water micro, ≤ −15 °C frozen, chilled by default for food, surfaces, hands and water micro; C7 warning with motif « Autre »; « > x » below the limit blocks as Incomplet; idle 30 min; a 0,00 invoice can be cancelled; export one workbook, credit notes negative, cancelled invoices listed but out of the totals; the protocol photo is never shown to the technician, the programmer or the accountant.
+
 ## 8c. A lesson written down (2026-08-25)
 
 Importing anything that touches Prisma from a **client** component drags the
@@ -559,8 +666,8 @@ importing a server module.
 
 ## 9. Known debt / watch-outs
 
-- **Day cuts and stale tz data (08/10).** `setHours(0,0,0,0)` cuts (dashboard « aujourd'hui » tiles, /recherche `du`/`au`) follow the runtime's zone data; on an image whose tzdata predates Morocco's return to GMT, « aujourd'hui » starts at 23:00 UTC. Tiles and lists still agree (both use the server clock — `serverIsoDay`), but upgrade the image's tzdata (2026c+) and re-check.
-- **`Sample.sampledAt` has no index** (« Ce mois-ci » and /recherche `date=prelevement` scan). Fine at today's volume; add `@@index([sampledAt])` with the next migration.
+- **Day cuts and stale tz data (08/10).** `setHours(0,0,0,0)` cuts (dashboard « aujourd'hui » tiles, /recherche `du`/`au`) follow the runtime's zone data; on an image whose tzdata predates Morocco's return to GMT, « aujourd'hui » starts at 23:00 UTC. Tiles and lists still agree (both use the server clock — `serverIsoDay`), but upgrade the image's tzdata (2026c+) and re-check (`DEPLOY.md` now has the check). Since 10/10 the new lists (journal, export, envois, historique) cut on the lab clock instead (`lab-day-range.ts`, `day-range.ts`): the two conventions agree while the image's tzdata is current; moving /recherche and the tiles to the lab clock is the clean follow-up.
+- ~~`Sample.sampledAt` has no index~~ → **resolved 2026-10-10** (migration `20261012100000_gaps_build`: `sampledAt`, `receivedAt`, `clientId + sampledAt`, plus `Serie.receivedAt`, `EmailLog.createdAt`, `AuditLog(action, createdAt)`, `Invoice.issuedAt`).
 
 - ~~Role checks hardcoded per file~~ → **resolved:** everything now goes through
   `requireRole` / `requireApiRole`. Keep it that way; never re-introduce an
@@ -615,13 +722,26 @@ importing a server module.
   ADMIN + report edits and nothing else.
 
 - **Billing, after 2026-10-08 (FACTURATION.md):**
-  - An issued invoice prints the client's **current** name and address: a later rename or a merge (`/api/clients/[id]/merge` moves the invoices) changes what an issued invoice and its PDF show. Strict immutability needs snapshot columns on `Invoice` (migration not written).
-  - Credit-note lines are not linked to the invoice line they take back (no `InvoiceItem.creditedItemId`): repeated credit notes on one line are bounded only by the invoice's remaining creditable total.
+  - ~~An issued invoice prints the client's current name~~ → **resolved 2026-10-10 for documents issued after the deploy** (`Invoice.clientSnapshot`). ⚠️ **No backfill was written** (the build forbade data rewrites): every invoice and credit note issued **before** the deploy keeps printing the live client, so a client merge or rename still changes those. **Before any real merge (Q54)** the owner decides whether to run, once, after a backup: ``UPDATE `Invoice` i JOIN `Client` c ON c.`id` = i.`clientId` SET i.`clientSnapshot` = JSON_OBJECT('name', c.`name`, 'address', c.`address`, 'contact', c.`contact`, 'phone', c.`phone`, 'email', c.`email`, 'ice', c.`ice`) WHERE i.`number` IS NOT NULL AND i.`clientSnapshot` IS NULL;`` (touches only the new column, safe to re-run).
+  - ~~Credit-note lines are not linked to the invoice line they take back~~ → **resolved 2026-10-10** (`InvoiceItem.creditedItemId`, per-line cap). Credit-note lines issued before stay unlinked and are bounded by the invoice total only.
   - Totals stored before the rounding fix may differ by 0,01 at 7/10/14 % VAT; a credit note taking back every line of such an invoice can be refused by one centime (lower one price by 0,01).
-  - `src/lib/invoice-types.ts` is no longer imported; `GET /api/invoices` and `/api/invoices/stats` are no longer called by the screens (they read through `invoice-queries.ts`); `PATCH /api/invoices/[id]/payment` only answers 410. Retire them in a later clean-up.
-  - The counters screen (`src/app/api/admin/counters/route.ts`) shows SERIE and CONTROLE only; FACTURE / AVOIR are set by the migration and drawn at issue. Add them (with a `FAC-` / `AV-` parser) if the lab wants to continue the old software's invoice numbers.
+  - `GET /api/invoices` and `/api/invoices/stats` are no longer called by the screens (they read through `invoice-queries.ts`) but stay: the recette probes use them. (`invoice-types.ts` and the 410 `PATCH …/payment` were deleted 2026-10-10.)
+  - ~~The counters screen shows SERIE and CONTROLE only~~ → **resolved 2026-10-10**: « Factures et avoirs » on `/admin/reglages`. Set them on switch-over day, before the first real invoice (Q83).
 - **Reports, after 2026-10-08 (AMENDEMENT.md):** a version frozen at issue does not take a later silent admin correction until the next reopen (the current version renders live, so screens and downloads show it). If `loadReportData` cannot read a pending report's frozen JSON (damaged row), it falls back to the live data (logged).
-- **Portal, after 2026-10-08 (PORTAIL.md):** `POST /api/portail/compte/mot-de-passe` calls `auth.api.changePassword` server-side, outside Better Auth's HTTP rate limit (low risk: needs a stolen session; add a per-user attempt counter if wanted). Better Auth's rate limiter keys on the client IP: behind nginx, check `x-forwarded-for` is trusted (`advanced.ipAddress`), or every user shares one bucket.
+- ~~Portal password change outside the HTTP rate limit; `x-forwarded-for` trust~~ → **resolved 2026-10-10**: per-account counter on both password routes (`attempt-limiter.ts`) and `advanced.ipAddress` reading `x-real-ip` first. Check read-only at the next deploy that the live nginx site sets `X-Real-IP $remote_addr` (`DEPLOY.md`), else a client could forge it.
+- **After 2026-10-10 (analyse des écarts, not deployed yet):**
+  - ⚠️ **URGENT, ops — the phase-9 restore point will be pruned.** The `backup-db.sh` deployed on the VPS deletes `qualilab_*.sql.gz` older than 30 days; that pattern matches `/var/backups/qualilab/qualilab_avant-phase-9.sql.gz` (13/09), so the 02:00 run of about **14–15/10/2026** removes it. Before then: deploy the new script (it rotates only `qualilab_????-??-??_????.sql.gz`), or copy the file off the server, or rename it out of the pattern (`DEPLOY.md` « Backups »).
+  - **Pages opened before the deploy are refused, on purpose, with a « rechargez la page » message**: a reception or deposit sent without the C3 / C5 answers; a « Bloqués » release sent as `{ technicianId }` while `consultationRequired` is on. The local recette scripts in `.ui-tests/*.mjs` (gitignored) send the old payloads and need the new fields before the next recette.
+  - **A7 is strict by default**: any « à vérifier » row accepted conforme needs an observation — quantities not weighed (rules 2–5), C1 over 24 h (a visit received the next day), a deposit left without « Prélevé le », C2 out of range, C7 past the DLC. Tell the reception before the deploy; Q71 decides which rows stay plain warnings. The browser and the server clocks can disagree by a minute at the C1 boundary: the server then refuses with a message naming C1.
+  - **The inactivity sign-out is browser-side only** (`IdleLogout`); the server session still rolls for 7 days. A server-side idle bound (Better Auth `expiresIn` / `updateAge`) would be the robust complement but changes every role's session, the préleveur's included — a product decision. The password-change counter is per process (a restart clears it).
+  - **B2 « Renvoyé par … » banner** shows while EN_ANALYSE and `rejectedAt` is set; `rejectedAt` is never cleared, so a sample back on the bench for another reason (« Corriger la fiche » with a results reset, cancel + réactivation) shows the old send-back with its date. A precise fix compares `rejectedAt` with the last `RESULTS_SUBMITTED` row.
+  - **Early contamination alerts** (sent at technical validation, before the report exists) have `EmailLog.reportId` null: « non rattaché » in /admin/envois and missing from the validation page's « Envois » card (the « Parcours » shows them). An `EmailLog.sampleId` column would fix it.
+  - **The report colours a « > x » repetition red / amber from its display starting with « > »** (`ReportUnit` carries no kind; frozen `ReportVersion` JSON stores the display).
+  - **The protocol photo** is stored as a data URI (≤ 2 000 000 characters), decoded per request and served `private, no-store`, never selected in a list; every view is journalled `SERIE_PHOTO_VIEWED`.
+  - **`deploy.sh` changed meaning**: plain `bash scripts/deploy.sh` is now the Docker deploy whenever `.env` defines `DB_PASSWORD` (production does) and prunes the build cache (`builder prune --filter until=168h`, `image prune`) only once `/api/health` answers; PM2 is `DEPLOY_MODE=pm2`. It never prunes volumes.
+  - `BACKUP_SSH_KEY` with spaces breaks rsync's `-e` (the script quotes with `printf %q`, rsync wants quotes); the default path has none.
+  - **Small a11y polish left**: `ReportDialog` returns focus but has no focus trap; its close button (~28 px), the compact « Renvoyer au client » link in table rows and the filter / paging buttons of /admin/envois and /reception/historique are under 44 px.
+  - **Single-value results without a criterion now store the server's suggestion** (`benchConformity`): identical to what the bench screen sends, but a client script that forced « conforme » on a number above the limit is now stored non conforme.
 
 ## 10. Scope additions — client meeting 2026-07-28
 

@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  ChevronRight,
   Printer,
   FileText,
   ShieldCheck,
@@ -24,7 +25,9 @@ import type {
   SampleType,
   SamplerKind,
   SerieKind,
+  StorageClass,
   SurfaceState,
+  TemperatureSource,
 } from "@/generated/prisma/enums";
 import {
   CANCEL_REASON_LABELS,
@@ -33,6 +36,7 @@ import {
   QUANTITY_UNIT_LABELS,
   SAMPLER_KIND_LABELS,
   SERIE_KIND_LABELS,
+  TEMPERATURE_SOURCE_LABELS,
   formatCadre,
   formatDate,
   formatDateTime,
@@ -40,29 +44,64 @@ import {
 } from "@/lib/labels";
 import {
   EXPLOITABLE_MESSAGES,
+  checklistSummary,
+  justifyAcceptanceMessage,
   parameterSpellings,
   proposedConformity,
   receptionChecklist,
+  rowToJustify,
+  type ChecklistRow,
   type ReceptionThresholds,
 } from "@/lib/reception-rules";
+import type { ReceivedChecklist } from "@/lib/reception-audit";
+import {
+  CONSULTATION_TIME_LABEL,
+  EMPTY_CONSULTATION,
+  consultationDraftError,
+  consultationPayload,
+  type ConsultationDraft,
+  type ReceptionDecision,
+} from "@/lib/client-consultation";
+import {
+  COMPLEMENTARY_MESSAGES,
+  TEMPERATURE_SOURCES,
+  complementaryChecklist,
+  expiredDlcNote,
+  signedProtocolRow,
+  type ComplementaryKey,
+} from "@/lib/reception-complementary";
+import { protocolPhotoHref } from "@/lib/protocol-photo-access";
 import { repetitionRange } from "@/lib/series";
 import { futureFieldError } from "@/lib/device-time";
+import { arrivalRefusal } from "@/lib/serie-input";
 import { Card } from "@/components/ui/Card";
 import { LabDateTimeInput } from "@/components/LabDateTimeInput";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
-import { fromLocalInput, toLocalInput } from "@/components/preleveur/visit-types";
-import { Checklist, ConformityChip } from "./reception-widgets";
+import { fromLocalInput, localInputDate, toLocalInput } from "@/components/preleveur/visit-types";
+import {
+  Checklist,
+  ConformityChip,
+  ConsultationFields,
+  DecisionChips,
+  ReceptionNoteField,
+  SignedProtocolCheck,
+  StorageClassSelect,
+  useMinuteClock,
+} from "./reception-widgets";
 import { receptionLineMessage, sampleRef } from "@/lib/reception-input";
 import { SampleVerbs, type VerbSample } from "@/components/samples/SampleVerbs";
 import type { Role } from "@/lib/roles";
 import {
+  coolerOutOfRange,
   countLabel,
   errorConcernsSample,
   missingFamilies as missingFamiliesOf,
   receptionDesignation,
+  receptionTemperatureSource,
   sampleHeading,
+  storageDefaultLabel,
 } from "./reception-logic";
 
 /**
@@ -74,10 +113,20 @@ import {
  * checklist — the seven rules of the bon de réception, computed live with
  * the lab's thresholds — and the conformity with its coded motif. Rule (1),
  * « exploitable or not », is the réceptionniste's answer, one per sample,
- * required before the série can be received (retour du 08/10). The two
+ * required before the série can be received (retour du 08/10). Below the
+ * seven rules, the contrôles complémentaires (hors bon): C3 (emballage) and
+ * C5 (identification) are ticked Oui / Non for every sample — a « Non »
+ * makes it non conforme with the matching motif. C6, the protocol signed by
+ * the interlocutor, is the série's own row on a visit, above the samples:
+ * the préleveur's photo, or an optional « reçu » Oui / Non. The two
  * samples of a two-family line (« 2M », « 2P » — V3) are received one by
  * one, each with its own rules (100 g micro, 300 g physico-chimie). One
  * button numbers everything.
+ *
+ * A non-conform sample is analysed anyway — the client's agreement noted
+ * (« Accord du client », required when the laboratory says so) —, held
+ * « en attente du client » (received, numbered, released later from
+ * « Bloqués »), or destroyed (A9).
  *
  * No technician here (retour du 08/10, RETOUR-LABO-06-10.md §9.3): the
  * responsable des paramètres picks the sample from the global queue and
@@ -117,6 +166,11 @@ export type ReceptionLineData = {
   conformity: boolean | null;
   conformityReason: NonConformityReason | null;
   conformityNote: string | null;
+  /** « Observation de réception » (A7); optional on an older payload. */
+  receptionNote?: string | null;
+  /** Held at reception, and since when it waits for the client (A9); optional on an older payload. */
+  analysisBlocked?: boolean;
+  awaitingClientSince?: string | null;
   cancelReason: CancelReason | null;
   nature: { id: string; code: string; label: string; family: Family };
   productType: { id: string; name: string } | null;
@@ -148,6 +202,10 @@ export type ReceptionSerieData = {
   notes: string | null;
   receivedAt: string | null;
   samples: ReceptionLineData[];
+  /** C6: a photo of the signed protocol is attached — counted by the page, never the image. */
+  hasSignedProtocol?: boolean;
+  /** C6: the answer an earlier reception of the série stored; null = none. */
+  signedProtocolReceived?: boolean | null;
 };
 
 type ReceivedLine = {
@@ -158,7 +216,11 @@ type ReceivedLine = {
   unitCount: number;
   conformity: boolean | null;
   conformityReason: NonConformityReason | null;
+  /** « Observation de réception » (A7). */
+  receptionNote?: string | null;
   analysisBlocked: boolean;
+  /** « En attente du client » since (A9). */
+  awaitingClientSince?: string | null;
   status?: SampleStatus;
   cancelReason?: CancelReason | null;
   produit: string | null;
@@ -171,6 +233,9 @@ type ReceivedLine = {
    * programme (or, before 08/10, the reception) assigned; never in the
    * answer of the reception itself. */
   technician?: { id: string; name: string } | null;
+  /** In the answer of the reception: the checklist as the API decided it (A8). */
+  checklist?: ChecklistRow[];
+  complementary?: ChecklistRow[];
 };
 
 type LineState = {
@@ -178,16 +243,27 @@ type LineState = {
   temperature: string;
   /** Once the réceptionniste typed a temperature, the cooler no longer overrides it. */
   temperatureTouched: boolean;
+  /** Where the temperature was read, when chosen on the card (water: « Flacon témoin »); null = derived. */
+  sourceChoice: TemperatureSource | null;
+  /** « Conservation » (C2); null = the kind's default. */
+  storageClass: StorageClass | null;
   quantity: string;
   quantityUnit: QuantityUnit;
   /** Rule (1) of the bon: null until the réceptionniste answers. */
   exploitable: boolean | null;
+  /** C3 (emballage) and C5 (identification): null until ticked. */
+  packagingOk: boolean | null;
+  identificationOk: boolean | null;
   /** The réceptionniste's own choice; null = follow the rules' proposal. */
   conformityChoice: boolean | null;
   reason: NonConformityReason | "";
   note: string;
-  /** Non-conform only: « Détruire » instead of « Analyser malgré tout ». */
-  destroy: boolean;
+  /** « Observation de réception » (A7) — required to accept a doubt conforme. */
+  receptionNote: string;
+  /** Non-conform only: analyse anyway, wait for the client, or destroy (A9). */
+  decision: ReceptionDecision;
+  /** « Accord du client », for « Analyser malgré tout » (A9). */
+  consultation: ConsultationDraft;
 };
 
 const REASONS = Object.keys(NON_CONFORMITY_REASON_LABELS) as NonConformityReason[];
@@ -241,18 +317,70 @@ function unitsLabel(unitCount: number) {
   return `${unitCount} unités (${repetitionRange(unitCount)})`;
 }
 
+/**
+ * Cancelled before its reception — « Non reçu au laboratoire », or another
+ * motif on a sample still PRELEVE: never numbered (every reception, deposits
+ * included, draws a N° de contrôle), so never received and no checklist.
+ */
+function cancelledBeforeReception(sample: { status?: SampleStatus; controlCode: string | null }) {
+  return sample.status === "ANNULE" && sample.controlCode === null;
+}
+
+/** A sample's card before the réceptionniste touches it; `cooler` pre-fills its temperature. */
+function initialLineState(s: ReceptionLineData, cooler: string): LineState {
+  return {
+    sampleId: s.id,
+    temperature: cooler,
+    temperatureTouched: false,
+    sourceChoice: null,
+    storageClass: null,
+    // A line never weighed on site is weighed here: grams for food, litres
+    // for water. « Unité(s) » is what the paper form carries by default
+    // (« 01 »), never a weight — the field is left empty so the counter
+    // types what the scale reads, in a unit the acceptance rules can use.
+    quantity: s.quantity === null || s.quantityUnit === "UNITE" ? "" : String(s.quantity).replace(".", ","),
+    quantityUnit:
+      s.quantity !== null && s.quantityUnit && s.quantityUnit !== "UNITE"
+        ? s.quantityUnit
+        : s.lineKind === "EAU"
+          ? "L"
+          : "G",
+    // Never pre-answered: each sample is looked at (no « tous exploitables »,
+    // no série-level « tout cocher » — Q64 pending).
+    exploitable: null,
+    packagingOk: null,
+    identificationOk: null,
+    conformityChoice: null,
+    reason: "",
+    note: "",
+    receptionNote: "",
+    decision: "ANALYSER",
+    consultation: EMPTY_CONSULTATION,
+  };
+}
+
 export function SerieReceptionForm({
   serie,
   thresholds,
   role,
+  decided = {},
+  consultationRequired = false,
 }: {
   serie: ReceptionSerieData;
   thresholds: ReceptionThresholds;
   role: Role;
+  /** LabSettings.consultationRequired: analysing a non-conform sample needs the client's agreement (A9). */
+  consultationRequired?: boolean;
+  /** Each received sample's checklist as decided, from its SAMPLE_RECEIVED entry; null = before the checklist. */
+  decided?: Record<string, ReceivedChecklist | null>;
 }) {
   const router = useRouter();
   const pending = serie.samples.filter((s) => s.status === "PRELEVE");
   const alreadyReceived = serie.samples.filter((s) => s.status !== "PRELEVE");
+  // Of those, the samples cancelled before their reception (« Non reçu au
+  // laboratoire », …) were never received: said apart.
+  const cancelledEarlier = alreadyReceived.filter(cancelledBeforeReception);
+  const receivedEarlier = alreadyReceived.filter((s) => !cancelledBeforeReception(s));
 
   // LEGAL wall time ("YYYY-MM-DDTHH:mm"): LabDateTimeInput converts a drifting device's hour.
   const [arrivedAt, setArrivedAt] = useState(
@@ -264,36 +392,28 @@ export function SerieReceptionForm({
     serie.coolerTemperature === null ? "" : String(serie.coolerTemperature).replace(".", ",")
   );
   const [lines, setLines] = useState<LineState[]>(() =>
-    pending.map((s) => ({
-      sampleId: s.id,
-      temperature:
-        serie.coolerTemperature === null ? "" : String(serie.coolerTemperature).replace(".", ","),
-      temperatureTouched: false,
-      // A line never weighed on site is weighed here: grams for food, litres
-      // for water. « Unité(s) » is what the paper form carries by default
-      // (« 01 »), never a weight — the field is left empty so the counter
-      // types what the scale reads, in a unit the acceptance rules can use.
-      quantity:
-        s.quantity === null || s.quantityUnit === "UNITE" ? "" : String(s.quantity).replace(".", ","),
-      quantityUnit:
-        s.quantity !== null && s.quantityUnit && s.quantityUnit !== "UNITE"
-          ? s.quantityUnit
-          : s.lineKind === "EAU"
-            ? "L"
-            : "G",
-      // Never pre-answered: each sample is looked at (no « tous exploitables »).
-      exploitable: null,
-      conformityChoice: null,
-      reason: "",
-      note: "",
-      destroy: false,
-    }))
+    pending.map((s) =>
+      initialLineState(s, serie.coolerTemperature === null ? "" : String(serie.coolerTemperature).replace(".", ","))
+    )
   );
+  // The cards follow the samples still to receive: a sample cancelled from
+  // its card (« Annuler », e.g. « Non reçu au laboratoire ») leaves the
+  // reception once the page refreshes — the state kept from before would
+  // otherwise send it and the API refuse the whole série. A sample that
+  // comes back (reactivated) starts from a fresh card.
+  const activeLines = pending.map(
+    (s) => lines.find((line) => line.sampleId === s.id) ?? initialLineState(s, cooler)
+  );
+  // C6, a visit without a photo: optional, never pre-answered beyond what was stored.
+  const [protocolReceived, setProtocolReceived] = useState<boolean | null>(serie.signedProtocolReceived ?? null);
+  const visitWithoutPhoto = serie.kind === "VISITE" && !serie.hasSignedProtocol;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; lineNumber: number | null; ref?: string | null } | null>(null);
   const [result, setResult] = useState<ReceivedLine[] | null>(null);
 
   const byId = useMemo(() => new Map(serie.samples.map((s) => [s.id, s])), [serie.samples]);
+  // The reception instant while receiving: C1 counts up to it when no arrival is recorded.
+  const now = useMinuteClock();
 
   // A box of the protocol that no sample still to analyse answers — only on
   // a série entered before the boxes were computed (07/10), or once the
@@ -308,6 +428,11 @@ export function SerieReceptionForm({
     [serie.samples, serie.analysesMicro, serie.analysesChimie]
   );
 
+  // C2, screen only: the cooler's reading outside the chilled range.
+  const coolerWarning = coolerOutOfRange(numberOrNull(cooler), thresholds)
+    ? `Hors de la plage réfrigérée (${formatDecimal(thresholds.coldChainMinC)} à ${formatDecimal(thresholds.coldChainMaxC)} °C) : vérifiez la chaîne du froid.`
+    : null;
+
   // The cooler's temperature pre-fills every sample the réceptionniste has
   // not measured separately — one reading, eight samples.
   function changeCooler(value: string) {
@@ -318,7 +443,14 @@ export function SerieReceptionForm({
   }
 
   function updateLine(sampleId: string, patch: Partial<LineState>) {
-    setLines((current) => current.map((line) => (line.sampleId === sampleId ? { ...line, ...patch } : line)));
+    setLines((current) => {
+      if (current.some((line) => line.sampleId === sampleId)) {
+        return current.map((line) => (line.sampleId === sampleId ? { ...line, ...patch } : line));
+      }
+      // A card that appeared after the page opened (`activeLines`).
+      const sample = byId.get(sampleId);
+      return sample ? [...current, { ...initialLineState(sample, cooler), ...patch }] : current;
+    });
     setError(null);
   }
 
@@ -336,11 +468,24 @@ export function SerieReceptionForm({
     );
   }
 
-  /** The live evaluation of one sample: the seven rules, proposal, effective choice. */
+  /**
+   * A ticked control answered (C3, C5). « Non » makes the sample non conform
+   * with the control's motif, unless a motif is already chosen; « Oui »
+   * afterwards drops that motif, the rules propose again.
+   */
+  function answerTick(line: LineState, key: Extract<ComplementaryKey, "EMBALLAGE" | "IDENTIFICATION">, ok: boolean) {
+    const field = key === "EMBALLAGE" ? "packagingOk" : "identificationOk";
+    updateLine(line.sampleId, {
+      [field]: ok,
+      reason: ok ? (line.reason === key ? "" : line.reason) : line.reason || key,
+    });
+  }
+
+  /** The live evaluation of one sample: the seven rules, the complementary controls, proposal, effective choice. */
   function evaluate(line: LineState) {
     const sample = byId.get(line.sampleId)!;
     const quantity = numberOrNull(line.quantity);
-    const rows = receptionChecklist(
+    const paper = receptionChecklist(
       {
         lineKind: sample.lineKind,
         family: sample.nature.family,
@@ -351,30 +496,56 @@ export function SerieReceptionForm({
         unitCount: sample.unitCount,
       },
       thresholds,
-      {
-        exploitable: line.exploitable,
-        // The cooler pre-fills every sample until one is measured apart.
-        fromCooler: !line.temperatureTouched && cooler.trim() !== "",
-      }
+      // The cooler pre-fills every sample until one is measured apart.
+      { exploitable: line.exploitable, temperatureSource: receptionTemperatureSource(line) }
     );
+    const complementary = complementaryChecklist(
+      {
+        lineKind: sample.lineKind,
+        family: sample.nature.family,
+        receptionTemperature: numberOrNull(line.temperature),
+        storageClass: line.storageClass,
+        temperatureSource: receptionTemperatureSource(line),
+        expiryDate: sample.expiryDate ? new Date(sample.expiryDate) : null,
+      },
+      {
+        startedAt: new Date(serie.startedAt),
+        endedAt: serie.endedAt ? new Date(serie.endedAt) : null,
+        // As the API reads it: the arrival typed here, else the série's.
+        arrivedAt: localInputDate(arrivedAt) ?? (serie.arrivedAt ? new Date(serie.arrivedAt) : null),
+        receivedAt: now,
+      },
+      thresholds,
+      { packagingOk: line.packagingOk, identificationOk: line.identificationOk }
+    );
+    // The paper's rules first: one of them keeps the priority over a control.
+    const rows = [...paper, ...complementary];
     const proposal = proposedConformity(rows);
     const conformity = proposal.forced ? false : (line.conformityChoice ?? proposal.conformity);
     const reason: NonConformityReason | "" = conformity ? "" : line.reason || proposal.reason || "";
-    return { sample, rows, proposal, conformity, reason };
+    // A7: a row « à vérifier » accepted conforme needs the observation.
+    const doubt = rowToJustify(rows, conformity, line.receptionNote);
+    return { sample, rows, proposal, conformity, reason, doubt };
   }
 
   async function submit() {
     if (busy) return;
-    // The server's own check (5 min of tolerance), told next to the field first (§8.1).
-    const future = futureFieldError("L'heure d'arrivée", arrivedAt);
-    setArrivedError(future);
-    if (future) {
-      setError({ message: future, lineNumber: null });
+    // The server's own checks (5 min of tolerance; never before the
+    // sampling), told next to the field first (§8.1).
+    const arrival = localInputDate(arrivedAt);
+    const arrivalProblem =
+      futureFieldError("L'heure d'arrivée", arrivedAt) ??
+      (arrival
+        ? arrivalRefusal(arrival, new Date(serie.startedAt), serie.endedAt ? new Date(serie.endedAt) : null)
+        : null);
+    setArrivedError(arrivalProblem);
+    if (arrivalProblem) {
+      setError({ message: arrivalProblem, lineNumber: null });
       document.getElementById("arrivedAt")?.focus();
       return;
     }
     // Rule (1) is answered for every sample — the API refuses otherwise.
-    const unanswered = lines.find((line) => line.exploitable === null);
+    const unanswered = activeLines.find((line) => line.exploitable === null);
     if (unanswered) {
       const sample = byId.get(unanswered.sampleId)!;
       const ref = sampleRef(sample.lineNumber, sample.code);
@@ -389,24 +560,85 @@ export function SerieReceptionForm({
       target?.focus({ preventScroll: true });
       return;
     }
+    // C3 and C5 are ticked for every sample too — the API refuses otherwise.
+    const unticked = activeLines.find((line) => line.packagingOk === null || line.identificationOk === null);
+    if (unticked) {
+      const sample = byId.get(unticked.sampleId)!;
+      const ref = sampleRef(sample.lineNumber, sample.code);
+      const packaging = unticked.packagingOk === null;
+      setError({
+        message: receptionLineMessage(
+          ref,
+          packaging ? COMPLEMENTARY_MESSAGES.packagingMissing : COMPLEMENTARY_MESSAGES.identificationMissing
+        ),
+        lineNumber: sample.lineNumber,
+        ref,
+      });
+      const target = document.getElementById(`${packaging ? "packaging" : "identification"}-${unticked.sampleId}`);
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      target?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+      target?.focus({ preventScroll: true });
+      return;
+    }
+    // A doubt accepted conforme is justified — the API refuses otherwise (A7).
+    for (const line of activeLines) {
+      const { sample, doubt } = evaluate(line);
+      if (!doubt) continue;
+      const ref = sampleRef(sample.lineNumber, sample.code);
+      setError({ message: receptionLineMessage(ref, justifyAcceptanceMessage(doubt)), lineNumber: sample.lineNumber, ref });
+      const target = document.getElementById(`obs-${line.sampleId}`);
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      target?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+      target?.focus({ preventScroll: true });
+      return;
+    }
+    // The client's agreement: name and channel together, required when the
+    // laboratory says so — the API refuses otherwise (A9).
+    for (const line of activeLines) {
+      const { sample, conformity } = evaluate(line);
+      if (conformity || line.decision !== "ANALYSER") continue;
+      const problem =
+        consultationDraftError(line.consultation, consultationRequired) ??
+        futureFieldError(CONSULTATION_TIME_LABEL, line.consultation.at);
+      if (!problem) continue;
+      const ref = sampleRef(sample.lineNumber, sample.code);
+      setError({ message: receptionLineMessage(ref, problem), lineNumber: sample.lineNumber, ref });
+      const target = document.getElementById(`accord-${line.sampleId}-name`);
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      target?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+      target?.focus({ preventScroll: true });
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       const payload = {
         arrivedAt: fromLocalInput(arrivedAt),
         coolerTemperature: cooler,
-        lines: lines.map((line) => {
+        // C6: a visit's answer when no photo is attached; nothing otherwise.
+        signedProtocolReceived: visitWithoutPhoto ? protocolReceived : null,
+        lines: activeLines.map((line) => {
           const { conformity, reason } = evaluate(line);
           return {
             sampleId: line.sampleId,
             receptionTemperature: line.temperature,
+            receptionTemperatureSource: receptionTemperatureSource(line),
+            storageClass: line.storageClass,
             quantity: line.quantity,
             quantityUnit: line.quantityUnit,
             exploitable: line.exploitable,
+            packagingOk: line.packagingOk,
+            identificationOk: line.identificationOk,
             conformity,
             conformityReason: conformity ? undefined : reason,
             conformityNote: line.note,
-            decision: !conformity && line.destroy ? "DETRUIRE" : "ANALYSER",
+            receptionNote: line.receptionNote,
+            decision: conformity ? "ANALYSER" : line.decision,
+            // The client's agreement, sent with « Analyser malgré tout » only.
+            consultation:
+              !conformity && line.decision === "ANALYSER"
+                ? consultationPayload(line.consultation, fromLocalInput)
+                : undefined,
           };
         }),
       };
@@ -447,7 +679,9 @@ export function SerieReceptionForm({
         unitCount: s.unitCount,
         conformity: s.conformity,
         conformityReason: s.conformityReason,
-        analysisBlocked: false,
+        receptionNote: s.receptionNote ?? null,
+        analysisBlocked: s.analysisBlocked ?? false,
+        awaitingClientSince: s.awaitingClientSince ?? null,
         produit: s.produit,
         surfaceLabel: s.surfaceLabel,
         surfaceState: s.surfaceState ?? null,
@@ -461,6 +695,7 @@ export function SerieReceptionForm({
         serie={serie}
         lines={received}
         role={role}
+        decided={decided}
         justReceived={result !== null}
         onBack={() => {
           router.refresh();
@@ -480,16 +715,46 @@ export function SerieReceptionForm({
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
-          {alreadyReceived.length > 0 && (
-            <Card className="p-4 text-sm text-slate-600">
-              {countLabel(alreadyReceived.length, "échantillon")} de cette série{" "}
-              {alreadyReceived.length > 1 ? "sont déjà réceptionnés" : "est déjà réceptionné"} (
-              {alreadyReceived.map((s) => s.controlCode ?? s.code).join(", ")}).
+          {serie.kind === "VISITE" && (
+            <Card className="p-4 sm:p-5">
+              <SignedProtocolCheck
+                row={signedProtocolRow({ hasPhoto: Boolean(serie.hasSignedProtocol), received: protocolReceived })}
+                photoHref={serie.hasSignedProtocol ? protocolPhotoHref(serie.id) : null}
+                answer={
+                  visitWithoutPhoto
+                    ? {
+                        value: protocolReceived,
+                        // The active answer clicked again clears it: the row is optional.
+                        onChange: (received) => setProtocolReceived((current) => (current === received ? null : received)),
+                        id: "signed-protocol",
+                      }
+                    : undefined
+                }
+              />
             </Card>
           )}
 
-          {lines.map((line) => {
-            const { sample, rows, proposal, conformity, reason } = evaluate(line);
+          {receivedEarlier.length > 0 && (
+            <Card className="p-4 text-sm text-slate-600">
+              {countLabel(receivedEarlier.length, "échantillon")} de cette série{" "}
+              {receivedEarlier.length > 1 ? "sont déjà réceptionnés" : "est déjà réceptionné"} (
+              {receivedEarlier.map((s) => s.controlCode ?? s.code).join(", ")}).
+            </Card>
+          )}
+
+          {cancelledEarlier.length > 0 && (
+            <Card className="p-4 text-sm text-slate-600">
+              {countLabel(cancelledEarlier.length, "échantillon")} de cette série{" "}
+              {cancelledEarlier.length > 1 ? "sont annulés" : "est annulé"} avant la réception (
+              {cancelledEarlier
+                .map((s) => `${s.code}${s.cancelReason ? ` · ${CANCEL_REASON_LABELS[s.cancelReason]}` : ""}`)
+                .join(", ")}
+              ).
+            </Card>
+          )}
+
+          {activeLines.map((line) => {
+            const { sample, rows, proposal, conformity, reason, doubt } = evaluate(line);
             const highlighted = errorConcernsSample(error, sample);
             return (
               <Card
@@ -567,6 +832,40 @@ export function SerieReceptionForm({
                       </select>
                     </div>
                   </div>
+                  <div>
+                    <label htmlFor={`sc-${line.sampleId}`} className="block text-sm font-medium text-slate-700">
+                      Conservation
+                    </label>
+                    <StorageClassSelect
+                      id={`sc-${line.sampleId}`}
+                      value={line.storageClass}
+                      defaultLabel={storageDefaultLabel(sample.lineKind, [sample.nature.family])}
+                      onChange={(storageClass) => updateLine(line.sampleId, { storageClass })}
+                    />
+                  </div>
+                  {sample.lineKind === "EAU" && (
+                    <div>
+                      <label htmlFor={`src-${line.sampleId}`} className="block text-sm font-medium text-slate-700">
+                        Température relevée sur
+                      </label>
+                      <select
+                        id={`src-${line.sampleId}`}
+                        value={receptionTemperatureSource(line) ?? ""}
+                        disabled={!line.temperature.trim()}
+                        onChange={(e) =>
+                          updateLine(line.sampleId, { sourceChoice: (e.target.value || null) as TemperatureSource | null })
+                        }
+                        className="input-field mt-1.5 px-3 disabled:opacity-60"
+                      >
+                        <option value="">—</option>
+                        {TEMPERATURE_SOURCES.map((source) => (
+                          <option key={source} value={source}>
+                            {TEMPERATURE_SOURCE_LABELS[source]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 <Checklist
@@ -577,6 +876,28 @@ export function SerieReceptionForm({
                     id: `exploitable-${line.sampleId}`,
                     invalid: highlighted && line.exploitable === null,
                   }}
+                  ticks={{
+                    EMBALLAGE: {
+                      value: line.packagingOk,
+                      onChange: (ok) => answerTick(line, "EMBALLAGE", ok),
+                      id: `packaging-${line.sampleId}`,
+                      invalid: highlighted && line.packagingOk === null,
+                    },
+                    IDENTIFICATION: {
+                      value: line.identificationOk,
+                      onChange: (ok) => answerTick(line, "IDENTIFICATION", ok),
+                      id: `identification-${line.sampleId}`,
+                      invalid: highlighted && line.identificationOk === null,
+                    },
+                  }}
+                />
+
+                <ReceptionNoteField
+                  id={`obs-${line.sampleId}`}
+                  value={line.receptionNote}
+                  onChange={(receptionNote) => updateLine(line.sampleId, { receptionNote })}
+                  doubt={conformity ? (rows.find((row) => row.status === "A_VERIFIER") ?? null) : null}
+                  invalid={highlighted && doubt !== null}
                 />
 
                 <fieldset className="mt-4">
@@ -594,14 +915,25 @@ export function SerieReceptionForm({
                       disabled={false}
                       tone="warn"
                       label="Non conforme"
-                      onClick={() => updateLine(line.sampleId, { conformityChoice: false })}
+                      onClick={() => {
+                        // A DLC passed (C7) and nothing else proposing a motif: « Autre », précision ready.
+                        const dlcNote = proposal.reason === "AUTRE" && !line.note.trim() ? expiredDlcNote(rows) : null;
+                        updateLine(line.sampleId, {
+                          conformityChoice: false,
+                          ...(dlcNote ? { reason: "AUTRE" as const, note: dlcNote } : {}),
+                        });
+                      }}
                     />
                   </div>
                   {proposal.forced && (
                     <p className="mt-1.5 text-xs text-rose-700">
                       {proposal.rule === 1
                         ? "Échantillon non exploitable (règle 1) : il est réceptionné non conforme."
-                        : `La règle (${proposal.rule}) n'est pas respectée : corrigez la mesure ou réceptionnez l'échantillon comme non conforme.`}
+                        : proposal.code
+                          ? `Contrôle ${proposal.code} non conforme : l'échantillon est réceptionné non conforme${
+                              proposal.code === "C5" ? " — corrigez la fiche avant de valider" : ""
+                            }.`
+                          : `La règle (${proposal.rule}) n'est pas respectée : corrigez la mesure ou réceptionnez l'échantillon comme non conforme.`}
                     </p>
                   )}
                 </fieldset>
@@ -643,28 +975,32 @@ export function SerieReceptionForm({
                 )}
 
                 {!conformity && (
-                  <fieldset className="mt-3">
-                    <legend className="text-sm font-medium text-slate-700">Décision pour cet échantillon</legend>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      <ConformityChip
-                        active={!line.destroy}
-                        disabled={false}
-                        tone="ok"
-                        label="Analyser malgré tout"
-                        onClick={() => updateLine(line.sampleId, { destroy: false })}
-                      />
-                      <ConformityChip
-                        active={line.destroy}
-                        disabled={false}
-                        tone="warn"
-                        label="Détruire"
-                        onClick={() => updateLine(line.sampleId, { destroy: true })}
-                      />
-                    </div>
-                  </fieldset>
+                  <DecisionChips
+                    legend="Décision pour cet échantillon"
+                    value={line.decision}
+                    onChange={(decision) => updateLine(line.sampleId, { decision })}
+                  />
                 )}
 
-                {!conformity && line.destroy && (
+                {!conformity && line.decision === "ANALYSER" && (
+                  <ConsultationFields
+                    idPrefix={`accord-${line.sampleId}`}
+                    value={line.consultation}
+                    onChange={(consultation) => updateLine(line.sampleId, { consultation })}
+                    required={consultationRequired}
+                    invalid={highlighted && consultationDraftError(line.consultation, consultationRequired) !== null}
+                  />
+                )}
+
+                {!conformity && line.decision === "EN_ATTENTE_CLIENT" && (
+                  <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    Échantillon réceptionné et numéroté, puis bloqué jusqu&apos;à l&apos;avis du client : il apparaît dans
+                    « Bloqués » de la réception, d&apos;où il sera analysé ou détruit.
+                  </p>
+                )}
+
+                {!conformity && line.decision === "DETRUIRE" && (
                   <p className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                     Échantillon détruit : numéroté et imprimé sur le bon de réception avec sa non-conformité, puis annulé
@@ -764,8 +1100,15 @@ export function SerieReceptionForm({
                 onChange={(e) => changeCooler(e.target.value)}
                 placeholder="Ex. : 3"
                 className="input-field mt-1.5 px-3"
+                aria-describedby={coolerWarning ? "cooler-warning" : undefined}
               />
               <p className="mt-1 text-xs text-slate-500">Pré-remplit la température de chaque échantillon.</p>
+              {coolerWarning && (
+                <p id="cooler-warning" className="mt-1 flex items-start gap-1.5 text-xs font-medium text-amber-800">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  {coolerWarning}
+                </p>
+              )}
             </div>
             <a
               href={`/api/series/${serie.id}/document`}
@@ -822,20 +1165,33 @@ function ReceivedSummary({
   serie,
   lines,
   role,
+  decided,
   justReceived,
   onBack,
 }: {
   serie: ReceptionSerieData;
   lines: ReceivedLine[];
   role: Role;
+  decided: Record<string, ReceivedChecklist | null>;
   justReceived: boolean;
   onBack: () => void;
 }) {
-  const units = lines.reduce((n, l) => n + Math.max(1, l.unitCount), 0);
   const byId = new Map(serie.samples.map((s) => [s.id, s]));
+  const statusOf = (line: ReceivedLine) => (justReceived ? line.status : byId.get(line.id)?.status);
+  // Numbered: every received sample (a sample cancelled before its reception
+  // never was); labelled: those still to analyse — as the labels route prints them.
+  const numbered = lines.filter((line) => line.controlCode !== null);
+  const units = numbered
+    .filter((line) => statusOf(line) !== "ANNULE")
+    .reduce((n, l) => n + Math.max(1, l.unitCount), 0);
   // The reception assigns nobody (§9.3): the column only shows once the
   // programme — or a reception before 08/10 — named a technician.
   const showTechnician = lines.some((line) => line.technician);
+  const columns = showTechnician ? 6 : 5;
+  // What was decided (A8): the API's answer right after the reception, the
+  // journal's SAMPLE_RECEIVED entry afterwards — never a recomputation.
+  const decidedOf = (line: ReceivedLine): ReceivedChecklist | null =>
+    line.checklist ? { checklist: line.checklist, complementary: line.complementary ?? [] } : (decided[line.id] ?? null);
   return (
     <div>
       <PageHeader
@@ -853,7 +1209,7 @@ function ReceivedSummary({
               {justReceived ? "Série réceptionnée" : "Série déjà réceptionnée"}
             </h2>
             <p className="text-sm text-slate-500">
-              {countLabel(lines.length, "échantillon numéroté", "échantillons numérotés")} · {countLabel(units, "étiquette")}
+              {countLabel(numbered.length, "échantillon numéroté", "échantillons numérotés")} · {countLabel(units, "étiquette")}
             </p>
           </div>
         </div>
@@ -873,57 +1229,92 @@ function ReceivedSummary({
             <tbody>
               {lines.map((line) => {
                 const source = byId.get(line.id);
+                const checklist = decidedOf(line);
                 return (
-                  <tr key={line.id} className="border-b border-slate-100 align-top">
-                    <td className="py-2.5 pr-3">
-                      <span className="font-medium text-slate-800">
-                        {sampleRef(line.lineNumber, line.code)} · {line.nature.label}
-                      </span>
-                      <span className="block text-xs text-slate-500">
-                        {source
-                          ? receptionDesignation({
-                              ...source,
-                              surfaceState: line.surfaceState ?? source.surfaceState,
-                              airMethod: line.airMethod ?? source.airMethod,
-                            })
-                          : (line.produit ?? line.surfaceLabel ?? line.personName ?? "—")}
-                      </span>
-                    </td>
-                    <td className="py-2.5 pr-3 font-mono text-base font-bold text-slate-900">{line.controlCode ?? "—"}</td>
-                    <td className="py-2.5 pr-3 text-slate-600">{unitsLabel(line.unitCount)}</td>
-                    <td className="py-2.5 pr-3">
-                      {(justReceived ? line.status : byId.get(line.id)?.status) === "ANNULE" ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
-                          Annulé
-                          {(() => {
-                            const reason = justReceived ? line.cancelReason : byId.get(line.id)?.cancelReason;
-                            return reason ? ` · ${CANCEL_REASON_LABELS[reason]}` : "";
-                          })()}
+                  <Fragment key={line.id}>
+                    <tr className="align-top">
+                      <td className="py-2.5 pr-3">
+                        <span className="font-medium text-slate-800">
+                          {sampleRef(line.lineNumber, line.code)} · {line.nature.label}
                         </span>
-                      ) : line.conformity === false ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
-                          <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-                          {line.conformityReason ? NON_CONFORMITY_REASON_LABELS[line.conformityReason] : "Non conforme"}
-                          {line.analysisBlocked ? " · bloquée" : ""}
+                        <span className="block text-xs text-slate-500">
+                          {source
+                            ? receptionDesignation({
+                                ...source,
+                                surfaceState: line.surfaceState ?? source.surfaceState,
+                                airMethod: line.airMethod ?? source.airMethod,
+                              })
+                            : (line.produit ?? line.surfaceLabel ?? line.personName ?? "—")}
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
-                          <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
-                          Conforme
-                        </span>
-                      )}
-                    </td>
-                    {showTechnician && <td className="py-2.5 pr-3 text-slate-700">{line.technician?.name ?? "—"}</td>}
-                    <td className="py-2.5">
-                      {byId.get(line.id) && (
-                        <SampleVerbs
-                          sample={verbSampleOf(byId.get(line.id)!, serie.client.id, justReceived ? line.status ?? "RECU" : byId.get(line.id)!.status)}
-                          role={role}
-                          compact
-                        />
-                      )}
-                    </td>
-                  </tr>
+                        {line.receptionNote && (
+                          <span className="mt-1 block max-w-md whitespace-pre-line text-xs text-slate-600">
+                            <span className="font-semibold text-slate-700">Observation :</span> {line.receptionNote}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2.5 pr-3 font-mono text-base font-bold text-slate-900">{line.controlCode ?? "—"}</td>
+                      <td className="py-2.5 pr-3 text-slate-600">{unitsLabel(line.unitCount)}</td>
+                      <td className="py-2.5 pr-3">
+                        {(justReceived ? line.status : byId.get(line.id)?.status) === "ANNULE" ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
+                            Annulé
+                            {(() => {
+                              const reason = justReceived ? line.cancelReason : byId.get(line.id)?.cancelReason;
+                              return reason ? ` · ${CANCEL_REASON_LABELS[reason]}` : "";
+                            })()}
+                          </span>
+                        ) : line.conformity === false ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
+                            <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                            {line.conformityReason ? NON_CONFORMITY_REASON_LABELS[line.conformityReason] : "Non conforme"}
+                            {line.awaitingClientSince ? " · en attente du client" : line.analysisBlocked ? " · bloquée" : ""}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                            <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                            Conforme
+                          </span>
+                        )}
+                      </td>
+                      {showTechnician && <td className="py-2.5 pr-3 text-slate-700">{line.technician?.name ?? "—"}</td>}
+                      <td className="py-2.5">
+                        {byId.get(line.id) && (
+                          <SampleVerbs
+                            sample={verbSampleOf(byId.get(line.id)!, serie.client.id, justReceived ? line.status ?? "RECU" : byId.get(line.id)!.status)}
+                            role={role}
+                            compact
+                          />
+                        )}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-slate-100">
+                      <td colSpan={columns} className="pb-3">
+                        {checklist ? (
+                          <details className="group rounded-xl border border-slate-200 bg-slate-50/40">
+                            <summary className="flex min-h-[44px] cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-0.5 rounded-xl px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand [&::-webkit-details-marker]:hidden">
+                              <ChevronRight
+                                className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-90 motion-reduce:transition-none"
+                                aria-hidden="true"
+                              />
+                              Checklist à la réception
+                              <span className="text-xs font-normal text-slate-500">
+                                {checklistSummary([...checklist.checklist, ...checklist.complementary])}
+                              </span>
+                            </summary>
+                            <div className="px-3 pb-3">
+                              <Checklist rows={[...checklist.checklist, ...checklist.complementary]} />
+                            </div>
+                          </details>
+                        ) : (
+                          <p className="px-1 text-xs text-slate-500">
+                            {cancelledBeforeReception({ status: statusOf(line), controlCode: line.controlCode })
+                              ? "Annulé avant la réception : pas de checklist"
+                              : "Réceptionné avant la checklist"}
+                          </p>
+                        )}
+                      </td>
+                    </tr>
+                  </Fragment>
                 );
               })}
             </tbody>

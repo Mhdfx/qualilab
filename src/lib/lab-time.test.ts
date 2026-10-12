@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MOROCCO_GMT_SWITCH, fromLabWallTime, labOffsetMinutes, labTimeZone, toLabWallTime } from "./lab-time";
+import { MOROCCO_GMT_SWITCH, fromLabWallTime, labDayOf, labOffsetMinutes, labTimeZone, toLabWallTime } from "./lab-time";
 
 /**
  * Morocco: permanent UTC+1 (with the Ramadan pause at UTC+0) until
@@ -41,5 +41,15 @@ describe("toLabWallTime / fromLabWallTime", () => {
   it("rejects what is not a wall time", () => {
     expect(fromLabWallTime("")).toBeNull();
     expect(fromLabWallTime("demain")).toBeNull();
+  });
+});
+
+describe("labDayOf", () => {
+  it("is the day the laboratory's clock shows, not the runtime's", () => {
+    // After the return to UTC (20/09/2026): 23:30 UTC is still the same day.
+    expect(labDayOf(new Date("2026-10-09T23:30:00.000Z"))).toBe("2026-10-09");
+    // Before it, the clock was UTC+1: 23:30 UTC was already the next day.
+    expect(labDayOf(new Date("2026-09-10T23:30:00.000Z"))).toBe("2026-09-11");
+    expect(labDayOf(new Date("2026-01-14T23:00:00.000Z"))).toBe("2026-01-15");
   });
 });

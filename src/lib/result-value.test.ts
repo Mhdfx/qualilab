@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { applyCalcFactor, parseLabValue, suggestConformity, formatLabValue } from "./result-value";
+import {
+  applyCalcFactor,
+  benchConformity,
+  factoredText,
+  isUncountableText,
+  parseLabValue,
+  suggestConformity,
+  formatLabValue,
+} from "./result-value";
 
 /**
  * Reading a bench value is the single most consequential function here: it
@@ -54,6 +62,23 @@ describe("parseLabValue", () => {
   it("is not confused by surrounding spaces", () => {
     expect(parseLabValue("  8,9.10²  ").numeric).toBe(890);
   });
+
+  it("reads an uncountable plate — no number, whatever the case and the accents", () => {
+    for (const written of ["Indénombrable", "indenombrable", "INDÉNOMBRABLE", "Incomptable", "TNTC", "t.n.t.c."]) {
+      expect(parseLabValue(written), written).toEqual({ numeric: null, kind: "uncountable" });
+      expect(isUncountableText(written), written).toBe(true);
+    }
+    expect(isUncountableText("Absence")).toBe(false);
+    expect(isUncountableText(null)).toBe(false);
+  });
+
+  it("reads « > x » as a lower bound, with the usual notations of x", () => {
+    expect(parseLabValue(">300")).toEqual({ numeric: 300, kind: "above" });
+    expect(parseLabValue("> 3.10^5")).toEqual({ numeric: 300_000, kind: "above" });
+    expect(parseLabValue("> 3,0.10⁵")).toEqual({ numeric: 300_000, kind: "above" });
+    expect(parseLabValue("> illisible")).toEqual({ numeric: null, kind: "unreadable" });
+    expect(parseLabValue("> -5")).toEqual({ numeric: null, kind: "unreadable" });
+  });
 });
 
 describe("suggestConformity", () => {
@@ -74,6 +99,32 @@ describe("suggestConformity", () => {
     expect(suggestConformity(null, 100)).toBeNull();
     expect(suggestConformity(50, null)).toBeNull();
     expect(suggestConformity(50, undefined)).toBeNull();
+  });
+
+  it("is non conform for « > x » once x reaches the limit, undecided below it", () => {
+    expect(suggestConformity(300, 100, "above")).toBe(false);
+    expect(suggestConformity(100, 100, "above")).toBe(false);
+    // « > 50 » against 100: the count may be 60 or 10⁶ — read a higher dilution.
+    expect(suggestConformity(50, 100, "above")).toBeNull();
+    expect(suggestConformity(300, null, "above")).toBeNull();
+  });
+
+  it("is non conform for an uncountable plate whenever there is a limit", () => {
+    const parsed = parseLabValue("Indénombrable");
+    expect(suggestConformity(parsed.numeric, 100, parsed.kind)).toBe(false);
+    expect(suggestConformity(parsed.numeric, 0, parsed.kind)).toBe(false);
+    expect(suggestConformity(parsed.numeric, null, parsed.kind)).toBeNull();
+  });
+});
+
+describe("factoredText", () => {
+  it("rewrites a count and the bound of « > x », nothing else", () => {
+    expect(factoredText(applyCalcFactor(parseLabValue("89"), 10))).toBe("8,9.10²");
+    expect(factoredText(applyCalcFactor(parseLabValue("> 300"), 10))).toBe("> 3.10³");
+    expect(applyCalcFactor(parseLabValue("> 300"), 10)).toEqual({ numeric: 3000, kind: "above" });
+    expect(factoredText(applyCalcFactor(parseLabValue("Indénombrable"), 10))).toBeNull();
+    expect(factoredText(applyCalcFactor(parseLabValue("< 10"), 10))).toBeNull();
+    expect(factoredText(applyCalcFactor(parseLabValue("Absence"), 10))).toBeNull();
   });
 });
 
@@ -151,5 +202,33 @@ describe("formatLabValue — mantissa carry", () => {
   it("keeps ordinary readings unchanged", () => {
     expect(formatLabValue(890)).toBe("8,9.10²");
     expect(formatLabValue(100)).toBe("1.10²");
+  });
+});
+
+describe("benchConformity — what the server stores against the parameter's limit", () => {
+  const stored = (typed: string, limit: number | null, chosen: unknown) => {
+    const parsed = parseLabValue(typed);
+    return benchConformity(suggestConformity(parsed.numeric, limit, parsed.kind), chosen);
+  };
+
+  it("keeps the suggestion whatever the request says", () => {
+    // « Indénombrable » or « > x » over the limit: never conforme, never blank.
+    for (const chosen of [true, null, undefined, "oui"]) {
+      expect(stored("Indénombrable", 100, chosen), String(chosen)).toBe(false);
+      expect(stored("TNTC", 100, chosen), String(chosen)).toBe(false);
+      expect(stored("> 3.10^5", 100, chosen), String(chosen)).toBe(false);
+      expect(stored("150", 100, chosen), String(chosen)).toBe(false);
+      expect(stored("50", 100, chosen), String(chosen)).toBe(true);
+    }
+  });
+
+  it("takes the technician's choice only where the screen asks for one", () => {
+    // « > 5 » below the limit proves nothing; « Présence » and no limit have no suggestion.
+    expect(stored("> 5", 100, true)).toBe(true);
+    expect(stored("> 5", 100, false)).toBe(false);
+    expect(stored("Indénombrable", null, false)).toBe(false);
+    expect(stored("Indénombrable", null, true)).toBe(true);
+    expect(stored("Indénombrable", null, "non")).toBeNull();
+    expect(stored("Présence", 100, undefined)).toBeNull();
   });
 });

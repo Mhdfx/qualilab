@@ -15,11 +15,21 @@ import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { VerdictBadge } from "@/components/samples/VerdictBadge";
 import {
   applyCalcFactor,
-  formatLabValue,
+  factoredText,
   parseLabValue,
   suggestConformity,
 } from "@/lib/result-value";
-import { applyUnitFactor, hasLimit, judgeUnits, parseUnitReading, summariseReadings, type Plan, type Verdict as PlanVerdict } from "@/lib/interpretation";
+import {
+  aboveBelowLimit,
+  applyUnitFactor,
+  hasLimit,
+  judgeUnits,
+  parseUnitReading,
+  suggestUnitsConformity,
+  summariseReadings,
+  type Plan,
+  type Verdict as PlanVerdict,
+} from "@/lib/interpretation";
 import { repetitionLabel } from "@/lib/series";
 import type { ResultWorkStatus } from "@/generated/prisma/enums";
 
@@ -78,9 +88,14 @@ type Reading = {
   typedUnits: number;
   /** Repetitions typed in a notation the engine cannot read (« abc »): R1, R4… */
   unreadable: string[];
+  /** « > x » below the limit: why the conformity cannot be computed. */
+  undecided: string | null;
 };
 
 const NO_UNREADABLE: string[] = [];
+
+/** The notations the bench accepts — the help line and the « non reconnue » message. */
+const ACCEPTED_NOTATIONS = "1,2.10², < 10, > 3.10⁵, Indénombrable (ou TNTC), Absence, Présence ou 3(-2)";
 
 export function ResultEntryForm({
   sampleId,
@@ -107,16 +122,18 @@ export function ResultEntryForm({
           if (line.plan) {
             const judged = typedUnits > 0 ? judgeUnits(line.plan, units) : null;
             const verdict = judged ? judged.official ?? judged.informal : null;
-            return { parsed: null, conform: null, needsManual: false, verdict, indicative: !!judged && !judged.official, typedUnits, unreadable };
+            return { parsed: null, conform: null, needsManual: false, verdict, indicative: !!judged && !judged.official, typedUnits, unreadable, undecided: null };
           }
           // No criterion: the worst unit against the parameter's limit.
           const summary = summariseReadings(units);
           const parsed = summary.value ? { ...parseLabValue(summary.value), numeric: summary.numeric } : null;
-          const auto = parsed ? suggestConformity(parsed.numeric, line.limitValue) : null;
+          const auto = suggestUnitsConformity(units, line.limitValue);
+          const undecided = auto === null ? aboveBelowLimit(units, line.limitValue) : null;
           // The technician only decides when the reading is meaningful but
-          // not a number (« Présence ») — a decision taken earlier must not
-          // outlive the reading it was about.
-          const needsManual = typedUnits > 0 && unreadable.length === 0 && parsed?.numeric == null;
+          // not a number (« Présence »), or a « > x » below the limit — a
+          // decision taken earlier must not outlive the reading it was about.
+          const needsManual =
+            typedUnits > 0 && unreadable.length === 0 && auto === null && (parsed?.numeric == null || undecided !== null);
           return {
             parsed,
             conform: auto ?? (needsManual ? line.manualConform : null),
@@ -125,6 +142,7 @@ export function ResultEntryForm({
             indicative: false,
             typedUnits,
             unreadable,
+            undecided,
           };
         }
         // The suggestion compares the FINAL value — raw reading × factor —
@@ -133,9 +151,13 @@ export function ResultEntryForm({
           ? applyCalcFactor(parseLabValue(line.value), line.calcFactor)
           : null;
         const auto = parsed
-          ? suggestConformity(parsed.numeric, line.limitValue)
+          ? suggestConformity(parsed.numeric, line.limitValue, parsed.kind)
           : null;
-        const needsManual = !!line.value && parsed?.numeric === null;
+        const undecided =
+          parsed?.kind === "above" && auto === null
+            ? aboveBelowLimit([applyUnitFactor(parseUnitReading(line.value), line.calcFactor)], line.limitValue)
+            : null;
+        const needsManual = !!line.value && auto === null && (parsed?.numeric === null || undecided !== null);
         return {
           parsed,
           conform: auto ?? (needsManual ? line.manualConform : null),
@@ -144,6 +166,7 @@ export function ResultEntryForm({
           indicative: false,
           typedUnits: 0,
           unreadable: NO_UNREADABLE,
+          undecided,
         };
       }),
     [lines]
@@ -272,6 +295,9 @@ export function ResultEntryForm({
             {completed > 1 ? "s" : ""}
           </p>
         </div>
+        <p className="mt-1 text-xs text-slate-500">
+          Notations acceptées : <span className="font-mono text-slate-600">{ACCEPTED_NOTATIONS}</span>.
+        </p>
 
         <ul className="mt-4 space-y-3">
           {lines.map((line, index) => {
@@ -360,16 +386,17 @@ export function ResultEntryForm({
                         value={line.value}
                         onChange={(e) => update(index, { value: e.target.value })}
                         disabled={locked}
-                        placeholder="Ex. : 8,9.10²  ·  < 10  ·  Absence"
+                        placeholder="Ex. : 8,9.10²  ·  < 10  ·  > 3.10⁵  ·  Absence"
                         className={INPUT}
                       />
                       {line.calcFactor !== 1 &&
                         reading.parsed?.numeric != null &&
-                        reading.parsed.numeric !== 0 && (
+                        reading.parsed.numeric !== 0 &&
+                        factoredText(reading.parsed) !== null && (
                           <p className="mt-1 text-xs text-violet-700">
                             Valeur finale (lecture ×{line.calcFactor}) :{" "}
                             <b className="font-mono">
-                              {formatLabValue(reading.parsed.numeric)}
+                              {factoredText(reading.parsed)}
                             </b>
                             {line.unit ? ` ${line.unit}` : ""} — c&apos;est elle
                             qui figure au rapport.
@@ -414,8 +441,7 @@ export function ResultEntryForm({
                   >
                     <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
                     <span>
-                      {reading.unreadable.join(", ")} : lecture non reconnue. Notation attendue : 1,2.10², &lt; 10, Absence,
-                      Présence ou 3(-2).
+                      {reading.unreadable.join(", ")} : lecture non reconnue. Notation attendue : {ACCEPTED_NOTATIONS}.
                     </span>
                   </p>
                 ) : line.plan && !hasLimit(line.plan) ? (
@@ -551,7 +577,11 @@ function Verdict({
       <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
         <HelpCircle className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
         <span className="text-xs text-slate-600">
-          Valeur non numérique — indiquez la conformité :
+          {reading.undecided
+            ? `${reading.undecided} Sinon, indiquez la conformité :`
+            : reading.parsed.kind === "uncountable"
+              ? "Indénombrable, sans limite définie — indiquez la conformité :"
+              : "Valeur non numérique — indiquez la conformité :"}
         </span>
         <span className="flex gap-1.5">
           <button
@@ -586,15 +616,21 @@ function Verdict({
   }
 
   const numeric = reading.parsed.numeric;
-  if (numeric === null) return null;
+  const kind = reading.parsed.kind;
+  if (numeric === null && kind !== "uncountable") return null;
 
   const conform = reading.conform;
+  const shown = numeric === null ? "" : `${numeric.toLocaleString("fr-FR")}${unit ? ` ${unit}` : ""}`;
   const readAs =
-    reading.parsed.kind === "absence"
+    kind === "absence"
       ? "lu comme une absence"
-      : reading.parsed.kind === "below"
+      : kind === "below"
         ? "sous le seuil de détection"
-        : `lu ${numeric.toLocaleString("fr-FR")}${unit ? ` ${unit}` : ""}`;
+        : kind === "uncountable"
+          ? "indénombrable"
+          : kind === "above"
+            ? `lu plus de ${shown}`
+            : `lu ${shown}`;
 
   if (conform === null) {
     return (

@@ -85,10 +85,13 @@ export const auth = betterAuth({
   // - /update-user: would let any account rename itself or change its
   //   identifier, which the administrator manages (/admin/utilisateurs);
   // - /update-session: no session field is meant to be written;
-  // - /change-password: the portal's « Mon compte » goes through
-  //   POST /api/portail/compte/mot-de-passe (journal USER_PASSWORD_CHANGED,
-  //   French messages), which calls `auth.api.changePassword` server-side —
-  //   `disabledPaths` only applies to HTTP requests, not to `auth.api.*`;
+  // - /change-password: « Mon compte » goes through our own routes —
+  //   POST /api/portail/compte/mot-de-passe (portal) and
+  //   POST /api/compte/mot-de-passe (staff), both `changeOwnPassword` in
+  //   password-change-server.ts (journal USER_PASSWORD_CHANGED, French
+  //   messages, 5 wrong passwords per 15 min per account) — which call
+  //   `auth.api.changePassword` server-side: `disabledPaths` only applies to
+  //   HTTP requests, not to `auth.api.*`;
   // - /is-username-available: an anonymous oracle of who has an account.
   disabledPaths: [
     "/admin/remove-user",
@@ -99,6 +102,17 @@ export const auth = betterAuth({
   ],
   advanced: {
     cookiePrefix: "qualilab",
+    // The client's address for the sign-in rate limit and the sessions.
+    // Behind nginx every request comes from 127.0.0.1: the address is the
+    // one nginx writes (`proxy_set_header X-Real-IP $remote_addr`, which a
+    // client cannot forge), then a single-value X-Forwarded-For. nginx
+    // appends to an X-Forwarded-For the client sent, and Better Auth does
+    // not trust a multi-valued chain: read alone, it sent every such request
+    // to one shared « no-trusted-ip » bucket. The sign-in rule itself is left
+    // as it is: all the laboratory's PCs leave through one NAT address.
+    ipAddress: {
+      ipAddressHeaders: ["x-real-ip", "x-forwarded-for"],
+    },
     useSecureCookies:
       process.env.AUTH_COOKIE_SECURE === "false"
         ? false

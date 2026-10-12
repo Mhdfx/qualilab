@@ -3,10 +3,10 @@ import {
   accountChangeClosesSessions,
   isBanActive,
   PORTAL_REFUSAL_MESSAGES,
-  checkPortalPasswordChange,
+  checkPasswordChange,
   isClientClosed,
   portalAccess,
-  portalPasswordErrorMessage,
+  passwordErrorMessage,
   portalScopeChanged,
   readClientId,
   userClientRefusal,
@@ -106,32 +106,32 @@ describe("portalScopeChanged", () => {
   });
 });
 
-describe("checkPortalPasswordChange", () => {
+describe("checkPasswordChange", () => {
   it("accepts a valid change", () => {
     expect(
-      checkPortalPasswordChange({ currentPassword: "ancien-mdp", newPassword: "nouveau-mdp", confirmPassword: "nouveau-mdp" })
+      checkPasswordChange({ currentPassword: "ancien-mdp", newPassword: "nouveau-mdp", confirmPassword: "nouveau-mdp" })
     ).toEqual({ ok: true, currentPassword: "ancien-mdp", newPassword: "nouveau-mdp" });
   });
   it("refuses a missing current password, a short one, a mismatch, the same one", () => {
-    expect(checkPortalPasswordChange({ newPassword: "nouveau-mdp" })).toMatchObject({ ok: false });
-    expect(checkPortalPasswordChange({ currentPassword: "ancien-mdp", newPassword: "court" })).toMatchObject({
+    expect(checkPasswordChange({ newPassword: "nouveau-mdp" })).toMatchObject({ ok: false });
+    expect(checkPasswordChange({ currentPassword: "ancien-mdp", newPassword: "court" })).toMatchObject({
       ok: false,
       error: expect.stringMatching(/8 caractères/),
     });
     expect(
-      checkPortalPasswordChange({ currentPassword: "ancien-mdp", newPassword: "nouveau-mdp", confirmPassword: "autre-mdp" })
+      checkPasswordChange({ currentPassword: "ancien-mdp", newPassword: "nouveau-mdp", confirmPassword: "autre-mdp" })
     ).toMatchObject({ ok: false, error: expect.stringMatching(/ne correspondent pas/) });
-    expect(checkPortalPasswordChange({ currentPassword: "meme-mdp-1", newPassword: "meme-mdp-1" })).toMatchObject({
+    expect(checkPasswordChange({ currentPassword: "meme-mdp-1", newPassword: "meme-mdp-1" })).toMatchObject({
       ok: false,
     });
-    expect(checkPortalPasswordChange({ currentPassword: "ancien-mdp", newPassword: "x".repeat(129) })).toMatchObject({
+    expect(checkPasswordChange({ currentPassword: "ancien-mdp", newPassword: "x".repeat(129) })).toMatchObject({
       ok: false,
     });
-    expect(checkPortalPasswordChange(null)).toMatchObject({ ok: false });
+    expect(checkPasswordChange(null)).toMatchObject({ ok: false });
   });
   it("translates Better Auth's codes", () => {
-    expect(portalPasswordErrorMessage("INVALID_PASSWORD")).toBe("Le mot de passe actuel est incorrect.");
-    expect(portalPasswordErrorMessage(undefined)).toMatch(/Réessayez/);
+    expect(passwordErrorMessage("INVALID_PASSWORD")).toBe("Le mot de passe actuel est incorrect.");
+    expect(passwordErrorMessage(undefined)).toMatch(/Réessayez/);
   });
 });
 

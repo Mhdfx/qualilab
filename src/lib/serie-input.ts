@@ -10,7 +10,9 @@ import type {
   SampleType,
   SamplerKind,
   SerieKind,
+  StorageClass,
   SurfaceState,
+  TemperatureSource,
 } from "@/generated/prisma/enums";
 import { MAX_UNITS } from "./series";
 import { parseIsoDay } from "./date-only";
@@ -24,8 +26,17 @@ import {
   futureMessage,
 } from "./labels";
 import { LINE_FAMILIES, familiesFor, familyOfNature, natureFor, type LineFamily } from "./nature-family";
-import { EXPLOITABLE_MESSAGES } from "./reception-rules";
+import { EXPLOITABLE_MESSAGES, RECEPTION_NOTE_MAX, RECEPTION_NOTE_MESSAGES } from "./reception-rules";
+import { COMPLEMENTARY_MESSAGES, STORAGE_CLASSES, TEMPERATURE_SOURCES, parseChoice } from "./reception-complementary";
 import { twinFor, type SampleTwin } from "./sample-code";
+import {
+  CONSULTATION_MESSAGES,
+  consultationMissing,
+  parseConsultation,
+  parseDecision,
+  type ClientConsultation,
+  type ReceptionDecision,
+} from "./client-consultation";
 
 /**
  * Validating a série (visite or dépôt) and its lines — pure, shared by the
@@ -83,7 +94,20 @@ export const SERIE_MESSAGES = {
   surfaceLabelMissing: "Indiquez la désignation de la surface.",
   surfaceStateMissing: "Choisissez l'état de la surface.",
   airMethodMissing: "Choisissez la méthode de prélèvement de l'air.",
+  arrivalBeforeEnd: "L'arrivée au laboratoire précède la fin du prélèvement.",
+  arrivalBeforeStart: "L'arrivée au laboratoire précède le prélèvement.",
 } as const;
+
+/**
+ * The arrival at the laboratory against the sampling: never before its end,
+ * nor before its start when no end was typed. One rule for the visit's
+ * creation, the série's header (PATCH), the reception and its screen.
+ */
+export function arrivalRefusal(arrivedAt: Date, startedAt: Date, endedAt: Date | null): string | null {
+  if (endedAt && arrivedAt < endedAt) return SERIE_MESSAGES.arrivalBeforeEnd;
+  if (arrivedAt < startedAt) return SERIE_MESSAGES.arrivalBeforeStart;
+  return null;
+}
 
 /**
  * A line message naming its sample: « Échantillon 2 — choisissez l'état de la
@@ -140,6 +164,10 @@ export type CleanLine = {
   productTemperature: number | null;
   ambientTemperature: number | null;
   receptionTemperature: number | null;
+  /** C2, a deposit only: where the temperature at arrival was read; null without one, and on a visit. */
+  receptionTemperatureSource: TemperatureSource | null;
+  /** C2, a deposit only: the conservation class chosen; null = the kind's default, and on a visit. */
+  storageClass: StorageClass | null;
   /** « Désignation » of a SURFACE line; null on every other kind. */
   surfaceLabel: string | null;
   /** « Surface prélevée (cm²) » of a SURFACE line (100 by default); null elsewhere. */
@@ -160,11 +188,22 @@ export type CleanLine = {
   // Reception data — meaningful for a dépôt only; defaults for a visit.
   /** Rule (1) of the bon de réception, answered at the counter; null on a visit. */
   exploitable: boolean | null;
+  /** C3 (emballage) and C5 (identification), ticked at the counter; null on a visit. */
+  packagingOk: boolean | null;
+  identificationOk: boolean | null;
   conformity: boolean;
   conformityReason: NonConformityReason | null;
   conformityNote: string | null;
+  /** « Observation de réception » of a deposit line (A7), shared by its samples; null on a visit. */
+  receptionNote: string | null;
   /** A non-conform deposit line destroyed at the counter (slice E). */
   destroy: boolean;
+  /** The counter's decision on the line (A9); « Analyser » on a visit and on every conform line. */
+  decision: ReceptionDecision;
+  /** « En attente du client »: received, held until released. */
+  awaitClient: boolean;
+  /** The client's agreement to analyse a non-conform line; null = not recorded, and on a visit. */
+  consultation: ClientConsultation | null;
 };
 
 export type CleanSerie = {
@@ -182,6 +221,11 @@ export type CleanSerie = {
   clientReference: string | null;
   startedAt: Date;
   endedAt: Date | null;
+  /**
+   * C1: false on a deposit whose « Prélevé le » was left empty (`startedAt`
+   * is then now), true when typed; null on a visit.
+   */
+  samplingTimeDeclared: boolean | null;
   arrivedAt: Date | null;
   coolerTemperature: number | null;
   advanceAmount: number | null;
@@ -196,6 +240,8 @@ export type SerieValidation =
 
 export type LineOptions = {
   kind?: SerieKind;
+  /** LabSettings.consultationRequired — the deposit's non-conform analysis needs the agreement (A9). */
+  consultationRequired?: boolean;
   /**
    * « Corriger la fiche » of a row entered before the state and the method
    * existed (07/10): `surfaceState` / `airMethod` may stay empty.
@@ -388,15 +434,38 @@ export function validateLine(
 
   // ---- Reception data of a deposit line ------------------------------------
   let exploitable: boolean | null = null;
+  let packagingOk: boolean | null = null;
+  let identificationOk: boolean | null = null;
+  let receptionTemperatureSource: TemperatureSource | null = null;
+  let storageClass: StorageClass | null = null;
   let conformity = true;
   let conformityReason: NonConformityReason | null = null;
   let conformityNote: string | null = null;
+  let receptionNote: string | null = null;
   let destroy = false;
+  let decision: ReceptionDecision = "ANALYSER";
+  let consultation: ClientConsultation | null = null;
   if (deposit) {
     // Rule (1) is answered for every line, one answer for its two samples —
     // a form opened before the checklist sends none and is told so.
     if (typeof input.exploitable !== "boolean") return fail(EXPLOITABLE_MESSAGES.missing);
     exploitable = input.exploitable;
+    // The contrôles complémentaires C3 and C5, one answer for the line too.
+    if (typeof input.packagingOk !== "boolean") return fail(COMPLEMENTARY_MESSAGES.packagingMissing);
+    if (typeof input.identificationOk !== "boolean") return fail(COMPLEMENTARY_MESSAGES.identificationMissing);
+    packagingOk = input.packagingOk;
+    identificationOk = input.identificationOk;
+    // C2: the class and where the temperature was read — both optional.
+    const source = parseChoice(input.receptionTemperatureSource, TEMPERATURE_SOURCES);
+    if (source === "invalid") return fail("Origine de la température inconnue.");
+    const chosenClass = parseChoice(input.storageClass, STORAGE_CLASSES);
+    if (chosenClass === "invalid") return fail("Classe de conservation inconnue.");
+    receptionTemperatureSource = receptionTemperature === null ? null : source;
+    storageClass = chosenClass;
+    // A7: the observation — whether an accepted doubt needs it is decided
+    // with the rows, in POST /api/series.
+    if (tooLong(input.receptionNote, RECEPTION_NOTE_MAX)) return fail(RECEPTION_NOTE_MESSAGES.tooLong);
+    receptionNote = text(input.receptionNote, RECEPTION_NOTE_MAX) || null;
     if (input.conformity !== undefined && typeof input.conformity !== "boolean") {
       return fail("Indiquez la conformité de l'échantillon.");
     }
@@ -411,11 +480,22 @@ export function validateLine(
       if (reason === "AUTRE" && !note) return fail("Précisez le motif « autre ».");
       conformityNote = note || null;
     }
-    // Case by case (29/09): a non-conform line is analysed anyway or destroyed.
-    const decision = input.decision === undefined || input.decision === null ? "ANALYSER" : input.decision;
-    if (decision !== "ANALYSER" && decision !== "DETRUIRE") return fail("Décision inconnue pour l'échantillon.");
-    if (decision === "DETRUIRE" && conformity) return fail("Seul un échantillon non conforme peut être détruit.");
+    // Case by case (29/09, A9): a non-conform line is analysed anyway — the
+    // client's agreement recorded —, waits for the client, or is destroyed.
+    const chosen = parseDecision(input.decision);
+    if (!chosen) return fail("Décision inconnue pour l'échantillon.");
+    if (chosen === "DETRUIRE" && conformity) return fail("Seul un échantillon non conforme peut être détruit.");
+    if (chosen === "EN_ATTENTE_CLIENT" && conformity) return fail(CONSULTATION_MESSAGES.awaitConform);
+    decision = chosen;
     destroy = decision === "DETRUIRE";
+    if (!conformity && decision === "ANALYSER") {
+      const parsed = parseConsultation(input.consultation, new Date());
+      if (!parsed.ok) return fail(parsed.error);
+      consultation = parsed.value;
+    }
+    if (consultationMissing(options.consultationRequired ?? false, decision, conformity, consultation)) {
+      return fail(CONSULTATION_MESSAGES.required);
+    }
     // `input.technicianId` is deliberately not read (§9.3): the counter
     // assigns nobody, the programme does.
   }
@@ -439,6 +519,8 @@ export function validateLine(
       ambientTemperature: ambientTemperature as number | null,
       receptionTemperature:
         receptionTemperature === null ? null : Math.round((receptionTemperature as number) * 10) / 10,
+      receptionTemperatureSource,
+      storageClass,
       surfaceLabel,
       surfaceAreaCm2,
       surfaceState,
@@ -453,10 +535,16 @@ export function validateLine(
       // hands never carries one.
       productTypeId: lineKind === "ALIMENT" ? text(input.productTypeId) || null : null,
       exploitable,
+      packagingOk,
+      identificationOk,
       conformity,
       conformityReason,
       conformityNote,
+      receptionNote,
       destroy,
+      decision,
+      awaitClient: decision === "EN_ATTENTE_CLIENT",
+      consultation,
     },
   };
 }
@@ -464,7 +552,7 @@ export function validateLine(
 export function validateSerie(
   raw: unknown,
   natures: ReadonlyMap<string, NatureRef>,
-  options: { kind: SerieKind }
+  options: { kind: SerieKind; consultationRequired?: boolean }
 ): SerieValidation {
   const input = (raw ?? {}) as Record<string, unknown>;
   const fail = (error: string) => ({ ok: false as const, error });
@@ -507,8 +595,8 @@ export function validateSerie(
   if (endedAt && endedAt.getTime() > now + 5 * 60 * 1000) return fail(futureMessage("L'heure de fin"));
   if (arrivedAt && arrivedAt.getTime() > now + 5 * 60 * 1000) return fail(futureMessage("L'heure d'arrivée"));
   if (endedAt && endedAt < startedAt) return fail("L'heure de fin précède le début du prélèvement.");
-  if (arrivedAt && endedAt && arrivedAt < endedAt) return fail("L'arrivée au laboratoire précède la fin du prélèvement.");
-  if (arrivedAt && !endedAt && arrivedAt < startedAt) return fail("L'arrivée au laboratoire précède le prélèvement.");
+  const arrivalProblem = arrivedAt ? arrivalRefusal(arrivedAt, startedAt, endedAt) : null;
+  if (arrivalProblem) return fail(arrivalProblem);
 
   const coolerTemperature = numberOrNull(input.coolerTemperature);
   if (coolerTemperature === "invalid" || (coolerTemperature !== null && (coolerTemperature < -80 || coolerTemperature > 300))) {
@@ -543,7 +631,10 @@ export function validateSerie(
 
   const lines: CleanLine[] = [];
   for (let i = 0; i < rawLines.length; i += 1) {
-    const checked = validateLine(rawLines[i], i, natures, { kind: options.kind });
+    const checked = validateLine(rawLines[i], i, natures, {
+      kind: options.kind,
+      consultationRequired: options.consultationRequired,
+    });
     if (!checked.ok) {
       return { ok: false, error: sampleLineMessage(checked.line, checked.error), line: checked.line };
     }
@@ -565,6 +656,7 @@ export function validateSerie(
       clientReference: text(input.clientReference) || null,
       startedAt,
       endedAt,
+      samplingTimeDeclared: deposit ? startedAtRaw !== null : null,
       arrivedAt,
       coolerTemperature: coolerTemperature as number | null,
       advanceAmount,

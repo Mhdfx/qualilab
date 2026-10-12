@@ -6,12 +6,14 @@ import { drawDocumentNumber } from "@/lib/invoice-number";
 import { canIssue, statusAfterPayments } from "@/lib/invoice-lifecycle";
 import { unpricedLineRefusal } from "@/lib/billing";
 import { toMoney } from "@/lib/money";
+import { CLIENT_IDENTITY_SELECT, clientSnapshotOf } from "@/lib/invoice-client-identity";
 import { InvoiceRequestError, checkSampleLines, errorResponse, lockInvoice } from "../../invoice-store";
 
 /**
  * « Émettre » a draft (FACTURATION.md §1): draws « FAC-AAAA-NNNN » from the
  * FACTURE counter in the same transaction, fixes `issuedAt` (and the printed
- * date), and from then on the invoice never changes. Its samples are checked
+ * date), freezes the client as printed (`clientSnapshot`), and from then on
+ * the invoice never changes. Its samples are checked
  * again — one may have been cancelled, or its site billed to another client,
  * since the draft was saved — and every analysis line must have its price.
  *
@@ -35,7 +37,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
             number: true,
             clientId: true,
             total: true,
-            client: { select: { name: true } },
+            client: { select: CLIENT_IDENTITY_SELECT },
             items: { select: { description: true, unitPrice: true, sampleId: true } },
           },
         });
@@ -61,6 +63,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
             status: statusAfterPayments(draft.total, 0, 0),
             issueDate: now,
             issuedAt: now,
+            // The client as printed from now on: a rename or a merge no
+            // longer changes the issued invoice.
+            clientSnapshot: clientSnapshotOf(draft.client),
           },
           select: { id: true, number: true, status: true, issuedAt: true },
         });

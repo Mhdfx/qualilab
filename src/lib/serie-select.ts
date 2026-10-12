@@ -78,6 +78,8 @@ export const SERIE_FIELD_SELECT = {
 export const SERIE_LAB_SELECT = {
   ...SERIE_COMMON,
   receivedBy: { select: { id: true, name: true } },
+  // C6: the reception's answer — the photo itself is never selected here.
+  signedProtocolReceived: true,
   samples: {
     select: {
       ...LINE_COMMON,
@@ -91,6 +93,11 @@ export const SERIE_LAB_SELECT = {
       conformity: true,
       conformityReason: true,
       conformityNote: true,
+      // A7: the reception's observation — lab side only.
+      receptionNote: true,
+      // A9: held at reception, and since when it waits for the client.
+      analysisBlocked: true,
+      awaitingClientSince: true,
       technician: { select: { id: true, name: true } },
     },
     orderBy: LINE_ORDER,

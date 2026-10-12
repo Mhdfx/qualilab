@@ -353,7 +353,9 @@ describe("« Corriger la fiche » d'un échantillon saisi avant l'état et la m�
 describe("les analyses sont facultatives (V6)", () => {
   it("accepte une ligne sans analyse, sur une visite comme sur un dépôt", () => {
     expect(validateLine({ ...aliment, parameterIds: [] }, 0, natures)).toMatchObject({ ok: true, value: { parameterIds: [] } });
-    expect(validateLine({ ...aliment, parameterIds: undefined, exploitable: true }, 0, natures, { kind: "DEPOT" })).toMatchObject({ ok: true, value: { parameterIds: [] } });
+    expect(
+      validateLine({ ...aliment, parameterIds: undefined, exploitable: true, packagingOk: true, identificationOk: true }, 0, natures, { kind: "DEPOT" })
+    ).toMatchObject({ ok: true, value: { parameterIds: [] } });
   });
 
   it("garde le type de produit sur une ligne aliment seulement, facultatif", () => {
@@ -398,7 +400,7 @@ describe("validateSerie — the visit as a whole", () => {
       line: 2,
       error: "Échantillon 2 — choisissez l'état de la surface.",
     });
-    const answered = { exploitable: true };
+    const answered = { exploitable: true, packagingOk: true, identificationOk: true };
     expect(validateSerie({ ...visit, lines: [{ ...aliment, ...answered }, { ...eau, ...answered }, { ...air, airMethod: null }] }, natures, { kind: "DEPOT" })).toMatchObject({
       ok: false,
       line: 3,
@@ -489,7 +491,7 @@ describe("le cadre de la série (RETOUR-LABO-06-10 §5, V1)", () => {
         error: "« Service vétérinaire » n'est plus proposé : choisissez « Autre » et indiquez le nom.",
       });
     }
-    expect(validateSerie({ ...base, lines: [{ ...aliment, exploitable: true }], cadre: "AUTRE", samplerKind: "AUTRE", samplerName: "Service test" }, natures, { kind: "DEPOT" })).toMatchObject({
+    expect(validateSerie({ ...base, lines: [{ ...aliment, exploitable: true, packagingOk: true, identificationOk: true }], cadre: "AUTRE", samplerKind: "AUTRE", samplerName: "Service test" }, natures, { kind: "DEPOT" })).toMatchObject({
       ok: true,
       value: { samplerKind: "AUTRE", samplerName: "Service test" },
     });
@@ -521,7 +523,7 @@ describe("validateSerie — the deposit at the counter", () => {
     advanceAmount: "350",
     advanceMode: "ESPECES",
     lines: [
-      { ...aliment, lieu: "", quantity: "250", quantityUnit: "G", receptionTemperature: "4,04", exploitable: true, technicianId: "t1" },
+      { ...aliment, lieu: "", quantity: "250", quantityUnit: "G", receptionTemperature: "4,04", exploitable: true, packagingOk: true, identificationOk: true, technicianId: "t1" },
       {
         lineKind: "EAU",
         analysesMicro: true,
@@ -532,6 +534,8 @@ describe("validateSerie — the deposit at the counter", () => {
         receptionTemperature: "12",
         parameterIds: ["p9"],
         exploitable: true,
+        packagingOk: true,
+        identificationOk: false,
         conformity: false,
         conformityReason: "QUANTITE_INSUFFISANTE",
         technicianId: "t1",
@@ -551,6 +555,8 @@ describe("validateSerie — the deposit at the counter", () => {
       lieu: "Dépôt au laboratoire",
       receptionTemperature: 4,
       exploitable: true,
+      packagingOk: true,
+      identificationOk: true,
       conformity: true,
       conformityReason: null,
     });
@@ -609,6 +615,48 @@ describe("validateSerie — the deposit at the counter", () => {
     });
   });
 
+  it("says whether the sampling time was given (C1): empty « Prélevé le » = now, not declared", () => {
+    const empty = validateSerie(deposit, natures, { kind: "DEPOT" });
+    expect(empty.ok && empty.value.samplingTimeDeclared).toBe(false);
+    if (empty.ok) expect(Math.abs(empty.value.startedAt.getTime() - Date.now())).toBeLessThan(60_000);
+    const typed = validateSerie({ ...deposit, startedAt: new Date(Date.now() - 3600_000).toISOString() }, natures, { kind: "DEPOT" });
+    expect(typed.ok && typed.value.samplingTimeDeclared).toBe(true);
+    const visit = validateSerie({ ...deposit, lines: deposit.lines.map((l) => ({ ...l, lieu: "Comptoir" })) }, natures, { kind: "VISITE" });
+    expect(visit.ok && visit.value.samplingTimeDeclared).toBeNull();
+  });
+
+  it("carries the class and the temperature's source of a deposit line (C2), never on a visit", () => {
+    const line = { ...deposit.lines[0], storageClass: "CONGELE", receptionTemperatureSource: "ECHANTILLON" };
+    const result = validateSerie({ ...deposit, lines: [line] }, natures, { kind: "DEPOT" });
+    expect(result.ok && result.value.lines[0]).toMatchObject({ storageClass: "CONGELE", receptionTemperatureSource: "ECHANTILLON" });
+    // No temperature typed: no source.
+    const cold = validateSerie({ ...deposit, lines: [{ ...line, receptionTemperature: "" }] }, natures, { kind: "DEPOT" });
+    expect(cold.ok && cold.value.lines[0].receptionTemperatureSource).toBeNull();
+    expect(validateSerie({ ...deposit, lines: [{ ...line, storageClass: "TIEDE" }] }, natures, { kind: "DEPOT" })).toMatchObject({
+      ok: false,
+      error: "Échantillon 1 — classe de conservation inconnue.",
+    });
+    const visit = validateSerie({ ...deposit, lines: [{ ...line, lieu: "Comptoir" }] }, natures, { kind: "VISITE" });
+    expect(visit.ok && visit.value.lines[0]).toMatchObject({ storageClass: null, receptionTemperatureSource: null });
+  });
+
+  it("needs C3 and C5 ticked on every line — one answer for the line's samples", () => {
+    const { packagingOk: answered, ...noPackaging } = deposit.lines[0];
+    expect(answered).toBe(true);
+    expect(validateSerie({ ...deposit, lines: [noPackaging] }, natures, { kind: "DEPOT" })).toEqual({
+      ok: false,
+      line: 1,
+      error: "Échantillon 1 — indiquez si l'emballage est intact (rechargez la page si elle date d'avant la mise à jour).",
+    });
+    expect(validateSerie({ ...deposit, lines: [{ ...deposit.lines[0], identificationOk: null }] }, natures, { kind: "DEPOT" })).toMatchObject({
+      ok: false,
+      line: 1,
+      error: "Échantillon 1 — indiquez si l'identification est conforme à la fiche (rechargez la page si elle date d'avant la mise à jour).",
+    });
+    const result = validateSerie(deposit, natures, { kind: "DEPOT" });
+    expect(result.ok && result.value.lines[1]).toMatchObject({ packagingOk: true, identificationOk: false });
+  });
+
   it("never declares a non-exploitable line conform", () => {
     expect(validateSerie({ ...deposit, lines: [{ ...deposit.lines[0], exploitable: false }] }, natures, { kind: "DEPOT" })).toEqual({
       ok: false,
@@ -636,6 +684,21 @@ describe("validateSerie — the deposit at the counter", () => {
     expect(NON_CONFORMITY_REASON_LABELS.NON_EXPLOITABLE).toBe("Échantillon non exploitable (tête de poisson, os…)");
   });
 
+  it("carries the line's « Observation de réception » (A7), 1 000 characters at most, never on a visit", () => {
+    const noted = { ...deposit.lines[0], receptionNote: "  Poids estimé, balance en maintenance  " };
+    const result = validateSerie({ ...deposit, lines: [noted] }, natures, { kind: "DEPOT" });
+    expect(result.ok && result.value.lines[0].receptionNote).toBe("Poids estimé, balance en maintenance");
+    const empty = validateSerie(deposit, natures, { kind: "DEPOT" });
+    expect(empty.ok && empty.value.lines[0].receptionNote).toBeNull();
+    expect(validateSerie({ ...deposit, lines: [{ ...noted, receptionNote: "x".repeat(1001) }] }, natures, { kind: "DEPOT" })).toEqual({
+      ok: false,
+      line: 1,
+      error: "Échantillon 1 — l'observation de réception dépasse 1 000 caractères.",
+    });
+    const visit = validateSerie({ ...deposit, lines: [{ ...noted, lieu: "Comptoir" }] }, natures, { kind: "VISITE" });
+    expect(visit.ok && visit.value.lines[0].receptionNote).toBeNull();
+  });
+
   it("ignores reception data on a visit", () => {
     const visit = validateSerie(
       { ...deposit, lines: deposit.lines.map((l) => ({ ...l, lieu: "Comptoir" })) },
@@ -646,7 +709,13 @@ describe("validateSerie — the deposit at the counter", () => {
     if (visit.ok) {
       expect(visit.value.samplerKind).toBe("CLIENT");
       expect(visit.value.advanceAmount).toBeNull();
-      expect(visit.value.lines[1]).toMatchObject({ exploitable: null, conformity: true, conformityReason: null });
+      expect(visit.value.lines[1]).toMatchObject({
+        exploitable: null,
+        packagingOk: null,
+        identificationOk: null,
+        conformity: true,
+        conformityReason: null,
+      });
       expect(visit.value.lines[1]).not.toHaveProperty("technicianId");
     }
   });
@@ -777,5 +846,56 @@ describe("planLineSamples — d'une ligne à ses échantillons", () => {
       ok: false,
       error: "Échantillon 1 — une des analyses demandées n'existe pas.",
     });
+  });
+});
+
+describe("validateSerie — the deposit's decision and the client's agreement (A9)", () => {
+  const base = {
+    clientId: "c1",
+    samplerKind: "CLIENT",
+    cadre: "AUTRE",
+    lines: [
+      {
+        ...aliment,
+        quantity: "250",
+        quantityUnit: "G",
+        receptionTemperature: "4",
+        exploitable: true,
+        packagingOk: false,
+        identificationOk: true,
+        conformity: false,
+        conformityReason: "EMBALLAGE",
+      },
+    ],
+  };
+  const line = base.lines[0];
+
+  it("analyses by default, holds for the client or destroys a non-conform line", () => {
+    expect(validateSerie(base, natures, { kind: "DEPOT" })).toMatchObject({
+      ok: true,
+      value: { lines: [{ decision: "ANALYSER", awaitClient: false, destroy: false, consultation: null }] },
+    });
+    expect(validateSerie({ ...base, lines: [{ ...line, decision: "EN_ATTENTE_CLIENT" }] }, natures, { kind: "DEPOT" })).toMatchObject({
+      ok: true,
+      value: { lines: [{ decision: "EN_ATTENTE_CLIENT", awaitClient: true, destroy: false }] },
+    });
+    expect(
+      validateSerie({ ...base, lines: [{ ...line, packagingOk: true, conformity: true, decision: "EN_ATTENTE_CLIENT" }] }, natures, { kind: "DEPOT" })
+    ).toEqual({ ok: false, line: 1, error: "Échantillon 1 — seul un échantillon non conforme peut attendre l'avis du client." });
+  });
+
+  it("records the agreement, and requires it when the laboratory says so", () => {
+    const agreed = { ...line, consultation: { name: "Mme Test", channel: "SUR_PLACE" } };
+    const result = validateSerie({ ...base, lines: [agreed] }, natures, { kind: "DEPOT", consultationRequired: true });
+    expect(result.ok && result.value.lines[0].consultation).toMatchObject({ name: "Mme Test", channel: "SUR_PLACE", note: null });
+    expect(validateSerie(base, natures, { kind: "DEPOT", consultationRequired: true })).toMatchObject({
+      ok: false,
+      line: 1,
+      error:
+        "Échantillon 1 — l'accord du client est obligatoire pour analyser un échantillon non conforme : indiquez le nom de la personne consultée et le canal.",
+    });
+    // A visit carries no reception decision.
+    const visit = validateSerie({ ...base, lines: [{ ...agreed, lieu: "Comptoir", decision: "EN_ATTENTE_CLIENT" }] }, natures, { kind: "VISITE" });
+    expect(visit.ok && visit.value.lines[0]).toMatchObject({ decision: "ANALYSER", awaitClient: false, consultation: null });
   });
 });

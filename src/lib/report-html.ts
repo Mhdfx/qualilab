@@ -5,6 +5,7 @@ import type { Interpretation, LineKind, SampleType } from "@/generated/prisma/cl
 import { fmt, singleLimit, type Plan } from "./interpretation";
 import { repetitionLabel } from "./series";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
+import { isUncountableText } from "./result-value";
 import { designationHeading } from "./document-html";
 import { RECONSTRUCTED_LABEL, amendmentHeader, duplicataMention, supersededMention } from "./report-amendment";
 
@@ -132,13 +133,24 @@ function criteriaCells(row: Row): string {
   return `<td class="crit">${m}</td><td class="crit">${bigM}${beneath}</td>`;
 }
 
-/** A repetition as printed: an absence test reads « Non détecté ». */
+/** A repetition as printed: an absence test reads « Non détecté »; an
+ *  uncountable plate prints as typed (« Indénombrable », « TNTC »). */
 function unitText(row: Row, unit: ReportUnit): string {
+  if (unit.detected === true && isUncountableText(unit.display)) return unit.display;
   if (row.criterion?.mKind === "ABSENCE" || unit.detected !== null) {
     if (unit.detected === false || unit.display === "Absence") return "Non détecté";
     if (unit.detected === true || unit.display === "Présence") return "Détecté";
   }
   return unit.display;
+}
+
+/**
+ * An uncountable word as it may break in a narrow repetition column: a soft
+ * hyphen between syllables (« Indénom-brable », « Incomp-table »), invisible
+ * unless the line breaks there. The letters stay exactly as typed.
+ */
+function breakableWord(text: string): string {
+  return text.replace(/^(ind[ée]nom)(brables?)$/i, "$1­$2").replace(/^(incomp)(tables?)$/i, "$1­$2");
 }
 
 /** Colour of one repetition against the plan: over M red, between m and M
@@ -148,10 +160,14 @@ function unitClass(row: Row, unit: ReportUnit): string {
   if (!plan) return "";
   if (unit.detected === true) return "no";
   if (plan.mKind === "ABSENCE" || unit.value === null) return "";
+  // « > x » is above a limit as soon as x reaches it.
+  const value = unit.value;
+  const lowerBound = unit.display.trim().startsWith(">");
+  const over = (limit: number) => (lowerBound ? value >= limit : value > limit);
   const single = singleLimit(plan);
-  if (single !== null) return unit.value > single ? (row.interpretation === "ACCEPTABLE" ? "mid" : "no") : "";
-  if (plan.bigM !== null && unit.value > plan.bigM) return "no";
-  if (plan.m !== null && unit.value > plan.m) return "mid";
+  if (single !== null) return over(single) ? (row.interpretation === "ACCEPTABLE" ? "mid" : "no") : "";
+  if (plan.bigM !== null && over(plan.bigM)) return "no";
+  if (plan.m !== null && over(plan.m)) return "mid";
   return "";
 }
 
@@ -181,6 +197,9 @@ function resultsTable(data: ReportData, from: number, to: number, first: boolean
           const unit = row.units[from + i];
           if (!unit) return `<td class="rep">—</td>`;
           const text = unitText(row, unit);
+          // « Indénombrable » is wider than an R column of five or more: it
+          // wraps inside its cell instead of running over the criteria.
+          if (isUncountableText(text)) return `<td class="rep word ${unitClass(row, unit)}">${show(breakableWord(text))}</td>`;
           return `<td class="rep ${unitClass(row, unit)}${text === "Non détecté" ? " nd" : ""}">${show(text)}</td>`;
         }).join("");
       }
@@ -317,6 +336,7 @@ export function buildReportHtml(
   table.results td { overflow-wrap: anywhere; }
   th.rep, td.rep { text-align: center; }
   table.results td.rep { font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: normal; }
+  table.results td.rep.word { font-size: .9em; overflow-wrap: anywhere; }
   th.crit, td.crit { text-align: center; white-space: nowrap; }
   .plan { display: block; font-size: .82em; font-weight: 400; color: #55707d; margin-top: 1px; white-space: nowrap; }
   td.no, .no { color: #a5203a; font-weight: 700; }

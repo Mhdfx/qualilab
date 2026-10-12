@@ -16,11 +16,16 @@ export async function GET() {
 }
 
 // blockNonConformAtReception is retired (29/09): no longer editable.
-const SWITCHES = ["alertAfterTechnicalValidation"] as const;
+// delayBlocking: an exceeded delay (C1) is non conforme instead of « à vérifier ».
+// consultationRequired: analysing a non-conform sample needs the client's agreement (A9).
+const SWITCHES = ["alertAfterTechnicalValidation", "delayBlocking", "consultationRequired"] as const;
 const REGULATIONS = ["regulationMicroId", "regulationChimieId"] as const;
 
-/** Numeric thresholds with their plausible range and unit for the message. */
-const NUMBERS: { key: keyof LabSettings; label: string; min: number; max: number; integer: boolean }[] = [
+/**
+ * Numeric thresholds with their plausible range and unit for the message.
+ * `nullable`: an empty value means « no limit » (stored NULL).
+ */
+const NUMBERS: { key: keyof LabSettings; label: string; min: number; max: number; integer: boolean; nullable?: boolean }[] = [
   { key: "minFoodMicroG", label: "Quantité minimale aliment (micro)", min: 0, max: 100_000, integer: true },
   { key: "minFoodChemG", label: "Quantité minimale aliment (physico-chimie)", min: 0, max: 100_000, integer: true },
   { key: "minWaterMicroL", label: "Volume minimal eau (micro)", min: 0, max: 1_000, integer: false },
@@ -28,7 +33,14 @@ const NUMBERS: { key: keyof LabSettings; label: string; min: number; max: number
   { key: "minWaterChemL", label: "Volume minimal eau (physico-chimie)", min: 0, max: 1_000, integer: false },
   { key: "histamineUnits", label: "Unités pour l'histamine", min: 1, max: 100, integer: true },
   { key: "histamineUnitG", label: "Poids par unité pour l'histamine", min: 0, max: 100_000, integer: true },
-  { key: "coldChainMaxC", label: "Température maximale (chaîne du froid)", min: -80, max: 300, integer: false },
+  // Contrôles complémentaires (hors bon), C2 — the ranges of the transport temperature.
+  { key: "coldChainMinC", label: "Température minimale (réfrigéré)", min: -80, max: 300, integer: false },
+  { key: "coldChainMaxC", label: "Température maximale (réfrigéré)", min: -80, max: 300, integer: false },
+  { key: "waterMicroMaxC", label: "Température maximale (eau, microbiologie)", min: -80, max: 300, integer: false },
+  { key: "frozenMaxC", label: "Température maximale (congelé)", min: -80, max: 300, integer: false },
+  // Contrôles complémentaires (hors bon), C1.
+  { key: "maxDelayMicroH", label: "Délai maximal prélèvement → arrivée, microbiologie", min: 1, max: 720, integer: true },
+  { key: "maxDelayChemH", label: "Délai maximal prélèvement → arrivée, physico-chimie", min: 1, max: 720, integer: true, nullable: true },
 ];
 
 const LINE_KINDS = ["ALIMENT", "SURFACE", "MAINS", "EAU", "AIR", "AUTRE"] as const;
@@ -64,6 +76,10 @@ export async function PUT(request: Request) {
   for (const item of NUMBERS) {
     const raw = input[item.key];
     if (raw === undefined) continue;
+    if (item.nullable && (raw === null || (typeof raw === "string" && raw.trim() === ""))) {
+      (data as Record<string, unknown>)[item.key] = null;
+      continue;
+    }
     const n = typeof raw === "number" ? raw : Number(String(raw).replace(",", "."));
     if (!Number.isFinite(n) || n < item.min || n > item.max || (item.integer && !Number.isInteger(n))) {
       return NextResponse.json(
@@ -72,6 +88,19 @@ export async function PUT(request: Request) {
       );
     }
     (data as Record<string, unknown>)[item.key] = n;
+  }
+
+  // C2: the chilled ranges stay ranges — a minimum above a maximum would make
+  // every chilled sample « à vérifier » (and its acceptance need a justification).
+  const coldChainMinC = data.coldChainMinC ?? before.coldChainMinC;
+  if (coldChainMinC > (data.coldChainMaxC ?? before.coldChainMaxC) || coldChainMinC > (data.waterMicroMaxC ?? before.waterMicroMaxC)) {
+    return NextResponse.json(
+      {
+        error:
+          "« Température minimale (réfrigéré) » dépasse une température maximale (réfrigéré ou eau en microbiologie) : la plage serait vide.",
+      },
+      { status: 400 }
+    );
   }
 
   if (input.temperatureRequiredKinds !== undefined) {

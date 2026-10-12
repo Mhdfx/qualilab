@@ -8,6 +8,7 @@ import { pageParams, toPage } from "@/lib/pagination";
 import { drawDocumentNumber } from "@/lib/invoice-number";
 import { computeInvoiceTotals } from "@/lib/invoice-math";
 import { statusAfterPayments } from "@/lib/invoice-lifecycle";
+import { CLIENT_IDENTITY_SELECT, clientSnapshotOf } from "@/lib/invoice-client-identity";
 import {
   INVOICE_DETAIL_INCLUDE,
   INVOICE_LIST_INCLUDE,
@@ -75,7 +76,8 @@ export async function GET(request: Request) {
  * `issue: false` saves a draft — no number, its samples reserved;
  * `issue: true` (also when `issue` is absent, the behaviour before drafts)
  * issues it at once with the next « FAC-AAAA-NNNN », drawn in the same
- * transaction as the row (FACTURATION.md §1).
+ * transaction as the row, and freezes the client as printed
+ * (`clientSnapshot`) (FACTURATION.md §1).
  */
 export async function POST(request: Request) {
   const session = await requireApiRole("COMPTABLE", "ADMIN");
@@ -93,7 +95,7 @@ export async function POST(request: Request) {
 
     const client = await prisma.client.findUnique({
       where: { id: fields.clientId },
-      select: { id: true, name: true },
+      select: { id: true, ...CLIENT_IDENTITY_SELECT },
     });
     if (!client) {
       return NextResponse.json({ error: "Client introuvable." }, { status: 404 });
@@ -116,6 +118,9 @@ export async function POST(request: Request) {
             status: issue ? statusAfterPayments(total, 0, 0) : "BROUILLON",
             issueDate: now,
             issuedAt: issue ? now : null,
+            // Issued at once: the client as printed is frozen with the
+            // number. A draft stays addressed to the live client.
+            ...(issue ? { clientSnapshot: clientSnapshotOf(client) } : {}),
             dueDate: fields.dueDate,
             notes: fields.notes,
             taxRate: fields.taxRate,

@@ -7,6 +7,7 @@ import { renderPdf } from "@/lib/pdf";
 import { buildInvoiceHtml, type InvoiceDocument } from "@/lib/invoice-html";
 import { invoiceAmounts } from "@/lib/billing";
 import { getCompany } from "@/lib/company-server";
+import { invoiceClientIdentity } from "@/lib/invoice-client-identity";
 
 /**
  * The invoice — or credit note — as a PDF, rendered server-side.
@@ -16,7 +17,8 @@ import { getCompany } from "@/lib/company-server";
  * mentions an invoice needs. It follows the invoice's life (FACTURATION.md
  * §5): « BROUILLON » watermark and no number on a draft, « ANNULÉE » stamp
  * with date and reason, « Réglé / Reste à payer », and « AVOIR N° AV-… »
- * naming the invoice it corrects.
+ * naming the invoice it corrects. An issued document prints its client as it
+ * was at issue (`clientSnapshot`), not as renamed or merged since.
  */
 export async function GET(
   _request: Request,
@@ -66,14 +68,8 @@ export async function GET(
     cancelledAt: invoice.cancelledAt,
     cancelReason: invoice.cancelReason,
     creditedInvoice: invoice.creditedInvoice,
-    client: {
-      name: invoice.client.name,
-      address: invoice.client.address,
-      contact: invoice.client.contact,
-      phone: invoice.client.phone,
-      email: invoice.client.email,
-      ice: invoice.client.ice,
-    },
+    // Issued: the client as it was at issue; a draft: the live client.
+    client: invoiceClientIdentity(invoice),
     items: invoice.items.map((item) => ({
       description: item.description,
       quantity: item.quantity,

@@ -353,6 +353,18 @@ describe("buildProtocolHtml — one row per échantillon (V3)", () => {
     });
     expect(both).toContain('<td><span class="nc">Échantillon annulé</span></td>');
   });
+
+  it("says « Non reçu » for a sample of the visit that never reached the laboratory", () => {
+    const missing = buildProtocolHtml({
+      ...visit,
+      lines: [
+        { ...visit.lines[0], cancelled: true, notReceived: true },
+        { ...visit.lines[1], cancelled: true, notReceived: true },
+      ],
+    });
+    expect(missing).toContain('<td><span class="nc">Non reçu</span></td>');
+    expect(missing).not.toContain("Échantillon annulé");
+  });
 });
 
 describe("cadre (V1)", () => {
@@ -474,5 +486,86 @@ describe("sampleDesignation — the rapport, the étiquette, the paillasse", () 
     expect(designationHeading("SURFACE")).toBe("Désignation");
     expect(designationHeading("AIR")).toBe("Désignation");
     expect(designationHeading("MAINS")).toBe("Désignation");
+  });
+});
+
+describe("buildBonHtml — « Observation de réception » (A7)", () => {
+  const bonLine: DocumentLine = {
+    lineNumber: 1,
+    lineKind: "ALIMENT",
+    designation: "Produit d'essai",
+    surface: null,
+    numeroLot: null,
+    productionDate: null,
+    expiryDate: null,
+    quantity: null,
+    quantityUnit: null,
+    lieu: "Dépôt au laboratoire",
+    productTemperature: null,
+    ambientTemperature: null,
+    receptionTemperature: 4,
+    remarks: null,
+    unitCount: 1,
+    family: "MICRO",
+    parameters: [],
+    controlCode: "1234",
+    conformity: true,
+    conformityReason: null,
+  };
+
+  it("prints the observation under the line, escaped", () => {
+    const html = buildBonHtml({ ...base, lines: [{ ...bonLine, receptionNote: "Poids estimé <100 g> faute de balance" }] });
+    expect(html).toContain('<br><span class="small">Observation : Poids estimé &lt;100 g&gt; faute de balance</span>');
+  });
+
+  it("prints nothing without an observation", () => {
+    expect(buildBonHtml({ ...base, lines: [bonLine] })).not.toContain("Observation :");
+    expect(buildBonHtml({ ...base, lines: [{ ...bonLine, receptionNote: "   " }] })).not.toContain("Observation :");
+  });
+});
+
+describe("buildBonHtml — the client's agreement and the wait (A9)", () => {
+  const nonConform: DocumentLine = {
+    lineNumber: 1,
+    lineKind: "ALIMENT",
+    designation: "Produit d'essai",
+    surface: null,
+    numeroLot: null,
+    productionDate: null,
+    expiryDate: null,
+    quantity: 250,
+    quantityUnit: "G",
+    lieu: "Dépôt au laboratoire",
+    productTemperature: null,
+    ambientTemperature: null,
+    receptionTemperature: 4,
+    remarks: null,
+    unitCount: 1,
+    family: "MICRO",
+    parameters: [],
+    controlCode: "1234",
+    conformity: false,
+    conformityReason: "EMBALLAGE",
+  };
+
+  it("appends who agreed to the analysis, how and when", () => {
+    const html = buildBonHtml({
+      ...base,
+      lines: [{ ...nonConform, consultation: { name: "M. Exemple", channel: "TELEPHONE", at: new Date("2026-10-10T14:05:00.000Z") } }],
+    });
+    expect(html).toContain("Non conforme — Emballage ou contenant non conforme — analysé avec l'accord de M. Exemple (tél., 10/10 14:05)");
+  });
+
+  it("says the sample waits for the client's opinion", () => {
+    expect(buildBonHtml({ ...base, lines: [{ ...nonConform, awaitingClient: true }] })).toContain(
+      "Non conforme — Emballage ou contenant non conforme — en attente de l'avis du client"
+    );
+  });
+
+  it("prints the 29/09 line unchanged without the new options", () => {
+    const html = buildBonHtml({ ...base, lines: [nonConform] });
+    expect(html).toContain('<span class="nc">Non conforme — Emballage ou contenant non conforme</span>');
+    expect(html).not.toContain("accord de");
+    expect(html).not.toContain("avis du client");
   });
 });

@@ -12,5 +12,5 @@ export default async function NouveauDepotPage() {
   // §9.3), the responsable des paramètres does at programming time.
   const settings = await getLabSettings();
 
-  return <DepositForm thresholds={settings} />;
+  return <DepositForm thresholds={settings} consultationRequired={settings.consultationRequired} />;
 }

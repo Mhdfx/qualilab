@@ -7,6 +7,7 @@ import { validateReception, type ReceptionCandidate } from "@/lib/reception-inpu
 import { parameterSpellings } from "@/lib/reception-rules";
 import { assignControlCode } from "@/lib/sample-code";
 import { notifyDestroyed } from "@/lib/destruction-notice";
+import { canTransition } from "@/lib/sample-status";
 
 /**
  * Reception of a série in one go — WORKFLOW.md rule 4.
@@ -32,6 +33,20 @@ import { notifyDestroyed } from "@/lib/destruction-notice";
  * it (`receptionExploitable`); the whole checklist, recomputed here with the
  * laboratory's thresholds, goes to the SAMPLE_RECEIVED audit. Histamine and
  * Salmonella are recognised on the analyses' names and aliases.
+ *
+ * The contrôles complémentaires (hors bon) ride along: C3 (emballage) and C5
+ * (identification) are ticked for every sample and stored on it; the coded
+ * rows go to the same audit entry, beside the checklist. C6, the signed
+ * protocol of a visit, is answered once for the série (`Serie.
+ * signedProtocolReceived`, null when a photo is attached) and journalled in
+ * SERIE_RECEIVED.
+ *
+ * A non-conform sample may also wait for the client's opinion (« En attente
+ * du client », A9): received and numbered like the others (RECU), held
+ * (`analysisBlocked`, `awaitingClientSince`) until the reception or the admin
+ * releases it (`POST /api/samples/[id]/release`). An analysis decided with
+ * the client's agreement records it (`clientConsulted*`, CLIENT_CONSULTED);
+ * the laboratory may require it (`LabSettings.consultationRequired`).
  */
 export async function POST(
   request: Request,
@@ -42,32 +57,43 @@ export async function POST(
 
   const { id } = await params;
 
-  const serie = await prisma.serie.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      serialNumber: true,
-      arrivedAt: true,
-      coolerTemperature: true,
-      receivedAt: true,
-      samples: {
-        select: {
-          id: true,
-          code: true,
-          lineNumber: true,
-          status: true,
-          lineKind: true,
-          unitCount: true,
-          quantity: true,
-          quantityUnit: true,
-          receptionTemperature: true,
-          nature: { select: { family: true } },
-          parameters: { select: { parameter: { select: { name: true, aliases: true } } } },
+  const [serie, photos] = await Promise.all([
+    prisma.serie.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        kind: true,
+        serialNumber: true,
+        startedAt: true,
+        endedAt: true,
+        samplingTimeDeclared: true,
+        arrivedAt: true,
+        coolerTemperature: true,
+        receivedAt: true,
+        samples: {
+          select: {
+            id: true,
+            code: true,
+            lineNumber: true,
+            status: true,
+            lineKind: true,
+            unitCount: true,
+            quantity: true,
+            quantityUnit: true,
+            receptionTemperature: true,
+            // C7: the DLC of a food sample, against the day of reception.
+            expiryDate: true,
+            nature: { select: { family: true } },
+            parameters: { select: { parameter: { select: { name: true, aliases: true } } } },
+          },
+          orderBy: [{ lineNumber: "asc" }, { code: "asc" }],
         },
-        orderBy: [{ lineNumber: "asc" }, { code: "asc" }],
       },
-    },
-  });
+    }),
+    // C6: whether a photo of the signed protocol is attached — counted, never read.
+    prisma.serie.count({ where: { id, signedProtocolData: { not: null } } }),
+  ]);
+  const hasSignedProtocol = photos > 0;
 
   if (!serie) {
     return NextResponse.json({ error: "Série introuvable." }, { status: 404 });
@@ -96,11 +122,29 @@ export async function POST(
     quantityUnit: s.quantityUnit,
     receptionTemperature: s.receptionTemperature,
     unitCount: s.unitCount,
+    expiryDate: s.expiryDate,
   }));
 
   // The old global switch (blockNonConformAtReception) is retired: each
-  // non-conform sample is analysed or destroyed, case by case (slice E).
-  const validation = validateReception(body, candidates, settings);
+  // non-conform sample is analysed, held for the client or destroyed, case
+  // by case (slice E, A9). One instant for the whole reception: C1's « now »
+  // and the stamp written.
+  const receivedAt = new Date();
+  const validation = validateReception(
+    body,
+    candidates,
+    settings,
+    {
+      startedAt: serie.startedAt,
+      endedAt: serie.endedAt,
+      arrivedAt: serie.arrivedAt,
+      samplingTimeDeclared: serie.samplingTimeDeclared,
+      receivedAt,
+      kind: serie.kind,
+      hasSignedProtocol,
+    },
+    { consultationRequired: settings.consultationRequired }
+  );
   if (!validation.ok) {
     return NextResponse.json(
       { error: validation.error, lineNumber: validation.lineNumber ?? null, ref: validation.ref ?? null },
@@ -109,7 +153,17 @@ export async function POST(
   }
   const input = validation.value;
 
-  const receivedAt = new Date();
+  // Every status written below, checked by the state machine first.
+  for (const line of input.lines) {
+    const steps = line.destroy ? (["RECU", "ANNULE"] as const) : (["RECU"] as const);
+    let from: "PRELEVE" | "RECU" = "PRELEVE";
+    for (const to of steps) {
+      const transition = canTransition(from, to, session.role);
+      if (!transition.ok) return NextResponse.json({ error: transition.error }, { status: 403 });
+      from = "RECU";
+    }
+  }
+
   const year = receivedAt.getFullYear();
 
   try {
@@ -131,14 +185,29 @@ export async function POST(
                 receivedById: session.id,
                 receivedAt,
                 receptionTemperature: line.receptionTemperature,
+                receptionTemperatureSource: line.temperatureSource,
+                storageClass: line.storageClass,
                 ...(line.quantity !== null
                   ? { quantity: line.quantity, quantityUnit: line.quantityUnit }
                   : {}),
                 receptionExploitable: line.exploitable,
+                receptionPackagingOk: line.packagingOk,
+                receptionIdentificationOk: line.identificationOk,
                 conformity: line.conformity,
                 conformityReason: line.conformityReason,
                 conformityNote: line.conformityNote,
-                analysisBlocked: false,
+                receptionNote: line.receptionNote,
+                // A9: « En attente du client » holds the sample until it is released.
+                analysisBlocked: line.awaitClient,
+                awaitingClientSince: line.awaitClient ? receivedAt : null,
+                ...(line.consultation
+                  ? {
+                      clientConsultedAt: line.consultation.at,
+                      clientConsultedName: line.consultation.name,
+                      clientConsultationChannel: line.consultation.channel,
+                      clientConsultationNote: line.consultation.note,
+                    }
+                  : {}),
                 ...(line.destroy
                   ? { status: "ANNULE" as const, cancelledAt: receivedAt, cancelledById: session.id, cancelReason: "DETRUIT_A_RECEPTION" as const }
                   : {}),
@@ -151,7 +220,9 @@ export async function POST(
                 unitCount: true,
                 conformity: true,
                 conformityReason: true,
+                receptionNote: true,
                 analysisBlocked: true,
+                awaitingClientSince: true,
                 produit: true,
                 surfaceLabel: true,
                 surfaceState: true,
@@ -177,6 +248,8 @@ export async function POST(
                 ? {}
                 : { arrivedAt: receivedAt }),
             ...(input.coolerTemperature !== null ? { coolerTemperature: input.coolerTemperature } : {}),
+            // C6, a visit only: the answer (null with a photo, or unanswered).
+            ...(serie.kind === "VISITE" ? { signedProtocolReceived: input.signedProtocolReceived } : {}),
           },
         });
 
@@ -204,13 +277,22 @@ export async function POST(
             conformity: line.conformity,
             conformityReason: line.conformityReason,
             conformityNote: line.conformityNote,
+            // A7: the observation — the justification of an accepted doubt.
+            receptionNote: line.receptionNote,
             destroyed: line.destroy,
+            // A9: the decision, and the client's agreement when recorded.
+            decision: line.decision,
+            consultation: line.consultation,
             receptionTemperature: line.receptionTemperature,
+            temperatureSource: line.temperatureSource,
+            storageClass: line.storageClass,
             quantity: line.quantity,
             quantityUnit: line.quantityUnit,
             checks: line.checks.filter((c) => c.level !== "OK"),
             // The seven rules of the bon, as received (retour du 08/10).
             checklist: line.checklist,
+            // The contrôles complémentaires (hors bon), C1 … C7, as received.
+            complementary: line.complementary,
           },
         })
       ),
@@ -234,6 +316,43 @@ export async function POST(
             },
           })
         ),
+      // A9: a sample held for the client's opinion, and an analysis agreed with the client.
+      ...input.lines
+        .filter((line) => line.awaitClient)
+        .map((line) =>
+          logAudit({
+            actorId: session.id,
+            action: "SAMPLE_AWAITING_CLIENT",
+            entity: "Sample",
+            entityId: line.sampleId,
+            metadata: {
+              serialNumber: serie.serialNumber,
+              ref: line.ref,
+              controlCode: rows.find((r) => r.id === line.sampleId)?.controlCode ?? null,
+              conformityReason: line.conformityReason,
+              since: receivedAt,
+            },
+          })
+        ),
+      ...input.lines
+        .filter((line) => line.consultation)
+        .map((line) =>
+          logAudit({
+            actorId: session.id,
+            action: "CLIENT_CONSULTED",
+            entity: "Sample",
+            entityId: line.sampleId,
+            metadata: {
+              serialNumber: serie.serialNumber,
+              ref: line.ref,
+              decision: "ANALYSER",
+              name: line.consultation?.name,
+              channel: line.consultation?.channel,
+              at: line.consultation?.at,
+              note: line.consultation?.note,
+            },
+          })
+        ),
       logAudit({
         actorId: session.id,
         action: "SERIE_RECEIVED",
@@ -244,8 +363,12 @@ export async function POST(
           lines: rows.length,
           controlCodes: rows.map((r) => r.controlCode),
           destroyed: input.lines.filter((l) => l.destroy).map((l) => l.ref),
+          awaitingClient: input.lines.filter((l) => l.awaitClient).map((l) => l.ref),
           arrivedAt: input.arrivedAt,
           coolerTemperature: input.coolerTemperature,
+          // C6 — the signed protocol of a visit: a photo, or the paper answer.
+          signedProtocol:
+            serie.kind === "VISITE" ? { photo: hasSignedProtocol, received: input.signedProtocolReceived } : undefined,
         },
       }),
     ]);
@@ -262,7 +385,12 @@ export async function POST(
 
     return NextResponse.json({
       serie: { id: serie.id, serialNumber: serie.serialNumber, receivedAt },
-      lines: rows,
+      // Each line with the checklist as decided — the summary shows it at once (A8).
+      lines: rows.map((row, index) => ({
+        ...row,
+        checklist: input.lines[index].checklist,
+        complementary: input.lines[index].complementary,
+      })),
       destruction,
     });
   } catch (error) {

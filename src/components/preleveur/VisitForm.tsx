@@ -35,6 +35,7 @@ import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StepIndicator } from "@/components/ui/StepIndicator";
 import { Card } from "@/components/ui/Card";
+import { ClientPicker, type PickedClient } from "@/components/commercial/ClientPicker";
 import { LineEditor } from "./LineEditor";
 import {
   duplicateDraft,
@@ -50,7 +51,6 @@ import {
   serieAnalyses,
   toLocalInput,
   type ClientMemory,
-  type ClientOption,
   type LineDraft,
   type NatureOption,
   type ParameterOption,
@@ -99,6 +99,9 @@ type TimeField = "visit-started" | "visit-ended";
 /** The id of the card of « Échantillon N », to bring an error into view. */
 const sampleAnchor = (lineNumber: number) => `visit-sample-${lineNumber}`;
 
+/** Every active client may be picked for a visit. */
+const NO_EXCLUDED_CLIENTS: string[] = [];
+
 /** Scrolls a field the préleveur must fix into view (after the next paint,
  * so that a card shown again by « Modifier » exists). */
 function reveal(id: string) {
@@ -133,7 +136,6 @@ export function VisitForm({ me }: { me: Preleveur }) {
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [natures, setNatures] = useState<NatureOption[]>([]);
-  const [clients, setClients] = useState<ClientOption[]>([]);
   const [parametersByType, setParametersByType] = useState<Partial<Record<SampleType, ParameterOption[]>>>({});
   const [loadingTypes, setLoadingTypes] = useState<Set<SampleType>>(new Set());
   const requestedTypes = useRef<Set<SampleType>>(new Set());
@@ -145,7 +147,10 @@ export function VisitForm({ me }: { me: Preleveur }) {
   const [created, setCreated] = useState<CreatedSerie | null>(null);
 
   // ---- the header, in the paper's order --------------------------------------
-  const [clientId, setClientId] = useState("");
+  // The client is searched on the server (ClientPicker), never the whole base
+  // loaded onto the phone; its active sites come with it.
+  const [client, setClient] = useState<PickedClient | null>(null);
+  const clientId = client?.id ?? "";
   const [siteId, setSiteId] = useState("");
   const [newSiteName, setNewSiteName] = useState<string | null>(null);
   const [creatingSite, setCreatingSite] = useState(false);
@@ -189,17 +194,15 @@ export function VisitForm({ me }: { me: Preleveur }) {
   }, []);
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/natures").then((r) => r.json()),
-      fetch("/api/clients").then((r) => r.json()),
-    ]).then(([n, c]: [NatureOption[], ClientOption[]]) => {
-      const catalogue = Array.isArray(n) ? n : [];
-      setNatures(catalogue);
-      setClients(Array.isArray(c) ? c : []);
-      const first = emptyLine(catalogue);
-      setLines((prev) => (prev.length ? prev : [first]));
-      ensureParameters(lineCategory(catalogue, first));
-    });
+    fetch("/api/natures")
+      .then((r) => r.json())
+      .then((n: NatureOption[]) => {
+        const catalogue = Array.isArray(n) ? n : [];
+        setNatures(catalogue);
+        const first = emptyLine(catalogue);
+        setLines((prev) => (prev.length ? prev : [first]));
+        ensureParameters(lineCategory(catalogue, first));
+      });
   }, [ensureParameters]);
 
   // The client's panels and memory: fetched when the client (or site) changes,
@@ -232,8 +235,8 @@ export function VisitForm({ me }: { me: Preleveur }) {
     };
   }, [clientId, siteId]);
 
-  const selectedClient = clients.find((c) => c.id === clientId);
-  const sites = selectedClient?.sites ?? [];
+  const selectedClient = client;
+  const sites = client?.sites ?? [];
   const selectedSite = sites.find((s) => s.id === siteId);
 
   const placeSuggestions = useMemo(
@@ -296,8 +299,9 @@ export function VisitForm({ me }: { me: Preleveur }) {
       });
       const data = await res.json();
       if (!res.ok) return setStepError(data.error ?? "Impossible de créer le site.");
-      setClients((prev) =>
-        prev.map((c) => (c.id === clientId ? { ...c, sites: [...(c.sites ?? []), { id: data.id, name: data.name }] } : c))
+      // The new site joins the picked client's list (no reload of the base).
+      setClient((prev) =>
+        prev && prev.id === clientId ? { ...prev, sites: [...prev.sites, { id: data.id, name: data.name }] } : prev
       );
       setSiteId(data.id);
       setNewSiteName(null);
@@ -503,28 +507,20 @@ export function VisitForm({ me }: { me: Preleveur }) {
             </div>
             <div className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="visit-client" className="section-title mb-2">
-                    <Building2 className="h-4 w-4" />
-                    Client
-                  </label>
-                  <select
-                    id="visit-client"
-                    value={clientId}
-                    onChange={(e) => {
-                      setClientId(e.target.value);
-                      setSiteId("");
-                      setNewSiteName(null);
-                      setMemory({ places: [], products: [] });
-                    }}
-                    className="input-field px-4"
-                  >
-                    <option value="">Sélectionner un client</option>
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
+                <ClientPicker
+                  label="Client"
+                  labelClassName="section-title mb-2"
+                  labelIcon={<Building2 className="h-4 w-4" aria-hidden="true" />}
+                  placeholder="Nom ou ICE du client (2 caractères minimum)"
+                  excludeIds={NO_EXCLUDED_CLIENTS}
+                  selected={client}
+                  onSelect={(next) => {
+                    setClient(next);
+                    setSiteId("");
+                    setNewSiteName(null);
+                    setMemory({ places: [], products: [] });
+                  }}
+                />
                 <div>
                   <label htmlFor="visit-site" className="section-title mb-2">
                     <MapPin className="h-4 w-4" />

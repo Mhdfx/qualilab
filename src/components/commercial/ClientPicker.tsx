@@ -14,10 +14,18 @@ export type PickedClient = {
 
 const MAX_RESULTS = 8;
 
+const DEFAULT_PLACEHOLDER = "Nom, ICE ou contact (2 caractères minimum)";
+const DEFAULT_LABEL_CLASS = "block text-sm font-medium text-slate-700";
+
 /**
  * Searchable client picker for the fiche actions (merge, attach, billing
- * clients). Active clients only — the list route hides archived ones —
- * minus `excludeIds` (the fiche itself, clients already linked).
+ * clients), the préleveur's visit and the invoice draft — the client base is
+ * searched on the server, never loaded whole. Active clients only — the list
+ * route hides archived ones — minus `excludeIds` (the fiche itself, clients
+ * already linked).
+ *
+ * Optional look: `labelClassName` / `labelIcon` (a form's « section-title »
+ * heading), `placeholder`.
  *
  * Keyboard: type, ↓ into the results, ↑/↓ between them, Entrée to choose,
  * Échap back to the search field.
@@ -28,12 +36,19 @@ export function ClientPicker({
   selected,
   onSelect,
   disabled,
+  placeholder = DEFAULT_PLACEHOLDER,
+  labelClassName = DEFAULT_LABEL_CLASS,
+  labelIcon,
 }: {
   label: string;
   excludeIds: string[];
   selected: PickedClient | null;
   onSelect: (client: PickedClient | null) => void;
   disabled?: boolean;
+  placeholder?: string;
+  labelClassName?: string;
+  /** Shown before the label (decorative). */
+  labelIcon?: React.ReactNode;
 }) {
   const inputId = useId();
   const listId = useId();
@@ -97,7 +112,10 @@ export function ClientPicker({
   if (selected) {
     return (
       <div>
-        <p className="block text-sm font-medium text-slate-700">{label}</p>
+        <p className={labelClassName}>
+          {labelIcon}
+          {label}
+        </p>
         <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand/30 bg-brand-light/40 px-3 py-2.5">
           <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-900">
             <Building2 className="h-4 w-4 shrink-0 text-brand" aria-hidden="true" />
@@ -124,7 +142,8 @@ export function ClientPicker({
 
   return (
     <div>
-      <label htmlFor={inputId} className="block text-sm font-medium text-slate-700">
+      <label htmlFor={inputId} className={labelClassName}>
+        {labelIcon}
         {label}
       </label>
       <div className="relative mt-1.5">
@@ -143,7 +162,7 @@ export function ClientPicker({
               focusOption(0);
             }
           }}
-          placeholder="Nom, ICE ou contact (2 caractères minimum)"
+          placeholder={placeholder}
           aria-controls={showResults ? listId : undefined}
           aria-describedby={`${listId}-status`}
           className="input-field pl-9 pr-3"

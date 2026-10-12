@@ -3,11 +3,15 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 
+/** The portal's route; the laboratory's « Mon compte » (/compte) passes its own. */
+const PORTAL_PASSWORD_ENDPOINT = "/api/portail/compte/mot-de-passe";
+
 /**
- * « Mon compte » — the password change, sent to /api/portail/compte/mot-de-passe
- * (Better Auth checks the current password; the other sessions are closed).
+ * « Mon compte » — the password change, sent to `endpoint` (the portal's
+ * route by default, `/api/compte/mot-de-passe` for the laboratory's staff).
+ * Better Auth checks the current password; the other sessions are closed.
  */
-export function ChangePasswordForm() {
+export function ChangePasswordForm({ endpoint = PORTAL_PASSWORD_ENDPOINT }: { endpoint?: string }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -26,7 +30,7 @@ export function ChangePasswordForm() {
     }
     setSaving(true);
     try {
-      const response = await fetch("/api/portail/compte/mot-de-passe", {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),

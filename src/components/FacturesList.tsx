@@ -1,16 +1,27 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Plus, Search, Receipt, Wallet, FileBarChart, Hourglass, type LucideIcon } from "lucide-react";
+import {
+  FileSpreadsheet,
+  FileText,
+  Plus,
+  Search,
+  Receipt,
+  Wallet,
+  FileBarChart,
+  Hourglass,
+  type LucideIcon,
+} from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard, type StatAccent } from "@/components/ui/StatCard";
 import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
 import { INVOICE_LIST_ANCHOR, invoiceTileHref } from "@/lib/management-views";
 import { useInvoiceBasePath } from "@/lib/invoice-paths";
 import { PrimaryLink } from "@/components/PrimaryButton";
-import { formatCurrency, formatDate } from "@/lib/labels";
+import { formatCurrency, formatDate, formatIsoDay } from "@/lib/labels";
+import { EXPORT_PRESET_LABELS, attachmentFileName, exportPresets, salesJournalHref } from "@/lib/sales-journal";
 import { INVOICE_STATE_LABELS } from "@/lib/invoice-lifecycle";
 import type { InvoiceKind } from "@/generated/prisma/enums";
 import { InvoiceStateBadge } from "@/components/invoices/InvoiceStateBadge";
@@ -152,6 +163,8 @@ export function FacturesList({
         factures annulées ({figures.cancelledCount}) ; {figures.creditNoteCount} avoir
         {figures.creditNoteCount !== 1 ? "s" : ""} déduit{figures.creditNoteCount !== 1 ? "s" : ""}.
       </p>
+
+      <SalesJournalExport />
 
       <div
         id={INVOICE_LIST_ANCHOR}
@@ -385,5 +398,132 @@ export function FacturesList({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * « Exporter (Excel) » — the accounting export (`GET /api/invoices/export`):
+ * the sales journal by date of issue and the settlements by date of
+ * receipt, over the period typed (both dates optional). Fetched rather than
+ * linked, so a refusal (too many rows, a bad date) is said here instead of
+ * opening a page of JSON. The API address is the same from /admin and from
+ * /comptabilite: no base path involved.
+ */
+function SalesJournalExport() {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function preset(du: string, au: string) {
+    setFrom(du);
+    setTo(au);
+    setError(null);
+  }
+
+  async function download(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(salesJournalHref({ du: from, au: to }), { cache: "no-store" });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        setError(body?.error ?? "L'export a échoué. Réessayez.");
+        return;
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = attachmentFileName(response.headers.get("Content-Disposition")) ?? "journal-des-ventes.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Give the browser the time to start the download before releasing the file.
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch {
+      setError("Connexion perdue : l'export n'a pas pu être téléchargé.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section
+      aria-labelledby="sales-journal-title"
+      className="mb-8 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5"
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-md">
+          <h2 id="sales-journal-title" className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <FileSpreadsheet className="h-4 w-4 text-emerald-700" aria-hidden="true" />
+            Export comptable
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Journal des ventes (factures et avoirs, par date d&apos;émission) et règlements (par date
+            d&apos;encaissement). Sans date, toute la période.
+          </p>
+          <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+            {/* The dates are computed at click time: none is rendered on the server. */}
+            {EXPORT_PRESET_LABELS.map((label, index) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => {
+                  const choice = exportPresets(formatIsoDay(new Date()))[index];
+                  if (choice) preset(choice.du, choice.au);
+                }}
+                className="rounded font-medium text-brand underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              >
+                {label}
+              </button>
+            ))}
+          </p>
+        </div>
+        <form onSubmit={download} className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <div>
+            <label htmlFor="sales-journal-from" className="mb-1 block text-xs font-medium text-slate-600">
+              Du
+            </label>
+            <input
+              id="sales-journal-from"
+              type="date"
+              value={from}
+              max={to || undefined}
+              onChange={(e) => setFrom(e.target.value)}
+              className="input-field w-full py-2.5 px-3 sm:w-44"
+            />
+          </div>
+          <div>
+            <label htmlFor="sales-journal-to" className="mb-1 block text-xs font-medium text-slate-600">
+              Au
+            </label>
+            <input
+              id="sales-journal-to"
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(e) => setTo(e.target.value)}
+              className="input-field w-full py-2.5 px-3 sm:w-44"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={busy}
+            aria-describedby={error ? "sales-journal-error" : undefined}
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:opacity-60"
+          >
+            <FileSpreadsheet className="h-4 w-4" aria-hidden="true" />
+            {busy ? "Préparation…" : "Exporter (Excel)"}
+          </button>
+        </form>
+      </div>
+      {error && (
+        <p id="sales-journal-error" role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+    </section>
   );
 }

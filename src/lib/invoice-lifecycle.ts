@@ -132,8 +132,14 @@ export function isIssued(invoice: LifecycleInvoice): boolean {
 
 /**
  * Why an invoice may not be cancelled, in French for the 409 — or null when
- * it may: an issued invoice (EN_ATTENTE) with no settlement and no credit
- * note. With a settlement, the way out is a credit note.
+ * it may: an issued invoice with no settlement and no credit note. With a
+ * settlement, the way out is a credit note.
+ *
+ * Without a settlement nor a credit note, a PAYEE invoice can only be one of
+ * 0,00 (`statusAfterPayments` stores PAYEE at issue when nothing is to pay):
+ * it is cancellable like any unpaid invoice, so a mistaken 0,00 invoice is
+ * not a dead end (HANDOFF §8, 2026-10-08). The migrated « Repris » invoices
+ * carry their settlement and stay refused.
  */
 export function cancelRefusal(
   invoice: LifecycleInvoice & { credited?: MoneyInput },
@@ -148,8 +154,6 @@ export function cancelRefusal(
   if (cents(invoice.credited) > 0) {
     return "Cette facture a déjà un avoir : elle ne peut plus être annulée. Établissez un nouvel avoir.";
   }
-  // Soldée without a settlement nor a credit note: a total of 0,00.
-  if (invoice.status === "PAYEE") return "Cette facture est soldée : elle ne peut plus être annulée.";
   return null;
 }
 

@@ -58,6 +58,11 @@ export function toLabWallTime(date: Date): string {
   return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}T${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}`;
 }
 
+/** The laboratory's calendar day of an instant, « AAAA-MM-JJ » (the day its wall clock shows). */
+export function labDayOf(date: Date): string {
+  return toLabWallTime(date).slice(0, 10);
+}
+
 /** The instant a wall time typed on the laboratory's clock denotes; null when unreadable. */
 export function fromLabWallTime(value: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(value?.trim() ?? "");

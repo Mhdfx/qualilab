@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { ArrowRight, Inbox, MapPin, Thermometer, User } from "lucide-react";
+import { ArrowRight, Clock, Inbox, MapPin, Thermometer, User } from "lucide-react";
 import type { SamplerKind, SerieKind } from "@/generated/prisma/enums";
 import { SAMPLER_KIND_LABELS, SERIE_KIND_LABELS, formatDateTime, formatDecimal } from "@/lib/labels";
+import { formatDelay, serieDelayMinutes } from "@/lib/reception-complementary";
 import { Card } from "@/components/ui/Card";
 import { countLabel } from "./reception-logic";
 
@@ -10,6 +11,7 @@ export type QueueSerie = {
   serialNumber: string;
   kind: SerieKind;
   startedAt: Date;
+  endedAt: Date | null;
   arrivedAt: Date | null;
   coolerTemperature: number | null;
   samplerKind: SamplerKind;
@@ -30,8 +32,21 @@ function samplerOf(serie: QueueSerie) {
  * sample: the cooler arrives as a whole and is received as a whole. The
  * count is of samples (« Échantillon N », RETOUR-LABO-06-10.md §5): a line
  * with both families ticked counts twice — two N° de contrôle to draw.
+ *
+ * Each row shows the delay since the end of the sampling (C1) — up to the
+ * recorded arrival, up to now otherwise — in amber once it passes the
+ * microbiology limit (`LabSettings.maxDelayMicroH`).
  */
-export function SerieQueue({ series }: { series: QueueSerie[] }) {
+export function SerieQueue({
+  series,
+  now,
+  maxDelayMicroH,
+}: {
+  series: QueueSerie[];
+  /** The page's instant: the delay of a série not arrived yet counts up to it. */
+  now: Date;
+  maxDelayMicroH: number;
+}) {
   if (series.length === 0) {
     return (
       <Card className="p-10 text-center">
@@ -51,6 +66,13 @@ export function SerieQueue({ series }: { series: QueueSerie[] }) {
       {series.map((serie) => {
         const pending = serie.samples.filter((s) => s.status === "PRELEVE").length;
         const natures = [...new Set(serie.samples.map((s) => s.nature.label))];
+        const delay = serieDelayMinutes({
+          startedAt: serie.startedAt,
+          endedAt: serie.endedAt,
+          arrivedAt: serie.arrivedAt,
+          receivedAt: now,
+        });
+        const late = delay !== null && delay > maxDelayMicroH * 60;
         return (
           <li key={serie.id}>
             <Link
@@ -98,7 +120,20 @@ export function SerieQueue({ series }: { series: QueueSerie[] }) {
                     )}
                   </div>
 
-                  <p className="mt-1 text-xs text-slate-400">Prélevé le {formatDateTime(serie.startedAt)}</p>
+                  <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                    <span>Prélevé le {formatDateTime(serie.startedAt)}</span>
+                    {delay !== null && (
+                      <span
+                        className={`inline-flex items-center gap-1 ${
+                          late ? "rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200" : ""
+                        }`}
+                      >
+                        <Clock className="h-3 w-3" aria-hidden="true" />
+                        délai {formatDelay(delay)}
+                        {late ? ` > ${maxDelayMicroH} h` : ""}
+                      </span>
+                    )}
+                  </p>
                 </div>
 
                 <span className="inline-flex shrink-0 items-center gap-1.5 self-center rounded-xl bg-brand-light px-3 py-2 text-sm font-semibold text-brand transition-colors group-hover:bg-brand group-hover:text-white">

@@ -2,43 +2,61 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
+import { getLabSettings } from "@/lib/lab-settings";
+import { canTransition } from "@/lib/sample-status";
+import { notifyDestroyed } from "@/lib/destruction-notice";
+import { CONSULTATION_MESSAGES, consultationMissing } from "@/lib/client-consultation";
+import { RELEASE_MESSAGES, parseReleaseBody, releaseRefusal } from "@/lib/release-rules";
 
 /**
- * Releases a sample held at reception for non-conformity
- * (LabSettings.blockNonConformAtReception) into analysis.
+ * Releases a sample held at reception (`analysisBlocked`, status RECU):
+ * `{ decision: "ANALYSER" | "DETRUIRE", consultation?, reason? }`.
  *
- * ADMIN only: blocking exists because the direction wants a say on
- * non-conform samples, so the direction is who lets one through. The release
- * is the assignment — the sample was received without a technician, and
- * giving it one is exactly what un-holds it.
+ * Who (`releaseRefusal`): the admin, any hold; the réceptionniste, a sample
+ * « en attente du client » only (A9) — a reactivated destroyed sample, or
+ * one blocked under the retired policy, stays the admin's.
+ *
+ * « Analyser » unblocks it and records the client's agreement when given
+ * (required by `LabSettings.consultationRequired` for a non-conform sample).
+ * It assigns NO technician: the sample is RECU and unblocked, so it is in
+ * the programme queue like any received sample and the responsable des
+ * paramètres gives it its bench (PROGRAMME.md §6). The old body
+ * `{ technicianId }` is read as « Analyser », the technician ignored.
+ *
+ * « Détruire » cancels it with the motif « Détruit à réception » (through
+ * `canTransition`), then tells the client — never at the cost of the
+ * cancellation itself.
  */
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireApiRole("ADMIN");
+  const session = await requireApiRole("RECEPTIONNISTE", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;
 
   const sample = await prisma.sample.findUnique({
     where: { id },
-    select: { id: true, code: true, status: true, analysisBlocked: true },
+    select: {
+      id: true,
+      code: true,
+      controlCode: true,
+      status: true,
+      analysisBlocked: true,
+      awaitingClientSince: true,
+      conformity: true,
+      conformityNote: true,
+      serie: { select: { serialNumber: true } },
+    },
   });
 
   if (!sample) {
-    return NextResponse.json(
-      { error: "Échantillon introuvable." },
-      { status: 404 }
-    );
+    return NextResponse.json({ error: "Échantillon introuvable." }, { status: 404 });
   }
 
-  if (!sample.analysisBlocked || sample.status !== "RECU") {
-    return NextResponse.json(
-      { error: "Cet échantillon n'est pas bloqué en réception." },
-      { status: 409 }
-    );
-  }
+  const refusal = releaseRefusal(session.role, sample);
+  if (refusal) return NextResponse.json({ error: refusal.error }, { status: refusal.status });
 
   let body: unknown;
   try {
@@ -47,56 +65,144 @@ export async function POST(
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
 
-  const { technicianId } = (body ?? {}) as { technicianId?: unknown };
-  if (typeof technicianId !== "string" || !technicianId) {
-    return NextResponse.json(
-      { error: "Veuillez choisir le technicien qui reprend l'analyse." },
-      { status: 400 }
-    );
-  }
+  const now = new Date();
+  const parsed = parseReleaseBody(body, now);
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
+  const { decision, consultation, reason, legacy } = parsed.value;
 
-  const technician = await prisma.user.findUnique({
-    where: { id: technicianId },
-    select: { id: true, name: true, role: true, banned: true },
-  });
-
-  if (!technician || technician.role !== "TECHNICIEN" || technician.banned) {
-    return NextResponse.json({ error: "Technicien invalide." }, { status: 400 });
-  }
-
-  const updated = await prisma.sample.update({
-    // The guard doubles as optimistic concurrency: a second release finds
-    // analysisBlocked already false and gets a clean 409 via P2025.
-    where: { id: sample.id, analysisBlocked: true },
-    data: {
-      analysisBlocked: false,
-      technicianId: technician.id,
-      assignedAt: new Date(),
-    },
-    select: { id: true, code: true, analysisBlocked: true },
-  }).catch((error) => {
+  // The guard doubles as optimistic concurrency: a second release finds the
+  // sample no longer held and gets a clean 409 via P2025.
+  const held = { id: sample.id, status: "RECU" as const, analysisBlocked: true };
+  const raced = (error: unknown) => {
     if ((error as { code?: string }).code === "P2025") return null;
     throw error;
-  });
+  };
 
-  if (!updated) {
-    return NextResponse.json(
-      { error: "Cet échantillon vient d'être libéré." },
-      { status: 409 }
-    );
+  if (decision === "ANALYSER") {
+    const settings = await getLabSettings();
+    if (consultationMissing(settings.consultationRequired, decision, sample.conformity, consultation)) {
+      // A page opened before A9 has no « Accord du client » block: say how to get one.
+      const error = legacy
+        ? `${CONSULTATION_MESSAGES.required} Rechargez la page pour saisir l'accord du client.`
+        : CONSULTATION_MESSAGES.required;
+      return NextResponse.json({ error }, { status: 400 });
+    }
+    const updated = await prisma.sample
+      .update({
+        where: held,
+        data: {
+          analysisBlocked: false,
+          awaitingClientSince: null,
+          ...(consultation
+            ? {
+                clientConsultedAt: consultation.at,
+                clientConsultedName: consultation.name,
+                clientConsultationChannel: consultation.channel,
+                clientConsultationNote: consultation.note,
+              }
+            : {}),
+        },
+        select: { id: true, code: true, status: true, analysisBlocked: true },
+      })
+      .catch(raced);
+    if (!updated) return NextResponse.json({ error: RELEASE_MESSAGES.already }, { status: 409 });
+
+    await Promise.all([
+      logAudit({
+        actorId: session.id,
+        action: "SAMPLE_RELEASED",
+        entity: "Sample",
+        entityId: sample.id,
+        metadata: {
+          code: sample.code,
+          controlCode: sample.controlCode,
+          serialNumber: sample.serie.serialNumber,
+          decision,
+          awaitedClientSince: sample.awaitingClientSince,
+          reason,
+          // The old body named a technician: ignored, the programme assigns the bench.
+          ...(legacy ? { technicianIgnored: true } : {}),
+        },
+      }),
+      ...(consultation
+        ? [
+            logAudit({
+              actorId: session.id,
+              action: "CLIENT_CONSULTED",
+              entity: "Sample",
+              entityId: sample.id,
+              metadata: {
+                serialNumber: sample.serie.serialNumber,
+                controlCode: sample.controlCode,
+                decision,
+                name: consultation.name,
+                channel: consultation.channel,
+                at: consultation.at,
+                note: consultation.note,
+              },
+            }),
+          ]
+        : []),
+    ]);
+    return NextResponse.json(updated);
   }
 
-  await logAudit({
-    actorId: session.id,
-    action: "SAMPLE_RELEASED",
-    entity: "Sample",
-    entityId: sample.id,
-    metadata: {
-      code: sample.code,
-      technicianId: technician.id,
-      technicianName: technician.name,
-    },
+  // DETRUIRE: a cancellation, through the state machine.
+  const transition = canTransition("RECU", "ANNULE", session.role);
+  if (!transition.ok) return NextResponse.json({ error: transition.error }, { status: 403 });
+  const destroyed = await prisma.sample
+    .update({
+      where: held,
+      data: {
+        status: "ANNULE",
+        cancelledAt: now,
+        cancelledById: session.id,
+        cancelReason: "DETRUIT_A_RECEPTION",
+        analysisBlocked: false,
+        awaitingClientSince: null,
+      },
+      select: { id: true, code: true, status: true, analysisBlocked: true },
+    })
+    .catch(raced);
+  if (!destroyed) return NextResponse.json({ error: RELEASE_MESSAGES.already }, { status: 409 });
+
+  await Promise.all([
+    logAudit({
+      actorId: session.id,
+      action: "SAMPLE_RELEASED",
+      entity: "Sample",
+      entityId: sample.id,
+      metadata: {
+        code: sample.code,
+        controlCode: sample.controlCode,
+        serialNumber: sample.serie.serialNumber,
+        decision,
+        awaitedClientSince: sample.awaitingClientSince,
+        reason,
+      },
+    }),
+    logAudit({
+      actorId: session.id,
+      action: "SAMPLE_CANCELLED",
+      entity: "Sample",
+      entityId: sample.id,
+      metadata: {
+        from: "RECU",
+        to: "ANNULE",
+        code: sample.code,
+        controlCode: sample.controlCode,
+        serialNumber: sample.serie.serialNumber,
+        reason: "DETRUIT_A_RECEPTION",
+        note: reason ?? sample.conformityNote,
+      },
+    }),
+  ]);
+
+  // The client is told (Q35) — never at the cost of the cancellation.
+  const destruction = await notifyDestroyed([sample.id], session.id).catch((error) => {
+    console.error("[release] destruction notice failed", { sampleId: sample.id, error });
+    return null;
   });
 
-  return NextResponse.json(updated);
+  return NextResponse.json({ ...destroyed, destruction });
 }

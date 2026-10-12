@@ -20,6 +20,10 @@ export type LabSettings = ReceptionThresholds & {
    *  (RETOUR-LABO-30-09.md, slice I). */
   regulationMicroId: string | null;
   regulationChimieId: string | null;
+  /** « Accord du client obligatoire pour analyser un non-conforme » (A9):
+   *  the name and channel of the agreement are required (true) or recorded
+   *  when given (false, the default until the laboratory answers). */
+  consultationRequired: boolean;
 };
 
 export const LAB_SETTINGS_DEFAULTS: LabSettings = {
@@ -28,6 +32,7 @@ export const LAB_SETTINGS_DEFAULTS: LabSettings = {
   alertAfterTechnicalValidation: true,
   regulationMicroId: null,
   regulationChimieId: null,
+  consultationRequired: false,
 };
 
 export const LAB_SETTINGS_SELECT = {
@@ -35,6 +40,8 @@ export const LAB_SETTINGS_SELECT = {
   alertAfterTechnicalValidation: true,
   regulationMicroId: true,
   regulationChimieId: true,
+  // A9 — the client's agreement before analysing a non-conform sample.
+  consultationRequired: true,
   minFoodMicroG: true,
   minFoodChemG: true,
   minWaterMicroL: true,
@@ -44,6 +51,13 @@ export const LAB_SETTINGS_SELECT = {
   histamineUnitG: true,
   temperatureRequiredKinds: true,
   coldChainMaxC: true,
+  // Contrôles complémentaires (hors bon) — reception-complementary.ts.
+  maxDelayMicroH: true,
+  maxDelayChemH: true,
+  delayBlocking: true,
+  coldChainMinC: true,
+  frozenMaxC: true,
+  waterMicroMaxC: true,
 } as const;
 
 /** The single settings row, falling back to the defaults until it exists. */

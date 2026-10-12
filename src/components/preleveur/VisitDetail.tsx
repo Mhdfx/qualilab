@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Camera, CheckCircle2, FileText, Thermometer } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, ExternalLink, FileText, Thermometer } from "lucide-react";
 import type {
   AirMethod,
   Cadre,
@@ -28,6 +28,7 @@ import { Card } from "@/components/ui/Card";
 import { LabDateTimeInput } from "@/components/LabDateTimeInput";
 import { futureFieldError } from "@/lib/device-time";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { protocolPhotoHref } from "@/lib/protocol-photo-access";
 import { fromLocalInput, lineDesignation, toLocalInput } from "./visit-types";
 import { familiesLabel, groupByLine, sampleFamily } from "./visit-samples";
 
@@ -78,6 +79,8 @@ export type VisitData = {
   status: SerieStatus;
   progress: SerieProgress;
   samples: VisitSample[];
+  /** A photo of the signed protocol is attached (C6) — counted by the page, never the image itself. */
+  hasSignedProtocol?: boolean;
 };
 
 const CADRE_NOTE_MAX = 191;
@@ -132,10 +135,12 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
   // Une fois la série réceptionnée, le cadre appartient au laboratoire.
   const cadreLocked = Boolean(visit.receivedAt);
   const [photo, setPhoto] = useState<string | null>(null);
+  // A photo chosen while one is already attached waits for « Remplacer ».
+  const [pendingPhoto, setPendingPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
-  const [hasPhoto, setHasPhoto] = useState(false);
+  const [hasPhoto, setHasPhoto] = useState(Boolean(initial.hasSignedProtocol));
 
   async function save() {
     setSaved(false);
@@ -389,7 +394,23 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
               </div>
               <div>
                 <label htmlFor="photo" className="mb-1.5 block text-sm font-semibold text-slate-700">Photo du protocole signé</label>
-                <label className="flex min-h-[48px] cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 text-sm font-medium text-slate-600 transition hover:border-brand hover:text-brand">
+                {hasPhoto && (
+                  <p className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-600">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
+                    <span>Photo du protocole signé :</span>
+                    <a
+                      href={protocolPhotoHref(visit.id)}
+                      target="_blank"
+                      rel="noopener"
+                      className="inline-flex min-h-[44px] items-center gap-1 rounded-lg px-1.5 font-semibold text-brand underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                    >
+                      Voir
+                      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span className="sr-only">(nouvel onglet)</span>
+                    </a>
+                  </p>
+                )}
+                <label className="flex min-h-[48px] cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 text-sm font-medium text-slate-600 transition hover:border-brand hover:text-brand focus-within:ring-2 focus-within:ring-brand">
                   <Camera className="h-4 w-4" aria-hidden="true" />
                   {photo ? "Photo prête à envoyer" : hasPhoto ? "Remplacer la photo" : "Prendre / choisir une photo"}
                   <input
@@ -399,20 +420,60 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
                     capture="environment"
                     className="sr-only"
                     onChange={async (e) => {
-                      const file = e.target.files?.[0];
+                      const input = e.currentTarget;
+                      const file = input.files?.[0];
+                      // The same file chosen again after « Garder » fires again.
+                      input.value = "";
                       if (!file) return;
                       try {
-                        setPhoto(await fileToDataUri(file));
+                        const uri = await fileToDataUri(file);
+                        setError("");
+                        // An attached photo is replaced only once confirmed.
+                        if (hasPhoto) setPendingPhoto(uri);
+                        else setPhoto(uri);
                       } catch {
                         setError("Photo illisible.");
                       }
                     }}
                   />
                 </label>
-                {(hasPhoto || photo) && (
+                {pendingPhoto && (
+                  <div
+                    role="group"
+                    aria-labelledby="replace-photo-title"
+                    className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+                  >
+                    <p id="replace-photo-title" className="flex items-start gap-2 font-medium">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                      Une photo du protocole signé est déjà jointe. La remplacer par la nouvelle ?
+                    </p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPhoto(pendingPhoto);
+                          setPendingPhoto(null);
+                        }}
+                        className="min-h-[44px] rounded-xl border border-amber-400 bg-white px-3 font-semibold text-amber-900 transition hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                      >
+                        Remplacer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPendingPhoto(null)}
+                        className="min-h-[44px] rounded-xl border border-slate-200 bg-white px-3 font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                      >
+                        Garder l&apos;actuelle
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {photo && (
                   <p className="mt-1 flex items-center gap-1 text-xs text-emerald-700">
                     <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    {photo ? "Nouvelle photo sélectionnée" : "Protocole signé joint à la visite"}
+                    {hasPhoto
+                      ? "Nouvelle photo sélectionnée : elle remplacera l'actuelle à l'enregistrement"
+                      : "Photo sélectionnée : elle sera jointe à l'enregistrement"}
                   </p>
                 )}
               </div>

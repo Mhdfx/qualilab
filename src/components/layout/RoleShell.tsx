@@ -19,6 +19,7 @@ export function RoleShell({ role, userName, children }: RoleShellProps) {
   return (
     <DashboardShell
       userName={userName}
+      role={role}
       roleLabel={roleLabelFor(role)}
       navSections={navFor(role)}
     >

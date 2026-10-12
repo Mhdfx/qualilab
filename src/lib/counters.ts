@@ -35,11 +35,61 @@ export function formatDocumentNumber(
   return `${DOCUMENT_NUMBER_PREFIX[kind]}-${year}-${String(sequence).padStart(4, "0")}`;
 }
 
+/**
+ * Parses « FAC-2026-0042 » / « AV-2026-0003 » back into its parts; null for
+ * anything else (a lab number, a draft's empty number, a zero sequence).
+ */
+export function parseDocumentNumber(
+  value: string
+): { kind: "FACTURE" | "AVOIR"; year: number; sequence: number } | null {
+  const match = /^\s*(FAC|AV)-(\d{4})-(\d{1,9})\s*$/.exec(value);
+  if (!match) return null;
+  const sequence = Number(match[3]);
+  if (sequence < 1) return null;
+  return { kind: match[1] === "FAC" ? "FACTURE" : "AVOIR", year: Number(match[2]), sequence };
+}
+
+/** True for the invoice sequences (« FAC- » / « AV- »), false for the lab's « NNNN/AA ». */
+export function isDocumentCounter(kind: CounterKind): kind is "FACTURE" | "AVOIR" {
+  return kind === "FACTURE" || kind === "AVOIR";
+}
+
+/** Every sequence the « Compteurs » screen sets, in its order. */
+export const COUNTER_KINDS: readonly CounterKind[] = ["SERIE", "CONTROLE", "FACTURE", "AVOIR"];
+
+/** One sequence as the « Compteurs » screen shows it. */
+export type CounterRow = {
+  kind: CounterKind;
+  year: number;
+  /** The last number drawn (the next draw follows it). */
+  last: number;
+  /** The highest number already printed on a record of that year. */
+  highestUsed: number;
+};
+
+/**
+ * The highest sequence among numbers of one kind and year — « 2780/26 » for
+ * SERIE / CONTROLE, « FAC-2026-0042 » / « AV-2026-0003 » for the documents.
+ * Anything else (another year, another prefix, free text) is skipped.
+ */
+export function highestSequence(kind: CounterKind, year: number, numbers: readonly (string | null)[]): number {
+  let highest = 0;
+  for (const number of numbers) {
+    if (!number) continue;
+    if (isDocumentCounter(kind)) {
+      const parsed = parseDocumentNumber(number);
+      if (parsed && parsed.kind === kind && parsed.year === year) highest = Math.max(highest, parsed.sequence);
+    } else {
+      const parsed = parseLabNumber(number);
+      if (parsed && parsed.year === year) highest = Math.max(highest, parsed.sequence);
+    }
+  }
+  return highest;
+}
+
 /** The number a counter draw prints: lab format for the séries and samples, document format for invoices. */
 export function formatCounterNumber(kind: CounterKind, sequence: number, year: number) {
-  return kind === "FACTURE" || kind === "AVOIR"
-    ? formatDocumentNumber(kind, sequence, year)
-    : formatLabNumber(sequence, year);
+  return isDocumentCounter(kind) ? formatDocumentNumber(kind, sequence, year) : formatLabNumber(sequence, year);
 }
 
 /** « 2780/26 » — the lab's format: sequence, slash, two-digit year. */

@@ -20,11 +20,15 @@ import {
  * implementing it is a click on this screen.
  *
  * The thresholds are named by the paper's own numbering and wording,
- * (1) … (7) (`RECEPTION_RULES`), figures as typed; the cold chain is not on
- * the paper — a complementary check, shown under rule (6) at reception.
+ * (1) … (7) (`RECEPTION_RULES`), figures as typed.
+ *
+ * The limits of the contrôles complémentaires (hors bon) follow in a block
+ * of their own: C1, the delay sampling → arrival per family and whether an
+ * exceeded delay refuses « conforme »; C2, the transport temperature ranges
+ * (chilled, chilled water for microbiology, frozen) — never a refusal.
  */
 
-type SwitchKey = "alertAfterTechnicalValidation";
+type SwitchKey = "alertAfterTechnicalValidation" | "consultationRequired";
 type NumberKey =
   | "minFoodMicroG"
   | "minFoodChemG"
@@ -32,8 +36,7 @@ type NumberKey =
   | "minWaterSalmonellaL"
   | "minWaterChemL"
   | "histamineUnits"
-  | "histamineUnitG"
-  | "coldChainMaxC";
+  | "histamineUnitG";
 
 // The non-conform-at-reception switch is gone (29/09): the réceptionniste
 // decides line by line, « Analyser malgré tout » or « Détruire ».
@@ -44,10 +47,16 @@ const SWITCHES: { key: SwitchKey; title: string; on: string; off: string }[] = [
     on: "Dès la validation technique : le client est prévenu sans attendre la validation administrative — le choix du laboratoire (29/09).",
     off: "Après la validation administrative (avec le rapport).",
   },
+  {
+    key: "consultationRequired",
+    title: "Accord du client obligatoire pour analyser un non-conforme",
+    off: "Non : la réception note l'accord du client quand elle l'a demandé (nom, canal, date).",
+    on: "Oui : « Analyser malgré tout » un échantillon non conforme exige le nom de la personne consultée et le canal.",
+  },
 ];
 
-/** Each threshold and the rule of the paper it sets — null: not on the paper. */
-const THRESHOLDS: { key: NumberKey; label: string; unit: string; rule: ReceptionRuleKey | null }[] = [
+/** Each threshold and the rule of the paper it sets. */
+const THRESHOLDS: { key: NumberKey; label: string; unit: string; rule: ReceptionRuleKey }[] = [
   { key: "minFoodMicroG", label: "Aliment — microbiologie", unit: "g", rule: "ALIMENT_MICRO" },
   { key: "minFoodChemG", label: "Aliment — physico-chimie", unit: "g", rule: "ALIMENT_CHIMIE" },
   { key: "minWaterMicroL", label: "Eau — microbiologie", unit: "L", rule: "EAU_MICRO" },
@@ -55,11 +64,53 @@ const THRESHOLDS: { key: NumberKey; label: string; unit: string; rule: Reception
   { key: "minWaterChemL", label: "Eau — physico-chimie", unit: "L", rule: "EAU_CHIMIE" },
   { key: "histamineUnits", label: "Histamine — nombre d'unités", unit: "unités", rule: "HISTAMINE" },
   { key: "histamineUnitG", label: "Histamine — poids par unité", unit: "g", rule: "HISTAMINE" },
-  { key: "coldChainMaxC", label: "Chaîne du froid — T° maximale à l'arrivée", unit: "°C", rule: null },
 ];
 
-/** Shown under the cold-chain limit: it is the laboratory's addition, not the paper's. */
-const COLD_CHAIN_HINT = "Contrôle complémentaire, hors bon — un avertissement sous la règle (6), jamais un refus.";
+/** The limits of the contrôles complémentaires — `nullable`: empty = no limit; `decimal`: a temperature. */
+type ControlKey = "maxDelayMicroH" | "maxDelayChemH" | "coldChainMinC" | "coldChainMaxC" | "waterMicroMaxC" | "frozenMaxC";
+const CONTROLS: { key: ControlKey; label: string; unit: string; hint: string; nullable?: boolean; decimal?: boolean }[] = [
+  {
+    key: "maxDelayMicroH",
+    label: "Délai maximal prélèvement → arrivée, microbiologie (h)",
+    unit: "h",
+    hint: "C1 — compté de la fin du prélèvement à l'arrivée au laboratoire.",
+  },
+  {
+    key: "maxDelayChemH",
+    label: "Délai maximal prélèvement → arrivée, physico-chimie (h, vide = sans objet)",
+    unit: "h",
+    hint: "C1 — vide : pas de délai fixé pour la physico-chimie.",
+    nullable: true,
+  },
+  {
+    key: "coldChainMinC",
+    label: "Réfrigéré — T° minimale à l'arrivée",
+    unit: "°C",
+    hint: "C2 — aliments, surfaces, mains, eau en microbiologie.",
+    decimal: true,
+  },
+  {
+    key: "coldChainMaxC",
+    label: "Réfrigéré — T° maximale à l'arrivée",
+    unit: "°C",
+    hint: "C2 — hors de la plage : « à vérifier », jamais un refus.",
+    decimal: true,
+  },
+  {
+    key: "waterMicroMaxC",
+    label: "Eau (microbiologie) — T° maximale à l'arrivée",
+    unit: "°C",
+    hint: "C2 — remplace la maximale réfrigérée pour l'eau en microbiologie.",
+    decimal: true,
+  },
+  {
+    key: "frozenMaxC",
+    label: "Congelé — T° maximale à l'arrivée",
+    unit: "°C",
+    hint: "C2 — au-dessus : « à vérifier ».",
+    decimal: true,
+  },
+];
 
 const RULE_OF = new Map(RECEPTION_RULES.map((rule) => [rule.key, rule]));
 
@@ -81,6 +132,7 @@ export function LabSettingsForm({
   const router = useRouter();
   const [switches, setSwitches] = useState<Record<SwitchKey, boolean>>({
     alertAfterTechnicalValidation: initial.alertAfterTechnicalValidation,
+    consultationRequired: initial.consultationRequired,
   });
   const [regulationMicroId, setRegulationMicroId] = useState(initial.regulationMicroId ?? "");
   const [regulationChimieId, setRegulationChimieId] = useState(initial.regulationChimieId ?? "");
@@ -88,6 +140,13 @@ export function LabSettingsForm({
   const [numbers, setNumbers] = useState<Record<NumberKey, string>>(() =>
     Object.fromEntries(THRESHOLDS.map((t) => [t.key, String(initial[t.key]).replace(".", ",")])) as Record<NumberKey, string>
   );
+  const [controls, setControls] = useState<Record<ControlKey, string>>(
+    () =>
+      Object.fromEntries(
+        CONTROLS.map((c) => [c.key, initial[c.key] === null ? "" : String(initial[c.key]).replace(".", ",")])
+      ) as Record<ControlKey, string>
+  );
+  const [delayBlocking, setDelayBlocking] = useState(initial.delayBlocking);
   const [requiredKinds, setRequiredKinds] = useState<string[]>(
     initial.temperatureRequiredKinds.split(",").map((k) => k.trim()).filter(Boolean)
   );
@@ -119,7 +178,15 @@ export function LabSettingsForm({
       const response = await fetch("/api/admin/lab-settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...switches, ...numbers, temperatureRequiredKinds: requiredKinds, regulationMicroId, regulationChimieId }),
+        body: JSON.stringify({
+          ...switches,
+          ...numbers,
+          ...controls,
+          delayBlocking,
+          temperatureRequiredKinds: requiredKinds,
+          regulationMicroId,
+          regulationChimieId,
+        }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -244,7 +311,7 @@ export function LabSettingsForm({
                 />
                 <span className="text-sm text-slate-500">{item.unit}</span>
               </div>
-              <p className="mt-1 text-xs text-slate-500">{item.rule ? ruleLine(item.rule) : COLD_CHAIN_HINT}</p>
+              <p className="mt-1 text-xs text-slate-500">{ruleLine(item.rule)}</p>
             </div>
           ))}
         </div>
@@ -278,6 +345,45 @@ export function LabSettingsForm({
               );
             })}
           </div>
+        </fieldset>
+
+        <fieldset className="mt-5 rounded-xl border border-slate-200 p-4">
+          <legend className="px-1 text-sm font-semibold text-slate-800">Contrôles complémentaires (hors bon)</legend>
+          <p className="text-xs text-slate-500">
+            Ajoutés par le laboratoire aux sept règles du bon, ils s&apos;affichent sous la checklist de chaque
+            échantillon, codés C1 … C7.
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {CONTROLS.map((item) => (
+              <div key={item.key}>
+                <label htmlFor={item.key} className="block text-sm font-medium text-slate-700">
+                  {item.label}
+                </label>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <input
+                    id={item.key}
+                    type="text"
+                    inputMode={item.decimal ? "decimal" : "numeric"}
+                    value={controls[item.key]}
+                    onChange={(event) => setControls((current) => ({ ...current, [item.key]: event.target.value }))}
+                    placeholder={item.nullable ? "Sans objet" : undefined}
+                    className="input-field w-32 px-3"
+                  />
+                  <span className="text-sm text-slate-500">{item.unit}</span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">{item.hint}</p>
+              </div>
+            ))}
+          </div>
+          <label className="mt-3 flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-700 transition hover:bg-slate-50">
+            <input
+              type="checkbox"
+              checked={delayBlocking}
+              onChange={(event) => setDelayBlocking(event.target.checked)}
+              className="h-4 w-4 accent-brand"
+            />
+            Délai dépassé = non conforme (sinon à vérifier)
+          </label>
         </fieldset>
 
         {error && (

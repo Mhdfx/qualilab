@@ -814,6 +814,7 @@ paillasse, four rapports, facture — one page each. Script:
 | Phase 7 · G2 Qualité | Claude Code | 2026-08-27 | ✅ passed — métrologie, températures hors plage, EIL, dashboard |
 | Audit round 1 (I) | Claude Code | 2026-09-07 | ✅ fixes verified (132 tests, build, lint, browser smoke); go-live shutdown to run at recette |
 | Audit round 2 + recette production (J) | Claude Code | 2026-09-09 | ✅ passed — 99 contrôles en direct sur http://185.217.126.53 (2 circuits complets, 9 comptes, 25 pages, sondes d'habilitation), 137 tests, build + lint |
+| Analyse des écarts du 10/10 (V11) — build | Claude Code | 2026-10-10 | ⏳ code gates green (tsc 0, eslint 0, vitest 90 files / 1 396 tests, build); not deployed — production recette V11 pending |
 | Extensions (G3) | | | |
 
 ## Checkpoint I — Audit round 1 (2026-09-07)
@@ -1017,6 +1018,81 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 ### Left
 - The germs of a chosen type are listed « non programmé » when a profile chip replaces the ticked analyses afterwards: visible and deliberate, but the lab may prefer the type's germs to stay ticked (to confirm).
 - Q41 (« les nombres », numbering) and Q42 (one sample split between technicians) in NEEDEDINFO.
+
+## Checkpoint V11 — Analyse des écarts du 10/10 (built 10/10, **not deployed** — `RETOUR-LABO-06-10.md` §11)
+
+**Built 10/10, gates green** (prisma generate · tsc 0 · eslint 0 · vitest 90
+files / 1 396 tests · `npm run build`). **Nothing below was seen in a
+browser**: there is no local database, so every check is to run on production
+after the deploy of migration `20261012100000_gaps_build`.
+
+Rules for this recette — production holds real laboratory data:
+- Work **only** on the test client « TEST UI 2026-10-06 Traiteur » (and its
+  séries); create new test séries on it, never touch a real client's
+  sample, invoice or report. Scripts print counts, never real names.
+- Rotate the demo accounts' passwords first (`/admin/utilisateurs`): the
+  shared one is written in the repository. The steps name the roles by their
+  demo account (`pre1`, `recep1`, `param1`, `tech1`, `valid1`, `admin`,
+  `compta1`, `commercial1`).
+- A change in `/admin/reglages` applies to the whole laboratory at once: do
+  it outside working hours and put the value back immediately.
+- Issuing an invoice or a credit note **consumes a number of the legal
+  sequence**: run V11-A12/A13/C8 only with the owner's agreement (before the
+  switch-over the counters can be reset, C10), otherwise on a local copy.
+- Refresh every page opened before the deploy.
+
+### V11.0 — Deployment
+- [ ] `migrate` container exits 0; `_prisma_migrations` lists `20261012100000_gaps_build` finished, none failed; `Sample` has `receptionPackagingOk`, `receptionIdentificationOk`, `storageClass`, `receptionTemperatureSource`, `receptionNote`, `awaitingClientSince`, `clientConsulted*`; `Sample.cancelReason` ENUM ends with `NON_RECU`; `LabSettings` has the 7 new columns at their defaults (24, NULL, 0, 0, −15, 8, 0); `Invoice.clientSnapshot`, `InvoiceItem.creditedItemId`; `SHOW INDEX` lists `Sample_sampledAt_idx`, `Sample_receivedAt_idx`, `Sample_clientId_sampledAt_idx`, `Serie_receivedAt_idx`, `EmailLog_createdAt_idx`, `AuditLog_action_createdAt_idx`, `Invoice_issuedAt_idx`, `InvoiceItem_creditedItemId_idx` (read-only queries).
+- [ ] `/api/health` 200; app container 0 restarts; no error in its log after the first reception.
+- [ ] Ops (operator, VPS): the new `scripts/backup-db.sh` is the one cron runs **before 14/10** (it must not prune `qualilab_avant-phase-9.sql.gz`); the next 02:00 run logs « offsite skipped (BACKUP_REMOTE not set) »; `grep -n "X-Real-IP" /etc/nginx/sites-enabled/*` shows `proxy_set_header X-Real-IP $remote_addr` (read-only).
+
+### V11-A — Réception (recep1, on a new visit of 3 samples by pre1 for the test client: food micro, water micro, surface)
+- [ ] **A1** — The reception screen shows, under the 7 rules, « Contrôles complémentaires (hors bon) » with C1, C2, C3, C5 (and C7 on the food sample); C3 hint on the water micro sample reads « flacon stérile ; au thiosulfate si eau traitée (chlorée) »; Oui / Non chips are 44 px and keyboard-operable. « Valider la réception » without C3 / C5 → refused next to the card; an old payload without `packagingOk` (curl) → 400 « … rechargez la page si elle date d'avant la mise à jour ». C3 « Non » → card switches to non conforme with motif « Emballage »; sending it « conforme » by API → 400.
+- [ ] **A1** — On a not-yet-received sample of another test visit, « Annuler » offers « Non reçu au laboratoire »; on a received sample it is not offered and the API answers 400; the protocol PDF of that visit prints « Non reçu ».
+- [ ] **A2** — Arrival typed before the end of sampling → « L'arrivée au laboratoire précède la fin du prélèvement. » next to the field, nothing sent; `PATCH /api/series/[id]` with an arrival before the start of a série without end → 400; an empty arrival is accepted (reception instant used).
+- [ ] **A3** — Visit sampled more than 24 h before the arrival: C1 « Délai 27 h > 24 h » à vérifier; within 24 h « Délai 3 h 30 » conforme; the reception queue shows « délai X h », amber above 24 h. `/admin/reglages` « Contrôles complémentaires (hors bon) » shows the micro / physico-chimie delays and « Délai dépassé = non conforme » (off). Counter deposit (« Nouveau dépôt ») with « Prélevé le » left empty → C1 « Heure de prélèvement non déclarée » à vérifier; DB `Serie.samplingTimeDeclared = 0`.
+- [ ] **A4** — « Conservation » select on each card, default Réfrigéré for food / surface / water micro; cooler 10 °C → amber hint under « T° de la glacière »; C2 « à vérifier » with « (glacière) »; a temperature typed on the sample → « (mesurée sur l'échantillon) »; water line offers « Flacon témoin » under « Température relevée sur »; Congelé at −20 °C conforme, at −10 °C à vérifier; Ambiant → sans objet. `/admin/reglages`: saving « Réfrigéré — T° minimale » above the maximum is refused with a French message (nothing saved).
+- [ ] **A5** — Food sample with a DLC before today → C7 « DLC dépassée le JJ/MM/AAAA » à vérifier; « Non conforme » pre-fills motif « Autre » and « DLC dépassée le … »; DLC today or later → conforme; no DLC → « DLC non indiquée ».
+- [ ] **A6** — pre1 visit page: with a photo, « Photo du protocole signé : Voir » opens the image; choosing another photo asks « Remplacer / Garder l'actuelle ». Reception of a visit: C6 row above the samples (« Photo jointe » + « Voir », or « Protocole papier signé reçu ? » Oui / Non, « Non » amber, never blocking); a deposit has no C6 row. `GET /api/series/<id>/protocol-photo` as tech1 → 403, as pre1 on another préleveur's visit → 404, as valid1 → image with `Cache-Control: private, no-store`; journal « Photo du protocole signé consultée ».
+- [ ] **A7** — Accept conforme a sample whose C1 or C2 is « à vérifier » without an observation → « Échantillon N : justifiez l'acceptation (C… à vérifier). », field focused; with an observation → received; the observation prints under the line of the bon, shows in the reception summary, on the programme sheet, on the technician sheet and on the validation page (« Observation de réception »).
+- [ ] **A8** — The received série shows « Checklist à la réception » per sample (collapsible, both groups, exactly what was decided); a sample received before 09/10 reads « Réceptionné avant la checklist »; a sample cancelled « Non reçu » reads « Annulé avant la réception : pas de checklist » and is not counted as numbered.
+- [ ] **A9** — Non-conform sample: three decisions « Analyser malgré tout » / « En attente du client » / « Détruire ». « En attente du client » → received, numbered, listed in « Bloqués — non-conformité » with « En attente du client depuis … »; journal « Échantillon en attente de l'avis du client »; bon « en attente de l'avis du client ». From « Bloqués », recep1 « Analyser l'échantillon » with the agreement (name, channel, « Maintenant ») → the sample appears in the programmation queue with **no technician**; bon « analysé avec l'accord de … (tél., JJ/MM HH:MM) »; programme, bench and validation pages print « Analysé avec l'accord de … ». A reactivation hold stays admin-only for recep1 (403). « Détruire » → cancelled `DETRUIT_A_RECEPTION`, e-mail logged (SIMULE without key). Outside working hours only: switch on « Accord du client obligatoire… », analyse a non-conform test sample without the agreement → refused; switch back off.
+- [ ] **A10** — « Nouveau dépôt »: the client is a search field (2 characters, ICE / contact match); the sites are the picked client's; changing the client resets site and memory; the network tab shows no `GET /api/clients` without `q`.
+- [ ] **A11** — Indexes present (V11.0); « Ce mois-ci » on the direction view and the portal list answer in under a second.
+- [ ] **A12** — *(owner's agreement — consumes a number)* Issue a TEST UI invoice; rename the test client; the issued PDF and fiche keep the old name, address and ICE; a draft of the same client shows the new name; a credit note on that invoice prints the frozen client; the rename is undone afterwards. An invoice issued before the deploy follows the live name (no backfill).
+- [ ] **A13** — *(owner's agreement)* On a TEST UI invoice: credit half of one line, then « Créer un avoir » shows « Déjà repris : X HT · reste Y HT » under that line and caps the default quantity; crediting more than the rest is refused before sending and by the API (« Ligne N : la reprise … dépasse ce qui reste à reprendre … »); a fully credited line reads « Déjà entièrement repris » and cannot be ticked.
+- [ ] **A14** — param1, programme sheet of a test sample, section « Organisation »: each technician option reads « Nom — N éch. · M en retard » (the late part only when there are late samples), the default technician shows « Charge de X : … »; the counts match the technician's queue.
+
+### V11-B — Paillasse, validation, envois
+- [ ] **B1** — tech1 on a test food sample with a criterion (n = 5): « Indénombrable » in one R → Non satisfaisant, « Soumettre » enabled; « > 50 » against m = 10² → « Incomplet » with « > 50 ne permet pas de conclure face à m = … : lire une dilution supérieure », submit disabled; « > 1.10² » → Non satisfaisant; « TNTC », « indenombrable », « T.N.T.C. » accepted. Single value with a limit: « > 3.10⁵ » → Non conforme; « > 5 » → warning + manual choice. The help line lists the accepted notations. After validation and approval the report prints « Indénombrable » in red and, on a sensitive germ, the contamination alert is logged. A request forcing `conform: true` on « Indénombrable » (curl, no criterion) is stored non conforme.
+- [ ] **B2** — valid1 « Renvoyer au technicien » with a motif → tech1's sheet shows the amber « Renvoyé par … le … : … »; the queue line shows « Renvoyé »; after resubmission and validation the badge is gone.
+- [ ] **B3** — A test sample received non conforme with a motif: technician and validation pages print « Non conforme à réception — <motif>. <précision> »; the validation page shows « Protocole signé (photo) » for a série with a photo (opens the image); the technician page never does.
+- [ ] **B4** — commercial1 on the test client's fiche: « Renvoyer au client » under a report number → confirmation → dialog lists the recipients and says « Envoi simulé » without a RESEND key; the compact action shows on /recherche for commercial1, valid1, admin but not compta1; `POST /api/samples/<id>/report/send` as compta1 → 403; hidden during « Amendement en cours ».
+- [ ] **B5** — admin, test report: « Modifier la conclusion » → prefilled, counter ≤ 2 000 → saved → the duplicata PDF prints the new text; no new row in `/admin/journal`; PATCH as valid1 → 403; 2 001 characters → 400; after « Rouvrir pour amendement » the action is hidden and PATCH → 409. Put the conclusion back afterwards.
+- [ ] **B6** — Resend a test report: the `EmailLog` row (SIMULE) and the dev console show the subject with the name saved in `/admin/entreprise` and a signature with its phone / e-mail / address (no placeholder).
+- [ ] **B7** — valid1 on a test sample that was sent back then revalidated: « Parcours de l'échantillon » lists reception, programme (with technician), both submissions, the send-back with its motif, both validations, the report sent; no download or duplicata; a deposit with « Prélevé le » left empty shows no « Prélèvement » step.
+- [ ] **B8** — admin `/admin/envois`: filters type / statut / du / au, 50 per page with « Envois plus anciens », a row opens `/validation/<id>`, « non rattaché » for an early alert; the validation page's « Envois » card lists the report's e-mails with their status.
+- [ ] **B9** — recep1 menu « Historique des réceptions » → `/reception/historique`: newest first, du / au and client filters (« TEST UI »), a row opens the received série, counts match.
+- [ ] **B10** — tech1 menu « Relevés de température » → the board; record a reading on a monitored equipment; out of range flagged; with no monitored equipment the empty state reads « Aucun équipement surveillé — à déclarer par le validateur dans Qualité ».
+
+### V11-C — Administration, sécurité, facturation, exploitation
+- [ ] **C1** — Each lab role clicks its name in the header → `/compte` (name, username, role, « Changer mon mot de passe »); a test account changes its password → its other session is signed out; journal « Mot de passe modifié par l'utilisateur » (`USER_PASSWORD_CHANGED`, `portal: false`); a CLIENT account is redirected to `/portail`. pre1's menu shows « Mon compte ».
+- [ ] **C2** — On a test account, 5 wrong current passwords → the 6th answers 429 « Trop de tentatives, réessayez dans N minutes. » (portal and staff); a correct one after 15 min works.
+- [ ] **C3** — On a lab PC, idle 28 min → « Vous allez être déconnecté pour inactivité » with a countdown; « Rester connecté » closes it in every open tab; idle 30 min → `/login` « Session fermée après inactivité. »; a tab closed and reopened after 30 min lands on the login page; a fresh sign-in is not signed out; pre1 on a phone is never signed out.
+- [ ] **C4** — admin `/admin/journal`: filters Action / Utilisateur (disabled accounts and « Système » included) / Du / Au / Référence; a test N° de contrôle, a test série « NN/26 » and a test invoice number each list their entries (« Référence X : 1 échantillon (et son rapport) »); an unknown reference shows the « Aucun … ne porte la référence » message; « Actions plus anciennes » / « Revenir aux plus récentes »; 50 per page.
+- [ ] **C5** — admin menu: « Enregistrement des paramètres », « Historique des réceptions », « Envois d'e-mails » open their pages and light up.
+- [ ] **C6** — pre1 dashboard: tiles count every visit (not the last 50); « Mes visites » search (série, client « TEST UI », site), status filter and « Voir plus » append the next page.
+- [ ] **C7** — « Nouvelle visite » and « Nouvelle facture »: client search instead of a dropdown; creating a site on the visit adds it to the picked client; a draft invoice keeps its client and reloads « Analyses à facturer » when the client changes.
+- [ ] **C8** — *(owner's agreement)* An issued TEST UI invoice of 0,00 offers « Annuler »; a paid invoice with a settlement or a credit note is still refused.
+- [ ] **C9** — compta1 « Export comptable » (Mois en cours) downloads `journal-des-ventes-<période>.xlsx` with « Journal des ventes » (credit notes negative, cancelled listed, totals « hors factures annulées ») and « Règlements »; client name / ICE as printed; a bad date → error shown in red; commercial1 → 403; journal « Export du journal des ventes ».
+- [ ] **C10** — `/admin/reglages` « Compteurs de numérotation » → « Factures et avoirs » with « Prochain : FAC-2026-… » and the highest number used; a value below it is refused (409, nothing saved). **Do not set a real jump before the switch-over.**
+- [ ] **C11** — `PATCH /api/invoices/<id>/payment` → 404 (route deleted); `GET /api/invoices` and `/api/invoices/stats` still 200 for compta1.
+- [ ] **C12** — (operator) `BACKUP_REMOTE` unset → « offsite skipped »; once a destination is chosen (Q97): « offsite ok: <name> », size checked, restore-from-remote line of `DEPLOY.md` tried once on a scratch database.
+- [ ] **C13** — (operator, maintenance window) `bash scripts/deploy.sh` → healthy → build cache pruned, volumes untouched; `harden-ssh.sh` run only after a key login was tested (refuses otherwise), `sshd -T` shows `passwordauthentication no`, `fail2ban-client status sshd` lists the jail; the tzdata check of `DEPLOY.md` gives ≥ 2026c.
+
+### V11-I — Integration pass (10/10)
+- [ ] **I1** — The technician and validation pages show « Observation de réception » and, for a non-conform sample analysed with the client's agreement, « Analysé avec l'accord de … »; the programme sheet shows the same paragraph.
+- [ ] **I2** — `/admin/envois` and `/reception/historique` filtered on one day list the entries printed on that day (lab clock), like `/admin/journal`.
 
 ## Checkpoint V10 — Message du 08/10 (soir) : checklist de réception, cartouche, rôles (live 09/10 — `RETOUR-LABO-06-10.md` §10)
 

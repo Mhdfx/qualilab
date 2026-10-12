@@ -120,6 +120,23 @@ describe("draft, issue, cancel", () => {
     expect(canCancel({ status: "EN_ATTENTE", kind: "FACTURE", credited: 0 }, 0)).toBe(true);
   });
 
+  it("cancels an invoice of 0,00 — PAYEE at issue with nothing paid and nothing credited", () => {
+    // statusAfterPayments stores PAYEE at issue when the total is 0,00.
+    expect(statusAfterPayments("0.00", 0, 0)).toBe("PAYEE");
+    expect(cancelRefusal({ status: "PAYEE", kind: "FACTURE" }, 0)).toBeNull();
+    expect(cancelRefusal({ status: "PAYEE", kind: "FACTURE", credited: 0 }, 0)).toBeNull();
+    expect(canCancel({ status: "PAYEE", kind: "FACTURE", credited: "0.00" }, 0)).toBe(true);
+  });
+
+  it("still refuses a PAYEE invoice that was settled or credited", () => {
+    // Paid by a settlement (the migrated « Repris » invoices included).
+    expect(cancelRefusal({ status: "PAYEE", kind: "FACTURE", credited: 0 }, 1)).toMatch(/règlement/);
+    // Soldée by credit notes alone.
+    expect(cancelRefusal({ status: "PAYEE", kind: "FACTURE", credited: "120.00" }, 0)).toMatch(/déjà un avoir/);
+    // Paid partly by each.
+    expect(canCancel({ status: "PAYEE", kind: "FACTURE", credited: "20.00" }, 2)).toBe(false);
+  });
+
   it("refuses the rest, each with its reason", () => {
     expect(cancelRefusal({ status: "BROUILLON", kind: "FACTURE" }, 0)).toMatch(/brouillon/);
     expect(cancelRefusal({ status: "ANNULEE", kind: "FACTURE" }, 0)).toMatch(/déjà annulée/);
@@ -129,8 +146,6 @@ describe("draft, issue, cancel", () => {
     // Soldée by credit notes alone: the refusal names the credit note, not a
     // settlement that never existed.
     expect(cancelRefusal({ status: "PAYEE", kind: "FACTURE", credited: "240.00" }, 0)).toMatch(/déjà un avoir/);
-    // An invoice of 0,00 is soldée at issue: still never cancelled, and said so.
-    expect(cancelRefusal({ status: "PAYEE", kind: "FACTURE" }, 0)).toMatch(/soldée/);
     expect(cancelRefusal({ status: "EN_ATTENTE", kind: "FACTURE", credited: "50.00" }, 0)).toMatch(/déjà un avoir/);
   });
 

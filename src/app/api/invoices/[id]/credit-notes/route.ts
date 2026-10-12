@@ -4,8 +4,9 @@ import { AUDIT_ACTIONS, logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { drawDocumentNumber } from "@/lib/invoice-number";
 import { checkCreditNote, checkReason, remainingCreditable, statusAfterPayments } from "@/lib/invoice-lifecycle";
-import { cleanCreditNoteLines, creditNoteLinesRefusal, creditNoteRefusal } from "@/lib/billing";
+import { cleanCreditNoteLines, creditedByItem, creditNoteLinesRefusal, creditNoteRefusal } from "@/lib/billing";
 import { toMoney } from "@/lib/money";
+import { CLIENT_IDENTITY_SELECT, clientSnapshotOf, invoiceClientIdentity } from "@/lib/invoice-client-identity";
 import {
   INVOICE_DETAIL_INCLUDE,
   InvoiceRequestError,
@@ -20,10 +21,13 @@ import {
  * `{ items: [{ description, quantity, unitPrice, invoiceItemId? }], reason }`.
  *
  * Issued at once with « AV-AAAA-NNNN » from the AVOIR counter, at the
- * invoice's VAT, for the invoice's client; positive amounts; never a sample
+ * invoice's VAT, for the invoice's client — printed as the invoice prints it
+ * (its `clientSnapshot` is copied); positive amounts; never a sample
  * (a credit note does not make a sample billable again). A line taken from
- * an invoice line (`invoiceItemId`) may lower its quantity or price, never
- * raise them. The credit notes of an invoice never exceed its total TTC.
+ * an invoice line (`invoiceItemId`, stored as `creditedItemId`) may lower its
+ * quantity or price, never raise them, and what all the credit notes take
+ * back from one line never exceeds that line's total HT. The credit notes of
+ * an invoice never exceed its total TTC.
  * The reason is kept as the credit note's notes (« Motif de l'avoir » on the
  * PDF). When it covers what was left to pay, the invoice reads « Payée ».
  *
@@ -62,8 +66,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             clientId: true,
             taxRate: true,
             total: true,
-            client: { select: { name: true } },
-            items: { select: { id: true, quantity: true, unitPrice: true } },
+            clientSnapshot: true,
+            client: { select: CLIENT_IDENTITY_SELECT },
+            items: { select: { id: true, description: true, quantity: true, unitPrice: true, lineTotal: true } },
             payments: { select: { amount: true } },
             creditNotes: { select: { total: true } },
           },
@@ -71,7 +76,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
         const refusal = creditNoteRefusal(invoice);
         if (refusal) throw new InvoiceRequestError(400, refusal);
-        const linesRefusal = creditNoteLinesRefusal(cleaned.lines, invoice.items);
+        // What earlier credit notes already took back from each line, read
+        // under the invoice's lock (every credit note of this invoice takes
+        // it first, so none is being written meanwhile).
+        const creditedGroups = await tx.invoiceItem.groupBy({
+          by: ["creditedItemId"],
+          where: {
+            creditedItemId: { in: invoice.items.map((item) => item.id) },
+            invoice: { kind: "AVOIR", status: { notIn: ["BROUILLON", "ANNULEE"] } },
+          },
+          _sum: { lineTotal: true },
+        });
+        const alreadyCredited = creditedByItem(
+          creditedGroups.map((group) => ({ creditedItemId: group.creditedItemId, amount: group._sum.lineTotal }))
+        );
+        const linesRefusal = creditNoteLinesRefusal(cleaned.lines, invoice.items, alreadyCredited);
         if (linesRefusal) throw new InvoiceRequestError(400, linesRefusal);
 
         const credited = invoice.creditNotes.reduce((sum, note) => sum + toMoney(note.total), 0);
@@ -84,6 +103,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         if (!check.ok) throw new InvoiceRequestError(400, check.error);
         const { subtotal, taxAmount, total, lines } = check.totals;
 
+        // Addressed to the client exactly as the credited invoice prints it.
+        const identity = invoiceClientIdentity(invoice);
         const now = new Date();
         const number = await drawDocumentNumber(tx, "AVOIR", now);
         const creditNote = await tx.invoice.create({
@@ -92,6 +113,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             kind: "AVOIR",
             creditedInvoiceId: invoice.id,
             clientId: invoice.clientId,
+            clientSnapshot: clientSnapshotOf(identity),
             createdById: session.id,
             status: "EN_ATTENTE",
             issueDate: now,
@@ -108,6 +130,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
                 unitPrice: line.unitPrice,
                 lineTotal: lines[index].lineHt,
                 sampleId: null,
+                // The invoice line it takes back (checked above), null for a free line.
+                creditedItemId: line.invoiceItemId ?? null,
               })),
             },
           },
@@ -123,7 +147,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         return {
           creditNote,
           creditedNumber: invoice.number,
-          client: invoice.client.name,
+          client: identity.name,
           total,
           invoiceStatus: status,
         };

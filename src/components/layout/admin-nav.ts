@@ -20,6 +20,9 @@ import {
   BookOpen,
   Search,
   Scale,
+  ClipboardList,
+  History,
+  Mail,
 } from "lucide-react";
 import type { NavSection } from "./nav-types";
 
@@ -41,8 +44,10 @@ export const adminNav: NavSection[] = [
     title: "Circuit des échantillons",
     items: [
       { label: "Réception", href: "/reception", icon: Inbox },
+      { label: "Enregistrement des paramètres", href: "/programmation", icon: ClipboardList },
       { label: "Analyses", href: "/technicien", icon: Microscope },
       { label: "Validation administrative", href: "/validation", icon: ShieldCheck },
+      { label: "Historique des réceptions", href: "/reception/historique", icon: History },
       { label: "Recherche des analyses", href: "/recherche", icon: Search },
     ],
   },
@@ -69,6 +74,7 @@ export const adminNav: NavSection[] = [
       { label: "Import de données", href: "/admin/import", icon: FileUp },
       { label: "Entreprise", href: "/admin/entreprise", icon: Building2 },
       { label: "Documents qualité", href: "/admin/documents", icon: FileText },
+      { label: "Envois d'e-mails", href: "/admin/envois", icon: Mail },
       { label: "Journal d'audit", href: "/admin/journal", icon: BarChart3 },
     ],
   },

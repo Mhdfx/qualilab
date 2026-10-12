@@ -117,7 +117,11 @@ per line (mandatory, rule 6), quantity in grams or litres, analyses by
 profile, acceptance checklist, optional advance with receipt (Q4). The
 deposit obtains its N° de série and its N° de contrôle immediately and its
 samples start at `RECU`. The bon PDF (cartouche PG05/EN04, the seven rules
-printed, two signature boxes) prints.
+printed, two signature boxes) prints. Since 10/10 (§18) « Prélevé le » starts
+empty (the time is asked of the client; left empty, `Serie.samplingTimeDeclared
+= false` and C1 reads « Heure de prélèvement non déclarée »), the client is
+searched (`ClientPicker`), and every card carries the complementary controls,
+« Conservation » and « Observation de réception ».
 
 ### 3.3 Réception of a série
 
@@ -125,7 +129,9 @@ The reception queue lists **séries** (client · site · préleveur · lines ·
 arrived at), not samples, plus an « À corriger » lane. The screen shows the
 header (cooler temperature, times) and every line: reception temperature
 (pre-filled with the cooler's), quantity, the **computed acceptance
-checklist**, conformity with a coded motif. No technician: since the lab's
+checklist** (the bon's 7 rules, then the controls « hors bon » C1–C7 since
+10/10, §18), conformity with a coded motif, the decision for a non-conform
+sample (analyse, wait for the client, destroy). No technician: since the lab's
 feedback of 08/10 the receptionist assigns nobody, the responsable des
 paramètres does it on the programme sheet. **One button** « Valider la
 réception » runs a single transaction: N° de contrôle for each line, status
@@ -293,7 +299,10 @@ Thresholds in `LabSettings` (defaults from the paper form PG05/EN04):
 `histamineUnitG = 100`, `temperatureRequiredForKinds = [ALIMENT, EAU]`,
 `coldChainMaxC = 8` (warning). Whether a failing rule blocks the reception or
 opens a non-conformity is the existing `blockNonConformAtReception` switch
-(Q3 refines it).
+(Q3 refines it). Since 09/10 the screen lists the 7 rules as a checklist
+(`receptionChecklist`); since 10/10 the cold-chain judgement left rule (6) for
+the complementary control C2, computed with C1 and C7 by
+`src/lib/reception-complementary.ts` (§18).
 
 ## 7. Screens and routes
 
@@ -518,3 +527,56 @@ choix par défaut de §5, à déployer puis à recetter en production
   l'e-mail impriment « Client — Site » ; la recherche filtre par site.
 - **Analyses (V6).** Le préleveur peut ne cocher aucune analyse ni type de
   produit : la fiche de programme les fixe.
+
+## 18. Contrôles complémentaires, observation, accord du client (10/10 — `RETOUR-LABO-06-10.md` §11, TESTPLAN V11) — built, not deployed
+
+What the reception of a série and the counter deposit gain, on top of the
+bon's 7 rules (which stay exactly the paper's):
+
+- **A second group « Contrôles complémentaires (hors bon) »** per sample,
+  coded so that they never collide with the paper's numbering:
+  - **C1 Délai prélèvement → laboratoire** — computed from the end of
+    sampling (else its start) to the arrival (typed, else the série's, else
+    the reception instant). Limits in `/admin/reglages` (24 h micro, none in
+    physico-chimie by default); over the limit « à vérifier », or non
+    conforme with motif `DELAI` when « Délai dépassé = non conforme » is on.
+  - **C2 Température de transport** — by storage class (« Conservation »:
+    Réfrigéré by default for food, surfaces, hands and water micro; Congelé,
+    Ambiant, Chaud on demand) and the source of the reading (glacière,
+    échantillon, flacon témoin on water). Never a refusal. Rule (6) only
+    requires a temperature where `temperatureRequiredKinds` says so.
+  - **C3 Emballage** (with C4, the sterile thiosulfate bottle of a treated
+    water) and **C5 Identification** — answered Oui / Non per sample, required
+    by both APIs; « Non » forces non conforme with motif EMBALLAGE /
+    IDENTIFICATION.
+  - **C6 Protocole signé** — one row for a visit, above the samples: the
+    préleveur's photo answers it, else an optional « Protocole papier signé
+    reçu ? ». Never a sample's motif.
+  - **C7 DLC** — food only: a passed DLC is « à vérifier »; « Non conforme »
+    then pre-fills motif « Autre » with « DLC dépassée le … ».
+- **The arrival never precedes the sampling** (form, reception, `PATCH
+  /api/series/[id]`, `POST /api/series`).
+- **An accepted doubt is written down.** Accepting a sample conforme while
+  any paper or C-row is « à vérifier » requires the « Observation de
+  réception » (`Sample.receptionNote`, ≤ 1 000 characters), printed on the
+  bon and read on programme, bench and validation.
+- **Non-conform decisions: three, not two.** « Analyser malgré tout » (the
+  client's agreement may be recorded — who, channel, when, note; required
+  when `consultationRequired` is on), « En attente du client » (received,
+  numbered, `analysisBlocked`, listed in « Bloqués » with « depuis N j »),
+  « Détruire ». Releasing from « Bloqués » (réception for a client wait,
+  admin always) either sends the sample to the programme queue — **no
+  technician is assigned any more** — or destroys it (client e-mailed).
+- **« Non reçu au laboratoire »**: a visit's sample that never arrived is
+  cancelled with this motif before reception (PRELEVE only).
+- **After reception** the série page shows « Checklist à la réception »
+  per sample, read from the `SAMPLE_RECEIVED` journal entry (what was
+  decided, never recomputed); a sample cancelled before reception is listed
+  apart.
+- **History**: `/reception/historique` lists every received série (period,
+  client), 50 per page.
+
+Old tabs: a reception or deposit sent without the C3 / C5 answers is refused
+with « … (rechargez la page si elle date d'avant la mise à jour) ». The
+lab's answers (NEEDEDINFO Q67–Q77) set the limits and the severity; until
+then the defaults above apply.

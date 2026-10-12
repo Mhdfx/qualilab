@@ -7,9 +7,11 @@ import {
   checklistRowLabel,
   checklistSummary,
   evaluateReception,
+  justifyAcceptanceMessage,
   parameterSpellings,
   proposedConformity,
   receptionChecklist,
+  rowToJustify,
   requestsHistamine,
   requestsSalmonella,
   requiredKinds,
@@ -72,16 +74,18 @@ describe("evaluateReception — food", () => {
     expect(perUnit.find((c) => c.rule === "HISTAMINE_POIDS")?.message).toBe("Poids par unité non renseigné — minimum 100 g.");
   });
 
-  it("requires the temperature at arrival and flags the cold chain beside it", () => {
+  it("requires the temperature at arrival; the cold chain is C2's, not rule (6)'s", () => {
     const missing = evaluateReception(food({ receptionTemperature: null }));
     expect(missing.find((c) => c.rule === "TEMPERATURE_ARRIVEE")).toMatchObject({
       level: "BLOQUANT",
       reason: "TEMPERATURE_MANQUANTE",
     });
+    // A warm food line passes rule (6): C2 judges the range (reception-complementary.ts).
     const warm = evaluateReception(food({ receptionTemperature: 12.5 }));
-    expect(warm.map((c) => c.rule)).toEqual(["ALIMENT_MICRO_POIDS", "TEMPERATURE_ARRIVEE", "CHAINE_FROID"]);
-    expect(warm[2]).toMatchObject({ level: "AVERTISSEMENT", reason: "CHAINE_FROID" });
-    expect(warm[2].message).toContain("12,5 °C");
+    expect(warm.map((c) => [c.rule, c.level])).toEqual([
+      ["ALIMENT_MICRO_POIDS", "OK"],
+      ["TEMPERATURE_ARRIVEE", "OK"],
+    ]);
   });
 
   it("uses the chemistry minimum for a physico-chemistry line", () => {
@@ -134,8 +138,10 @@ describe("evaluateReception — water", () => {
     });
   });
 
-  it("does not raise the cold-chain warning on water", () => {
-    expect(evaluateReception(water({ receptionTemperature: 20 })).some((c) => c.rule === "CHAINE_FROID")).toBe(false);
+  it("never raises the cold chain itself, whatever the kind", () => {
+    for (const line of [water({ receptionTemperature: 20 }), food({ receptionTemperature: 40 })]) {
+      expect(evaluateReception(line).some((c) => c.rule === "CHAINE_FROID")).toBe(false);
+    }
   });
 });
 
@@ -204,7 +210,7 @@ describe("receptionChecklist — always the seven rules of the paper", () => {
   });
 
   it("food in microbiology: rules (2) and (6) apply, the others are « sans objet » with a reason", () => {
-    const rows = receptionChecklist(food(), DEFAULT_THRESHOLDS, { exploitable: true, fromCooler: true });
+    const rows = receptionChecklist(food(), DEFAULT_THRESHOLDS, { exploitable: true, temperatureSource: "GLACIERE" });
     expect(rows.map((r) => [r.n, r.status, r.detail])).toEqual([
       [1, "CONFORME", "Déclaré exploitable"],
       [2, "CONFORME", "Quantité 250 g ≥ 100 g"],
@@ -244,26 +250,22 @@ describe("receptionChecklist — always the seven rules of the paper", () => {
   });
 
   it("says where the temperature comes from", () => {
-    expect(row(receptionChecklist(food(), DEFAULT_THRESHOLDS, { exploitable: true, fromCooler: false }), 6).detail).toBe(
-      "4 °C (mesurée sur l'échantillon)"
-    );
+    const from = (temperatureSource: "GLACIERE" | "ECHANTILLON" | "FLACON_TEMOIN") =>
+      row(receptionChecklist(food(), DEFAULT_THRESHOLDS, { exploitable: true, temperatureSource }), 6).detail;
+    expect(from("ECHANTILLON")).toBe("4 °C (mesurée sur l'échantillon)");
+    expect(from("GLACIERE")).toBe("4 °C (glacière)");
+    expect(from("FLACON_TEMOIN")).toBe("4 °C (flacon témoin)");
+    // Unknown (an older page): the value alone.
     expect(row(checklist(food()), 6).detail).toBe("4 °C");
   });
 
-  it("shows the cold chain as a complementary check under rule (6), never a refusal", () => {
-    const rows = receptionChecklist(food({ receptionTemperature: 12.5 }), DEFAULT_THRESHOLDS, { exploitable: true, fromCooler: true });
-    expect(row(rows, 6)).toMatchObject({ status: "A_VERIFIER", reason: "CHAINE_FROID", rules: ["TEMPERATURE_ARRIVEE", "CHAINE_FROID"] });
-    expect(row(rows, 6).detail).toBe(
-      "12,5 °C (glacière) · contrôle complémentaire (hors bon) : > 8 °C — vérifier la chaîne du froid (produit servi chaud ?)"
-    );
-    // Rule (6) not required for food in the settings: the note keeps the value.
+  it("leaves the cold chain to C2: a warm sample meets rule (6)", () => {
+    const rows = receptionChecklist(food({ receptionTemperature: 12.5 }), DEFAULT_THRESHOLDS, { exploitable: true, temperatureSource: "GLACIERE" });
+    expect(row(rows, 6)).toMatchObject({ status: "CONFORME", detail: "12,5 °C (glacière)", rules: ["TEMPERATURE_ARRIVEE"] });
+    // Rule (6) not required for food in the settings: « sans objet ».
     const optional = receptionChecklist(food({ receptionTemperature: 12.5 }), { ...DEFAULT_THRESHOLDS, temperatureRequiredKinds: "EAU" }, { exploitable: true });
-    expect(row(optional, 6)).toMatchObject({
-      status: "A_VERIFIER",
-      detail: "Contrôle complémentaire (hors bon) : 12,5 °C à l'arrivée > 8 °C — vérifier la chaîne du froid (produit servi chaud ?)",
-      rules: ["CHAINE_FROID"],
-    });
-    expect(proposedConformity(rows)).toEqual({ conformity: true, reason: "CHAINE_FROID", forced: false, rule: null, pending: false });
+    expect(row(optional, 6)).toMatchObject({ status: "SANS_OBJET", rules: [] });
+    expect(proposedConformity(rows)).toEqual({ conformity: true, reason: null, forced: false, rule: null, code: null, pending: false });
   });
 
   it("histamine on a physico-chemistry sample: rule (7) beside rule (3)", () => {
@@ -311,6 +313,7 @@ describe("receptionChecklist — always the seven rules of the paper", () => {
       reason: "QUANTITE_INSUFFISANTE",
       forced: false,
       rule: null,
+      code: null,
       pending: false,
     });
   });
@@ -320,14 +323,14 @@ describe("rule (1) and the proposal", () => {
   it("waits for the answer: « à confirmer », nothing can be sent", () => {
     const rows = checklist(food(), null);
     expect(row(rows, 1)).toMatchObject({ status: "A_CONFIRMER", rules: [] });
-    expect(proposedConformity(rows)).toEqual({ conformity: true, reason: null, forced: false, rule: null, pending: true });
+    expect(proposedConformity(rows)).toEqual({ conformity: true, reason: null, forced: false, rule: null, code: null, pending: true });
   });
 
   it("« non exploitable » forces « non conforme » with its own motif — first in the paper's order", () => {
     // The temperature is missing too: rule (1) comes first.
     const rows = checklist(food({ receptionTemperature: null }), false);
     expect(row(rows, 1)).toMatchObject({ status: "NON_CONFORME", reason: "NON_EXPLOITABLE", detail: "Déclaré non exploitable" });
-    expect(proposedConformity(rows)).toEqual({ conformity: false, reason: "NON_EXPLOITABLE", forced: true, rule: 1, pending: false });
+    expect(proposedConformity(rows)).toEqual({ conformity: false, reason: "NON_EXPLOITABLE", forced: true, rule: 1, code: null, pending: false });
   });
 
   it("a measured rule forces « non conforme » with its motif once rule (1) is met", () => {
@@ -337,9 +340,39 @@ describe("rule (1) and the proposal", () => {
       reason: "TEMPERATURE_MANQUANTE",
       forced: true,
       rule: 6,
+      code: null,
       pending: false,
     });
-    expect(proposedConformity(checklist(food(), true))).toEqual({ conformity: true, reason: null, forced: false, rule: null, pending: false });
+    expect(proposedConformity(checklist(food(), true))).toEqual({ conformity: true, reason: null, forced: false, rule: null, code: null, pending: false });
+  });
+
+  it("a contrôle complémentaire forces « non conforme » after the paper's rules, by its code", () => {
+    const control: ChecklistRow = {
+      n: 3,
+      key: "EMBALLAGE",
+      code: "C3",
+      text: "emballage / contenant intact, fermé et adapté",
+      status: "NON_CONFORME",
+      reason: "EMBALLAGE",
+      rules: ["EMBALLAGE"],
+    };
+    expect(proposedConformity([...checklist(food(), true), control])).toEqual({
+      conformity: false,
+      reason: "EMBALLAGE",
+      forced: true,
+      rule: null,
+      code: "C3",
+      pending: false,
+    });
+    // A paper rule listed first keeps the priority.
+    expect(proposedConformity([...checklist(food({ receptionTemperature: null }), true), control])).toMatchObject({
+      rule: 6,
+      code: null,
+      reason: "TEMPERATURE_MANQUANTE",
+    });
+    // The label names a coded row by its code, a paper row by its number.
+    expect(checklistRowLabel(control)).toBe("C3 Emballage / contenant intact, fermé et adapté");
+    expect(checklistRowLabel({ n: 6, text: "la température doit être précisée" })).toBe("(6) La température doit être précisée");
   });
 
   it("words its refusals once", () => {
@@ -357,5 +390,27 @@ describe("checklistSummary", () => {
       "1 conforme · 1 non conforme · 2 à vérifier"
     );
     expect(checklistSummary([])).toBe("");
+  });
+});
+
+describe("rowToJustify / justifyAcceptanceMessage — an accepted doubt is justified (A7)", () => {
+  const rows = [
+    { n: 2, text: "poids minimal", status: "CONFORME" as const },
+    { n: 2, code: "C2", text: "température de transport", status: "A_VERIFIER" as const },
+    { n: 7, code: "C7", text: "DLC", status: "A_VERIFIER" as const },
+  ];
+
+  it("returns the first « à vérifier » row of a conform sample without observation", () => {
+    expect(rowToJustify(rows, true, "")).toBe(rows[1]);
+    expect(rowToJustify(rows, true, "   ")).toBe(rows[1]);
+    expect(rowToJustify(rows, true, null)).toBe(rows[1]);
+    expect(justifyAcceptanceMessage(rows[1])).toBe("Justifiez l'acceptation (C2 Température de transport à vérifier).");
+    expect(justifyAcceptanceMessage(rows[0])).toBe("Justifiez l'acceptation (règle 2 à vérifier).");
+  });
+
+  it("asks nothing once written, of a non-conform sample, or without doubt", () => {
+    expect(rowToJustify(rows, true, "Vu avec le responsable")).toBeNull();
+    expect(rowToJustify(rows, false, "")).toBeNull();
+    expect(rowToJustify([rows[0]], true, "")).toBeNull();
   });
 });

@@ -5,14 +5,17 @@ import { buildCatalogueIndex, catalogueKey, type CatalogueEntry } from "./billin
 import { toMoney } from "./money";
 import type { ProgrammeNatureRef } from "./programme-input";
 import { PROGRAMMABLE_STATUSES } from "./sample-status";
+import { BENCH_STATUSES } from "./bench-access";
+import { benchLoadByTechnician, NO_LOAD } from "./technician-load";
 
 /**
  * What the programme d'analyse reads and writes (PROGRAMME.md §4–5): the
  * line with its current programme, and the referential the fiche needs —
  * the product types the client may use with their criteria, the parameters
- * of the nature's category, the profiles, the active technicians, the norm
- * versions of each parameter, the catalogue prices. Shared by GET and PUT
- * so the rules are checked against exactly what the screen was offered.
+ * of the nature's category, the profiles, the active technicians with their
+ * current load, the norm versions of each parameter, the catalogue prices.
+ * Shared by GET and PUT so the rules are checked against exactly what the
+ * screen was offered.
  *
  * RETOUR-LABO-06-10.md §5 (V3, Q49 by default): the fiche may change the
  * line's nature to another active nature of the same family; the
@@ -31,7 +34,19 @@ export const PROGRAMME_SAMPLE_SELECT = {
   type: true,
   clientId: true,
   client: { select: { id: true, name: true } },
-  serie: { select: { id: true, serialNumber: true, kind: true, receivedAt: true } },
+  serie: {
+    select: {
+      id: true,
+      serialNumber: true,
+      kind: true,
+      receivedAt: true,
+      // The entry check recomputes C1 (délai prélèvement → laboratoire).
+      startedAt: true,
+      endedAt: true,
+      arrivedAt: true,
+      samplingTimeDeclared: true,
+    },
+  },
   natureId: true,
   nature: { select: { id: true, code: true, label: true, family: true, legacyType: true, defaultLineKind: true, active: true } },
   produit: true,
@@ -45,6 +60,12 @@ export const PROGRAMME_SAMPLE_SELECT = {
   conformityReason: true,
   conformityNote: true,
   receptionExploitable: true,
+  receptionPackagingOk: true,
+  receptionIdentificationOk: true,
+  storageClass: true,
+  receptionTemperatureSource: true,
+  // C7: the DLC of a food sample, in the entry check.
+  expiryDate: true,
   analysisBlocked: true,
   unitCount: true,
   productTypeId: true,
@@ -276,7 +297,7 @@ export async function loadProgrammeReferential(
   const category: SampleType = target && !target.current ? target.legacyType : sample.type;
   const natureId = target?.id ?? sample.natureId;
 
-  const [productTypes, parameters, profiles, technicians, services] = await Promise.all([
+  const [productTypes, parameters, profiles, technicians, services, benchLines] = await Promise.all([
     prisma.productType.findMany({
       where: { active: true, OR: [{ clientId: null }, { clientId: sample.clientId }] },
       select: {
@@ -322,7 +343,15 @@ export async function loadProgrammeReferential(
       where: { active: true, category },
       select: { name: true, category: true, unitPrice: true, active: true },
     }),
+    // Each technician's load (« visibilité sur la charge de chacun »): the
+    // lines at the bench now, through the status index — bounded by what
+    // the bench holds, not by the history.
+    prisma.sample.findMany({
+      where: { status: { in: [...BENCH_STATUSES] } },
+      select: { technicianId: true, status: true, dueAt: true, parameters: { select: { technicianId: true } } },
+    }),
   ]);
+  const loads = benchLoadByTechnician(benchLines, new Date());
 
   const normVersions = await normVersionsForParameters(
     parameters.map((p) => p.id),
@@ -383,7 +412,8 @@ export async function loadProgrammeReferential(
       unitCount: profile.unitCount,
       parameterIds: profile.parameters.map((p) => p.parameterId),
     })),
-    technicians,
+    /** The active technicians, each with what is on their bench now. */
+    technicians: technicians.map((technician) => ({ ...technician, load: loads[technician.id] ?? { ...NO_LOAD } })),
     normVersions,
     prices,
   };

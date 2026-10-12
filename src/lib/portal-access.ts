@@ -116,9 +116,11 @@ export const PASSWORD_MAX_LENGTH = 128;
 
 /**
  * « Mon compte »: the body of a password change, checked before it reaches
- * Better Auth so the client reads a French message rather than a code.
+ * Better Auth so the user reads a French message rather than a code. One
+ * rule for every account — the portal's route and the laboratory staff's
+ * (`POST /api/portail/compte/mot-de-passe`, `POST /api/compte/mot-de-passe`).
  */
-export function checkPortalPasswordChange(
+export function checkPasswordChange(
   body: unknown
 ): { ok: true; currentPassword: string; newPassword: string } | { ok: false; error: string } {
   const { currentPassword, newPassword, confirmPassword } = (body ?? {}) as Record<string, unknown>;
@@ -140,8 +142,8 @@ export function checkPortalPasswordChange(
   return { ok: true, currentPassword, newPassword };
 }
 
-/** Better Auth's error code of a refused password change, in French. */
-export function portalPasswordErrorMessage(code: string | undefined): string {
+/** Better Auth's error code of a refused password change, in French (both routes). */
+export function passwordErrorMessage(code: string | undefined): string {
   switch (code) {
     case "INVALID_PASSWORD":
       return "Le mot de passe actuel est incorrect.";

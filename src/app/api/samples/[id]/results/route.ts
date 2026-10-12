@@ -11,14 +11,17 @@ import {
   applyUnitFactor,
   judgeUnits,
   parseUnitReading,
+  suggestUnitsConformity,
   summariseReadings,
   verdictToConform,
   type UnitReading,
 } from "@/lib/interpretation";
 import {
   applyCalcFactor,
-  formatLabValue,
+  benchConformity,
+  factoredText,
   parseLabValue,
+  suggestConformity,
 } from "@/lib/result-value";
 import type { Interpretation, ResultWorkStatus } from "@/generated/prisma/enums";
 import { Prisma } from "@/generated/prisma/client";
@@ -225,7 +228,9 @@ export async function PUT(
           numericValue: summary.numeric,
           unit: parameter.unit,
           threshold: parameter.threshold,
-          conform: typeof raw.conform === "boolean" ? raw.conform : null,
+          // The worst unit against the limit, as the screen computes it;
+          // the technician's choice only where the screen asks for one.
+          conform: benchConformity(suggestUnitsConformity(readings, parameter.limitValue), raw.conform),
           workStatus,
           note: note || null,
           interpretation: null,
@@ -245,9 +250,10 @@ export async function PUT(
     // figures. A factor (the programmed dilution, else the parameter's
     // calcFactor) turns the bench reading into the final value; the raw
     // entry is kept alongside so nothing is lost. Only a
-    // genuine count is rewritten — « Absence » and « < 10 » stay as typed
-    // (their numeric 0 × factor is still 0), otherwise the report would print
-    // "0" where the technician wrote « Absence ».
+    // genuine count, or the bound of « > x », is rewritten — « Absence »,
+    // « < 10 » and « Indénombrable » stay as typed (their numeric 0 × factor
+    // is still 0, or there is none), otherwise the report would print "0"
+    // where the technician wrote « Absence ».
     if (value.length > 191) {
       return NextResponse.json(
         { error: `Valeur trop longue pour ${parameter.name} (191 caractères max).` },
@@ -257,17 +263,20 @@ export async function PUT(
     const parsed = value
       ? applyCalcFactor(parseLabValue(value), factor)
       : { numeric: null, kind: "unreadable" as const };
-    const transformed =
-      factor !== 1 && parsed.kind === "number" && parsed.numeric !== null;
+    // A count, or the bound of « > x », rewritten by the factor.
+    const factored = factor !== 1 ? factoredText(parsed) : null;
+    const transformed = factored !== null;
 
     entries.push({
       parameterId,
-      value: transformed ? formatLabValue(parsed.numeric!) : value || null,
+      value: factored ?? (value || null),
       rawValue: transformed ? value : null,
       numericValue: parsed.numeric,
       unit: parameter.unit,
       threshold: parameter.threshold,
-      conform: typeof raw.conform === "boolean" ? raw.conform : null,
+      // The final value against the limit, as the screen computes it; the
+      // technician's choice only where the screen asks for one.
+      conform: benchConformity(suggestConformity(parsed.numeric, parameter.limitValue, parsed.kind), raw.conform),
       workStatus,
       note: note || null,
       interpretation: null,

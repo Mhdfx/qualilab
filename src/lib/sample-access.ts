@@ -68,14 +68,15 @@ export async function loadAssignedSample(
     };
   }
 
-  // Held at reception (LabSettings.blockNonConformAtReception): nobody —
-  // not even the ADMIN — analyses it until the release assigns a technician.
+  // Held at reception — « en attente du client » (A9), or another hold:
+  // nobody, not even the ADMIN, analyses it before its release (which
+  // assigns nobody: the programme gives it its bench).
   if (sample.analysisBlocked) {
     return {
       error: NextResponse.json(
         {
           error:
-            "Cet échantillon est bloqué en réception — un administrateur doit le libérer avant toute analyse.",
+            "Cet échantillon est bloqué en réception — il doit être libéré depuis « Bloqués » de la réception avant toute analyse.",
         },
         { status: 409 }
       ),

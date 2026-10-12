@@ -355,15 +355,53 @@ export function cleanCreditNoteLines(
   return { ok: true, lines };
 }
 
+/** An amount in whole centimes, so that sums never drift. */
+const toCents = (value: MoneyInput) => Math.round(toMoney(value) * 100);
+
+/**
+ * What the credit notes already took back from each invoice line (HT), keyed
+ * by the line's id — from the AVOIR lines linked to it (`creditedItemId`).
+ * Rows with no linked line (a free line, or a credit note issued before the
+ * link existed) count for nothing here: the invoice's total still bounds them.
+ */
+export function creditedByItem(
+  rows: readonly { creditedItemId: string | null; amount: MoneyInput | null }[]
+): Record<string, number> {
+  const sums = new Map<string, number>();
+  for (const row of rows) {
+    if (!row.creditedItemId || row.amount === null) continue;
+    sums.set(row.creditedItemId, (sums.get(row.creditedItemId) ?? 0) + toCents(row.amount));
+  }
+  return Object.fromEntries(Array.from(sums, ([id, total]) => [id, roundMoney(total / 100)]));
+}
+
+/** What may still be taken back from one invoice line (HT): its total less what was credited, never negative. */
+export function remainingLineCreditable(lineTotal: MoneyInput, alreadyCredited: MoneyInput = 0): number {
+  return roundMoney(Math.max(0, toCents(lineTotal) - toCents(alreadyCredited)) / 100);
+}
+
 /**
  * A credit-note line taken back from an invoice line: that line must belong
  * to the credited invoice, and its quantity and price may be reduced, never
- * raised. A free line (no `invoiceItemId`) is bounded by the total only.
+ * raised. Across every credit note, what is taken back from one line —
+ * Σ quantity × price, HT, compared in centimes — never exceeds that line's
+ * total: `alreadyCredited` holds what earlier credit notes took back
+ * (`creditedByItem`), and two lines of this credit note taking back the same
+ * invoice line add up. A free line (no `invoiceItemId`) is bounded by the
+ * invoice's total only.
  */
 export function creditNoteLinesRefusal(
   lines: readonly CreditNoteLine[],
-  invoiceItems: readonly { id: string; quantity: number; unitPrice: MoneyInput }[]
+  invoiceItems: readonly {
+    id: string;
+    description?: string;
+    quantity: number;
+    unitPrice: MoneyInput;
+    lineTotal: MoneyInput;
+  }[],
+  alreadyCredited: Readonly<Record<string, MoneyInput>> = {}
 ): string | null {
+  const takenBack = new Map<string, number>();
   for (const [index, line] of lines.entries()) {
     if (!line.invoiceItemId) continue;
     const item = invoiceItems.find((candidate) => candidate.id === line.invoiceItemId);
@@ -375,6 +413,20 @@ export function creditNoteLinesRefusal(
     if (Math.round(line.unitPrice * 100) > Math.round(toMoney(item.unitPrice) * 100)) {
       return `${position} : le prix repris dépasse celui de la facture (${formatCurrency(toMoney(item.unitPrice))}).`;
     }
+    const amount = toCents(roundMoney(line.quantity * line.unitPrice));
+    if (!Number.isFinite(amount)) continue;
+    const inThisNote = takenBack.get(item.id) ?? 0;
+    const before = toCents(alreadyCredited[item.id] ?? 0) + inThisNote;
+    const cap = toCents(item.lineTotal);
+    if (before + amount > cap) {
+      const name = item.description ? `la ligne « ${item.description} »` : "cette ligne de la facture";
+      if (before >= cap) return `${position} : ${name} est déjà entièrement reprise par un avoir.`;
+      return (
+        `${position} : la reprise (${formatCurrency(amount / 100)} HT) dépasse ce qui reste à reprendre sur ${name} ` +
+        `(${formatCurrency((cap - before) / 100)} HT ; déjà repris : ${formatCurrency(before / 100)} HT).`
+      );
+    }
+    takenBack.set(item.id, inThisNote + amount);
   }
   return null;
 }

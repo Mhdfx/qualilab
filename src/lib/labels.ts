@@ -1,13 +1,17 @@
 import type {
   AirMethod,
   Cadre,
+  CancelReason,
+  ConsultationChannel,
   Family,
   InvoiceStatus,
   NonConformityReason,
   ProgrammePriority,
   SampleStatus,
   SampleType,
+  StorageClass,
   SurfaceState,
+  TemperatureSource,
 } from "@/generated/prisma/client";
 import { labTimeZone } from "./lab-time";
 
@@ -153,6 +157,42 @@ export const NON_CONFORMITY_REASON_LABELS = {
   AUTRE: "Autre motif",
 } as const satisfies Record<NonConformityReason, string>;
 
+/** C2 — the conservation class of a sample in transport, as the « Conservation » select reads. */
+export const STORAGE_CLASS_LABELS = {
+  REFRIGERE: "Réfrigéré",
+  CONGELE: "Congelé",
+  AMBIANT: "Ambiant",
+  CHAUD: "Chaud",
+} as const satisfies Record<StorageClass, string>;
+
+/** Where the temperature at arrival was read (C2, rule 6). */
+export const TEMPERATURE_SOURCE_LABELS = {
+  GLACIERE: "Glacière",
+  ECHANTILLON: "Mesurée sur l'échantillon",
+  FLACON_TEMOIN: "Flacon témoin",
+} as const satisfies Record<TemperatureSource, string>;
+
+/** « Accord du client » — how the client was consulted (A9). */
+export const CONSULTATION_CHANNEL_LABELS = {
+  SUR_PLACE: "Sur place",
+  TELEPHONE: "Téléphone",
+  EMAIL: "E-mail",
+} as const satisfies Record<ConsultationChannel, string>;
+
+/** The channel as the bon prints it, inside « (tél., 10/10 14:05) ». */
+export const CONSULTATION_CHANNEL_SHORT = {
+  SUR_PLACE: "sur place",
+  TELEPHONE: "tél.",
+  EMAIL: "e-mail",
+} as const satisfies Record<ConsultationChannel, string>;
+
+/** What becomes of a non-conform sample at reception, and at its release (A9). */
+export const RECEPTION_DECISION_LABELS = {
+  ANALYSER: "Analyser malgré tout",
+  EN_ATTENTE_CLIENT: "En attente du client",
+  DETRUIRE: "Détruire",
+} as const;
+
 export const CANCEL_REASON_LABELS = {
   NON_EXPLOITABLE: "Échantillon non exploitable",
   QUANTITE_INSUFFISANTE: "Quantité insuffisante",
@@ -161,7 +201,9 @@ export const CANCEL_REASON_LABELS = {
   /** Only set by the reception's « Détruire » (RETOUR-LABO-29-09.md, slice E). */
   DETRUIT_A_RECEPTION: "Détruit à réception",
   AUTRE: "Autre",
-} as const;
+  /** A sample of the visit that never reached the laboratory — on a PRELEVE sample only. */
+  NON_RECU: "Non reçu au laboratoire",
+} as const satisfies Record<CancelReason, string>;
 
 /**
  * The laboratory's wall clock. Fixed on purpose: server and browser must

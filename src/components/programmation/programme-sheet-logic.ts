@@ -8,6 +8,7 @@ import {
   type ChecklistRow,
   type ReceptionThresholds,
 } from "@/lib/reception-rules";
+import { complementaryChecklist, type ComplementarySerie } from "@/lib/reception-complementary";
 import { MAX_UNITS } from "@/lib/series";
 import { fromLocalInput, toLocalInput } from "@/components/preleveur/visit-types";
 import type {
@@ -415,17 +416,24 @@ export function billingLines(
 }
 
 /**
- * The reception's checklist — the seven rules of the bon de réception —
- * recomputed with the programmed analyses and units (PROGRAMME.md §4,
- * Vérification d'entrée). Every row is informative here: the reception
- * already accepted the line, so a rule it would refuse on is only « à
- * vérifier ». Rule (1) shows what the réceptionniste answered
- * (`receptionExploitable`); a line received before the checklist has no
- * answer, and says so.
+ * The reception's checklist — the seven rules of the bon de réception, then
+ * the contrôles complémentaires (hors bon) — recomputed with the programmed
+ * analyses and units (PROGRAMME.md §4, Vérification d'entrée). Every row is
+ * informative here: the reception already accepted the line, so a rule it
+ * would refuse on is only « à vérifier ». Rule (1) and the ticked controls
+ * (C3, C5) show what the réceptionniste answered; a line received before
+ * the checklist or before the controls has no answer, and says so.
  */
 export function entryChecks(
   sample: Pick<ProgrammeSampleData, "lineKind" | "nature" | "quantity" | "quantityUnit" | "receptionTemperature"> & {
     receptionExploitable?: boolean | null;
+    receptionPackagingOk?: boolean | null;
+    receptionIdentificationOk?: boolean | null;
+    storageClass?: ProgrammeSampleData["storageClass"];
+    receptionTemperatureSource?: ProgrammeSampleData["receptionTemperatureSource"];
+    expiryDate?: string | null;
+    receivedAt?: string | null;
+    serie?: Partial<Pick<ProgrammeSampleData["serie"], "startedAt" | "endedAt" | "arrivedAt" | "samplingTimeDeclared">>;
   },
   draft: ProgrammeDraft,
   referential: ProgrammeReferentialData,
@@ -436,7 +444,7 @@ export function entryChecks(
     return parameter ? parameterSpellings(parameter) : [];
   });
   const exploitable = sample.receptionExploitable ?? null;
-  return receptionChecklist(
+  const paper = receptionChecklist(
     {
       lineKind: sample.lineKind,
       family: sample.nature.family,
@@ -447,13 +455,57 @@ export function entryChecks(
       unitCount: draft.unitCount,
     },
     thresholds,
-    { exploitable }
-  ).map((row): ChecklistRow => {
+    { exploitable, temperatureSource: sample.receptionTemperatureSource ?? null }
+  );
+  const complementary = complementaryChecklist(
+    {
+      lineKind: sample.lineKind,
+      family: sample.nature.family,
+      receptionTemperature: sample.receptionTemperature,
+      // The class chosen at reception, else the kind's default.
+      storageClass: sample.storageClass ?? null,
+      temperatureSource: sample.receptionTemperatureSource ?? null,
+      expiryDate: sample.expiryDate ? new Date(sample.expiryDate) : null,
+    },
+    receptionTiming(sample),
+    thresholds,
+    {
+      packagingOk: sample.receptionPackagingOk ?? null,
+      identificationOk: sample.receptionIdentificationOk ?? null,
+    }
+  );
+  return [...paper, ...complementary].map((row): ChecklistRow => {
     if (row.key === "EXPLOITABLE" && exploitable === null) {
       return { ...row, status: "A_VERIFIER", detail: "Non renseigné : échantillon réceptionné avant la checklist" };
     }
+    // A ticked control left unanswered: the line was received before the controls.
+    if (row.code && row.status === "A_CONFIRMER") {
+      return {
+        ...row,
+        status: "A_VERIFIER",
+        detail: "Non renseigné : échantillon réceptionné avant les contrôles complémentaires",
+      };
+    }
     return row.status === "NON_CONFORME" ? { ...row, status: "A_VERIFIER" } : row;
   });
+}
+
+/**
+ * The série's times and the reception instant as received — C1 and C7
+ * recomputed; a payload without the série's times leaves C1 uncomputed.
+ */
+function receptionTiming(sample: {
+  receivedAt?: string | null;
+  serie?: Partial<Pick<ProgrammeSampleData["serie"], "startedAt" | "endedAt" | "arrivedAt" | "samplingTimeDeclared">>;
+}): ComplementarySerie {
+  const serie = sample.serie;
+  return {
+    startedAt: serie?.startedAt ? new Date(serie.startedAt) : null,
+    endedAt: serie?.endedAt ? new Date(serie.endedAt) : null,
+    arrivedAt: serie?.arrivedAt ? new Date(serie.arrivedAt) : null,
+    samplingTimeDeclared: serie?.samplingTimeDeclared ?? null,
+    receivedAt: sample.receivedAt ? new Date(sample.receivedAt) : null,
+  };
 }
 
 const text = (value: string) => (value.trim() ? value.trim() : null);

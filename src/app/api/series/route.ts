@@ -7,11 +7,14 @@ import { pageParams, toPage } from "@/lib/pagination";
 import { getLabSettings } from "@/lib/lab-settings";
 import {
   evaluateReception,
+  justifyAcceptanceMessage,
   parameterSpellings,
   receptionChecklist,
+  rowToJustify,
   type ChecklistRow,
   type ReceptionLine,
 } from "@/lib/reception-rules";
+import { complementaryChecklist, complementaryRefusal } from "@/lib/reception-complementary";
 import { notifyDestroyed } from "@/lib/destruction-notice";
 import { createSerie, planSerieSamples, SerieCreationError } from "@/lib/serie-create";
 import { sampleLineMessage, validateSerie, type NatureRef } from "@/lib/serie-input";
@@ -116,7 +119,11 @@ export async function GET(request: Request) {
  * for every line (`validateSerie`); the measurable rules are recomputed here
  * with the laboratory's thresholds — histamine and Salmonella recognised on
  * the analyses' names and aliases — and each sample's checklist goes to its
- * SAMPLE_RECEIVED audit, as at the reception of a visit.
+ * SAMPLE_RECEIVED audit, as at the reception of a visit. The contrôles
+ * complémentaires (hors bon) follow: C3 and C5 ticked for every line, a
+ * failing one refuses « conforme », the coded rows audited beside. A row
+ * « à vérifier » accepted conforme needs the line's « Observation de
+ * réception » (A7), refused otherwise.
  */
 export async function POST(request: Request) {
   const session = await requireApiRole("PRELEVEUR", "RECEPTIONNISTE", "ADMIN");
@@ -134,13 +141,21 @@ export async function POST(request: Request) {
     session.role === "PRELEVEUR" ? "VISITE" : requested === "DEPOT" ? "DEPOT" : "VISITE";
 
   // The whole catalogue of natures (16 rows): the line's nature is deduced
-  // from its type × the ticked family (RETOUR-LABO-06-10.md §5, V3).
-  const natures = await prisma.analysisNature.findMany({
-    select: { id: true, code: true, family: true, defaultLineKind: true, active: true },
-  });
+  // from its type × the ticked family (RETOUR-LABO-06-10.md §5, V3). A
+  // deposit reads the laboratory's thresholds and policy too.
+  const [natures, settings] = await Promise.all([
+    prisma.analysisNature.findMany({
+      select: { id: true, code: true, family: true, defaultLineKind: true, active: true },
+    }),
+    kind === "DEPOT" ? getLabSettings() : Promise.resolve(null),
+  ]);
   const natureMap = new Map<string, NatureRef>(natures.map((n) => [n.id, n]));
 
-  const checked = validateSerie(body, natureMap, { kind });
+  const checked = validateSerie(body, natureMap, {
+    kind,
+    // A9: analysing a non-conform deposit line may need the client's agreement.
+    consultationRequired: settings?.consultationRequired ?? false,
+  });
   if (!checked.ok) {
     return NextResponse.json(
       { error: checked.error, ...(checked.line ? { line: checked.line } : {}) },
@@ -149,17 +164,18 @@ export async function POST(request: Request) {
   }
   const lines = checked.value.lines;
 
-  // A deposit sample's checklist, keyed « lineIndex:family » — for its audit.
+  // A deposit sample's checklist and contrôles complémentaires, keyed
+  // « lineIndex:family » — for its audit.
   const checklists = new Map<string, ChecklistRow[]>();
+  const complementaries = new Map<string, ChecklistRow[]>();
 
   try {
     // A deposit is received on the spot: the acceptance rules run here, as
     // they do for a visit at reception, on each sample the line becomes (the
     // minimal quantity differs between microbiology and physico-chemistry) —
     // a blocking rule cannot be declared conform whatever the form sent.
-    if (kind === "DEPOT") {
+    if (kind === "DEPOT" && settings) {
       const plans = await planSerieSamples(lines);
-      const settings = await getLabSettings();
       const parameterIds = [...new Set(lines.flatMap((l) => l.parameterIds))];
       const parameters =
         parameterIds.length === 0
@@ -169,6 +185,16 @@ export async function POST(request: Request) {
               select: { id: true, name: true, aliases: true },
             });
       const spellingsOf = new Map(parameters.map((p) => [p.id, parameterSpellings(p)]));
+      // C1: the deposit arrives now (unless an arrival was typed); an empty
+      // « Prélevé le » is « heure de prélèvement non déclarée ».
+      const receivedAt = new Date();
+      const timing = {
+        startedAt: checked.value.startedAt,
+        endedAt: checked.value.endedAt,
+        arrivedAt: checked.value.arrivedAt,
+        samplingTimeDeclared: checked.value.samplingTimeDeclared,
+        receivedAt,
+      };
       for (const [index, line] of lines.entries()) {
         for (const planned of plans[index]) {
           const measured: ReceptionLine = {
@@ -180,21 +206,41 @@ export async function POST(request: Request) {
             receptionTemperature: line.receptionTemperature,
             unitCount: line.unitCount,
           };
-          checklists.set(
-            `${index}:${planned.family}`,
-            receptionChecklist(measured, settings, { exploitable: line.exploitable })
+          const checklist = receptionChecklist(measured, settings, {
+            exploitable: line.exploitable,
+            temperatureSource: line.receptionTemperatureSource,
+          });
+          checklists.set(`${index}:${planned.family}`, checklist);
+          const complementary = complementaryChecklist(
+            {
+              lineKind: line.lineKind,
+              family: planned.family,
+              receptionTemperature: line.receptionTemperature,
+              storageClass: line.storageClass,
+              temperatureSource: line.receptionTemperatureSource,
+              expiryDate: line.expiryDate,
+            },
+            timing,
+            settings,
+            { packagingOk: line.packagingOk, identificationOk: line.identificationOk }
           );
+          complementaries.set(`${index}:${planned.family}`, complementary);
           if (!line.conformity) continue;
           const blocking = evaluateReception(measured, settings).find((c) => c.level === "BLOQUANT");
-          if (blocking) {
+          // A failing contrôle complémentaire refuses « conforme » like a blocking rule.
+          const failingControl = complementary.find((row) => row.status === "NON_CONFORME");
+          // A doubt accepted conforme is justified in the observation (A7).
+          const doubt = rowToJustify([...checklist, ...complementary], true, line.receptionNote);
+          const refusal = blocking
+            ? `${blocking.message} L'échantillon ne peut pas être déclaré conforme.`
+            : failingControl
+              ? complementaryRefusal(failingControl)
+              : doubt
+                ? justifyAcceptanceMessage(doubt)
+                : null;
+          if (refusal) {
             return NextResponse.json(
-              {
-                error: sampleLineMessage(
-                  `${index + 1}${planned.twin ?? ""}`,
-                  `${blocking.message} L'échantillon ne peut pas être déclaré conforme.`
-                ),
-                line: index + 1,
-              },
+              { error: sampleLineMessage(`${index + 1}${planned.twin ?? ""}`, refusal), line: index + 1 },
               { status: 400 }
             );
           }
@@ -240,11 +286,20 @@ export async function POST(request: Request) {
               conformity: line.conformity,
               conformityReason: line.conformityReason,
               conformityNote: line.conformityNote,
+              receptionNote: line.receptionNote,
               destroyed: line.destroy,
+              // A9: the decision, and the client's agreement when recorded.
+              decision: line.decision,
+              consultation: line.consultation,
               receptionTemperature: line.receptionTemperature,
+              temperatureSource: line.receptionTemperatureSource,
+              storageClass: line.storageClass,
               quantity: line.quantity,
               quantityUnit: line.quantityUnit,
               checklist: checklists.get(`${sample.lineIndex}:${sample.family}`) ?? null,
+              packagingOk: line.packagingOk,
+              identificationOk: line.identificationOk,
+              complementary: complementaries.get(`${sample.lineIndex}:${sample.family}`) ?? null,
             },
           });
         })

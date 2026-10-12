@@ -6,8 +6,11 @@ import {
   errorConcernsSample,
   familiesSummary,
   lineSampleRefs,
+  coolerOutOfRange,
   mergeFamilyRows,
   missingFamilies,
+  receptionTemperatureSource,
+  storageDefaultLabel,
   receptionDesignation,
   sampleCount,
   sampleHeading,
@@ -153,12 +156,28 @@ describe("depositLineChecklist — the seven rules of a deposit line", () => {
     receptionTemperature: 4,
     unitCount: 1,
     exploitable: true,
+    packagingOk: true,
+    identificationOk: true,
+    storageClass: null,
+    temperatureSource: null,
+    expiryDate: null,
+    // Sampled at 08:00, at the counter at 10:00: C1 within 24 h.
+    serie: {
+      startedAt: new Date("2026-10-10T08:00:00.000Z"),
+      endedAt: null,
+      arrivedAt: new Date("2026-10-10T10:00:00.000Z"),
+      samplingTimeDeclared: true,
+      receivedAt: new Date("2026-10-10T10:00:00.000Z"),
+    },
   };
-  const row = (rows: ChecklistRow[], n: number) => rows.find((r) => r.n === n)!;
+  /** A paper row by its number — the coded rows (C1 … C7) follow the seven. */
+  const row = (rows: ChecklistRow[], n: number) => rows.find((r) => r.n === n && !r.code)!;
+  const paper = (rows: ChecklistRow[]) => rows.filter((r) => !r.code);
+  const coded = (rows: ChecklistRow[], code: string) => rows.find((r) => r.code === code)!;
 
   it("lists the seven rules of a one-family line, unprefixed", () => {
     const { rows, familyBlocking, proposal } = depositLineChecklist({ ...food, families: ["MICRO"], quantity: 150 }, DEFAULT_THRESHOLDS);
-    expect(rows.map((r) => [r.n, r.status])).toEqual([
+    expect(paper(rows).map((r) => [r.n, r.status])).toEqual([
       [1, "CONFORME"],
       [2, "CONFORME"],
       [3, "SANS_OBJET"],
@@ -171,7 +190,7 @@ describe("depositLineChecklist — the seven rules of a deposit line", () => {
     // No analysis ticked: histamine is checked at the programme.
     expect(row(rows, 7)).toMatchObject({ detail: "Si l'histamine est demandée : 9 × 100 g — vérifié au programme" });
     expect(familyBlocking).toBe(false);
-    expect(proposal).toEqual({ conformity: true, reason: null, forced: false, rule: null, pending: false });
+    expect(proposal).toEqual({ conformity: true, reason: null, forced: false, rule: null, code: null, pending: false });
   });
 
   it("merges the two samples of a two-family line: each family's row headed, the shared ones once", () => {
@@ -179,7 +198,7 @@ describe("depositLineChecklist — the seven rules of a deposit line", () => {
       { ...food, families: ["MICRO", "CHIMIE"], quantity: 150 },
       DEFAULT_THRESHOLDS
     );
-    expect(rows).toHaveLength(7);
+    expect(paper(rows)).toHaveLength(7);
     expect(row(rows, 2)).toMatchObject({
       status: "CONFORME",
       detail: "Microbiologie : quantité 150 g ≥ 100 g",
@@ -250,7 +269,110 @@ describe("depositLineChecklist — the seven rules of a deposit line", () => {
     expect(row(rows, 2)).toMatchObject({ status: "SANS_OBJET", detail: "Sans objet : autre famille d'analyses" });
   });
 
+  it("lists the contrôles complémentaires after the seven rules, one answer for both samples", () => {
+    const { rows, proposal } = depositLineChecklist(
+      { ...food, families: ["MICRO", "CHIMIE"], quantity: 500, packagingOk: false },
+      DEFAULT_THRESHOLDS
+    );
+    // The merged row keeps its code: the widget lists it in its own group.
+    expect(coded(rows, "C3")).toMatchObject({ key: "EMBALLAGE", status: "NON_CONFORME", reason: "EMBALLAGE" });
+    expect(coded(rows, "C5")).toMatchObject({ key: "IDENTIFICATION", status: "CONFORME" });
+    expect(proposal).toMatchObject({ conformity: false, forced: true, rule: null, code: "C3", reason: "EMBALLAGE" });
+
+    // A paper rule keeps the priority over a control.
+    const both = depositLineChecklist(
+      { ...food, families: ["MICRO"], quantity: 500, receptionTemperature: null, identificationOk: false },
+      DEFAULT_THRESHOLDS
+    );
+    expect(both.proposal).toMatchObject({ forced: true, rule: 6, code: null, reason: "TEMPERATURE_MANQUANTE" });
+
+    const unticked = depositLineChecklist({ ...food, families: ["MICRO"], quantity: 500, packagingOk: null }, DEFAULT_THRESHOLDS);
+    expect(coded(unticked.rows, "C3").status).toBe("A_CONFIRMER");
+    expect(unticked.proposal.pending).toBe(true);
+  });
+
+  it("computes C1 per family: an undeclared sampling time is « à vérifier », chemistry without a limit is « sans objet »", () => {
+    const declared = depositLineChecklist({ ...food, families: ["MICRO", "CHIMIE"], quantity: 500 }, DEFAULT_THRESHOLDS);
+    expect(coded(declared.rows, "C1")).toMatchObject({
+      status: "CONFORME",
+      // Physico-chemistry has no limit: only the family that has one is shown.
+      detail: "Microbiologie : délai 2 h",
+      rules: ["MICRO:DELAI"],
+    });
+    const undeclared = depositLineChecklist(
+      { ...food, families: ["MICRO"], quantity: 500, serie: { ...food.serie, samplingTimeDeclared: false } },
+      DEFAULT_THRESHOLDS
+    );
+    expect(coded(undeclared.rows, "C1")).toMatchObject({ status: "A_VERIFIER", reason: "DELAI", detail: "Heure de prélèvement non déclarée" });
+    expect(undeclared.proposal).toMatchObject({ conformity: true, forced: false, reason: "DELAI" });
+    // Before the screen's clock, nothing is computed.
+    expect(coded(depositLineChecklist({ ...food, families: ["MICRO"], quantity: 500, serie: null }, DEFAULT_THRESHOLDS).rows, "C1")).toMatchObject({
+      status: "SANS_OBJET",
+    });
+  });
+
+  it("judges C2 per family with the line's class: water chilled in microbiology, « sans objet » in chemistry", () => {
+    const water = {
+      ...food,
+      lineKind: "EAU" as const,
+      quantityUnit: "L" as const,
+      quantity: 2,
+      receptionTemperature: 12,
+      temperatureSource: "ECHANTILLON" as const,
+    };
+    const { rows, proposal } = depositLineChecklist({ ...water, families: ["MICRO", "CHIMIE"] }, DEFAULT_THRESHOLDS);
+    expect(coded(rows, "C2")).toMatchObject({
+      status: "A_VERIFIER",
+      reason: "CHAINE_FROID",
+      detail: "Microbiologie : 12 °C, hors de la plage réfrigérée 0 à 8 °C — vérifier la chaîne du froid (mesurée sur l'échantillon)",
+    });
+    expect(proposal).toMatchObject({ conformity: true, forced: false });
+    // A class chosen for the line applies to both samples.
+    expect(coded(depositLineChecklist({ ...water, families: ["MICRO", "CHIMIE"], storageClass: "AMBIANT" }, DEFAULT_THRESHOLDS).rows, "C2")).toMatchObject({
+      status: "SANS_OBJET",
+      detail: "Transporté à température ambiante",
+    });
+  });
+
+  it("reads C7 on a food line from the DLC typed, the counter's day as reception", () => {
+    const passed = depositLineChecklist({ ...food, families: ["MICRO"], quantity: 500, expiryDate: new Date("2026-10-09T00:00:00.000Z") }, DEFAULT_THRESHOLDS);
+    expect(coded(passed.rows, "C7")).toMatchObject({ status: "A_VERIFIER", reason: "AUTRE", detail: "DLC dépassée le 09/10/2026" });
+    // Never a refusal: conform stays possible (end-of-shelf-life tests).
+    expect(passed.proposal).toMatchObject({ conformity: true, forced: false, reason: "AUTRE" });
+    const fresh = depositLineChecklist({ ...food, families: ["MICRO"], quantity: 500, expiryDate: new Date("2026-10-10T00:00:00.000Z") }, DEFAULT_THRESHOLDS);
+    expect(coded(fresh.rows, "C7")).toMatchObject({ status: "CONFORME", detail: "DLC 10/10/2026" });
+    // Not a food line: no C7 row at all.
+    const swab = depositLineChecklist({ ...food, lineKind: "SURFACE", families: ["MICRO"], quantity: null }, DEFAULT_THRESHOLDS);
+    expect(swab.rows.some((row) => row.code === "C7")).toBe(false);
+  });
+
+  it("names the default of « Conservation » for the line's families", () => {
+    expect(storageDefaultLabel("ALIMENT", ["MICRO"])).toBe("Réfrigéré (par défaut)");
+    expect(storageDefaultLabel("AIR", ["MICRO"])).toBe("Sans objet (par défaut)");
+    expect(storageDefaultLabel("EAU", ["MICRO", "CHIMIE"])).toBe("Selon la famille (par défaut)");
+    expect(storageDefaultLabel("EAU", [])).toBe("Sans objet (par défaut)");
+  });
+
   it("merges nothing for a single list", () => {
     expect(mergeFamilyRows([])).toEqual({ rows: [], familyBlocking: false });
+  });
+});
+
+describe("the temperature at reception (C2)", () => {
+  it("reads where it comes from: the card's choice, the sample once typed, else the cooler", () => {
+    expect(receptionTemperatureSource({ temperature: "", temperatureTouched: false, sourceChoice: null })).toBeNull();
+    expect(receptionTemperatureSource({ temperature: "3", temperatureTouched: false, sourceChoice: null })).toBe("GLACIERE");
+    expect(receptionTemperatureSource({ temperature: "5", temperatureTouched: true, sourceChoice: null })).toBe("ECHANTILLON");
+    expect(receptionTemperatureSource({ temperature: "5", temperatureTouched: true, sourceChoice: "FLACON_TEMOIN" })).toBe("FLACON_TEMOIN");
+    // A choice without a value is no source.
+    expect(receptionTemperatureSource({ temperature: " ", temperatureTouched: true, sourceChoice: "FLACON_TEMOIN" })).toBeNull();
+  });
+
+  it("flags a cooler outside the chilled range, the bounds included in it", () => {
+    expect(coolerOutOfRange(null, DEFAULT_THRESHOLDS)).toBe(false);
+    expect(coolerOutOfRange(0, DEFAULT_THRESHOLDS)).toBe(false);
+    expect(coolerOutOfRange(8, DEFAULT_THRESHOLDS)).toBe(false);
+    expect(coolerOutOfRange(8.5, DEFAULT_THRESHOLDS)).toBe(true);
+    expect(coolerOutOfRange(-1, DEFAULT_THRESHOLDS)).toBe(true);
   });
 });

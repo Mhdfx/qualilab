@@ -306,12 +306,14 @@ describe("technicians", () => {
 });
 
 describe("entry check and billing", () => {
-  const ruleRow = <T extends { n: number }>(rows: T[], n: number) => rows.find((r) => r.n === n)!;
+  /** A paper row by its number; `coded` finds a contrôle complémentaire by its code. */
+  const ruleRow = <T extends { n: number; code?: string }>(rows: T[], n: number) => rows.find((r) => r.n === n && !r.code)!;
+  const coded = <T extends { code?: string }>(rows: T[], code: string) => rows.find((r) => r.code === code)!;
 
   it("recomputes the seven rules of the bon with the programmed analyses and units, never refusing", () => {
     const draft = initialDraft(received, referential);
     const rows = entryChecks({ ...sample, receptionExploitable: true }, draft, referential, DEFAULT_THRESHOLDS);
-    expect(rows.map((r) => r.n)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(rows.filter((r) => !r.code).map((r) => r.n)).toEqual([1, 2, 3, 4, 5, 6, 7]);
     // 50 g of food for microbiology would be refused at reception: « à vérifier » here.
     expect(ruleRow(rows, 2)).toMatchObject({ status: "A_VERIFIER", reason: "QUANTITE_INSUFFISANTE", rules: ["ALIMENT_MICRO_POIDS"] });
     expect(rows.every((r) => r.status !== "NON_CONFORME" && r.status !== "A_CONFIRMER")).toBe(true);
@@ -332,6 +334,87 @@ describe("entry check and billing", () => {
         detail: "Non renseigné : échantillon réceptionné avant la checklist",
       });
     }
+  });
+
+  it("shows the contrôles complémentaires as ticked at reception, informative only", () => {
+    const draft = initialDraft(received, referential);
+    const answered = entryChecks(
+      { ...sample, receptionExploitable: true, receptionPackagingOk: false, receptionIdentificationOk: true },
+      draft,
+      referential,
+      DEFAULT_THRESHOLDS
+    );
+    // The paper's seven first, then the coded rows.
+    expect(answered.slice(0, 7).every((r) => !r.code)).toBe(true);
+    // A « Non » at reception is only « à vérifier » here, its motif kept.
+    expect(coded(answered, "C3")).toMatchObject({ key: "EMBALLAGE", status: "A_VERIFIER", reason: "EMBALLAGE" });
+    expect(coded(answered, "C5")).toMatchObject({ key: "IDENTIFICATION", status: "CONFORME" });
+
+    // Received before the controls: no answer, said so.
+    for (const old of [sample, { ...sample, receptionPackagingOk: null, receptionIdentificationOk: null }]) {
+      const rows = entryChecks(old, draft, referential, DEFAULT_THRESHOLDS);
+      for (const code of ["C3", "C5"]) {
+        expect(coded(rows, code)).toMatchObject({
+          status: "A_VERIFIER",
+          detail: "Non renseigné : échantillon réceptionné avant les contrôles complémentaires",
+        });
+      }
+    }
+  });
+
+  it("recomputes C2 with the class chosen at reception, else the kind's default", () => {
+    const draft = initialDraft(received, referential);
+    expect(coded(entryChecks({ ...sample, receptionTemperature: 12 }, draft, referential, DEFAULT_THRESHOLDS), "C2")).toMatchObject({
+      status: "A_VERIFIER",
+      reason: "CHAINE_FROID",
+    });
+    expect(
+      coded(
+        entryChecks(
+          { ...sample, receptionTemperature: 12, storageClass: "AMBIANT", receptionTemperatureSource: "ECHANTILLON" },
+          draft,
+          referential,
+          DEFAULT_THRESHOLDS
+        ),
+        "C2"
+      )
+    ).toMatchObject({ status: "SANS_OBJET", detail: "Transporté à température ambiante" });
+    expect(
+      coded(entryChecks({ ...sample, receptionTemperature: 4, receptionTemperatureSource: "GLACIERE" }, draft, referential, DEFAULT_THRESHOLDS), "C2")
+    ).toMatchObject({ status: "CONFORME", detail: "4 °C, réfrigéré entre 0 et 8 °C (glacière)" });
+  });
+
+  it("shows C7 against the day the sample was received", () => {
+    const draft = initialDraft(received, referential);
+    const dated = { ...sample, expiryDate: "2026-10-09T00:00:00.000Z", receivedAt: "2026-10-10T08:00:00.000Z" };
+    expect(coded(entryChecks(dated, draft, referential, DEFAULT_THRESHOLDS), "C7")).toMatchObject({
+      status: "A_VERIFIER",
+      detail: "DLC dépassée le 09/10/2026",
+    });
+    expect(coded(entryChecks({ ...dated, receivedAt: "2026-10-09T23:30:00.000Z" }, draft, referential, DEFAULT_THRESHOLDS), "C7")).toMatchObject({
+      status: "CONFORME",
+    });
+  });
+
+  it("recomputes C1 from the série's times, informative only", () => {
+    const draft = initialDraft(received, referential);
+    const timed = {
+      ...sample,
+      receptionExploitable: true,
+      receivedAt: "2026-10-11T12:00:00.000Z",
+      serie: { startedAt: "2026-10-10T08:00:00.000Z", endedAt: "2026-10-10T09:00:00.000Z", arrivedAt: null, samplingTimeDeclared: null },
+    };
+    // 27 h with no arrival recorded: up to the reception — « à vérifier »,
+    // even where the laboratory makes the delay blocking.
+    for (const thresholds of [DEFAULT_THRESHOLDS, { ...DEFAULT_THRESHOLDS, delayBlocking: true }]) {
+      expect(coded(entryChecks(timed, draft, referential, thresholds), "C1")).toMatchObject({
+        status: "A_VERIFIER",
+        reason: "DELAI",
+        detail: "Délai 27 h > 24 h",
+      });
+    }
+    // A payload without the série's times: nothing to compute.
+    expect(coded(entryChecks(sample, draft, referential, DEFAULT_THRESHOLDS), "C1")).toMatchObject({ status: "SANS_OBJET" });
   });
 
   it("checks histamine (physico-chimie) on the « P » sample, beside the 300 g, with the programmed units", () => {

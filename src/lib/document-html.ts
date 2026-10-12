@@ -10,6 +10,7 @@ import type {
   SurfaceState,
 } from "@/generated/prisma/enums";
 import type { CompanyInfo } from "./company";
+import { consultationText, type StoredConsultation } from "./client-consultation";
 import { CARTOUCHE_INK, cartoucheMargin, pageCss } from "./cartouche-html";
 import { formatDateOnly } from "./date-only";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
@@ -55,6 +56,8 @@ export type DocumentLine = {
   cancelled?: boolean;
   /** Non-conform at reception and destroyed (slice E): said as such. */
   destroyed?: boolean;
+  /** Cancelled « Non reçu au laboratoire » (NON_RECU): never reached the laboratory. */
+  notReceived?: boolean;
   lineNumber: number;
   /** « 2 », or « 2M » / « 2P » for the two samples of a two-family line;
    *  the bare number when absent. */
@@ -84,6 +87,12 @@ export type DocumentLine = {
   controlCode: string | null;
   conformity: boolean | null;
   conformityReason: NonConformityReason | null;
+  /** « Observation de réception » (A7) — printed under the line of the bon. */
+  receptionNote?: string | null;
+  /** « Accord du client » of a non-conform line analysed anyway (A9). */
+  consultation?: StoredConsultation | null;
+  /** Held « en attente du client » (A9), until released. */
+  awaitingClient?: boolean;
 };
 
 export type SerieDocumentData = {
@@ -304,7 +313,8 @@ function surfaceStateText(line: DocumentLine) {
 }
 
 function cancelledText(line: DocumentLine) {
-  return line.destroyed ? "Détruit à réception" : "Échantillon annulé";
+  if (line.destroyed) return "Détruit à réception";
+  return line.notReceived ? "Non reçu" : "Échantillon annulé";
 }
 
 /** « Remarques / Compositions »: the cancellation, the state of a surface, then what was typed. */
@@ -452,17 +462,28 @@ export function buildBonHtml(data: SerieDocumentData, thresholds: ReceptionThres
         .filter((d): d is string => Boolean(d))
         .map((d) => `<span class="small"> · ${escapeHtml(d)}</span>`)
         .join("");
+      // A9: who agreed to the analysis of a non-conform line, or the wait for the client.
+      const agreement = l.cancelled
+        ? ""
+        : l.consultation
+          ? ` — analysé avec l'${escapeHtml(consultationText(l.consultation))}`
+          : l.awaitingClient
+            ? " — en attente de l'avis du client"
+            : "";
       const status =
         l.conformity === false
-          ? `<br><span class="nc">Non conforme${l.conformityReason ? ` — ${escapeHtml(NON_CONFORMITY_REASON_LABELS[l.conformityReason])}` : ""}${l.destroyed ? " — détruit" : l.cancelled ? " — annulé" : ""}</span>`
+          ? `<br><span class="nc">Non conforme${l.conformityReason ? ` — ${escapeHtml(NON_CONFORMITY_REASON_LABELS[l.conformityReason])}` : ""}${l.destroyed ? " — détruit" : l.cancelled ? " — annulé" : ""}${agreement}</span>`
           : l.cancelled
             ? `<br><span class="nc">${cancelledText(l)}</span>`
             : "";
+      const note = l.receptionNote?.trim()
+        ? `<br><span class="small">Observation : ${escapeHtml(l.receptionNote.trim())}</span>`
+        : "";
       const code = l.controlCode ? `<span class="mono">${escapeHtml(l.controlCode)}</span><br>` : "";
       return `
       <tr>
         <td>${code}<span class="small">Éch. ${escapeHtml(refOf(l))}</span></td>
-        <td>${show(l.designation)}${details}${status}</td>
+        <td>${show(l.designation)}${details}${status}${note}</td>
         <td>${filled(l.numeroLot)}</td>
         ${bonDlcCell(l)}
         <td>${quantityText(l.quantity, l.quantityUnit)}</td>

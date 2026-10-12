@@ -1,5 +1,11 @@
-import type { Family, LineKind, NonConformityReason, QuantityUnit } from "@/generated/prisma/enums";
+import type { Family, LineKind, NonConformityReason, QuantityUnit, TemperatureSource } from "@/generated/prisma/enums";
 import { formatDecimal } from "./labels";
+import {
+  DEFAULT_COMPLEMENTARY_THRESHOLDS,
+  temperatureSourceSuffix,
+  type ComplementaryKey,
+  type ComplementaryThresholds,
+} from "./reception-complementary";
 
 /**
  * Acceptance rules at reception — the seven rules printed on the laboratory's
@@ -10,7 +16,8 @@ import { formatDecimal } from "./labels";
  * defaults below are the paper form's own values.
  */
 
-export type ReceptionThresholds = {
+/** The figures of the paper's rules. */
+export type PaperThresholds = {
   minFoodMicroG: number;
   minFoodChemG: number;
   minWaterMicroL: number;
@@ -20,10 +27,17 @@ export type ReceptionThresholds = {
   histamineUnitG: number;
   /** Comma-separated `LineKind` codes, as stored in LabSettings. */
   temperatureRequiredKinds: string;
-  coldChainMaxC: number;
 };
 
+/**
+ * Everything the reception judges with: the paper's figures and the limits
+ * of the contrôles complémentaires (`reception-complementary.ts`) — one
+ * object, `LabSettings` as read by `getLabSettings`.
+ */
+export type ReceptionThresholds = PaperThresholds & ComplementaryThresholds;
+
 export const DEFAULT_THRESHOLDS: ReceptionThresholds = {
+  ...DEFAULT_COMPLEMENTARY_THRESHOLDS,
   minFoodMicroG: 100,
   minFoodChemG: 300,
   minWaterMicroL: 1,
@@ -32,7 +46,6 @@ export const DEFAULT_THRESHOLDS: ReceptionThresholds = {
   histamineUnits: 9,
   histamineUnitG: 100,
   temperatureRequiredKinds: "ALIMENT,EAU",
-  coldChainMaxC: 8,
 };
 
 /**
@@ -223,10 +236,11 @@ function quantityCheck(
 
 /**
  * Every measurable rule that applies to the line, in the paper's order —
- * (2)–(5) quantity, (6) temperature with the cold chain beside it, (7)
- * histamine. Rule (1) is the réceptionniste's answer, not a measure: it is
- * added by `receptionChecklist`. The rule ids are stable (audit, programme
- * sheet).
+ * (2)–(5) quantity, (6) temperature, (7) histamine. Rule (1) is the
+ * réceptionniste's answer, not a measure: it is added by
+ * `receptionChecklist`. The cold chain is not the paper's: it is C2, a
+ * contrôle complémentaire (`reception-complementary.ts`), judged by
+ * conservation class. The rule ids are stable (audit, programme sheet).
  */
 export function evaluateReception(
   line: ReceptionLine,
@@ -277,21 +291,6 @@ export function evaluateReception(
             message: `Température à l'arrivée relevée : ${formatDecimal(line.receptionTemperature)} °C.`,
           }
     );
-  }
-
-  // Complementary check, not on the paper (Q3): a warm food line is
-  // flagged, the réceptionniste decides. Shown under rule (6).
-  if (
-    line.lineKind === "ALIMENT" &&
-    line.receptionTemperature !== null &&
-    line.receptionTemperature > thresholds.coldChainMaxC
-  ) {
-    checks.push({
-      rule: "CHAINE_FROID",
-      level: "AVERTISSEMENT",
-      message: `${formatDecimal(line.receptionTemperature)} °C à l'arrivée > ${formatDecimal(thresholds.coldChainMaxC)} °C — vérifier la chaîne du froid (produit servi chaud ?).`,
-      reason: "CHAINE_FROID",
-    });
   }
 
   // (7) — histamine: n units of a minimum weight each. Histamine is a
@@ -351,9 +350,15 @@ export const CHECKLIST_STATUS_LABELS: Record<ChecklistStatus, string> = {
 };
 
 export type ChecklistRow = {
-  /** The paper's number, (1) … (7). */
+  /** The paper's number, (1) … (7) — or the number of a complementary code (C3 → 3). */
   n: number;
-  key: ReceptionRuleKey;
+  key: ReceptionRuleKey | ComplementaryKey;
+  /**
+   * « C3 » on a contrôle complémentaire (hors bon, `reception-complementary.ts`);
+   * absent on the paper's seven rules. The screens list the coded rows in a
+   * group of their own, after the paper's.
+   */
+  code?: string;
   /** The paper's wording, figures from the thresholds — lower case, as printed. */
   text: string;
   status: ChecklistStatus;
@@ -368,9 +373,9 @@ export type ChecklistRow = {
 export type ChecklistContext = {
   /** Rule (1), the réceptionniste's answer; null = not answered yet. */
   exploitable: boolean | null;
-  /** The temperature is the cooler's (true) or measured on the sample
-   * (false); unknown when left out — the detail then shows the value only. */
-  fromCooler?: boolean;
+  /** Where the temperature was read (the cooler, the sample, a witness
+   * bottle); unknown when left out — the detail then shows the value only. */
+  temperatureSource?: TemperatureSource | null;
 };
 
 /** The rule a check belongs to, in the paper's numbering. */
@@ -381,7 +386,6 @@ const RULE_ROW: Record<string, ReceptionRuleKey> = {
   EAU_SALMONELLA_VOLUME: "EAU_MICRO",
   EAU_CHIMIE_VOLUME: "EAU_CHIMIE",
   TEMPERATURE_ARRIVEE: "TEMPERATURE",
-  CHAINE_FROID: "TEMPERATURE",
   HISTAMINE_UNITES: "HISTAMINE",
   HISTAMINE_POIDS: "HISTAMINE",
 };
@@ -471,19 +475,7 @@ function measuredDetail(
   const parts: string[] = [];
   for (const check of own) {
     if (check.rule === "TEMPERATURE_ARRIVEE" && check.level === "OK" && line.receptionTemperature !== null) {
-      const source =
-        context.fromCooler === undefined ? "" : context.fromCooler ? " (glacière)" : " (mesurée sur l'échantillon)";
-      parts.push(`${formatDecimal(line.receptionTemperature)} °C${source}`);
-    } else if (check.rule === "CHAINE_FROID") {
-      // The value is already on the row when rule (6) applies.
-      const shown = own.some((c) => c.rule === "TEMPERATURE_ARRIVEE");
-      parts.push(
-        `contrôle complémentaire (hors bon) : ${
-          shown
-            ? `> ${formatDecimal(thresholds.coldChainMaxC)} °C — vérifier la chaîne du froid (produit servi chaud ?)`
-            : check.message
-        }`
-      );
+      parts.push(`${formatDecimal(line.receptionTemperature)} °C${temperatureSourceSuffix(context.temperatureSource)}`);
     } else {
       parts.push(check.message);
     }
@@ -535,9 +527,12 @@ export function receptionChecklist(
   });
 }
 
-/** « (2) Poids minimal est de 100 g … » — a row as the screens print it. */
-export function checklistRowLabel(row: Pick<ChecklistRow, "n" | "text">): string {
-  return `(${row.n}) ${upperFirst(row.text)}`;
+/**
+ * « (2) Poids minimal est de 100 g … » — a row as the screens print it; a
+ * contrôle complémentaire by its code: « C3 Emballage / contenant … ».
+ */
+export function checklistRowLabel(row: Pick<ChecklistRow, "n" | "text" | "code">): string {
+  return row.code ? `${row.code} ${upperFirst(row.text)}` : `(${row.n}) ${upperFirst(row.text)}`;
 }
 
 const SUMMARY_ORDER: readonly ChecklistStatus[] = ["CONFORME", "NON_CONFORME", "A_VERIFIER", "A_CONFIRMER", "SANS_OBJET"];
@@ -565,24 +560,70 @@ export type ChecklistProposal = {
   reason: NonConformityReason | null;
   /** A NON_CONFORME row forces « non conforme ». */
   forced: boolean;
-  /** The paper number of the row that forces it. */
+  /** The paper number of the row that forces it; null when none does, or when a complementary control does. */
   rule: number | null;
-  /** A row still waits for the réceptionniste (rule 1): nothing can be sent. */
+  /** The code of the contrôle complémentaire that forces it (« C3 »); null otherwise. */
+  code: string | null;
+  /** A row still waits for the réceptionniste (rule 1, a ticked control): nothing can be sent. */
   pending: boolean;
 };
 
 /**
- * What the screen proposes: the first NON_CONFORME row in the paper's order
+ * What the screen proposes: the first NON_CONFORME row in the list's order
  * forces « non conforme » with its motif; an A_VERIFIER row leaves the
  * sample conform with its motif at hand; an A_CONFIRMER row blocks the
- * submission until it is answered.
+ * submission until it is answered. The list is the paper's seven rules
+ * followed by the contrôles complémentaires: a paper rule keeps the priority.
  */
 export function proposedConformity(rows: readonly ChecklistRow[]): ChecklistProposal {
   const pending = rows.some((row) => row.status === "A_CONFIRMER");
   const failing = rows.find((row) => row.status === "NON_CONFORME");
-  if (failing) return { conformity: false, reason: failing.reason ?? "AUTRE", forced: true, rule: failing.n, pending };
+  if (failing) {
+    return {
+      conformity: false,
+      reason: failing.reason ?? "AUTRE",
+      forced: true,
+      rule: failing.code ? null : failing.n,
+      code: failing.code ?? null,
+      pending,
+    };
+  }
   const doubtful = rows.find((row) => row.status === "A_VERIFIER");
-  return { conformity: true, reason: doubtful?.reason ?? null, forced: false, rule: null, pending };
+  return { conformity: true, reason: doubtful?.reason ?? null, forced: false, rule: null, code: null, pending };
+}
+
+/** « Observation de réception »: its maximum length (A7). */
+export const RECEPTION_NOTE_MAX = 1000;
+
+/** The observation's refusals, worded once for the screens and both APIs. */
+export const RECEPTION_NOTE_MESSAGES = {
+  tooLong: "L'observation de réception dépasse 1 000 caractères.",
+} as const;
+
+/**
+ * The row whose doubt an acceptance must justify (A7): a sample declared
+ * conforme while a row is « à vérifier » — the paper's rules first, then the
+ * contrôles complémentaires — needs an « Observation de réception ». Returns
+ * the first such row when the observation is empty, null otherwise (a
+ * non-conform sample, no doubt, or an observation written).
+ */
+export function rowToJustify<Row extends Pick<ChecklistRow, "status">>(
+  rows: readonly Row[],
+  conformity: boolean,
+  receptionNote: string | null | undefined
+): Row | null {
+  if (!conformity || (receptionNote ?? "").trim()) return null;
+  return rows.find((row) => row.status === "A_VERIFIER") ?? null;
+}
+
+/**
+ * « Justifiez l'acceptation (C2 Température de transport à vérifier). » — a
+ * paper rule by its number, « (règle 2 à vérifier) », its long wording being
+ * on the card beside the field. The reception prefixes it « Échantillon 2 : »,
+ * the deposit « Échantillon 2 — ».
+ */
+export function justifyAcceptanceMessage(row: Pick<ChecklistRow, "n" | "text" | "code">): string {
+  return `Justifiez l'acceptation (${row.code ? checklistRowLabel(row) : `règle ${row.n}`} à vérifier).`;
 }
 
 /**

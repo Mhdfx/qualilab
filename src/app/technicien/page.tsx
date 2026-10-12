@@ -79,6 +79,8 @@ export default async function TechnicienPage({
         airMethod: true,
         receivedAt: true,
         conformity: true,
+        // « Renvoyé » on a sample a validator sent back to the bench.
+        rejectedAt: true,
         priority: true,
         dueAt: true,
         technicianId: true,

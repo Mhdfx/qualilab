@@ -6,6 +6,7 @@ import {
   checkInvoiceLines,
   cleanCreditNoteLines,
   cleanTaxRate,
+  creditedByItem,
   creditNoteLinesRefusal,
   creditNoteRefusal,
   holdingInvoiceItemWhere,
@@ -16,6 +17,7 @@ import {
   LOCK_CONFLICT_MESSAGE,
   parsePaidAt,
   paymentRefusal,
+  remainingLineCreditable,
   unpricedLineRefusal,
   type CatalogueEntry,
   type BillableSample,
@@ -320,7 +322,7 @@ describe("paymentRefusal / creditNoteRefusal", () => {
 });
 
 describe("credit-note lines", () => {
-  const items = [{ id: "it1", quantity: 2, unitPrice: "320.00" }];
+  const items = [{ id: "it1", description: "Flore totale", quantity: 2, unitPrice: "320.00", lineTotal: "640.00" }];
 
   it("cleans the typed lines and never keeps a sample", () => {
     const result = cleanCreditNoteLines([
@@ -349,6 +351,70 @@ describe("credit-note lines", () => {
 
   it("a free line is bounded by the total only", () => {
     expect(creditNoteLinesRefusal([{ description: "Geste", quantity: 10, unitPrice: 9999, invoiceItemId: null }], items)).toBeNull();
+    expect(
+      creditNoteLinesRefusal([{ description: "Geste", quantity: 10, unitPrice: 9999, invoiceItemId: null }], items, { it1: "640.00" })
+    ).toBeNull();
+  });
+
+  describe("cap per invoice line, across credit notes (A13)", () => {
+    const line = (quantity: number, unitPrice: number) => ({ description: "A", quantity, unitPrice, invoiceItemId: "it1" });
+
+    it("takes back what is left, to the centime, and no more", () => {
+      // 640 − 320 already credited = 320 left.
+      expect(creditNoteLinesRefusal([line(1, 320)], items, { it1: 320 })).toBeNull();
+      expect(creditNoteLinesRefusal([line(1, 320.01)], items, { it1: 320 })).toMatch(/prix repris dépasse/);
+      expect(creditNoteLinesRefusal([line(2, 160.01)], items, { it1: 320 })).toMatch(
+        /Ligne 1 : la reprise \(320,02 DH HT\) dépasse ce qui reste à reprendre sur la ligne « Flore totale » \(320,00 DH HT ; déjà repris : 320,00 DH HT\)/
+      );
+      // Decimal strings from the database read the same as numbers.
+      expect(creditNoteLinesRefusal([line(1, 0.01)], items, { it1: "639.99" })).toBeNull();
+      expect(creditNoteLinesRefusal([line(1, 0.02)], items, { it1: "639.99" })).toMatch(/dépasse ce qui reste/);
+    });
+
+    it("a line entirely taken back refuses any further reprise", () => {
+      expect(creditNoteLinesRefusal([line(1, 0.01)], items, { it1: 640 })).toMatch(
+        /Ligne 1 : la ligne « Flore totale » est déjà entièrement reprise par un avoir\./
+      );
+    });
+
+    it("two lines of one credit note on the same invoice line add up", () => {
+      expect(creditNoteLinesRefusal([line(1, 320), line(1, 320)], items)).toBeNull();
+      expect(creditNoteLinesRefusal([line(1, 320), line(1, 320), line(1, 0.01)], items)).toMatch(
+        /Ligne 3 : la ligne « Flore totale » est déjà entièrement reprise/
+      );
+      expect(creditNoteLinesRefusal([line(2, 200), line(1, 300)], items)).toMatch(/Ligne 2 : la reprise \(300,00 DH HT\)/);
+    });
+
+    it("the cap is the line's stored total, compared in centimes (no float drift)", () => {
+      const thirds = [{ id: "t", quantity: 3, unitPrice: 33.33, lineTotal: 99.99 }];
+      const third = { description: "T", quantity: 1, unitPrice: 33.33, invoiceItemId: "t" };
+      expect(creditNoteLinesRefusal([third, third, third], thirds)).toBeNull();
+      expect(creditNoteLinesRefusal([third], thirds, { t: 66.66 })).toBeNull();
+      expect(creditNoteLinesRefusal([third], thirds, { t: 66.67 })).toMatch(/cette ligne de la facture/);
+    });
+  });
+});
+
+describe("creditedByItem / remainingLineCreditable", () => {
+  it("sums the linked credit-note lines per invoice line, ignoring free and older lines", () => {
+    expect(
+      creditedByItem([
+        { creditedItemId: "a", amount: "100.10" },
+        { creditedItemId: "a", amount: 0.2 },
+        { creditedItemId: "b", amount: "5.00" },
+        { creditedItemId: null, amount: "999.00" },
+        { creditedItemId: "c", amount: null },
+      ])
+    ).toEqual({ a: 100.3, b: 5 });
+    expect(creditedByItem([])).toEqual({});
+  });
+
+  it("what is left on a line, never negative", () => {
+    expect(remainingLineCreditable("640.00", 320)).toBe(320);
+    expect(remainingLineCreditable(99.99, 33.33)).toBe(66.66);
+    expect(remainingLineCreditable(100, 100)).toBe(0);
+    expect(remainingLineCreditable(100, 120)).toBe(0);
+    expect(remainingLineCreditable(100)).toBe(100);
   });
 });
 

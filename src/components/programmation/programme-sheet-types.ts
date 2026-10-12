@@ -9,7 +9,10 @@ import type {
   SampleStatus,
   SampleType,
   SerieKind,
+  StorageClass,
+  TemperatureSource,
 } from "@/generated/prisma/enums";
+import type { TechnicianLoad } from "@/lib/technician-load";
 
 /**
  * What the programme sheet receives (PROGRAMME.md §4–5): the line, its
@@ -45,7 +48,17 @@ export type ProgrammeSampleData = {
   type: SampleType;
   clientId: string;
   client: { id: string; name: string };
-  serie: { id: string; serialNumber: string; kind: SerieKind; receivedAt: string | null };
+  serie: {
+    id: string;
+    serialNumber: string;
+    kind: SerieKind;
+    receivedAt: string | null;
+    /** The série's times, for C1 in the entry check (optional on an older payload). */
+    startedAt?: string;
+    endedAt?: string | null;
+    arrivedAt?: string | null;
+    samplingTimeDeclared?: boolean | null;
+  };
   natureId: string;
   /** `legacyType` is the category the nature files the line under; `active` false = archived. */
   nature: { id: string; code: string; label: string; family: Family; legacyType: SampleType; active: boolean };
@@ -61,6 +74,14 @@ export type ProgrammeSampleData = {
   conformityNote: string | null;
   /** Rule (1) of the bon de réception as answered at reception; null = received before the checklist. */
   receptionExploitable?: boolean | null;
+  /** C3 / C5, the contrôles complémentaires ticked at reception; null = received before them. */
+  receptionPackagingOk?: boolean | null;
+  receptionIdentificationOk?: boolean | null;
+  /** C2: the class chosen at reception (null = the kind's default) and where the temperature was read. */
+  storageClass?: StorageClass | null;
+  receptionTemperatureSource?: TemperatureSource | null;
+  /** C7: the DLC (ISO string of the stored calendar day); optional on an older payload. */
+  expiryDate?: string | null;
   analysisBlocked: boolean;
   unitCount: number;
   productTypeId: string | null;
@@ -169,7 +190,12 @@ export type NormVersionRef = {
   current: boolean;
 };
 
-export type TechnicianRef = { id: string; name: string };
+export type TechnicianRef = {
+  id: string;
+  name: string;
+  /** What is on their bench now (`benchLoadByTechnician`); absent on an older payload. */
+  load?: TechnicianLoad;
+};
 
 export type ProgrammeReferentialData = {
   /** The nature this referential was computed for — the line's, or the one the sheet is trying. */

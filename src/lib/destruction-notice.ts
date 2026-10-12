@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "./prisma";
 import { logAudit } from "./audit";
 import { recipientsFor, sendEmail } from "./email";
+import { getCompany } from "./company-server";
 import { destructionEmail } from "./emails/templates";
 import { NON_CONFORMITY_REASON_LABELS } from "./labels";
 import { sampleDesignation } from "./document-html";
@@ -43,7 +44,7 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
   if (samples.length === 0) return null;
 
   const first = samples[0];
-  const to = await recipientsFor(first.clientId, "reports");
+  const [to, company] = await Promise.all([recipientsFor(first.clientId, "reports"), getCompany()]);
   const { subject, html } = destructionEmail({
     serialNumber: first.serie.serialNumber,
     sampledAt: first.sampledAt,
@@ -58,7 +59,7 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
         .filter(Boolean)
         .join(" — "),
     })),
-  });
+  }, company);
 
   let status: string = "NON_ENVOYE";
   let error: string | null = to.length === 0 ? "Aucune adresse e-mail enregistrée pour ce client." : null;

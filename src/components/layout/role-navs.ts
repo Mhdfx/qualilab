@@ -33,13 +33,8 @@ export const receptionNav: NavSection[] = [
       { label: "Tableau de bord", href: "/reception", icon: LayoutDashboard },
       { label: "À réceptionner", href: "/reception#file", icon: Inbox },
       { label: "Nouveau dépôt", href: "/reception/nouveau-depot", icon: PackagePlus },
+      { label: "Historique des réceptions", href: "/reception/historique", icon: History },
       { label: "Recherche des analyses", href: "/recherche", icon: Search },
-    ],
-  },
-  {
-    title: "À venir",
-    items: [
-      { label: "Historique des réceptions", icon: History, disabled: true, badge: "Phase 2" },
     ],
   },
 ];
@@ -50,6 +45,7 @@ export const technicienNav: NavSection[] = [
     items: [
       { label: "Tableau de bord", href: "/technicien", icon: LayoutDashboard },
       { label: "Mes analyses", href: "/technicien#analyses", icon: FlaskConical },
+      { label: "Relevés de température", href: "/technicien/temperatures", icon: Thermometer },
       { label: "Recherche des analyses", href: "/recherche", icon: Search },
     ],
   },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyUnitFactor, fmt, hasLimit, singleLimit, indicativeVerdict, storedPlan, informalVerdict, interpret, judgeUnits, legacyFailures, parseUnitReading, pickCriterion, planLabel, sampleVerdict, summariseReadings, unitStoredDisplay, verdictToConform, worstVerdict, type Plan } from "./interpretation";
+import { aboveBelowLimit, applyUnitFactor, fmt, hasLimit, singleLimit, indicativeVerdict, storedPlan, informalVerdict, interpret, judgeUnits, legacyFailures, parseUnitReading, pickCriterion, planLabel, sampleVerdict, suggestUnitsConformity, summariseReadings, unitStoredDisplay, verdictToConform, worstVerdict, type Plan } from "./interpretation";
 
 const read = (...raws: string[]) => raws.map(parseUnitReading);
 const threeClass: Plan = { n: 5, c: 2, mKind: "VALUE", m: 100, bigM: 10_000 };
@@ -14,6 +14,74 @@ describe("parseUnitReading — what the technician types", () => {
     expect(parseUnitReading("Présence")).toMatchObject({ detected: true, kind: "presence" });
     expect(parseUnitReading("")).toMatchObject({ kind: "empty" });
     expect(parseUnitReading("??")).toMatchObject({ kind: "unreadable" });
+  });
+
+  it("reads an uncountable plate, whatever the case and the accents", () => {
+    for (const word of ["Indénombrable", "indenombrable", "INDÉNOMBRABLE", "Indénombrables", "Incomptable", "TNTC", "tntc", "T.N.T.C."]) {
+      expect(parseUnitReading(word), word).toMatchObject({ kind: "uncountable", detected: true, value: null });
+    }
+  });
+
+  it("reads « > x » as more than x, with the usual number notations", () => {
+    expect(parseUnitReading(">300")).toMatchObject({ kind: "above", value: 300, detected: null });
+    expect(parseUnitReading("> 3.10^5")).toMatchObject({ kind: "above", value: 300_000 });
+    expect(parseUnitReading("> 3,0.10⁵")).toMatchObject({ kind: "above", value: 300_000 });
+    expect(parseUnitReading("> 1,5 x 10^4")).toMatchObject({ kind: "above", value: 15_000 });
+    expect(parseUnitReading("> abc")).toMatchObject({ kind: "unreadable" });
+    expect(parseUnitReading("> < 10")).toMatchObject({ kind: "unreadable" });
+  });
+});
+
+describe("interpret — « Indénombrable » and « > x »", () => {
+  const single: Plan = { n: 5, c: null, mKind: "VALUE", m: 100, bigM: null };
+
+  it("takes an uncountable plate as above every limit (+∞)", () => {
+    expect(interpret(threeClass, read("10", "Indénombrable", "10", "10", "10"))).toMatchObject({ verdict: "NON_SATISFAISANT", countAboveM: 1 });
+    expect(interpret(single, read("TNTC", "10", "10", "10", "10"))).toMatchObject({ verdict: "NON_SATISFAISANT", countAboveM: 1 });
+    // Tolerated like any unit above a single limit (c = 1).
+    expect(interpret({ ...single, c: 1 }, read("TNTC", "10", "10", "10", "10")).verdict).toBe("ACCEPTABLE");
+    const absence: Plan = { n: 5, c: null, mKind: "ABSENCE", m: null, bigM: null };
+    expect(interpret(absence, read("Absence", "Indénombrable", "Absence", "Absence", "Absence")).verdict).toBe("NON_SATISFAISANT");
+  });
+
+  it("counts « > x » above a limit L when x ≥ L", () => {
+    expect(interpret(single, read("> 100", "10", "10", "10", "10"))).toMatchObject({ verdict: "NON_SATISFAISANT", countAboveM: 1 });
+    expect(interpret(single, read(">3.10^5", "10", "10", "10", "10")).verdict).toBe("NON_SATISFAISANT");
+    expect(interpret(threeClass, read("> 1.10⁴", "10", "10", "10", "10"))).toMatchObject({ verdict: "NON_SATISFAISANT", countAboveM: 1 });
+    // A presence on an absence test, whatever x.
+    const absence: Plan = { n: 5, c: null, mKind: "ABSENCE", m: null, bigM: null };
+    expect(interpret(absence, read("> 0", "Absence", "Absence", "Absence", "Absence")).verdict).toBe("NON_SATISFAISANT");
+  });
+
+  it("cannot conclude when x < L: INCOMPLET, asking for a higher dilution", () => {
+    const v = interpret(single, read("> 50", "10", "10", "10", "10"));
+    expect(v).toMatchObject({ verdict: "INCOMPLET", undecided: true });
+    expect(v.reason).toBe("> 50 ne permet pas de conclure face à m = 1.10² : lire une dilution supérieure.");
+    // Three classes: below m it is open against m, between m and M against M.
+    expect(interpret(threeClass, read("> 50", "10", "10", "10", "10")).reason).toContain("face à m = 1.10²");
+    expect(interpret(threeClass, read("> 500", "10", "10", "10", "10")).reason).toContain("> 500 ne permet pas de conclure face à M = 1.10⁴");
+    // M alone (« m non spécifiée »).
+    expect(interpret({ n: 5, c: null, mKind: "UNSPECIFIED", m: null, bigM: 1000 }, read("> 50", "1", "1", "1", "1")).reason).toContain("face à M = 1.10³");
+  });
+
+  it("concludes anyway when the exact count cannot change the verdict", () => {
+    // Another unit already fails: non satisfaisant whatever « > 50 » hides.
+    expect(interpret(single, read("> 50", "2.10²", "10", "10", "10"))).toMatchObject({ verdict: "NON_SATISFAISANT" });
+    // One unit tolerated above the limit either way (c = 2).
+    expect(interpret({ ...single, c: 2 }, read("> 50", "150", "10", "10", "10")).verdict).toBe("ACCEPTABLE");
+    // Three classes, c = 2: already one unit above M.
+    expect(interpret(threeClass, read("> 500", "2.10⁴", "10", "10", "10")).verdict).toBe("NON_SATISFAISANT");
+  });
+
+  it("keeps the sheet on the bench when even the indicative verdict is open", () => {
+    // 2 units taken for n = 5: indicative, but « > 50 » settles nothing.
+    const open = judgeUnits(threeClass, read("> 50", "10"));
+    expect(open.informal).toBeNull();
+    expect(open.official).toMatchObject({ verdict: "INCOMPLET", undecided: true });
+    expect(open.official?.reason).toContain("Indicatif, sur 2 unités au lieu de 5 : > 50 ne permet pas de conclure face à m = 1.10²");
+    // « > 1.10⁴ » settles it: indicatively non satisfaisant.
+    expect(judgeUnits(threeClass, read("> 1.10⁴", "10"))).toMatchObject({ official: null, informal: { verdict: "NON_SATISFAISANT" } });
+    expect(judgeUnits(threeClass, read("Indénombrable"))).toMatchObject({ official: null, informal: { verdict: "NON_SATISFAISANT" } });
   });
 });
 
@@ -168,6 +236,30 @@ describe("the helpers the screens share", () => {
     expect(summariseReadings(read("", "??"))).toEqual({ value: null, numeric: null });
   });
 
+  it("prints « Indénombrable » and « > x » as typed; the number is x, or none", () => {
+    expect(summariseReadings(read("10", "Indénombrable", "> 3.10^5"))).toEqual({ value: "Indénombrable", numeric: null });
+    expect(summariseReadings(read("TNTC"))).toEqual({ value: "TNTC", numeric: null });
+    expect(summariseReadings(read("10", "> 3.10^5", "50"))).toEqual({ value: "> 3.10^5", numeric: 300_000 });
+    // « > 300 » is worse than a count of 300.
+    expect(summariseReadings(read("300", ">300"))).toEqual({ value: ">300", numeric: 300 });
+    expect(summariseReadings(read("> 50", "2.10²"))).toEqual({ value: "2.10²", numeric: 200 });
+    // A dilution factor moves the bound: « > » and the final figure.
+    expect(summariseReadings([applyUnitFactor(parseUnitReading("> 300"), 10)])).toEqual({ value: "> 3.10³", numeric: 3000 });
+  });
+
+  it("suggests conformity against a single limit without criterion", () => {
+    expect(suggestUnitsConformity(read("10", "Indénombrable"), 100)).toBe(false);
+    expect(suggestUnitsConformity(read("10", "> 100"), 100)).toBe(false);
+    expect(suggestUnitsConformity(read("10", "> 50"), 100)).toBeNull();
+    expect(aboveBelowLimit(read("10", "> 50"), 100)).toBe("> 50 ne permet pas de conclure face à la limite 1.10² : lire une dilution supérieure.");
+    expect(suggestUnitsConformity(read("> 50", "150"), 100)).toBe(false);
+    expect(suggestUnitsConformity(read("10", "50"), 100)).toBe(true);
+    expect(suggestUnitsConformity(read("10", "150"), 100)).toBe(false);
+    expect(suggestUnitsConformity(read("Présence"), 100)).toBeNull();
+    expect(suggestUnitsConformity(read("10"), null)).toBeNull();
+    expect(aboveBelowLimit(read("> 100"), 100)).toBeNull();
+  });
+
   it("prefers the norm version in force", () => {
     const old = { ...threeClass, normVersion: { current: false, version: "2009" } };
     const current = { ...threeClass, normVersion: { current: true, version: "2017" } };
@@ -220,6 +312,16 @@ describe("dilution and printing of a unit", () => {
     expect(unitStoredDisplay({ rawValue: "< 10", value: 0, detected: null })).toBe("< 10");
     expect(unitStoredDisplay({ rawValue: "Absence", value: null, detected: false })).toBe("Absence");
     expect(unitStoredDisplay({ rawValue: "Présence", value: null, detected: true })).toBe("Présence");
+    // Stored as typed: an uncountable plate is « detected » but never « Présence ».
+    expect(unitStoredDisplay({ rawValue: "Indénombrable", value: null, detected: true })).toBe("Indénombrable");
+    expect(unitStoredDisplay({ rawValue: "TNTC", value: null, detected: true })).toBe("TNTC");
+    expect(unitStoredDisplay({ rawValue: "> 3.10^5", value: 300_000, detected: null })).toBe("> 3.10^5");
+    expect(unitStoredDisplay({ rawValue: "> 300", value: 3000, detected: null })).toBe("> 3.10³");
+  });
+
+  it("multiplies the bound of « > x » by the factor, and leaves « Indénombrable » alone", () => {
+    expect(applyUnitFactor(parseUnitReading("> 300"), 10)).toMatchObject({ kind: "above", value: 3000 });
+    expect(applyUnitFactor(parseUnitReading("Indénombrable"), 10)).toMatchObject({ kind: "uncountable", value: null, detected: true });
   });
 
   it("carries the mantissa instead of printing « 10.10² »", () => {

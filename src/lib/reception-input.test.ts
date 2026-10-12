@@ -34,12 +34,23 @@ const good = {
   coolerTemperature: "3,5",
   // `technicianId`: what a page opened before 08/10 still sends — ignored (§9.3).
   lines: [
-    { sampleId: "s1", receptionTemperature: "4", quantity: "250", quantityUnit: "G", exploitable: true, conformity: true, technicianId: "t1" },
-    { sampleId: "s2", exploitable: true, conformity: true, technicianId: "t1" },
+    { sampleId: "s1", receptionTemperature: "4", quantity: "250", quantityUnit: "G", exploitable: true, packagingOk: true, identificationOk: true, conformity: true, technicianId: "t1" },
+    { sampleId: "s2", exploitable: true, packagingOk: true, identificationOk: true, conformity: true, technicianId: "t1" },
   ],
 };
 
-const validate = (raw: unknown) => validateReception(raw, candidates, DEFAULT_THRESHOLDS);
+/** The série's sampling: 08:00 → 09:30 UTC, the arrival above at 10:30. */
+const times = { startedAt: new Date("2026-09-13T08:00:00.000Z"), endedAt: new Date("2026-09-13T09:30:00.000Z") };
+/** Received at 11:00 the same day — within C1's 24 h when no arrival is typed. */
+const sameDay = { ...times, receivedAt: new Date("2026-09-13T11:00:00.000Z") };
+
+const validate = (raw: unknown) => validateReception(raw, candidates, DEFAULT_THRESHOLDS, times);
+
+/** Every line justified (A7): a doubt accepted conforme carries an observation. */
+const justified = <T extends { lines: object[] }>(raw: T, note = "Accepté après contrôle visuel du responsable") => ({
+  ...raw,
+  lines: raw.lines.map((line) => ({ ...line, receptionNote: note })),
+});
 
 describe("validateReception", () => {
   it("accepts a complete série and rounds the temperatures", () => {
@@ -69,7 +80,7 @@ describe("validateReception", () => {
   });
 
   it("refuses a série already received and a line sent twice or missing", () => {
-    const received = validateReception(good, candidates.map((c) => ({ ...c, status: "RECU" })), DEFAULT_THRESHOLDS);
+    const received = validateReception(good, candidates.map((c) => ({ ...c, status: "RECU" })), DEFAULT_THRESHOLDS, times);
     expect(received).toMatchObject({ ok: false, error: "Cette série est déjà réceptionnée." });
 
     const twice = validate({ ...good, lines: [good.lines[0], good.lines[0], good.lines[1]] });
@@ -84,8 +95,21 @@ describe("validateReception", () => {
       error: "L'échantillon 2 n'est pas renseigné — la série se réceptionne en une fois.",
     });
 
-    const stranger = validate({ ...good, lines: [...good.lines, { sampleId: "zz", exploitable: true, conformity: true }] });
+    const stranger = validate({ ...good, lines: [...good.lines, { ...good.lines[1], sampleId: "zz" }] });
     expect(stranger).toMatchObject({ ok: false, error: "Un échantillon envoyé n'appartient pas à cette série." });
+  });
+
+  it("tells a page out of date that a sample was cancelled meanwhile (« Non reçu »), and receives the others without it", () => {
+    const cancelled = candidates.map((c) => (c.id === "s2" ? { ...c, status: "ANNULE" as const } : c));
+    expect(validateReception(good, cancelled, DEFAULT_THRESHOLDS, times)).toMatchObject({
+      ok: false,
+      lineNumber: 2,
+      error: "L'échantillon 2 est annulé : rechargez la page pour réceptionner les autres.",
+    });
+    // The page refreshed: the cancelled sample is no longer sent, nor missing.
+    const rest = validateReception({ ...good, lines: [good.lines[0]] }, cancelled, DEFAULT_THRESHOLDS, times);
+    expect(rest.ok).toBe(true);
+    if (rest.ok) expect(rest.value.lines.map((l) => l.sampleId)).toEqual(["s1"]);
   });
 
   it("re-runs the rules: a blocked line cannot be declared conform", () => {
@@ -145,7 +169,7 @@ describe("validateReception", () => {
     const unknown = validate({ ...good, lines: [{ ...good.lines[0], technicianId: "pas-un-technicien" }, good.lines[1]] });
     expect(unknown.ok && unknown.value.lines[0]).not.toHaveProperty("technicianId");
 
-    const none = validate({ ...good, lines: [{ ...good.lines[0], technicianId: undefined }, { sampleId: "s2", exploitable: true, conformity: true }] });
+    const none = validate({ ...good, lines: [{ ...good.lines[0], technicianId: undefined }, { ...good.lines[1], technicianId: undefined }] });
     expect(none.ok).toBe(true);
     if (none.ok) expect(none.value.lines[0]).toMatchObject({ conformity: true, destroy: false });
   });
@@ -184,7 +208,7 @@ describe("validateReception", () => {
 
 describe("validateReception — rule (1), exploitable or not (retour du 08/10)", () => {
   it("refuses a line without the answer — what a page opened before the checklist sends", () => {
-    const oldTab = { sampleId: "s1", receptionTemperature: "4", quantity: "250", quantityUnit: "G", conformity: true };
+    const oldTab = { sampleId: "s1", receptionTemperature: "4", quantity: "250", quantityUnit: "G", packagingOk: true, identificationOk: true, conformity: true };
     expect(validate({ ...good, lines: [oldTab, good.lines[1]] })).toEqual({
       ok: false,
       error: "Échantillon 1 : indiquez s'il est exploitable (règle 1). Si les boutons « Exploitable » / « Non exploitable » n'apparaissent pas, rechargez la page.",
@@ -238,7 +262,7 @@ describe("validateReception — rule (1), exploitable or not (retour du 08/10)",
 
   it("keeps refusing a conform sample under a blocking rule, with the laboratory's thresholds", () => {
     const strict = { ...DEFAULT_THRESHOLDS, minFoodMicroG: 300 };
-    const result = validateReception(good, candidates, strict);
+    const result = validateReception(good, candidates, strict, times);
     expect(result).toMatchObject({ ok: false, lineNumber: 1 });
     if (!result.ok) expect(result.error).toBe("Échantillon 1 : Quantité 250 g < 300 g requis. L'échantillon ne peut pas être déclaré conforme.");
   });
@@ -250,11 +274,170 @@ describe("validateReception — rule (1), exploitable or not (retour du 08/10)",
     const result = validateReception(
       { lines: [{ ...good.lines[0], quantity: "450" }] },
       fish,
-      DEFAULT_THRESHOLDS
+      DEFAULT_THRESHOLDS,
+      times
     );
     // 450 g meets rule (3) (300 g) but not rule (7) (9 × 100 g).
     expect(result).toMatchObject({ ok: false, lineNumber: 1 });
     if (!result.ok) expect(result.error).toContain("Poids par unité 50 g < 100 g requis.");
+  });
+});
+
+describe("validateReception — the arrival never precedes the sampling (A2)", () => {
+  it("refuses an arrival before the end of the sampling", () => {
+    expect(validate({ ...good, arrivedAt: "2026-09-13T09:00:00.000Z" })).toEqual({
+      ok: false,
+      error: "L'arrivée au laboratoire précède la fin du prélèvement.",
+    });
+  });
+
+  it("refuses an arrival before the start when no end was typed", () => {
+    const open = { startedAt: times.startedAt, endedAt: null };
+    expect(validateReception({ ...good, arrivedAt: "2026-09-13T07:59:00.000Z" }, candidates, DEFAULT_THRESHOLDS, open)).toEqual({
+      ok: false,
+      error: "L'arrivée au laboratoire précède le prélèvement.",
+    });
+    expect(validateReception({ ...good, arrivedAt: "2026-09-13T08:00:00.000Z" }, candidates, DEFAULT_THRESHOLDS, open).ok).toBe(true);
+  });
+
+  it("accepts an arrival equal to the end, and no arrival at all (the reception instant)", () => {
+    const equal = validate({ ...good, arrivedAt: "2026-09-13T09:30:00.000Z" });
+    expect(equal.ok && equal.value.arrivedAt?.toISOString()).toBe("2026-09-13T09:30:00.000Z");
+    const none = validateReception({ ...good, arrivedAt: "" }, candidates, DEFAULT_THRESHOLDS, sameDay);
+    expect(none.ok && none.value.arrivedAt).toBeNull();
+  });
+});
+
+describe("validateReception — the contrôles complémentaires C3 and C5", () => {
+  it("refuses a line without the ticks — what a page opened before the controls sends", () => {
+    const { packagingOk: answered, ...noPackaging } = good.lines[1];
+    expect(answered).toBe(true);
+    expect(validate({ ...good, lines: [good.lines[0], noPackaging] })).toEqual({
+      ok: false,
+      error: "Échantillon 2 : indiquez si l'emballage est intact (rechargez la page si elle date d'avant la mise à jour).",
+      lineNumber: 2,
+      ref: "2",
+    });
+    expect(validate({ ...good, lines: [good.lines[0], { ...good.lines[1], identificationOk: "oui" }] })).toMatchObject({
+      ok: false,
+      lineNumber: 2,
+      error: "Échantillon 2 : indiquez si l'identification est conforme à la fiche (rechargez la page si elle date d'avant la mise à jour).",
+    });
+  });
+
+  it("never declares conform a sample whose control says « Non »", () => {
+    const refused = validate({ ...good, lines: [{ ...good.lines[0], packagingOk: false }, good.lines[1]] });
+    expect(refused).toMatchObject({ ok: false, lineNumber: 1, ref: "1" });
+    if (!refused.ok) {
+      expect(refused.error).toBe(
+        "Échantillon 1 : Contrôle C3 « Emballage / contenant intact, fermé et adapté » non conforme — emballage d'origine fermé ou sachet stérile. L'échantillon ne peut pas être déclaré conforme."
+      );
+    }
+    expect(validate({ ...good, lines: [good.lines[0], { ...good.lines[1], identificationOk: false }] })).toMatchObject({
+      ok: false,
+      lineNumber: 2,
+    });
+  });
+
+  it("receives the sample non conforme, and audits the coded rows beside the checklist", () => {
+    const result = validate({
+      ...good,
+      lines: [{ ...good.lines[0], packagingOk: false, conformity: false, conformityReason: "EMBALLAGE" }, good.lines[1]],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.lines[0]).toMatchObject({ packagingOk: false, identificationOk: true, conformityReason: "EMBALLAGE" });
+    expect(result.value.lines[0].checklist).toHaveLength(7);
+    expect(result.value.lines[0].complementary.map((row) => [row.code, row.status])).toEqual([
+      ["C1", "CONFORME"],
+      ["C2", "CONFORME"],
+      ["C3", "NON_CONFORME"],
+      ["C5", "CONFORME"],
+      // Food without a DLC.
+      ["C7", "SANS_OBJET"],
+    ]);
+  });
+});
+
+describe("validateReception — C2, température de transport", () => {
+  const c2 = (result: ReturnType<typeof validate>, index = 0) =>
+    result.ok ? result.value.lines[index].complementary.find((row) => row.code === "C2") : undefined;
+
+  it("accepts an older page without a source or a class: the value alone, the kind's default", () => {
+    const result = validate(good);
+    expect(result.ok && result.value.lines[0]).toMatchObject({ temperatureSource: null, storageClass: null });
+    expect(c2(result)).toMatchObject({ status: "CONFORME", detail: "4 °C, réfrigéré entre 0 et 8 °C" });
+    // Rule (6) keeps the value without a source.
+    expect(result.ok && result.value.lines[0].checklist[5].detail).toBe("4 °C");
+  });
+
+  it("keeps where the temperature was read — « (glacière) » is back on rule (6) and on C2", () => {
+    const result = validate({ ...good, lines: [{ ...good.lines[0], receptionTemperatureSource: "GLACIERE" }, good.lines[1]] });
+    expect(result.ok && result.value.lines[0].temperatureSource).toBe("GLACIERE");
+    expect(result.ok && result.value.lines[0].checklist[5].detail).toBe("4 °C (glacière)");
+    expect(c2(result)?.detail).toBe("4 °C, réfrigéré entre 0 et 8 °C (glacière)");
+    // No temperature, no source.
+    const none = validate({ ...good, lines: [good.lines[0], { ...good.lines[1], receptionTemperatureSource: "ECHANTILLON" }] });
+    expect(none.ok && none.value.lines[1].temperatureSource).toBeNull();
+  });
+
+  it("judges by the class chosen, never refusing", () => {
+    const frozen = validate(justified({ ...good, lines: [{ ...good.lines[0], storageClass: "CONGELE" }, good.lines[1]] }));
+    expect(frozen.ok && frozen.value.lines[0].storageClass).toBe("CONGELE");
+    expect(c2(frozen)).toMatchObject({ status: "A_VERIFIER", reason: "CHAINE_FROID" });
+  });
+
+  it("refuses an unknown class or source", () => {
+    expect(validate({ ...good, lines: [{ ...good.lines[0], storageClass: "TIEDE" }, good.lines[1]] })).toMatchObject({
+      ok: false,
+      lineNumber: 1,
+      error: "Échantillon 1 : classe de conservation inconnue.",
+    });
+    expect(validate({ ...good, lines: [{ ...good.lines[0], receptionTemperatureSource: "THERMOMETRE" }, good.lines[1]] })).toMatchObject({
+      ok: false,
+      error: "Échantillon 1 : origine de la température inconnue.",
+    });
+  });
+});
+
+describe("validateReception — C7, DLC", () => {
+  it("warns on a food sample past its DLC, never refuses it", () => {
+    const dated: ReceptionCandidate[] = [{ ...candidates[0], expiryDate: new Date("2026-09-12T00:00:00.000Z") }, candidates[1]];
+    const result = validateReception(justified(good), dated, DEFAULT_THRESHOLDS, { ...times, receivedAt: new Date("2026-09-13T10:40:00.000Z") });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.lines[0].complementary.find((row) => row.code === "C7")).toMatchObject({
+      status: "A_VERIFIER",
+      detail: "DLC dépassée le 12/09/2026",
+    });
+    // The surface has no C7 row.
+    expect(result.value.lines[1].complementary.some((row) => row.code === "C7")).toBe(false);
+  });
+});
+
+describe("validateReception — C1, délai prélèvement → laboratoire", () => {
+  const c1 = (result: ReturnType<typeof validate>, index = 0) =>
+    result.ok ? result.value.lines[index].complementary.find((row) => row.code === "C1") : undefined;
+
+  it("counts from the end of the sampling to the arrival typed, else the série's, else the reception instant", () => {
+    expect(c1(validate(good))).toMatchObject({ status: "CONFORME", detail: "Délai 1 h" });
+    const stored = { ...times, arrivedAt: new Date("2026-09-13T11:30:00.000Z") };
+    expect(c1(validateReception({ ...good, arrivedAt: "" }, candidates, DEFAULT_THRESHOLDS, stored))).toMatchObject({ detail: "Délai 2 h" });
+    const atReception = { ...times, receivedAt: new Date("2026-09-14T12:00:00.000Z") };
+    expect(c1(validateReception(justified({ ...good, arrivedAt: "" }), candidates, DEFAULT_THRESHOLDS, atReception))).toMatchObject({
+      status: "A_VERIFIER",
+      reason: "DELAI",
+      detail: "Délai 26 h 30 > 24 h",
+    });
+  });
+
+  it("refuses « conforme » past the limit only when the laboratory makes the delay blocking", () => {
+    const late = { ...times, receivedAt: new Date("2026-09-14T12:00:00.000Z") };
+    expect(validateReception(justified({ ...good, arrivedAt: "" }), candidates, DEFAULT_THRESHOLDS, late).ok).toBe(true);
+    // Blocking: refused even with an observation — a NON_CONFORME row is not a doubt.
+    const blocking = validateReception(justified({ ...good, arrivedAt: "" }), candidates, { ...DEFAULT_THRESHOLDS, delayBlocking: true }, late);
+    expect(blocking).toMatchObject({ ok: false, lineNumber: 1 });
+    if (!blocking.ok) expect(blocking.error).toMatch(/^Échantillon 1 : Contrôle C1 « Délai prélèvement → laboratoire » non conforme — délai 26 h 30 > 24 h\./);
   });
 });
 
@@ -275,13 +458,14 @@ describe("validateReception — the two samples of a two-family line (RETOUR-LAB
     { ...candidates[0], id: "m", code: "1/26-1M", family: "MICRO" },
     { ...candidates[0], id: "p", code: "1/26-1P", family: "CHIMIE" },
   ];
-  const line = { receptionTemperature: "4", quantityUnit: "G", exploitable: true, conformity: true };
+  const line = { receptionTemperature: "4", quantityUnit: "G", exploitable: true, packagingOk: true, identificationOk: true, conformity: true };
 
   it("receives each one on its own, microbiology first, and names them by their letter", () => {
     const result = validateReception(
       { lines: [{ ...line, sampleId: "p", quantity: "300" }, { ...line, sampleId: "m", quantity: "100" }] },
       twins,
-      DEFAULT_THRESHOLDS
+      DEFAULT_THRESHOLDS,
+      sameDay
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -296,17 +480,195 @@ describe("validateReception — the two samples of a two-family line (RETOUR-LAB
     const short = validateReception(
       { lines: [{ ...line, sampleId: "m", quantity: "250" }, { ...line, sampleId: "p", quantity: "250" }] },
       twins,
-      DEFAULT_THRESHOLDS
+      DEFAULT_THRESHOLDS,
+      sameDay
     );
     expect(short).toMatchObject({ ok: false, lineNumber: 1, ref: "1P" });
     if (!short.ok) expect(short.error).toMatch(/^Échantillon 1P : Quantité 250 g < 300 g requis\./);
 
-    const missing = validateReception({ lines: [{ ...line, sampleId: "m", quantity: "250" }] }, twins, DEFAULT_THRESHOLDS);
+    const missing = validateReception({ lines: [{ ...line, sampleId: "m", quantity: "250" }] }, twins, DEFAULT_THRESHOLDS, sameDay);
     expect(missing).toMatchObject({
       ok: false,
       lineNumber: 1,
       ref: "1P",
       error: "L'échantillon 1P n'est pas renseigné — la série se réceptionne en une fois.",
     });
+  });
+});
+
+describe("validateReception — C6, the signed protocol answered for the série (A6)", () => {
+  const visit = { ...times, kind: "VISITE" as const, hasSignedProtocol: false };
+
+  it("stores a visit's answer when no photo is attached — Oui or Non", () => {
+    const yes = validateReception({ ...good, signedProtocolReceived: true }, candidates, DEFAULT_THRESHOLDS, visit);
+    expect(yes.ok && yes.value.signedProtocolReceived).toBe(true);
+    const no = validateReception({ ...good, signedProtocolReceived: false }, candidates, DEFAULT_THRESHOLDS, visit);
+    expect(no.ok && no.value.signedProtocolReceived).toBe(false);
+  });
+
+  it("stores nothing without an answer, with a photo, or on a deposit", () => {
+    const none = validateReception(good, candidates, DEFAULT_THRESHOLDS, visit);
+    expect(none.ok && none.value.signedProtocolReceived).toBeNull();
+    const nulled = validateReception({ ...good, signedProtocolReceived: null }, candidates, DEFAULT_THRESHOLDS, visit);
+    expect(nulled.ok && nulled.value.signedProtocolReceived).toBeNull();
+    const photo = validateReception(
+      { ...good, signedProtocolReceived: false },
+      candidates,
+      DEFAULT_THRESHOLDS,
+      { ...visit, hasSignedProtocol: true }
+    );
+    expect(photo.ok && photo.value.signedProtocolReceived).toBeNull();
+    const deposit = validateReception({ ...good, signedProtocolReceived: true }, candidates, DEFAULT_THRESHOLDS, {
+      ...visit,
+      kind: "DEPOT",
+    });
+    expect(deposit.ok && deposit.value.signedProtocolReceived).toBeNull();
+  });
+
+  it("never weighs on the samples: « Non » leaves them conform", () => {
+    const result = validateReception({ ...good, signedProtocolReceived: false }, candidates, DEFAULT_THRESHOLDS, visit);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.lines.map((line) => line.conformity)).toEqual([true, true]);
+  });
+
+  it("refuses an answer that is neither Oui, Non nor nothing", () => {
+    expect(validateReception({ ...good, signedProtocolReceived: "oui" }, candidates, DEFAULT_THRESHOLDS, visit)).toEqual({
+      ok: false,
+      error: "Réponse invalide pour le protocole signé (C6).",
+    });
+  });
+});
+
+describe("validateReception — « Observation de réception », the justification of an accepted doubt (A7)", () => {
+  /** Line 1 weighed nothing: rule (2) « à vérifier » (quantity not given). */
+  const unweighed = { ...good.lines[0], quantity: "", quantityUnit: "" };
+
+  it("refuses a doubt accepted conforme without an observation, naming the first doubtful row", () => {
+    expect(validate({ ...good, lines: [unweighed, good.lines[1]] })).toEqual({
+      ok: false,
+      error:
+        "Échantillon 1 : justifiez l'acceptation (règle 2 à vérifier).",
+      lineNumber: 1,
+      ref: "1",
+    });
+  });
+
+  it("names a contrôle complémentaire by its code — the message of the plan", () => {
+    const frozen = validate({ ...good, lines: [good.lines[0], good.lines[1]].map((line, i) => (i === 0 ? { ...line, storageClass: "CONGELE" } : line)) });
+    expect(frozen).toMatchObject({
+      ok: false,
+      lineNumber: 1,
+      error: "Échantillon 1 : justifiez l'acceptation (C2 Température de transport à vérifier).",
+    });
+  });
+
+  it("accepts the doubt once justified, and keeps the observation", () => {
+    const result = validate({ ...good, lines: [{ ...unweighed, receptionNote: "  Balance en panne, poids estimé > 100 g  " }, good.lines[1]] });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.lines[0].receptionNote).toBe("Balance en panne, poids estimé > 100 g");
+      expect(result.value.lines[1].receptionNote).toBeNull();
+    }
+  });
+
+  it("asks nothing of a sample without doubt, nor of a non-conform one — the observation stays optional", () => {
+    const clean = validate({ ...good, lines: [{ ...good.lines[0], receptionNote: "Emballage légèrement humide" }, good.lines[1]] });
+    expect(clean.ok && clean.value.lines[0].receptionNote).toBe("Emballage légèrement humide");
+    const nonConform = validate({
+      ...good,
+      lines: [{ ...unweighed, conformity: false, conformityReason: "QUANTITE_INSUFFISANTE" }, good.lines[1]],
+    });
+    expect(nonConform.ok).toBe(true);
+  });
+
+  it("refuses an observation over 1 000 characters", () => {
+    expect(validate({ ...good, lines: [{ ...good.lines[0], receptionNote: "x".repeat(1001) }, good.lines[1]] })).toMatchObject({
+      ok: false,
+      lineNumber: 1,
+      error: "Échantillon 1 : l'observation de réception dépasse 1 000 caractères.",
+    });
+    expect(validate({ ...good, lines: [{ ...good.lines[0], receptionNote: "x".repeat(1000) }, good.lines[1]] }).ok).toBe(true);
+  });
+});
+
+describe("validateReception — analyse with the client's agreement, or wait for the client (A9)", () => {
+  /** Line 1 non conforme: its packaging. */
+  const nonConform = { ...good.lines[0], packagingOk: false, conformity: false, conformityReason: "EMBALLAGE" };
+  const agreement = { name: "M. Exemple", channel: "TELEPHONE", at: "2026-09-13T10:45:00.000Z", note: "Analyse demandée" };
+
+  it("keeps the 29/09 behaviour when nobody uses the new options", () => {
+    const result = validate({ ...good, lines: [nonConform, good.lines[1]] });
+    expect(result.ok && result.value.lines[0]).toMatchObject({
+      decision: "ANALYSER",
+      destroy: false,
+      awaitClient: false,
+      consultation: null,
+    });
+    const destroyed = validate({ ...good, lines: [{ ...nonConform, decision: "DETRUIRE" }, good.lines[1]] });
+    expect(destroyed.ok && destroyed.value.lines[0]).toMatchObject({ decision: "DETRUIRE", destroy: true, awaitClient: false });
+  });
+
+  it("holds a non-conform sample « en attente du client », never a conform one", () => {
+    const waiting = validate({ ...good, lines: [{ ...nonConform, decision: "EN_ATTENTE_CLIENT" }, good.lines[1]] });
+    expect(waiting.ok && waiting.value.lines[0]).toMatchObject({
+      decision: "EN_ATTENTE_CLIENT",
+      awaitClient: true,
+      destroy: false,
+      consultation: null,
+    });
+    expect(validate({ ...good, lines: [{ ...good.lines[0], decision: "EN_ATTENTE_CLIENT" }, good.lines[1]] })).toEqual({
+      ok: false,
+      error: "Échantillon 1 : seul un échantillon non conforme peut attendre l'avis du client.",
+      lineNumber: 1,
+      ref: "1",
+    });
+  });
+
+  it("records the client's agreement on a non-conform sample analysed anyway — ignored otherwise", () => {
+    const agreed = validateReception(
+      { ...good, lines: [{ ...nonConform, consultation: agreement }, good.lines[1]] },
+      candidates,
+      DEFAULT_THRESHOLDS,
+      sameDay
+    );
+    expect(agreed.ok && agreed.value.lines[0].consultation).toEqual({
+      name: "M. Exemple",
+      channel: "TELEPHONE",
+      at: new Date("2026-09-13T10:45:00.000Z"),
+      note: "Analyse demandée",
+    });
+    // A conform sample, a wait or a destruction carries no agreement.
+    const conform = validate({ ...good, lines: [{ ...good.lines[0], consultation: agreement }, good.lines[1]] });
+    expect(conform.ok && conform.value.lines[0].consultation).toBeNull();
+    const waiting = validate({ ...good, lines: [{ ...nonConform, decision: "EN_ATTENTE_CLIENT", consultation: agreement }, good.lines[1]] });
+    expect(waiting.ok && waiting.value.lines[0].consultation).toBeNull();
+  });
+
+  it("refuses a half agreement, named on the sample", () => {
+    expect(validate({ ...good, lines: [{ ...nonConform, consultation: { name: "M. Exemple" } }, good.lines[1]] })).toEqual({
+      ok: false,
+      error: "Échantillon 1 : pour l'accord du client, indiquez le nom de la personne consultée et le canal.",
+      lineNumber: 1,
+      ref: "1",
+    });
+  });
+
+  it("requires the agreement to analyse a non-conform sample when the laboratory says so", () => {
+    const required = { consultationRequired: true };
+    expect(validateReception({ ...good, lines: [nonConform, good.lines[1]] }, candidates, DEFAULT_THRESHOLDS, sameDay, required)).toEqual({
+      ok: false,
+      error:
+        "Échantillon 1 : l'accord du client est obligatoire pour analyser un échantillon non conforme : indiquez le nom de la personne consultée et le canal.",
+      lineNumber: 1,
+      ref: "1",
+    });
+    const agreed = { ...good, lines: [{ ...nonConform, consultation: agreement }, good.lines[1]] };
+    expect(validateReception(agreed, candidates, DEFAULT_THRESHOLDS, sameDay, required).ok).toBe(true);
+    // Waiting for the client, destroying, or a conform série need no agreement.
+    for (const decision of ["EN_ATTENTE_CLIENT", "DETRUIRE"]) {
+      const raw = { ...good, lines: [{ ...nonConform, decision }, good.lines[1]] };
+      expect(validateReception(raw, candidates, DEFAULT_THRESHOLDS, sameDay, required).ok).toBe(true);
+    }
+    expect(validateReception(good, candidates, DEFAULT_THRESHOLDS, times, required).ok).toBe(true);
   });
 });

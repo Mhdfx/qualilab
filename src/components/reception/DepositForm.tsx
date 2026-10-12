@@ -24,6 +24,7 @@ import type {
   SampleStatus,
   SampleType,
   SamplerKind,
+  StorageClass,
   SurfaceState,
 } from "@/generated/prisma/enums";
 import {
@@ -35,7 +36,22 @@ import {
   formatCadre,
   formatDateTime,
 } from "@/lib/labels";
-import { EXPLOITABLE_MESSAGES, type ReceptionThresholds } from "@/lib/reception-rules";
+import {
+  EXPLOITABLE_MESSAGES,
+  justifyAcceptanceMessage,
+  rowToJustify,
+  type ReceptionThresholds,
+} from "@/lib/reception-rules";
+import { COMPLEMENTARY_MESSAGES, expiredDlcNote, type ComplementaryKey } from "@/lib/reception-complementary";
+import { parseIsoDay } from "@/lib/date-only";
+import {
+  CONSULTATION_TIME_LABEL,
+  EMPTY_CONSULTATION,
+  consultationDraftError,
+  consultationPayload,
+  type ConsultationDraft,
+  type ReceptionDecision,
+} from "@/lib/client-consultation";
 import { sampleRef } from "@/lib/reception-input";
 import { SERIE_MESSAGES, sampleLineMessage } from "@/lib/serie-input";
 import { repetitionRange } from "@/lib/series";
@@ -46,6 +62,7 @@ import { StepIndicator } from "@/components/ui/StepIndicator";
 import { Card } from "@/components/ui/Card";
 import { LabDateTimeInput } from "@/components/LabDateTimeInput";
 import { LineEditor } from "@/components/preleveur/LineEditor";
+import { ClientPicker, type PickedClient } from "@/components/commercial/ClientPicker";
 import {
   duplicateDraft,
   emptyLine,
@@ -59,17 +76,30 @@ import {
   mergeSuggestions,
   parameterFamily,
   serieAnalyses,
-  toLocalInput,
   type ClientMemory,
-  type ClientOption,
   type LineDraft,
   type NatureOption,
   type ParameterOption,
   type ProductTypeOption,
   type ProfileOption,
 } from "@/components/preleveur/visit-types";
-import { Checklist, ConformityChip } from "./reception-widgets";
-import { countLabel, depositLineChecklist, familiesSummary, lineSampleRefs, sampleCount } from "./reception-logic";
+import {
+  Checklist,
+  ConformityChip,
+  ConsultationFields,
+  DecisionChips,
+  ReceptionNoteField,
+  StorageClassSelect,
+  useMinuteClock,
+} from "./reception-widgets";
+import {
+  countLabel,
+  depositLineChecklist,
+  familiesSummary,
+  lineSampleRefs,
+  sampleCount,
+  storageDefaultLabel,
+} from "./reception-logic";
 
 const subscribeNoop = () => () => {};
 
@@ -83,12 +113,21 @@ const subscribeNoop = () => () => {};
 type LineIntake = {
   /** Rule (1) of the bon: null until the counter answers — never pre-answered. */
   exploitable: boolean | null;
+  /** C3 (emballage) and C5 (identification): null until ticked — never pre-answered. */
+  packagingOk: boolean | null;
+  identificationOk: boolean | null;
   temperature: string;
+  /** « Conservation » (C2) for the line; null = each sample's default. */
+  storageClass: StorageClass | null;
   conformityChoice: boolean | null;
   reason: NonConformityReason | "";
   note: string;
-  /** Non-conform only: « Détruire » instead of « Analyser malgré tout ». */
-  destroy: boolean;
+  /** « Observation de réception » (A7) — required to accept a doubt conforme. */
+  receptionNote: string;
+  /** Non-conform only: analyse anyway, wait for the client, or destroy (A9). */
+  decision: ReceptionDecision;
+  /** « Accord du client », for « Analyser malgré tout » (A9). */
+  consultation: ConsultationDraft;
 };
 
 type CreatedDeposit = {
@@ -113,6 +152,8 @@ type CreatedDeposit = {
     conformity: boolean | null;
     conformityReason: NonConformityReason | null;
     cancelReason: CancelReason | null;
+    /** « En attente du client » since (A9); optional on an older answer. */
+    awaitingClientSince?: string | null;
     nature: { label: string; family: Family };
   }[];
 };
@@ -138,6 +179,10 @@ type CatalogueParameter = ParameterOption & { aliases?: string | null };
 
 /** The id of « Exploitable » on the card of a line — focused when rule (1) is unanswered. */
 const exploitableAnchor = (key: string) => `exploitable-${key}`;
+/** The id of « Oui » of a ticked control — focused when it is unanswered. */
+const tickAnchor = (control: "packaging" | "identification", key: string) => `${control}-${key}`;
+/** The id of « Observation de réception » — focused when an accepted doubt is not justified. */
+const noteAnchor = (key: string) => `obs-${key}`;
 
 const CHIP_ON = "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20";
 const CHIP_OFF = "border-slate-200 text-slate-600 hover:border-slate-300";
@@ -179,15 +224,22 @@ function depositLine(natures: readonly NatureOption[], previous?: LineDraft): Li
  * The bon de réception, filled at the counter when a client brings samples:
  * the same samples as a visit, plus what the reception measures — the
  * deposit is numbered and received in the same transaction (WORKFLOW.md
- * §3.2).
+ * §3.2). The client is searched on the server (`ClientPicker`), never the
+ * whole base loaded up front; its sites come with the client picked.
  */
-export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds }) {
+export function DepositForm({
+  thresholds,
+  consultationRequired = false,
+}: {
+  thresholds: ReceptionThresholds;
+  /** LabSettings.consultationRequired: analysing a non-conform line needs the client's agreement (A9). */
+  consultationRequired?: boolean;
+}) {
   const router = useRouter();
   const isMounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [natures, setNatures] = useState<NatureOption[]>([]);
-  const [clients, setClients] = useState<ClientOption[]>([]);
   const [parametersByType, setParametersByType] = useState<Partial<Record<SampleType, CatalogueParameter[]>>>({});
   const [loadingTypes, setLoadingTypes] = useState<Set<SampleType>>(new Set());
   const requestedTypes = useRef<Set<SampleType>>(new Set());
@@ -196,7 +248,9 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
   const [errorLine, setErrorLine] = useState<number | null>(null);
   const [created, setCreated] = useState<CreatedDeposit | null>(null);
 
-  const [clientId, setClientId] = useState("");
+  // The client picked in the search, with its active sites.
+  const [client, setClient] = useState<PickedClient | null>(null);
+  const clientId = client?.id ?? "";
   const [siteId, setSiteId] = useState("");
   const [samplerKind, setSamplerKind] = useState<SamplerKind>("CLIENT");
   // A choice, never deduced from who sampled, none preselected (V1).
@@ -206,7 +260,11 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
   const [interlocutor, setInterlocutor] = useState("");
   const [clientReference, setClientReference] = useState("");
   // LEGAL wall time ("YYYY-MM-DDTHH:mm"): LabDateTimeInput converts a drifting device's hour.
-  const [startedAt, setStartedAt] = useState(() => toLocalInput(new Date()));
+  // Empty until typed (C1): an undeclared time is never « now » — the API
+  // stores the counter's instant and the delay reads « à vérifier ».
+  const [startedAt, setStartedAt] = useState("");
+  // The counter's « now »: the deposit's arrival, for the live delay (C1).
+  const now = useMinuteClock();
   // The « dans le futur » refusal, shown under « Prélevé le » (§8.1).
   const [startedError, setStartedError] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
@@ -241,16 +299,14 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
   }, []);
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/natures").then((r) => r.json()),
-      fetch("/api/clients").then((r) => r.json()),
-    ]).then(([n, c]: [NatureOption[], ClientOption[]]) => {
-      const first = depositLine(n);
-      setNatures(n);
-      setClients(c);
-      setLines((prev) => (prev.length ? prev : [first]));
-      ensureParameters(lineCategory(n, first));
-    });
+    fetch("/api/natures")
+      .then((r) => r.json())
+      .then((n: NatureOption[]) => {
+        const first = depositLine(n);
+        setNatures(n);
+        setLines((prev) => (prev.length ? prev : [first]));
+        ensureParameters(lineCategory(n, first));
+      });
   }, [ensureParameters]);
 
   useEffect(() => {
@@ -287,8 +343,8 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
     };
   }, [clientId, siteId]);
 
-  const selectedClient = clients.find((c) => c.id === clientId);
-  const sites = selectedClient?.sites ?? [];
+  // The sites of the client picked (the search returns them with it).
+  const sites = client?.sites ?? [];
 
   const productSuggestions = useMemo(
     () => mergeSuggestions(memory.products, lines.map((l) => l.produit)),
@@ -305,7 +361,21 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
   }
 
   function intakeOf(key: string): LineIntake {
-    return intake[key] ?? { exploitable: null, temperature: "", conformityChoice: null, reason: "", note: "", destroy: false };
+    return (
+      intake[key] ?? {
+        exploitable: null,
+        packagingOk: null,
+        identificationOk: null,
+        temperature: "",
+        storageClass: null,
+        conformityChoice: null,
+        reason: "",
+        note: "",
+        receptionNote: "",
+        decision: "ANALYSER",
+        consultation: EMPTY_CONSULTATION,
+      }
+    );
   }
 
   /**
@@ -320,6 +390,19 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
         ? { exploitable, reason: current.reason === "NON_EXPLOITABLE" ? "" : current.reason }
         : { exploitable, reason: "NON_EXPLOITABLE" }
     );
+  }
+
+  /**
+   * A ticked control answered for the line (C3, C5). « Non » makes it non
+   * conform with the control's motif unless one is chosen; « Oui » afterwards
+   * drops that motif.
+   */
+  function answerTick(key: string, control: Extract<ComplementaryKey, "EMBALLAGE" | "IDENTIFICATION">, ok: boolean) {
+    const current = intakeOf(key);
+    updateIntake(key, {
+      [control === "EMBALLAGE" ? "packagingOk" : "identificationOk"]: ok,
+      reason: ok ? (current.reason === control ? "" : current.reason) : current.reason || control,
+    });
   }
 
   function updateIntake(key: string, patch: Partial<LineIntake>) {
@@ -345,12 +428,22 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
     const index = lines.findIndex((l) => l.key === key);
     if (index < 0) return;
     const copy = duplicateDraft(lines[index], natures);
-    // The copy is another sample: rule (1) is answered for it again, and
-    // the motif of rule (1) does not travel without its answer.
+    // The copy is another sample: rule (1) and the ticked controls are
+    // answered for it again, and their motifs do not travel without them.
     const source = intakeOf(key);
+    const answered: NonConformityReason[] = ["NON_EXPLOITABLE", "EMBALLAGE", "IDENTIFICATION"];
     setIntake((current) => ({
       ...current,
-      [copy.key]: { ...source, exploitable: null, reason: source.reason === "NON_EXPLOITABLE" ? "" : source.reason },
+      [copy.key]: {
+        ...source,
+        exploitable: null,
+        packagingOk: null,
+        identificationOk: null,
+        // What was observed on the original is not the copy's, nor the client's agreement.
+        receptionNote: "",
+        consultation: EMPTY_CONSULTATION,
+        reason: source.reason && answered.includes(source.reason) ? "" : source.reason,
+      },
     }));
     setLines((prev) => {
       const at = prev.findIndex((l) => l.key === key);
@@ -376,6 +469,7 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
     const samples = lineNatures(natures, line);
     const families = samples.map((s) => s.family);
     const extra = intakeOf(line.key);
+    const typedStart = localInputDate(startedAt);
     const { rows, familyBlocking, proposal } = depositLineChecklist(
       {
         lineKind: line.lineKind,
@@ -386,13 +480,34 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
         receptionTemperature: numberOrNull(extra.temperature),
         unitCount: line.unitCount,
         exploitable: extra.exploitable,
+        packagingOk: extra.packagingOk,
+        identificationOk: extra.identificationOk,
+        storageClass: extra.storageClass,
+        // C7: the DLC typed on a food line.
+        expiryDate: line.lineKind === "ALIMENT" && line.expiryDate ? parseIsoDay(line.expiryDate) : null,
+        // Typed at the counter: measured on the sample.
+        temperatureSource: extra.temperature.trim() ? "ECHANTILLON" : null,
+        serie: now
+          ? {
+              startedAt: typedStart ?? now,
+              endedAt: null,
+              arrivedAt: now,
+              samplingTimeDeclared: typedStart !== null,
+              receivedAt: now,
+            }
+          : null,
       },
       thresholds
     );
     const conformity = proposal.forced ? false : (extra.conformityChoice ?? proposal.conformity);
     const reason: NonConformityReason | "" = conformity ? "" : extra.reason || proposal.reason || "";
-    const destroy = !conformity && extra.destroy;
+    const decision: ReceptionDecision = conformity ? "ANALYSER" : extra.decision;
+    const destroy = decision === "DETRUIRE";
+    // A7: a row « à vérifier » accepted conforme needs the observation.
+    const doubt = rowToJustify(rows, conformity, extra.receptionNote);
     return {
+      doubt,
+      decision,
       families,
       twins: samples.length > 1,
       names: ticked.map((p) => p.name),
@@ -432,14 +547,43 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
       // No analysis is required (V6): the programme sheet fixes them.
       const problem = lineDraftError(line, natures, { requirePlace: false });
       if (problem) return setStepError(sampleLineMessage(n, problem), n);
-      const { conformity, reason, extra } = evaluate(line);
+      const { conformity, reason, extra, doubt, decision } = evaluate(line);
       // Rule (1) is answered for every line — the API refuses otherwise.
       if (extra.exploitable === null) {
         setStepError(sampleLineMessage(n, EXPLOITABLE_MESSAGES.missing), n);
         requestAnimationFrame(() => document.getElementById(exploitableAnchor(line.key))?.focus({ preventScroll: true }));
         return false;
       }
+      // C3 and C5 too.
+      if (extra.packagingOk === null || extra.identificationOk === null) {
+        const packaging = extra.packagingOk === null;
+        setStepError(
+          sampleLineMessage(n, packaging ? COMPLEMENTARY_MESSAGES.packagingMissing : COMPLEMENTARY_MESSAGES.identificationMissing),
+          n
+        );
+        const anchor = tickAnchor(packaging ? "packaging" : "identification", line.key);
+        requestAnimationFrame(() => document.getElementById(anchor)?.focus({ preventScroll: true }));
+        return false;
+      }
       if (!conformity && !reason) return setStepError(sampleLineMessage(n, "Choisissez le motif de non-conformité."), n);
+      // The client's agreement: name and channel together, required when the
+      // laboratory says so — the API refuses otherwise (A9).
+      if (!conformity && decision === "ANALYSER") {
+        const problem =
+          consultationDraftError(extra.consultation, consultationRequired) ??
+          futureFieldError(CONSULTATION_TIME_LABEL, extra.consultation.at);
+        if (problem) {
+          setStepError(sampleLineMessage(n, problem), n);
+          requestAnimationFrame(() => document.getElementById(`accord-${line.key}-name`)?.focus({ preventScroll: true }));
+          return false;
+        }
+      }
+      // A doubt accepted conforme is justified — the API refuses otherwise (A7).
+      if (doubt) {
+        setStepError(sampleLineMessage(n, justifyAcceptanceMessage(doubt)), n);
+        requestAnimationFrame(() => document.getElementById(noteAnchor(line.key))?.focus({ preventScroll: true }));
+        return false;
+      }
       if (!conformity && reason === "AUTRE" && !extra.note.trim()) {
         return setStepError(sampleLineMessage(n, "Précisez le motif « autre »."), n);
       }
@@ -471,15 +615,23 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
           advanceMode: advanceMode || undefined,
           // The série's two boxes are computed by the API from the samples.
           lines: lines.map((line) => {
-            const { conformity, reason, extra, destroy } = evaluate(line);
+            const { conformity, reason, extra, decision } = evaluate(line);
             return {
               ...linePayload(line),
               exploitable: extra.exploitable,
+              packagingOk: extra.packagingOk,
+              identificationOk: extra.identificationOk,
               receptionTemperature: extra.temperature,
+              receptionTemperatureSource: extra.temperature.trim() ? "ECHANTILLON" : undefined,
+              storageClass: extra.storageClass ?? undefined,
               conformity,
               conformityReason: conformity ? undefined : reason,
               conformityNote: extra.note,
-              decision: destroy ? "DETRUIRE" : "ANALYSER",
+              receptionNote: extra.receptionNote,
+              decision,
+              // The client's agreement, sent with « Analyser malgré tout » only.
+              consultation:
+                !conformity && decision === "ANALYSER" ? consultationPayload(extra.consultation, fromLocalInput) : undefined,
             };
           }),
         }),
@@ -568,6 +720,7 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
                         <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
                           <AlertTriangle className="h-3 w-3" aria-hidden="true" />
                           {s.conformityReason ? NON_CONFORMITY_REASON_LABELS[s.conformityReason] : "Non conforme"}
+                          {s.awaitingClientSince ? " · en attente du client" : ""}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
@@ -633,28 +786,21 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
             <div className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className={sites.length > 0 ? "" : "sm:col-span-2"}>
-                  <label htmlFor="deposit-client" className="section-title mb-2">
-                    <Building2 className="h-4 w-4" />
-                    Client
-                  </label>
-                  <select
-                    id="deposit-client"
-                    value={clientId}
-                    onChange={(e) => {
-                      setClientId(e.target.value);
+                  <ClientPicker
+                    label="Client"
+                    labelClassName="section-title mb-0.5"
+                    labelIcon={<Building2 className="h-4 w-4" aria-hidden="true" />}
+                    excludeIds={[]}
+                    selected={client}
+                    onSelect={(picked) => {
+                      setClient(picked);
                       setSiteId("");
                       setMemory({ places: [], products: [] });
                       clearError();
                       // A type of the previous client must not stay on a sample.
                       setLines((prev) => prev.map((l) => (l.productTypeId ? { ...l, productTypeId: "" } : l)));
                     }}
-                    className="input-field px-4"
-                  >
-                    <option value="">Sélectionner un client</option>
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
                 {sites.length > 0 && (
                   <div>
@@ -782,7 +928,7 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
                     <Clock className="h-4 w-4" />
                     Prélevé le
                   </label>
-                  {/* Prefilled with « now »: rendered once mounted so the server's minute never disagrees. */}
+                  {/* Rendered once mounted: the field reads the device's clock (drift hint). */}
                   {isMounted ? (
                     <LabDateTimeInput
                       id="deposit-started"
@@ -799,10 +945,17 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
                   ) : (
                     <div className="input-field px-4" aria-hidden="true" />
                   )}
-                  {startedError && (
+                  {startedError ? (
                     <p id="deposit-started-error" className="mt-1 text-xs font-medium text-rose-700">
                       {startedError}
                     </p>
+                  ) : (
+                    !startedAt && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Demandez au client la date et l&apos;heure du prélèvement : laissé vide, le délai
+                        prélèvement → laboratoire (C1) sera « à vérifier ».
+                      </p>
+                    )
                   )}
                 </div>
               </div>
@@ -856,7 +1009,7 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
 
           {lines.map((line, index) => {
             const number = index + 1;
-            const { families, twins, rows, familyBlocking, proposal, conformity, reason, extra, destroy } = evaluate(line);
+            const { families, twins, rows, familyBlocking, proposal, conformity, reason, extra, destroy, doubt, decision } = evaluate(line);
             const category = lineCategory(natures, line);
             const [microRef, chimieRef] = lineSampleRefs(number, families);
             return (
@@ -892,7 +1045,7 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
                     <p className="mt-1 text-xs text-slate-500">
                       Deux familles cochées : deux échantillons, {microRef} (microbiologie) et {chimieRef}{" "}
                       (physico-chimie), chacun avec son N° de contrôle. La réponse à la règle (1), la température,
-                      la conformité et la décision saisies ici valent pour les deux.
+                      les contrôles complémentaires, la conformité et la décision saisis ici valent pour les deux.
                     </p>
                   )}
                   <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -910,6 +1063,18 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
                         className="input-field px-4"
                       />
                     </div>
+                    <div>
+                      <label htmlFor={`sc-${line.key}`} className="mb-1.5 block text-sm font-semibold text-slate-700">
+                        Conservation
+                      </label>
+                      <StorageClassSelect
+                        id={`sc-${line.key}`}
+                        value={extra.storageClass}
+                        defaultLabel={storageDefaultLabel(line.lineKind, families)}
+                        onChange={(storageClass) => updateIntake(line.key, { storageClass })}
+                        className="input-field px-4"
+                      />
+                    </div>
                   </div>
 
                   <Checklist
@@ -920,19 +1085,56 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
                       id: exploitableAnchor(line.key),
                       invalid: errorLine === number && extra.exploitable === null,
                     }}
+                    ticks={{
+                      EMBALLAGE: {
+                        value: extra.packagingOk,
+                        onChange: (ok) => answerTick(line.key, "EMBALLAGE", ok),
+                        id: tickAnchor("packaging", line.key),
+                        invalid: errorLine === number && extra.packagingOk === null,
+                      },
+                      IDENTIFICATION: {
+                        value: extra.identificationOk,
+                        onChange: (ok) => answerTick(line.key, "IDENTIFICATION", ok),
+                        id: tickAnchor("identification", line.key),
+                        invalid: errorLine === number && extra.identificationOk === null,
+                      },
+                    }}
+                  />
+
+                  <ReceptionNoteField
+                    id={noteAnchor(line.key)}
+                    value={extra.receptionNote}
+                    onChange={(receptionNote) => updateIntake(line.key, { receptionNote })}
+                    doubt={conformity ? (rows.find((row) => row.status === "A_VERIFIER") ?? null) : null}
+                    invalid={errorLine === number && doubt !== null}
+                    inputClassName="input-field mt-1.5 resize-y px-4 py-2"
                   />
 
                   <fieldset className="mt-4">
                     <legend className="text-sm font-semibold text-slate-700">Conformité</legend>
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <ConformityChip active={conformity} disabled={proposal.forced} tone="ok" label="Conforme" onClick={() => updateIntake(line.key, { conformityChoice: true })} />
-                      <ConformityChip active={!conformity} disabled={false} tone="warn" label="Non conforme" onClick={() => updateIntake(line.key, { conformityChoice: false })} />
+                      <ConformityChip
+                        active={!conformity}
+                        disabled={false}
+                        tone="warn"
+                        label="Non conforme"
+                        onClick={() => {
+                          // A DLC passed (C7) and nothing else proposing a motif: « Autre », précision ready.
+                          const dlcNote = proposal.reason === "AUTRE" && !extra.note.trim() ? expiredDlcNote(rows) : null;
+                          updateIntake(line.key, { conformityChoice: false, ...(dlcNote ? { reason: "AUTRE", note: dlcNote } : {}) });
+                        }}
+                      />
                     </div>
                     {proposal.forced && (
                       <p className="mt-1.5 text-xs text-rose-700">
                         {proposal.rule === 1
                           ? `Échantillon non exploitable (règle 1) : ${twins ? "les deux échantillons sont réceptionnés non conformes" : "il est réceptionné non conforme"}.`
-                          : `La règle (${proposal.rule}) n'est pas respectée : corrigez la mesure ou réceptionnez ${
+                          : proposal.code
+                            ? `Contrôle ${proposal.code} non conforme : ${
+                                twins ? "les deux échantillons sont réceptionnés non conformes" : "l'échantillon est réceptionné non conforme"
+                              }${proposal.code === "C5" ? " — corrigez la fiche avant d'enregistrer" : ""}.`
+                            : `La règle (${proposal.rule}) n'est pas respectée : corrigez la mesure ou réceptionnez ${
                               twins ? "les deux échantillons" : "l'échantillon"
                             } comme non conforme${twins ? "s" : ""}.`}
                         {twins && familyBlocking
@@ -976,15 +1178,30 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
                     </div>
                   )}
                   {!conformity && (
-                    <fieldset className="mt-3">
-                      <legend className="text-sm font-semibold text-slate-700">
-                        Décision pour {twins ? "ces deux échantillons" : "cet échantillon"}
-                      </legend>
-                      <div className="mt-2 grid grid-cols-2 gap-2">
-                        <ConformityChip active={!destroy} disabled={false} tone="ok" label="Analyser malgré tout" onClick={() => updateIntake(line.key, { destroy: false })} />
-                        <ConformityChip active={destroy} disabled={false} tone="warn" label="Détruire" onClick={() => updateIntake(line.key, { destroy: true })} />
-                      </div>
-                    </fieldset>
+                    <DecisionChips
+                      legend={`Décision pour ${twins ? "ces deux échantillons" : "cet échantillon"}`}
+                      legendClassName="text-sm font-semibold text-slate-700"
+                      value={decision}
+                      onChange={(chosen) => updateIntake(line.key, { decision: chosen })}
+                    />
+                  )}
+                  {!conformity && decision === "ANALYSER" && (
+                    <ConsultationFields
+                      idPrefix={`accord-${line.key}`}
+                      value={extra.consultation}
+                      onChange={(consultation) => updateIntake(line.key, { consultation })}
+                      required={consultationRequired}
+                      invalid={errorLine === number && consultationDraftError(extra.consultation, consultationRequired) !== null}
+                      fieldClassName="input-field px-4"
+                    />
+                  )}
+                  {!conformity && decision === "EN_ATTENTE_CLIENT" && (
+                    <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                      {twins ? "Échantillons réceptionnés et numérotés" : "Échantillon réceptionné et numéroté"}, puis bloqué
+                      {twins ? "s" : ""} jusqu&apos;à l&apos;avis du client : à analyser ou détruire depuis « Bloqués » de la
+                      réception.
+                    </p>
                   )}
                   {destroy && (
                     <p className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
@@ -1039,11 +1256,18 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
           <div className="space-y-5">
             <h2 className="text-lg font-semibold text-slate-900">Récapitulatif</h2>
             <div className="space-y-3 rounded-xl bg-slate-50 p-5 text-sm ring-1 ring-slate-100">
-              <Row label="Client" value={selectedClient?.name ?? "—"} />
+              <Row label="Client" value={client?.name ?? "—"} />
               <Row label="Prélèvement" value={samplerKind === "CLIENT" ? "Par le client" : `${SAMPLER_KIND_LABELS[samplerKind]} — ${samplerName}`} />
               <Row label="Cadre" value={cadre ? formatCadre(cadre, cadreNote) : "—"} />
               {interlocutor && <Row label="Déposé par" value={interlocutor} />}
-              <Row label="Prélevé le" value={isMounted && startedAt ? formatDateTime(localInputDate(startedAt)!) : "—"} />
+              <Row
+                label="Prélevé le"
+                value={
+                  isMounted && startedAt
+                    ? formatDateTime(localInputDate(startedAt)!)
+                    : "Non déclaré — heure à demander au client"
+                }
+              />
               {clientReference && <Row label="Référence client" value={clientReference} />}
               <Row label="Analyses à effectuer" value={serieFamilies.length > 0 ? familiesSummary(serieFamilies) : "—"} />
               {advanceAmount && <Row label="Avance" value={`${advanceAmount} DH — ${PAYMENT_MODES.find((m) => m.value === advanceMode)?.label ?? ""}`} />}
@@ -1051,7 +1275,7 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
             <ul className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-100">
               {lines.map((line, i) => {
                 const number = i + 1;
-                const { families, twins, names, conformity, reason, extra, destroy } = evaluate(line);
+                const { families, twins, names, conformity, reason, extra, destroy, decision } = evaluate(line);
                 return (
                   <li key={line.key} className="px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
@@ -1069,6 +1293,11 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
                           {extra.temperature ? ` · ${extra.temperature} °C à l'arrivée` : ""}
                           {line.unitCount > 1 ? ` · n = ${line.unitCount}` : ""}
                         </p>
+                        {extra.receptionNote.trim() && (
+                          <p className="mt-0.5 whitespace-pre-line text-xs text-slate-600">
+                            <span className="font-semibold text-slate-700">Observation :</span> {extra.receptionNote.trim()}
+                          </p>
+                        )}
                       </div>
                       <span
                         className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${
@@ -1076,7 +1305,7 @@ export function DepositForm({ thresholds }: { thresholds: ReceptionThresholds })
                         }`}
                       >
                         {conformity ? "Conforme" : reason ? NON_CONFORMITY_REASON_LABELS[reason] : "Non conforme"}
-                        {destroy ? " · à détruire" : ""}
+                        {destroy ? " · à détruire" : decision === "EN_ATTENTE_CLIENT" ? " · en attente du client" : ""}
                       </span>
                     </div>
                     {names.length > 0 ? (

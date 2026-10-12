@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import Link from "next/link";
-import { Plus, FlaskConical, Calendar, ClipboardList, ChevronRight, MapPin } from "lucide-react";
+import { Plus, FlaskConical, Calendar, ClipboardList, ChevronRight, MapPin, Search, RefreshCw } from "lucide-react";
 import { PrimaryLink } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
@@ -33,10 +33,20 @@ type PreleveurDashboardProps = {
   view: PreleveurView | null;
   /** Every sample of every visit of theirs, counted on the server. */
   totalSamples: number;
+  /** Their visits started today, counted on the server over every visit (`visitViewStart`). */
+  todayVisits: number;
+  /** The samples of their visits of the week, counted on the server over every visit. */
+  weekSamples: number;
 };
 
-/** The most recent visits the dashboard loads: one page, not the archive. */
-const VISIT_LIMIT = 50;
+/** One page of visits; « Voir plus » appends the next one. */
+const PAGE_SIZE = 50;
+
+/** The search waits for a pause in the typing. */
+const SEARCH_DELAY_MS = 300;
+
+/** The status filter's choices, in the circuit's order. */
+const STATUS_CHOICES = Object.keys(SERIE_STATUS_LABELS) as SerieStatus[];
 
 const PATH = "/preleveur";
 const ANCHOR = "visites";
@@ -53,33 +63,104 @@ const STATUS_STYLES: Record<SerieStatus, string> = {
   ANNULEE: "bg-slate-100 text-slate-500 ring-slate-200/60",
 };
 
+type VisitList = {
+  /** The search and status the list was loaded for (`listKey`). */
+  key: string;
+  items: VisitSummary[];
+  nextCursor: string | null;
+  failed: boolean;
+};
+
+function listKey(query: string, status: SerieStatus | "") {
+  return `${status}|${query}`;
+}
+
+/** `GET /api/series` — a préleveur always gets their own visits only (the route forces it). */
+function visitsUrl(query: string, status: SerieStatus | "", cursor: string | null) {
+  const params = new URLSearchParams({ mine: "1", limit: String(PAGE_SIZE) });
+  if (query) params.set("q", query);
+  if (status) params.set("status", status);
+  if (cursor) params.set("cursor", cursor);
+  return `/api/series?${params.toString()}`;
+}
+
+async function fetchVisits(url: string, signal?: AbortSignal) {
+  const response = await fetch(url, { signal });
+  if (!response.ok) throw new Error("visites");
+  const data = (await response.json()) as { items?: VisitSummary[]; nextCursor?: string | null };
+  return { items: data.items ?? [], nextCursor: data.nextCursor ?? null };
+}
+
 /**
- * The préleveur's home: their visits, most recent first. A visit is one
- * protocol with several samples; the numbers here count what they carry.
- * Each tile is a sort of « Mes visites » (`?vue=`): today's visits, the
- * week's, or all of them — filtered with the rule the tile counts with.
+ * The préleveur's home: their visits, most recent first, and their whole
+ * history behind « Voir plus ». The search (n° de série, client, site,
+ * référence) and the status filter go through every visit on the server,
+ * not only the page loaded. A visit is one protocol with several samples;
+ * the numbers here count what they carry.
+ *
+ * The tiles are counted on the server over every visit (/preleveur page),
+ * and each is a sort of « Mes visites » (`?vue=`): today's visits, the
+ * week's, or all of them — the list filtered with the rule the tile counts
+ * with (`visitViewStart`).
  */
-export function PreleveurDashboard({ userName, view, totalSamples }: PreleveurDashboardProps) {
-  const [visits, setVisits] = useState<VisitSummary[]>([]);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(true);
+export function PreleveurDashboard({ userName, view, totalSamples, todayVisits, weekSamples }: PreleveurDashboardProps) {
+  const searchId = useId();
+  const statusId = useId();
+  const [input, setInput] = useState("");
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<SerieStatus | "">("");
+  const [list, setList] = useState<VisitList | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreFailed, setMoreFailed] = useState(false);
 
   useEffect(() => {
-    // Paginated: the dashboard shows the most recent page, not the archive.
-    fetch(`/api/series?mine=1&limit=${VISIT_LIMIT}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setVisits(data.items ?? []);
-        setHasMore(Boolean(data.nextCursor));
-      })
-      .finally(() => setLoading(false));
-  }, []);
+    const timer = setTimeout(() => setQuery(input.trim()), SEARCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [input]);
 
-  // One clock for the tiles and the list, so a tile and its view agree.
-  const now = new Date();
-  const todayVisits = visitsInView(visits, "aujourdhui", now).length;
-  const weekSamples = visitsInView(visits, "semaine", now).reduce((n, v) => n + v.progress.total, 0);
-  const shown = visitsInView(visits, view, now);
+  // The first page for the current search and status; « Voir plus » appends.
+  useEffect(() => {
+    const key = listKey(query, status);
+    const controller = new AbortController();
+    fetchVisits(visitsUrl(query, status, null), controller.signal)
+      .then((page) => setList({ key, ...page, failed: false }))
+      .catch(() => {
+        if (!controller.signal.aborted) setList({ key, items: [], nextCursor: null, failed: true });
+      });
+    return () => controller.abort();
+  }, [query, status]);
+
+  const currentKey = listKey(query, status);
+  const loading = list === null || list.key !== currentKey;
+  const visits = !loading && list ? list.items : [];
+  const nextCursor = !loading && list ? list.nextCursor : null;
+  const failed = !loading && list ? list.failed : false;
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    const key = currentKey;
+    setLoadingMore(true);
+    setMoreFailed(false);
+    try {
+      const page = await fetchVisits(visitsUrl(query, status, nextCursor));
+      setList((current) => {
+        if (!current || current.key !== key) return current;
+        const known = new Set(current.items.map((visit) => visit.id));
+        return {
+          ...current,
+          items: [...current.items, ...page.items.filter((visit) => !known.has(visit.id))],
+          nextCursor: page.nextCursor,
+        };
+      });
+    } catch {
+      setMoreFailed(true);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  const shown = visitsInView(visits, view, new Date());
+  const filtered = query !== "" || status !== "";
 
   const firstName = userName.split(" ")[0];
 
@@ -134,27 +215,71 @@ export function PreleveurDashboard({ userName, view, totalSamples }: PreleveurDa
       <div id={ANCHOR} className="mb-5 scroll-mt-24">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-slate-800">{view ? PRELEVEUR_VIEWS[view] : "Mes visites"}</h2>
-          {!loading && (
+          {!loading && !failed && (
             <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
               {shown.length} visite{shown.length !== 1 ? "s" : ""}
+              {nextCursor ? ` affichée${shown.length !== 1 ? "s" : ""}` : ""}
             </span>
           )}
         </div>
         {view && (
           <ViewFilterNotice label={PRELEVEUR_VIEWS[view]} resetHref={viewHref(PATH, null, ANCHOR)} className="mt-2" />
         )}
-        {!loading && hasMore && (
-          <p className="mt-2 text-xs text-slate-500">
-            Parmi vos {VISIT_LIMIT} visites les plus récentes.
-          </p>
-        )}
+
+        <div role="search" aria-label="Rechercher dans mes visites" className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <div className="relative min-w-0 flex-1">
+            <label htmlFor={searchId} className="sr-only">
+              Rechercher une visite
+            </label>
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+              aria-hidden="true"
+            />
+            <input
+              id={searchId}
+              type="search"
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder="N° de série, client, site ou référence"
+              autoComplete="off"
+              className="input-field pl-9 pr-3 text-base sm:text-sm"
+            />
+          </div>
+          <div className="sm:w-56">
+            <label htmlFor={statusId} className="sr-only">
+              Statut des visites
+            </label>
+            <select
+              id={statusId}
+              value={status}
+              onChange={(event) => setStatus(event.target.value as SerieStatus | "")}
+              className="input-field px-3 text-base sm:text-sm"
+            >
+              <option value="">Tous les statuts</option>
+              {STATUS_CHOICES.map((choice) => (
+                <option key={choice} value={choice}>
+                  {SERIE_STATUS_LABELS[choice]}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
       {loading ? (
         <LoadingState />
+      ) : failed ? (
+        <Card className="p-8 text-center text-sm text-rose-700">
+          <p role="alert">Vos visites n&apos;ont pas pu être chargées. Vérifiez la connexion, puis rechargez la page.</p>
+        </Card>
       ) : shown.length === 0 ? (
         <Card className="p-8 text-center text-sm text-slate-500">
-          {view ? EMPTY[view] : "Aucune visite pour l'instant. Commencez par « Nouvelle visite »."}
+          {view
+            ? EMPTY[view]
+            : filtered
+              ? "Aucune visite ne correspond à cette recherche."
+              : "Aucune visite pour l'instant. Commencez par « Nouvelle visite »."}
+          {nextCursor ? " Les visites plus anciennes sont derrière « Voir plus »." : ""}
         </Card>
       ) : (
         <ul className="space-y-3">
@@ -202,6 +327,25 @@ export function PreleveurDashboard({ userName, view, totalSamples }: PreleveurDa
             </li>
           ))}
         </ul>
+      )}
+
+      {!loading && !failed && nextCursor && (
+        <div className="mt-4 flex flex-col items-center gap-2">
+          <button
+            type="button"
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-brand/30 hover:text-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-60"
+          >
+            {loadingMore && <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />}
+            {loadingMore ? "Chargement…" : "Voir plus"}
+          </button>
+          {moreFailed && (
+            <p role="alert" className="text-sm text-rose-700">
+              La suite n&apos;a pas pu être chargée. Réessayez.
+            </p>
+          )}
+        </div>
       )}
     </div>
   );

@@ -8,7 +8,16 @@
 
 ## ▶ NEXT ACTION
 
-**Message du laboratoire du 08/10 (soir) (`RETOUR-LABO-06-10.md` §10) : en production depuis le 09/10** (`4a1c1e8`; TESTPLAN V10) — reception checklist (7 rules), paper cartouche, lab role wording, date-only fix (document dates restored in production). Waiting on the lab: Q57–Q66 (bon fields, protocol version, report reference, M+P weights, histamine, temperature, rule (1) shortcut, who signs the administrative validation, report signatures), Q50/Q54–Q56, real account names.
+**Analyse des écarts du 10/10 (`RETOUR-LABO-06-10.md` §11) : construite le 10/10, pas déployée.** 37 items (reception controls C1–C7, observation and justification, client agreement / « en attente du client », « > x » / « Indénombrable » at the bench, resend / conclusion / e-mail identity / parcours / envois / historique, « Mon compte », attempt limit, idle sign-out, journal filters, accounting export, FAC / AV counters, frozen invoices, credit note per line, technician load, off-site backup, SSH hardening) in one additive migration `20261012100000_gaps_build`. Gates green: prisma generate, tsc 0, eslint 0, vitest 90 files / 1 396 tests, `npm run build`. **Nothing checked in a browser** (no local DB).
+Next, in this order:
+1. **Before 14/10 (ops, urgent):** deploy the new `scripts/backup-db.sh` on the VPS, or copy `/var/backups/qualilab/qualilab_avant-phase-9.sql.gz` off the server — the deployed script prunes it at the 02:00 run of ≈ 14–15/10 (HANDOFF §9).
+2. Rotate the password of every demo account in use (`/admin/utilisateurs`): the shared one is in the repository.
+3. Review the diff and commit; tell the reception what changes (C3 / C5 required, observation for an accepted doubt, « Prélevé le » asked of the client, sign-out after 30 min).
+4. Deploy outside working hours after a labelled dump (`bash scripts/deploy.sh`, Docker mode; migration applied by the `migrate` service), refresh open pages, then **TESTPLAN V11** on production on « TEST UI 2026-10-06 Traiteur » only (invoice steps only with the owner's agreement).
+5. Before any real client merge (Q54): decide the one-time `Invoice.clientSnapshot` backfill (HANDOFF §9).
+Waiting on the lab: **Q67–Q98** (urgent Q67, Q69, Q71 — they set the daily reception work), Q57–Q66, Q50 / Q54–Q56.
+
+_Previous next action:_ **Message du laboratoire du 08/10 (soir) (`RETOUR-LABO-06-10.md` §10) : en production depuis le 09/10** (`4a1c1e8`; TESTPLAN V10) — reception checklist (7 rules), paper cartouche, lab role wording, date-only fix (document dates restored in production). Waiting on the lab: Q57–Q66 (bon fields, protocol version, report reference, M+P weights, histamine, temperature, rule (1) shortcut, who signs the administrative validation, report signatures), Q50/Q54–Q56, real account names.
 
 _Previous next action:_ **Retour du 08/10, suite (`RETOUR-LABO-06-10.md` §9) : en production depuis le 08/10** (`7612a18`, `73d7119`; TESTPLAN V9). Waiting on the lab: physico-chimie parameters for surfaces / hands / air (Q50, Q56 — those samples cannot be programmed yet), the bench sheet's client line (Q55), the duplicates file (Q54), Q45–Q53, legal details for documents; the lab's devices still need their clock update.
 
@@ -282,6 +291,12 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-10-10 — analyse des écarts : 37 items built (`RETOUR-LABO-06-10.md` §11, not deployed)
+- Gap analysis against the signed scope, the paper forms, the lab's feedback 29/09 → 09/10 and ISO 17025 §7.4: 37 items to build, 23 lab topics, 12 already done, 8 out of scope (the build plan of the session, kept outside the repository). Built in three parallel streams by file ownership — A reception and billing data (A1–A14, the only schema owner), B bench / validation / e-mail (B1–B10), C admin / security / ops (C1–C13) — each with a hostile reviewer (A: stale-page cancel fixed, ranges validated, 44 px links, legacy release body; B: invented « Prélèvement » step on undeclared deposits, dialog verb; C: tab-close bypass of the idle sign-out, focus trap, stale `.next` validator, rclone depth).
+- Integration pass: full gates on the merged tree first (all green), then the post-merge items — the reception observation and the client's agreement on the bench and validation pages (shared `ReceptionObservation` / `ReceptionNonConformity`, `storedConsultation` + test, the bon route reads it too); the accounting export reads the frozen client (`invoiceClientIdentity`, source-guard test); `day-range.ts` moved to the lab clock so the four new lists cut days alike (tests now exact instants, green in three time zones); `Invoice.issuedAt` index added to the migration; `labDayOf` moved to `lab-time.ts` (it was written twice); the results route now stores its own conformity suggestion without a criterion (`benchConformity` + tests on the alert path — an old or forged request can no longer store « conforme » for an uncountable plate). Migration re-checked clause by clause against `prisma migrate diff` from the committed schema.
+- Gates: prisma generate, tsc 0, eslint `src` 0, vitest 90 files / 1 396 tests, `npm run build` green. Docs: HANDOFF §1/§2/§3/§4/§5/§6/§8/§9, TESTPLAN V11 (+ sign-off row), NEEDEDINFO Q67–Q98 (+ batch in §2), RETOUR-LABO-06-10 §11, WORKFLOW §3.2/§3.3/§6/§18.
+- Not done: browser / DB checks (no local DB, by instruction), the `Invoice.clientSnapshot` backfill (no data rewrite — owner decision before Q54), `EmailLog.sampleId` for early alerts, server-side idle bound, a few < 44 px targets. No commit, no deploy.
 
 ### 2026-10-09 — lab message of 08/10 (evening) live (TESTPLAN V10)
 - Analysis workflow (3 read-only analysts) then build workflow (3 builders + 3 hostile reviewers). Reception: the 7 paper rules as a per-sample checklist, rule (1) required server-side, motif `NON_EXPLOITABLE`, histamine rule family-independent. Cartouche: Chromium header template reproducing the paper grid on protocol / bon / bench sheet; bon aligned on version G. Roles: lab vocabulary (labels only). Date-only parsing fixed (`date-only.ts`).

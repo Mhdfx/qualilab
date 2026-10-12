@@ -6,6 +6,7 @@ import { drawDocumentNumber } from "@/lib/invoice-number";
 import { computeInvoiceTotals } from "@/lib/invoice-math";
 import { canEditDraft, statusAfterPayments } from "@/lib/invoice-lifecycle";
 import { toMoney } from "@/lib/money";
+import { CLIENT_IDENTITY_SELECT, clientSnapshotOf } from "@/lib/invoice-client-identity";
 import {
   INVOICE_DETAIL_INCLUDE,
   InvoiceRequestError,
@@ -48,7 +49,8 @@ export async function GET(_request: Request, { params }: Params) {
 /**
  * Edits a draft — `{ clientId, items, taxRate, dueDate?, notes?, issue? }`,
  * the whole draft as on creation; its lines are replaced. `issue: true`
- * saves and issues in the same transaction. 409 once issued: an issued
+ * saves and issues in the same transaction (number, date, client frozen as
+ * printed in `clientSnapshot`). 409 once issued: an issued
  * invoice never changes (FACTURATION.md §1).
  */
 export async function PATCH(request: Request, { params }: Params) {
@@ -68,7 +70,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
     const client = await prisma.client.findUnique({
       where: { id: fields.clientId },
-      select: { id: true, name: true },
+      select: { id: true, ...CLIENT_IDENTITY_SELECT },
     });
     if (!client) {
       return NextResponse.json({ error: "Client introuvable." }, { status: 404 });
@@ -102,7 +104,14 @@ export async function PATCH(request: Request, { params }: Params) {
             total,
             items: { create: fields.lines },
             ...(issue
-              ? { number, status: statusAfterPayments(total, 0, 0), issueDate: now, issuedAt: now }
+              ? {
+                  number,
+                  status: statusAfterPayments(total, 0, 0),
+                  issueDate: now,
+                  issuedAt: now,
+                  // The client as printed is frozen with the number.
+                  clientSnapshot: clientSnapshotOf(client),
+                }
               : {}),
           },
           include: INVOICE_DETAIL_INCLUDE,

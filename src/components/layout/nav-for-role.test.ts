@@ -7,6 +7,7 @@ import type { NavSection } from "./nav-types";
 /** Root of every space an administrator is admitted to (each space layout allows ADMIN). */
 const SPACE_ROOTS = [
   "/reception",
+  "/programmation",
   "/technicien",
   "/validation",
   "/commercial",
@@ -80,6 +81,13 @@ describe("activeHref", () => {
   it("lights the space root in the admin menu on a nested page", () => {
     expect(activeHref("/reception/abc123", navFor("ADMIN"))).toBe("/reception");
     expect(activeHref("/qualite/temperatures", navFor("ADMIN"))).toBe("/qualite");
+    expect(activeHref("/programmation/abc123", navFor("ADMIN"))).toBe("/programmation");
+  });
+
+  it("lights the administrator's own entries for the reception history and the e-mail log", () => {
+    const nav = navFor("ADMIN");
+    expect(activeHref("/reception/historique", nav)).toBe("/reception/historique");
+    expect(activeHref("/admin/envois", nav)).toBe("/admin/envois");
   });
 
   it("prefers the longest matching href", () => {

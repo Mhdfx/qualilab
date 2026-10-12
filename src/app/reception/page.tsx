@@ -3,6 +3,7 @@ import { PrimaryLink } from "@/components/PrimaryButton";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
 import { formatDateTime } from "@/lib/labels";
+import { getLabSettings } from "@/lib/lab-settings";
 import { serverIsoDay, viewHref } from "@/lib/dashboard-view";
 import { rechercheHref } from "@/lib/sample-search";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -12,7 +13,7 @@ import {
   BlockedSamples,
   type BlockedSample,
 } from "@/components/reception/BlockedSamples";
-import type { TechnicianOption } from "@/components/reception/types";
+import { canRelease, waitingSince } from "@/lib/release-rules";
 
 export const metadata = { title: "Réception" };
 
@@ -30,12 +31,13 @@ export default async function ReceptionPage() {
   // The day as /recherche reads `du` / `au` back: server midnight to
   // 23:59:59.999 on the server clock (TZ = LAB_TIME_ZONE), so the tile's
   // link is written with `serverIsoDay`, the same clock.
-  const startOfDay = new Date();
+  const now = new Date();
+  const startOfDay = new Date(now);
   startOfDay.setHours(0, 0, 0, 0);
   const endOfDay = new Date(startOfDay);
   endOfDay.setHours(23, 59, 59, 999);
 
-  const [session, pending, pendingSeries, pendingSamples, blocked, recusAujourdhui, enAnalyse, aProgrammer] = await Promise.all([
+  const [session, pending, pendingSeries, pendingSamples, blocked, recusAujourdhui, enAnalyse, aProgrammer, settings] = await Promise.all([
     // Belt and braces with the layout guard.
     requireRole("RECEPTIONNISTE", "ADMIN"),
     prisma.serie.findMany({
@@ -45,6 +47,8 @@ export default async function ReceptionPage() {
         serialNumber: true,
         kind: true,
         startedAt: true,
+        // C1: the delay since the end of the sampling, shown on the row.
+        endedAt: true,
         arrivedAt: true,
         coolerTemperature: true,
         samplerKind: true,
@@ -63,12 +67,18 @@ export default async function ReceptionPage() {
     // Counted, not read off the capped list: the tiles stay true past 100 séries.
     prisma.serie.count({ where: PENDING_SERIE }),
     prisma.sample.count({ where: { status: "PRELEVE" } }),
+    // Held at reception — waiting for the client (A9) or another hold — the
+    // oldest first. Bounded by nature: a sample leaves the list once released.
     prisma.sample.findMany({
       where: { analysisBlocked: true, status: "RECU" },
       select: {
         id: true,
+        status: true,
+        analysisBlocked: true,
+        awaitingClientSince: true,
         controlCode: true,
         produit: true,
+        conformity: true,
         conformityReason: true,
         conformityNote: true,
         receivedAt: true,
@@ -81,37 +91,16 @@ export default async function ReceptionPage() {
     prisma.sample.count({ where: { status: "EN_ANALYSE" } }),
     // Received samples waiting for the responsable des paramètres (PROGRAMME.md §6).
     prisma.sample.count({ where: { status: "RECU" } }),
+    // The C1 limit the queue colours its delays with.
+    getLabSettings(),
   ]);
 
   const queueTruncated = pendingSeries > pending.length;
   const queueHref = viewHref("/reception", null, "file");
 
-  // The release control needs the technician list; only fetched when a
-  // blocked sample actually exists.
-  let technicianOptions: TechnicianOption[] = [];
-  if (blocked.length > 0) {
-    const [technicians, workload] = await Promise.all([
-      prisma.user.findMany({
-        where: { role: "TECHNICIEN", banned: { not: true } },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.sample.groupBy({
-        by: ["technicianId"],
-        where: { status: { in: ["RECU", "PROGRAMME", "EN_ANALYSE"] } },
-        _count: { _all: true },
-      }),
-    ]);
-    const loadByTechnician = new Map(
-      workload.map((row) => [row.technicianId, row._count._all])
-    );
-    technicianOptions = technicians.map((technician) => ({
-      id: technician.id,
-      name: technician.name,
-      load: loadByTechnician.get(technician.id) ?? 0,
-    }));
-  }
-
+  // The release assigns nobody (A9): an analysed sample goes to the
+  // programme queue, where the responsable des paramètres gives it its bench.
+  // Who may release which hold is decided here, on the server.
   const blockedSamples: BlockedSample[] = blocked.map((sample) => ({
     id: sample.id,
     controlCode: sample.controlCode,
@@ -120,6 +109,9 @@ export default async function ReceptionPage() {
     conformityReason: sample.conformityReason,
     conformityNote: sample.conformityNote,
     receivedAt: sample.receivedAt ? formatDateTime(sample.receivedAt) : null,
+    awaitingClient: sample.awaitingClientSince ? waitingSince(sample.awaitingClientSince, now) : null,
+    nonConform: sample.conformity === false,
+    canRelease: canRelease(session.role, sample),
   }));
 
   return (
@@ -174,14 +166,10 @@ export default async function ReceptionPage() {
             {queueTruncated ? ` · les ${pending.length} premières affichées` : ""}
           </span>
         </div>
-        <SerieQueue series={pending as QueueSerie[]} />
+        <SerieQueue series={pending as QueueSerie[]} now={now} maxDelayMicroH={settings.maxDelayMicroH} />
       </section>
 
-      <BlockedSamples
-        samples={blockedSamples}
-        technicians={technicianOptions}
-        canRelease={session?.role === "ADMIN"}
-      />
+      <BlockedSamples samples={blockedSamples} consultationRequired={settings.consultationRequired} />
     </div>
   );
 }

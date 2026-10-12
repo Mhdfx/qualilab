@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   amountInput,
   collectable,
+  creditNoteDefaultQuantity,
   creditNoteDraftLines,
   creditNoteLines,
   creditNotePreview,
@@ -302,6 +303,61 @@ describe("credit-note dialog", () => {
 
   it("asks for a line when none is ticked", () => {
     expect(creditNotePreview(creditNoteDraftLines(items), 300, 20).error).toMatch(/au moins une ligne/);
+  });
+
+  describe("a line already taken back by an earlier credit note (A13)", () => {
+    const credited: InvoiceViewItem[] = [
+      { ...items[0], creditedAmount: 100 },
+      { ...items[1], creditedAmount: 50 },
+      { id: "i3", description: "Prélèvement", quantity: 3, unitPrice: 40, lineTotal: 120, sampleId: null, creditedAmount: 30 },
+    ];
+
+    it("shows what was taken back and caps the default quantity to what is left", () => {
+      const draft = creditNoteDraftLines(credited);
+      expect(draft.map((line) => [line.quantity, line.creditedAmount, line.remainingAmount])).toEqual([
+        ["1", 100, 100],
+        ["0", 50, 0],
+        ["2.25", 30, 90],
+      ]);
+      // Untouched lines keep their full quantity and say nothing was credited.
+      expect(creditNoteDraftLines(items).map((line) => [line.quantity, line.creditedAmount, line.remainingAmount])).toEqual([
+        ["2", 0, 200],
+        ["1", 0, 50],
+      ]);
+    });
+
+    it("the pre-filled lines, ticked, pass the API's per-line cap", () => {
+      const draft = creditNoteDraftLines(credited).map((line) => ({ ...line, selected: line.remainingAmount !== 0 }));
+      expect(creditNotePreview(draft, 1000, 20, credited).error).toBeNull();
+    });
+
+    it("refuses before the click a reprise beyond what is left on the line", () => {
+      const draft = creditNoteDraftLines(credited).map((line, index) =>
+        index === 0 ? { ...line, selected: true, quantity: "2" } : line
+      );
+      expect(creditNotePreview(draft, 1000, 20, credited).error).toMatch(
+        /Ligne 1 : la reprise \(200,00 DH HT\) dépasse ce qui reste à reprendre sur la ligne « Analyse microbiologique »/
+      );
+      // Without the items the preview knows only the invoice's total.
+      expect(creditNotePreview(draft, 1000, 20).error).toBeNull();
+    });
+  });
+
+  describe("creditNoteDefaultQuantity", () => {
+    const item = { quantity: 2, unitPrice: 100 };
+    it("is the whole quantity while nothing was credited, or at a zero price", () => {
+      expect(creditNoteDefaultQuantity(item, 200)).toBe(2);
+      expect(creditNoteDefaultQuantity({ ...item, creditedAmount: 0 }, 200)).toBe(2);
+      expect(creditNoteDefaultQuantity({ quantity: 4, unitPrice: 0, creditedAmount: 10 }, 0)).toBe(4);
+    });
+
+    it("fits what is left at the line's price, rounded down to the hundredth", () => {
+      expect(creditNoteDefaultQuantity({ ...item, creditedAmount: 100 }, 100)).toBe(1);
+      expect(creditNoteDefaultQuantity({ ...item, creditedAmount: 50 }, 150)).toBe(1.5);
+      expect(creditNoteDefaultQuantity({ quantity: 3, unitPrice: 33.33, creditedAmount: 33.33 }, 66.66)).toBe(2);
+      expect(creditNoteDefaultQuantity({ quantity: 1, unitPrice: 300, creditedAmount: 299.99 }, 0.01)).toBe(0);
+      expect(creditNoteDefaultQuantity({ ...item, creditedAmount: 200 }, 0)).toBe(0);
+    });
   });
 });
 

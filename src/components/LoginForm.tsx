@@ -2,13 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, Lock, ShieldCheck } from "lucide-react";
+import { User, Lock, ShieldCheck, Clock } from "lucide-react";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { BrandLogo } from "@/components/BrandLogo";
 import { authClient } from "@/lib/auth-client";
 import { DemoAccounts } from "@/components/DemoAccounts";
+import { recordSignIn } from "@/components/layout/IdleLogout";
 
-export default function LoginForm() {
+/**
+ * `notice`: why the user is back on the sign-in page, when the application
+ * sent them here (« Session fermée après inactivité », `loginNoticeFor`).
+ */
+export default function LoginForm({ notice = null }: { notice?: string | null }) {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -30,6 +35,10 @@ export default function LoginForm() {
         setError("Identifiants incorrects.");
         return;
       }
+
+      // The new session's inactivity clock starts now (IdleLogout): a
+      // previous user's last activity left in this browser must not close it.
+      recordSignIn();
 
       // The server resolves the landing page from the role (single source of
       // truth in lib/roles.ts), so we let "/" redirect us there.
@@ -54,6 +63,16 @@ export default function LoginForm() {
           <p className="mb-8 text-sm text-slate-500">
             Accédez à votre espace Qualilab International
           </p>
+
+          {notice && (
+            <p
+              role="status"
+              className="mb-6 flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-sm text-amber-800 ring-1 ring-amber-100"
+            >
+              <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {notice}
+            </p>
+          )}
 
           {/* Password managers are welcome: the staff logs in every day. */}
           <form onSubmit={handleSubmit} className="space-y-5">

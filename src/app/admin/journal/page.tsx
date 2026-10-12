@@ -1,192 +1,244 @@
+import Link from "next/link";
+import { ChevronRight, Filter, RotateCcw } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/labels";
-import { ROLE_LABELS } from "@/lib/roles";
+import { ROLE_LABELS, isPortalRole, isRole } from "@/lib/roles";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
-import type { Role } from "@/lib/roles";
-import type { AuditAction } from "@/lib/audit";
+import { ACTION_LABELS, actionChoices, actionLabel } from "@/lib/audit-labels";
+import {
+  JOURNAL_ORDER,
+  JOURNAL_PAGE_SIZE,
+  JOURNAL_PATH,
+  SYSTEM_ACTOR,
+  entryMetadata,
+  entryReference,
+  isFiltered,
+  journalHref,
+  journalPage,
+  journalWhere,
+  parseJournalFilters,
+  referenceTargets,
+  type ReferenceMatches,
+} from "@/lib/audit-journal-filters";
 
 export const metadata = { title: "Journal d'audit" };
 
 /**
  * The audit journal — the traceability promise made visible.
  *
- * Read-only by construction: nothing in the interface can alter an entry, and
- * the newest are shown first because that is what an investigation looks at.
+ * Read-only by construction: nothing in the interface can alter an entry.
+ * Newest first, 50 per page with « Actions plus anciennes » (keyset cursor),
+ * filtered by a plain GET form — the address is the search, so an
+ * investigation can be shared and survives a reload. « Référence » finds the
+ * record server-side (sample, série, client, invoice) and filters on its id:
+ * only indexed columns are searched, never the metadata text.
  */
 
-/**
- * FACTURATION.md, AMENDEMENT.md, PORTAIL.md — typed against `AUDIT_ACTIONS`,
- * so a new action of those slices cannot reach the journal unlabelled.
- */
-const SLICE_ACTION_LABELS = {
-  INVOICE_DRAFT_CREATED: "Brouillon de facture enregistré",
-  INVOICE_DRAFT_UPDATED: "Brouillon de facture modifié",
-  INVOICE_DRAFT_DELETED: "Brouillon de facture supprimé",
-  INVOICE_ISSUED: "Facture émise",
-  INVOICE_CANCELLED: "Facture annulée",
-  CREDIT_NOTE_ISSUED: "Avoir émis",
-  PAYMENT_RECORDED: "Règlement enregistré",
-  PAYMENT_DELETED: "Règlement supprimé",
-  REPORT_REOPENED: "Rapport rouvert pour amendement",
-  REPORT_AMENDED: "Rapport amendé validé",
-  REPORT_DUPLICATE: "Duplicata de rapport édité",
-  PORTAL_LOGIN: "Connexion au portail client",
-} satisfies Record<AuditAction, string>;
+type Params = Record<string, string | string[] | undefined>;
 
-/** Plain French for each recorded action. */
-const ACTION_LABELS: Record<string, string> = {
-  ...SLICE_ACTION_LABELS,
-  SAMPLE_CREATED: "Échantillon créé",
-  SERIE_CREATED: "Visite enregistrée",
-  DEPOT_CREATED: "Dépôt enregistré",
-  SERIE_UPDATED: "Visite complétée",
-  SAMPLE_RECEIVED: "Échantillon réceptionné",
-  SERIE_RECEIVED: "Série réceptionnée",
-  SAMPLE_CANCELLED: "Échantillon annulé",
-  SAMPLES_EXPORTED: "Synthèse des analyses exportée (Excel)",
-  DESTRUCTION_NOTIFIED: "Client informé d'une destruction",
-  REGULATION_CREATED: "Réglementation créée",
-  REGULATION_UPDATED: "Réglementation modifiée",
-  SAMPLE_REGULATION_SET: "Réglementation choisie pour un échantillon",
-  SAMPLE_REACTIVATED: "Échantillon réactivé",
-  SAMPLE_INTAKE_CORRECTED: "Fiche d'échantillon corrigée",
-  PROFILE_CREATED: "Profil d'analyses créé",
-  PROFILE_UPDATED: "Profil d'analyses modifié",
-  SITE_CREATED: "Site créé",
-  SITE_UPDATED: "Site modifié",
-  DOCUMENT_REFERENCE_UPDATED: "Cartouche de document modifiée",
-  SAMPLE_PROGRAMMED: "Programme d'analyse confirmé",
-  SAMPLE_PROGRAMME_UPDATED: "Programme d'analyse modifié",
-  SAMPLE_ANALYSIS_STARTED: "Analyse démarrée",
-  RESULTS_SAVED: "Résultats enregistrés",
-  RESULTS_SUBMITTED: "Résultats soumis à validation",
-  SAMPLE_VALIDATED_TECHNICAL: "Validation technique",
-  SAMPLE_APPROVED: "Validation administrative",
-  SAMPLE_REJECTED: "Échantillon renvoyé au technicien",
-  REPORT_SENT: "Rapport envoyé",
-  REPORT_DOWNLOADED: "Rapport téléchargé",
-  CONTAMINATION_ALERT_SENT: "Alerte de contamination envoyée",
-  // Entries written before FACTURATION.md (kept readable in the journal).
-  INVOICE_CREATED: "Facture émise",
-  INVOICE_DOWNLOADED: "Facture téléchargée",
-  INVOICE_PAID: "Facture encaissée",
-  INVOICE_REOPENED: "Facture rouverte",
-  PURCHASE_INVOICE_PAID: "Facture fournisseur payée",
-  PURCHASE_INVOICE_REOPENED: "Facture fournisseur rouverte",
-  CLIENT_CREATED: "Client créé",
-  CLIENT_UPDATED: "Client modifié",
-  CLIENT_ARCHIVED: "Client archivé",
-  CLIENT_RESTORED: "Client réactivé",
-  CLIENT_MERGED: "Clients en double fusionnés",
-  CLIENT_ATTACHED_AS_SITE: "Client rattaché comme site d'un autre client",
-  CLIENT_BILLED_FOR_SET: "Client facturé lié à un client principal",
-  CLIENT_BILLED_FOR_CLEARED: "Lien de client facturé retiré",
-  SITE_BILLING_CHANGED: "« Facturé à » d'un site modifié",
-  PARAMETER_CREATED: "Paramètre créé",
-  PARAMETER_UPDATED: "Paramètre modifié",
-  CRITERIA_IMPORTED: "Critères importés",
-  CLIENT_MEMORY_IMPORTED: "Mémoire client importée",
-  LEGACY_CATALOGUE_IMPORTED: "Catalogue de l'ancien logiciel importé",
-  DEMO_DATA_PURGED: "Données de démonstration supprimées",
-  COUNTER_SET: "Compteur de numérotation modifié",
-  PRODUCT_TYPE_CREATED: "Type de produit créé",
-  PRODUCT_TYPE_UPDATED: "Type de produit modifié",
-  CRITERIA_UPDATED: "Critères modifiés",
-  NORM_UPDATED: "Norme modifiée",
-  CONCLUSION_SCALE_UPDATED: "Échelle de conclusion modifiée",
-  SAMPLE_RELEASED: "Échantillon débloqué pour l'analyse",
-  CLIENTS_IMPORTED: "Clients de l'ancien logiciel importés",
-  SITES_IMPORTED: "Sites de l'ancien logiciel rattachés",
-  COMPANY_UPDATED: "Coordonnées du laboratoire modifiées",
-  LAB_SETTINGS_UPDATED: "Réglages du laboratoire modifiés",
-  SERVICE_UPDATED: "Prestation du catalogue modifiée",
-  USER_CREATED: "Utilisateur créé",
-  USER_ROLE_CHANGED: "Rôle d'un utilisateur modifié",
-  USER_PASSWORD_RESET: "Mot de passe réinitialisé",
-  USER_PASSWORD_CHANGED: "Mot de passe modifié par l'utilisateur",
-  USER_CLIENT_CHANGED: "Client d'un compte portail modifié",
-  USER_DISABLED: "Compte désactivé",
-  USER_ENABLED: "Compte réactivé",
-  EQUIPMENT_CREATED: "Équipement créé",
-  EQUIPMENT_UPDATED: "Équipement modifié",
-  EQUIPMENT_ARCHIVED: "Équipement archivé",
-  EQUIPMENT_RESTORED: "Équipement réactivé",
-  TEMPERATURE_RECORDED: "Température relevée",
-  TEMPERATURE_OUT_OF_RANGE: "Température hors limites relevée",
-  CALIBRATION_RECORDED: "Étalonnage enregistré",
-  EIL_CREATED: "Campagne EIL créée",
-  EIL_UPDATED: "Campagne EIL modifiée",
-  SUPPLIER_CREATED: "Fournisseur créé",
-  SUPPLIER_UPDATED: "Fournisseur modifié",
-  SUPPLIER_ARCHIVED: "Fournisseur archivé",
-  SUPPLIER_RESTORED: "Fournisseur réactivé",
-  PURCHASE_INVOICE_CREATED: "Facture fournisseur enregistrée",
-  STOCK_ITEM_CREATED: "Article de stock créé",
-  STOCK_ITEM_UPDATED: "Article de stock modifié",
-  STOCK_ITEM_ARCHIVED: "Article de stock archivé",
-  STOCK_ITEM_RESTORED: "Article de stock réactivé",
-  STOCK_MOVEMENT: "Mouvement de stock",
-};
+/** Finds what a typed reference designates — each lookup hits a unique or indexed column. */
+async function resolveReference(reference: string): Promise<ReferenceMatches> {
+  const [samples, series, clients, invoices] = await Promise.all([
+    prisma.sample.findMany({
+      where: { OR: [{ code: reference }, { controlCode: reference }] },
+      select: { id: true, report: { select: { id: true } } },
+      take: 2,
+    }),
+    prisma.serie.findMany({ where: { serialNumber: reference }, select: { id: true }, take: 1 }),
+    prisma.client.findMany({
+      // Both values of `archived` spelled out: the [archived, name] index serves an exact name.
+      where: {
+        OR: [{ id: reference }, { archived: false, name: reference }, { archived: true, name: reference }],
+      },
+      select: { id: true },
+      take: 20,
+    }),
+    prisma.invoice.findMany({ where: { number: reference }, select: { id: true }, take: 1 }),
+  ]);
+  return {
+    samples: samples.map((sample) => ({ id: sample.id, reportId: sample.report?.id ?? null })),
+    series,
+    clients,
+    invoices,
+  };
+}
 
-export default async function JournalPage() {
+function plural(count: number, one: string, many: string) {
+  return `${count} ${count > 1 ? many : one}`;
+}
+
+/** « 1 échantillon (et son rapport), 1 client » — what the reference matched. */
+function matchesSummary(matches: ReferenceMatches): string {
+  const parts: string[] = [];
+  if (matches.samples.length) {
+    const withReport = matches.samples.some((sample) => sample.reportId);
+    parts.push(`${plural(matches.samples.length, "échantillon", "échantillons")}${withReport ? " (et son rapport)" : ""}`);
+  }
+  if (matches.series.length) parts.push(plural(matches.series.length, "série", "séries"));
+  if (matches.clients.length) parts.push(plural(matches.clients.length, "client", "clients"));
+  if (matches.invoices.length) parts.push(plural(matches.invoices.length, "facture", "factures"));
+  return parts.join(", ");
+}
+
+export default async function JournalPage({ searchParams }: { searchParams: Promise<Params> }) {
   await requireRole("ADMIN");
+  const params = await searchParams;
 
-  const entries = await prisma.auditLog.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 200,
-    include: { actor: { select: { name: true, role: true } } },
+  // Banned accounts stay in the list: their past actions are still theirs.
+  const users = await prisma.user.findMany({
+    select: { id: true, name: true, username: true, role: true, banned: true },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
   });
+
+  const filters = parseJournalFilters(params, {
+    actions: Object.keys(ACTION_LABELS),
+    actorIds: users.map((user) => user.id),
+  });
+
+  const matches = filters.reference ? await resolveReference(filters.reference) : null;
+  const targets = matches ? referenceTargets(matches) : null;
+  const unresolved = targets !== null && targets.length === 0;
+
+  const rows = unresolved
+    ? []
+    : await prisma.auditLog.findMany({
+        where: journalWhere(filters, targets),
+        orderBy: JOURNAL_ORDER,
+        take: JOURNAL_PAGE_SIZE + 1,
+        include: { actor: { select: { name: true, role: true } } },
+      });
+  const { items: entries, nextCursor } = journalPage(rows);
+
+  const filtered = isFiltered(filters);
+  const staff = users.filter((user) => !isPortalRole(user.role));
+  const portal = users.filter((user) => isPortalRole(user.role));
+  const userOption = (user: (typeof users)[number]) => (
+    <option key={user.id} value={user.id}>
+      {user.name}
+      {user.username ? ` (${user.username})` : ""}
+      {user.banned ? " — désactivé" : ""}
+    </option>
+  );
 
   return (
     <div>
       <PageHeader
         badge="Système"
         title="Journal d'audit"
-        subtitle="Qui a fait quoi, et quand. Les 200 dernières actions enregistrées."
+        subtitle="Qui a fait quoi, et quand. 50 actions par page, les plus récentes d'abord."
       />
 
-      <Card className="overflow-hidden">
-        {entries.length === 0 ? (
-          <p className="p-8 text-center text-sm text-slate-500">
-            Aucune action enregistrée pour le moment.
+      <Card className="p-5">
+        <form method="GET" action={JOURNAL_PATH} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
+          <div className="lg:col-span-2">
+            <label htmlFor="action" className="block text-sm font-medium text-slate-700">Action</label>
+            <select id="action" name="action" defaultValue={filters.action ?? ""} className="input-field mt-1.5 px-3">
+              <option value="">Toutes</option>
+              {actionChoices().map((choice) => (
+                <option key={choice.value} value={choice.value}>{choice.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="lg:col-span-2">
+            <label htmlFor="acteur" className="block text-sm font-medium text-slate-700">Utilisateur</label>
+            <select id="acteur" name="acteur" defaultValue={filters.actor ?? ""} className="input-field mt-1.5 px-3">
+              <option value="">Tous</option>
+              <option value={SYSTEM_ACTOR}>Système (aucun utilisateur connecté)</option>
+              {staff.length > 0 && <optgroup label="Personnel du laboratoire">{staff.map(userOption)}</optgroup>}
+              {portal.length > 0 && <optgroup label="Comptes du portail client">{portal.map(userOption)}</optgroup>}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="du" className="block text-sm font-medium text-slate-700">Du</label>
+            <input id="du" name="du" type="date" defaultValue={filters.fromDay ?? ""} className="input-field mt-1.5 px-3" />
+          </div>
+          <div>
+            <label htmlFor="au" className="block text-sm font-medium text-slate-700">Au</label>
+            <input id="au" name="au" type="date" defaultValue={filters.toDay ?? ""} className="input-field mt-1.5 px-3" />
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <label htmlFor="ref" className="block text-sm font-medium text-slate-700">Référence</label>
+            <input
+              id="ref"
+              name="ref"
+              type="search"
+              defaultValue={filters.reference ?? ""}
+              placeholder="N° de contrôle, code, N° de série, client, N° de facture…"
+              aria-describedby="ref-hint"
+              className="input-field mt-1.5 px-3"
+            />
+            <p id="ref-hint" className="mt-1 text-xs text-slate-500">
+              Le numéro exact, ou le nom exact du client.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-start gap-2 sm:col-span-2 lg:col-span-3 lg:pt-7">
+            <button
+              type="submit"
+              className="inline-flex min-h-[42px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+            >
+              <Filter className="h-4 w-4" aria-hidden="true" />
+              Filtrer
+            </button>
+            {filtered && (
+              <Link
+                href={JOURNAL_PATH}
+                className="inline-flex min-h-[42px] items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Effacer
+              </Link>
+            )}
+          </div>
+        </form>
+      </Card>
+
+      {matches && !unresolved && (
+        <p className="mt-4 text-sm text-slate-600">
+          Référence <span className="font-mono font-medium text-slate-800">{filters.reference}</span> :{" "}
+          {matchesSummary(matches)}.
+        </p>
+      )}
+
+      <Card className="mt-4 overflow-hidden">
+        {unresolved ? (
+          <p role="status" className="p-8 text-center text-sm text-slate-600">
+            Aucun échantillon, série, client ou facture ne porte la référence{" "}
+            <span className="font-mono font-medium text-slate-800">{filters.reference}</span>. Vérifiez le
+            numéro exact (N° de contrôle, code de l&apos;échantillon, N° de série « 2780/26 », N° de facture)
+            ou le nom exact du client.
+          </p>
+        ) : entries.length === 0 ? (
+          <p role="status" className="p-8 text-center text-sm text-slate-500">
+            {filters.cursor
+              ? "Aucune action plus ancienne."
+              : filtered
+                ? "Aucune action ne correspond à ces critères."
+                : "Aucune action enregistrée pour le moment."}
           </p>
         ) : (
           <ul className="divide-y divide-slate-100">
             {entries.map((entry) => {
-              const metadata = entry.metadata
-                ? (JSON.parse(entry.metadata) as Record<string, unknown>)
-                : {};
-              const reference =
-                (metadata.controlCode as string) ??
-                (metadata.code as string) ??
-                (metadata.number as string) ??
-                (metadata.name as string) ??
-                null;
-
+              const metadata = entryMetadata(entry.metadata);
+              const reference = entryReference(metadata);
               return (
                 <li key={entry.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-2.5">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-800">
-                      {ACTION_LABELS[entry.action] ?? entry.action}
+                      {actionLabel(entry.action)}
                       {metadata.portal === true && " (portail client)"}
                       {reference && (
-                        <span className="ml-2 font-mono text-xs text-slate-500">
-                          {reference}
-                        </span>
+                        <span className="ml-2 break-all font-mono text-xs text-slate-500">{reference}</span>
                       )}
                     </p>
                     <p className="mt-0.5 text-xs text-slate-500">
                       {entry.actor?.name ?? "Système"}
-                      {entry.actor?.role && (
-                        <> · {ROLE_LABELS[entry.actor.role as Role]}</>
-                      )}
+                      {entry.actor?.role && isRole(entry.actor.role) && <> · {ROLE_LABELS[entry.actor.role]}</>}
                     </p>
                   </div>
                   <time
                     dateTime={entry.createdAt.toISOString()}
-                    className="shrink-0 text-xs tabular-nums text-slate-400"
+                    className="shrink-0 text-xs tabular-nums text-slate-500"
                   >
                     {formatDateTime(entry.createdAt)}
                   </time>
@@ -196,6 +248,29 @@ export default async function JournalPage() {
           </ul>
         )}
       </Card>
+
+      {(nextCursor || filters.cursor) && (
+        <nav aria-label="Pages du journal" className="mt-4 flex flex-wrap items-center justify-end gap-2 text-sm">
+          {filters.cursor && (
+            <Link
+              href={journalHref(filters)}
+              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              <RotateCcw className="h-4 w-4" aria-hidden="true" />
+              Revenir aux plus récentes
+            </Link>
+          )}
+          {nextCursor && (
+            <Link
+              href={journalHref(filters, nextCursor)}
+              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              Actions plus anciennes
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          )}
+        </nav>
+      )}
     </div>
   );
 }

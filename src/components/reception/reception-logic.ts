@@ -4,9 +4,17 @@ import type {
   HandsState,
   LineKind,
   QuantityUnit,
+  StorageClass,
   SurfaceState,
+  TemperatureSource,
 } from "@/generated/prisma/enums";
-import { AIR_METHOD_LABELS, HANDS_STATE_LABELS, LINE_KIND_LABELS, withSurfaceState } from "@/lib/labels";
+import {
+  AIR_METHOD_LABELS,
+  HANDS_STATE_LABELS,
+  LINE_KIND_LABELS,
+  STORAGE_CLASS_LABELS,
+  withSurfaceState,
+} from "@/lib/labels";
 import { LINE_FAMILIES, type LineFamily } from "@/lib/nature-family";
 import {
   parameterSpellings,
@@ -16,6 +24,12 @@ import {
   type ChecklistStatus,
   type ReceptionThresholds,
 } from "@/lib/reception-rules";
+import {
+  complementaryChecklist,
+  defaultStorageClass,
+  type ComplementarySerie,
+  type ComplementaryThresholds,
+} from "@/lib/reception-complementary";
 import { sampleRef } from "@/lib/reception-input";
 import { twinFor } from "@/lib/sample-code";
 
@@ -100,6 +114,39 @@ export function receptionDesignation(sample: {
     default:
       return sample.produit ?? "—";
   }
+}
+
+/**
+ * The first option of « Conservation »: the default class of the kind —
+ * one for the line's families, or « selon la famille » when its two
+ * samples differ (water: chilled for microbiology, none for chemistry).
+ */
+export function storageDefaultLabel(lineKind: LineKind, families: readonly Family[]): string {
+  const defaults = [...new Set((families.length > 0 ? families : (["AUTRE"] as const)).map((f) => defaultStorageClass(lineKind, f)))];
+  if (defaults.length > 1) return "Selon la famille (par défaut)";
+  const only = defaults[0];
+  return only ? `${STORAGE_CLASS_LABELS[only]} (par défaut)` : "Sans objet (par défaut)";
+}
+
+/**
+ * Where the temperature of a sample at reception was read: the choice made
+ * on the card (a witness bottle, on water), else the sample itself once a
+ * value was typed for it, else the cooler whose reading pre-filled it.
+ * Null without a temperature.
+ */
+export function receptionTemperatureSource(line: {
+  temperature: string;
+  temperatureTouched: boolean;
+  sourceChoice: TemperatureSource | null;
+}): TemperatureSource | null {
+  if (!line.temperature.trim()) return null;
+  if (line.sourceChoice) return line.sourceChoice;
+  return line.temperatureTouched ? "ECHANTILLON" : "GLACIERE";
+}
+
+/** The cooler's reading outside the chilled range: the hint under « T° de la glacière » (screen only). */
+export function coolerOutOfRange(cooler: number | null, thresholds: ComplementaryThresholds): boolean {
+  return cooler !== null && (cooler < thresholds.coldChainMinC || cooler > thresholds.coldChainMaxC);
 }
 
 /** « Échantillon 2M · Microbiologie des aliments » — the head of a sample's card. */
@@ -194,6 +241,7 @@ export function mergeFamilyRows(perSample: readonly FamilyRows[]): { rows: Check
     return {
       n: first.n,
       key: first.key,
+      ...(first.code ? { code: first.code } : {}),
       text: first.text,
       status: weightiest.row.status,
       ...(details.length > 0 ? { detail: details.join(" · ") } : {}),
@@ -217,6 +265,16 @@ export type DepositLineInput = {
   unitCount: number;
   /** Rule (1), one answer for the line — both samples share it. */
   exploitable: boolean | null;
+  /** C3 (emballage) and C5 (identification), one answer for the line too. */
+  packagingOk: boolean | null;
+  identificationOk: boolean | null;
+  /** The deposit's times for C1 (the counter's now as arrival); null before the screen's clock. */
+  serie: ComplementarySerie | null;
+  /** C2: the class chosen for the line (null = each sample's default) and where the temperature was read. */
+  storageClass: StorageClass | null;
+  temperatureSource: TemperatureSource | null;
+  /** C7: the DLC typed on the line (UTC midnight, `parseIsoDay`); null = none. */
+  expiryDate: Date | null;
 };
 
 /**
@@ -224,27 +282,43 @@ export type DepositLineInput = {
  * `POST /api/series` computes it before writing — merged into one list, and
  * the proposal that follows: a NON_CONFORME row on either sample makes the
  * line non-conform (the counter's answer, temperature, conformity and
- * decision apply to both samples).
+ * decision apply to both samples). Each sample's list is the paper's seven
+ * rules, then the contrôles complémentaires (hors bon).
  */
 export function depositLineChecklist(line: DepositLineInput, thresholds: ReceptionThresholds) {
   const families: (LineFamily | null)[] = line.families.length > 0 ? [...line.families] : [null];
   const perSample: FamilyRows[] = families.map((family) => ({
     family,
-    rows: receptionChecklist(
-      {
-        lineKind: line.lineKind,
-        family: family ?? "AUTRE",
-        parameterNames: line.parameters
-          .filter((p) => family === null || p.family === family)
-          .flatMap((p) => parameterSpellings(p)),
-        quantity: line.quantity,
-        quantityUnit: line.quantity === null ? null : line.quantityUnit,
-        receptionTemperature: line.receptionTemperature,
-        unitCount: line.unitCount,
-      },
-      thresholds,
-      { exploitable: line.exploitable }
-    ),
+    rows: [
+      ...receptionChecklist(
+        {
+          lineKind: line.lineKind,
+          family: family ?? "AUTRE",
+          parameterNames: line.parameters
+            .filter((p) => family === null || p.family === family)
+            .flatMap((p) => parameterSpellings(p)),
+          quantity: line.quantity,
+          quantityUnit: line.quantity === null ? null : line.quantityUnit,
+          receptionTemperature: line.receptionTemperature,
+          unitCount: line.unitCount,
+        },
+        thresholds,
+        { exploitable: line.exploitable, temperatureSource: line.temperatureSource }
+      ),
+      ...complementaryChecklist(
+        {
+          lineKind: line.lineKind,
+          family: family ?? "AUTRE",
+          receptionTemperature: line.receptionTemperature,
+          storageClass: line.storageClass,
+          temperatureSource: line.temperatureSource,
+          expiryDate: line.expiryDate,
+        },
+        line.serie,
+        thresholds,
+        { packagingOk: line.packagingOk, identificationOk: line.identificationOk }
+      ),
+    ],
   }));
   const { rows, familyBlocking } = mergeFamilyRows(perSample);
   return { rows, familyBlocking, proposal: proposedConformity(rows) };
