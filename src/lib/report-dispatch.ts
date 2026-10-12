@@ -30,6 +30,7 @@ import { sampleDesignation } from "./document-html";
 import { REOPENED_SAMPLE_FIELDS, amendmentIssueRefusal, canTransition } from "./sample-status";
 import { REOPENED_STATUS, amendedNumber, reopenRefusal } from "./report-amendment";
 import type { Role } from "./roles";
+import { SingleFlight } from "./single-flight";
 
 /**
  * What happens once a sample is approved: the client receives the report, and
@@ -334,6 +335,9 @@ const asJson = (data: ReportData) => reportDataToJson(data) as Prisma.InputJsonV
 
 export type IssuedReport = { id: string; number: string; amended?: boolean };
 
+/** Attempts at drawing a free « RAP-AAAA-NNNNN » (1–10 people at once, AGENTS.md §1). */
+const REPORT_NUMBER_TRIES = 10;
+
 /**
  * Creates the report record for an approved sample, and freezes its version
  * 0 with it (one transaction). Idempotent: an existing report is returned as
@@ -376,7 +380,10 @@ export async function createReportFor(sampleId: string): Promise<IssuedReport | 
         });
         return report;
       });
-    });
+      // Each round of a number race lets one creator through: as many tries
+      // as people who can approve at once (four simultaneous approvals left
+      // the fourth report-less with the default three).
+    }, REPORT_NUMBER_TRIES);
   } catch (error) {
     // Two approvals at the same instant: the other one created it.
     const created = await prisma.report.findUnique({ where: { sampleId }, select: { id: true, number: true, version: true } });
@@ -607,11 +614,30 @@ export async function reopenForAmendment(
 }
 
 /**
+ * The report sends under way, one per sample (kept on `globalThis` so a
+ * development hot reload does not lose it).
+ */
+const globalForSends = globalThis as unknown as { reportSends?: SingleFlight };
+const reportSends = (globalForSends.reportSends ??= new SingleFlight());
+
+/**
  * Sends the report to the client and marks the sample `RAPPORT_ENVOYE`.
  * Also used for a manual resend, which is why it is idempotent-friendly.
  * An amended version is sent like a new report, subject « Rapport amendé … ».
+ *
+ * One send per sample at a time: a second « Renvoyer au client » clicked
+ * while the first is under way (two people, two tabs) is refused instead of
+ * e-mailing the client twice (full-db recette 12/10).
  */
 export async function sendReport(sampleId: string, actorId: string | null) {
+  const flight = await reportSends.run(sampleId, () => sendReportNow(sampleId, actorId));
+  if (!flight.ran) {
+    return { ok: false as const, error: "Un envoi de ce rapport est déjà en cours : il ne part qu'une fois." };
+  }
+  return flight.value;
+}
+
+async function sendReportNow(sampleId: string, actorId: string | null) {
   const sample = await prisma.sample.findUnique({
     where: { id: sampleId },
     select: {

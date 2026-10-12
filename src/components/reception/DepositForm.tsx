@@ -1199,7 +1199,7 @@ export function DepositForm({
                     <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                       {twins ? "Échantillons réceptionnés et numérotés" : "Échantillon réceptionné et numéroté"}, puis bloqué
-                      {twins ? "s" : ""} jusqu&apos;à l&apos;avis du client : à analyser ou détruire depuis « Bloqués » de la
+                      {twins ? "s" : ""}{" "}jusqu&apos;à l&apos;avis du client : à analyser ou détruire depuis « Bloqués » de la
                       réception.
                     </p>
                   )}

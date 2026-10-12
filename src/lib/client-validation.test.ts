@@ -127,4 +127,11 @@ describe("validateClientEmails", () => {
   it("treats a missing list as no list", () => {
     expect(validateClientEmails(undefined)).toEqual({ ok: true, value: [] });
   });
+
+  it("refuses an address or a label longer than its column (full-db 12/10: a 500)", () => {
+    expect(validateClientEmails([{ email: `${"a".repeat(187)}@x.ma` }]).ok).toBe(false);
+    expect(validateClientEmails([{ email: `${"a".repeat(186)}@x.ma` }]).ok).toBe(true);
+    expect(validateClientEmails([{ email: "qualite@x.ma", label: "L".repeat(192) }]).ok).toBe(false);
+    expect(validateClientEmails([{ email: "qualite@x.ma", label: "L".repeat(191) }]).ok).toBe(true);
+  });
 });

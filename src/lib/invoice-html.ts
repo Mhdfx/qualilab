@@ -1,7 +1,7 @@
 import type { InvoiceKind, InvoiceStatus } from "@/generated/prisma/enums";
 import { COMPANY, type CompanyInfo } from "./company";
 import { companyBrandHtml } from "./brand-html";
-import { formatDate } from "./labels";
+import { formatDate, formatDecimal } from "./labels";
 import { amountToFrenchWords } from "./number-to-words-fr";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
 import { balance, invoiceState, type InvoiceState } from "./invoice-lifecycle";
@@ -107,7 +107,7 @@ export function buildInvoiceHtml(
       (item) => `
       <tr>
         <td class="desc">${escapeHtml(item.description)}</td>
-        <td class="num">${item.quantity}</td>
+        <td class="num">${formatDecimal(item.quantity, 2)}</td>
         <td class="num">${money(item.unitPrice)}</td>
         <td class="num strong">${money(item.lineTotal)}</td>
       </tr>`
@@ -316,7 +316,7 @@ ${cancelStamp}
       <td class="value">${money(invoice.subtotal)}</td>
     </tr>
     <tr>
-      <td class="label">TVA (${invoice.taxRate} %)</td>
+      <td class="label">TVA (${formatDecimal(invoice.taxRate, 2)} %)</td>
       <td class="value">${money(invoice.taxAmount)}</td>
     </tr>
     <tr class="grand">

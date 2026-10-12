@@ -5,6 +5,7 @@ import {
   checkMerge,
   checkSiteBilling,
   invoiceSampleRefusal,
+  mergedClientInvoiceRefusal,
   mergeFill,
   sampleBillingClientId,
   type ClientFacts,
@@ -253,5 +254,17 @@ describe("sampleBillingClientId / invoiceSampleRefusal", () => {
     expect(invoiceSampleRefusal(own, "f")).toBe("L'échantillon E-1 appartient à un autre client.");
     expect(invoiceSampleRefusal(own, "x")).toBe("L'échantillon E-1 appartient à un autre client.");
     expect(invoiceSampleRefusal(billed, "x")).toBe("L'échantillon E-2 appartient à un autre client.");
+  });
+});
+
+describe("mergedClientInvoiceRefusal", () => {
+  it("lets an active (or merely archived) client be invoiced", () => {
+    expect(mergedClientInvoiceRefusal({ name: "Client Démo", mergedInto: null })).toBeNull();
+  });
+
+  it("refuses a fiche merged into, or attached to, another client and names the kept one", () => {
+    expect(mergedClientInvoiceRefusal({ name: "Client Demo", mergedInto: { name: "Client Démo SARL" } })).toBe(
+      "« Client Demo » a été regroupée avec « Client Démo SARL » (fusion ou rattachement comme site) : établissez la facture au nom de « Client Démo SARL »."
+    );
   });
 });

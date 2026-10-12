@@ -101,11 +101,20 @@ export async function POST(
     );
   }
 
-  const updated = await prisma.sample.update({
+  // Atomic against a second « Soumettre » (double click, two technicians of
+  // the line): the status is re-checked in the UPDATE and only the request
+  // that moved the sample is answered 200 and journalled.
+  const moved = await prisma.sample.updateMany({
     where: { id: sample.id, status: sample.status },
     data: { status: "RESULTATS_SAISIS" },
-    select: { id: true, code: true, status: true },
   });
+  if (moved.count === 0) {
+    return NextResponse.json(
+      { error: "Cet échantillon vient d'être soumis ou de changer d'état : rechargez la fiche." },
+      { status: 409 }
+    );
+  }
+  const updated = { id: sample.id, code: sample.code, status: "RESULTATS_SAISIS" as const };
 
   await logAudit({
     actorId: session.id,

@@ -301,6 +301,19 @@ describe("credit-note dialog", () => {
     expect(tooMuch.error).toMatch(/dépasse/);
   });
 
+  it("previews the closing note as the API stores it (its TTC = what is left to credit)", () => {
+    // One line of 145,50 left on an invoice at 7 % whose other line was credited: 155,68 left.
+    const left: InvoiceViewItem[] = [
+      { id: "a", description: "Ligne A", quantity: 1, unitPrice: 145.5, lineTotal: 145.5, sampleId: null, creditedAmount: 145.5 },
+      { id: "b", description: "Ligne B", quantity: 1, unitPrice: 145.5, lineTotal: 145.5, sampleId: null, creditedAmount: 0 },
+    ];
+    const draft = creditNoteDraftLines(left).map((line) => ({ ...line, selected: line.key === "b" }));
+    expect(creditNotePreview(draft, 155.68, 7, left).error).toMatch(/dépasse/);
+    const closing = creditNotePreview(draft, 155.68, 7, left, { remainingSubtotal: 145.5, previousNotes: 1 });
+    expect(closing.error).toBeNull();
+    expect(closing.totals).toMatchObject({ subtotal: 145.5, taxAmount: 10.18, total: 155.68 });
+  });
+
   it("asks for a line when none is ticked", () => {
     expect(creditNotePreview(creditNoteDraftLines(items), 300, 20).error).toMatch(/au moins une ligne/);
   });

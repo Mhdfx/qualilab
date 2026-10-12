@@ -88,7 +88,7 @@ export function ReportActions({
       )}
       {amendmentPending && !compact && (
         <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
-          Amendement en cours : le rapport {number} reste la version en vigueur jusqu&apos;à la nouvelle validation administrative.
+          Amendement en cours : le rapport {number}{" "}reste la version en vigueur jusqu&apos;à la nouvelle validation administrative.
         </p>
       )}
 
@@ -237,7 +237,7 @@ function ReopenDialog({ sampleId, number, onClose }: { sampleId: string; number:
       <form onSubmit={submit} noValidate>
         <p className="text-sm text-slate-600">
           L&apos;échantillon revient à « Résultats saisis » : la validation technique et la validation administrative
-          sont effacées, les résultats et la fiche peuvent être corrigés. Le rapport {number} reste en vigueur jusqu&apos;à
+          sont effacées, les résultats et la fiche peuvent être corrigés. Le rapport {number}{" "}reste en vigueur jusqu&apos;à
           la nouvelle validation administrative, qui émettra le rapport amendé et l&apos;enverra au client.
         </p>
         <label htmlFor="amendmentReason" className="mt-3 block text-sm font-medium text-slate-700">

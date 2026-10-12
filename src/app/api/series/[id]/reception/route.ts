@@ -9,6 +9,9 @@ import { assignControlCode } from "@/lib/sample-code";
 import { notifyDestroyed } from "@/lib/destruction-notice";
 import { canTransition } from "@/lib/sample-status";
 
+/** A sample of the série is no longer PRELEVE at the write: rolls the série back, then the 409. */
+class StaleReception extends Error {}
+
 /**
  * Reception of a série in one go — WORKFLOW.md rule 4.
  *
@@ -22,7 +25,7 @@ import { canTransition } from "@/lib/sample-status";
  * received and numbered too (it prints on the bon de réception), then
  * cancelled in the same transaction with the motif DETRUIT_A_RECEPTION.
  * Either every sample is received or none is — two réceptionnistes on the
- * same série cannot half-number it (P2025 → 409).
+ * same série cannot half-number it (`StaleReception` → 409).
  *
  * The two samples of a two-family line (« 2M », « 2P » — RETOUR-LABO-06-10.md
  * §5, V3) are received like any other, each with its own N° de contrôle,
@@ -174,44 +177,50 @@ export async function POST(
           // The counter row stays locked until the série is written: two
           // receptions can never share a N° de contrôle.
           const controlCode = await assignControlCode(tx, year);
+          // Re-checking the status in the UPDATE itself makes the write
+          // atomic against a second réceptionniste handling the same série,
+          // or a « Annuler » of one of its samples, right now: 0 rows
+          // changed rolls the whole série back (no number burnt).
+          const moved = await tx.sample.updateMany({
+            where: { id: line.sampleId, status: "PRELEVE" },
+            data: {
+              controlCode,
+              status: "RECU",
+              receivedById: session.id,
+              receivedAt,
+              receptionTemperature: line.receptionTemperature,
+              receptionTemperatureSource: line.temperatureSource,
+              storageClass: line.storageClass,
+              ...(line.quantity !== null
+                ? { quantity: line.quantity, quantityUnit: line.quantityUnit }
+                : {}),
+              receptionExploitable: line.exploitable,
+              receptionPackagingOk: line.packagingOk,
+              receptionIdentificationOk: line.identificationOk,
+              conformity: line.conformity,
+              conformityReason: line.conformityReason,
+              conformityNote: line.conformityNote,
+              receptionNote: line.receptionNote,
+              // A9: « En attente du client » holds the sample until it is released.
+              analysisBlocked: line.awaitClient,
+              awaitingClientSince: line.awaitClient ? receivedAt : null,
+              ...(line.consultation
+                ? {
+                    clientConsultedAt: line.consultation.at,
+                    clientConsultedName: line.consultation.name,
+                    clientConsultationChannel: line.consultation.channel,
+                    clientConsultationNote: line.consultation.note,
+                  }
+                : {}),
+              ...(line.destroy
+                ? { status: "ANNULE" as const, cancelledAt: receivedAt, cancelledById: session.id, cancelReason: "DETRUIT_A_RECEPTION" as const }
+                : {}),
+            },
+          });
+          if (moved.count === 0) throw new StaleReception();
           received.push(
-            await tx.sample.update({
-              // Re-checking the status makes the write atomic against a
-              // second réceptionniste handling the same série right now.
-              where: { id: line.sampleId, status: "PRELEVE" },
-              data: {
-                controlCode,
-                status: "RECU",
-                receivedById: session.id,
-                receivedAt,
-                receptionTemperature: line.receptionTemperature,
-                receptionTemperatureSource: line.temperatureSource,
-                storageClass: line.storageClass,
-                ...(line.quantity !== null
-                  ? { quantity: line.quantity, quantityUnit: line.quantityUnit }
-                  : {}),
-                receptionExploitable: line.exploitable,
-                receptionPackagingOk: line.packagingOk,
-                receptionIdentificationOk: line.identificationOk,
-                conformity: line.conformity,
-                conformityReason: line.conformityReason,
-                conformityNote: line.conformityNote,
-                receptionNote: line.receptionNote,
-                // A9: « En attente du client » holds the sample until it is released.
-                analysisBlocked: line.awaitClient,
-                awaitingClientSince: line.awaitClient ? receivedAt : null,
-                ...(line.consultation
-                  ? {
-                      clientConsultedAt: line.consultation.at,
-                      clientConsultedName: line.consultation.name,
-                      clientConsultationChannel: line.consultation.channel,
-                      clientConsultationNote: line.consultation.note,
-                    }
-                  : {}),
-                ...(line.destroy
-                  ? { status: "ANNULE" as const, cancelledAt: receivedAt, cancelledById: session.id, cancelReason: "DETRUIT_A_RECEPTION" as const }
-                  : {}),
-              },
+            await tx.sample.findUniqueOrThrow({
+              where: { id: line.sampleId },
               select: {
                 id: true,
                 code: true,
@@ -394,11 +403,10 @@ export async function POST(
       destruction,
     });
   } catch (error) {
-    const code = (error as { code?: string }).code;
-    // P2025: a sample left PRELEVE between our check and the write.
-    if (code === "P2025") {
+    // A sample left PRELEVE between our check and the write.
+    if (error instanceof StaleReception) {
       return NextResponse.json(
-        { error: "Un échantillon vient d'être réceptionné par quelqu'un d'autre — rechargez la série." },
+        { error: "Un échantillon de la série vient d'être réceptionné ou annulé par quelqu'un d'autre — rechargez la série." },
         { status: 409 }
       );
     }

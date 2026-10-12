@@ -15,6 +15,9 @@ export type MovementResult =
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
+/** The largest level (or movement) a DECIMAL(12,2) quantity column holds. */
+export const MAX_STOCK_LEVEL = 9_999_999_999.99;
+
 /**
  * The stock level after a movement. ENTREE adds, SORTIE subtracts and can
  * never take the level below zero (a negative stock is a data-entry error,
@@ -31,6 +34,10 @@ export function applyMovement(
   }
   if (type !== "AJUSTEMENT" && quantity === 0) {
     return { ok: false, error: "La quantité d'un mouvement ne peut pas être zéro." };
+  }
+  // DECIMAL(12,2): a level or a movement beyond it would crash the insert.
+  if (quantity > MAX_STOCK_LEVEL || (type === "ENTREE" && current + quantity > MAX_STOCK_LEVEL)) {
+    return { ok: false, error: "Quantité hors limites : vérifiez la saisie." };
   }
 
   if (type === "ENTREE") return { ok: true, next: round2(current + quantity) };

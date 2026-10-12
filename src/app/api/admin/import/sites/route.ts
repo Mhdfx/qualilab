@@ -103,6 +103,10 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
+  // A JSON `null` (or any non-object) parsed fine and crashed on `body.x` (500).
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
+  }
   const mode = body.mode === "commit" ? "commit" : "analyse";
 
   // ---- the file ----------------------------------------------------------------------

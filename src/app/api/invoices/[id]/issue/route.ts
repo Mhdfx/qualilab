@@ -7,6 +7,7 @@ import { canIssue, statusAfterPayments } from "@/lib/invoice-lifecycle";
 import { unpricedLineRefusal } from "@/lib/billing";
 import { toMoney } from "@/lib/money";
 import { CLIENT_IDENTITY_SELECT, clientSnapshotOf } from "@/lib/invoice-client-identity";
+import { mergedClientInvoiceRefusal } from "@/lib/client-merge-rules";
 import { InvoiceRequestError, checkSampleLines, errorResponse, lockInvoice } from "../../invoice-store";
 
 /**
@@ -37,7 +38,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
             number: true,
             clientId: true,
             total: true,
-            client: { select: CLIENT_IDENTITY_SELECT },
+            client: { select: { ...CLIENT_IDENTITY_SELECT, mergedInto: { select: { name: true } } } },
             items: { select: { description: true, unitPrice: true, sampleId: true } },
           },
         });
@@ -52,6 +53,11 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
         }
         const unpriced = unpricedLineRefusal(draft.items);
         if (unpriced) throw new InvoiceRequestError(400, unpriced);
+        // A draft left on a fiche since attached as a site of another client
+        // (its invoices stay in its name): issued under the kept record only,
+        // as a save of the draft would require (CLIENTS-FUSION.md §2–3).
+        const merged = mergedClientInvoiceRefusal(draft.client);
+        if (merged) throw new InvoiceRequestError(400, merged);
 
         const samples = await checkSampleLines(tx, draft.items, draft.clientId, id);
         const now = new Date();

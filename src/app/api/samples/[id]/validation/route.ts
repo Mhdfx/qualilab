@@ -116,23 +116,21 @@ export async function POST(
       return NextResponse.json({ error: check.error }, { status: 409 });
     }
 
-    let updated: { id: string; validatedAt: Date | null };
-    try {
-      updated = await prisma.sample.update({
-        // Guard against two validateurs signing the same sample at once.
-        where: { id: sample.id, validatedById: null },
-        data: { validatedById: session.id, validatedAt: now, ...(regulation ? { regulationId: regulation.id } : {}) },
-        select: { id: true, validatedAt: true },
-      });
-    } catch (error) {
-      if ((error as { code?: string }).code === "P2025") {
-        return NextResponse.json(
-          { error: "Cet échantillon vient d'être validé par un autre validateur." },
-          { status: 409 }
-        );
-      }
-      throw error;
+    // Guard against two validateurs signing the same sample at once:
+    // `updateMany` re-checks the guard in the UPDATE itself and counts the
+    // rows it changed (`update` reads first, then writes by id — two
+    // signatures racing both "succeeded" and both were journalled).
+    const claimed = await prisma.sample.updateMany({
+      where: { id: sample.id, status: "RESULTATS_SAISIS", validatedById: null },
+      data: { validatedById: session.id, validatedAt: now, ...(regulation ? { regulationId: regulation.id } : {}) },
+    });
+    if (claimed.count === 0) {
+      return NextResponse.json(
+        { error: "Cet échantillon vient d'être validé par un autre validateur." },
+        { status: 409 }
+      );
     }
+    const updated = { id: sample.id, validatedAt: now };
 
     await logAudit({
       actorId: session.id,
@@ -165,30 +163,30 @@ export async function POST(
   if (action === "approve") {
     const check = canApprove(sample, session.role, session.id);
     if (!check.ok) {
-      return NextResponse.json({ error: check.error }, { status: 409 });
+      // A role that may never approve is refused (403, HANDOFF §3); an
+      // ADMIN meeting a state that forbids it now gets the 409.
+      return NextResponse.json({ error: check.error }, { status: session.role === "ADMIN" ? 409 : 403 });
     }
 
-    let updated: { id: string; code: string; status: string; approvedAt: Date | null };
-    try {
-      updated = await prisma.sample.update({
-        where: { id: sample.id, status: "RESULTATS_SAISIS" },
-        data: {
-          approvedById: session.id,
-          approvedAt: now,
-          status: "VALIDE",
-          ...(regulation ? { regulationId: regulation.id } : {}),
-        },
-        select: { id: true, code: true, status: true, approvedAt: true },
-      });
-    } catch (error) {
-      if ((error as { code?: string }).code === "P2025") {
-        return NextResponse.json(
-          { error: "Cet échantillon vient d'être validé administrativement ou renvoyé par quelqu'un d'autre." },
-          { status: 409 }
-        );
-      }
-      throw error;
+    // Atomic: only the request whose UPDATE moved the sample goes on to
+    // issue and send the report. The technical signature checked above is
+    // part of the guard — a send-back racing this approval clears it.
+    const claimed = await prisma.sample.updateMany({
+      where: { id: sample.id, status: "RESULTATS_SAISIS", validatedById: sample.validatedById },
+      data: {
+        approvedById: session.id,
+        approvedAt: now,
+        status: "VALIDE",
+        ...(regulation ? { regulationId: regulation.id } : {}),
+      },
+    });
+    if (claimed.count === 0) {
+      return NextResponse.json(
+        { error: "Cet échantillon vient d'être validé administrativement ou renvoyé par quelqu'un d'autre." },
+        { status: 409 }
+      );
     }
+    const updated = { id: sample.id, code: sample.code, status: "VALIDE", approvedAt: now };
 
     // Approval is what makes the report official, so it is created here — with
     // the names frozen as they stand today, so a report downloaded next year
@@ -258,36 +256,33 @@ export async function POST(
       return NextResponse.json({ error: check.error }, { status: 409 });
     }
 
-    let updated: { id: string; code: string; status: string };
-    try {
-      updated = await prisma.sample.update({
-        where: { id: sample.id, status: "RESULTATS_SAISIS" },
-        data: {
-          status: "EN_ANALYSE",
-          rejectionReason: motif,
-          rejectedById: session.id,
-          rejectedAt: now,
-          // The technical sign-off is cleared: the corrected results must be
-          // validated again from the start.
-          validatedById: null,
-          validatedAt: null,
-          // Sent back to the bench: the next results deserve their own alert.
-          // Not during an amendment: the alerts sent for the report being
-          // amended stand, and only a changed result is alerted again
-          // (`sendContaminationAlerts`).
-          ...(sample.report?.amendmentPending ? {} : { alertsSentAt: null }),
-        },
-        select: { id: true, code: true, status: true },
-      });
-    } catch (error) {
-      if ((error as { code?: string }).code === "P2025") {
-        return NextResponse.json(
-          { error: "Cet échantillon vient de changer d'état : rechargez la page." },
-          { status: 409 }
-        );
-      }
-      throw error;
+    // Atomic, like the approval: a send-back racing an approval is refused
+    // rather than reported as done over a report already issued.
+    const claimed = await prisma.sample.updateMany({
+      where: { id: sample.id, status: "RESULTATS_SAISIS" },
+      data: {
+        status: "EN_ANALYSE",
+        rejectionReason: motif,
+        rejectedById: session.id,
+        rejectedAt: now,
+        // The technical sign-off is cleared: the corrected results must be
+        // validated again from the start.
+        validatedById: null,
+        validatedAt: null,
+        // Sent back to the bench: the next results deserve their own alert.
+        // Not during an amendment: the alerts sent for the report being
+        // amended stand, and only a changed result is alerted again
+        // (`sendContaminationAlerts`).
+        ...(sample.report?.amendmentPending ? {} : { alertsSentAt: null }),
+      },
+    });
+    if (claimed.count === 0) {
+      return NextResponse.json(
+        { error: "Cet échantillon vient de changer d'état : rechargez la page." },
+        { status: 409 }
+      );
     }
+    const updated = { id: sample.id, code: sample.code, status: "EN_ANALYSE" };
 
     await logAudit({
       actorId: session.id,

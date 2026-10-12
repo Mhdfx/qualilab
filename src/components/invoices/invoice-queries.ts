@@ -59,7 +59,7 @@ export async function loadInvoiceDetail(id: string): Promise<InvoiceDetailView |
       creditNotes: {
         where: { kind: "AVOIR" },
         orderBy: { createdAt: "asc" },
-        select: { id: true, number: true, issueDate: true, total: true },
+        select: { id: true, number: true, issueDate: true, total: true, subtotal: true },
       },
     },
   });
@@ -143,6 +143,13 @@ export async function loadInvoiceDetail(id: string): Promise<InvoiceDetailView |
     creditedAmount: figures.credited,
     balance: figures.balance,
     remainingCreditable: figures.remainingCreditable,
+    remainingSubtotal:
+      Math.round(
+        invoice.creditNotes.reduce(
+          (left, note) => left - Math.round(toMoney(note.subtotal) * 100),
+          Math.round(toMoney(invoice.subtotal) * 100)
+        )
+      ) / 100,
     state: figures.state,
   };
 }

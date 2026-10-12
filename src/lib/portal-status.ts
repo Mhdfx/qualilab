@@ -52,3 +52,21 @@ export function isPortalStage(value: unknown): value is PortalStage {
 export function reportAvailableOnPortal(status: SampleStatus): boolean {
   return status === "RAPPORT_ENVOYE";
 }
+
+/** The report exists in no sendable form yet (still at the laboratory, or being amended). */
+export const PORTAL_REPORT_NOT_YET = "Le rapport de cet échantillon n'est pas encore disponible.";
+
+/**
+ * Why the portal refuses a sample's report — or null when it is served. A
+ * cancelled sample will never have one: « pas encore » would promise it.
+ * A report reopened for amendment waits for the amended one to be sent.
+ */
+export function portalReportRefusal(
+  status: SampleStatus,
+  report: { amendmentPending: boolean } | null
+): string | null {
+  if (status === "ANNULE") return "Cet échantillon a été annulé : aucun rapport ne sera émis.";
+  if (!reportAvailableOnPortal(status) || !report || report.amendmentPending) return PORTAL_REPORT_NOT_YET;
+  return null;
+}
+

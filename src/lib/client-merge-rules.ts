@@ -294,3 +294,19 @@ export function invoiceSampleRefusal(
   }
   return `L'échantillon ${sample.code} appartient à un autre client.`;
 }
+
+/**
+ * May a new invoice (or a draft) be addressed to this client? A fiche merged
+ * into another, or attached as one of its sites (`mergedInto`), is empty:
+ * its samples and documents live on the kept record, which receives the new
+ * invoices (CLIENTS-FUSION.md §2–3). Null when it may; otherwise the refusal
+ * shown as is. Issued documents of such a fiche keep their life (settlements,
+ * credit notes): only a new or edited draft is concerned.
+ */
+export function mergedClientInvoiceRefusal(client: {
+  name: string;
+  mergedInto: { name: string } | null;
+}): string | null {
+  if (!client.mergedInto) return null;
+  return `${q(client.name)} a été regroupée avec ${q(client.mergedInto.name)} (fusion ou rattachement comme site) : établissez la facture au nom de ${q(client.mergedInto.name)}.`;
+}

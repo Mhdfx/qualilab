@@ -4,6 +4,8 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { validateClient, validateClientEmails } from "@/lib/client-validation";
 import { findSimilarClients } from "@/lib/client-identity";
+import { LOCK_RETRIES, isLockConflict, lockRetryPause } from "@/lib/billing";
+import type { Prisma } from "@/generated/prisma/client";
 
 /**
  * The client base.
@@ -82,42 +84,73 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: list.error }, { status: 400 });
   }
 
-  // Two clients with the same name would be indistinguishable in every picker.
-  const duplicate = await prisma.client.findFirst({
-    where: { name: validated.value.name },
-    select: { id: true },
-  });
-  if (duplicate) {
-    return NextResponse.json(
-      { error: "Un client porte déjà cette raison sociale." },
-      { status: 409 }
-    );
-  }
+  type Outcome = { client: Prisma.ClientGetPayload<{ include: { emails: true } }> } | { refusal: NextResponse };
+  const createOnce = () =>
+    prisma.$transaction(async (tx): Promise<Outcome> => {
+      // Two clients with the same name would be indistinguishable in every
+      // picker. Client.name has no unique index (the imported base predates
+      // the rule), so the check is a locking read on the name (index
+      // archived + name, case and accents ignored by the collation): two
+      // requests creating at the same instant cannot both pass it.
+      const duplicate = await tx.$queryRaw<{ id: string }[]>`
+        SELECT \`id\` FROM \`Client\`
+        WHERE \`archived\` IN (0, 1) AND \`name\` = ${validated.value.name}
+        FOR UPDATE`;
+      if (duplicate.length > 0) {
+        return {
+          refusal: NextResponse.json({ error: "Un client porte déjà cette raison sociale." }, { status: 409 }),
+        };
+      }
 
-  // A near-duplicate (same name under another spelling, same ICE, a typing
-  // error away) is only a warning: the gestionnaire checks the list and
-  // confirms « Ce n'est pas le même client » (CLIENTS-FUSION.md §5).
-  if (confirmDuplicate !== true) {
-    const candidates = await prisma.client.findMany({
-      where: { archived: false },
-      select: { id: true, name: true, ice: true },
+      // A near-duplicate (same name under another spelling, same ICE, a typing
+      // error away) is only a warning: the gestionnaire checks the list and
+      // confirms « Ce n'est pas le même client » (CLIENTS-FUSION.md §5).
+      if (confirmDuplicate !== true) {
+        const candidates = await tx.client.findMany({
+          where: { archived: false },
+          select: { id: true, name: true, ice: true },
+        });
+        const similar = findSimilarClients({ name: validated.value.name, ice: validated.value.ice }, candidates);
+        if (similar.length > 0) {
+          return {
+            refusal: NextResponse.json(
+              { error: "Des clients très proches existent déjà : vérifiez avant de créer.", similar },
+              { status: 409 }
+            ),
+          };
+        }
+      }
+
+      const client = await tx.client.create({
+        data: {
+          ...validated.value,
+          emails: list.value.length > 0 ? { create: list.value } : undefined,
+        },
+        include: { emails: true },
+      });
+      return { client };
     });
-    const similar = findSimilarClients({ name: validated.value.name, ice: validated.value.ice }, candidates);
-    if (similar.length > 0) {
-      return NextResponse.json(
-        { error: "Des clients très proches existent déjà : vérifiez avant de créer.", similar },
-        { status: 409 }
-      );
+
+  let outcome: Outcome | null = null;
+  for (let attempt = 1; outcome === null; attempt += 1) {
+    try {
+      outcome = await createOnce();
+    } catch (error) {
+      // Two creations at the same instant: InnoDB rolls one back (the gap
+      // locks of their reads deadlock). Nothing was written; it runs again,
+      // and then sees the other's row if it carried the same name.
+      if (!isLockConflict(error)) throw error;
+      if (attempt >= LOCK_RETRIES) {
+        return NextResponse.json(
+          { error: "Une autre création de client était en cours. Rien n'a été enregistré : réessayez." },
+          { status: 409 }
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, lockRetryPause(attempt)));
     }
   }
-
-  const client = await prisma.client.create({
-    data: {
-      ...validated.value,
-      emails: list.value.length > 0 ? { create: list.value } : undefined,
-    },
-    include: { emails: true },
-  });
+  if ("refusal" in outcome) return outcome.refusal;
+  const { client } = outcome;
 
   await logAudit({
     actorId: session.id,

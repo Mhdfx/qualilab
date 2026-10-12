@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@/generated/prisma/client";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
@@ -71,11 +72,17 @@ export async function POST(
   const { decision, consultation, reason, legacy } = parsed.value;
 
   // The guard doubles as optimistic concurrency: a second release finds the
-  // sample no longer held and gets a clean 409 via P2025.
+  // sample no longer held and gets a clean 409. `updateMany` re-checks it in
+  // the UPDATE and counts the changed rows (`update` reads, then writes by
+  // id: two releases racing were both answered 200 and journalled).
   const held = { id: sample.id, status: "RECU" as const, analysisBlocked: true };
-  const raced = (error: unknown) => {
-    if ((error as { code?: string }).code === "P2025") return null;
-    throw error;
+  const claim = async (data: Prisma.SampleUncheckedUpdateManyInput) => {
+    const moved = await prisma.sample.updateMany({ where: held, data });
+    if (moved.count === 0) return null;
+    return prisma.sample.findUniqueOrThrow({
+      where: { id: sample.id },
+      select: { id: true, code: true, status: true, analysisBlocked: true },
+    });
   };
 
   if (decision === "ANALYSER") {
@@ -87,24 +94,18 @@ export async function POST(
         : CONSULTATION_MESSAGES.required;
       return NextResponse.json({ error }, { status: 400 });
     }
-    const updated = await prisma.sample
-      .update({
-        where: held,
-        data: {
-          analysisBlocked: false,
-          awaitingClientSince: null,
-          ...(consultation
-            ? {
-                clientConsultedAt: consultation.at,
-                clientConsultedName: consultation.name,
-                clientConsultationChannel: consultation.channel,
-                clientConsultationNote: consultation.note,
-              }
-            : {}),
-        },
-        select: { id: true, code: true, status: true, analysisBlocked: true },
-      })
-      .catch(raced);
+    const updated = await claim({
+      analysisBlocked: false,
+      awaitingClientSince: null,
+      ...(consultation
+        ? {
+            clientConsultedAt: consultation.at,
+            clientConsultedName: consultation.name,
+            clientConsultationChannel: consultation.channel,
+            clientConsultationNote: consultation.note,
+          }
+        : {}),
+    });
     if (!updated) return NextResponse.json({ error: RELEASE_MESSAGES.already }, { status: 409 });
 
     await Promise.all([
@@ -150,20 +151,14 @@ export async function POST(
   // DETRUIRE: a cancellation, through the state machine.
   const transition = canTransition("RECU", "ANNULE", session.role);
   if (!transition.ok) return NextResponse.json({ error: transition.error }, { status: 403 });
-  const destroyed = await prisma.sample
-    .update({
-      where: held,
-      data: {
-        status: "ANNULE",
-        cancelledAt: now,
-        cancelledById: session.id,
-        cancelReason: "DETRUIT_A_RECEPTION",
-        analysisBlocked: false,
-        awaitingClientSince: null,
-      },
-      select: { id: true, code: true, status: true, analysisBlocked: true },
-    })
-    .catch(raced);
+  const destroyed = await claim({
+    status: "ANNULE",
+    cancelledAt: now,
+    cancelledById: session.id,
+    cancelReason: "DETRUIT_A_RECEPTION",
+    analysisBlocked: false,
+    awaitingClientSince: null,
+  });
   if (!destroyed) return NextResponse.json({ error: RELEASE_MESSAGES.already }, { status: 409 });
 
   await Promise.all([

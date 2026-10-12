@@ -125,6 +125,20 @@ describe("buildInvoiceHtml", () => {
     expect(html).toContain("<title>Avoir AV-2026-0003</title>");
   });
 
+  it("prints a decimal VAT rate and quantity the French way (5,5 %, 1,5)", () => {
+    const page = text(
+      buildInvoiceHtml({
+        ...issued,
+        taxRate: 5.5,
+        items: [{ description: "Prélèvement", quantity: 1.5, unitPrice: 100, lineTotal: 150 }],
+      })
+    );
+    expect(page).toContain("TVA (5,5 %)");
+    expect(page).toContain("Prélèvement 1,5 ");
+    expect(page).not.toMatch(/5\.5 %|1\.5 /);
+    expect(text(buildInvoiceHtml(issued))).toContain("TVA (20 %)");
+  });
+
   it("stays readable for an invoice built before drafts (no kind, no amounts)", () => {
     const legacy: InvoiceDocument = { ...issued };
     delete legacy.kind;

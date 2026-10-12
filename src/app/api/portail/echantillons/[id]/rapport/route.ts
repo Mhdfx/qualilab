@@ -5,7 +5,7 @@ import { renderPdf } from "@/lib/pdf";
 import { prisma } from "@/lib/prisma";
 import { portalSampleByIdWhere } from "@/lib/portal-query";
 import { portalNotFound, requirePortalApi } from "@/lib/portal-server";
-import { reportAvailableOnPortal } from "@/lib/portal-status";
+import { PORTAL_REPORT_NOT_YET, portalReportRefusal } from "@/lib/portal-status";
 import { buildReportHtml, REPORT_PDF_MARGIN } from "@/lib/report-html";
 import { loadReportData } from "@/lib/report-dispatch";
 
@@ -33,20 +33,16 @@ export async function GET(
   if (!sample) return portalNotFound();
 
   // A report reopened for amendment is not offered until the amended one is
-  // sent (the sample is back « En analyse » meanwhile).
-  if (!reportAvailableOnPortal(sample.status) || !sample.report || sample.report.amendmentPending) {
-    return NextResponse.json(
-      { error: "Le rapport de cet échantillon n'est pas encore disponible." },
-      { status: 409 }
-    );
+  // sent (the sample is back « En analyse » meanwhile); a cancelled sample
+  // is told it will have none.
+  const refusal = portalReportRefusal(sample.status, sample.report);
+  if (refusal || !sample.report) {
+    return NextResponse.json({ error: refusal ?? PORTAL_REPORT_NOT_YET }, { status: 409 });
   }
 
   const data = await loadReportData(sample.id);
   if (!data) {
-    return NextResponse.json(
-      { error: "Le rapport de cet échantillon n'est pas encore disponible." },
-      { status: 409 }
-    );
+    return NextResponse.json({ error: PORTAL_REPORT_NOT_YET }, { status: 409 });
   }
 
   try {

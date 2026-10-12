@@ -205,6 +205,36 @@ describe("checkCreditNote", () => {
     else throw new Error("expected a refusal");
   });
 
+  describe("the credit note that takes back all the HT left closes the invoice", () => {
+    // Invoice 2 × 145,50 at 7 %: 291,00 HT, 20,37 VAT (20,37), 311,37 TTC.
+    // Each line credited alone: 145,50 + 10,19 (10,185) = 155,69 — twice is 311,38.
+    const half = { description: "Ligne", quantity: 1, unitPrice: 145.5 };
+
+    it("lets the last note of an invoice credited line by line close it to the centime", () => {
+      const first = checkCreditNote([half], 311.37, 7, { remainingSubtotal: 291, previousNotes: 0 });
+      expect(first).toMatchObject({ ok: true, totals: { subtotal: 145.5, taxAmount: 10.19, total: 155.69 } });
+      const last = checkCreditNote([half], 155.68, 7, { remainingSubtotal: 145.5, previousNotes: 1 });
+      expect(last).toMatchObject({ ok: true, totals: { subtotal: 145.5, taxAmount: 10.18, total: 155.68 } });
+      // Without the closing information, the same note is refused by one centime.
+      expect(checkCreditNote([half], 155.68, 7)).toMatchObject({ ok: false });
+    });
+
+    it("also closes an invoice whose notes left a centime behind", () => {
+      // 2 × 0,03 at 14 %: 0,06 HT, 0,01 VAT, 0,07 TTC; each line alone is 0,03 TTC.
+      const tiny = { description: "Ligne", quantity: 1, unitPrice: 0.03 };
+      const last = checkCreditNote([tiny], 0.04, 14, { remainingSubtotal: 0.03, previousNotes: 1 });
+      expect(last).toMatchObject({ ok: true, totals: { subtotal: 0.03, taxAmount: 0.01, total: 0.04 } });
+    });
+
+    it("never adjusts a note that leaves HT on the invoice, nor beyond rounding", () => {
+      expect(checkCreditNote([half], 311.37, 7, { remainingSubtotal: 291, previousNotes: 0 })).toMatchObject({
+        totals: { total: 155.69 },
+      });
+      // 5 centimes off after one earlier note is not rounding: refused as before.
+      expect(checkCreditNote([half], 155.64, 7, { remainingSubtotal: 145.5, previousNotes: 1 })).toMatchObject({ ok: false });
+    });
+  });
+
   it("refuses empty or malformed lines", () => {
     expect(checkCreditNote([], 768, 20)).toMatchObject({ ok: false });
     expect(checkCreditNote([{ ...line, description: " " }], 768, 20)).toMatchObject({ ok: false, error: expect.stringMatching(/Ligne 1/) });

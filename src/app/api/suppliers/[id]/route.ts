@@ -42,7 +42,19 @@ export async function PATCH(
     return NextResponse.json(supplier);
   }
 
-  const validated = validateSupplier({ name: existing.name, ...input });
+  // A PATCH changes what it carries: a field it leaves out keeps its value
+  // (the screen sends the whole form; a body of one field nulled the rest).
+  const validated = validateSupplier({
+    name: existing.name,
+    contact: existing.contact,
+    email: existing.email,
+    phone: existing.phone,
+    address: existing.address,
+    ice: existing.ice,
+    paymentTermDays: existing.paymentTermDays,
+    notes: existing.notes,
+    ...input,
+  });
   if (!validated.ok) {
     return NextResponse.json({ error: validated.error }, { status: 400 });
   }

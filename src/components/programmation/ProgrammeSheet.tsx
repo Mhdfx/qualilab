@@ -503,7 +503,7 @@ export function ProgrammeSheet({
           <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <span>
-              Le type « {lostType.name} » enregistré sur l&apos;échantillon n&apos;est plus proposé à ce client : choisissez-en un autre, ou laissez « — aucun — ».
+              Le type « {lostType.name}{" "}» enregistré sur l&apos;échantillon n&apos;est plus proposé à ce client : choisissez-en un autre, ou laissez « — aucun — ».
             </span>
           </p>
         )}
@@ -691,7 +691,7 @@ export function ProgrammeSheet({
               />
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              {sample.unitCount} unité{sample.unitCount > 1 ? "s" : ""} prélevée{sample.unitCount > 1 ? "s" : ""} sur le terrain · 5 pour la plupart des aliments, 9 pour l&apos;histamine.
+              {sample.unitCount} unité{sample.unitCount > 1 ? "s" : ""} prélevée{sample.unitCount > 1 ? "s" : ""}{" "}sur le terrain · 5 pour la plupart des aliments, 9 pour l&apos;histamine.
             </p>
             {warning && (
               <p className="mt-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">

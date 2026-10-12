@@ -137,6 +137,7 @@ export function InvoiceActionsBar({ invoice, canManage }: { invoice: InvoiceDeta
           items={invoice.items}
           taxRate={invoice.taxRate}
           remaining={invoice.remainingCreditable}
+          closing={{ remainingSubtotal: invoice.remainingSubtotal, previousNotes: invoice.creditNotes.length }}
           onDone={(id) => {
             setOpen(null);
             if (id) router.push(`${base}/${id}`);

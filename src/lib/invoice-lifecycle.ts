@@ -203,15 +203,51 @@ export type CreditNoteCheck =
   | { ok: false; error: string };
 
 /**
+ * What the credit notes already issued left of the invoice, for the one
+ * that closes it: `remainingSubtotal` = invoice HT − the credit notes' HT,
+ * `previousNotes` = how many credit notes were issued before this one.
+ */
+export type CreditNoteClosing = {
+  remainingSubtotal: MoneyInput;
+  previousNotes: number;
+};
+
+/**
+ * The credit note that takes back the whole HT still on the invoice closes
+ * it: its TTC is exactly what may still be credited. Each credit note
+ * rounds its VAT on its own HT, the invoice on its whole HT, so the notes'
+ * TTC may differ from the invoice's by a centime per note (7 % of 145,50 is
+ * 10,185 → 10,19 on each of two notes, 20,37 on the invoice of 291,00): the
+ * last note absorbs that difference in its VAT instead of being refused —
+ * otherwise an invoice credited line by line could never be closed.
+ */
+function closeInvoiceTotals(
+  totals: InvoiceTotals,
+  remainingCents: number,
+  closing: CreditNoteClosing | undefined
+): InvoiceTotals {
+  if (!closing || remainingCents <= 0) return totals;
+  if (cents(totals.subtotal) !== cents(closing.remainingSubtotal)) return totals;
+  const drift = remainingCents - cents(totals.total);
+  // Rounding only: at most a centime per credit note (this one included).
+  if (drift === 0 || Math.abs(drift) > Math.max(0, closing.previousNotes) + 1) return totals;
+  const total = fromCents(remainingCents);
+  return { ...totals, taxAmount: roundMoney(total - totals.subtotal), total };
+}
+
+/**
  * A credit note: at least one line, each with a description, a positive
  * quantity and a non-negative unit price (amounts positive, like an
  * invoice); a total TTC above zero and within what may still be credited.
- * Computed at the invoice's VAT rate, so `totals` is what to store.
+ * Computed at the invoice's VAT rate, so `totals` is what to store. With
+ * `closing`, the note taking back all the HT left closes the invoice to the
+ * centime (`closeInvoiceTotals`).
  */
 export function checkCreditNote(
   lines: readonly CreditNoteLine[],
   remainingCreditableAmount: MoneyInput,
-  taxRate: number
+  taxRate: number,
+  closing?: CreditNoteClosing
 ): CreditNoteCheck {
   if (!Array.isArray(lines) || lines.length === 0) {
     return { ok: false, error: "Un avoir comporte au moins une ligne." };
@@ -228,11 +264,11 @@ export function checkCreditNote(
       return { ok: false, error: `${position} : le prix unitaire ne peut pas être négatif.` };
     }
   }
-  const totals = computeInvoiceTotals(lines, taxRate);
+  const remaining = cents(remainingCreditableAmount);
+  const totals = closeInvoiceTotals(computeInvoiceTotals(lines, taxRate), remaining, closing);
   if (cents(totals.total) <= 0) {
     return { ok: false, error: "Le montant de l'avoir doit être supérieur à zéro." };
   }
-  const remaining = cents(remainingCreditableAmount);
   if (cents(totals.total) > remaining) {
     return {
       ok: false,

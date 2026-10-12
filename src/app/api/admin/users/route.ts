@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAPIError } from "better-auth/api";
 import { requireApiRole } from "@/lib/auth";
 import { auth } from "@/lib/auth-server";
 import { internalEmailFor } from "@/lib/auth-server";
@@ -129,12 +130,19 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    // A refusal of the auth layer (identifier or password it will not
-    // accept) is the administrator's to fix, not a server failure.
     const message = error instanceof Error ? error.message : "";
     console.error("[admin/users] création refusée", { username: cleanUsername, message });
+    // The same identifier created at the same instant (double click): the
+    // unique index refuses the second — the answer of the check above.
+    if ((error as { code?: unknown }).code === "P2002" || /unique constraint/i.test(message)) {
+      return NextResponse.json({ error: "Cet identifiant est déjà utilisé." }, { status: 409 });
+    }
+    // A refusal of the auth layer (identifier or password it will not
+    // accept) is the administrator's to fix, not a server failure. Only its
+    // own message is shown: a database error carries SQL and server paths.
+    const shown = isAPIError(error) ? message : "";
     return NextResponse.json(
-      { error: message ? `Création refusée : ${message}` : "Création refusée par le service d'authentification." },
+      { error: shown ? `Création refusée : ${shown}` : "Création refusée par le service d'authentification." },
       { status: 400 }
     );
   }

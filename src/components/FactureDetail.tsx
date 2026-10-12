@@ -39,9 +39,10 @@ export function FactureDetail({
   /** COMPTABLE and ADMIN act on the invoice; the others only read it. */
   canManage?: boolean;
 }) {
-  // The recap lists the standard rates plus whatever rate this invoice
-  // actually carries, so an unusual rate never prints an all-dash recap.
-  const vatRates = [invoice.taxRate, 20, 10, 5.5]
+  // The recap lists Morocco's standard rates (20, 14, 10, 7 %) plus whatever
+  // rate this invoice actually carries, so an unusual rate never prints an
+  // all-dash recap.
+  const vatRates = [invoice.taxRate, 20, 14, 10, 7]
     .filter((rate, index, all) => all.indexOf(rate) === index)
     .sort((a, b) => b - a);
   const base = useInvoiceBasePath();

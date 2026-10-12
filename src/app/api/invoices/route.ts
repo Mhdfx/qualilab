@@ -9,6 +9,7 @@ import { drawDocumentNumber } from "@/lib/invoice-number";
 import { computeInvoiceTotals } from "@/lib/invoice-math";
 import { statusAfterPayments } from "@/lib/invoice-lifecycle";
 import { CLIENT_IDENTITY_SELECT, clientSnapshotOf } from "@/lib/invoice-client-identity";
+import { mergedClientInvoiceRefusal } from "@/lib/client-merge-rules";
 import {
   INVOICE_DETAIL_INCLUDE,
   INVOICE_LIST_INCLUDE,
@@ -95,11 +96,14 @@ export async function POST(request: Request) {
 
     const client = await prisma.client.findUnique({
       where: { id: fields.clientId },
-      select: { id: true, ...CLIENT_IDENTITY_SELECT },
+      select: { id: true, ...CLIENT_IDENTITY_SELECT, mergedInto: { select: { name: true } } },
     });
     if (!client) {
       return NextResponse.json({ error: "Client introuvable." }, { status: 404 });
     }
+    // A merged (or attached) fiche is empty: the kept record is invoiced (CLIENTS-FUSION.md §2–3).
+    const merged = mergedClientInvoiceRefusal(client);
+    if (merged) return NextResponse.json({ error: merged }, { status: 400 });
 
     const { subtotal, taxAmount, total } = computeInvoiceTotals(fields.lines, fields.taxRate);
 

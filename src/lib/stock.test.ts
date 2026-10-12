@@ -4,8 +4,11 @@ import {
   dueDateFor,
   dueState,
   isLowStock,
+  MAX_STOCK_LEVEL,
 } from "./stock";
 import {
+  MAX_QUANTITY,
+  parseFormDay,
   validatePurchaseInvoice,
   validateStockItem,
   validateSupplier,
@@ -110,6 +113,22 @@ describe("validateSupplier", () => {
     expect(validateSupplier({ name: "X", paymentTermDays: "500" }).ok).toBe(false);
     expect(validateSupplier({ name: "X", paymentTermDays: "-1" }).ok).toBe(false);
   });
+
+  it("refuses notes beyond their TEXT column, and says it in agreed French", () => {
+    expect(validateSupplier({ name: "X", notes: "n".repeat(5000) }).ok).toBe(true);
+    expect(validateSupplier({ name: "X", notes: "n".repeat(5001) })).toEqual({
+      ok: false,
+      error: "Les notes sont trop longues (5000 caractères max).",
+    });
+    expect(validateSupplier({ name: "X", address: "a".repeat(192) })).toEqual({
+      ok: false,
+      error: "L'adresse est trop longue (191 caractères max).",
+    });
+    expect(validateSupplier({ name: "X", contact: "c".repeat(192) })).toEqual({
+      ok: false,
+      error: "Le contact est trop long (191 caractères max).",
+    });
+  });
 });
 
 describe("validatePurchaseInvoice", () => {
@@ -140,5 +159,58 @@ describe("validateStockItem", () => {
     if (result.ok) expect(result.value.minQuantity).toBe(0);
     expect(validateStockItem({ name: "", unit: "boîte" }).ok).toBe(false);
     expect(validateStockItem({ name: "Gélose", unit: "" }).ok).toBe(false);
+  });
+});
+
+/**
+ * Inputs the database cannot hold (VARCHAR(191), DECIMAL(12,2)) or days that
+ * do not exist were answered with a server error, or — for a day like
+ * 30/02 — silently stored on another day. Each is a French refusal now.
+ */
+describe("Achat & Stock — what the columns cannot hold", () => {
+  const long = "x".repeat(192);
+
+  it("refuses a supplier field longer than its column", () => {
+    expect(validateSupplier({ name: "X", contact: long }).ok).toBe(false);
+    expect(validateSupplier({ name: "X", address: long }).ok).toBe(false);
+    expect(validateSupplier({ name: "X", phone: long }).ok).toBe(false);
+    expect(validateSupplier({ name: "X", contact: "x".repeat(191) }).ok).toBe(true);
+  });
+
+  it("refuses an invoice number or label longer than its column, and an amount beyond DECIMAL(12,2)", () => {
+    const valid = { number: "F-1", amount: "10", issueDate: "2026-08-27" };
+    expect(validatePurchaseInvoice({ ...valid, number: long }).ok).toBe(false);
+    expect(validatePurchaseInvoice({ ...valid, label: long }).ok).toBe(false);
+    expect(validatePurchaseInvoice({ ...valid, amount: 99_999_999_999 }).ok).toBe(false);
+    expect(validatePurchaseInvoice({ ...valid, amount: "9999999999,99" }).ok).toBe(true);
+  });
+
+  it("refuses an invoice day that does not exist instead of rolling it over", () => {
+    expect(validatePurchaseInvoice({ number: "F-1", amount: "10", issueDate: "2026-02-30" }).ok).toBe(false);
+    expect(validatePurchaseInvoice({ number: "F-1", amount: "10", issueDate: "2026-02-28", dueDate: "2026-02-31" }).ok).toBe(false);
+    const ok = validatePurchaseInvoice({ number: "F-1", amount: "10", issueDate: "2026-02-28" });
+    expect(ok.ok && ok.value.issueDate.toISOString()).toBe("2026-02-28T00:00:00.000Z");
+  });
+
+  it("parseFormDay reads a form day or an ISO date-time, never an impossible day", () => {
+    expect(parseFormDay("2027-03-31")?.toISOString()).toBe("2027-03-31T00:00:00.000Z");
+    expect(parseFormDay("2027-03-31T10:00:00.000Z")?.toISOString()).toBe("2027-03-31T00:00:00.000Z");
+    expect(parseFormDay("2027-02-30")).toBeNull();
+    expect(parseFormDay("31/03/2027")).toBeNull();
+  });
+
+  it("refuses a stock category, unit or threshold beyond its column", () => {
+    expect(validateStockItem({ name: "G", unit: "boîte", category: long }).ok).toBe(false);
+    expect(validateStockItem({ name: "G", unit: long }).ok).toBe(false);
+    expect(validateStockItem({ name: "G", unit: "L", minQuantity: 1e12 }).ok).toBe(false);
+    expect(validateStockItem({ name: "G", unit: "L", minQuantity: MAX_QUANTITY }).ok).toBe(true);
+  });
+
+  it("refuses a movement, or a level after an entry, beyond DECIMAL(12,2)", () => {
+    expect(applyMovement(0, "ENTREE", 1e12).ok).toBe(false);
+    expect(applyMovement(MAX_STOCK_LEVEL, "ENTREE", 1).ok).toBe(false);
+    expect(applyMovement(0, "AJUSTEMENT", 1e12).ok).toBe(false);
+    expect(applyMovement(10, "SORTIE", 1e12).ok).toBe(false);
+    expect(applyMovement(0, "ENTREE", MAX_STOCK_LEVEL)).toEqual({ ok: true, next: MAX_STOCK_LEVEL });
   });
 });

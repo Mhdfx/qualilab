@@ -3,6 +3,7 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { validateEil } from "@/lib/quality-validation";
+import { isoDayOf } from "@/lib/date-only";
 
 /** Update a campaign: status moves, results arrive, notes accumulate. */
 export async function PATCH(
@@ -25,9 +26,18 @@ export async function PATCH(
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
 
+  // A PATCH changes what it carries: a field it leaves out keeps its value
+  // (the screen sends the whole form; a status alone nulled the results).
   const validated = validateEil({
     name: existing.name,
+    organizer: existing.organizer,
+    scope: existing.scope,
+    startDate: existing.startDate ? isoDayOf(existing.startDate) : null,
+    resultDate: existing.resultDate ? isoDayOf(existing.resultDate) : null,
     status: existing.status,
+    outcome: existing.outcome,
+    satisfactory: existing.satisfactory,
+    notes: existing.notes,
     ...(body as Record<string, unknown>),
   });
   if (!validated.ok) {

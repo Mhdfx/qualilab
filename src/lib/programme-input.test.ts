@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DUE_AT_MAX_AHEAD_MS,
   DUE_AT_TOLERANCE_MS,
   MAX_DILUTION_FACTOR,
   MAX_PARAMETER_NOTE,
@@ -293,6 +294,13 @@ describe("validateProgramme — the organisation", () => {
     expectError({ ...good, dueAt: tooEarly }, /dans le passé/);
     expectError({ ...good, dueAt: "hier" }, /délai de rendu est invalide/);
     expectError({ ...good, dueAt: 1_700_000_000 }, /délai de rendu est invalide/);
+  });
+
+  it("refuses a due date more than a year ahead (full-db 12/10: a 500 on « +010000-01-01 »)", () => {
+    const inAYear = new Date(NOW.getTime() + DUE_AT_MAX_AHEAD_MS - 1000).toISOString();
+    expect(validateProgramme({ ...good, dueAt: inAYear }, ctx).ok).toBe(true);
+    expectError({ ...good, dueAt: new Date(NOW.getTime() + DUE_AT_MAX_AHEAD_MS + 1000).toISOString() }, /trop lointain/);
+    expectError({ ...good, dueAt: "+010000-01-01" }, /trop lointain/);
   });
 
   it("accepts no due date at all", () => {

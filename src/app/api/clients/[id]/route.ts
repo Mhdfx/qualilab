@@ -4,8 +4,12 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { validateClient, validateClientEmails } from "@/lib/client-validation";
 import { findSimilarClients, sameClientName } from "@/lib/client-identity";
+import { LOCK_RETRIES, isLockConflict, lockRetryPause } from "@/lib/billing";
 
 const LINK = { select: { id: true, name: true } } as const;
+
+/** Another client took the new name meanwhile: rolls the save back, then the 409. */
+class NameTaken extends Error {}
 
 /**
  * A client record: read, update, archive.
@@ -165,7 +169,17 @@ export async function PATCH(
     }
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
+  const saveOnce = () => prisma.$transaction(async (tx) => {
+    if (renamed) {
+      // The check above, again under a locking read on the name (index
+      // archived + name, as at creation): a creation or another rename to
+      // the same name at the same instant cannot both pass it.
+      const clash = await tx.$queryRaw<{ id: string }[]>`
+        SELECT \`id\` FROM \`Client\`
+        WHERE \`archived\` IN (0, 1) AND \`name\` = ${validated.value.name} AND \`id\` <> ${id}
+        FOR UPDATE`;
+      if (clash.length > 0) throw new NameTaken();
+    }
     const client = await tx.client.update({
       where: { id },
       data: {
@@ -194,6 +208,28 @@ export async function PATCH(
 
     return client;
   });
+
+  let updated: Awaited<ReturnType<typeof saveOnce>> | null = null;
+  for (let attempt = 1; updated === null; attempt += 1) {
+    try {
+      updated = await saveOnce();
+    } catch (error) {
+      if (error instanceof NameTaken) {
+        return NextResponse.json({ error: "Un client porte déjà cette raison sociale." }, { status: 409 });
+      }
+      // Two writes on the same name at the same instant: InnoDB rolls one
+      // back (their gap locks deadlock). Nothing was written; it runs again
+      // and then meets the other's name.
+      if (!isLockConflict(error)) throw error;
+      if (attempt >= LOCK_RETRIES) {
+        return NextResponse.json(
+          { error: "Une autre modification de client était en cours. Rien n'a été enregistré : réessayez." },
+          { status: 409 }
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, lockRetryPause(attempt)));
+    }
+  }
 
   await logAudit({
     actorId: session.id,

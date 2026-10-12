@@ -214,7 +214,7 @@ function ItemRow({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <p className="mr-2 text-lg font-bold tabular-nums text-slate-900">
             {item.quantity}
             <span className="ml-1 text-sm font-medium text-slate-500">{item.unit}</span>

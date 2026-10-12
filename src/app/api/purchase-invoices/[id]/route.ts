@@ -37,6 +37,17 @@ export async function PATCH(
     return NextResponse.json({ error: "Statut invalide." }, { status: 400 });
   }
 
+  // Already there (a double click, two tabs): nothing changes — above all
+  // not the date the invoice was paid on, and no second journal entry.
+  if (status === existing.status) {
+    const { supplier, ...unchanged } = existing;
+    return NextResponse.json({
+      ...unchanged,
+      supplier: { id: existing.supplierId, name: supplier.name },
+      amount: toMoney(existing.amount),
+    });
+  }
+
   const invoice = await prisma.purchaseInvoice.update({
     where: { id },
     data: { status, paidAt: status === "PAYEE" ? new Date() : null },

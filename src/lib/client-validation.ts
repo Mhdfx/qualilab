@@ -104,6 +104,14 @@ export function validateClientEmails(
     if (!isEmail(email)) {
       return { ok: false, error: `Adresse invalide : ${email}` };
     }
+    // VARCHAR(191), like every column of the fiche: refused here rather than
+    // by the database (a 500 that lost the whole save).
+    if (email.length > 191) {
+      return { ok: false, error: "Une adresse de la liste est trop longue (191 caractères maximum)." };
+    }
+    if (text((entry as { label?: unknown })?.label).length > 191) {
+      return { ok: false, error: `Le libellé de ${email} est trop long (191 caractères maximum).` };
+    }
     if (seen.has(email)) {
       return { ok: false, error: `Adresse en double : ${email}` };
     }

@@ -36,3 +36,14 @@ describe("needsRegulation / validateRegulation", () => {
     expect(validateRegulation({ title: "x", text: "y".repeat(4001) }).ok).toBe(false);
   });
 });
+
+describe("validateRegulation — display order", () => {
+  // 99 999 999 999 overflowed the INT column: a server error instead of a message.
+  it("refuses an order outside 0 … 10 000 and keeps the lenient default", () => {
+    expect(validateRegulation({ title: "x", sortOrder: 99_999_999_999 }).ok).toBe(false);
+    expect(validateRegulation({ title: "x", sortOrder: -1 }).ok).toBe(false);
+    expect(validateRegulation({ title: "x", sortOrder: 10_000 })).toMatchObject({ ok: true, value: { sortOrder: 10_000 } });
+    expect(validateRegulation({ title: "x", sortOrder: "abc" })).toMatchObject({ ok: true, value: { sortOrder: 0 } });
+    expect(validateRegulation({ title: "x" })).toMatchObject({ ok: true, value: { sortOrder: 0 } });
+  });
+});

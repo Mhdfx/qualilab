@@ -471,6 +471,7 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
                 <input
                   type="number"
                   min="0"
+                  max="100"
                   step="0.1"
                   value={taxRate}
                   onChange={(e) => setTaxRate(e.target.value)}

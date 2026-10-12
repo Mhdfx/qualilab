@@ -167,7 +167,7 @@ function EquipmentCard({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <PanelButton icon={ClipboardCheck} label="Étalonnage" active={panel === "calibrate"} onClick={() => setPanel(panel === "calibrate" ? "none" : "calibrate")} />
           <PanelButton icon={History} label="Historique" active={panel === "history"} onClick={() => setPanel(panel === "history" ? "none" : "history")} />
           <PanelButton icon={Pencil} label="Modifier" active={panel === "edit"} onClick={() => setPanel(panel === "edit" ? "none" : "edit")} />

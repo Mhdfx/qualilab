@@ -179,6 +179,13 @@ export async function PUT(
         { status: 400 }
       );
     }
+    // A TEXT column: a longer note was refused by the database (500).
+    if (note.length > 5000) {
+      return NextResponse.json(
+        { error: `La note est trop longue pour ${parameter.name} (5 000 caractères max).` },
+        { status: 400 }
+      );
+    }
 
     const plan = bench.plans.get(parameterId);
     if (plan || bench.unitCount > 1) {
@@ -289,7 +296,15 @@ export async function PUT(
 
   const now = new Date();
 
-  await prisma.$transaction(async (tx) => {
+  const written = await prisma.$transaction(async (tx) => {
+    // Two saves of the same sheet (double click, two technicians of the line)
+    // are serialised on the sample row: racing upserts of a first reading and
+    // the clear-then-insert of the units deadlocked or collided (500). The
+    // status is read again under the lock: a sheet submitted meanwhile is
+    // no longer written.
+    const locked = await tx.$queryRaw<{ status: string }[]>`
+      SELECT \`status\` FROM \`Sample\` WHERE \`id\` = ${sample.id} FOR UPDATE`;
+    if (locked[0]?.status !== "PROGRAMME" && locked[0]?.status !== "EN_ANALYSE") return false;
     for (const entry of entries) {
       const { units, ...data } = entry;
       const result = await tx.result.upsert({
@@ -326,31 +341,38 @@ export async function PUT(
         }));
       if (rows.length > 0) await tx.resultUnit.createMany({ data: rows });
     }
+    return true;
   });
+  if (!written) {
+    return NextResponse.json(
+      { error: "Les résultats ne peuvent plus être modifiés à ce stade du circuit." },
+      { status: 409 }
+    );
+  }
 
   // Starting to record results is what puts a sample "en analyse".
   let status = sample.status;
   if (sample.status === "PROGRAMME") {
     const transition = canTransition("PROGRAMME", "EN_ANALYSE", session.role);
     if (transition.ok) {
-      await prisma.sample
-        .update({
-          where: { id: sample.id, status: "PROGRAMME" },
-          data: { status: "EN_ANALYSE" },
-        })
-        .catch((error) => {
-          // A concurrent save already moved it: nothing left to do.
-          if ((error as { code?: string }).code !== "P2025") throw error;
-        });
+      // A concurrent save may already have moved it: only the save whose
+      // UPDATE changed the row journals the start (`updateMany` re-checks
+      // the status in the write itself).
+      const started = await prisma.sample.updateMany({
+        where: { id: sample.id, status: "PROGRAMME" },
+        data: { status: "EN_ANALYSE" },
+      });
       status = "EN_ANALYSE";
 
-      await logAudit({
-        actorId: session.id,
-        action: "SAMPLE_ANALYSIS_STARTED",
-        entity: "Sample",
-        entityId: sample.id,
-        metadata: { from: "PROGRAMME", to: "EN_ANALYSE", code: sample.code },
-      });
+      if (started.count > 0) {
+        await logAudit({
+          actorId: session.id,
+          action: "SAMPLE_ANALYSIS_STARTED",
+          entity: "Sample",
+          entityId: sample.id,
+          metadata: { from: "PROGRAMME", to: "EN_ANALYSE", code: sample.code },
+        });
+      }
     }
   }
 

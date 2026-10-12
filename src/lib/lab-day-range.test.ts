@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { labDayStart, parseLabDayRange } from "./lab-day-range";
+import { labDayBounds, labDayStart, parseLabDayRange } from "./lab-day-range";
 
 describe("labDayStart", () => {
   it("is UTC midnight since Morocco's return to UTC (20/09/2026)", () => {
@@ -42,5 +42,31 @@ describe("parseLabDayRange", () => {
   it("stays open on a side that is missing or unreadable", () => {
     expect(parseLabDayRange("2026-02-30", "2026-10-05")).toMatchObject({ fromDay: null, from: null, toDay: "2026-10-05" });
     expect(parseLabDayRange(undefined, undefined)).toEqual({ fromDay: null, toDay: null, from: null, until: null });
+  });
+});
+
+describe("labDayBounds", () => {
+  it("bounds the day asked on the laboratory's clock", () => {
+    expect(labDayBounds("2026-10-12", new Date("2026-10-20T10:00:00Z"))).toEqual({
+      day: "2026-10-12",
+      from: new Date("2026-10-12T00:00:00.000Z"),
+      until: new Date("2026-10-13T00:00:00.000Z"),
+    });
+  });
+
+  it("is the laboratory's today when no day is asked — 00:30 UTC is already the new day", () => {
+    const now = new Date("2026-10-12T00:30:00Z");
+    expect(labDayBounds(null, now)?.day).toBe("2026-10-12");
+    expect(labDayBounds("", now)?.from).toEqual(new Date("2026-10-12T00:00:00.000Z"));
+  });
+
+  it("keeps UTC+1 for a day before Morocco's return to UTC", () => {
+    expect(labDayBounds("2026-09-10", new Date())?.from).toEqual(new Date("2026-09-09T23:00:00.000Z"));
+  });
+
+  it("refuses what is not a real day", () => {
+    for (const value of ["abc", "2026-02-31", "12/10/2026"]) {
+      expect(labDayBounds(value, new Date()), value).toBeNull();
+    }
   });
 });

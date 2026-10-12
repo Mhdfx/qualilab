@@ -2,17 +2,18 @@ import { NextResponse } from "next/server";
 import type { Cadre } from "@/generated/prisma/enums";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
-import { CADRE_CHOICES, formatCadre } from "@/lib/labels";
+import { CADRE_CHOICES, formatCadre, futureMessage } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 import { serieSelectFor, serializeSerie } from "@/lib/serie-select";
 import { arrivalRefusal } from "@/lib/serie-input";
 import { serieStatus } from "@/lib/series";
 import { IMAGE_DATA_URI, MAX_IMAGE_CHARS, canSeeProtocolPhoto } from "@/lib/protocol-photo-access";
 
+// Never TECHNICIEN: a série names the client, the site and the interlocutor,
+// and the bench works blind (as for the protocol photo).
 const CIRCUIT_ROLES = [
   "PRELEVEUR",
   "RECEPTIONNISTE",
-  "TECHNICIEN",
   "VALIDATEUR",
   "GESTIONNAIRE",
   "COMPTABLE",
@@ -108,6 +109,11 @@ export async function PATCH(
   const arrivedAt = date(input.arrivedAt);
   if (endedAt === "invalid") return fail("L'heure de fin n'est pas valide.");
   if (arrivedAt === "invalid") return fail("L'heure d'arrivée n'est pas valide.");
+  // Never in the future, as at creation (`validateSerie`, 5 min tolerance):
+  // « 12345 » or « +010000-01-01 » read as dates past the DATETIME range (500).
+  const latest = Date.now() + 5 * 60 * 1000;
+  if (endedAt instanceof Date && endedAt.getTime() > latest) return fail(futureMessage("L'heure de fin"));
+  if (arrivedAt instanceof Date && arrivedAt.getTime() > latest) return fail(futureMessage("L'heure d'arrivée"));
 
   const finalEnded = (endedAt as unknown) === "skip" ? serie.endedAt : (endedAt as Date | null);
   const finalArrived = (arrivedAt as unknown) === "skip" ? serie.arrivedAt : (arrivedAt as Date | null);

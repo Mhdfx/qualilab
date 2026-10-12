@@ -10,6 +10,7 @@ import {
   invoiceState,
   isIssued,
   remainingCreditable,
+  type CreditNoteClosing,
   type CreditNoteLine,
   type InvoiceState,
 } from "@/lib/invoice-lifecycle";
@@ -104,6 +105,8 @@ export type InvoiceDetailView = {
   creditedAmount: number;
   balance: number;
   remainingCreditable: number;
+  /** FACTURE: its HT less the credit notes' HT — the HT a closing credit note takes back. */
+  remainingSubtotal: number;
   state: InvoiceState;
 };
 
@@ -546,13 +549,16 @@ export function creditNoteLines(draft: CreditNoteDraftLine[]): CreditNoteLine[] 
  * The live preview of the dialog: totals of the readable lines, and the
  * error the API would answer, so the button says it before the click. With
  * the invoice's `items`, a line taken back beyond what is left on its
- * invoice line is refused too (same rule and order as the API).
+ * invoice line is refused too (same rule and order as the API). With
+ * `closing`, the totals of a note taking back all the HT left are the
+ * API's: its TTC is exactly what may still be credited.
  */
 export function creditNotePreview(
   draft: CreditNoteDraftLine[],
   remaining: number,
   taxRate: number,
-  items?: readonly InvoiceViewItem[]
+  items?: readonly InvoiceViewItem[],
+  closing?: CreditNoteClosing
 ): { totals: InvoiceTotals; error: string | null; lines: CreditNoteLine[] } {
   const lines = creditNoteLines(draft);
   const readable = lines.filter((line) => Number.isFinite(line.quantity) && Number.isFinite(line.unitPrice));
@@ -564,6 +570,6 @@ export function creditNotePreview(
         Object.fromEntries(items.map((item) => [item.id, item.creditedAmount ?? 0]))
       )
     : null;
-  const check = checkCreditNote(lines, remaining, taxRate);
-  return { totals, error: lineRefusal ?? (check.ok ? null : check.error), lines };
+  const check = checkCreditNote(lines, remaining, taxRate, closing);
+  return { totals: check.ok ? check.totals : totals, error: lineRefusal ?? (check.ok ? null : check.error), lines };
 }

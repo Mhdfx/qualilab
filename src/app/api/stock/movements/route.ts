@@ -4,6 +4,8 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { toMoney } from "@/lib/money";
 import { applyMovement, isLowStock, type MovementType } from "@/lib/stock";
+import { isLockConflict } from "@/lib/billing";
+import { TEXT_MAX, parseFormDay } from "@/lib/achat-validation";
 
 const TYPES: MovementType[] = ["ENTREE", "SORTIE", "AJUSTEMENT"];
 
@@ -48,10 +50,18 @@ export async function POST(request: Request) {
 
   let expiry: Date | null = null;
   if (typeof expiryDate === "string" && expiryDate.trim()) {
-    expiry = new Date(expiryDate);
-    if (Number.isNaN(expiry.getTime())) {
+    // A calendar day: « 2027-02-30 » is refused, not rolled over to March.
+    expiry = parseFormDay(expiryDate.trim());
+    if (!expiry) {
       return NextResponse.json({ error: "Date de péremption invalide." }, { status: 400 });
     }
+  }
+  if (typeof lot === "string" && lot.trim().length > TEXT_MAX) {
+    return NextResponse.json({ error: `Le lot est trop long (${TEXT_MAX} caractères max).` }, { status: 400 });
+  }
+  // A TEXT column holds 65 535 bytes: a longer note was a 500.
+  if (typeof note === "string" && note.trim().length > 5000) {
+    return NextResponse.json({ error: "La note est trop longue (5 000 caractères max)." }, { status: 400 });
   }
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -65,9 +75,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
 
+    let movement;
     try {
-      const [movement] = await prisma.$transaction([
-        prisma.stockMovement.create({
+      movement = await prisma.$transaction(async (tx) => {
+        // Guarded by the quantity we computed from, checked in the UPDATE
+        // itself (`updateMany` counts the rows it changed): a concurrent
+        // movement leaves 0 rows and we re-read instead of losing it. The
+        // article row is written first, so the movement's insert (which
+        // reads its parent) never waits on a lock the other side holds.
+        const moved = await tx.stockItem.updateMany({
+          where: { id: item.id, quantity: item.quantity },
+          data: { quantity: result.next },
+        });
+        if (moved.count === 0) return null;
+        return tx.stockMovement.create({
           data: {
             itemId: item.id,
             type: type as MovementType,
@@ -77,45 +98,40 @@ export async function POST(request: Request) {
             note: typeof note === "string" && note.trim() ? note.trim() : null,
             createdById: session.id,
           },
-        }),
-        prisma.stockItem.update({
-          // Guarded by the quantity we computed from: a concurrent movement
-          // makes this a P2025 and we re-read instead of losing it.
-          where: { id: item.id, quantity: item.quantity },
-          data: { quantity: result.next },
-        }),
-      ]);
-
-      await logAudit({
-        actorId: session.id,
-        action: "STOCK_MOVEMENT",
-        entity: "StockItem",
-        entityId: item.id,
-        metadata: {
-          name: item.name,
-          type,
-          quantity: qty,
-          from: toMoney(item.quantity),
-          to: result.next,
-          lot: movement.lot,
-        },
+        });
       });
-
-      return NextResponse.json(
-        {
-          movement: { ...movement, quantity: toMoney(movement.quantity) },
-          item: {
-            id: item.id,
-            quantity: result.next,
-            low: isLowStock(result.next, toMoney(item.minQuantity)),
-          },
-        },
-        { status: 201 }
-      );
     } catch (error) {
-      if ((error as { code?: string }).code === "P2025" && attempt < 2) continue;
+      if (isLockConflict(error)) continue;
       throw error;
     }
+    if (!movement) continue;
+
+    await logAudit({
+      actorId: session.id,
+      action: "STOCK_MOVEMENT",
+      entity: "StockItem",
+      entityId: item.id,
+      metadata: {
+        name: item.name,
+        type,
+        quantity: qty,
+        from: toMoney(item.quantity),
+        to: result.next,
+        lot: movement.lot,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        movement: { ...movement, quantity: toMoney(movement.quantity) },
+        item: {
+          id: item.id,
+          quantity: result.next,
+          low: isLowStock(result.next, toMoney(item.minQuantity)),
+        },
+      },
+      { status: 201 }
+    );
   }
 
   return NextResponse.json(

@@ -122,6 +122,21 @@ describe("validateLine — the paper line, field by field", () => {
     expect(validateLine({ ...aliment, productTemperature: "999" }, 0, natures)).toMatchObject({ ok: false });
   });
 
+  it("reads a DLC as the calendar day written, never an instant's UTC day (full-db 12/10)", () => {
+    const at = validateLine({ ...aliment, productionDate: "2026-09-19", expiryDate: "2026-09-20T00:30:00+01:00" }, 0, natures);
+    expect(at.ok && at.value.expiryDate?.toISOString()).toBe("2026-09-20T00:00:00.000Z");
+    expect(validateLine({ ...aliment, expiryDate: "+010000-01-01" }, 0, natures)).toMatchObject({ ok: false });
+    expect(validateLine({ ...aliment, expiryDate: "2026-02-30" }, 0, natures)).toMatchObject({ ok: false });
+    expect(validateLine({ ...aliment, expiryDate: 20260920 }, 0, natures)).toMatchObject({ ok: false });
+  });
+
+  it("bounds the quantity like the reception (DECIMAL(10,2): 1e308 was a 500, full-db 12/10)", () => {
+    expect(validateLine({ ...aliment, quantity: "1000000" }, 0, natures)).toMatchObject({ ok: true });
+    expect(validateLine({ ...aliment, quantity: "1000000.01" }, 0, natures)).toMatchObject({ ok: false });
+    expect(validateLine({ ...aliment, quantity: 1e308 }, 0, natures)).toMatchObject({ ok: false });
+    expect(validateLine({ ...aliment, quantity: "-1" }, 0, natures)).toMatchObject({ ok: false });
+  });
+
   it("takes any unit count up to the technical ceiling (no limit for the laboratory, 29/09)", () => {
     expect(validateLine({ ...aliment, unitCount: 9 }, 0, natures)).toMatchObject({ ok: true });
     expect(validateLine({ ...aliment, unitCount: 51 }, 0, natures)).toMatchObject({ ok: true });

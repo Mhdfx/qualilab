@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toMoney, isValidAmount } from "./money";
+import { toMoney, isValidAmount, MAX_AMOUNT } from "./money";
 import { computeInvoiceTotals, computeLineAmounts, roundMoney } from "./invoice-math";
 
 /**
@@ -46,6 +46,13 @@ describe("isValidAmount", () => {
     expect(isValidAmount(Number.NaN)).toBe(false);
     expect(isValidAmount(Number.POSITIVE_INFINITY)).toBe(false);
     expect(isValidAmount("abc")).toBe(false);
+  });
+
+  it("refuses what a DECIMAL(12,2) column cannot hold (the insert would crash)", () => {
+    expect(isValidAmount(MAX_AMOUNT)).toBe(true);
+    expect(isValidAmount(9_999_999_999.99)).toBe(true);
+    expect(isValidAmount(10_000_000_000)).toBe(false);
+    expect(isValidAmount(99_999_999_999)).toBe(false);
   });
 });
 

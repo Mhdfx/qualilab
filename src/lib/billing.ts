@@ -1,5 +1,5 @@
-import { toMoney, type MoneyInput } from "./money";
-import { roundMoney } from "./invoice-math";
+import { MAX_AMOUNT, toMoney, type MoneyInput } from "./money";
+import { computeInvoiceTotals, roundMoney } from "./invoice-math";
 import { SAMPLE_TYPE_LABELS, formatCurrency, formatIsoDay } from "./labels";
 import type { Prisma, SampleType } from "@/generated/prisma/client";
 import type { InvoiceKind, InvoiceStatus } from "@/generated/prisma/enums";
@@ -192,7 +192,9 @@ export function checkInvoiceLines(items: unknown, options: { issue: boolean }): 
       return { ok: false, error: `Prix unitaire invalide pour « ${description} ».` };
     }
     const unitPrice = roundMoney(price);
-    if (quantity > 100000 || unitPrice > 10000000) {
+    // Each bound alone still allows 100 000 × 10 000 000: the line must also
+    // fit its DECIMAL(12,2) column (a typing slip, refused, never a 500).
+    if (quantity > 100000 || unitPrice > 10000000 || roundMoney(quantity * unitPrice) > MAX_AMOUNT) {
       return { ok: false, error: `Montant hors limites pour « ${description} ».` };
     }
     const sampleId = typeof item.sampleId === "string" && item.sampleId ? item.sampleId : null;
@@ -215,6 +217,17 @@ export function checkInvoiceLines(items: unknown, options: { issue: boolean }): 
   return { ok: true, lines };
 }
 
+/**
+ * The invoice as a whole — HT, VAT and TTC — must fit its DECIMAL(12,2)
+ * columns: lines each within bounds may still add up beyond them. The
+ * French refusal, or null.
+ */
+export function invoiceTotalRefusal(lines: readonly { quantity: number; unitPrice: number }[], taxRate: number): string | null {
+  const { total } = computeInvoiceTotals([...lines], taxRate);
+  if (total <= MAX_AMOUNT) return null;
+  return `Le total de la facture (${formatCurrency(total)}) dépasse le montant maximal accepté (${formatCurrency(MAX_AMOUNT)}) : vérifiez les quantités et les prix.`;
+}
+
 function unpricedLineError(description: string) {
   return `Tarif manquant pour « ${description} ». Saisissez le prix de cette analyse (ou complétez le catalogue) avant d'émettre la facture.`;
 }
@@ -230,9 +243,20 @@ export function unpricedLineRefusal(
   return unpriced ? unpricedLineError(unpriced.description) : null;
 }
 
+/**
+ * Why a VAT rate sent for a draft is refused — or null. A rate is a number
+ * from 0 to 100 (« 7 », « 5,5 »); anything else was silently stored as 0 %
+ * or clamped to 100 %, so an invoice could be issued at another rate than
+ * the one the accountant typed and saw in the preview.
+ */
+export function taxRateRefusal(value: unknown): string | null {
+  const rate = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value.trim().replace(",", ".")) : NaN;
+  return Number.isFinite(rate) && rate >= 0 && rate <= 100 ? null : "Le taux de TVA doit être un nombre de 0 à 100 %.";
+}
+
 /** VAT is a percentage: clamped to 0–100, rounded to two decimals. */
 export function cleanTaxRate(value: unknown): number {
-  const rate = Number(value);
+  const rate = Number(typeof value === "string" ? value.trim().replace(",", ".") : value);
   return roundMoney(Math.min(100, Math.max(0, Number.isFinite(rate) ? rate : 0)));
 }
 
@@ -447,7 +471,9 @@ export function parsePaidAt(
   if (Number.isNaN(date.getTime()) || date.getUTCFullYear() < 2000) {
     return { ok: false, error: "Date du règlement invalide." };
   }
-  if (formatIsoDay(date) > formatIsoDay(now)) {
+  // The days compare as « AAAA-MM-JJ » strings, which a five-digit year
+  // (« +010000-01-01 ») sorted before today: it reached the column (a 500).
+  if (formatIsoDay(date) > formatIsoDay(now) || date.getUTCFullYear() > now.getUTCFullYear()) {
     return { ok: false, error: "La date du règlement est dans le futur." };
   }
   return { ok: true, date };
@@ -467,6 +493,18 @@ export function isLockConflict(error: unknown): boolean {
   if (code === "P2034" || code === "P2028") return true;
   if (meta && (String(meta.code) === "1213" || String(meta.code) === "1205")) return true;
   return typeof message === "string" && /deadlock found|lock wait timeout exceeded/i.test(message);
+}
+
+/** How many times a write that lost a lock race (`isLockConflict`) runs before the 409. */
+export const LOCK_RETRIES = 5;
+
+/**
+ * The pause (ms) before running a write again after a lock race: growing,
+ * and jittered — requests that deadlocked together and paused alike met
+ * again on every round (four clients created at once: one refused).
+ */
+export function lockRetryPause(attempt: number, random: () => number = Math.random): number {
+  return 40 * attempt + Math.floor(random() * 80);
 }
 
 /** The refusal shown when a write lost a lock race (`isLockConflict`). */

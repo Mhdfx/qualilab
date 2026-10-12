@@ -4,8 +4,10 @@ import {
   lineDescription,
   buildCatalogueIndex,
   checkInvoiceLines,
+  invoiceTotalRefusal,
   cleanCreditNoteLines,
   cleanTaxRate,
+  taxRateRefusal,
   creditedByItem,
   creditNoteLinesRefusal,
   creditNoteRefusal,
@@ -14,6 +16,8 @@ import {
   invoiceActions,
   invoiceAmounts,
   isLockConflict,
+  LOCK_RETRIES,
+  lockRetryPause,
   LOCK_CONFLICT_MESSAGE,
   parsePaidAt,
   paymentRefusal,
@@ -202,6 +206,22 @@ describe("checkInvoiceLines", () => {
     expect(checkInvoiceLines([{ description: "x".repeat(192), quantity: 1, unitPrice: 1 }], { issue: false }).ok).toBe(false);
   });
 
+  it("refuses a line whose amount overflows its column, though quantity and price are each in bounds", () => {
+    // 100 000 × 1 000 000 = 10^11 > DECIMAL(12,2): it used to reach the database (a 500).
+    expect(checkInvoiceLines([{ description: "A", quantity: 100000, unitPrice: 1000000 }], { issue: false })).toMatchObject({
+      ok: false,
+      error: "Montant hors limites pour « A ».",
+    });
+    expect(checkInvoiceLines([{ description: "A", quantity: 1000, unitPrice: 9999999 }], { issue: false }).ok).toBe(true);
+  });
+
+  it("invoiceTotalRefusal: the TTC of the whole invoice fits its column", () => {
+    expect(invoiceTotalRefusal([{ quantity: 1000, unitPrice: 9999999 }], 20)).toMatch(/dépasse le montant maximal accepté/);
+    expect(invoiceTotalRefusal([{ quantity: 1, unitPrice: 9000000000 }], 20)).toMatch(/^Le total de la facture/);
+    expect(invoiceTotalRefusal([{ quantity: 1, unitPrice: 9000000000 }], 0)).toBeNull();
+    expect(invoiceTotalRefusal([{ quantity: 2, unitPrice: 320 }], 20)).toBeNull();
+  });
+
   it("a draft may keep an analysis at 0; issuing may not", () => {
     const lines = [{ description: "Salmonelles", quantity: 1, unitPrice: 0, sampleId: "s1" }];
     expect(checkInvoiceLines(lines, { issue: false }).ok).toBe(true);
@@ -227,6 +247,19 @@ describe("cleanTaxRate", () => {
     expect(cleanTaxRate(250)).toBe(100);
     expect(cleanTaxRate("abc")).toBe(0);
     expect(cleanTaxRate(undefined)).toBe(0);
+    expect(cleanTaxRate("5,5")).toBe(5.5);
+  });
+});
+
+describe("taxRateRefusal", () => {
+  it("accepts a rate from 0 to 100, typed with a comma or a point", () => {
+    for (const rate of [0, 7, 20, 100, "14", "5,5", " 10 "]) expect(taxRateRefusal(rate), String(rate)).toBeNull();
+  });
+
+  it("refuses what would have been stored at another rate than typed", () => {
+    for (const rate of [150, -5, "abc", "", undefined, null, Number.NaN, Infinity, [20], {}]) {
+      expect(taxRateRefusal(rate), String(rate)).toMatch(/taux de TVA/);
+    }
   });
 });
 
@@ -433,6 +466,12 @@ describe("parsePaidAt", () => {
     expect(parsePaidAt("1999-12-31", now)).toEqual({ ok: false, error: "Date du règlement invalide." });
     expect(parsePaidAt("2026-10-08", now)).toEqual({ ok: false, error: "La date du règlement est dans le futur." });
   });
+
+  it("refuses a five-digit year, which sorted before today as text (full-db 12/10: a 500)", () => {
+    expect(parsePaidAt("+010000-01-01", now)).toEqual({ ok: false, error: "La date du règlement est dans le futur." });
+    expect(parsePaidAt("2027-01-01", now)).toEqual({ ok: false, error: "La date du règlement est dans le futur." });
+    expect(parsePaidAt("2026-10-07T23:59:00Z", now).ok).toBe(true);
+  });
 });
 
 describe("money rounding of the stored lines (review 08/10)", () => {
@@ -471,5 +510,17 @@ describe("isLockConflict", () => {
 
   it("tells the accountant nothing was written", () => {
     expect(LOCK_CONFLICT_MESSAGE).toMatch(/Rien n'a été enregistré : réessayez\./);
+  });
+});
+
+describe("lockRetryPause", () => {
+  it("grows with the attempt and stays within a short wait", () => {
+    expect(lockRetryPause(1, () => 0)).toBe(40);
+    expect(lockRetryPause(2, () => 0)).toBe(80);
+    expect(lockRetryPause(LOCK_RETRIES, () => 0.999)).toBeLessThan(40 * LOCK_RETRIES + 80);
+  });
+
+  it("is jittered, so requests that deadlocked together do not meet again", () => {
+    expect(lockRetryPause(1, () => 0)).not.toBe(lockRetryPause(1, () => 0.5));
   });
 });

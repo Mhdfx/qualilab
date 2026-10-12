@@ -8,6 +8,8 @@ import {
   SAMPLE_HOLDING_STATUSES,
   checkInvoiceLines,
   cleanTaxRate,
+  taxRateRefusal,
+  invoiceTotalRefusal,
   invoiceActions,
   invoiceAmounts,
   isLockConflict,
@@ -95,7 +97,12 @@ export function parseDraftFields(body: Record<string, unknown>, options: { issue
   let dueDate: Date | null = null;
   if (typeof body.dueDate === "string" && body.dueDate.trim()) {
     dueDate = new Date(body.dueDate.trim());
-    if (Number.isNaN(dueDate.getTime())) throw new InvoiceRequestError(400, "Date d'échéance invalide.");
+    // A plausible year: « +010000-01-01 » reads as a date but overflows the
+    // column (a 500 on create and on a draft's save).
+    const year = dueDate.getUTCFullYear();
+    if (Number.isNaN(dueDate.getTime()) || year < 2000 || year > 2999) {
+      throw new InvoiceRequestError(400, "Date d'échéance invalide.");
+    }
   } else if (body.dueDate !== undefined && body.dueDate !== null && body.dueDate !== "") {
     throw new InvoiceRequestError(400, "Date d'échéance invalide.");
   }
@@ -105,8 +112,13 @@ export function parseDraftFields(body: Record<string, unknown>, options: { issue
 
   const checked = checkInvoiceLines(body.items, options);
   if (!checked.ok) throw new InvoiceRequestError(400, checked.error);
+  const badRate = taxRateRefusal(body.taxRate);
+  if (badRate) throw new InvoiceRequestError(400, badRate);
+  const taxRate = cleanTaxRate(body.taxRate);
+  const tooLarge = invoiceTotalRefusal(checked.lines, taxRate);
+  if (tooLarge) throw new InvoiceRequestError(400, tooLarge);
 
-  return { clientId, dueDate, notes, taxRate: cleanTaxRate(body.taxRate), lines: checked.lines };
+  return { clientId, dueDate, notes, taxRate, lines: checked.lines };
 }
 
 /**

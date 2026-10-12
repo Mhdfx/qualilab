@@ -71,10 +71,18 @@ export async function POST(
 
   const cancelledAt = new Date();
   try {
-    const updated = await prisma.sample.update({
-      // Atomic against a concurrent move: the status is re-checked in the write.
+    // Atomic against a concurrent move: the status is re-checked in the
+    // UPDATE itself and the changed rows counted (`update` reads, then writes
+    // by id — two cancellations racing were both answered 200 and journalled).
+    const moved = await prisma.sample.updateMany({
       where: { id, status: sample.status },
       data: { status: "ANNULE", cancelledAt, cancelledById: session.id, cancelReason: reason },
+    });
+    if (moved.count === 0) {
+      return NextResponse.json({ error: "L'échantillon vient de changer d'état — rechargez la page." }, { status: 409 });
+    }
+    const updated = await prisma.sample.findUniqueOrThrow({
+      where: { id },
       select: { id: true, code: true, controlCode: true, status: true, cancelledAt: true, cancelReason: true },
     });
 

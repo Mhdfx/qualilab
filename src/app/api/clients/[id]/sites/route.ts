@@ -65,7 +65,17 @@ export async function POST(
   });
   if (duplicate) return NextResponse.json({ error: "Ce client a déjà un site de ce nom." }, { status: 409 });
 
-  const site = await prisma.site.create({ data: { clientId: id, ...checked.value }, select: SITE_SELECT });
+  let site;
+  try {
+    site = await prisma.site.create({ data: { clientId: id, ...checked.value }, select: SITE_SELECT });
+  } catch (error) {
+    // The same name created at the same instant (double click): the unique
+    // index refuses the second, which answers like the check above.
+    if ((error as { code?: string }).code === "P2002") {
+      return NextResponse.json({ error: "Ce client a déjà un site de ce nom." }, { status: 409 });
+    }
+    throw error;
+  }
 
   await logAudit({
     actorId: session.id,

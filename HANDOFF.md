@@ -4,7 +4,7 @@
 > "where do I change X" map. Read after `AGENTS.md`. **Keep this current** — it
 > is what lets any AI on any platform continue without archaeology.
 >
-> Last updated: **2026-10-10** · Branch: `master` · Remote:
+> Last updated: **2026-10-12** · Branch: `master` · Remote:
 > `github.com/Mhdfx/qualilab.git`
 
 ---
@@ -742,6 +742,20 @@ importing a server module.
   - `BACKUP_SSH_KEY` with spaces breaks rsync's `-e` (the script quotes with `printf %q`, rsync wants quotes); the default path has none.
   - **Small a11y polish left**: `ReportDialog` returns focus but has no focus trap; its close button (~28 px), the compact « Renvoyer au client » link in table rows and the filter / paging buttons of /admin/envois and /reception/historique are under 44 px.
   - **Single-value results without a criterion now store the server's suggestion** (`benchConformity`): identical to what the bench screen sends, but a client script that forced « conforme » on a number above the limit is now stored non conforme.
+- **After 2026-10-12 (full-db recette, local — database & robustness):**
+  - ⚠️ **Rule: an optimistic guard is an `updateMany` + `count`, never `update({ where: { id, status } })`.** Prisma 7 on MySQL runs `update` as SELECT-with-the-guard, then UPDATE, and answers with the row whatever the UPDATE changed: two requests racing both « succeeded ». Seen locally: three approvals of one sample → 200 ×3 and three report e-mails; an approval racing a send-back issued and e-mailed a report on a sample back EN_ANALYSE; two cancellations, two technical signatures, a reception racing an « Annuler » (number burnt, SAMPLE_RECEIVED on a cancelled sample). Fixed in validation (validate / approve / reject), results submit and start, cancel, reactivate, release, programme, série reception, stock movements; `src/lib/guarded-writes.test.ts` fails on any new guarded `update`. Writes that clear-then-insert a sample's rows (programme, results) lock the sample row first (`SELECT … FOR UPDATE`): they deadlocked into 500s.
+  - **Report numbers** (`RAP-AAAA-NNNNN`) are still read-max-then-insert, retried on collision (`REPORT_NUMBER_TRIES` = 10 in `report-dispatch.ts`): four simultaneous approvals left one report-less with the old 3 tries. A `Counter` row would remove the race.
+  - **Client names, since the same recette:** `POST /api/clients` and a rename (`PATCH /api/clients/[id]`) re-check the name under a locking read in their transaction (`SELECT … FOR UPDATE` on the index archived + name — `Client.name` has no unique index, the imported base predates the rule); two writes of the same name at once give 201/200 + 409. Two *different* names that fall in the same index gap also deadlock: the loser runs again (`LOCK_RETRIES` = 5, jittered `lockRetryPause` in `billing.ts`) — with a fixed pause, 1 of 4 simultaneous creations was refused. « Renvoyer au client » runs once per sample at a time (`SingleFlight` in `single-flight.ts`, in memory — one application process, DEPLOY.md): a second click at the same instant gets 409 « déjà en cours ».
+  - **Day cuts on this dev box:** Node 24.13.1 ships ICU tz 2025c, so `setHours(0, 0, 0, 0)` (/recherche du/au, « aujourd'hui » tiles) still cuts at 23:00 UTC locally; the lab-clock lists (journal, envois, historique, export) are right. Production is covered by the DEPLOY.md tz check — re-run it after every image rebuild.
+- **After 2026-10-12 (independent verification of the four full-* recettes, local, `.ui-tests/full-verify-*.mjs`):**
+  - **Blind bench:** `TECHNICIEN` no longer reads `GET /api/series`, `GET /api/series/[id]` nor `GET /api/series/[id]/document` (client, site, interlocutor; protocol / bon PDF) — no technician screen called them; the labels (blind) stay open to the bench.
+  - `approve` by a non-ADMIN answers **403** (was 409); the portal tells a cancelled sample « aucun rapport ne sera émis » instead of « pas encore disponible » (`portalReportRefusal`).
+  - A draft left on a fiche since attached as a site can no longer be **issued** under that fiche (`POST /api/invoices/[id]/issue` applies `mergedClientInvoiceRefusal`, like the save); readdress it to the kept client.
+  - **VAT:** a rate that is not a number from 0 to 100 is refused (400 `taxRateRefusal`) instead of being stored at 0 % or 100 % in silence; the invoice sheet's recap lists Morocco's rates 20 / 14 / 10 / 7 % (was 20 / 10 / 5,5).
+  - **Partial PATCH:** `/api/equipments/[id]`, `/api/eil/[id]`, `/api/suppliers/[id]`, `/api/stock/items/[id]` keep every field the body leaves out (a body of one field used to null the rest); the screens still send the whole form, and « » still clears a field.
+  - Supplier notes are bounded (5 000 characters; 100 000 was a 500). The length messages of the quality and stock forms agree in gender (« L'adresse est trop longue »).
+  - **Sign-in limiter verified in production mode** (in-process, `NODE_ENV=production`, `.ui-tests/full-verify-ratelimit.mts`): 3 tries per 10 s per address, then 429; another address has its own bucket.
+  - **Still open:** the day cuts of /recherche and the « aujourd'hui » tiles on a box with stale tz data (see above — production relies on the DEPLOY.md tz check); /programmation renders the whole queue (3 s in `next dev` with 407 queued test samples); the early contamination alert has no `EmailLog.reportId` (needs a column); a NON_CONFORME calibration still moves the next due date (question for the laboratory); the invoice list searches the live client name, not the name frozen at issue; the DB pool is 5 connections (`database-url.ts`) — `pool timeout` 500s were seen only under the four recettes' combined load.
 
 ## 10. Scope additions — client meeting 2026-07-28
 

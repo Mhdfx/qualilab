@@ -65,12 +65,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             number: true,
             clientId: true,
             taxRate: true,
+            subtotal: true,
             total: true,
             clientSnapshot: true,
             client: { select: CLIENT_IDENTITY_SELECT },
             items: { select: { id: true, description: true, quantity: true, unitPrice: true, lineTotal: true } },
             payments: { select: { amount: true } },
-            creditNotes: { select: { total: true } },
+            creditNotes: { select: { total: true, subtotal: true } },
           },
         });
 
@@ -95,10 +96,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
         const credited = invoice.creditNotes.reduce((sum, note) => sum + toMoney(note.total), 0);
         const paid = invoice.payments.reduce((sum, payment) => sum + toMoney(payment.amount), 0);
+        // The note taking back all the HT left closes the invoice to the centime.
+        const creditedSubtotal = invoice.creditNotes.reduce((sum, note) => sum + Math.round(toMoney(note.subtotal) * 100), 0);
         const check = checkCreditNote(
           cleaned.lines,
           remainingCreditable(invoice.total, credited),
-          toMoney(invoice.taxRate)
+          toMoney(invoice.taxRate),
+          {
+            remainingSubtotal: (Math.round(toMoney(invoice.subtotal) * 100) - creditedSubtotal) / 100,
+            previousNotes: invoice.creditNotes.length,
+          }
         );
         if (!check.ok) throw new InvoiceRequestError(400, check.error);
         const { subtotal, taxAmount, total, lines } = check.totals;

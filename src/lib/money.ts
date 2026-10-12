@@ -35,8 +35,15 @@ export function toMoney(value: MoneyInput): number {
   return Number.isFinite(asNumber) ? Math.round(asNumber * 100) / 100 : 0;
 }
 
-/** True when an amount is a usable, non-negative figure. */
+/**
+ * The largest amount a `DECIMAL(12,2)` column holds. Above it the insert
+ * fails in the database — a typing slip must be refused with a message, not
+ * answered with a server error.
+ */
+export const MAX_AMOUNT = 9_999_999_999.99;
+
+/** True when an amount is a usable, non-negative figure that its column can hold. */
 export function isValidAmount(value: unknown): value is number {
   const amount = Number(value);
-  return Number.isFinite(amount) && amount >= 0;
+  return Number.isFinite(amount) && amount >= 0 && amount <= MAX_AMOUNT;
 }

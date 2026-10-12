@@ -131,7 +131,7 @@ export function ResendReportButton({
           ) : (
             <>
               <p className="text-sm text-slate-600">
-                Le rapport {number} part en PDF aux adresses « Rapports » de la fiche client, et l&apos;envoi est inscrit au
+                Le rapport {number}{" "}part en PDF aux adresses « Rapports » de la fiche client, et l&apos;envoi est inscrit au
                 journal des envois. Les alertes de contamination restées en attente partent avec lui ; celles déjà
                 envoyées ne sont pas répétées.
               </p>

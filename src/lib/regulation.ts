@@ -46,6 +46,10 @@ export function validateRegulation(
   if (title.length > 191) return { ok: false, error: "Le nom court est trop long (191 caractères maximum)." };
   if (text.length > 4000) return { ok: false, error: "Le texte est trop long (4 000 caractères maximum)." };
   const sortOrder = Number(input.sortOrder ?? 0);
+  // An INT column: a figure beyond it crashed the insert (500). Same bound as the profiles.
+  if (Number.isInteger(sortOrder) && (sortOrder < 0 || sortOrder > 10_000)) {
+    return { ok: false, error: "L'ordre d'affichage doit être un entier entre 0 et 10 000." };
+  }
   return {
     ok: true,
     value: {

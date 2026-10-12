@@ -36,7 +36,9 @@ export async function POST(
   if (!transition.ok) return NextResponse.json({ error: transition.error }, { status: 409 });
 
   try {
-    const updated = await prisma.sample.update({
+    // Atomic: the status is re-checked in the UPDATE and the changed rows
+    // counted — a second « Réactiver » racing this one gets the 409.
+    const moved = await prisma.sample.updateMany({
       where: { id, status: "ANNULE" },
       // The technical validation belonged to the results that were cancelled:
       // it is dropped with them, otherwise the next batch could be approved
@@ -55,6 +57,12 @@ export async function POST(
         // bloqués » assigns one — otherwise it would sit in no queue at all.
         ...(sample.cancelReason === "DETRUIT_A_RECEPTION" ? { analysisBlocked: true } : {}),
       },
+    });
+    if (moved.count === 0) {
+      return NextResponse.json({ error: "L'échantillon n'est plus annulé." }, { status: 409 });
+    }
+    const updated = await prisma.sample.findUniqueOrThrow({
+      where: { id },
       select: { id: true, code: true, controlCode: true, status: true },
     });
 

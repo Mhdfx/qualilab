@@ -30,6 +30,10 @@ export async function PUT(request: Request) {
   } catch {
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
+  // A JSON `null` (or any non-object) parsed fine and crashed on `body.x` (500).
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
+  }
   const kind = COUNTER_KINDS.find((k) => k === body.kind);
   const last = typeof body.last === "number" ? body.last : Number(body.last);
   if (!kind) return NextResponse.json({ error: "Compteur inconnu." }, { status: 400 });

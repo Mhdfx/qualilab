@@ -21,11 +21,12 @@ import { sampleLineMessage, validateSerie, type NatureRef } from "@/lib/serie-in
 import { serieSelectFor, serializeSerie } from "@/lib/serie-select";
 import { serieStatus, type SerieStatus } from "@/lib/series";
 
+// Never TECHNICIEN: a série names the client, the site and the interlocutor,
+// and the bench works blind — it reads its own samples through /api/samples.
 const CIRCUIT_ROLES = [
   "PRELEVEUR",
   "RECEPTIONNISTE",
   "PROGRAMMATEUR",
-  "TECHNICIEN",
   "VALIDATEUR",
   "GESTIONNAIRE",
   "COMPTABLE",

@@ -42,6 +42,13 @@ export async function PUT(request: Request) {
         { status: 400 }
       );
     }
+    // VARCHAR(191) except the tagline (TEXT): refuse rather than crash on insert.
+    if (field !== "tagline" && value.length > 191) {
+      return NextResponse.json(
+        { error: `Le champ « ${field} » est trop long (191 caractères maximum).` },
+        { status: 400 }
+      );
+    }
     data[field] = value;
   }
 

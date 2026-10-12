@@ -43,9 +43,13 @@ export async function PATCH(
     return NextResponse.json(item);
   }
 
+  // A PATCH changes what it carries: a field it leaves out keeps its value
+  // (the screen sends the whole form; a body of one field reset the rest).
   const validated = validateStockItem({
     name: existing.name,
+    category: existing.category,
     unit: existing.unit,
+    minQuantity: toMoney(existing.minQuantity),
     ...input,
   });
   if (!validated.ok) {

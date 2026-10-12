@@ -23,6 +23,8 @@ export const PROGRAMME_PRIORITIES: readonly ProgrammePriority[] = ["NORMALE", "U
 
 /** How far in the past a due date may be: two clocks rarely agree to the minute. */
 export const DUE_AT_TOLERANCE_MS = 5 * 60_000;
+/** The furthest a « délai de rendu » may be set: a year (« +010000-01-01 » overflowed the column, a 500). */
+export const DUE_AT_MAX_AHEAD_MS = 366 * 24 * 60 * 60_000;
 /** `Sample.testPortion` VARCHAR(60). */
 export const MAX_TEST_PORTION = 60;
 /** `Sample.programmeNote` TEXT — a screen's worth, not a document. */
@@ -313,6 +315,9 @@ export function validateProgramme(raw: unknown, ctx: ProgrammeContext): Programm
     const now = ctx.now ?? new Date();
     if (parsed.getTime() < now.getTime() - DUE_AT_TOLERANCE_MS) {
       return fail("Le délai de rendu ne peut pas être dans le passé.");
+    }
+    if (parsed.getTime() > now.getTime() + DUE_AT_MAX_AHEAD_MS) {
+      return fail("Le délai de rendu est trop lointain (un an au plus).");
     }
     dueAt = parsed;
   }

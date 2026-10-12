@@ -6,6 +6,8 @@ import {
   PORTAL_STAGES,
   portalStage,
   portalStageFilter,
+  PORTAL_REPORT_NOT_YET,
+  portalReportRefusal,
   reportAvailableOnPortal,
 } from "./portal-status";
 
@@ -69,5 +71,25 @@ describe("guards", () => {
 
   it("offers the report only once sent", () => {
     for (const status of ALL) expect(reportAvailableOnPortal(status)).toBe(status === "RAPPORT_ENVOYE");
+  });
+});
+
+describe("portalReportRefusal", () => {
+  it("serves a sent report that is not being amended", () => {
+    expect(portalReportRefusal("RAPPORT_ENVOYE", { amendmentPending: false })).toBeNull();
+  });
+
+  it("says « pas encore » while the report may still come", () => {
+    for (const status of ALL.filter((s) => s !== "RAPPORT_ENVOYE" && s !== "ANNULE")) {
+      expect(portalReportRefusal(status, null)).toBe(PORTAL_REPORT_NOT_YET);
+    }
+    expect(portalReportRefusal("RAPPORT_ENVOYE", null)).toBe(PORTAL_REPORT_NOT_YET);
+    expect(portalReportRefusal("RAPPORT_ENVOYE", { amendmentPending: true })).toBe(PORTAL_REPORT_NOT_YET);
+  });
+
+  it("never promises a report to a cancelled sample", () => {
+    const refusal = portalReportRefusal("ANNULE", null);
+    expect(refusal).toMatch(/annulé/);
+    expect(refusal).not.toMatch(/pas encore/);
   });
 });

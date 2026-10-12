@@ -36,6 +36,9 @@ import {
  * Both carry the paper's quality cartouche at the head of every page
  * (cartouche-html.ts); the protocol keeps the laboratory's coordinates as
  * its footer, the bon has none, as on the paper.
+ *
+ * Never the bench (TECHNICIEN): both name the client and the site, and the
+ * analysis is blind — like the photo of the signed protocol.
  */
 export async function GET(
   _request: Request,
@@ -44,7 +47,6 @@ export async function GET(
   const session = await requireApiRole(
     "PRELEVEUR",
     "RECEPTIONNISTE",
-    "TECHNICIEN",
     "VALIDATEUR",
     "GESTIONNAIRE",
     "ADMIN"

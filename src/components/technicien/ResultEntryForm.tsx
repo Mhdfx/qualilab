@@ -398,7 +398,7 @@ export function ResultEntryForm({
                             <b className="font-mono">
                               {factoredText(reading.parsed)}
                             </b>
-                            {line.unit ? ` ${line.unit}` : ""} — c&apos;est elle
+                            {line.unit ? ` ${line.unit}` : ""}{" "}— c&apos;est elle
                             qui figure au rapport.
                           </p>
                         )}

@@ -117,6 +117,14 @@ export function validateParameter(input: ParameterInput): ParameterResult {
     };
   }
 
+  // VARCHAR(191) columns: refuse politely rather than crash on insert.
+  if (text(input.unit).length > 191) {
+    return { ok: false, error: "L'unité est trop longue (191 caractères maximum)." };
+  }
+  if (text(input.threshold).length > 191) {
+    return { ok: false, error: "Le seuil affiché est trop long (191 caractères maximum)." };
+  }
+
   const aliases = text(input.aliases)
     .split(/\r?\n/)
     .map((a) => a.trim())

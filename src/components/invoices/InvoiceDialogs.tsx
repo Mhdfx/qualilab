@@ -9,6 +9,7 @@ import {
   checkReason,
   PAYMENT_MODE_LABELS,
   RECORDABLE_PAYMENT_MODES,
+  type CreditNoteClosing,
 } from "@/lib/invoice-lifecycle";
 import type { PaymentMode } from "@/generated/prisma/enums";
 import {
@@ -432,6 +433,7 @@ export function CreditNoteDialog({
   items,
   taxRate,
   remaining,
+  closing,
   onDone,
   onClose,
 }: {
@@ -440,6 +442,8 @@ export function CreditNoteDialog({
   items: InvoiceViewItem[];
   taxRate: number;
   remaining: number;
+  /** The HT left on the invoice and the credit notes before: the note taking it all closes the invoice. */
+  closing?: CreditNoteClosing;
   onDone: (creditNoteId: string | null) => void;
   onClose: () => void;
 }) {
@@ -451,8 +455,8 @@ export function CreditNoteDialog({
   const summaryId = useId();
 
   const preview = useMemo(
-    () => creditNotePreview(lines, remaining, taxRate, items),
-    [lines, remaining, taxRate, items]
+    () => creditNotePreview(lines, remaining, taxRate, items, closing),
+    [lines, remaining, taxRate, items, closing]
   );
 
   function update(key: string, patch: Partial<CreditNoteDraftLine>) {

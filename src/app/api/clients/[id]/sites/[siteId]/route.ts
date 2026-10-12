@@ -75,11 +75,15 @@ export async function PATCH(
   }
 
   if (checked.value.name !== existing.name) {
+    // The unique index ignores case and accents (MySQL collation): a change
+    // of case only finds this very site, which is not a duplicate.
     const duplicate = await prisma.site.findUnique({
       where: { clientId_name: { clientId: id, name: checked.value.name } },
       select: { id: true },
     });
-    if (duplicate) return NextResponse.json({ error: "Ce client a déjà un site de ce nom." }, { status: 409 });
+    if (duplicate && duplicate.id !== siteId) {
+      return NextResponse.json({ error: "Ce client a déjà un site de ce nom." }, { status: 409 });
+    }
   }
 
   const site = await prisma.site.update({

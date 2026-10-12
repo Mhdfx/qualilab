@@ -165,3 +165,13 @@ describe("family (RETOUR-LABO-06-10.md §5, V3)", () => {
     });
   });
 });
+
+describe("columns of 191 characters", () => {
+  // A unit or a displayed threshold beyond VARCHAR(191) crashed the insert (500).
+  it("refuses a unit or a displayed threshold longer than its column", () => {
+    const base = { name: "Germe", category: "ALIMENTAIRE" };
+    expect(validateParameter({ ...base, unit: "u".repeat(192) }).ok).toBe(false);
+    expect(validateParameter({ ...base, threshold: "t".repeat(192) }).ok).toBe(false);
+    expect(validateParameter({ ...base, unit: "u".repeat(191), threshold: "t".repeat(191) }).ok).toBe(true);
+  });
+});

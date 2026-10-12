@@ -37,6 +37,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const effectiveFrom = input.effectiveFrom === undefined ? existing.effectiveFrom : dateOrNull(input.effectiveFrom);
   const supersededOn = input.supersededOn === undefined ? existing.supersededOn : dateOrNull(input.supersededOn);
   if (effectiveFrom === "invalid" || supersededOn === "invalid") return NextResponse.json({ error: "Date invalide." }, { status: 400 });
+  if (effectiveFrom && supersededOn && supersededOn < effectiveFrom) {
+    return NextResponse.json({ error: "« Remplacée le » ne peut pas précéder « En vigueur depuis »." }, { status: 400 });
+  }
   const current = input.current === undefined ? existing.current : input.current === true;
 
   const updated = await prisma.$transaction(async (tx) => {

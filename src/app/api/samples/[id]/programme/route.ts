@@ -3,6 +3,7 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { SAMPLE_STATUS_LABELS } from "@/lib/labels";
+import { isLockConflict } from "@/lib/billing";
 import { canTransition, PROGRAMMABLE_STATUSES } from "@/lib/sample-status";
 import { resolveProgrammeNature, validateProgramme, type ProgrammeContext } from "@/lib/programme-input";
 import {
@@ -13,6 +14,9 @@ import {
   programmeOf,
   serializeProgramme,
 } from "@/lib/programme-referential";
+
+/** The guarded write found the line moved meanwhile: rolls back, then the 409. */
+class StaleProgramme extends Error {}
 
 /**
  * The programme d'analyse of a line (PROGRAMME.md §5).
@@ -183,6 +187,10 @@ export async function PUT(
 
   try {
     await prisma.$transaction(async (tx) => {
+      // Two saves of the same sheet are serialised on the sample row: both
+      // clearing then re-inserting its parameters deadlocked (a 500 for the
+      // second « Confirmer »); now the second waits, then meets the guard.
+      await tx.$queryRaw`SELECT \`id\` FROM \`Sample\` WHERE \`id\` = ${id} FOR UPDATE`;
       await tx.sampleParameter.deleteMany({ where: { sampleId: id } });
       if (value.parameters.length > 0) {
         await tx.sampleParameter.createMany({
@@ -196,10 +204,11 @@ export async function PUT(
           })),
         });
       }
-      await tx.sample.update({
+      const saved = await tx.sample.updateMany({
         // The status in the guard doubles as optimistic concurrency: a line
         // that moved meanwhile (bench started, cancelled) gets a clean 409.
         // The nature in the guard does the same for a nature changed meanwhile.
+        // `updateMany` re-checks it in the UPDATE and counts the rows.
         where: { id, status: sample.status, natureId: sample.natureId },
         data: {
           // Q49: the fine nature, and the category the line is filed under.
@@ -215,11 +224,11 @@ export async function PUT(
           programmeNote: value.programmeNote,
           ...(confirming ? { status: "PROGRAMME", programmedAt: now, programmedById: session.id } : {}),
         },
-        select: { id: true },
       });
+      if (saved.count === 0) throw new StaleProgramme();
     });
   } catch (error) {
-    if ((error as { code?: string }).code === "P2025") {
+    if (error instanceof StaleProgramme || isLockConflict(error)) {
       return NextResponse.json(
         { error: "L'échantillon a changé d'état entre-temps : rechargez la fiche." },
         { status: 409 }

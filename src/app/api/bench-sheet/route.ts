@@ -9,6 +9,7 @@ import { getDocumentReference } from "@/lib/document-reference";
 import { documentLogo } from "@/lib/document-logo";
 import { DOC_TYPE_LABELS } from "@/lib/document-types";
 import { formatIsoDay } from "@/lib/labels";
+import { labDayBounds } from "@/lib/lab-day-range";
 import { labReference } from "@/lib/sample-select";
 import { loadBenchPlans } from "@/lib/bench-plan";
 import { benchQueueWhereFor, canEditParameter } from "@/lib/bench-access";
@@ -28,17 +29,14 @@ export async function GET(request: Request) {
   const session = await requireApiRole("PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "ADMIN");
   if (session instanceof NextResponse) return session;
 
-  const requested = new URL(request.url).searchParams.get("date");
-  const day = requested ? new Date(`${requested}T00:00:00`) : new Date();
-
-  if (Number.isNaN(day.getTime())) {
+  // The day on the laboratory's clock, as the sheet prints it — never the
+  // runtime's local midnight (stale tzdata dated the sheet the day before).
+  const day = labDayBounds(new URL(request.url).searchParams.get("date"), new Date());
+  if (!day) {
     return NextResponse.json({ error: "Date invalide." }, { status: 400 });
   }
-
-  const start = new Date(day);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+  const start = day.from;
+  const end = day.until;
 
   const rows = await prisma.sample.findMany({
     where: {

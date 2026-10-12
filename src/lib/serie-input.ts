@@ -258,6 +258,9 @@ function tooLong(value: unknown, max = TEXT) {
   return typeof value === "string" && value.trim().length > max;
 }
 
+/** The largest quantity a line may carry — the reception's bound too. */
+const MAX_QUANTITY = 1_000_000;
+
 function numberOrNull(value: unknown): number | null | "invalid" {
   if (value === undefined || value === null || value === "") return null;
   const parsed =
@@ -273,6 +276,19 @@ function dateOrNull(value: unknown): Date | null | "invalid" {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return parseIsoDay(value) ?? "invalid";
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? "invalid" : d;
+}
+
+/**
+ * A calendar day (date de production, DLC): the « AAAA-MM-JJ » written,
+ * even when a caller sends a full date-time — its UTC day slipped one day
+ * back (« 2026-09-20T00:30+01:00 » was stored 19/09), and a five-digit year
+ * (« +010000-01-01 ») overflowed the DATE column (a 500).
+ */
+function dayOrNull(value: unknown): Date | null | "invalid" {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return "invalid";
+  const match = /^(\d{4}-\d{2}-\d{2})(?:$|T)/.exec(value.trim());
+  return (match && parseIsoDay(match[1])) || "invalid";
 }
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T | null {
@@ -380,8 +396,8 @@ export function validateLine(
   if (lineKind === "MAINS" && !personName) return fail("Indiquez la personne prélevée.");
   if (lineKind === "AIR" && !airMethod && strictStates) return fail(SERIE_MESSAGES.airMethodMissing);
 
-  const productionDate = dateOrNull(input.productionDate);
-  const expiryDate = dateOrNull(input.expiryDate);
+  const productionDate = dayOrNull(input.productionDate);
+  const expiryDate = dayOrNull(input.expiryDate);
   if (productionDate === "invalid") return fail("La date de production n'est pas valide.");
   if (expiryDate === "invalid") return fail("La date d'expiration n'est pas valide.");
   if (productionDate && expiryDate && expiryDate < productionDate) {
@@ -389,8 +405,10 @@ export function validateLine(
   }
 
   const quantity = numberOrNull(input.quantity);
-  if (quantity === "invalid" || (quantity !== null && quantity <= 0)) {
-    return fail("La quantité doit être un nombre positif.");
+  // Bounded like the reception's (reception-input.ts): the column is a
+  // DECIMAL(10,2) — beyond it the insert failed with a 500.
+  if (quantity === "invalid" || (quantity !== null && (quantity <= 0 || quantity > MAX_QUANTITY))) {
+    return fail("La quantité doit être un nombre positif (1 000 000 au plus).");
   }
   const quantityUnit = quantity === null ? null : (oneOf(input.quantityUnit, QUANTITY_UNITS) ?? "UNITE");
 

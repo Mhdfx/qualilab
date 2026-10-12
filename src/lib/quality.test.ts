@@ -123,6 +123,13 @@ describe("validateReading", () => {
     expect(validateReading({ value: "abc" }).ok).toBe(false);
     expect(validateReading({ value: "" }).ok).toBe(false);
   });
+
+  it("refuses a remark beyond its column, in agreed French", () => {
+    expect(validateReading({ value: "4", note: "r".repeat(192) })).toEqual({
+      ok: false,
+      error: "La remarque est trop longue (191 caractères max).",
+    });
+  });
 });
 
 describe("validateEil", () => {
@@ -131,5 +138,74 @@ describe("validateEil", () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.status).toBe("PREVUE");
     expect(validateEil({ name: "" }).ok).toBe(false);
+  });
+});
+
+/**
+ * What the columns cannot hold (VARCHAR(191)) crashed the insert with a
+ * server error; a day that does not exist (30/02) was stored on another day.
+ */
+describe("Système Qualité — what the columns cannot hold", () => {
+  const long = "x".repeat(192);
+
+  it("refuses an equipment code or location longer than its column", () => {
+    expect(validateEquipment({ name: "Étuve", code: long }).ok).toBe(false);
+    expect(validateEquipment({ name: "Étuve", location: long }).ok).toBe(false);
+    expect(validateEquipment({ name: "Étuve", location: "x".repeat(191) }).ok).toBe(true);
+  });
+
+  it("refuses a calibration provider or certificate longer than its column, and a day that does not exist", () => {
+    expect(validateCalibration({ performedAt: "2026-08-01", provider: long }).ok).toBe(false);
+    expect(validateCalibration({ performedAt: "2026-08-01", certificate: long }).ok).toBe(false);
+    expect(validateCalibration({ performedAt: "2026-02-30" }).ok).toBe(false);
+    const ok = validateCalibration({ performedAt: "2026-02-28" });
+    expect(ok.ok && ok.value.performedAt.toISOString()).toBe("2026-02-28T00:00:00.000Z");
+  });
+
+  it("refuses a reading note longer than its column", () => {
+    expect(validateReading({ value: "4", note: long }).ok).toBe(false);
+  });
+
+  it("refuses an EIL text beyond its column, an impossible day, and results before the start", () => {
+    expect(validateEil({ name: long }).ok).toBe(false);
+    expect(validateEil({ name: "BIPEA", organizer: long }).ok).toBe(false);
+    expect(validateEil({ name: "BIPEA", scope: long }).ok).toBe(false);
+    expect(validateEil({ name: "BIPEA", outcome: long }).ok).toBe(false);
+    expect(validateEil({ name: "BIPEA", startDate: "2026-13-01" }).ok).toBe(false);
+    expect(validateEil({ name: "BIPEA", startDate: "2026-10-01", resultDate: "2026-09-01" }).ok).toBe(false);
+    const ok = validateEil({ name: "BIPEA", startDate: "2026-09-01", resultDate: "2026-09-01" });
+    expect(ok.ok && ok.value.startDate?.toISOString()).toBe("2026-09-01T00:00:00.000Z");
+  });
+});
+
+describe("free observations stay within their TEXT column (full-db 12/10: a 500)", () => {
+  it("refuses a calibration or an EIL note over 5 000 characters", () => {
+    const long = "n".repeat(5001);
+    expect(validateCalibration({ performedAt: "2026-10-01", notes: long }).ok).toBe(false);
+    expect(validateCalibration({ performedAt: "2026-10-01", notes: "n".repeat(5000) }).ok).toBe(true);
+    expect(validateEil({ name: "BIPEA", notes: long }).ok).toBe(false);
+  });
+});
+
+describe("a blank or non-numeric reading is never logged as 0 °C (full-db 12/10)", () => {
+  it("refuses blanks and non-numbers, keeps real zeros", () => {
+    expect(validateReading({ value: "   " }).ok).toBe(false);
+    expect(validateReading({ value: [] }).ok).toBe(false);
+    expect(validateReading({ value: true }).ok).toBe(false);
+    expect(validateReading({ value: "0" }).ok).toBe(true);
+    expect(validateReading({ value: 0 }).ok).toBe(true);
+    expect(validateReading({ value: "-18,5" }).ok).toBe(true);
+  });
+});
+
+describe("validateEquipment — plausible bounds", () => {
+  // A bound of 1e308 °C was accepted: never reachable, and it printed
+  // hundreds of digits across /qualite/metrologie on a phone.
+  it("refuses a temperature bound outside -80 … 300 °C", () => {
+    expect(validateEquipment({ name: "Étuve", tempMin: "2", tempMax: "1e308" }).ok).toBe(false);
+    expect(validateEquipment({ name: "Étuve", tempMin: "-81" }).ok).toBe(false);
+    expect(validateEquipment({ name: "Étuve", tempMax: "301" }).ok).toBe(false);
+    expect(validateEquipment({ name: "Congélateur", tempMin: "-80", tempMax: "-18" }).ok).toBe(true);
+    expect(validateEquipment({ name: "Four", tempMin: "250", tempMax: "300" }).ok).toBe(true);
   });
 });

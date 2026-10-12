@@ -1,5 +1,5 @@
 import { isoDayOf, parseIsoDay } from "./date-only";
-import { fromLabWallTime } from "./lab-time";
+import { fromLabWallTime, labDayOf } from "./lab-time";
 
 /**
  * A period typed as two calendar days (`du` / `au`, inclusive) → the
@@ -44,4 +44,20 @@ export function parseLabDayRange(du: string | null | undefined, au: string | nul
     from: labDayStart(fromDay),
     until: labDayStart(after),
   };
+}
+
+/**
+ * The one day of a daily document (`?date=` of the feuille de paillasse):
+ * the day asked, or the laboratory's today when none is — never the
+ * runtime's local midnight, which stale tzdata puts an hour early and whose
+ * date then prints as the day before (HANDOFF §9). Null when the day asked
+ * is not a real one.
+ */
+export function labDayBounds(
+  day: string | null | undefined,
+  now: Date
+): { day: string; from: Date; until: Date } | null {
+  const wanted = day ? day.trim() : labDayOf(now);
+  const range = parseLabDayRange(wanted, wanted);
+  return range.fromDay && range.from && range.until ? { day: range.fromDay, from: range.from, until: range.until } : null;
 }
