@@ -1021,6 +1021,9 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 
 ## Checkpoint V11 — Analyse des écarts du 10/10 (built 10/10, **not deployed** — `RETOUR-LABO-06-10.md` §11)
 
+**Status 12/10:** local recette (copy on localhost + fresh MySQL 8.4 with the demo seed, `.ui-tests/local-v11-*.mjs`) **37/37** — 30 pass, 7 fixed during the recette and re-tested (C3 refusal wording, report « Indénombrable » cell, timeline order, two table wrappers, the demo seed's invoice counter, the SSH-hardening key check); full gates green (tsc 0, eslint 0, vitest 90 files / 1 398 tests, build). **Deployed 12/10 (`1229862`)** — verified read-only on the server: migration `20261012100000_gaps_build` applied (0 failed), new columns / enum value / indexes present, LabSettings defaults (24 h, 0–8 °C, −15 °C), real data intact, app 0 restarts / 0 errors, the new `backup-db.sh` keeps the 13/09 restore point. Production click-through: `.ui-tests/recette-v11-prod.mjs`, run by the owner (Claude does not sign in to the live site); its dry run on the local copy passed every check that does not need a production record.
+
+
 **Built 10/10, gates green** (prisma generate · tsc 0 · eslint 0 · vitest 90
 files / 1 396 tests · `npm run build`). **Nothing below was seen in a
 browser**: there is no local database, so every check is to run on production
