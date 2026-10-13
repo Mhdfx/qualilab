@@ -231,7 +231,7 @@ export function FacturesList({
               id="invoice-filter-kind"
               value={filters.kind ?? ""}
               onChange={(e) => apply({ kind: (e.target.value || null) as InvoiceKind | null })}
-              className="input-field py-2.5 pl-3 pr-8 sm:w-40"
+              className="input-field py-2.5 pl-3 pr-8 sm:w-52"
             >
               <option value="">Factures et avoirs</option>
               {LIST_KIND_FILTERS.map((kind) => (
