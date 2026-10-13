@@ -820,7 +820,7 @@ paillasse, four rapports, facture — one page each. Script:
 | Audit round 2 + recette production (J) | Claude Code | 2026-09-09 | ✅ passed — 99 contrôles en direct sur http://185.217.126.53 (2 circuits complets, 9 comptes, 25 pages, sondes d'habilitation), 137 tests, build + lint |
 | Analyse des écarts du 10/10 (V11) — build | Claude Code | 2026-10-10 | ⏳ code gates green (tsc 0, eslint 0, vitest 90 files / 1 396 tests, build); not deployed — production recette V11 pending |
 | Réponses du 12/10 (V13) — build + local recette | Claude Code | 2026-10-13 | ✅ 137/137 on an isolated local copy (:3230, local DB); gates green (prisma generate, tsc 0, eslint `src` 0, vitest 96 files / 1 590 tests); not deployed — V13-E pending |
-| Prise en charge libre (V14) | Claude Code | 2026-10-13 | ⏳ V14 — en cours (built on branch `prise-en-charge-libre`; gates, local recette and production run pending) |
+| Prise en charge libre (V14) | Claude Code | 2026-10-13 | ✅ deployed 13/10 (`9d338ae`) — tsc, lint, vitest 1 632/1 632, build; adversarial review (18 findings fixed); `v14-take.mjs` 40/40 local and 40/40 on production; remaining unticked V14 items (users warning, `?date=` bench sheet, legacy split line) to run by hand |
 | Extensions (G3) | | | |
 
 ## Checkpoint I — Audit round 1 (2026-09-07)
@@ -1027,41 +1027,43 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 
 ## Checkpoint V14 — Prise en charge libre (13/10)
 
-Spec `PROGRAMME.md` §10 (summary `WORKFLOW.md` §19, decision `RETOUR-LABO-06-10.md` §13): nobody assigns technicians any more; a confirmed programme joins the shared « À prendre » list and the technician who takes the sample is the only one who types on it. Built 13/10 on branch `prise-en-charge-libre`, **not deployed**, no migration. Run it first on the local copy, then on production after the deploy.
+Spec `PROGRAMME.md` §10 (summary `WORKFLOW.md` §19, decision `RETOUR-LABO-06-10.md` §13): nobody assigns technicians any more; a confirmed programme joins the shared « À prendre » list and the technician who takes the sample is the only one who types on it. Built 13/10 on branch `prise-en-charge-libre`, **deployed 13/10** (commit `9d338ae`), no migration. Run it first on the local copy, then on production after the deploy.
 
 Rules for the production run — production holds real laboratory data:
 - Work **only** on the test client « TEST UI 2026-10-06 Traiteur »; create new test séries on it. Never take, release or type on a real sample: on production, « À prendre » and colleagues' lists show real samples — read them, do not touch them.
 - The steps name the roles by their demo account (`param1`, `tech1`, `tech2`, `valid1`, `direction1`, `admin`); `tech2` stands for any second technician account.
 - Refresh every page opened before the deploy.
 
+**Run 13/10 — local copy 40/40, then production 40/40** (`.ui-tests/v14-take.mjs`: on production each role signs in by clicking its demo account, nothing typed; a new série of 6 samples on the TEST UI client, cancelled at the end). Checked: programme sheet without technician, confirm free, old `technicianId` ignored, both technicians see « À prendre », take / double click / 409 « Déjà pris par … » / simultaneous take and simultaneous first save (one winner), read-only colleague sheet and 403, valid1 / param1 / admin / recep1 refused (403), « Libérer » by the holder and by the admin, refused to a colleague (403) and after a typed result (409), implicit take, empty save, admin save not taken and free submit refused (409), programme edit after the take keeps the holder, a sheet older than its programme refused (409) then saved, validation « Analysé par », parcours « Pris en charge », bench sheet without date, admin dashboard and programmation queue wording. Production DB after the run: bench counts unchanged (16 programmed samples still with their holder), the 6 test samples ANNULE, latest migration unchanged; app container 0 restarts, no error in its log. 8 programmed demo samples (TEST UI) released to « À prendre » for the presentation (`v14-demo-a-prendre.mjs`).
+
 ### V14.0 — Restore point and deployment
-- [ ] Tag `v1.2-avant-sans-affectation` on origin = commit `4b9c557` (`git ls-remote --tags origin v1.2-avant-sans-affectation`).
-- [ ] Labelled production dump `/var/backups/qualilab/qualilab_avant-sans-affectation.sql.gz` taken **just before** the deploy (`DEPLOY.md`): `gzip -t` passes, the last line reads « -- Dump completed », and the name is outside the rotation pattern `qualilab_????-??-??_????.sql.gz` (never pruned).
-- [ ] After the deploy: no migration applied (`_prisma_migrations` unchanged), `/api/health` 200, app container 0 restarts, no error in its log after the first take.
+- [x] Tag `v1.2-avant-sans-affectation` on origin = commit `4b9c557` (`git ls-remote --tags origin v1.2-avant-sans-affectation`).
+- [x] Labelled production dump `/var/backups/qualilab/qualilab_avant-sans-affectation.sql.gz` taken **just before** the deploy (`DEPLOY.md`): `gzip -t` passes, the last line reads « -- Dump completed », and the name is outside the rotation pattern `qualilab_????-??-??_????.sql.gz` (never pruned).
+- [x] After the deploy: no migration applied (`_prisma_migrations` unchanged), `/api/health` 200, app container 0 restarts, no error in its log after the first take.
 
 ### V14-A — The programme sheet (param1)
-- [ ] The programme sheet of a test sample has no technician field, no « Tous à ce technicien » / micro-chimie shortcut and no load (« Nom — N éch. »); « Organisation » = priorité, délai, consignes; the page has no `#programme-technician`.
-- [ ] « Confirmer le programme » with no technician → 200, status PROGRAMME, `technicianId` and `assignedAt` NULL, no `SampleParameter.technicianId` written; journal « Programme d'analyse confirmé ».
-- [ ] An old body carrying `technicianId` (default and per analysis — curl, or a page opened before the deploy) → 200, the technician **ignored**: the sample stays free.
+- [x] The programme sheet of a test sample has no technician field, no « Tous à ce technicien » / micro-chimie shortcut and no load (« Nom — N éch. »); « Organisation » = priorité, délai, consignes; the page has no `#programme-technician`.
+- [x] « Confirmer le programme » with no technician → 200, status PROGRAMME, `technicianId` and `assignedAt` NULL, no `SampleParameter.technicianId` written; journal « Programme d'analyse confirmé ».
+- [x] An old body carrying `technicianId` (default and per analysis — curl, or a page opened before the deploy) → 200, the technician **ignored**: the sample stays free.
 - [ ] The programme of a test sample already taken but still PROGRAMME can be edited (stays taken: `technicianId` / `assignedAt` unchanged); once EN_ANALYSE it is refused (409).
 
 ### V14-B — « À prendre » and the take (tech1, tech2)
-- [ ] tech1 and tech2 both see the confirmed sample in « À prendre » (tile count = list); urgent samples first, then the oldest reception, grouped by série (a série placed by its most urgent / oldest sample).
-- [ ] tech1 « Prendre en charge » (« Prise en charge… » while sending) → 200; the sample leaves « À prendre » for tech1's « À commencer »; status still **PROGRAMME**; DB `technicianId` = tech1, `assignedAt` set; journal « Échantillon pris en charge ».
-- [ ] tech2 takes the same sample (at the same instant, or after) → 409 « Déjà pris par … » naming tech1; exactly one `SAMPLE_TAKEN` row.
+- [x] tech1 and tech2 both see the confirmed sample in « À prendre » (tile count = list); urgent samples first, then the oldest reception, grouped by série (a série placed by its most urgent / oldest sample).
+- [x] tech1 « Prendre en charge » (« Prise en charge… » while sending) → 200; the sample leaves « À prendre » for tech1's « À commencer »; status still **PROGRAMME**; DB `technicianId` = tech1, `assignedAt` set; journal « Échantillon pris en charge ».
+- [x] tech2 takes the same sample (at the same instant, or after) → 409 « Déjà pris par … » naming tech1; exactly one `SAMPLE_TAKEN` row.
 - [ ] Implicit take: tech2 types a first value on another free test sample and saves → 200 with `taken: true`, holder tech2, status EN_ANALYSE; the parcours reads « Pris en charge » with « À la première saisie de résultat ».
-- [ ] Empty save: « Enregistrer » with nothing typed on a free test sample → the sample stays free and PROGRAMME (`taken: false`, still in « À prendre »).
-- [ ] tech2 opens tech1's sample → read-only, « Pris par un collègue » with tech1's name and the time, no field, no « Enregistrer »; `PUT /api/samples/<id>/results` as tech2 → 403 « Cet échantillon est pris en charge par … : vous ne pouvez pas y saisir de résultats. »
+- [x] Empty save: « Enregistrer » with nothing typed on a free test sample → the sample stays free and PROGRAMME (`taken: false`, still in « À prendre »).
+- [x] tech2 opens tech1's sample → read-only, « Pris par un collègue » with tech1's name and the time, no field, no « Enregistrer »; `PUT /api/samples/<id>/results` as tech2 → 403 « Cet échantillon est pris en charge par … : vous ne pouvez pas y saisir de résultats. »
 
 ### V14-C — Libérer
 - [ ] tech1 « Libérer » before any typed result → confirmation « Remettre cet échantillon dans « À prendre » ? Vos collègues pourront le prendre. » → 200; back in « À prendre » for tech1 and tech2; DB `technicianId` / `assignedAt` NULL; journal « Échantillon remis dans « À prendre » »; parcours « Remis dans « À prendre » » with « Était pris par … ».
-- [ ] After a typed result, « Libérer » is refused: 409 « Des résultats sont déjà saisis sur cet échantillon : il ne peut plus être libéré. » (the button is gone; the API refuses too).
-- [ ] tech2 cannot release tech1's sample: `DELETE /api/samples/<id>/take` → 403 « Seul … ou un administrateur peut libérer cet échantillon. »
-- [ ] admin releases a test sample taken by tech1 with nothing typed → 200 (journal row by admin, previous holder in its metadata).
+- [x] After a typed result, « Libérer » is refused: 409 « Des résultats sont déjà saisis sur cet échantillon : il ne peut plus être libéré. » (the button is gone; the API refuses too).
+- [x] tech2 cannot release tech1's sample: `DELETE /api/samples/<id>/take` → 403 « Seul … ou un administrateur peut libérer cet échantillon. »
+- [x] admin releases a test sample taken by tech1 with nothing typed → 200 (journal row by admin, previous holder in its metadata).
 
 ### V14-D — The administrator and the other roles
 - [ ] admin types and saves on a free test sample → saved, **not taken** (`taken: false`, still in « À prendre »); admin saves on tech1's sample → holder unchanged.
-- [ ] Submitting a free test sample → 409 « Personne n'a pris cet échantillon en charge : un technicien doit le prendre avant la soumission. », for admin as for a technician.
+- [x] Submitting a free test sample → 409 « Personne n'a pris cet échantillon en charge : un technicien doit le prendre avant la soumission. », for admin as for a technician.
 - [ ] `POST /api/samples/<id>/take` as valid1 (VALIDATEUR), direction1 (DIRECTION), param1 (PROGRAMMATEUR) and admin → 403.
 - [ ] Admin dashboard: the « À prendre » tile (count = the list) and « qui tient quoi » (bench samples per holder) agree with the bench.
 - [ ] /admin/utilisateurs: disabling a technician who holds bench samples (or changing their role) warns how many samples they hold (test account only).

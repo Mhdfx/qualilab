@@ -117,9 +117,20 @@ describe("evaluateReception — food", () => {
     const micro = evaluateReception(food({ parameterNames: ["Histamine"], unitCount: 9, quantity: 900 }));
     expect(micro.map((c) => c.rule)).toEqual(["ALIMENT_MICRO_POIDS", "TEMPERATURE_ARRIVEE", "HISTAMINE_UNITES", "HISTAMINE_POIDS"]);
 
+    // Fewer units than 9 is the client's choice, not a non-conformity
+    // (laboratory, 13/10 — Q62): analysed, reported without interpretation.
     const short = evaluateReception(food({ family: "CHIMIE", parameterNames: ["Histamine"], unitCount: 5, quantity: 500 }));
-    expect(short.find((c) => c.rule === "HISTAMINE_UNITES")?.level).toBe("AVERTISSEMENT");
+    expect(short.find((c) => c.rule === "HISTAMINE_UNITES")).toEqual({
+      rule: "HISTAMINE_UNITES",
+      level: "OK",
+      message: "Histamine : 5 unités sur 9 — analysées telles que demandé, résultats sans interprétation sur le rapport.",
+    });
     expect(short.find((c) => c.rule === "HISTAMINE_POIDS")?.level).toBe("OK");
+    const single = evaluateReception(food({ family: "CHIMIE", parameterNames: ["Histamine"], unitCount: 1, quantity: 300 }));
+    expect(single.find((c) => c.rule === "HISTAMINE_UNITES")?.message).toBe(
+      "Histamine : 1 unité sur 9 — analysée telle que demandé, résultats sans interprétation sur le rapport."
+    );
+    expect(single.every((c) => c.rule !== "HISTAMINE_UNITES" || c.level === "OK")).toBe(true);
 
     // 9 × 50 g: 450 g meets the 300 g of rule (3), not the 100 g per unit of rule (7).
     const light = evaluateReception(food({ family: "CHIMIE", parameterNames: ["Histamine"], unitCount: 9, quantity: 450 }));
@@ -306,8 +317,11 @@ describe("receptionChecklist — always the eight rules of the paper", () => {
     expect(row(light, 7)).toMatchObject({ status: "NON_CONFORME", reason: "QUANTITE_INSUFFISANTE" });
     expect(proposedConformity(light)).toMatchObject({ forced: true, rule: 7, reason: "QUANTITE_INSUFFISANTE" });
 
+    // 5 units out of 9: conforme — nothing to justify at reception (Q62, 13/10).
     const few = checklist(food({ family: "CHIMIE", parameterNames: ["Histamine"], unitCount: 5, quantity: 500 }));
-    expect(row(few, 7)).toMatchObject({ status: "A_VERIFIER", reason: "QUANTITE_INSUFFISANTE" });
+    expect(row(few, 7)).toMatchObject({ status: "CONFORME" });
+    expect(row(few, 7).detail).toContain("résultats sans interprétation sur le rapport");
+    expect(proposedConformity(few)).toMatchObject({ conformity: true, forced: false, pending: false });
   });
 
   it("histamine and Salmonella not fixed yet: checked at the programme, said on the row", () => {

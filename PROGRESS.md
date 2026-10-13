@@ -8,16 +8,20 @@
 
 ## ▶ NEXT ACTION
 
-**Prise en charge libre (13/10, `PROGRAMME.md` §10) : construite le 13/10 sur la branche `prise-en-charge-libre`, pas déployée.** Décision du laboratoire : plus d'affectation. La fiche de programme ne choisit plus de technicien ; un programme confirmé rejoint la liste partagée « À prendre » ; un technicien devient titulaire par « Prendre en charge » ou par sa première saisie avec contenu (le premier gagne, 409 « Déjà pris par X. ») ; « Libérer » tant que rien n'est saisi (titulaire ou admin) ; les échantillons des collègues en lecture seule ; l'admin supplée sans jamais prendre ; soumission refusée sans titulaire ; « Analysé par » à la validation ; « À prendre » et « qui tient quoi » au tableau de bord admin. **No migration, no data rewrite**: samples already assigned count as taken. Restore point: tag `v1.2-avant-sans-affectation` (`4b9c557`, pushed).
+**Réponses du laboratoire du 13/10 (après-midi) — à appliquer.** Prise en charge libre **en production depuis le 13/10** (`9d338ae`, TESTPLAN V14 : 40/40 sur la copie locale puis 40/40 en production). Réponses reçues le 13/10 (archivées dans `NEEDEDINFO.md` §3) :
+- **Q62 histamine** : moins de 9 unités n'est pas une non-conformité, analysé comme demandé (même n = 1), rapport sans interprétation ⇒ règle (7) informative, construit le 13/10 (à déployer avec le prochain lot).
+- **Q99 mollusques** : oui, la note (8) remplace les 100 g de la note (2) — déjà en ligne.
+- **Q102 Direction** : les quatre personnes de la liste, les deux validations possibles (jamais sur le même échantillon), « il faut avoir la main sur les signatures » ⇒ comptes nominatifs avec mots de passe personnels + retrait du panneau public de démonstration.
+- **Q103 versions** : G (protocole) et H (bon) en vigueur, dates à confirmer par le laboratoire.
+- Techniciens : noms promis pour l'après-midi du 13/10. Coordonnées bancaires : selon le courriel de la responsable du laboratoire (à transmettre). Un 7e point « à valider cet après-midi » avec le laboratoire.
 Next, in this order:
-1. Gates on the merged tree: `npx prisma generate`, `npx tsc --noEmit`, `npx eslint src`, `npx vitest run`, `npm run build` — all green before anything else.
-2. Local browser test on a copy (not the shared :3210 server), local DB: TESTPLAN V14-A → V14-F, with tech1 / tech2 racing one take, an empty save, a release before and after a typed result, a seeded legacy line split per parameter. Update the `.ui-tests` scripts that still expect the old rule (HANDOFF §9) before re-running a recette.
-3. Review the diff (no real name, no legal identifier) and commit; merge to `master`.
-4. **Labelled production dump first** (owner, on the VPS, just before the deploy): `qualilab_avant-sans-affectation.sql.gz`, outside the rotation pattern (`DEPLOY.md` « Point de retour — avant la prise en charge libre »).
-5. Deploy outside working hours (`bash scripts/deploy.sh`; no migration to apply), refresh open pages, tell the technicians what changes (« À prendre », « Prendre en charge », « Libérer »).
-6. **TESTPLAN V14 on production** on « TEST UI 2026-10-06 Traiteur » only (never take, release or type on a real sample); tick the V14 sign-off row.
-Rollback if the lab wants the old rule back: `git checkout v1.2-avant-sans-affectation` + `docker compose up -d --build` (DB restore optional — `DEPLOY.md`).
-Waiting on the lab: **Q106–Q108** (order of « À prendre », a technician leaving with typed results, searching colleagues' samples), Q104 (c) (« Analysé par » on the report), Q99–Q105, Q62, Q64, Q67–Q98.
+1. Deploy the histamine change (rule (7) informative) — tests green; no migration.
+2. Owner, in production /admin/utilisateurs: one personal account per signatory (role `DIRECTION`, strong password each) and per technician once the names arrive; then remove the public demo panel (`NEXT_PUBLIC_DEMO_MODE=false`) — the condition for « avoir la main sur les signatures ».
+3. Owner, /admin/documents: protocole version G and bon version H once the lab gives the dates; /admin/entreprise: bank details from the lab's e-mail.
+4. Remaining TESTPLAN V14 items by hand (users warning, bench sheet with `?date=`, a seeded legacy split line).
+Waiting on the lab: Q103 dates, technicians' names, bank details, the 7th point, **Q106–Q108**, Q104 (c), Q64, Q67–Q98, Q100, Q101, Q104, Q105.
+
+_Previous next action:_ **Prise en charge libre (13/10, `PROGRAMME.md` §10) : en production depuis le 13/10** (`9d338ae`). Plus d'affectation ; liste partagée « À prendre » ; « Prendre en charge » ou première saisie ; « Libérer » tant que rien n'est saisi ; collègues en lecture seule ; l'admin supplée sans prendre ; soumission refusée sans titulaire ; « Analysé par » ; « À prendre » et « qui tient quoi » au tableau de bord admin. Restore point: tag `v1.2-avant-sans-affectation` (`4b9c557`) + production dump `qualilab_avant-sans-affectation.sql.gz` (taken just before the deploy). Rollback: `git checkout v1.2-avant-sans-affectation` + `docker compose up -d --build` (DB restore optional — `DEPLOY.md`).
 
 _Previous next action:_ **Réponses du laboratoire du 12/10 (`RETOUR-LABO-06-10.md` §12) : construites le 13/10, pas déployées.** Bon (version H) et protocole (version G) avec les notes (1)…(8) et sans « N° de factures », pied du protocole depuis /admin/entreprise ; règle (8) mollusques bivalves vivants ; température obligatoire pour aliment, eau, air et surface sauf l'aliment « Ambiant » ; un contenant par famille (« Quantité 1M / 1P ») ; rapport d'essai au modèle PG06/EN03 M (deux pages) ; IF / Patente / CNSS / Fax ; rôle `DIRECTION`. One additive migration `20261013100000_retour_labo_1210`. Gates green (prisma generate, tsc 0, eslint `src` 0, vitest 96 files / 1 590 tests); local recette **137/137** (TESTPLAN V13).
 Next, in this order:

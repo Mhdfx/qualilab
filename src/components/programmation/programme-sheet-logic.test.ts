@@ -489,7 +489,10 @@ describe("entry check and billing", () => {
     const histamine = toggleParameter(draft, "p-hist", referential);
     const one = entryChecks(chimieSample, histamine, referential, DEFAULT_THRESHOLDS);
     expect(ruleRow(one, 3)).toMatchObject({ status: "CONFORME", rules: ["ALIMENT_CHIMIE_POIDS"] });
-    expect(ruleRow(one, 7)).toMatchObject({ status: "A_VERIFIER", rules: ["HISTAMINE_UNITES", "HISTAMINE_POIDS"] });
+    // One unit out of 9: analysed as asked, reported without interpretation —
+    // not a doubt to justify (laboratory, 13/10 — Q62).
+    expect(ruleRow(one, 7)).toMatchObject({ status: "CONFORME", rules: ["HISTAMINE_UNITES", "HISTAMINE_POIDS"] });
+    expect(ruleRow(one, 7).detail).toContain("résultats sans interprétation sur le rapport");
     expect(ruleRow(entryChecks(chimieSample, { ...histamine, unitCount: 9 }, referential, DEFAULT_THRESHOLDS), 7)).toMatchObject({
       status: "CONFORME",
     });

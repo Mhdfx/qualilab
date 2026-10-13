@@ -424,7 +424,10 @@ export function evaluateReception(
 
   // (7) — histamine: n units of a minimum weight each. Histamine is a
   // physico-chemical assay: the rule follows the analysis, whatever the
-  // sample's family, beside rule (2) or (3).
+  // sample's family, beside rule (2) or (3). Fewer units than the plan is
+  // the client's choice, never a non-conformity (the laboratory's answer
+  // of 13/10 to Q62): the sample is analysed as asked and the report gives
+  // the results without interpretation — said here, nothing to justify.
   if (line.lineKind === "ALIMENT" && requestsHistamine(line.parameterNames)) {
     checks.push(
       line.unitCount >= thresholds.histamineUnits
@@ -435,9 +438,8 @@ export function evaluateReception(
           }
         : {
             rule: "HISTAMINE_UNITES",
-            level: "AVERTISSEMENT",
-            message: `Histamine : ${thresholds.histamineUnits} unités attendues, ${line.unitCount} déclarée${line.unitCount > 1 ? "s" : ""}.`,
-            reason: "QUANTITE_INSUFFISANTE",
+            level: "OK",
+            message: `Histamine : ${line.unitCount} unité${line.unitCount > 1 ? "s" : ""} sur ${thresholds.histamineUnits} — analysée${line.unitCount > 1 ? "s" : ""} telle${line.unitCount > 1 ? "s" : ""} que demandé, résultats sans interprétation sur le rapport.`,
           }
     );
     const perUnit = weightG === null ? null : weightG / Math.max(1, line.unitCount);
