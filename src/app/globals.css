@@ -68,26 +68,32 @@ body {
   z-index: 1;
 }
 
-/* Form inputs — vertical padding only; use Tailwind pl-/pr-/px- for horizontal */
-.input-field {
-  width: 100%;
-  border-radius: 0.75rem;
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  padding-block: 0.875rem;
-  font-size: 0.875rem;
-  color: #1e293b;
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
+/* Form inputs — vertical padding only; use Tailwind pl-/pr-/px- for horizontal.
+   In the components layer so a width or padding utility written on a field
+   (w-28, sm:w-48, py-2.5…) wins: unlayered, « width: 100% » beat them all and
+   a narrow input swallowed its row (the programme sheet's dilution factors,
+   13/10). */
+@layer components {
+  .input-field {
+    width: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    padding-block: 0.875rem;
+    font-size: 0.875rem;
+    color: #1e293b;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
 
-.input-field:focus {
-  border-color: rgba(26, 58, 92, 0.4);
-  box-shadow: 0 0 0 3px rgba(26, 58, 92, 0.1);
-}
+  .input-field:focus {
+    border-color: rgba(26, 58, 92, 0.4);
+    box-shadow: 0 0 0 3px rgba(26, 58, 92, 0.1);
+  }
 
-.input-field:hover:not(:focus) {
-  border-color: #cbd5e1;
+  .input-field:hover:not(:focus) {
+    border-color: #cbd5e1;
+  }
 }
 
 /* Section title inside cards */

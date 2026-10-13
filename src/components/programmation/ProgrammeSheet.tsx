@@ -741,7 +741,7 @@ export function ProgrammeSheet({
                       onChange={(e) => setDraft((current) => updateSetting(current, parameter.id, { dilutionFactor: e.target.value }))}
                       placeholder="×10 → 10"
                       disabled={readOnly}
-                      className="input-field w-28 px-3 text-right disabled:bg-slate-50"
+                      className="input-field w-28 shrink-0 px-3 text-right disabled:bg-slate-50"
                     />
                   </li>
                 );
