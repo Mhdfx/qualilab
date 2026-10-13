@@ -162,7 +162,7 @@ describe("validateReception", () => {
     if (ok.ok) expect(ok.value.lines[0]).toMatchObject({ conformityReason: "AUTRE", conformityNote: "Sachet percé" });
   });
 
-  it("never takes a technician — the responsable des paramètres assigns (RETOUR-LABO-06-10 §9.3)", () => {
+  it("never takes a technician — one takes the sample from « À prendre » (RETOUR-LABO-06-10 §9.3, PROGRAMME.md §10)", () => {
     // A page opened before the change still sends one: the reception goes
     // through, and the technician is dropped, never refused.
     const sent = validate(good);
@@ -180,7 +180,7 @@ describe("validateReception", () => {
 
   it("decides a non-conform line case by case: analysed anyway, or destroyed", () => {
     const line = { ...good.lines[0], conformity: false, conformityReason: "EMBALLAGE" };
-    // Analysed anyway (the default) waits for its technician at the programme.
+    // Analysed anyway (the default): programmed, then taken from « À prendre ».
     const analysed = validate({ ...good, lines: [line, good.lines[1]] });
     expect(analysed.ok && analysed.value.lines[0]).toMatchObject({ destroy: false });
     const explicit = validate({ ...good, lines: [{ ...line, decision: "ANALYSER" }, good.lines[1]] });

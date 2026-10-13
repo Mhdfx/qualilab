@@ -8,8 +8,12 @@ import { repetitionLabel } from "./series";
  * Feuille de paillasse — the printable worksheet the technicians fill at the
  * bench, then key in (client request, 28/07).
  *
- * It lists the samples of a chosen day with one line per parameter and blank
+ * It lists samples on the bench with one line per parameter and blank
  * columns for the reading and a note, so it is written on rather than read.
+ * Printed by a technician, it is theirs (prise en charge libre,
+ * PROGRAMME.md §10.4): the samples they took, signed with their name.
+ * Printed by another role, it is a day's bench, each sample with its
+ * holder — « À prendre » while nobody took it.
  * A sample taken on several units gets one cell per repetition (R1 … Rn) and
  * the criterion of its product type, exactly as the bench screen shows them.
  * Samples are identified by their blind serial number, which is what appears
@@ -34,6 +38,7 @@ export type BenchSheetSample = {
   designation: string | null;
   numeroLot: string | null;
   clientName: string;
+  /** Who took the sample (`reportTechnicianNames`); null = nobody yet, printed « À prendre ». */
   technicianName: string | null;
   /** Readings per parameter: one cell per unit taken (R1 … Rn), 1 = a single value. */
   unitCount: number;
@@ -52,8 +57,17 @@ function readingHeaders(unitCount: number, width: number) {
   return Array.from({ length: unitCount }, (_, i) => `<th class="rep" style="width:${each}%">${repetitionLabel(i + 1)}</th>`).join("");
 }
 
+export type BenchSheetOptions = {
+  /**
+   * The technician whose sheet this is: their name signs « Saisie effectuée
+   * par », and an empty sheet says they took nothing. Without it the line
+   * is left blank to be signed by hand.
+   */
+  printedFor?: string;
+};
 
-export function buildBenchSheetHtml(date: Date, samples: BenchSheetSample[]): string {
+export function buildBenchSheetHtml(date: Date, samples: BenchSheetSample[], options: BenchSheetOptions = {}): string {
+  const printedFor = options.printedFor?.trim() || null;
   const blocks = samples
     .map(
       (sample) => `
@@ -67,7 +81,7 @@ export function buildBenchSheetHtml(date: Date, samples: BenchSheetSample[]): st
           Série ${escapeHtml(sample.serieNumber)} · ${show(sample.clientName)}
           ${sample.designation ? ` · ${escapeHtml(sample.designation)}` : ""}
           ${sample.numeroLot ? ` · lot ${escapeHtml(sample.numeroLot)}` : ""}
-          ${sample.technicianName ? ` · ${escapeHtml(sample.technicianName)}` : ""}
+          · ${sample.technicianName ? escapeHtml(sample.technicianName) : '<span class="free">À prendre</span>'}
         </div>
       </div>
       <table>
@@ -132,6 +146,7 @@ export function buildBenchSheetHtml(date: Date, samples: BenchSheetSample[]): st
   .crit { font-size: 8.2pt; }
   thead th.rep { text-align: center; font-family: Consolas, monospace; }
   .fill { background: #fcfdfe; height: 22px; }
+  .free { font-weight: 600; color: #1f3a4d; }
   .empty { text-align: center; color: #7d929c; padding: 28px; border: 1px dashed #d9e3e8;
     border-radius: 4px; }
   footer { margin-top: 14px; border-top: 1px solid #e3eaee; padding-top: 6px;
@@ -147,11 +162,13 @@ export function buildBenchSheetHtml(date: Date, samples: BenchSheetSample[]): st
 ${
   samples.length > 0
     ? blocks
-    : '<p class="empty">Aucun échantillon en analyse pour cette date.</p>'
+    : printedFor
+      ? '<p class="empty">Vous n\'avez pris en charge aucun échantillon.</p>'
+      : '<p class="empty">Aucun échantillon en analyse pour cette date.</p>'
 }
 
 <footer>
-  <span>Saisie effectuée par : ______________________</span>
+  <span>Saisie effectuée par : ${printedFor ? `<b>${escapeHtml(printedFor)}</b>` : "______________________"}</span>
   <span>Date et signature : ______________________</span>
 </footer>
 </body>

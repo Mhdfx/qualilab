@@ -1,6 +1,7 @@
-import type { Family, ProgrammePriority } from "@/generated/prisma/enums";
+import type { Family, ProgrammePriority, SampleStatus } from "@/generated/prisma/enums";
+import { BENCH_STATUSES, isUnclaimed } from "@/lib/bench-access";
 import { pickCriterion } from "@/lib/interpretation";
-import { ANALYSIS_FAMILY_LABELS } from "@/lib/labels";
+import { ANALYSIS_FAMILY_LABELS, formatDateTime } from "@/lib/labels";
 import { roundMoney } from "@/lib/invoice-math";
 import {
   parameterSpellings,
@@ -9,6 +10,7 @@ import {
   type ReceptionThresholds,
 } from "@/lib/reception-rules";
 import { complementaryChecklist, type ComplementarySerie } from "@/lib/reception-complementary";
+import { reportTechnicianNames } from "@/lib/report-programme";
 import { MAX_UNITS } from "@/lib/series";
 import { fromLocalInput, toLocalInput } from "@/components/preleveur/visit-types";
 import type {
@@ -24,15 +26,18 @@ import type {
 
 /**
  * What the programme sheet decides without the server (PROGRAMME.md §4):
- * how a product type, a profile or a shortcut rewrites the draft, what the
- * entry check and the billing preview show. Pure, so the tests beside it pin
- * the behaviour the responsable des paramètres sees; the route validates
+ * how a product type or a profile rewrites the draft, what the entry check
+ * and the billing preview show. Pure, so the tests beside it pin the
+ * behaviour the responsable des paramètres sees; the route validates
  * everything again (`programme-input.ts`).
+ *
+ * The sheet hands the line to nobody (« prise en charge libre », 13/10 —
+ * PROGRAMME.md §10): a technician takes it at the bench. The draft and the
+ * request carry no technician; the sheet only says who holds the line
+ * (`benchHolder`).
  */
 
 export type ParameterSetting = {
-  /** "" = the sample's technician. */
-  technicianId: string;
   /** "" = no explicit version (the bench then reads the criterion's, else the parameter's). */
   normVersionId: string;
   /** As typed (« 10 », « 2,5 »); "" = none. The server parses it. */
@@ -51,8 +56,6 @@ export type ProgrammeDraft = {
   parameterIds: string[];
   unitCount: number;
   testPortion: string;
-  /** "" = no default technician. */
-  technicianId: string;
   priority: ProgrammePriority;
   /**
    * LEGAL wall time ("YYYY-MM-DDTHH:mm", laboratory's clock); "" = none.
@@ -66,7 +69,7 @@ export type ProgrammeDraft = {
 
 export const UNIT_CHOICES = [1, 3, 5, 9] as const;
 
-const EMPTY_SETTING: ParameterSetting = { technicianId: "", normVersionId: "", dilutionFactor: "", note: "" };
+const EMPTY_SETTING: ParameterSetting = { normVersionId: "", dilutionFactor: "", note: "" };
 
 export function settingOf(draft: ProgrammeDraft, parameterId: string): ParameterSetting {
   return draft.settings[parameterId] ?? EMPTY_SETTING;
@@ -151,21 +154,18 @@ export function initialDraft(
   for (const entry of programme.parameters) {
     if (!known.has(entry.parameterId)) continue;
     settings[entry.parameterId] = {
-      technicianId: entry.technicianId ?? "",
       normVersionId: entry.normVersionId ?? "",
       dilutionFactor: dilutionText(entry.dilutionFactor),
       note: entry.note ?? "",
     };
   }
   for (const id of parameterIds) settings[id] = withDefaults(settings, id, type, referential);
-  const technicianId = programme.technicianId ?? "";
   return {
     natureId: referential.natureId || programme.natureId,
     productTypeId: type?.id ?? "",
     parameterIds,
     unitCount: clampUnits(programme.unitCount),
     testPortion: programme.testPortion ?? "",
-    technicianId: referential.technicians.some((technician) => technician.id === technicianId) ? technicianId : "",
     priority: programme.priority,
     dueAt: programme.dueAt ? toLocalInput(new Date(programme.dueAt)) : "",
     programmeNote: programme.programmeNote ?? "",
@@ -258,13 +258,6 @@ export function updateSetting(
   return { ...draft, settings: { ...draft.settings, [parameterId]: { ...settingOf(draft, parameterId), ...patch } } };
 }
 
-/** « Tous à X » : X becomes the default, every per-parameter override is lifted. */
-export function assignAll(draft: ProgrammeDraft, technicianId: string): ProgrammeDraft {
-  const settings: Record<string, ParameterSetting> = {};
-  for (const [id, setting] of Object.entries(draft.settings)) settings[id] = { ...setting, technicianId: "" };
-  return { ...draft, technicianId, settings };
-}
-
 /**
  * The family of each parameter: its own (`AnalysisParameter.family`, set on
  * `/admin/parametres` — RETOUR-LABO-06-10.md §5, V3). A referential that
@@ -325,27 +318,6 @@ export function groupParameters(
   });
 }
 
-/** True when the programmed analyses span both families: « micro à X, chimie à Y » then means something. */
-export function spansFamilies(draft: ProgrammeDraft, families: Map<string, Family>): boolean {
-  const seen = new Set(draft.parameterIds.map((id) => families.get(id)));
-  return seen.has("MICRO") && seen.has("CHIMIE");
-}
-
-/** « Micro à X, chimie à Y » : X becomes the default, the chemistry parameters carry Y. */
-export function assignByFamily(
-  draft: ProgrammeDraft,
-  families: Map<string, Family>,
-  micro: string,
-  chimie: string
-): ProgrammeDraft {
-  const settings = { ...draft.settings };
-  for (const id of draft.parameterIds) {
-    const override = families.get(id) === "CHIMIE" && chimie !== micro ? chimie : "";
-    settings[id] = { ...settingOf(draft, id), technicianId: override };
-  }
-  return { ...draft, technicianId: micro, settings };
-}
-
 /**
  * The natures the sheet offers (Q49 by default): the line's current one —
  * even archived, it stays readable — and the active natures of its family.
@@ -359,7 +331,7 @@ export function natureChoices(referential: ProgrammeReferentialData, family: Fam
  * The draft once the referential of another nature replaced the one on
  * screen: the nature follows, and the analyses the new nature does not
  * offer are dropped — their names are returned so the sheet can say which.
- * Everything else (type, units, organisation, the settings of every
+ * Everything else (type, units, priority and dates, the settings of every
  * analysis) is kept: re-choosing the first nature loses nothing but the
  * dropped analyses, which the user ticks again.
  */
@@ -517,9 +489,84 @@ function receptionTiming(sample: {
   };
 }
 
+/** Who holds the line at the bench, as the sheet says it. */
+export type BenchHolder = {
+  /** « Yassine », or « Yassine · Imane » when analyses were handed out before 13/10. */
+  names: string;
+  /** More than one technician holds part of the line (before 13/10). */
+  several: boolean;
+  /** When the sample was taken; null for a line held only through its analyses, or assigned before 13/10 without a stamp. */
+  assignedAt: string | null;
+};
+
+/**
+ * Who holds the line at the bench (« prise en charge libre », 13/10): the
+ * technician who took it, then any technician a programme before 13/10
+ * handed one of its analyses to — the names « Analysé par » shows at the
+ * validation (`reportTechnicianNames`). Null = nobody (`isUnclaimed`):
+ * once confirmed, the line waits in « À prendre ».
+ */
+export function benchHolder(
+  sample: Pick<ProgrammeSampleData, "technicianId" | "technician" | "assignedAt"> & {
+    parameters: Pick<ProgrammeSampleData["parameters"][number], "technicianId" | "technician">[];
+  }
+): BenchHolder | null {
+  if (isUnclaimed(sample)) return null;
+  const ids = new Set([sample.technicianId, ...sample.parameters.map((parameter) => parameter.technicianId)]);
+  ids.delete(null);
+  return {
+    names: reportTechnicianNames(sample) ?? "un technicien",
+    several: ids.size > 1,
+    assignedAt: sample.technicianId ? sample.assignedAt : null,
+  };
+}
+
+/** Who becomes responsible for a free line — the bench's rule, in words. */
+const FIRST_TAKER = "le premier technicien qui le prend en charge (ou saisit un premier résultat) en devient responsable";
+
+/**
+ * The line the « Organisation » section shows about the bench: who took the
+ * sample and when — and, while the programme can still change, that the
+ * holder will see the change — or where the sample waits for a technician.
+ */
+export function benchHolderNotice(
+  holder: BenchHolder | null,
+  state: { status: SampleStatus; analysisBlocked: boolean; editable: boolean }
+): string {
+  if (holder) {
+    const when = holder.assignedAt ? ` le ${formatDateTime(holder.assignedAt)}` : "";
+    const visible =
+      state.status === "PROGRAMME" && state.editable
+        ? ` Une modification du programme ${holder.several ? "leur" : "lui"} sera visible à la paillasse.`
+        : "";
+    return `Pris en charge par ${holder.names}${when}.${visible}`;
+  }
+  if (state.status === "PRELEVE" || state.status === "RECU") {
+    return `Aucun technicien n'est attribué : après la confirmation, l'échantillon rejoint la liste « À prendre » de la paillasse ; ${FIRST_TAKER}.`;
+  }
+  // On the bench with nobody on it — programmed, or started by an
+  // administrator standing in (who never takes): the shared list.
+  if (BENCH_STATUSES.includes(state.status)) {
+    return state.analysisBlocked
+      ? "Aucun technicien ne l'a pris en charge : bloqué en réception, l'échantillon n'apparaît dans « À prendre » qu'une fois libéré."
+      : `Aucun technicien ne l'a encore pris en charge : l'échantillon attend dans la liste « À prendre » de la paillasse ; ${FIRST_TAKER}.`;
+  }
+  return "Aucun technicien n'a pris cet échantillon en charge à la paillasse.";
+}
+
+/** The notice of a confirmation that went through: who already holds the sample, else « À prendre ». */
+export function confirmationNotice(holder: BenchHolder | null): string {
+  return holder
+    ? `Programme confirmé : l'échantillon est déjà pris en charge par ${holder.names}.`
+    : "Programme confirmé : l'échantillon rejoint la liste « À prendre » de la paillasse.";
+}
+
 const text = (value: string) => (value.trim() ? value.trim() : null);
 
-/** The body of `PUT /api/samples/[id]/programme` (PROGRAMME.md §5). */
+/**
+ * The body of `PUT /api/samples/[id]/programme` (PROGRAMME.md §5) — never a
+ * technician: the route would ignore one anyway (13/10).
+ */
 export function toRequestBody(draft: ProgrammeDraft, confirm: boolean) {
   return {
     confirm,
@@ -529,7 +576,6 @@ export function toRequestBody(draft: ProgrammeDraft, confirm: boolean) {
     parameterIds: draft.parameterIds,
     unitCount: draft.unitCount,
     testPortion: text(draft.testPortion),
-    technicianId: draft.technicianId || null,
     priority: draft.priority,
     dueAt: draft.dueAt ? fromLocalInput(draft.dueAt) : null,
     programmeNote: text(draft.programmeNote),
@@ -537,7 +583,6 @@ export function toRequestBody(draft: ProgrammeDraft, confirm: boolean) {
       const setting = settingOf(draft, parameterId);
       return {
         parameterId,
-        technicianId: setting.technicianId || null,
         normVersionId: setting.normVersionId || null,
         dilutionFactor: text(setting.dilutionFactor),
         note: text(setting.note),

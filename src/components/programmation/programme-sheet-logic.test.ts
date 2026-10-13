@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { formatDateTime } from "@/lib/labels";
 import { DEFAULT_THRESHOLDS } from "@/lib/reception-rules";
 import {
   adoptReferential,
   applyProductType,
   applyProfile,
-  assignAll,
-  assignByFamily,
+  benchHolder,
+  benchHolderNotice,
   billingLines,
+  confirmationNotice,
   criteriaOf,
   defaultNormVersionId,
   entryChecks,
@@ -16,7 +18,6 @@ import {
   natureChoices,
   parameterFamilies,
   profileApplied,
-  spansFamilies,
   toRequestBody,
   toggleParameter,
   typeUnitCount,
@@ -28,8 +29,9 @@ import type { ProgrammeReferentialData, ProgrammeSampleData, ProgrammeState } fr
 /**
  * PROGRAMME.md §4 — what the sheet does on its own: a product type adds its
  * germs and proposes n and the norm version, a profile replaces the
- * analyses, the shortcuts hand the parameters to technicians, the entry
- * check never blocks, the billing preview prices the programme.
+ * analyses, the entry check never blocks, the billing preview prices the
+ * programme. Since 13/10 (« prise en charge libre ») it hands the line to
+ * nobody: it only says who took it at the bench.
  */
 
 const referential: ProgrammeReferentialData = {
@@ -85,10 +87,6 @@ const referential: ProgrammeReferentialData = {
     { id: "prof-std", name: "Micro standard", clientId: null, unitCount: 5, parameterIds: ["p-ecoli", "p-salm", "p-inconnu"] },
     { id: "prof-hist", name: "Histamine", clientId: "client-a", unitCount: 9, parameterIds: ["p-hist"] },
   ],
-  technicians: [
-    { id: "tech1", name: "Yassine" },
-    { id: "tech2", name: "Imane" },
-  ],
   normVersions: {
     "p-ecoli": [
       { id: "nv-ecoli-2021", normId: "n-ecoli", normCode: "ISO 16649-2", version: "2021", label: "ISO 16649-2:2021", current: true },
@@ -116,13 +114,12 @@ const received: ProgrammeState = {
   parameterIds: ["p-ecoli", "p-retire"],
   unitCount: 1,
   testPortion: null,
-  technicianId: "tech1",
   priority: "NORMALE",
   dueAt: null,
   programmeNote: null,
   parameters: [
-    { parameterId: "p-ecoli", technicianId: null, normVersionId: null, dilutionFactor: null, note: null },
-    { parameterId: "p-retire", technicianId: null, normVersionId: null, dilutionFactor: null, note: null },
+    { parameterId: "p-ecoli", normVersionId: null, dilutionFactor: null, note: null },
+    { parameterId: "p-retire", normVersionId: null, dilutionFactor: null, note: null },
   ],
   programmedAt: null,
   programmedBy: null,
@@ -130,11 +127,12 @@ const received: ProgrammeState = {
 };
 
 describe("initialDraft", () => {
-  it("pre-ticks the préleveur's analyses, proposes the version in force and keeps the reception's technician", () => {
+  it("pre-ticks the préleveur's analyses and proposes the version in force — no technician to choose", () => {
     const draft = initialDraft(received, referential);
     expect(draft.parameterIds).toEqual(["p-ecoli"]);
     expect(draft.settings["p-ecoli"].normVersionId).toBe("nv-ecoli-2021");
-    expect(draft.technicianId).toBe("tech1");
+    expect(draft).not.toHaveProperty("technicianId");
+    expect(draft.settings["p-ecoli"]).not.toHaveProperty("technicianId");
     expect(draft.productTypeId).toBe("");
     expect(draft.dueAt).toBe("");
     expect(draft.natureId).toBe("nat");
@@ -148,13 +146,12 @@ describe("initialDraft", () => {
         parameterIds: ["p-ecoli", "p-salm"],
         unitCount: 3,
         testPortion: "25 g",
-        technicianId: "tech-parti",
         priority: "URGENTE",
         dueAt: "2026-10-08T12:00:00.000Z",
         programmeNote: "Conserver à 4 °C",
         parameters: [
-          { parameterId: "p-ecoli", technicianId: "tech2", normVersionId: "nv-ecoli-2013", dilutionFactor: 10.5, note: "×10" },
-          { parameterId: "p-salm", technicianId: null, normVersionId: null, dilutionFactor: null, note: null },
+          { parameterId: "p-ecoli", normVersionId: "nv-ecoli-2013", dilutionFactor: 10.5, note: "×10" },
+          { parameterId: "p-salm", normVersionId: null, dilutionFactor: null, note: null },
         ],
       },
       referential
@@ -163,9 +160,7 @@ describe("initialDraft", () => {
     expect(draft.unitCount).toBe(3);
     expect(draft.priority).toBe("URGENTE");
     expect(draft.dueAt).toBe("2026-10-08T12:00");
-    // A technician who left is no longer offered: the select cannot show them.
-    expect(draft.technicianId).toBe("");
-    expect(draft.settings["p-ecoli"]).toEqual({ technicianId: "tech2", normVersionId: "nv-ecoli-2013", dilutionFactor: "10,5", note: "×10" });
+    expect(draft.settings["p-ecoli"]).toEqual({ normVersionId: "nv-ecoli-2013", dilutionFactor: "10,5", note: "×10" });
     expect(draft.settings["p-salm"].normVersionId).toBe("nv-salm-2021");
   });
 
@@ -252,7 +247,7 @@ describe("profiles and analyses", () => {
   });
 });
 
-describe("technicians", () => {
+describe("parameter families", () => {
   it("reads each parameter's own family, whatever the catalogue's types say", () => {
     const families = parameterFamilies(referential, "MICRO");
     expect(families.get("p-ecoli")).toBe("MICRO");
@@ -283,25 +278,94 @@ describe("technicians", () => {
     };
     expect(parameterFamilies(ambiguous, "CHIMIE").get("p-ecoli")).toBe("CHIMIE");
   });
+});
 
-  it("« tous à X » sets the default and lifts every override; « micro à X, chimie à Y » keeps Y on chemistry only", () => {
-    const families = parameterFamilies(referential, "MICRO");
-    const base = applyProfile(initialDraft(received, referential), referential.profiles[0], referential);
-    const mixed = toggleParameter(base, "p-hist", referential);
-    expect(spansFamilies(base, families)).toBe(false);
-    expect(spansFamilies(mixed, families)).toBe(true);
+describe("benchHolder (13/10: « prise en charge libre »)", () => {
+  type HolderSample = Parameters<typeof benchHolder>[0];
+  const free: HolderSample = {
+    technicianId: null,
+    technician: null,
+    assignedAt: null,
+    parameters: [
+      { technicianId: null, technician: null },
+      { technicianId: null, technician: null },
+    ],
+  };
 
-    const all = assignAll(updateSetting(mixed, "p-salm", { technicianId: "tech2" }), "tech1");
-    expect(all.technicianId).toBe("tech1");
-    expect(all.settings["p-salm"].technicianId).toBe("");
+  it("names nobody on a free line: once confirmed it waits in « À prendre »", () => {
+    expect(benchHolder(free)).toBeNull();
+    expect(benchHolder({ ...free, parameters: [] })).toBeNull();
+  });
 
-    const split = assignByFamily(mixed, families, "tech1", "tech2");
-    expect(split.technicianId).toBe("tech1");
-    expect(split.settings["p-ecoli"].technicianId).toBe("");
-    expect(split.settings["p-salm"].technicianId).toBe("");
-    expect(split.settings["p-hist"].technicianId).toBe("tech2");
-    // The same person on both sides is no override at all.
-    expect(assignByFamily(mixed, families, "tech1", "tech1").settings["p-hist"].technicianId).toBe("");
+  it("names the technician who took it, and when", () => {
+    expect(
+      benchHolder({ ...free, technicianId: "tech1", technician: { id: "tech1", name: "Yassine" }, assignedAt: "2026-10-13T09:30:00.000Z" })
+    ).toEqual({ names: "Yassine", several: false, assignedAt: "2026-10-13T09:30:00.000Z" });
+    // Assigned before 13/10 without a stamp: still taken by that person.
+    expect(benchHolder({ ...free, technicianId: "tech1", technician: { id: "tech1", name: "Yassine" } })).toEqual({
+      names: "Yassine",
+      several: false,
+      assignedAt: null,
+    });
+  });
+
+  it("counts a line held only through its analyses (before 13/10) as taken, with their names", () => {
+    const legacy: HolderSample = {
+      ...free,
+      parameters: [
+        { technicianId: "tech1", technician: { id: "tech1", name: "Yassine" } },
+        { technicianId: "tech2", technician: { id: "tech2", name: "Imane" } },
+        { technicianId: "tech1", technician: { id: "tech1", name: "Yassine" } },
+      ],
+    };
+    expect(benchHolder(legacy)).toEqual({ names: "Yassine · Imane", several: true, assignedAt: null });
+    // The holder first, then the other technicians of the line, each once.
+    expect(
+      benchHolder({ ...legacy, technicianId: "tech2", technician: { id: "tech2", name: "Imane" }, assignedAt: "2026-10-01T08:00:00.000Z" })
+    ).toEqual({ names: "Imane · Yassine", several: true, assignedAt: "2026-10-01T08:00:00.000Z" });
+    // One technician on every analysis: one person.
+    const one = { technicianId: "tech1", technician: { id: "tech1", name: "Yassine" } };
+    expect(benchHolder({ ...free, parameters: [one, one] })).toEqual({ names: "Yassine", several: false, assignedAt: null });
+  });
+
+  const yassine = { names: "Yassine", several: false, assignedAt: "2026-10-13T09:30:00.000Z" };
+  const editable = { status: "PROGRAMME" as const, analysisBlocked: false, editable: true };
+
+  it("says who took the line and when, and that a change of programme reaches them", () => {
+    expect(benchHolderNotice(yassine, editable)).toBe(
+      `Pris en charge par Yassine le ${formatDateTime("2026-10-13T09:30:00.000Z")}. Une modification du programme lui sera visible à la paillasse.`
+    );
+    expect(benchHolderNotice({ names: "Yassine · Imane", several: true, assignedAt: null }, editable)).toBe(
+      "Pris en charge par Yassine · Imane. Une modification du programme leur sera visible à la paillasse."
+    );
+    // A received line taken before 13/10, or a line the bench started: nothing more to say.
+    expect(benchHolderNotice(yassine, { status: "RECU", analysisBlocked: false, editable: true })).toBe(
+      `Pris en charge par Yassine le ${formatDateTime("2026-10-13T09:30:00.000Z")}.`
+    );
+    expect(benchHolderNotice(yassine, { status: "EN_ANALYSE", analysisBlocked: false, editable: false })).not.toMatch(/modification/);
+  });
+
+  it("says where a free line waits: « À prendre » after the confirmation, or already", () => {
+    expect(benchHolderNotice(null, { status: "RECU", analysisBlocked: false, editable: true })).toBe(
+      "Aucun technicien n'est attribué : après la confirmation, l'échantillon rejoint la liste « À prendre » de la paillasse ; le premier technicien qui le prend en charge (ou saisit un premier résultat) en devient responsable."
+    );
+    expect(benchHolderNotice(null, editable)).toBe(
+      "Aucun technicien ne l'a encore pris en charge : l'échantillon attend dans la liste « À prendre » de la paillasse ; le premier technicien qui le prend en charge (ou saisit un premier résultat) en devient responsable."
+    );
+    // Started by an administrator standing in (who never takes): still free, still listed.
+    expect(benchHolderNotice(null, { status: "EN_ANALYSE", analysisBlocked: false, editable: false })).toBe(
+      benchHolderNotice(null, editable)
+    );
+    // Held at reception: not in « À prendre » until released.
+    expect(benchHolderNotice(null, { status: "PROGRAMME", analysisBlocked: true, editable: false })).toMatch(/qu'une fois libéré/);
+    expect(benchHolderNotice(null, { status: "ANNULE", analysisBlocked: false, editable: false })).toBe(
+      "Aucun technicien n'a pris cet échantillon en charge à la paillasse."
+    );
+  });
+
+  it("confirms into « À prendre », or says who already holds the sample", () => {
+    expect(confirmationNotice(null)).toBe("Programme confirmé : l'échantillon rejoint la liste « À prendre » de la paillasse.");
+    expect(confirmationNotice(yassine)).toBe("Programme confirmé : l'échantillon est déjà pris en charge par Yassine.");
   });
 });
 
@@ -593,7 +657,7 @@ describe("toRequestBody", () => {
         programmeNote: "",
       },
       "p-ecoli",
-      { technicianId: "tech2", dilutionFactor: " 10,5 ", note: "" }
+      { dilutionFactor: " 10,5 ", note: "" }
     );
     expect(toRequestBody(draft, true)).toEqual({
       confirm: true,
@@ -602,15 +666,24 @@ describe("toRequestBody", () => {
       parameterIds: ["p-ecoli", "p-salm"],
       unitCount: 5,
       testPortion: "25 g",
-      technicianId: "tech1",
       priority: "URGENTE",
       dueAt: "2026-10-08T12:00:00.000Z",
       programmeNote: null,
       parameters: [
-        { parameterId: "p-ecoli", technicianId: "tech2", normVersionId: "nv-ecoli-2021", dilutionFactor: "10,5", note: null },
-        { parameterId: "p-salm", technicianId: null, normVersionId: "nv-salm-2021", dilutionFactor: null, note: null },
+        { parameterId: "p-ecoli", normVersionId: "nv-ecoli-2021", dilutionFactor: "10,5", note: null },
+        { parameterId: "p-salm", normVersionId: "nv-salm-2021", dilutionFactor: null, note: null },
       ],
     });
+  });
+
+  it("never carries a technician, at the top or per analysis (13/10: the bench takes the line)", () => {
+    const draft = applyProfile(initialDraft(received, referential), referential.profiles[0], referential);
+    for (const confirm of [true, false]) {
+      const body = toRequestBody(draft, confirm);
+      expect(body).not.toHaveProperty("technicianId");
+      expect(body.parameters).toHaveLength(2);
+      for (const parameter of body.parameters) expect(parameter).not.toHaveProperty("technicianId");
+    }
   });
 
   it("keeps the due date on the LEGAL clock either side of the return to GMT (20/09/2026, §8.1)", () => {
@@ -624,7 +697,7 @@ describe("toRequestBody", () => {
   });
 
   it("a draft may be empty and carry no due date", () => {
-    const body = toRequestBody({ ...initialDraft(received, referential), parameterIds: [], technicianId: "", dueAt: "" }, false);
-    expect(body).toMatchObject({ confirm: false, parameterIds: [], technicianId: null, dueAt: null, productTypeId: null, parameters: [] });
+    const body = toRequestBody({ ...initialDraft(received, referential), parameterIds: [], dueAt: "" }, false);
+    expect(body).toMatchObject({ confirm: false, parameterIds: [], dueAt: null, productTypeId: null, parameters: [] });
   });
 });

@@ -4,7 +4,9 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { loadAssignedSample } from "@/lib/sample-access";
 import { canTransition } from "@/lib/sample-status";
-import { canEditParameter } from "@/lib/bench-access";
+import type { SampleStatus } from "@/generated/prisma/enums";
+import { TAKE_MESSAGES, canEnterParameter } from "@/lib/bench-access";
+import { lockTakeState } from "@/lib/bench-take-server";
 
 /**
  * Submits the completed sheet to quality validation:
@@ -17,11 +19,30 @@ import { canEditParameter } from "@/lib/bench-access";
  * sample taken on several units with a repetition left blank or typed in a
  * notation the engine cannot read.
  *
- * Every parameter must be done whoever holds it (PROGRAMME.md §6): any
- * technician of the line may submit once everything is finished; until a
- * colleague has finished theirs the answer says how many lines remain
- * with other technicians.
+ * Only a sample somebody took leaves the bench (PROGRAMME.md §10): its
+ * holder submits it — the sheet saves first, and a first typed result takes
+ * a free sample — and the admin may submit it in their place. A free one is
+ * refused (409), so every submitted sample names its analyst; a colleague's
+ * is refused (403). On a line a legacy programme handed parameter by
+ * parameter, every parameter must be done whoever holds it; until a
+ * colleague has finished theirs the answer says how many lines remain with
+ * other technicians.
+ *
+ * Every check runs under the Sample row lock, like the save, the take and
+ * « Libérer »: nothing can free the sample, change its programme or empty
+ * its sheet between the checks and the status change.
  */
+type Outcome =
+  | { refusal: { status: 400 | 403 | 404 | 409; error: string; missing?: string[] } }
+  | {
+      from: SampleStatus;
+      code: string;
+      parameters: number;
+      anomalies: number;
+      nonConformes: number;
+      nonSatisfaisants: number;
+    };
+
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -30,107 +51,133 @@ export async function POST(
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;
+  // The quick answers first (missing, a colleague's, held at reception);
+  // everything is decided again under the lock below.
   const loaded = await loadAssignedSample(id, session);
   if (loaded.error) return loaded.error;
-  const sample = loaded.sample;
 
-  const transition = canTransition(
-    sample.status,
-    "RESULTATS_SAISIS",
-    session.role
-  );
-  if (!transition.ok) {
-    return NextResponse.json({ error: transition.error }, { status: 409 });
-  }
-
-  const results = await prisma.result.findMany({
-    where: { sampleId: sample.id },
-    select: {
-      parameterId: true,
-      value: true,
-      workStatus: true,
-      conform: true,
-      interpretation: true,
-      parameter: { select: { name: true } },
-      // value null + detected null = a reading the engine could not parse.
-      units: { select: { value: true, detected: true } },
-    },
-  });
-  const perUnit = sample.unitCount > 1;
-
-  const byParameter = new Map(results.map((r) => [r.parameterId, r]));
-  const missing: string[] = [];
-  // The incomplete lines that belong to other technicians — mine come first
-  // in the message, since they are the ones I can finish.
-  const foreign: string[] = [];
-
-  for (const line of sample.parameters) {
-    const { parameter } = line;
-    const result = byParameter.get(parameter.id);
+  const outcome: Outcome = await prisma.$transaction(async (tx) => {
+    const locked = await lockTakeState(tx, id);
+    if (!locked) return { refusal: { status: 404, error: "Échantillon introuvable." } };
+    if (locked.technicianId === null && !locked.heldByParameter) {
+      return { refusal: { status: 409, error: TAKE_MESSAGES.submitUnclaimed } };
+    }
     if (
-      !result?.value ||
-      result.workStatus === "EN_COURS" ||
-      result.interpretation === "INCOMPLET" ||
-      (perUnit && result.units.length < sample.unitCount) ||
-      result.units.some((u) => u.value === null && u.detected === null)
+      session.role === "TECHNICIEN" &&
+      locked.technicianId !== session.id &&
+      !locked.parameterHolderIds.includes(session.id)
     ) {
-      if (session.role === "TECHNICIEN" && !canEditParameter(sample, line, session.id)) {
-        foreign.push(parameter.name);
-      } else {
-        missing.push(parameter.name);
+      return { refusal: { status: 403, error: TAKE_MESSAGES.heldByOther(locked.holderName ?? "un collègue") } };
+    }
+    const transition = canTransition(locked.status, "RESULTATS_SAISIS", session.role);
+    if (!transition.ok) return { refusal: { status: 409, error: transition.error } };
+
+    // Read after the lock: the programme and the readings as they are now.
+    const lines = await tx.sampleParameter.findMany({
+      where: { sampleId: id },
+      select: { technicianId: true, parameter: { select: { id: true, name: true } } },
+    });
+    const results = await tx.result.findMany({
+      where: { sampleId: id },
+      select: {
+        parameterId: true,
+        value: true,
+        workStatus: true,
+        conform: true,
+        interpretation: true,
+        // value null + detected null = a reading the engine could not parse.
+        units: { select: { value: true, detected: true } },
+      },
+    });
+    const perUnit = locked.unitCount > 1;
+    const byParameter = new Map(results.map((r) => [r.parameterId, r]));
+    const bench = { technicianId: locked.technicianId, parameters: lines };
+    const missing: string[] = [];
+    // The incomplete lines that belong to other technicians — mine come first
+    // in the message, since they are the ones I can finish.
+    const foreign: string[] = [];
+
+    for (const line of lines) {
+      const { parameter } = line;
+      const result = byParameter.get(parameter.id);
+      if (
+        !result?.value ||
+        result.workStatus === "EN_COURS" ||
+        result.interpretation === "INCOMPLET" ||
+        (perUnit && result.units.length < locked.unitCount) ||
+        result.units.some((u) => u.value === null && u.detected === null)
+      ) {
+        if (session.role === "TECHNICIEN" && !canEnterParameter(bench, line, session.id)) {
+          foreign.push(parameter.name);
+        } else {
+          missing.push(parameter.name);
+        }
       }
     }
-  }
 
-  if (missing.length > 0) {
-    return NextResponse.json(
-      {
-        error: `Paramètres incomplets : ${missing.join(", ")}.`,
-        missing: [...missing, ...foreign],
-      },
-      { status: 400 }
-    );
-  }
-  if (foreign.length > 0) {
-    return NextResponse.json(
-      {
-        error: `Il reste ${foreign.length} paramètre${foreign.length > 1 ? "s" : ""} à d'autres techniciens : ${foreign.join(", ")}.`,
-        missing: foreign,
-      },
-      { status: 400 }
-    );
-  }
+    if (missing.length > 0) {
+      return {
+        refusal: {
+          status: 400,
+          error: `Paramètres incomplets : ${missing.join(", ")}.`,
+          missing: [...missing, ...foreign],
+        },
+      };
+    }
+    if (foreign.length > 0) {
+      return {
+        refusal: {
+          status: 400,
+          error: `Il reste ${foreign.length} paramètre${foreign.length > 1 ? "s" : ""} à d'autres techniciens : ${foreign.join(", ")}.`,
+          missing: foreign,
+        },
+      };
+    }
 
-  // Atomic against a second « Soumettre » (double click, two technicians of
-  // the line): the status is re-checked in the UPDATE and only the request
-  // that moved the sample is answered 200 and journalled.
-  const moved = await prisma.sample.updateMany({
-    where: { id: sample.id, status: sample.status },
-    data: { status: "RESULTATS_SAISIS" },
+    // Guarded by the status as well, though the lock already holds it: only
+    // the request that moved the sample is answered 200 and journalled.
+    const moved = await tx.sample.updateMany({
+      where: { id, status: locked.status },
+      data: { status: "RESULTATS_SAISIS" },
+    });
+    if (moved.count === 0) {
+      return {
+        refusal: {
+          status: 409,
+          error: "Cet échantillon vient d'être soumis ou de changer d'état : rechargez la fiche.",
+        },
+      };
+    }
+    return {
+      from: locked.status,
+      code: locked.code,
+      parameters: lines.length,
+      anomalies: results.filter((r) => r.workStatus === "ANOMALIE").length,
+      nonConformes: results.filter((r) => r.conform === false).length,
+      nonSatisfaisants: results.filter((r) => r.interpretation === "NON_SATISFAISANT").length,
+    };
   });
-  if (moved.count === 0) {
-    return NextResponse.json(
-      { error: "Cet échantillon vient d'être soumis ou de changer d'état : rechargez la fiche." },
-      { status: 409 }
-    );
+
+  if ("refusal" in outcome) {
+    const { status, ...body } = outcome.refusal;
+    return NextResponse.json(body, { status });
   }
-  const updated = { id: sample.id, code: sample.code, status: "RESULTATS_SAISIS" as const };
 
   await logAudit({
     actorId: session.id,
     action: "RESULTS_SUBMITTED",
     entity: "Sample",
-    entityId: sample.id,
+    entityId: id,
     metadata: {
-      from: sample.status,
+      from: outcome.from,
       to: "RESULTATS_SAISIS",
-      code: sample.code,
-      parameters: sample.parameters.length,
-      anomalies: results.filter((r) => r.workStatus === "ANOMALIE").length,
-      nonConformes: results.filter((r) => r.conform === false).length,
-      nonSatisfaisants: results.filter((r) => r.interpretation === "NON_SATISFAISANT").length,
+      code: outcome.code,
+      parameters: outcome.parameters,
+      anomalies: outcome.anomalies,
+      nonConformes: outcome.nonConformes,
+      nonSatisfaisants: outcome.nonSatisfaisants,
     },
   });
 
-  return NextResponse.json(updated);
+  return NextResponse.json({ id, code: outcome.code, status: "RESULTATS_SAISIS" as const });
 }

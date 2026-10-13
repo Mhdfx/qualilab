@@ -99,7 +99,8 @@ export default async function ReceptionPage() {
   const queueHref = viewHref("/reception", null, "file");
 
   // The release assigns nobody (A9): an analysed sample goes to the
-  // programme queue, where the responsable des paramètres gives it its bench.
+  // programme queue, then to « À prendre » once programmed, where a
+  // technician takes it (prise en charge libre, PROGRAMME.md §10).
   // Who may release which hold is decided here, on the server.
   const blockedSamples: BlockedSample[] = blocked.map((sample) => ({
     id: sample.id,

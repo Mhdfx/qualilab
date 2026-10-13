@@ -1,4 +1,5 @@
 import "server-only";
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "./prisma";
 import { sampleConclusion, sampleSearchWhere, type Conclusion, type SampleSearch } from "./sample-search";
 
@@ -29,13 +30,20 @@ export type SearchRow = {
   conclusion: Conclusion;
 };
 
+/**
+ * One page of a search. `scope` narrows it to what the caller may see — a
+ * technician's search stays on the samples they hold (`benchWhereFor`,
+ * legacy parameter lines included). It is wrapped in AND: the search sets
+ * its own OR for the free text, and a spread scope carrying an OR would
+ * silently replace it.
+ */
 export async function searchSamples(
   search: SampleSearch,
-  options: { technicianId?: string; take: number; skip?: number; excludeCancelled?: boolean }
+  options: { scope?: Prisma.SampleWhereInput; take: number; skip?: number; excludeCancelled?: boolean }
 ): Promise<{ rows: SearchRow[]; total: number }> {
-  const where = {
+  const where: Prisma.SampleWhereInput = {
     ...sampleSearchWhere(search),
-    ...(options.technicianId ? { technicianId: options.technicianId } : {}),
+    ...(options.scope ? { AND: [options.scope] } : {}),
     ...(options.excludeCancelled ? { NOT: { status: "ANNULE" as const } } : {}),
   };
   const orderBy =

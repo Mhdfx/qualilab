@@ -2,16 +2,23 @@ import { describe, expect, it } from "vitest";
 import { reportMethod, reportTechnicianNames } from "./report-programme";
 
 /**
- * PROGRAMME.md §6 — two technicians on one line are both printed; the
- * method follows the programme before the catalogue.
+ * PROGRAMME.md §6, §10 — who analysed the line: the technician who took it,
+ * then the technicians a legacy programme handed parameters to, each once;
+ * the method follows the programme before the catalogue.
  */
 describe("reportTechnicianNames", () => {
+  it("prints the taker alone — since 13/10 no parameter is handed to anyone", () => {
+    const sample = { technician: { name: "Tech 1" }, parameters: [{ technician: null }, { technician: undefined }, { technician: null }] };
+    expect(reportTechnicianNames(sample)).toBe("Tech 1");
+    expect(reportTechnicianNames({ technician: { name: " Tech 1 " }, parameters: [] })).toBe("Tech 1");
+  });
+
   it("prints the sample's technician alone when the parameters follow them", () => {
     const sample = { technician: { name: "Tech 1" }, parameters: [{ technician: null }, { technician: null }] };
     expect(reportTechnicianNames(sample)).toBe("Tech 1");
   });
 
-  it("adds each parameter's technician once, the sample's first, joined by « · »", () => {
+  it("adds each legacy parameter technician once, the taker first, joined by « · »", () => {
     const sample = {
       technician: { name: "Tech 1" },
       parameters: [{ technician: { name: "Tech 2" } }, { technician: { name: "Tech 1" } }, { technician: { name: "Tech 2" } }],
@@ -19,12 +26,12 @@ describe("reportTechnicianNames", () => {
     expect(reportTechnicianNames(sample)).toBe("Tech 1 · Tech 2");
   });
 
-  it("names the parameters' technicians when the sample has none", () => {
+  it("names the legacy parameter technicians when nobody took the sample", () => {
     const sample = { technician: null, parameters: [{ technician: { name: "Tech 2" } }, { technician: { name: "Tech 3" } }] };
     expect(reportTechnicianNames(sample)).toBe("Tech 2 · Tech 3");
   });
 
-  it("is null when nobody is named — the report keeps its « — »", () => {
+  it("is null when nobody is named (never taken) — the report keeps its « — »", () => {
     expect(reportTechnicianNames({ technician: null, parameters: [] })).toBeNull();
     expect(reportTechnicianNames({ technician: { name: "  " }, parameters: [{ technician: undefined }] })).toBeNull();
   });

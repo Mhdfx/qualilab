@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { SAMPLE_STATUS_LABELS, SAMPLE_TYPE_LABELS, formatDate } from "@/lib/labels";
 import { parseSampleSearch, searchQueryString, type Conclusion } from "@/lib/sample-search";
 import { searchSamples } from "@/lib/sample-search-server";
+import { benchWhereFor } from "@/lib/bench-access";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -63,8 +64,10 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
     searchSamples(search, {
       take: PAGE_SIZE,
       skip: (page - 1) * PAGE_SIZE,
-      // A technician's search stays on their own bench, like the samples API.
-      technicianId: session.role === "TECHNICIEN" ? session.id : undefined,
+      // A technician's search stays on the samples they hold — taken, or a
+      // legacy parameter line of theirs (PROGRAMME.md §10) — like the
+      // samples API; « À prendre » and colleagues' samples are the bench's.
+      scope: session.role === "TECHNICIEN" ? benchWhereFor(session) : undefined,
     }),
   ]);
   const clients = clientRows.map((c) => ({ id: c.id, name: c.archived ? `${c.name} (archivé)` : c.name }));

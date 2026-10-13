@@ -223,9 +223,10 @@ describe("the Direction's guards (12/10) — read from every page and route", ()
     expect(leaks).toEqual([]);
   });
 
-  it("refuses the hold release, the cancellation, the programme and the results to the Direction", () => {
+  it("refuses the hold release, the cancellation, the programme, the bench take and the results to the Direction", () => {
     for (const route of [
       "api/samples/[id]/release/route.ts",
+      "api/samples/[id]/take/route.ts",
       "api/samples/[id]/cancel/route.ts",
       "api/samples/[id]/programme/route.ts",
       "api/samples/[id]/results/route.ts",

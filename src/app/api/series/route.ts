@@ -22,7 +22,9 @@ import { serieSelectFor, serializeSerie } from "@/lib/serie-select";
 import { serieStatus, type SerieStatus } from "@/lib/series";
 
 // Never TECHNICIEN: a série names the client, the site and the interlocutor,
-// and the bench works blind — it reads its own samples through /api/samples.
+// and the bench never reads a série — its screens (/technicien) load their
+// samples on the server: what the technician holds, « À prendre », and
+// colleagues' samples read-only (PROGRAMME.md §10).
 const CIRCUIT_ROLES = [
   "PRELEVEUR",
   "RECEPTIONNISTE",

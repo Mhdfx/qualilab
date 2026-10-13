@@ -106,6 +106,9 @@ blind grepping.
    Prisma `$transaction`, counters locked inside it (`src/lib/counters.ts`).
 5. **Four verbs only** after reception: Corriger la fiche, Renvoyer au
    technicien, Annuler, Amender — each with a reason and `logAudit()`.
+   « Prendre en charge » / « Libérer » at the bench are not correction
+   verbs: journalled (`SAMPLE_TAKEN` / `SAMPLE_UNTAKEN`), no reason
+   (`PROGRAMME.md` §10).
 6. **Additive migrations with backfill**; old routes stay alive until the
    slice that removes them; Capitalized table names, hand-checked.
 7. **Every slice ships**: tests green, browser-verified, deployed, TESTPLAN L

@@ -112,7 +112,8 @@ const subscribeNoop = () => () => {};
  * temperature, conformity and decision — but each its own weight (one
  * container per family, 12/10: « Quantité 2P » is kept here, the line's own
  * quantity is the « 2M » part). No technician (RETOUR-LABO-06-10.md §9.3):
- * the responsable des paramètres assigns it on the programme sheet.
+ * once programmed, the sample waits in « À prendre » until a technician
+ * takes it (prise en charge libre, PROGRAMME.md §10).
  */
 type LineIntake = {
   /** « Quantité 2P »: the physico-chemistry part of a two-family line, as typed. */

@@ -59,8 +59,9 @@ import {
  * carry what the reception of a visit records later: rule (1) of the bon
  * (exploitable or not, answered for every line — retour du 08/10),
  * temperature at arrival, conformity with a coded motif, decision. Never a technician
- * (RETOUR-LABO-06-10.md §9.3): the responsable des paramètres assigns it on
- * the programme sheet; a `technicianId` still sent is ignored.
+ * (RETOUR-LABO-06-10.md §9.3): once programmed, the sample waits in
+ * « À prendre » until a technician takes it (PROGRAMME.md §10); a
+ * `technicianId` still sent is ignored.
  *
  * One container per family (the laboratory's answer of 12/10): a two-family
  * line weighs each family's part apart — the line's own quantity is the
@@ -548,8 +549,8 @@ export function validateLine(
     if (consultationMissing(options.consultationRequired ?? false, decision, conformity, consultation)) {
       return fail(CONSULTATION_MESSAGES.required);
     }
-    // `input.technicianId` is deliberately not read (§9.3): the counter
-    // assigns nobody, the programme does.
+    // `input.technicianId` is deliberately not read (§9.3): nobody assigns
+    // a technician, one takes the sample from « À prendre ».
   }
 
   return {

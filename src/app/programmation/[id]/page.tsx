@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { requireRole, getSession } from "@/lib/auth";
 import { roleAllowed } from "@/lib/roles";
+import { BENCH_STATUSES } from "@/lib/bench-access";
 import { prisma } from "@/lib/prisma";
 import { getLabSettings } from "@/lib/lab-settings";
 import {
@@ -38,6 +39,7 @@ import { TypeBadge } from "@/components/ui/TypeBadge";
 import { ReceptionObservation } from "@/components/samples/ReceptionObservation";
 import { ReceptionNonConformity } from "@/components/samples/ReceptionNonConformity";
 import { ProgrammeSheet } from "@/components/programmation/ProgrammeSheet";
+import { benchHolder } from "@/components/programmation/programme-sheet-logic";
 import type { ProgrammeReferentialData, ProgrammeResponse } from "@/components/programmation/programme-sheet-types";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -97,6 +99,8 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
   const data = JSON.parse(JSON.stringify(serializeProgramme(row))) as ProgrammeResponse;
   const referentialData = JSON.parse(JSON.stringify(referential)) as ProgrammeReferentialData;
   const { sample, programme } = data;
+  // Who took it at the bench — the holder, else a legacy per-analysis technician (before 13/10).
+  const holder = benchHolder(sample);
   const verbs = verbsFor(sample, session.role);
   const hasVerbs = verbs.correct || verbs.cancel || verbs.reactivate;
 
@@ -198,8 +202,24 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
               <Field icon={Layers} label="Unités prélevées">
                 {sample.unitCount} unité{sample.unitCount > 1 ? "s" : ""}
               </Field>
-              <Field icon={User} label="Technicien">
-                {sample.technician?.name ?? <span className="text-slate-400">À attribuer</span>}
+              {/* Read-only (13/10): the technician takes the sample at the bench; the programme assigns nobody. */}
+              <Field icon={User} label="Pris en charge par">
+                {holder ? (
+                  <>
+                    {holder.names}
+                    {holder.assignedAt && (
+                      <span className="ml-1.5 text-xs font-normal text-slate-500">le {formatDateTime(holder.assignedAt)}</span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-slate-400">
+                    {sample.status === "PRELEVE" || sample.status === "RECU"
+                      ? "Personne — « À prendre » après confirmation"
+                      : BENCH_STATUSES.includes(sample.status) && !sample.analysisBlocked
+                        ? "Personne — « À prendre » à la paillasse"
+                        : "Personne"}
+                  </span>
+                )}
               </Field>
             </dl>
 

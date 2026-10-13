@@ -49,8 +49,10 @@ export async function GET(request: Request) {
   const where = {
     ...sampleSearchWhere(parseSampleSearch(params), { blind: session.role === "PRELEVEUR" }),
     ...(session.role === "PRELEVEUR" ? { userId: session.id } : {}),
-    // A technician's bench is their own — the sample's technician or one of
-    // its parameters' (PROGRAMME.md §6): the list API mirrors sample-access.
+    // A technician lists the samples they hold — taken (« Prendre en
+    // charge », or a first result) or a legacy parameter line of theirs
+    // (PROGRAMME.md §10). « À prendre » and colleagues' samples are read on
+    // the bench screens (/technicien), never through this API.
     // Wrapped in AND so its OR never collides with the search's own.
     ...(session.role === "TECHNICIEN" ? { AND: [benchWhereFor(session)] } : {}),
     ...(status ? { status } : {}),

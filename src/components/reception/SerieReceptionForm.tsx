@@ -130,9 +130,10 @@ import {
  * « en attente du client » (received, numbered, released later from
  * « Bloqués »), or destroyed (A9).
  *
- * No technician here (retour du 08/10, RETOUR-LABO-06-10.md §9.3): the
- * responsable des paramètres picks the sample from the global queue and
- * assigns the bench on the programme sheet.
+ * No technician here (retour du 08/10, RETOUR-LABO-06-10.md §9.3), nor
+ * anywhere since 13/10 (prise en charge libre, PROGRAMME.md §10): the
+ * responsable des paramètres programmes the analyses, then the sample waits
+ * in « À prendre » until a technician takes it.
  */
 
 export type ReceptionLineData = {
@@ -178,7 +179,10 @@ export type ReceptionLineData = {
   productType: { id: string; name: string } | null;
   /** `aliases` (one per line): histamine and Salmonella are recognised on them too. */
   parameters: { parameter: { id: string; name: string; unit: string | null; aliases?: string | null } }[];
+  /** Who took it at the bench — « Prendre en charge », or a first result (PROGRAMME.md §10). */
   technician: { id: string; name: string } | null;
+  /** When it was taken; optional on an older payload. */
+  assignedAt?: string | null;
 };
 
 export type ReceptionSerieData = {
@@ -231,10 +235,12 @@ type ReceivedLine = {
   airMethod?: AirMethod | null;
   personName: string | null;
   nature: { label: string };
-  /** Read from the database on a série already received — whoever the
-   * programme (or, before 08/10, the reception) assigned; never in the
-   * answer of the reception itself. */
+  /** Read from the database on a série already received — the technician
+   * who took the sample at the bench (or, before 13/10, the one assigned to
+   * it); never in the answer of the reception itself. */
   technician?: { id: string; name: string } | null;
+  /** When they took it. */
+  assignedAt?: string | null;
   /** In the answer of the reception: the checklist as the API decided it (A8). */
   checklist?: ChecklistRow[];
   complementary?: ChecklistRow[];
@@ -695,6 +701,7 @@ export function SerieReceptionForm({
         personName: s.personName,
         nature: { label: s.nature.label },
         technician: s.technician,
+        assignedAt: s.assignedAt ?? null,
       }));
     return (
       <ReceivedSummary
@@ -1141,7 +1148,7 @@ export function SerieReceptionForm({
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden="true" />
               <p>
                 La validation attribue un <b>N° de contrôle</b>{" "}à chaque échantillon, en une seule opération. Les étiquettes s&apos;impriment ensuite.
-                Le technicien est attribué par le responsable des paramètres, à la programmation.
+                Après la programmation, l&apos;échantillon apparaît dans « À prendre » : le technicien qui le prend en charge en devient responsable.
               </p>
             </div>
             {error && (
@@ -1199,8 +1206,9 @@ function ReceivedSummary({
   const units = numbered
     .filter((line) => statusOf(line) !== "ANNULE")
     .reduce((n, l) => n + Math.max(1, l.unitCount), 0);
-  // The reception assigns nobody (§9.3): the column only shows once the
-  // programme — or a reception before 08/10 — named a technician.
+  // Nobody is assigned (§9.3, prise en charge libre of 13/10): the column
+  // only shows once a technician took a sample at the bench — or an older
+  // programme or reception named one.
   const showTechnician = lines.some((line) => line.technician);
   const columns = showTechnician ? 6 : 5;
   // What was decided (A8): the API's answer right after the reception, the
@@ -1237,7 +1245,7 @@ function ReceivedSummary({
                 <th className="pb-2 pr-3 font-medium">N° de contrôle</th>
                 <th className="pb-2 pr-3 font-medium">Unités</th>
                 <th className="pb-2 pr-3 font-medium">Conformité</th>
-                {showTechnician && <th className="pb-2 pr-3 font-medium">Technicien</th>}
+                {showTechnician && <th className="pb-2 pr-3 font-medium">Pris en charge par</th>}
                 <th className="pb-2 font-medium"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
@@ -1291,7 +1299,14 @@ function ReceivedSummary({
                           </span>
                         )}
                       </td>
-                      {showTechnician && <td className="py-2.5 pr-3 text-slate-700">{line.technician?.name ?? "—"}</td>}
+                      {showTechnician && (
+                        <td className="py-2.5 pr-3 text-slate-700">
+                          {line.technician?.name ?? "—"}
+                          {line.technician && line.assignedAt && (
+                            <span className="block text-xs text-slate-500">{formatDateTime(line.assignedAt)}</span>
+                          )}
+                        </td>
+                      )}
                       <td className="py-2.5">
                         {byId.get(line.id) && (
                           <SampleVerbs

@@ -54,6 +54,10 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   DOCUMENT_REFERENCE_UPDATED: "Cartouche de document modifiée",
   SAMPLE_PROGRAMMED: "Programme d'analyse confirmé",
   SAMPLE_PROGRAMME_UPDATED: "Programme d'analyse modifié",
+  // Prise en charge libre (13/10): the bench take and give-back — not the
+  // reception's « Libérer » (SAMPLE_RELEASED).
+  SAMPLE_TAKEN: "Échantillon pris en charge",
+  SAMPLE_UNTAKEN: "Échantillon remis dans « À prendre »",
   SAMPLE_ANALYSIS_STARTED: "Analyse démarrée",
   RESULTS_SAVED: "Résultats enregistrés",
   RESULTS_SUBMITTED: "Résultats soumis à validation",

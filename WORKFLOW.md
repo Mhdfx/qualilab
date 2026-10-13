@@ -12,6 +12,11 @@
 > `stable/v1.0-avant-phase-9`) and the production dump
 > `qualilab_avant-phase-9.sql.gz` on the VPS — see `DEPLOY.md`, « Point de
 > retour ».
+>
+> Restore point before the shared bench (« prise en charge libre », §19):
+> git tag **`v1.2-avant-sans-affectation`** (13/10, commit `4b9c557`) and the
+> production dump `qualilab_avant-sans-affectation.sql.gz` — `DEPLOY.md`,
+> « Point de retour — avant la prise en charge libre ».
 
 ---
 
@@ -131,9 +136,10 @@ header (cooler temperature, times) and every line: reception temperature
 (pre-filled with the cooler's), quantity, the **computed acceptance
 checklist** (the bon's 7 rules, then the controls « hors bon » C1–C7 since
 10/10, §18), conformity with a coded motif, the decision for a non-conform
-sample (analyse, wait for the client, destroy). No technician: since the lab's
-feedback of 08/10 the receptionist assigns nobody, the responsable des
-paramètres does it on the programme sheet. **One button** « Valider la
+sample (analyse, wait for the client, destroy). No technician: the
+receptionist assigns nobody (08/10), and since 13/10 nobody does — once its
+programme is confirmed the sample joins the technicians' shared « À prendre »
+list (`PROGRAMME.md` §10, §19 below). **One button** « Valider la
 réception » runs a single transaction: N° de contrôle for each line, status
 `RECU`, audit. Then « Imprimer les étiquettes »: one label per unit
 (N° de contrôle + repetition R1 … Rn, Code128 barcode, nature, short product,
@@ -146,6 +152,13 @@ Technician and validation lists are **grouped by série** (the per-sample
 screens are unchanged in this chantier; the grid with one column per unit is
 chantier 3). The série detail page shows every sample with its status and the
 four verbs the role is allowed.
+
+Since 13/10 the bench's shared « À prendre » list (§19) is grouped by série
+like every other list: its order is urgent first, then the oldest reception,
+and a série's group is placed by its most urgent, then oldest, sample — so a
+younger sample of that série can sit above an older sample of another série.
+A flat, strictly oldest-first list would be a deliberate exception to this
+rule (NEEDEDINFO Q106).
 
 ## 4. Data model delta (Prisma sketch)
 
@@ -339,6 +352,15 @@ The old routes (`POST /api/samples`, `POST /api/samples/[id]/reception`,
 | Annuler | RECEPTIONNISTE (before analysis), ADMIN | PRELEVE / RECU / EN_ANALYSE / RESULTATS_SAISIS → ANNULE | coded motif | terminal; out of queues, reports, invoicing; ADMIN may reactivate |
 | Amender | ADMIN, VALIDATEUR | VALIDE / RAPPORT_ENVOYE → EN_ANALYSE | text | chantier 4 (new report version « annule et remplace ») |
 
+**Not verbs: taking and releasing at the bench (13/10, §19).** « Prendre en
+charge » (`POST /api/samples/[id]/take`, or the first typed result) and
+« Libérer » (`DELETE /api/samples/[id]/take`) are bench actions, not
+correction verbs: they change who holds the sample (`technicianId`,
+`assignedAt`), never its status nor its data, so they carry **no reason** —
+but each one is journalled (`SAMPLE_TAKEN` / `SAMPLE_UNTAKEN`). They do not
+break the rule « nothing else touches a sample after reception » (§2,
+rule 5), which is about the sample's facts.
+
 ## 9. Migration and backfill
 
 1. Migration `phase9_serie` (Capitalized table names, hand-checked): new
@@ -486,12 +508,14 @@ Entre la réception et la paillasse, le **responsable des paramètres**
 (rôle PROGRAMMATEUR, espace `/programmation`) confirme pour chaque ligne un
 programme d'analyse : type de produit et critères, analyses (profils,
 cases), nombres (unités à lire, prise d'essai, dilution par paramètre),
-méthodes (version de norme par paramètre), organisation (technicien par
-paramètre, priorité, délai, consignes). La ligne passe RECU → **PROGRAMME** ;
-la paillasse ne démarre qu'une ligne programmée, chaque technicien ne saisit
-que ses paramètres et la soumission attend que tout soit terminé. La
-réception n'attribue plus de technicien (retour du 08/10, §9.3) : le
-programme ne se confirme qu'avec un technicien. La facturation peut
+méthodes (version de norme par paramètre), organisation (priorité, délai,
+consignes). La ligne passe RECU → **PROGRAMME** ; la paillasse ne démarre
+qu'une ligne programmée : un technicien la prend en charge (« Prendre en
+charge » ou sa première saisie) et lui seul la saisit. Depuis le 13/10
+personne n'attribue : la réception ne le fait plus depuis le 08/10, et le
+programme se confirme sans technicien — la ligne rejoint « À prendre » (§19).
+(Du 05/10 au 13/10 : technicien par paramètre sur la fiche, le programme ne
+se confirmait qu'avec un technicien.) La facturation peut
 être préparée dès le programme confirmé (mention « avant résultat » tant que
 la ligne n'est pas validée). Journal : `SAMPLE_PROGRAMMED`,
 `SAMPLE_PROGRAMME_UPDATED`. Recette : TESTPLAN T.
@@ -580,3 +604,45 @@ Old tabs: a reception or deposit sent without the C3 / C5 answers is refused
 with « … (rechargez la page si elle date d'avant la mise à jour) ». The
 lab's answers (NEEDEDINFO Q67–Q77) set the limits and the severity; until
 then the defaults above apply.
+
+## 19. Prise en charge libre (13/10 — `PROGRAMME.md` §10, TESTPLAN V14)
+
+Décision du laboratoire du 13/10 : **plus d'affectation**. Ni la réception,
+ni le responsable des paramètres, ni l'administrateur n'attribuent plus de
+technicien. En résumé :
+
+1. **La fiche de programme** choisit les analyses, les versions de norme, les
+   dilutions, la priorité, le délai, la prise d'essai et les consignes — plus
+   de technicien ni de charge. Confirmer met l'échantillon dans **« À
+   prendre »**, la liste partagée de tous les techniciens (à la paillasse,
+   pas bloqué, tenu par personne — une ligne héritée tenue par paramètre
+   compte comme prise ; les urgentes puis les plus anciennes, groupées par
+   série, §3.4).
+2. **Prendre en charge** : le bouton, ou la première saisie avec contenu sur
+   un échantillon libre (prise implicite). Le titulaire est
+   `Sample.technicianId`, l'heure `assignedAt` ; l'échantillon entier est
+   pris. Le premier gagne (verrou de la ligne + `updateMany` gardé) ; le
+   second reçoit 409 « Déjà pris par X. ». Le programme n'écrit plus
+   `SampleParameter.technicianId` ; les lignes héritées gardent leur règle.
+3. **Libérer** remet l'échantillon dans « À prendre » : le titulaire ou
+   l'administrateur, tant qu'il est PROGRAMME / EN_ANALYSE et qu'aucun
+   résultat n'est saisi (valeur, note, lecture d'unité ou étape autre que
+   « En cours »).
+4. **Les collègues voient, sans saisir** : « Pris par un collègue » (nom,
+   heure), lecture seule ; une saisie dessus → 403.
+5. **L'administrateur supplée mais ne prend jamais** (la prise est réservée
+   au TECHNICIEN ; sa saisie ne prend pas). Soumettre un échantillon que
+   personne ne tient est refusé à tous (409).
+6. **Prendre ne change pas le statut** : PROGRAMME → EN_ANALYSE à la
+   première saisie avec contenu ; un « Enregistrer » vide ne prend ni ne
+   démarre. Le programme reste modifiable jusqu'à EN_ANALYSE, et sa route
+   n'écrit jamais `technicianId` / `assignedAt`.
+7. **Validation** inchangée (deux signataires) ; le validateur lit
+   « Analysé par » = le titulaire (+ les techniciens hérités par paramètre).
+8. **Bascule sans migration ni reprise** : un échantillon déjà attribué
+   compte comme pris par cette personne. Point de retour : tag
+   `v1.2-avant-sans-affectation` + la sauvegarde
+   `qualilab_avant-sans-affectation.sql.gz` (`DEPLOY.md`).
+
+Prendre et libérer ne sont pas des verbes de correction (§8) : journalisés
+(`SAMPLE_TAKEN` / `SAMPLE_UNTAKEN`), sans motif.

@@ -284,14 +284,18 @@ model User {
   /// AMENDEMENT.md §1 — the report versions issued (approved) by this user.
   issuedReportVersions ReportVersion[]      @relation("ReportVersionIssuedBy")
   receivedSamples      Sample[]             @relation("SampleReceivedBy")
+  /// PROGRAMME.md §10 — the samples this technician took at the bench
+  /// (`Sample.technicianId`), and those assigned to them before 13/10.
   assignedSamples      Sample[]             @relation("SampleTechnician")
   validatedSamples     Sample[]             @relation("SampleValidatedBy")
   approvedSamples      Sample[]             @relation("SampleApprovedBy")
   rejectedSamples      Sample[]             @relation("SampleRejectedBy")
   cancelledSamples     Sample[]             @relation("SampleCancelledBy")
-  /// PROGRAMME.md — the lines whose programme this user confirmed, and the
-  /// parameters handed to this technician one by one.
+  /// PROGRAMME.md — the lines whose programme this user confirmed.
   programmedSamples    Sample[]             @relation("ProgrammedSamples")
+  /// Legacy (PROGRAMME.md §10): the parameters a programme handed to this
+  /// technician one by one before the « no assignment » decision of 13/10.
+  /// Never written any more; « Libérer » clears them.
   parameterAssignments SampleParameter[]    @relation("ParameterTechnician")
   createdSeries        Serie[]              @relation("SerieCreatedBy")
   sampledSeries        Serie[]              @relation("SerieSampler")
@@ -553,9 +557,11 @@ model Sample {
   storageClass               StorageClass?
   /// C2 — where `receptionTemperature` was read; null = unknown (received before).
   receptionTemperatureSource TemperatureSource?
-  /// Held at reception: non-conform while the lab's policy
-  /// (LabSettings.blockNonConformAtReception) blocks such samples. It stays
-  /// RECU and unassigned until an ADMIN releases it to a technician.
+  /// Held at reception — « En attente du client » (A9), a destroyed sample
+  /// reactivated, or the retired policy (LabSettings.blockNonConformAtReception):
+  /// it stays RECU until the reception or the admin releases it to the
+  /// programmation queue. A release never assigns anybody: once programmed,
+  /// the sample waits in « À prendre » (PROGRAMME.md §10).
   analysisBlocked  Boolean              @default(false)
   /// « En attente du client » (reception decision): received non conforme
   /// and held (`analysisBlocked`) since this instant, until the reception or
@@ -571,8 +577,15 @@ model Sample {
   /// that stops the approval from re-sending what the technical validation
   /// already dispatched (LabSettings.alertAfterTechnicalValidation).
   alertsSentAt     DateTime?
+  /// Who took the sample at the bench (PROGRAMME.md §10): « Prendre en
+  /// charge », or the first result typed on a free sample. Null = « À
+  /// prendre ». A sample assigned before 13/10 counts as taken by that
+  /// person. Set only by the take (`…/take`, or the first result's implicit
+  /// take), cleared only by « Libérer » — never written by the programme,
+  /// the reception or the release of a reception hold.
   technicianId     String?
   technician       User?                @relation("SampleTechnician", fields: [technicianId], references: [id])
+  /// When it was taken; cleared with `technicianId` by « Libérer ».
   assignedAt       DateTime?
   /// Technical validation by the VALIDATEUR — the first of two approvals.
   validatedById    String?
@@ -796,7 +809,9 @@ model SampleParameter {
   parameter   AnalysisParameter @relation(fields: [parameterId], references: [id])
 
   // ---- PROGRAMME.md §3 — what the programme decides per parameter --------
-  /// The technician of this parameter; null = the sample's technician.
+  /// Legacy per-parameter technician (programmes before 13/10, PROGRAMME.md
+  /// §10); null = whoever took the sample. Never written any more: kept by
+  /// « Corriger la fiche », cleared by « Libérer ».
   technicianId   String?
   technician     User?        @relation("ParameterTechnician", fields: [technicianId], references: [id], onDelete: SetNull)
   /// The norm version retained for this parameter (printed as the method).
@@ -1259,9 +1274,9 @@ model CompanySettings {
 /// behaviours are built, the toggle picks one, so the answer costs zero code.
 model LabSettings {
   id                            String  @id @default("lab")
-  /// Decision n°10 — a sample declared non-conform at reception is analysed
-  /// anyway (false, today's behaviour) or held unassigned until an ADMIN
-  /// releases it to a technician (true).
+  /// Decision n°10 — retired 29/09: no longer read nor editable (the
+  /// reception decides each non-conform sample, A9); kept for the samples it
+  /// held. It used to hold such a sample until an ADMIN released it.
   blockNonConformAtReception    Boolean @default(false)
   /// Decision n°11 — contamination alerts leave right after the technical
   /// validation (true, the laboratory's answer of 29/09) instead of after the

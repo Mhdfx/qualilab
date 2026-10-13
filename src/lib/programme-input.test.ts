@@ -6,11 +6,11 @@ import {
   MAX_PARAMETER_NOTE,
   MAX_PROGRAMME_NOTE,
   MAX_TEST_PORTION,
+  programmeParameterRows,
   resolveProgrammeNature,
   validateProgramme,
   type ProgrammeContext,
   type ProgrammeNatureRef,
-  lacksTechnician,
 } from "./programme-input";
 import { MAX_UNITS } from "./series";
 
@@ -42,12 +42,6 @@ const ctx: ProgrammeContext = {
     { id: "type-retired", clientId: null, active: false },
   ],
   parameterIds: ["p-ecoli", "p-salm", "p-hist"],
-  technicians: [
-    { id: "tech1", role: "TECHNICIEN", banned: false },
-    { id: "tech2", role: "TECHNICIEN", banned: null },
-    { id: "tech-banned", role: "TECHNICIEN", banned: true },
-    { id: "valid1", role: "VALIDATEUR", banned: false },
-  ],
   normVersionIds: { "p-ecoli": ["nv-ecoli-2021", "nv-ecoli-2013"], "p-salm": ["nv-salm-2021"] },
   now: NOW,
 };
@@ -58,13 +52,12 @@ const good = {
   parameterIds: ["p-ecoli", "p-salm"],
   unitCount: 5,
   testPortion: "25 g",
-  technicianId: "tech1",
   priority: "URGENTE",
   dueAt: "2026-10-08T12:00:00.000Z",
   programmeNote: "Conserver à 4 °C",
   parameters: [
-    { parameterId: "p-ecoli", technicianId: null, normVersionId: "nv-ecoli-2021", dilutionFactor: 10, note: "×10" },
-    { parameterId: "p-salm", technicianId: "tech2", normVersionId: null, dilutionFactor: null, note: null },
+    { parameterId: "p-ecoli", normVersionId: "nv-ecoli-2021", dilutionFactor: 10, note: "×10" },
+    { parameterId: "p-salm", normVersionId: null, dilutionFactor: null, note: null },
   ],
 };
 
@@ -89,13 +82,12 @@ describe("validateProgramme — a complete programme", () => {
       parameterIds: ["p-ecoli", "p-salm"],
       unitCount: 5,
       testPortion: "25 g",
-      technicianId: "tech1",
       priority: "URGENTE",
       dueAt: new Date("2026-10-08T12:00:00.000Z"),
       programmeNote: "Conserver à 4 °C",
       parameters: [
-        { parameterId: "p-ecoli", technicianId: null, normVersionId: "nv-ecoli-2021", dilutionFactor: 10, note: "×10" },
-        { parameterId: "p-salm", technicianId: "tech2", normVersionId: null, dilutionFactor: null, note: null },
+        { parameterId: "p-ecoli", normVersionId: "nv-ecoli-2021", dilutionFactor: 10, note: "×10" },
+        { parameterId: "p-salm", normVersionId: null, dilutionFactor: null, note: null },
       ],
     });
   });
@@ -107,7 +99,6 @@ describe("validateProgramme — a complete programme", () => {
     expect(checked.value.parameterIds).toEqual([]);
     expect(checked.value.parameters).toEqual([]);
     expect(checked.value.productTypeId).toBeNull();
-    expect(checked.value.technicianId).toBeNull();
     expect(checked.value.priority).toBe("NORMALE");
     expect(checked.value.dueAt).toBeNull();
     expect(checked.value.testPortion).toBeNull();
@@ -121,7 +112,6 @@ describe("validateProgramme — a complete programme", () => {
     expect(checked.value.parameters.map((p) => p.parameterId)).toEqual(["p-ecoli", "p-salm"]);
     expect(checked.value.parameters[0]).toEqual({
       parameterId: "p-ecoli",
-      technicianId: null,
       normVersionId: null,
       dilutionFactor: null,
       note: null,
@@ -133,7 +123,7 @@ describe("validateProgramme — a complete programme", () => {
       {
         ...good,
         parameterIds: ["p-ecoli", "p-ecoli"],
-        parameters: [...good.parameters, { parameterId: "p-hist", technicianId: "tech1" }],
+        parameters: [...good.parameters, { parameterId: "p-hist", dilutionFactor: 10 }],
       },
       ctx
     );
@@ -242,41 +232,34 @@ describe("validateProgramme — the numbers", () => {
   });
 });
 
-describe("validateProgramme — the organisation", () => {
-  it("accepts an active technician or none as the default", () => {
-    expect(validateProgramme({ ...good, technicianId: "tech2" }, ctx).ok).toBe(true);
-    // No default on a draft…
-    const none = validateProgramme({ ...good, confirm: false, technicianId: null }, ctx);
-    expect(none.ok).toBe(true);
-    if (none.ok) expect(none.value.technicianId).toBeNull();
-    // …or on a confirmation where every analysis has its own technician.
-    const each = validateProgramme(
-      { ...good, technicianId: null, parameters: good.parameters.map((p) => ({ ...p, technicianId: "tech2" })) },
-      ctx
-    );
-    expect(each.ok).toBe(true);
+describe("validateProgramme — the organisation (13/10: « prise en charge libre »)", () => {
+  it("confirms with no technician at all: the sample goes to « À prendre »", () => {
+    const confirmed = validateProgramme(good, ctx);
+    expect(confirmed.ok).toBe(true);
+    if (confirmed.ok) expect(confirmed.value.confirm).toBe(true);
+    // Every edit of a confirmed programme too — nobody to name, ever.
+    expect(validateProgramme({ ...good, confirm: false }, { ...ctx, status: "PROGRAMME" }).ok).toBe(true);
+    // The smallest confirmation: one analysis and nothing else decided.
+    expect(validateProgramme({ confirm: true, parameterIds: ["p-salm"], unitCount: 1 }, ctx).ok).toBe(true);
   });
 
-  it("asks for a technician before confirming (08/10, §9.3: the reception assigns nobody)", () => {
-    // p-ecoli has no technician of its own and there is no default.
-    expectError({ ...good, technicianId: null }, /Choisissez le technicien \(par défaut ou pour chaque analyse\)/);
-    expectError({ ...good, technicianId: "", parameters: [] }, /Choisissez le technicien/);
-    // A confirmed programme keeps the rule on every edit.
-    expect(validateProgramme({ ...good, confirm: false, technicianId: null }, { ...ctx, status: "PROGRAMME" }).ok).toBe(false);
-  });
-
-  it("lacksTechnician: the default covers every analysis", () => {
-    expect(lacksTechnician("t1", [null, null])).toBe(false);
-    expect(lacksTechnician(null, ["t1", "t2"])).toBe(false);
-    expect(lacksTechnician(null, ["t1", null])).toBe(true);
-    expect(lacksTechnician("", [])).toBe(true);
-  });
-
-  it("refuses a banned account, another role, or an unknown user", () => {
-    expectError({ ...good, technicianId: "tech-banned" }, /technicien actif/);
-    expectError({ ...good, technicianId: "valid1" }, /technicien actif/);
-    expectError({ ...good, technicianId: "tech-nowhere" }, /technicien actif/);
-    expectError({ ...good, technicianId: 7 }, /Technicien invalide/);
+  it("ignores a technicianId an old tab still sends, at the top and per analysis", () => {
+    // Whatever it names — a technician, an unknown or banned account, another
+    // role, junk: never refused, never kept (as the reception does since 08/10).
+    for (const technicianId of ["tech1", "tech-banned", "valid1", "tech-nowhere", 7, "", null, { id: "tech1" }]) {
+      const checked = validateProgramme(
+        { ...good, technicianId, parameters: good.parameters.map((p) => ({ ...p, technicianId })) },
+        ctx
+      );
+      expect(checked.ok).toBe(true);
+      if (!checked.ok) continue;
+      expect(checked.value).not.toHaveProperty("technicianId");
+      for (const parameter of checked.value.parameters) expect(parameter).not.toHaveProperty("technicianId");
+    }
+    // On the edit of a confirmed programme as well.
+    const edit = validateProgramme({ ...good, confirm: false, technicianId: "tech2" }, { ...ctx, status: "PROGRAMME" });
+    expect(edit.ok).toBe(true);
+    if (edit.ok) expect(edit.value).not.toHaveProperty("technicianId");
   });
 
   it("knows two priorities and defaults to the normal one", () => {
@@ -329,7 +312,7 @@ describe("validateProgramme — per-parameter settings", () => {
   it("refuses a malformed list or entry", () => {
     expectError({ ...good, parameters: {} }, /réglages par analyse/);
     expectError({ ...good, parameters: ["p-ecoli"] }, /réglages par analyse/);
-    expectError({ ...good, parameters: [{ technicianId: "tech1" }] }, /réglages par analyse/);
+    expectError({ ...good, parameters: [{ normVersionId: "nv-ecoli-2021" }] }, /réglages par analyse/);
   });
 
   it("refuses the same analysis twice", () => {
@@ -337,13 +320,6 @@ describe("validateProgramme — per-parameter settings", () => {
       { ...good, parameters: [{ parameterId: "p-ecoli" }, { parameterId: "p-ecoli" }] },
       /deux fois/
     );
-  });
-
-  it("checks the technician of a parameter like the default one", () => {
-    expect(validateProgramme(withSetting({ technicianId: "tech2" }), ctx).ok).toBe(true);
-    expectError(withSetting({ technicianId: "tech-banned" }), /Technicien invalide pour une analyse/);
-    expectError(withSetting({ technicianId: "valid1" }), /Technicien invalide pour une analyse/);
-    expectError(withSetting({ technicianId: 3 }), /Technicien invalide pour une analyse/);
   });
 
   it("accepts only a norm version that belongs to the parameter", () => {
@@ -381,6 +357,52 @@ describe("validateProgramme — per-parameter settings", () => {
     const trimmed = validateProgramme(withSetting({ note: "  incubation 48 h " }), ctx);
     expect(trimmed.ok).toBe(true);
     if (trimmed.ok) expect(trimmed.value.parameters[0].note).toBe("incubation 48 h");
+  });
+});
+
+describe("programmeParameterRows — legacy per-analysis technicians (before 13/10)", () => {
+  const programmed = [
+    { parameterId: "p-ecoli", normVersionId: "nv-ecoli-2021", dilutionFactor: 10, note: "×10" },
+    { parameterId: "p-salm", normVersionId: null, dilutionFactor: null, note: null },
+  ];
+
+  it("writes one row per programmed analysis, in order, with its settings", () => {
+    expect(programmeParameterRows("s1", programmed, [])).toEqual([
+      { sampleId: "s1", parameterId: "p-ecoli", technicianId: null, normVersionId: "nv-ecoli-2021", dilutionFactor: 10, note: "×10" },
+      { sampleId: "s1", parameterId: "p-salm", technicianId: null, normVersionId: null, dilutionFactor: null, note: null },
+    ]);
+  });
+
+  it("keeps the technician of an analysis kept, gives none to an analysis added, drops the one removed", () => {
+    // The line held p-ecoli by tech1 and p-hist by tech2; p-hist leaves, p-salm arrives.
+    const legacy = [
+      { parameterId: "p-ecoli", technicianId: "tech1" },
+      { parameterId: "p-hist", technicianId: "tech2" },
+    ];
+    const rows = programmeParameterRows("s1", programmed, legacy);
+    expect(rows.map((row) => [row.parameterId, row.technicianId])).toEqual([
+      ["p-ecoli", "tech1"],
+      ["p-salm", null],
+    ]);
+    expect(rows.some((row) => row.technicianId === "tech2")).toBe(false);
+  });
+
+  it("never invents a technician: a legacy row without one, or none at all, writes null", () => {
+    const rows = programmeParameterRows("s1", programmed, [{ parameterId: "p-ecoli", technicianId: null }]);
+    expect(rows.every((row) => row.technicianId === null)).toBe(true);
+    expect(programmeParameterRows("s1", [], [{ parameterId: "p-ecoli", technicianId: "tech1" }])).toEqual([]);
+  });
+
+  it("reads the technician from the line, never from the request", () => {
+    // A stale sheet's technician survives validation as nothing at all.
+    const checked = validateProgramme(
+      { ...good, technicianId: "tech2", parameters: good.parameters.map((p) => ({ ...p, technicianId: "tech2" })) },
+      ctx
+    );
+    expect(checked.ok).toBe(true);
+    if (!checked.ok) return;
+    const rows = programmeParameterRows("s1", checked.value.parameters, [{ parameterId: "p-salm", technicianId: "tech1" }]);
+    expect(rows.map((row) => row.technicianId)).toEqual([null, "tech1"]);
   });
 });
 

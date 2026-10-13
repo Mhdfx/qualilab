@@ -4,8 +4,14 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { SAMPLE_STATUS_LABELS } from "@/lib/labels";
 import { isLockConflict } from "@/lib/billing";
+import { TYPED_RESULT_WHERE } from "@/lib/bench-access";
 import { canTransition, PROGRAMMABLE_STATUSES } from "@/lib/sample-status";
-import { resolveProgrammeNature, validateProgramme, type ProgrammeContext } from "@/lib/programme-input";
+import {
+  programmeParameterRows,
+  resolveProgrammeNature,
+  validateProgramme,
+  type ProgrammeContext,
+} from "@/lib/programme-input";
 import {
   loadProgrammeNatures,
   loadProgrammeReferential,
@@ -23,7 +29,8 @@ class StaleProgramme extends Error {}
  *
  * GET — the line, its current programme and the referential the fiche
  * needs. The responsable des paramètres and the admin write it; a
- * technician reads it (the bench shows what was decided).
+ * technician reads it (the bench shows what was decided). The line carries
+ * who took it at the bench (`technician`, `assignedAt`), read-only.
  *
  * `?natureId=` computes the referential for another nature the line may
  * take (RETOUR-LABO-06-10.md §5, V3 — Q49 by default: an active nature of
@@ -53,20 +60,6 @@ export async function GET(
   return NextResponse.json({ ...serializeProgramme(sample), referential });
 }
 
-/** The user ids a request names as technicians, to load them in one query. */
-function namedTechnicians(input: unknown): string[] {
-  const body = (input ?? {}) as { technicianId?: unknown; parameters?: unknown };
-  const ids = new Set<string>();
-  if (typeof body.technicianId === "string" && body.technicianId) ids.add(body.technicianId);
-  if (Array.isArray(body.parameters)) {
-    for (const entry of body.parameters) {
-      const technicianId = (entry as { technicianId?: unknown } | null)?.technicianId;
-      if (typeof technicianId === "string" && technicianId) ids.add(technicianId);
-    }
-  }
-  return [...ids];
-}
-
 /** The parameter ids a request names, to load their names in the same query. */
 function namedParameters(input: unknown): string[] {
   const list = (input as { parameterIds?: unknown } | null)?.parameterIds;
@@ -79,8 +72,18 @@ function namedParameters(input: unknown): string[] {
  * confirmation (RECU → PROGRAMME, `programmedAt`, `programmedById`,
  * journal SAMPLE_PROGRAMMED) or an edit of a confirmed programme (journal
  * SAMPLE_PROGRAMME_UPDATED). The `SampleParameter` rows are replaced as a
- * block — no result can exist before EN_ANALYSE — and `Sample.technicianId`
- * receives the default technician.
+ * block — nothing typed can exist before EN_ANALYSE; the empty result row
+ * of an analysis removed goes with it.
+ *
+ * The programme assigns nobody (« prise en charge libre », 13/10 —
+ * PROGRAMME.md §10): confirming puts the line in the shared « À prendre »
+ * list of the bench. `Sample.technicianId` / `assignedAt` are written only
+ * by the bench — « Prendre en charge » / « Libérer » (`…/take`) and the
+ * first result typed (`…/results`) — never here, so an edit of a line a
+ * technician already took (still PROGRAMME) leaves it with them. A
+ * `technicianId` in the request is ignored (`validateProgramme`). A legacy
+ * per-analysis technician (before 13/10) stays on the analyses kept
+ * (`programmeParameterRows`), read under the row lock.
  *
  * The request may name another nature of the line's family (Q49): the line
  * then takes it in the same transaction — `Sample.natureId` and
@@ -120,7 +123,6 @@ export async function PUT(
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
   const input = (body ?? {}) as { productTypeId?: unknown; natureId?: unknown };
-  const technicianIds = namedTechnicians(body);
   const requestedParameterIds = namedParameters(body);
 
   // The nature first: it decides the category whose parameters are offered.
@@ -136,7 +138,7 @@ export async function PUT(
 
   // The referential the rules are checked against — only what the request
   // names, plus the names of the analyses it asks for (to say which is refused).
-  const [parameters, technicians, productTypes] = await Promise.all([
+  const [parameters, productTypes] = await Promise.all([
     prisma.analysisParameter.findMany({
       where:
         requestedParameterIds.length > 0
@@ -144,9 +146,6 @@ export async function PUT(
           : { category },
       select: { id: true, name: true, category: true },
     }),
-    technicianIds.length > 0
-      ? prisma.user.findMany({ where: { id: { in: technicianIds } }, select: { id: true, role: true, banned: true } })
-      : Promise.resolve([]),
     typeof input.productTypeId === "string" && input.productTypeId
       ? prisma.productType.findMany({ where: { id: input.productTypeId }, select: { id: true, clientId: true, active: true } })
       : Promise.resolve([]),
@@ -164,7 +163,6 @@ export async function PUT(
     productTypes,
     parameterIds: allowedParameterIds,
     parameterNames: Object.fromEntries(parameters.map((p) => [p.id, p.name])),
-    technicians,
     normVersionIds: Object.fromEntries(
       Object.entries(normVersions).map(([parameterId, options]) => [parameterId, options.map((o) => o.id)])
     ),
@@ -183,32 +181,42 @@ export async function PUT(
 
   const now = new Date();
   const before = programmeOf(sample);
-  const technicianChanged = value.technicianId !== sample.technicianId;
 
   try {
     await prisma.$transaction(async (tx) => {
       // Two saves of the same sheet are serialised on the sample row: both
       // clearing then re-inserting its parameters deadlocked (a 500 for the
       // second « Confirmer »); now the second waits, then meets the guard.
+      // The bench's writers (take, « Libérer », the first result) lock the
+      // same row first: the order is always Sample, then SampleParameter.
       await tx.$queryRaw`SELECT \`id\` FROM \`Sample\` WHERE \`id\` = ${id} FOR UPDATE`;
+      // The legacy per-analysis technicians, read now — after the lock, so
+      // a « Libérer » committed meanwhile is seen and not undone (the
+      // snapshot loaded before the transaction would resurrect them).
+      const legacy = await tx.sampleParameter.findMany({
+        where: { sampleId: id, technicianId: { not: null } },
+        select: { parameterId: true, technicianId: true },
+      });
       await tx.sampleParameter.deleteMany({ where: { sampleId: id } });
       if (value.parameters.length > 0) {
-        await tx.sampleParameter.createMany({
-          data: value.parameters.map((p) => ({
-            sampleId: id,
-            parameterId: p.parameterId,
-            technicianId: p.technicianId,
-            normVersionId: p.normVersionId,
-            dilutionFactor: p.dilutionFactor,
-            note: p.note,
-          })),
-        });
+        await tx.sampleParameter.createMany({ data: programmeParameterRows(id, value.parameters, legacy) });
       }
+      // A programmed line may now carry result rows with nothing typed in
+      // them — an « Enregistrer » at the bench that did not start the
+      // analysis (anything typed moves the line to EN_ANALYSE, which this
+      // route refuses). An analysis that leaves the programme takes its
+      // empty row with it; a typed row is never touched here.
+      await tx.result.deleteMany({
+        where: { sampleId: id, parameterId: { notIn: value.parameterIds }, NOT: TYPED_RESULT_WHERE },
+      });
       const saved = await tx.sample.updateMany({
         // The status in the guard doubles as optimistic concurrency: a line
         // that moved meanwhile (bench started, cancelled) gets a clean 409.
         // The nature in the guard does the same for a nature changed meanwhile.
-        // `updateMany` re-checks it in the UPDATE and counts the rows.
+        // `updateMany` re-checks it in the UPDATE and counts the rows. The
+        // holder is deliberately not in it: a « Prendre en charge » landing
+        // between the load and this save is no conflict — the two writes
+        // touch different columns.
         where: { id, status: sample.status, natureId: sample.natureId },
         data: {
           // Q49: the fine nature, and the category the line is filed under.
@@ -216,9 +224,7 @@ export async function PUT(
           productTypeId: value.productTypeId,
           unitCount: value.unitCount,
           testPortion: value.testPortion,
-          technicianId: value.technicianId,
-          // The assignment stamp follows the default technician.
-          ...(technicianChanged ? { assignedAt: value.technicianId ? now : null } : {}),
+          // No `technicianId` / `assignedAt`: only the bench writes them.
           priority: value.priority,
           dueAt: value.dueAt,
           programmeNote: value.programmeNote,
@@ -260,6 +266,9 @@ export async function PUT(
             after: { id: updated.nature.id, code: updated.nature.code, label: updated.nature.label, type: updated.type },
           }
         : undefined,
+      // Who held the line at the bench when its programme was written —
+      // context only: the programme assigns nobody.
+      heldBy: updated.technician ? { id: updated.technician.id, name: updated.technician.name } : null,
       before,
       after: programmeOf(updated),
     },

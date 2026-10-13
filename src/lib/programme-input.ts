@@ -8,9 +8,18 @@ import { MAX_UNITS } from "./series";
  * (PROGRAMME.md §5) — validated here, once, before any write.
  *
  * Pure: the route loads the referential the rules need (the types visible
- * to the client, the parameters of the nature's category, the active
- * technicians, the norm versions of each parameter) and this decides. Every
- * rule gives a message in French; the first failure stops the check.
+ * to the client, the parameters of the nature's category, the norm versions
+ * of each parameter) and this decides. Every rule gives a message in
+ * French; the first failure stops the check.
+ *
+ * The programme assigns nobody (« prise en charge libre », 13/10 —
+ * PROGRAMME.md §10): it chooses the analyses, their norm versions and
+ * dilutions, the priority, the promised date, the test portion and the
+ * instructions. Confirming puts the line in the shared « À prendre » list
+ * of the bench, where a technician takes it (`bench-access.ts`). A
+ * `technicianId` still sent — a sheet opened before the change — is ignored,
+ * never refused, as `validateReception` does since 08/10: the programme goes
+ * through, without a technician.
  *
  * RETOUR-LABO-06-10.md §5 (V3, Q49 by default): the fine nature (cosmetics,
  * supplements, oils…) is chosen here, never by the préleveur — the payload
@@ -36,8 +45,6 @@ export const MAX_DILUTION_FACTOR = 99_999_999;
 
 export type ProgrammeParameter = {
   parameterId: string;
-  /** Null = the sample's technician. */
-  technicianId: string | null;
   normVersionId: string | null;
   dilutionFactor: number | null;
   note: string | null;
@@ -64,7 +71,6 @@ export type ProgrammeInput = {
   parameterIds: string[];
   unitCount: number;
   testPortion: string | null;
-  technicianId: string | null;
   priority: ProgrammePriority;
   dueAt: Date | null;
   programmeNote: string | null;
@@ -72,22 +78,40 @@ export type ProgrammeInput = {
   parameters: ProgrammeParameter[];
 };
 
-/**
- * Since the 08/10 feedback (RETOUR-LABO-06-10.md §9.3) the reception assigns
- * nobody: the responsable des paramètres picks the technician here. A
- * confirmed programme with an analysis nobody holds would sit on no bench
- * (only the administrator sees it), so confirming asks for one.
- */
-export const MISSING_TECHNICIAN_MESSAGE =
-  "Choisissez le technicien (par défaut ou pour chaque analyse) avant de confirmer le programme.";
+/** A `SampleParameter` row as the programme writes it. */
+export type ProgrammeParameterRow = ProgrammeParameter & {
+  sampleId: string;
+  /** A legacy per-analysis technician (before 13/10), carried over; never chosen here. */
+  technicianId: string | null;
+};
 
-/** True when some programmed analysis has neither its own technician nor the default one. */
-export function lacksTechnician(
-  defaultTechnicianId: string | null | undefined,
-  analysisTechnicianIds: readonly (string | null | undefined)[]
-): boolean {
-  if (defaultTechnicianId) return false;
-  return analysisTechnicianIds.length === 0 || analysisTechnicianIds.some((id) => !id);
+/**
+ * The `SampleParameter` rows a programme writes — they are replaced as a
+ * block. The programme assigns nobody, but a line programmed before 13/10
+ * may hold a technician per analysis (`legacy`: the line's current rows, read
+ * inside the write's transaction, under the Sample row lock). An analysis
+ * kept keeps its technician; an analysis added starts with none and belongs
+ * to whoever holds the sample (`parameterTechnicianId`); an analysis removed
+ * leaves with its technician. Only « Libérer » clears a legacy technician:
+ * a programme edit never takes a line away from the person working it.
+ */
+export function programmeParameterRows(
+  sampleId: string,
+  parameters: readonly ProgrammeParameter[],
+  legacy: Iterable<{ parameterId: string; technicianId: string | null }>
+): ProgrammeParameterRow[] {
+  const holders = new Map<string, string>();
+  for (const row of legacy) {
+    if (row.technicianId) holders.set(row.parameterId, row.technicianId);
+  }
+  return parameters.map((parameter) => ({
+    sampleId,
+    parameterId: parameter.parameterId,
+    technicianId: holders.get(parameter.parameterId) ?? null,
+    normVersionId: parameter.normVersionId,
+    dilutionFactor: parameter.dilutionFactor,
+    note: parameter.note,
+  }));
 }
 
 export type ProgrammeContext = {
@@ -115,8 +139,6 @@ export type ProgrammeContext = {
   parameterIds: readonly string[];
   /** The names of the parameters the request names, to say which one is refused. */
   parameterNames?: Readonly<Record<string, string>>;
-  /** The users the request names as technicians (the rule checks role and ban). */
-  technicians: { id: string; role: string; banned: boolean | null }[];
   /** The norm versions each parameter may be programmed with. */
   normVersionIds: Record<string, readonly string[]>;
   /** Injected by the tests; the wall clock otherwise. */
@@ -294,15 +316,10 @@ export function validateProgramme(raw: unknown, ctx: ProgrammeContext): Programm
   }
 
   // ---- Organisation -------------------------------------------------------
-  const isTechnician = (id: string) =>
-    ctx.technicians.some((user) => user.id === id && user.role === "TECHNICIEN" && !user.banned);
-
-  const technicianId = optionalId(input.technicianId);
-  if (technicianId === undefined) return fail("Technicien invalide.");
-  if (technicianId && !isTechnician(technicianId)) {
-    return fail("Technicien invalide : choisissez un technicien actif.");
-  }
-
+  // `input.technicianId` is deliberately not read (13/10, « prise en charge
+  // libre »): the technician takes the line at the bench. A sheet opened
+  // before the change still sends one — ignored, never refused, as
+  // `validateReception` does with the reception's.
   const priority: unknown =
     input.priority === undefined || input.priority === null ? "NORMALE" : input.priority;
   if (!(PROGRAMME_PRIORITIES as readonly unknown[]).includes(priority)) return fail("Priorité inconnue.");
@@ -344,12 +361,8 @@ export function validateProgramme(raw: unknown, ctx: ProgrammeContext): Programm
     // The settings of an analysis that is not programmed carry nothing.
     if (!parameterIds.includes(row.parameterId)) continue;
     if (settings.has(row.parameterId)) return fail("Une analyse apparaît deux fois dans les réglages.");
-
-    const rowTechnicianId = optionalId(row.technicianId);
-    if (rowTechnicianId === undefined) return fail("Technicien invalide pour une analyse.");
-    if (rowTechnicianId && !isTechnician(rowTechnicianId)) {
-      return fail("Technicien invalide pour une analyse : choisissez un technicien actif.");
-    }
+    // `row.technicianId` is not read either: an analysis is no longer handed
+    // to anyone. A legacy one keeps its technician (`programmeParameterRows`).
 
     const normVersionId = optionalId(row.normVersionId);
     if (normVersionId === undefined) return fail("Version de norme invalide.");
@@ -375,7 +388,6 @@ export function validateProgramme(raw: unknown, ctx: ProgrammeContext): Programm
 
     settings.set(row.parameterId, {
       parameterId: row.parameterId,
-      technicianId: rowTechnicianId,
       normVersionId,
       dilutionFactor,
       note,
@@ -385,15 +397,11 @@ export function validateProgramme(raw: unknown, ctx: ProgrammeContext): Programm
     (parameterId) =>
       settings.get(parameterId) ?? {
         parameterId,
-        technicianId: null,
         normVersionId: null,
         dilutionFactor: null,
         note: null,
       }
   );
-  if (confirming && lacksTechnician(technicianId, parameters.map((p) => p.technicianId))) {
-    return fail(MISSING_TECHNICIAN_MESSAGE);
-  }
 
   return {
     ok: true,
@@ -404,7 +412,6 @@ export function validateProgramme(raw: unknown, ctx: ProgrammeContext): Programm
       parameterIds,
       unitCount,
       testPortion,
-      technicianId,
       priority: priority as ProgrammePriority,
       dueAt,
       programmeNote,

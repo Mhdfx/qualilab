@@ -34,7 +34,8 @@ const INTAKE_SELECT = {
   clientId: true,
   validatedById: true,
   // The programme d'analyse per parameter (PROGRAMME.md §3): kept when the
-  // analyses are corrected, for every analysis that stays.
+  // analyses are corrected, for every analysis that stays — the rows carried
+  // over are read again under the row lock, in the transaction.
   parameters: {
     select: { parameterId: true, technicianId: true, normVersionId: true, dilutionFactor: true, note: true },
   },
@@ -50,6 +51,11 @@ const INTAKE_SELECT = {
  * surface » (`surfaceState`) and an AIR line its « Méthode de prélèvement »
  * (`airMethod`); both come back in the answer and in the journal's
  * before/after like the other fields.
+ *
+ * A correction never changes who holds the sample at the bench (« prise
+ * en charge libre », 13/10): `Sample.technicianId` / `assignedAt` are not
+ * written here, and a legacy per-analysis technician stays on the analyses
+ * kept. The Sample row is locked first, like every writer of the holders.
  */
 export async function PATCH(
   request: Request,
@@ -141,14 +147,31 @@ export async function PATCH(
   const backToBench = resetResults && sample.status === "RESULTATS_SAISIS";
 
   const updated = await prisma.$transaction(async (tx) => {
+    // The Sample row first, as the programme, the take, « Libérer » and the
+    // results save do: the lock order is always Sample, then SampleParameter
+    // (no deadlock), and a « Libérer » committed meanwhile is seen below.
+    // The status is read again under the lock: a submission, a validation
+    // or an approval committed since the read above changes what this
+    // correction may do (back to the bench, or not at all) — refused, the
+    // fiche is reloaded.
+    const locked = await tx.$queryRaw<{ status: string }[]>`
+      SELECT \`status\` FROM \`Sample\` WHERE \`id\` = ${id} FOR UPDATE`;
+    if (locked[0]?.status !== sample.status) return null;
     if (resetResults) {
       await tx.result.deleteMany({ where: { sampleId: id } });
     }
     if (parameterIds) {
-      // An analysis the programme already decided keeps its technician, norm
-      // version, dilution and note; an analysis added here starts bare —
-      // the responsable des paramètres completes it on a programmed line.
-      const programmed = new Map(sample.parameters.map((line) => [line.parameterId, line]));
+      // An analysis the programme already decided keeps its norm version,
+      // dilution, note and its legacy per-analysis technician, if any
+      // (before 13/10); an analysis added here starts bare and belongs to
+      // whoever took the sample — the responsable des paramètres completes
+      // it on a programmed line. Read now, under the lock: the snapshot
+      // loaded before the transaction would undo a « Libérer » meanwhile.
+      const lines = await tx.sampleParameter.findMany({
+        where: { sampleId: id },
+        select: { parameterId: true, technicianId: true, normVersionId: true, dilutionFactor: true, note: true },
+      });
+      const programmed = new Map(lines.map((line) => [line.parameterId, line]));
       await tx.sampleParameter.deleteMany({ where: { sampleId: id } });
       await tx.sampleParameter.createMany({
         data: parameterIds.map((parameterId) => {
@@ -176,6 +199,13 @@ export async function PATCH(
       select: INTAKE_SELECT,
     });
   });
+
+  if (!updated) {
+    return NextResponse.json(
+      { error: "Cet échantillon vient de changer d'état : rechargez la fiche avant de la corriger." },
+      { status: 409 }
+    );
+  }
 
   await logAudit({
     actorId: session.id,

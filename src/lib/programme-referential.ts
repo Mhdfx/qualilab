@@ -5,17 +5,20 @@ import { buildCatalogueIndex, catalogueKey, type CatalogueEntry } from "./billin
 import { toMoney } from "./money";
 import type { ProgrammeNatureRef } from "./programme-input";
 import { PROGRAMMABLE_STATUSES } from "./sample-status";
-import { BENCH_STATUSES } from "./bench-access";
-import { benchLoadByTechnician, NO_LOAD } from "./technician-load";
 
 /**
  * What the programme d'analyse reads and writes (PROGRAMME.md §4–5): the
  * line with its current programme, and the referential the fiche needs —
  * the product types the client may use with their criteria, the parameters
- * of the nature's category, the profiles, the active technicians with their
- * current load, the norm versions of each parameter, the catalogue prices.
- * Shared by GET and PUT so the rules are checked against exactly what the
- * screen was offered.
+ * of the nature's category, the profiles, the norm versions of each
+ * parameter, the catalogue prices. Shared by GET and PUT so the rules are
+ * checked against exactly what the screen was offered.
+ *
+ * No technician is chosen here any more (« prise en charge libre », 13/10 —
+ * PROGRAMME.md §10): the line carries who took it at the bench
+ * (`technician`, `assignedAt`) for the fiche to show, read-only, and the
+ * programme itself — what the fiche edits and the journal compares — holds
+ * no technician at all.
  *
  * RETOUR-LABO-06-10.md §5 (V3, Q49 by default): the fiche may change the
  * line's nature to another active nature of the same family; the
@@ -70,8 +73,11 @@ export const PROGRAMME_SAMPLE_SELECT = {
   unitCount: true,
   productTypeId: true,
   productType: { select: { id: true, name: true } },
+  // Who took the line at the bench (« Prendre en charge », or a first
+  // result) and when — shown on the fiche, never written by the programme.
   technicianId: true,
   technician: { select: { id: true, name: true } },
+  assignedAt: true,
   priority: true,
   dueAt: true,
   testPortion: true,
@@ -83,6 +89,8 @@ export const PROGRAMME_SAMPLE_SELECT = {
   parameters: {
     select: {
       parameterId: true,
+      // A legacy per-analysis technician (before 13/10): read-only, kept
+      // by the PUT on the analyses that stay.
       technicianId: true,
       normVersionId: true,
       dilutionFactor: true,
@@ -104,7 +112,11 @@ export type ProgrammeSampleRow = NonNullable<Awaited<ReturnType<typeof loadProgr
 type Numeric = { toString(): string } | number | null | undefined;
 const num = (value: Numeric) => (value === null || value === undefined ? null : Number(value));
 
-/** The programme as the fiche edits it — also the audit's before/after. */
+/**
+ * The programme as the fiche edits it — also the audit's before/after. No
+ * technician: the programme assigns nobody (13/10); who holds the line is
+ * the bench's business (`SAMPLE_TAKEN` / `SAMPLE_UNTAKEN` in the journal).
+ */
 export function programmeOf(sample: ProgrammeSampleRow) {
   return {
     /** The nature the programme was decided for — changeable within its family (Q49). */
@@ -113,13 +125,11 @@ export function programmeOf(sample: ProgrammeSampleRow) {
     parameterIds: sample.parameters.map((p) => p.parameterId),
     unitCount: sample.unitCount,
     testPortion: sample.testPortion,
-    technicianId: sample.technicianId,
     priority: sample.priority,
     dueAt: sample.dueAt,
     programmeNote: sample.programmeNote,
     parameters: sample.parameters.map((p) => ({
       parameterId: p.parameterId,
-      technicianId: p.technicianId,
       normVersionId: p.normVersionId,
       dilutionFactor: num(p.dilutionFactor),
       note: p.note,
@@ -297,7 +307,7 @@ export async function loadProgrammeReferential(
   const category: SampleType = target && !target.current ? target.legacyType : sample.type;
   const natureId = target?.id ?? sample.natureId;
 
-  const [productTypes, parameters, profiles, technicians, services, benchLines] = await Promise.all([
+  const [productTypes, parameters, profiles, services] = await Promise.all([
     prisma.productType.findMany({
       where: { active: true, OR: [{ clientId: null }, { clientId: sample.clientId }] },
       select: {
@@ -334,24 +344,11 @@ export async function loadProgrammeReferential(
       select: { id: true, name: true, clientId: true, unitCount: true, parameters: { select: { parameterId: true } } },
       orderBy: [{ clientId: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
     }),
-    prisma.user.findMany({
-      where: { role: "TECHNICIEN", banned: { not: true } },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
     prisma.labService.findMany({
       where: { active: true, category },
       select: { name: true, category: true, unitPrice: true, active: true },
     }),
-    // Each technician's load (« visibilité sur la charge de chacun »): the
-    // lines at the bench now, through the status index — bounded by what
-    // the bench holds, not by the history.
-    prisma.sample.findMany({
-      where: { status: { in: [...BENCH_STATUSES] } },
-      select: { technicianId: true, status: true, dueAt: true, parameters: { select: { technicianId: true } } },
-    }),
   ]);
-  const loads = benchLoadByTechnician(benchLines, new Date());
 
   const normVersions = await normVersionsForParameters(
     parameters.map((p) => p.id),
@@ -412,8 +409,6 @@ export async function loadProgrammeReferential(
       unitCount: profile.unitCount,
       parameterIds: profile.parameters.map((p) => p.parameterId),
     })),
-    /** The active technicians, each with what is on their bench now. */
-    technicians: technicians.map((technician) => ({ ...technician, load: loads[technician.id] ?? { ...NO_LOAD } })),
     normVersions,
     prices,
   };

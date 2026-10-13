@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   BENCH_STATUSES,
   benchQueueWhereFor,
-  benchTechnicianIds,
   benchWhereFor,
   canEditParameter,
   isOnBenchOf,
@@ -78,20 +77,6 @@ describe("splitParameters", () => {
     const tech2 = splitParameters(shared, "tech2");
     expect(tech2.mine.map((p) => p.parameterId)).toEqual(["p-salm"]);
     expect(tech2.others).toHaveLength(2);
-  });
-});
-
-describe("benchTechnicianIds", () => {
-  it("prints each technician once, the sample's first", () => {
-    expect(benchTechnicianIds(shared)).toEqual(["tech1", "tech2"]);
-    expect(benchTechnicianIds(legacy)).toEqual(["tech1"]);
-    expect(benchTechnicianIds(unassigned)).toEqual([]);
-  });
-
-  it("lists a technician who only holds parameters", () => {
-    expect(
-      benchTechnicianIds({ technicianId: null, parameters: [salmonella, histamine, salmonella] })
-    ).toEqual(["tech2", "tech1"]);
   });
 });
 

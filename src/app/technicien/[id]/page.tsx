@@ -1,12 +1,20 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, Building2, Package, Hash, Calendar, ClipboardList, Hourglass, Undo2 } from "lucide-react";
+import { ArrowLeft, Building2, Package, Hash, Calendar, ClipboardList, Hourglass, Undo2, UserCheck, Eye } from "lucide-react";
 import { requireRole, getSession } from "@/lib/auth";
 import { roleAllowed } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { labReference } from "@/lib/sample-select";
 import { loadBenchPlans } from "@/lib/bench-plan";
-import { canEditParameter, isOnBenchOf } from "@/lib/bench-access";
+import {
+  BENCH_STATUSES,
+  canEnterParameter,
+  canReadAtBench,
+  hasTypedResult,
+  isHeldByOther,
+  isUnclaimed,
+} from "@/lib/bench-access";
+import { reportTechnicianNames } from "@/lib/report-programme";
 import { effectiveFactor } from "@/lib/dilution";
 import { formatDate, formatDateTime, PROGRAMME_PRIORITY_LABELS } from "@/lib/labels";
 import { sampleRef } from "@/lib/reception-input";
@@ -22,6 +30,7 @@ import {
   ResultEntryForm,
   type ParameterLine,
 } from "@/components/technicien/ResultEntryForm";
+import { ReleaseButton, TakeButton } from "@/components/technicien/BenchTakeActions";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   // Metadata renders alongside the layout's redirect: the sample's blind
@@ -71,8 +80,13 @@ export default async function AnalysePage({
       rejectionReason: true,
       rejectedAt: true,
       rejectedBy: { select: { name: true } },
+      // The holder: the technician who took the sample, and when
+      // (prise en charge libre, PROGRAMME.md §10).
       technicianId: true,
+      assignedAt: true,
       technician: { select: { name: true } },
+      // A sample held at reception is never taken (`takeRefusal`).
+      analysisBlocked: true,
       // The programme d'analyse (PROGRAMME.md §3).
       priority: true,
       dueAt: true,
@@ -85,7 +99,8 @@ export default async function AnalysePage({
       parameters: {
         select: {
           parameterId: true,
-          // Per parameter: its technician, norm version, dilution, note.
+          // Per parameter: its norm version, dilution, note — and its own
+          // technician on a line programmed before 13/10.
           technicianId: true,
           technician: { select: { name: true } },
           normVersion: { select: { label: true } },
@@ -108,13 +123,38 @@ export default async function AnalysePage({
   });
 
   if (!sample) notFound();
-  const bench = await loadBenchPlans(sample.id);
 
-  // A technician may only open their own bench work: the sample's
-  // technician, or one of its parameters' (PROGRAMME.md §6).
-  if (session.role === "TECHNICIEN" && !isOnBenchOf(sample, session.id)) {
+  // A technician opens their own work at any step, and the whole shared
+  // bench: « À prendre » and their colleagues' samples, read-only
+  // (PROGRAMME.md §10.4). A colleague's submitted or validated sample stays
+  // out of reach.
+  const isTechnician = session.role === "TECHNICIEN";
+  if (isTechnician && !canReadAtBench(sample, session.id)) {
     redirect(getDashboardPath(session.role));
   }
+  const bench = await loadBenchPlans(sample.id);
+
+  // Who holds the sample (prise en charge libre, PROGRAMME.md §10).
+  const free = isUnclaimed(sample);
+  const onBench = BENCH_STATUSES.includes(sample.status);
+  // The holder, plus the parameter technicians of a line programmed before 13/10.
+  const holderName = reportTechnicianNames(sample) ?? "un collègue";
+  const takenOn = sample.assignedAt ? `le ${formatDateTime(sample.assignedAt)}` : null;
+  // A colleague's sample: readable, never typed on (403 at the save).
+  const heldByOther = isTechnician && isHeldByOther(sample, session.id);
+  // Only a technician takes, and only a free sample on the bench (`takeRefusal`).
+  const canTake = isTechnician && free && onBench && !sample.analysisBlocked;
+  // Its holder or the admin gives it back, while nothing is typed on it (`untakeRefusal`).
+  const typed = sample.results.some((result) =>
+    hasTypedResult({
+      value: result.value,
+      note: result.note,
+      workStatus: result.workStatus,
+      unitCount: result.units.length,
+    })
+  );
+  const canRelease =
+    !free && onBench && !typed && (session.role === "ADMIN" || sample.technicianId === session.id);
 
   const resultByParameter = new Map(sample.results.map((r) => [r.parameterId, r]));
   // « — » when nothing names it (a food sample without a designation).
@@ -151,18 +191,32 @@ export default async function AnalysePage({
       note: existing?.note ?? "",
       workStatus: existing?.workStatus ?? "EN_COURS",
       manualConform: existing?.conform ?? null,
-      // Only my parameters are editable; the admin stands in for anyone.
-      editable: session.role !== "TECHNICIEN" || canEditParameter(sample, line, session.id),
+      // Mine, or any of a free sample (the first save takes it) — the rule
+      // the save applies (`canEnterParameter`); the admin stands in for anyone.
+      editable: !isTechnician || canEnterParameter(sample, line, session.id),
       technicianName: line.technician?.name ?? sample.technician?.name ?? null,
       methodNote: line.note,
     };
   });
 
-  const canEdit = sample.status === "PROGRAMME" || sample.status === "EN_ANALYSE";
+  // On the bench and not a colleague's: the sheet takes input.
+  const canEdit = onBench && !heldByOther;
   // Received but not programmed yet: nothing to type (PROGRAMME.md §6).
   const waiting = sample.status === "PRELEVE" || sample.status === "RECU";
   // Back on the bench after a validator's « Renvoyer au technicien ».
   const sentBack = sample.status === "EN_ANALYSE" && sample.rejectedAt !== null;
+
+  const subtitle = waiting
+    ? "En attente de programmation — le responsable des paramètres n'a pas encore confirmé le programme d'analyse."
+    : heldByOther
+      ? `Pris en charge par ${holderName} — consultation en lecture seule.`
+      : !canEdit
+        ? "Résultats soumis à la validation — consultation en lecture seule."
+        : bench.plans.size > 0
+          ? "Lisez chaque répétition (R1 … Rn) : le verdict (satisfaisant, acceptable, non satisfaisant) suit le plan n, c, m, M du type de produit."
+          : bench.unitCount > 1
+            ? "Lisez chaque répétition (R1 … Rn) : la valeur retenue est la plus défavorable, comparée à la limite de référence."
+            : "Saisissez chaque paramètre. La conformité est calculée automatiquement à partir de la limite de référence.";
 
   return (
     <div>
@@ -174,11 +228,21 @@ export default async function AnalysePage({
         Mes analyses
       </Link>
 
-      <PageHeader
-        badge="Analyse"
-        title={labReference(sample)}
-        subtitle={waiting ? "En attente de programmation — le responsable des paramètres n'a pas encore confirmé le programme d'analyse." : !canEdit ? "Résultats soumis à la validation — consultation en lecture seule." : bench.plans.size > 0 ? "Lisez chaque répétition (R1 … Rn) : le verdict (satisfaisant, acceptable, non satisfaisant) suit le plan n, c, m, M du type de produit." : bench.unitCount > 1 ? "Lisez chaque répétition (R1 … Rn) : la valeur retenue est la plus défavorable, comparée à la limite de référence." : "Saisissez chaque paramètre. La conformité est calculée automatiquement à partir de la limite de référence."}
-      />
+      <PageHeader badge="Analyse" title={labReference(sample)} subtitle={subtitle} />
+
+      {heldByOther && (
+        <div
+          role="status"
+          className="mb-5 flex items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"
+        >
+          <Eye className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+          <p>
+            {takenOn
+              ? `Pris par ${holderName} ${takenOn} — vous pouvez consulter cette fiche, pas la saisir.`
+              : `Pris par ${holderName} — vous pouvez consulter cette fiche, pas la saisir.`}
+          </p>
+        </div>
+      )}
 
       {sentBack && sample.rejectedAt && (
         <div
@@ -256,6 +320,42 @@ export default async function AnalysePage({
                   </span>
                 </Field>
               )}
+              {!waiting && (
+                <Field icon={UserCheck} label="Prise en charge">
+                  {free ? (
+                    onBench ? (
+                      "Personne — à prendre"
+                    ) : (
+                      <span className="text-slate-400">Personne</span>
+                    )
+                  ) : takenOn ? (
+                    `${holderName} — ${takenOn}`
+                  ) : (
+                    holderName
+                  )}
+                  {canTake && (
+                    <>
+                      <TakeButton sampleId={sample.id} className="mt-2.5" />
+                      <span className="mt-2 block text-xs font-normal text-slate-500">
+                        En enregistrant un premier résultat, vous prenez cet échantillon en charge.
+                      </span>
+                    </>
+                  )}
+                  {!isTechnician && free && onBench && (
+                    <span className="mt-1 block text-xs font-normal text-slate-500">
+                      Vous pouvez saisir à sa place, mais un technicien doit le prendre en charge avant la soumission.
+                    </span>
+                  )}
+                  {canRelease && (
+                    <>
+                      <ReleaseButton sampleId={sample.id} className="mt-2.5" />
+                      <span className="mt-2 block text-xs font-normal text-slate-500">
+                        Possible tant qu&apos;aucun résultat n&apos;est saisi.
+                      </span>
+                    </>
+                  )}
+                </Field>
+              )}
             </dl>
 
             <ReceptionNonConformity sample={sample} />
@@ -290,11 +390,30 @@ export default async function AnalysePage({
               Le responsable des paramètres n&apos;a pas encore confirmé le programme
               d&apos;analyse de cet échantillon : les analyses, les nombres et les méthodes
               sont fixés à cette étape. Rien à saisir pour l&apos;instant — l&apos;échantillon
-              apparaîtra dans « Mes analyses » une fois programmé.
+              apparaîtra dans « À prendre » une fois programmé.
             </p>
           </Card>
         ) : canEdit ? (
-          <ResultEntryForm sampleId={sample.id} canEdit initialLines={lines} />
+          <ResultEntryForm
+            sampleId={sample.id}
+            canEdit
+            initialLines={lines}
+            submitBlocked={
+              session.role === "ADMIN" && free
+                ? "Un technicien doit prendre cet échantillon en charge avant sa soumission."
+                : null
+            }
+          />
+        ) : heldByOther ? (
+          <Card className="p-5">
+            <h2 className="font-semibold text-slate-900">Pris par un collègue</h2>
+            <p className="mt-1.5 text-sm text-slate-600">
+              {`Seul ${holderName} saisit les résultats de cet échantillon : vous suivez ici l'avancement de sa saisie.`}
+            </p>
+            <div className="mt-4">
+              <ResultEntryForm sampleId={sample.id} canEdit={false} initialLines={lines} heldBy={holderName} />
+            </div>
+          </Card>
         ) : (
           <Card className="p-5">
             <h2 className="font-semibold text-slate-900">

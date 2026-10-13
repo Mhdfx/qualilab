@@ -23,9 +23,11 @@ export default async function SerieReceptionPage({
   const session = await requireRole("RECEPTIONNISTE", "ADMIN");
   const { id } = await params;
 
-  // No technician list: the reception assigns nobody (RETOUR-LABO-06-10.md
-  // §9.3), the responsable des paramètres does at programming time. The
-  // signed protocol's photo (C6) is counted, never read: « Voir » opens it.
+  // No technician list: nobody assigns one (RETOUR-LABO-06-10.md §9.3) —
+  // once programmed, a technician takes the sample from « À prendre »
+  // (prise en charge libre, PROGRAMME.md §10); the summary of a received
+  // série shows who took each one. The signed protocol's photo (C6) is
+  // counted, never read: « Voir » opens it.
   const [serie, settings, photos] = await Promise.all([
     prisma.serie.findUnique({ where: { id }, select: SERIE_LAB_SELECT }),
     getLabSettings(),

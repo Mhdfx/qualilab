@@ -5,6 +5,11 @@
 > ce qui sera fait dessus avant la paillasse ; la facturation peut être
 > préparée dès que ce programme est confirmé. Tout ce qui existe est
 > conservé ; les ajouts sont additifs (migration sans perte).
+>
+> **13/10/2026 — plus d'affectation.** Personne n'attribue plus de
+> technicien : un programme confirmé rejoint la liste partagée « À prendre »,
+> et le technicien qui prend l'échantillon en charge est le seul à le saisir
+> (§10). Point de retour : tag `v1.2-avant-sans-affectation` (`DEPLOY.md`).
 
 ## 1. Le circuit
 
@@ -13,15 +18,19 @@ PRELEVE ──réception──▶ RECU ──programme confirmé──▶ PROGRA
       ──▶ RESULTATS_SAISIS ──validation technique──▶ VALIDE ──approbation──▶ RAPPORT_ENVOYE
 ```
 
-- **RECU** : la réception a numéroté, mesuré et accepté la ligne. Elle
-  n'attribue plus obligatoirement un technicien (le champ devient
-  facultatif, « à titre indicatif »).
+- **RECU** : la réception a numéroté, mesuré et accepté la ligne. La
+  réception n'attribue aucun technicien (depuis le 08/10) ; depuis le 13/10
+  personne n'en attribue : le technicien prend lui-même l'échantillon en
+  charge (§10).
 - **PROGRAMME** (nouveau) : le responsable des paramètres a confirmé le
   programme d'analyse. Seule une ligne PROGRAMME peut être ouverte à la
-  paillasse. Le programme reste modifiable tant que la ligne est PROGRAMME ;
-  ensuite, « Corriger la fiche » (motif, journal) comme aujourd'hui.
+  paillasse ; elle attend dans « À prendre » jusqu'à sa prise en charge
+  (§10). Le programme reste modifiable tant que la ligne est PROGRAMME, même
+  prise en charge ; ensuite, « Corriger la fiche » (motif, journal) comme
+  aujourd'hui.
 - Transitions (`src/lib/sample-status.ts`) : `RECU → PROGRAMME`
-  (PROGRAMMATEUR, ADMIN) ; `PROGRAMME → EN_ANALYSE` (TECHNICIEN, ADMIN) ;
+  (PROGRAMMATEUR, ADMIN) ; `PROGRAMME → EN_ANALYSE` (TECHNICIEN, ADMIN — à
+  la première saisie avec contenu, jamais à la prise en charge, §10) ;
   `RECU → EN_ANALYSE` **supprimée** ; `PROGRAMME → ANNULE` (ADMIN) ;
   `ANNULE → PROGRAMME` (ADMIN, motif) quand la ligne avait été programmée
   (`programmedAt` non nul), sinon `ANNULE → RECU` comme aujourd'hui.
@@ -55,6 +64,8 @@ enum ProgrammePriority { NORMALE URGENTE }
 
 model Sample {
   …
+  technicianId    String?   // (existant) le technicien qui a pris l'échantillon en charge (§10, 13/10) ; avant le 13/10, celui qui lui était attribué
+  assignedAt      DateTime? // (existant) heure de la prise en charge (avant le 13/10 : de l'attribution)
   programmedAt    DateTime?
   programmedById  String?
   programmedBy    User?     @relation("ProgrammedSamples", fields: [programmedById], references: [id], onDelete: SetNull)
@@ -66,7 +77,7 @@ model Sample {
 
 model SampleParameter {
   sampleId, parameterId (inchangés)
-  technicianId   String?   // technicien de ce paramètre ; null = celui de l'échantillon
+  technicianId   String?   // hérité — plus écrit par le programme depuis le 13/10 ; lu pour les lignes programmées avant (un paramètre confié à un autre technicien reste le sien) ; null = le titulaire de l'échantillon
   technician     User?     @relation("ParameterTechnician", fields: [technicianId], references: [id], onDelete: SetNull)
   normVersionId  String?   // version de norme retenue pour ce paramètre
   normVersion    NormVersion? @relation(fields: [normVersionId], references: [id], onDelete: SetNull)
@@ -76,6 +87,11 @@ model SampleParameter {
 ```
 
 MySQL : `ALTER TABLE Sample MODIFY status ENUM('PRELEVE','RECU','PROGRAMME','EN_ANALYSE','RESULTATS_SAISIS','VALIDE','RAPPORT_ENVOYE','ANNULE') NOT NULL DEFAULT 'PRELEVE'` (ajout de valeur, sans perte) ; même chose pour `User.role`. Index sur `Sample(status, programmedAt)` et `SampleParameter(technicianId)`.
+
+Prise en charge libre (13/10, §10) : **aucune migration**. `Sample.technicianId`
+et `assignedAt` existaient déjà, avec leurs index `Sample(technicianId)` et
+`Sample(technicianId, status)` ; `SampleParameter.technicianId` et son index
+restent pour les lignes héritées.
 
 Le nombre d'unités reste `Sample.unitCount` (fait de terrain) : le
 responsable peut l'abaisser ou le relever ; s'il est inférieur au n du type,
@@ -102,11 +118,11 @@ Sections, dans l'ordre :
 4. **Méthodes** — par paramètre : version de norme (liste des versions du
    paramètre, celle en vigueur par défaut, celle du critère du type si un
    type est choisi), note de méthode (`note`).
-5. **Organisation** — technicien par défaut (`Sample.technicianId`) et, par
-   paramètre, un technicien différent (`SampleParameter.technicianId`) ;
-   raccourcis « tous à X », « micro à X, chimie à Y » ; priorité (Normale /
-   Urgente) ; délai de rendu (`dueAt`, pas dans le passé) ; consignes
-   (`programmeNote`).
+5. **Organisation** — priorité (Normale / Urgente), délai de rendu
+   (`dueAt`, pas dans le passé), consignes (`programmeNote`). Aucun
+   technicien ni charge de travail depuis le 13/10 : la ligne confirmée
+   rejoint « À prendre » (§10). (Avant le 13/10 : technicien par défaut et
+   par paramètre, raccourcis « tous à X », « micro à X, chimie à Y ».)
 6. **Vérification d'entrée** — rappel des règles de recevabilité
    (`reception-rules.ts`) recalculées avec les analyses programmées
    (quantité suffisante pour n, histamine → 9 unités, eau → 1 L / 2 L…) :
@@ -129,22 +145,42 @@ ou au-delà : fiche en lecture seule avec le lien « Corriger la fiche ».
 - `GET /api/samples/[id]/programme` (PROGRAMMATEUR, ADMIN, TECHNICIEN en
   lecture) : l'échantillon, son programme courant, et le référentiel utile
   (types de produits du client + catalogue avec critères, paramètres de la
-  catégorie, profils, techniciens actifs, versions de norme par paramètre,
-  prix du catalogue par paramètre).
+  catégorie, profils, versions de norme par paramètre, prix du catalogue par
+  paramètre). Depuis le 13/10, ni la liste des techniciens ni leur charge.
 - `PUT /api/samples/[id]/programme` (PROGRAMMATEUR, ADMIN) — corps validé par
   `src/lib/programme-input.ts` (`validateProgramme`) :
-  `{ confirm: boolean, productTypeId: string|null, parameterIds: string[],
-     unitCount: number, testPortion: string|null, technicianId: string|null,
+  `{ confirm: boolean, natureId?: string, productTypeId: string|null,
+     parameterIds: string[], unitCount: number, testPortion: string|null,
      priority: "NORMALE"|"URGENTE", dueAt: string|null, programmeNote: string|null,
-     parameters: [{ parameterId, technicianId: string|null, normVersionId: string|null,
+     parameters: [{ parameterId, normVersionId: string|null,
                     dilutionFactor: number|null, note: string|null }] }`
-  Règles : statut RECU ou PROGRAMME sinon 409 ; `parameterIds` ≥ 1 pour
+  Règles : statut RECU ou PROGRAMME sinon 409 (une ligne PROGRAMME déjà prise
+  en charge reste modifiable jusqu'à EN_ANALYSE) ; `parameterIds` ≥ 1 pour
   confirmer (un brouillon peut être vide) ; type actif et visible pour ce
-  client ; unités 1 … `MAX_UNITS` ; `dueAt` ≥ maintenant − 5 min ;
-  techniciens actifs de rôle TECHNICIEN ; versions de norme appartenant au
-  paramètre ; `dilutionFactor` > 0. Les `SampleParameter` sont remplacés
-  en bloc (pas de résultats possibles avant EN_ANALYSE) ; `Sample.technicianId`
-  reçoit le technicien par défaut. Réponse : l'échantillon à jour.
+  client ; unités 1 … `MAX_UNITS` ; `dueAt` ≥ maintenant − 5 min ; versions
+  de norme appartenant au paramètre ; `dilutionFactor` > 0. Un `technicianId`
+  envoyé par une page ouverte avant le 13/10 (par défaut ou par analyse) est
+  **ignoré, jamais refusé** — comme à la réception depuis le 08/10. Les
+  `SampleParameter` sont remplacés en bloc sous le verrou de la ligne
+  `Sample` (aucun résultat saisi avant EN_ANALYSE : la première saisie avec
+  contenu fait passer la ligne EN_ANALYSE dans sa transaction) ; une
+  analyse conservée garde son technicien hérité (ligne programmée avant le
+  13/10). Le programme ne touche **ni `Sample.technicianId` ni
+  `assignedAt`**. Réponse : l'échantillon à jour.
+- `POST /api/samples/[id]/take` (TECHNICIEN) — « Prendre en charge » (§10) :
+  200 `{ id, technicianId, assignedAt, technician: { name }, already }`
+  (`already: true` = il était déjà à moi, un double clic) ; 409 « Déjà pris
+  par X. », 409 hors paillasse ou bloqué en réception ; 404. Journal
+  `SAMPLE_TAKEN` (`implicit: false`).
+- `DELETE /api/samples/[id]/take` (TECHNICIEN titulaire, ADMIN) —
+  « Libérer » (§10) : 200 `{ id, technicianId: null, assignedAt: null }` ;
+  403 pour un autre que le titulaire ; 409 quand personne ne le tient, qu'il
+  a quitté la paillasse ou qu'un résultat est saisi. Journal
+  `SAMPLE_UNTAKEN`. Rien à voir avec le « Libérer » de « Bloqués »
+  (`POST /api/samples/[id]/release`, `SAMPLE_RELEASED`).
+- `PUT /api/samples/[id]/results` répond `{ status, saved, taken, verdicts }` :
+  `taken: true` quand cette saisie a pris l'échantillon (prise implicite,
+  §10).
 - `GET /api/programmation/queue` (PROGRAMMATEUR, ADMIN) : lignes RECU et
   PROGRAMME non annulées, groupées par série (client, N° de série, lignes
   avec N° de contrôle, désignation, nature, unités, priorité, dueAt,
@@ -153,25 +189,37 @@ ou au-delà : fiche en lecture seule avec le lien « Corriger la fiche ».
 ## 6. Ce qui s'adapte
 
 - **Réception** (`reception-input.ts`, `SerieReceptionForm`, `DepositForm`) :
-  le technicien devient facultatif (« Technicien (facultatif — le responsable
-  des paramètres attribue) ») ; « Technicien pour toutes les lignes » reste.
-- **Paillasse** : la file (`/technicien`, `/api/samples` pour un TECHNICIEN,
-  `/api/bench-sheet`) liste les lignes PROGRAMME et EN_ANALYSE où
-  `Sample.technicianId = moi` **ou** un `SampleParameter.technicianId = moi` ;
-  une ligne RECU ouverte par URL montre « En attente de programmation » (sans
-  champs) ; sur la fiche, seuls mes paramètres sont éditables (helper pur
-  `canEditParameter(sample, parameter, userId)` dans `src/lib/bench-access.ts`,
-  testé) ; `PUT …/results` refuse un paramètre qui n'est pas le mien (403 avec
-  le nom) ; `POST …/results/submit` exige tous les paramètres TERMINE quel
-  qu'en soit le technicien (un technicien peut soumettre quand tout est
-  terminé ; sinon message « il reste N paramètres à d'autres techniciens »).
-  `loadAssignedSample` accepte l'un ou l'autre lien. La dilution
-  programmée (`dilutionFactor`) remplace `calcFactor` du paramètre quand elle
-  est présente (bench, results, report).
-- **Rapport** : « Analyses réalisées par » imprime les techniciens distincts
-  (échantillon + paramètres) séparés par « · » ; colonne « Méthode » : la
-  version de norme programmée si présente, sinon celle du critère, sinon celle
-  du paramètre.
+  aucun technicien (08/10 : les sélecteurs ont quitté la réception et le
+  dépôt ; un `technicianId` envoyé par une ancienne page est ignoré).
+- **Paillasse** (réécrite le 13/10, §10) : `/technicien` montre « À
+  prendre » (toutes les lignes à la paillasse que personne ne tient, les
+  urgentes puis les plus anciennes en tête), mes échantillons (« À
+  commencer », « En analyse », « Anomalies », « Résultats soumis »), et ceux
+  des collègues en lecture seule (« Pris par un collègue », nom et heure).
+  Seul le titulaire saisit (403 sinon) ; une première saisie avec contenu
+  sur un échantillon libre le prend en charge. Une ligne RECU ouverte par
+  URL montre « En attente de programmation » (sans champs). Les règles sont
+  les fonctions pures testées de `src/lib/bench-access.ts` :
+  `canEnterParameter` (échantillon libre, ou paramètre à moi),
+  `canEditParameter` (règle des lignes héritées réparties par paramètre),
+  `isUnclaimed`, `isHeldByOther`. `loadAssignedSample`
+  (`src/lib/sample-access.ts`) refuse un échantillon tenu par un collègue
+  (403 « Cet échantillon est pris en charge par X : vous ne pouvez pas y
+  saisir de résultats. ») ; `PUT …/results` relit le titulaire sous le
+  verrou de la ligne ; `POST …/results/submit` exige un titulaire et tous
+  les paramètres TERMINE quel qu'en soit le technicien (lignes héritées :
+  « il reste N paramètres à d'autres techniciens »). `/api/samples`, la
+  recherche et l'export d'un technicien : les échantillons qu'il tient
+  (`benchWhereFor`). Feuille de paillasse (`/api/bench-sheet`) d'un
+  technicien : ce qu'il tient (§10). La dilution programmée
+  (`dilutionFactor`) remplace `calcFactor` du paramètre quand elle est
+  présente (bench, results, report).
+- **Rapport** : `ReportData.technicianName` = le titulaire, plus les
+  techniciens hérités par paramètre (`reportTechnicianNames`,
+  `src/lib/report-programme.ts`) ; le modèle PG06/EN03 M du 13/10 ne
+  l'imprime pas (« Analyses réalisées par » retiré, Q104 (c)) — la validation
+  l'affiche sous « Analysé par ». Colonne « Méthode » : la version de norme
+  programmée si présente, sinon celle du critère, sinon celle du paramètre.
 - **Facturation** : `/api/clients/[id]/billable` prend les statuts
   PROGRAMME, EN_ANALYSE, RESULTATS_SAISIS, VALIDE, RAPPORT_ENVOYE (jamais
   ANNULE) ; la fiche facture et la fiche client affichent un bandeau
@@ -187,7 +235,9 @@ ou au-delà : fiche en lecture seule avec le lien « Corriger la fiche ».
   `nav-for-role.ts`, `roles.ts` (chemin `/programmation`), gardes
   `requireRole` / `requireApiRole`, `DemoAccounts`, seed, journal :
   `SAMPLE_PROGRAMMED` → « Programme d'analyse confirmé »,
-  `SAMPLE_PROGRAMME_UPDATED` → « Programme d'analyse modifié ».
+  `SAMPLE_PROGRAMME_UPDATED` → « Programme d'analyse modifié » ; depuis le
+  13/10 `SAMPLE_TAKEN` → « Échantillon pris en charge », `SAMPLE_UNTAKEN` →
+  « Échantillon remis dans « À prendre » » (§10).
 
 ## 7. Hors périmètre (à confirmer plus tard)
 
@@ -213,6 +263,7 @@ facturation au forfait, notification au technicien (e-mail), planning.
 - Rôles : param1 n'approuve pas, ne valide pas, n'accède pas à /admin ;
   l'admin programme à sa place.
 - Recette en production avec un client « TEST UI » purgé ensuite.
+- Prise en charge libre : TESTPLAN V14.
 
 ## 9. Tranches
 
@@ -229,3 +280,163 @@ facturation au forfait, notification au technicien (e-mail), planning.
   badges, journal.
 - **P4 — recette** : gates (tsc, eslint, vitest, build), déploiement,
   TESTPLAN T sur la production, docs (WORKFLOW, HANDOFF, DEPLOY, PROGRESS).
+
+## 10. Prise en charge libre (13/10)
+
+Décision du laboratoire du 13/10/2026 : **plus personne n'attribue de
+technicien** — ni la réception (depuis le 08/10), ni le responsable des
+paramètres, ni l'administrateur. Les échantillons programmés attendent dans
+une liste commune et chaque technicien prend lui-même ceux qu'il analyse.
+Point de retour : tag `v1.2-avant-sans-affectation` (commit `4b9c557`) et la
+sauvegarde `qualilab_avant-sans-affectation.sql.gz` prise juste avant le
+déploiement (`DEPLOY.md`, « Point de retour — avant la prise en charge
+libre »). Recette : TESTPLAN V14.
+
+### 10.1 La fiche de programme et « À prendre »
+
+- La fiche de programme ne choisit plus que les analyses, les versions de
+  norme, les dilutions, la priorité, le délai de rendu, la prise d'essai et
+  les consignes (§4). Confirmer le programme met l'échantillon dans
+  **« À prendre »**, la liste partagée que voient tous les techniciens (et
+  l'administrateur).
+- Un échantillon est « à prendre » quand il est à la paillasse (PROGRAMME ou
+  EN_ANALYSE), n'est pas bloqué en réception (`analysisBlocked`) et que
+  **personne ne le tient** : ni `Sample.technicianId`, ni un
+  `SampleParameter.technicianId` hérité. Une ligne héritée tenue seulement
+  par des techniciens de paramètre compte comme **prise**. Un seul filtre,
+  `UNCLAIMED_WHERE` (son jumeau pur : `isUnclaimed`), dans
+  `src/lib/bench-access.ts`, sert à la tuile, à la liste
+  (`BENCH_VIEWS.a_prendre`, `src/lib/circuit-views.ts`), aux tableaux de bord
+  et aux routes : un compte et sa liste ne peuvent pas diverger.
+- Ordre : les **urgentes d'abord, puis la réception la plus ancienne**.
+  Comme toute liste de la paillasse, « À prendre » est groupée par série :
+  une série se place à son échantillon le plus urgent, puis le plus ancien
+  (`WORKFLOW.md` §3.4). À confirmer avec le laboratoire (NEEDEDINFO Q106).
+
+### 10.2 Prendre en charge
+
+- **Explicite** : le bouton « Prendre en charge » (« Prise en charge… »
+  pendant l'envoi) → `POST /api/samples/[id]/take`, réservé au TECHNICIEN.
+- **Implicite** : la première saisie **avec contenu** d'un technicien sur
+  un échantillon libre le prend, dans la transaction même des résultats
+  (journal `SAMPLE_TAKEN` avec `implicit: true` ; `PUT …/results` répond
+  `taken: true`).
+- Le titulaire est `Sample.technicianId`, l'heure `Sample.assignedAt`
+  (colonnes existantes, aucune migration). **C'est l'échantillon entier qui
+  est pris** (la micro et la physico-chimie sont déjà deux échantillons
+  « …M » / « …P »). Le programme n'écrit plus `SampleParameter.technicianId`.
+- **Le premier gagne.** Chaque écriture du titulaire verrouille d'abord la
+  ligne `Sample` (`SELECT … FOR UPDATE`, `lockTakeState` dans
+  `src/lib/bench-take-server.ts`), relit le titulaire sous le verrou, puis
+  l'écrit par un `updateMany` gardé par `technicianId: null` (jamais un
+  `update` gardé, HANDOFF §9). Le second reçoit **409 « Déjà pris par X. »**,
+  au bouton comme à la saisie. Reprendre un échantillon déjà à soi n'est pas
+  une erreur (`already: true`). Un échantillon hors paillasse ou bloqué en
+  réception ne se prend pas (409).
+- **Prendre ne change pas le statut.** PROGRAMME → EN_ANALYSE se fait à la
+  première saisie avec contenu, dans la transaction des résultats (un
+  programme modifié ne peut pas se glisser entre les lectures et le
+  statut).
+- « Avec contenu » = un résultat qui porte une valeur, une note, une
+  lecture d'unité, ou une étape autre que « En cours » (`hasTypedResult`,
+  `TYPED_RESULT_WHERE`). **Un « Enregistrer » sans rien de saisi ne prend
+  pas l'échantillon et ne démarre pas l'analyse** ; il n'empêche pas non
+  plus de le libérer.
+
+### 10.3 Libérer
+
+- « Libérer » remet un échantillon pris dans « À prendre », après la
+  confirmation « Remettre cet échantillon dans « À prendre » ? Vos collègues
+  pourront le prendre. » → `DELETE /api/samples/[id]/take`.
+- Permis au **titulaire** (le TECHNICIEN dont `Sample.technicianId` est
+  l'identifiant) et à l'**ADMIN**, seulement tant que l'échantillon est
+  PROGRAMME ou EN_ANALYSE et qu'**aucun résultat saisi** n'existe (compté
+  sous le même verrou que la saisie, `untakeRefusal`). Sinon : 403 « Seul X
+  ou un administrateur peut libérer cet échantillon. » ; 409 « Des résultats
+  sont déjà saisis sur cet échantillon : il ne peut plus être libéré. » ;
+  409 hors paillasse ou quand personne ne le tient.
+- Efface `technicianId`, `assignedAt` et les `SampleParameter.technicianId`
+  hérités. Une ligne héritée tenue seulement par paramètre ne peut être
+  libérée que par l'administrateur.
+- Ce n'est **pas un verbe de correction** (`WORKFLOW.md` §8, `AGENTS.md`
+  §3b) : journalisé (`SAMPLE_UNTAKEN`, avec le titulaire précédent), sans
+  motif. À ne pas confondre avec le « Libérer » de « Bloqués »
+  (`POST /api/samples/[id]/release`, `SAMPLE_RELEASED`, un échantillon
+  retenu à la réception).
+
+### 10.4 Qui voit, qui saisit
+
+- Un technicien voit « À prendre », ses échantillons, et ceux de ses
+  collègues **en lecture seule** : « Pris par un collègue », avec le nom et
+  l'heure, fiche sans champs ni « Enregistrer ». Saisir dessus : **403**
+  « Cet échantillon est pris en charge par X : vous ne pouvez pas y saisir
+  de résultats. » (`loadAssignedSample`) ; 409 « Déjà pris par X. » quand le
+  collègue l'a pris pendant la saisie.
+- Sur la fiche, `canEnterParameter` décide de chaque paramètre : tout
+  paramètre d'un échantillon libre (la saisie le prendra), ou un paramètre
+  à moi. Les lignes héritées gardent leur règle (`canEditParameter` :
+  chacun son paramètre, 403 « Le paramètre … est réservé à … : vous ne
+  pouvez pas le saisir. »).
+- `/api/samples`, la recherche et l'export d'un technicien restent limités
+  aux échantillons qu'il tient (`benchWhereFor`) — à confirmer avec le
+  laboratoire (NEEDEDINFO Q108).
+- **La feuille de paillasse d'un technicien = ce qu'il tient** : sans date,
+  tout ce qu'il tient maintenant, dans l'ordre où il l'a pris ; avec
+  `?date=`, ceux reçus ce jour-là. Les autres rôles impriment la paillasse
+  d'un jour (aujourd'hui par défaut), triée par titulaire, les échantillons
+  « À prendre » en tête.
+
+### 10.5 L'administrateur et les autres rôles
+
+- L'**ADMIN supplée** sur tout échantillon (il saisit, soumet, libère) mais
+  **n'en prend jamais** : `POST …/take` est réservé au TECHNICIEN (403 pour
+  l'administrateur, le validateur, la Direction et le responsable des
+  paramètres), et une saisie de l'administrateur ne prend pas l'échantillon
+  (elle peut le faire passer EN_ANALYSE ; il reste « à prendre »).
+- **Soumettre un échantillon que personne ne tient est refusé à tous**,
+  administrateur compris : 409 « Personne n'a pris cet échantillon en
+  charge : un technicien doit le prendre avant la soumission. » Chaque
+  échantillon soumis nomme ainsi son analyste.
+- Tableau de bord de l'administrateur : la tuile « À prendre » et « qui
+  tient quoi » (les échantillons à la paillasse par titulaire,
+  `benchLoadByTechnician`).
+
+### 10.6 Le programme après la prise en charge
+
+- Le responsable des paramètres peut encore modifier le programme d'un
+  échantillon PROGRAMME déjà pris, jusqu'à EN_ANALYSE. La route du programme
+  n'écrit **jamais** `technicianId` ni `assignedAt` ; les analyses conservées
+  d'une ligne héritée gardent leur technicien.
+- La fiche ouverte à la paillasse peut alors être périmée : une saisie sur
+  une analyse retirée reçoit 409 « Le programme d'analyse de cet
+  échantillon a changé : rechargez la fiche. »
+
+### 10.7 Validation, parcours, journal
+
+- Double validation inchangée. La page de validation affiche **« Analysé
+  par »** = le titulaire, plus les techniciens hérités par paramètre
+  (`reportTechnicianNames`, `src/lib/report-programme.ts`). Le rapport
+  PG06/EN03 M ne l'imprime pas (NEEDEDINFO Q104 (c)).
+- Parcours de l'échantillon : « Pris en charge » (avec « À la première
+  saisie de résultat » quand la prise est implicite) et « Remis dans « À
+  prendre » » (avec « Était pris par X ») ; un échantillon attribué avant le
+  13/10 garde son « Attribué à un technicien ». Journal (`/admin/journal`) :
+  `SAMPLE_TAKEN` « Échantillon pris en charge », `SAMPLE_UNTAKEN`
+  « Échantillon remis dans « À prendre » » (`src/lib/audit-labels.ts`,
+  `src/lib/sample-timeline.ts`).
+
+### 10.8 Bascule et compatibilité
+
+- **Aucune migration, aucune reprise de données.** Les échantillons déjà
+  attribués en production comptent comme **pris par cette personne** : ils
+  restent sur sa paillasse, et elle peut les libérer tant que rien n'y est
+  saisi. « À prendre » commence donc presque vide (sur la copie locale du
+  13/10, tous les échantillons PROGRAMME et EN_ANALYSE avaient un
+  technicien) et se remplit avec les programmes confirmés ensuite.
+- Les lignes programmées avant le 13/10 avec un technicien par paramètre
+  continuent de fonctionner : chacun saisit son paramètre, la soumission
+  attend que tout soit terminé, la ligne compte comme prise.
+- Une page ouverte avant la mise à jour qui envoie `technicianId` au
+  programme : ignoré, jamais refusé.
+- NEEDEDINFO Q42 (un échantillon réparti entre plusieurs techniciens) est
+  close par cette décision : un seul technicien prend l'échantillon entier.

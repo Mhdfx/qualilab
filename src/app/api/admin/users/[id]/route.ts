@@ -10,6 +10,8 @@ import {
   userClientRefusal,
 } from "@/lib/portal-access";
 import { ASSIGNABLE_ROLES, PORTAL_ROLE, type Role } from "@/lib/roles";
+import { benchQueueWhereFor } from "@/lib/bench-access";
+import { benchHoldWarning, leavesBench } from "@/lib/technician-load";
 
 /**
  * Managing one account: change its role (and, for a « Client (portail) »
@@ -20,6 +22,13 @@ import { ASSIGNABLE_ROLES, PORTAL_ROLE, type Role } from "@/lib/roles";
  *
  * Everything is checked before anything is written, so a refused field never
  * leaves the account half-changed.
+ *
+ * Prise en charge libre (PROGRAMME.md §10): an account leaving the bench —
+ * disabled, or no longer a technician — while it still holds samples there
+ * is never refused (a departure must take effect at once). The answer
+ * carries a `warning` instead: those samples stay taken, and a colleague
+ * cannot take them, until the admin gives them back to « À prendre »
+ * (« Libérer », while nothing is typed) or finishes them.
  */
 export async function PATCH(
   request: Request,
@@ -146,6 +155,19 @@ export async function PATCH(
     ]);
   }
 
+  // What the account still holds at the bench when it leaves it — the
+  // samples it took and the legacy parameter lines it was handed, the same
+  // rule as the bench's « Mes analyses » (`benchQueueWhereFor`).
+  const leaving = leavesBench(
+    { role: user.role, banned: user.banned },
+    { role: nextRole, banned: banChanged ? banned : user.banned }
+  );
+  const heldAtBench = leaving
+    ? await prisma.sample.count({ where: benchQueueWhereFor({ id, role: "TECHNICIEN" }) })
+    : 0;
+  const warning = benchHoldWarning(heldAtBench);
+  const benchMeta = heldAtBench > 0 ? { heldAtBench } : {};
+
   if (scopeChanged) {
     const portalMeta = {
       ...(user.clientId !== nextClientId ? { fromClientId: user.clientId, toClientId: nextClientId } : {}),
@@ -157,7 +179,7 @@ export async function PATCH(
       entity: "User",
       entityId: id,
       metadata: roleChanged
-        ? { username: user.username, from: user.role, to: nextRole, ...portalMeta }
+        ? { username: user.username, from: user.role, to: nextRole, ...portalMeta, ...benchMeta }
         : { username: user.username, ...portalMeta },
     });
   }
@@ -168,7 +190,8 @@ export async function PATCH(
       action: banned ? "USER_DISABLED" : "USER_ENABLED",
       entity: "User",
       entityId: id,
-      metadata: { username: user.username },
+      // A departure with samples still taken at the bench: how many.
+      metadata: { username: user.username, ...(banned ? benchMeta : {}) },
     });
   }
 
@@ -195,5 +218,6 @@ export async function PATCH(
     },
   });
 
-  return NextResponse.json(updated);
+  // The warning rides along with the account; the change itself is done.
+  return NextResponse.json(warning ? { ...updated, warning } : updated);
 }

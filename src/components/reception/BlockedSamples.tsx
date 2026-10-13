@@ -40,7 +40,8 @@ export type BlockedSample = {
  * releases it, analysed (the client's agreement noted) or destroyed. Any
  * other hold (a destroyed sample reactivated, the retired policy) stays the
  * admin's. Releasing never assigns a technician: an analysed sample goes to
- * the programme queue like any received sample.
+ * the programme queue like any received sample, then to « À prendre » once
+ * programmed, where a technician takes it (PROGRAMME.md §10).
  */
 export function BlockedSamples({
   samples,
@@ -172,7 +173,7 @@ function BlockedRow({ sample, consultationRequired }: { sample: BlockedSample; c
                 invalid={Boolean(error) && consultationDraftError(consultation, required) !== null}
               />
               <p className="mt-2 text-xs text-slate-600">
-                L&apos;échantillon rejoint la file de programmation : le responsable des paramètres lui attribue sa paillasse.
+                L&apos;échantillon rejoint la file de programmation, puis la liste « À prendre » des techniciens.
               </p>
             </>
           )}

@@ -19,7 +19,7 @@ import {
   Search,
 } from "lucide-react";
 import { viewHref } from "@/lib/dashboard-view";
-import type { ValidationView } from "@/lib/circuit-views";
+import type { BenchView, ValidationView } from "@/lib/circuit-views";
 import type { NavSection } from "./nav-types";
 
 /**
@@ -42,11 +42,23 @@ export const receptionNav: NavSection[] = [
   },
 ];
 
+/** A list of the bench, opened on its own view (`?vue=`, like the dashboard's tiles). */
+function benchStep(view: BenchView): string {
+  return viewHref("/technicien", view, "analyses");
+}
+
+/**
+ * The technician's menu. « À prendre » is the shared list of the prise en
+ * charge libre (PROGRAMME.md §10), « Mes analyses » what they took. Both
+ * are shortcuts into the dashboard: only « Tableau de bord » lights on it
+ * (`activeHref`).
+ */
 export const technicienNav: NavSection[] = [
   {
     title: "Menu principal",
     items: [
       { label: "Tableau de bord", href: "/technicien", icon: LayoutDashboard },
+      { label: "À prendre", href: benchStep("a_prendre"), icon: Inbox },
       { label: "Mes analyses", href: "/technicien#analyses", icon: FlaskConical },
       { label: "Relevés de température", href: "/technicien/temperatures", icon: Thermometer },
       { label: "Recherche des analyses", href: "/recherche", icon: Search },

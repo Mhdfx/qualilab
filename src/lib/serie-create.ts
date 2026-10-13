@@ -23,7 +23,8 @@ import type { Role } from "./roles";
  * samples are born RECU with their N° de contrôle and their conformity; a
  * visit's samples are born PRELEVE and get theirs at reception. Neither
  * names a technician (RETOUR-LABO-06-10.md §9.3): `Sample.technicianId` is
- * set by the programme sheet only.
+ * set at the bench only, by the technician who takes the sample (prise en
+ * charge libre, PROGRAMME.md §10).
  *
  * A line becomes one sample per ticked family (RETOUR-LABO-06-10.md §5, V3):
  * the two samples of a two-family line share the line number and everything
@@ -268,8 +269,9 @@ export async function createSerie(
         const produit = product?.label ?? line.produit;
         // A destroyed line is received, numbered and cancelled at once. The
         // others wait in the programmation queue (RECU), without a
-        // technician, for the responsable des paramètres, who assigns the
-        // bench (PROGRAMME.md §1 — the deposit follows the same path as a
+        // technician, for the programme of the responsable des
+        // paramètres, then in « À prendre » for a technician to take them
+        // (PROGRAMME.md §1, §10 — the deposit follows the same path as a
         // visit).
         const destroyed = isDeposit && line.destroy;
 

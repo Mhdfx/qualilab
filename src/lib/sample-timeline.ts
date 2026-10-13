@@ -117,6 +117,18 @@ export const TIMELINE_ACTIONS: Record<string, ActionSpec> = {
   // Stream A (accord du client sur un non-conforme): wording of /admin/journal.
   SAMPLE_AWAITING_CLIENT: { label: "En attente de l'avis du client", tone: "warning", note: (meta) => text(meta.note) ?? text(meta.reason) },
   CLIENT_CONSULTED: { label: "Accord du client enregistré", tone: "neutral", note: (meta) => text(meta.note) ?? text(meta.reason) },
+  // Prise en charge libre (13/10): the journal row names the technician
+  // as its actor; a take by a first typed result says so.
+  SAMPLE_TAKEN: {
+    label: "Pris en charge",
+    tone: "neutral",
+    note: (meta) => (meta.implicit === true ? "À la première saisie de résultat" : null),
+  },
+  SAMPLE_UNTAKEN: {
+    label: "Remis dans « À prendre »",
+    tone: "neutral",
+    note: (meta) => (text(meta.previousTechnicianName) ? `Était pris par ${text(meta.previousTechnicianName)}` : null),
+  },
   SAMPLE_ANALYSIS_STARTED: { label: "Analyse démarrée", tone: "neutral" },
   RESULTS_SUBMITTED: {
     label: "Résultats soumis à validation",
@@ -208,6 +220,9 @@ const CIRCUIT_ORDER = [
   "SAMPLE_PROGRAMME_UPDATED",
   "SAMPLE_RELEASED",
   "ASSIGNED",
+  // A take by a first result and « Analyse démarrée » share one instant.
+  "SAMPLE_TAKEN",
+  "SAMPLE_UNTAKEN",
   "SAMPLE_ANALYSIS_STARTED",
   "RESULTS_SUBMITTED",
   "SAMPLE_REGULATION_SET",
@@ -357,13 +372,18 @@ export function sampleTimeline(sample: TimelineSample, rows: readonly TimelineAu
     });
   }
 
-  // The assignment is written by the reception (older samples), the
-  // programme or the release: it names the technician on that step, or
-  // stands alone when no step recorded it.
-  if (sample.assignedAt) {
+  // Since 13/10 the holder is set by a take, journalled SAMPLE_TAKEN with
+  // the technician as its actor: that row is the step. Before, the
+  // assignment was written by the reception (older samples), the programme
+  // or the release: it names the technician on that step, or stands alone
+  // when no step recorded it.
+  const assignedAt = sample.assignedAt;
+  const takenRow =
+    assignedAt &&
+    items.some((item) => item.kind === "SAMPLE_TAKEN" && Math.abs(item.at.getTime() - assignedAt.getTime()) <= SAME_STEP_MS);
+  if (assignedAt && !takenRow) {
     const technician = sample.technician?.name ?? null;
     const note = technician ? `Technicien : ${technician}` : null;
-    const assignedAt = sample.assignedAt;
     const step = items.find(
       (item) =>
         ["SAMPLE_PROGRAMMED", "SAMPLE_PROGRAMME_UPDATED", "SAMPLE_RELEASED", "SAMPLE_RECEIVED", "PROGRAMMED", "RECEIVED"].includes(item.kind) &&

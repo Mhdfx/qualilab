@@ -54,7 +54,11 @@ export type ParameterLine = {
   normLabel: string | null;
   /** One reading per unit taken when `perUnit`. */
   units: string[];
-  /** May this technician type the line? A colleague's parameter is read-only (PROGRAMME.md §6). */
+  /**
+   * May this technician type the line? Any line of a free sample (the first
+   * save takes it) or of one they hold; a parameter a legacy programme handed
+   * to a colleague stays read-only (`canEnterParameter`, PROGRAMME.md §10.4).
+   */
   editable: boolean;
   /** The technician in charge of the line, named when it is not me. */
   technicianName: string | null;
@@ -66,7 +70,67 @@ type ResultEntryFormProps = {
   sampleId: string;
   canEdit: boolean;
   initialLines: ParameterLine[];
+  /**
+   * A colleague's sample, opened read-only: who holds it. The page says it
+   * once, above the sheet, so no line repeats « lecture seule ».
+   */
+  heldBy?: string | null;
+  /**
+   * Why « Soumettre » is closed though the sheet is editable — the admin
+   * standing in on a sample nobody took (the server refuses it, 409).
+   */
+  submitBlocked?: string | null;
 };
+
+/** What `PUT …/results` answers once the sheet is saved. */
+type SaveAnswer = { status: string; saved: number; taken: boolean };
+
+/**
+ * What the server decides of a line — which lines the sheet holds and how
+ * each one reads — as opposed to what is typed in it. A refresh that brings
+ * a new shape (a programme edited while the sheet was open) re-lays the
+ * sheet; a refresh after a plain save leaves the typing alone.
+ */
+function sheetShape(lines: ParameterLine[]): string {
+  return JSON.stringify(
+    lines.map((line) => [
+      line.parameterId,
+      line.name,
+      line.unit,
+      line.editable,
+      line.technicianName,
+      line.perUnit,
+      line.units.length,
+      line.calcFactor,
+      line.planLabel,
+      line.normLabel,
+      line.threshold,
+      line.limitValue,
+      line.methodNote,
+    ])
+  );
+}
+
+/**
+ * The fresh sheet, with what was typed on each line still programmed — and
+ * still mine, read the same way — carried over, so a programme edit costs
+ * nothing already typed.
+ */
+function withTyping(fresh: ParameterLine[], typed: ParameterLine[]): ParameterLine[] {
+  const before = new Map(typed.map((line) => [line.parameterId, line]));
+  return fresh.map((line) => {
+    const previous = before.get(line.parameterId);
+    if (!previous || !line.editable || previous.perUnit !== line.perUnit) return line;
+    return {
+      ...line,
+      value: previous.value,
+      note: previous.note,
+      workStatus: previous.workStatus,
+      manualConform: previous.manualConform,
+      units: line.units.map((unit, index) => previous.units[index] ?? unit),
+    };
+  });
+}
 
 const WORK_STATUS_LABELS: Record<ResultWorkStatus, string> = {
   EN_COURS: "En cours",
@@ -101,12 +165,28 @@ export function ResultEntryForm({
   sampleId,
   canEdit,
   initialLines,
+  heldBy = null,
+  submitBlocked = null,
 }: ResultEntryFormProps) {
   const router = useRouter();
   const [lines, setLines] = useState<ParameterLine[]>(initialLines);
   const [busy, setBusy] = useState<"save" | "submit" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  // The page re-renders after every save (`router.refresh()`), but the lines
+  // are this form's state: they follow the server only when the sheet's
+  // shape changed — typically the programme was edited meanwhile (409
+  // « … a changé : rechargez la fiche. », which the refresh just did).
+  // Adjusted while rendering, as React recommends for state derived from a
+  // prop, so no stale sheet is ever painted.
+  const shape = sheetShape(initialLines);
+  const [shownShape, setShownShape] = useState(shape);
+  if (shape !== shownShape) {
+    setShownShape(shape);
+    setLines(withTyping(initialLines, lines));
+    if (error) setError("La fiche a été mise à jour : vérifiez votre saisie, puis enregistrez de nouveau.");
+  }
 
   const readings = useMemo<Reading[]>(
     () =>
@@ -201,7 +281,7 @@ export function ResultEntryForm({
   }
 
   function payload() {
-    // Only my lines travel: the server refuses a colleague's (403).
+    // Only the lines I may type travel: the server refuses a colleague's (403).
     return lines.flatMap((line, index) => {
       if (!line.editable) return [];
       return [
@@ -224,7 +304,20 @@ export function ResultEntryForm({
     });
   }
 
-  async function save(then?: () => Promise<void>) {
+  /**
+   * A refusal because the bench moved under the sheet — a colleague took
+   * the sample (409 « Déjà pris par X. »), it is theirs (403), the programme
+   * changed or the sheet left the bench (409): the reason is shown and the
+   * page re-renders, so the sheet turns read-only or follows the new
+   * programme.
+   */
+  function refused(status: number, message: string) {
+    setError(message);
+    if (status === 403 || status === 409) router.refresh();
+  }
+
+  /** Saves the sheet: the server's answer, or null once the refusal is on screen. */
+  async function save(): Promise<SaveAnswer | null> {
     const response = await fetch(`/api/samples/${sampleId}/results`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -232,11 +325,10 @@ export function ResultEntryForm({
     });
     const data = await response.json();
     if (!response.ok) {
-      setError(data.error ?? "Impossible d'enregistrer les résultats.");
-      return false;
+      refused(response.status, data.error ?? "Impossible d'enregistrer les résultats.");
+      return null;
     }
-    if (then) await then();
-    return true;
+    return data as SaveAnswer;
   }
 
   async function handleSave() {
@@ -244,8 +336,14 @@ export function ResultEntryForm({
     setBusy("save");
     setError("");
     try {
-      if (await save()) {
-        setNotice("Résultats enregistrés. Vous pouvez reprendre plus tard.");
+      const saved = await save();
+      if (saved) {
+        // The first typed result of a free sample took it (PROGRAMME.md §10.2).
+        setNotice(
+          saved.taken
+            ? "Résultats enregistrés — l'échantillon est maintenant à vous."
+            : "Résultats enregistrés. Vous pouvez reprendre plus tard."
+        );
         router.refresh();
       }
     } catch {
@@ -270,7 +368,7 @@ export function ResultEntryForm({
       );
       const data = await response.json();
       if (!response.ok) {
-        setError(data.error ?? "Impossible de soumettre les résultats.");
+        refused(response.status, data.error ?? "Impossible de soumettre les résultats.");
         return;
       }
       router.refresh();
@@ -302,7 +400,8 @@ export function ResultEntryForm({
         <ul className="mt-4 space-y-3">
           {lines.map((line, index) => {
             const reading = readings[index];
-            // A colleague's parameter is read-only on my sheet (PROGRAMME.md §6).
+            // A parameter a legacy programme handed to a colleague is
+            // read-only on my sheet (PROGRAMME.md §10.4).
             const locked = !canEdit || !line.editable;
             return (
               <li
@@ -312,7 +411,8 @@ export function ResultEntryForm({
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <p className="flex flex-wrap items-center gap-2 font-semibold text-slate-800">
                     {line.name}
-                    {!line.editable && (
+                    {/* On a colleague's sample the page says it once, above the sheet. */}
+                    {!line.editable && !heldBy && (
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200">
                         {line.technicianName ? `Paramètre de ${line.technicianName}` : "Paramètre d'un autre technicien"} — lecture seule
                       </span>
@@ -522,12 +622,14 @@ export function ResultEntryForm({
             <PrimaryButton
               type="button"
               onClick={handleSubmit}
-              disabled={!!busy || !allComplete}
+              disabled={!!busy || !allComplete || !!submitBlocked}
               className="sm:flex-1"
               title={
-                allComplete
-                  ? undefined
-                  : "Complétez tous les paramètres avant de soumettre"
+                submitBlocked
+                  ? submitBlocked
+                  : allComplete
+                    ? undefined
+                    : "Complétez tous les paramètres avant de soumettre"
               }
             >
               <Send className="h-4 w-4" aria-hidden="true" />
@@ -542,7 +644,11 @@ export function ResultEntryForm({
           </div>
         )}
 
-        {canEdit && !allComplete && (
+        {canEdit && submitBlocked && (
+          <p className="mt-2 text-center text-xs text-slate-500 sm:text-right">{submitBlocked}</p>
+        )}
+
+        {canEdit && !submitBlocked && !allComplete && (
           <p className="mt-2 text-center text-xs text-slate-500 sm:text-right">
             Tous les paramètres doivent être renseignés et terminés pour
             soumettre{lines.some((line) => !line.editable) ? ", y compris ceux de vos collègues" : ""}.

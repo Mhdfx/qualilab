@@ -7,6 +7,7 @@ import { approvalState, APPROVAL_LABELS } from "@/lib/sample-status";
 import { groupBySerie } from "@/lib/serie-groups";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
+import { reportTechnicianNames } from "@/lib/report-programme";
 import { Card } from "@/components/ui/Card";
 import { TypeBadge } from "@/components/ui/TypeBadge";
 
@@ -27,7 +28,10 @@ export type ValidationItem = {
   approvedById: string | null;
   client: { name: string };
   serie: { serialNumber: string };
+  /** Who took the sample at the bench (prise en charge libre, PROGRAMME.md §10). */
   technician: { name: string } | null;
+  /** The technicians a legacy programme handed parameters to; optional on an older caller. */
+  parameters?: { technician: { name: string } | null }[];
   results: { conform: boolean | null; workStatus: string }[];
   updatedAt?: Date;
   receivedAt: Date | null;
@@ -79,6 +83,8 @@ export function ValidationQueue({
               const state = approvalState(item);
               const nonConformes = item.results.filter((r) => r.conform === false).length;
               const anomalies = item.results.filter((r) => r.workStatus === "ANOMALIE").length;
+              // « Analysé par »: the taker, then any legacy parameter technician.
+              const analysedBy = reportTechnicianNames({ technician: item.technician, parameters: item.parameters ?? [] });
 
               return (
                 <li key={item.id}>
@@ -132,7 +138,7 @@ export function ValidationQueue({
                         </p>
                         <p className="mt-0.5 text-sm text-slate-500">
                           {item.results.length} résultat{item.results.length > 1 ? "s" : ""}
-                          {item.technician ? ` · ${item.technician.name}` : ""} · reçu le{" "}
+                          {analysedBy ? ` · analysé par ${analysedBy}` : ""} · reçu le{" "}
                           {item.receivedAt ? formatDate(item.receivedAt) : "—"}
                         </p>
                       </div>

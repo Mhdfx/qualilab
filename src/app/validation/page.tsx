@@ -57,7 +57,13 @@ export default async function ValidationPage({
         receivedAt: true,
         client: { select: { name: true } },
         serie: { select: { serialNumber: true } },
+        // « Analysé par »: who took it at the bench, then the technicians a
+        // legacy programme handed parameters to (only those rows are read).
         technician: { select: { name: true } },
+        parameters: {
+          where: { technicianId: { not: null } },
+          select: { technician: { select: { name: true } } },
+        },
         results: { select: { conform: true, workStatus: true } },
         // AMENDEMENT.md §2: a reopened report shows the badge « Amendement ».
         report: { select: { amendmentPending: true } },

@@ -368,7 +368,7 @@ Remarques envoyées le 08/10 pendant l'utilisation réelle (captures d'écran).
    technicien disparaît de la réception et du dépôt (et l'API de réception
    ne l'accepte plus) ; le responsable des paramètres l'attribue sur la
    fiche de programme, en choisissant dans la liste globale — la plus
-   ancienne entrée en tête.
+   ancienne entrée en tête. *(remplacé le 13/10, §13)*
 4. **Étiquettes : sans client ni site** (numérotation aveugle) ; nature,
    date, N° de contrôle et répétition, code-barres, désignation et série
    restent.
@@ -378,7 +378,8 @@ Remarques envoyées le 08/10 pendant l'utilisation réelle (captures d'écran).
    « Alertes de contamination ».
 
 **Points 2 à 5 en production le 08/10** (`73d7119`, TESTPLAN V9). Le
-programme ne se confirme plus sans technicien (conséquence du point 3).
+programme ne se confirme plus sans technicien (conséquence du point 3)
+*(remplacé le 13/10, §13)*.
 Aucune analyse de physico-chimie d'ambiance (surfaces, mains, air) n'est
 encore au catalogue (Q50) : ces échantillons se créent et se réceptionnent,
 la programmation attend la liste du laboratoire.
@@ -545,7 +546,8 @@ est le TESTPLAN V11.
    e-mail, ICE du client tels qu'imprimés) ; un **avoir reprend une ligne**
    au plus à hauteur de son montant (« Déjà repris : X HT · reste Y HT ») ;
    la fiche de programme affiche la **charge de chaque technicien**
-   (« Nom — 12 éch. · 3 en retard ») ; index de dates pour les listes.
+   (« Nom — 12 éch. · 3 en retard ») *(remplacé le 13/10, §13)* ; index de
+   dates pour les listes.
 
 **Paillasse, validation, envois (chantier B).**
 10. « > x », « Indénombrable », « Incomptable », « TNTC » acceptés et jugés :
@@ -737,3 +739,91 @@ TESTPLAN V13.
 - **Rapport** : les choix faits là où le modèle ne dit rien (Q104) ; le reste
   de Q58 / Q60 (fax du client, documents sans cartouche) en Q105.
 - Toujours ouvertes de l'envoi précédent : Q64 (règle (1)), Q67–Q98.
+
+## 13. Décision du 13/10 — plus d'affectation, prise en charge libre
+
+Décidé par le laboratoire le 13/10 : **plus personne n'attribue de
+technicien** — ni la réception (déjà depuis le 08/10, §9.3), ni le
+responsable des paramètres, ni l'administrateur. Les techniciens se
+servent eux-mêmes dans une liste commune. Spécification complète :
+`PROGRAMME.md` §10 ; résumé : `WORKFLOW.md` §19 ; recette : TESTPLAN V14.
+Construit le 13/10 sur la branche `prise-en-charge-libre`, pas encore
+déployé.
+
+### 13.1 Ce qui change
+
+1. **La fiche de programme** ne choisit plus que les analyses, les versions
+   de norme, les dilutions, la priorité, le délai de rendu, la prise
+   d'essai et les consignes. Confirmer le programme met l'échantillon dans
+   **« À prendre »**, la liste que voient tous les techniciens : les
+   urgents d'abord, puis la réception la plus ancienne, groupés par série
+   comme toutes les listes (Q106).
+2. **Prendre en charge.** Un technicien devient responsable de
+   l'échantillon — de l'échantillon entier — en cliquant « Prendre en
+   charge », ou en enregistrant le premier résultat saisi sur un
+   échantillon libre. Le premier gagne : le second lit « Déjà pris par X. ».
+   Un « Enregistrer » sans rien de saisi ne prend pas l'échantillon.
+3. **Libérer.** Le technicien qui tient l'échantillon, ou l'administrateur,
+   peut le remettre dans « À prendre » (« Remettre cet échantillon dans « À
+   prendre » ? Vos collègues pourront le prendre. »), tant qu'aucun
+   résultat n'y est saisi. Ce « Libérer » n'a rien à voir avec celui des
+   échantillons bloqués à la réception.
+4. **Les collègues voient sans saisir.** Les échantillons pris par un
+   collègue s'affichent en lecture seule, « Pris par un collègue », avec son
+   nom et l'heure ; y saisir est refusé.
+5. **L'administrateur remplace, sans jamais prendre.** Il peut saisir,
+   soumettre ou libérer à la place d'un technicien ; sa saisie ne prend pas
+   l'échantillon. Un échantillon que personne n'a pris ne peut pas être
+   soumis à la validation (par personne, administrateur compris).
+6. **Le statut ne bouge pas à la prise en charge** : l'échantillon passe
+   « En analyse » au premier résultat saisi. Tant qu'il n'est pas « En
+   analyse », le responsable des paramètres peut encore modifier son
+   programme, même pris en charge.
+7. **Validation** : double validation inchangée ; le validateur lit
+   « Analysé par » avec le nom du technicien qui a pris l'échantillon.
+   Le rapport PG06/EN03 ne l'imprime pas (Q104 (c)).
+8. **Traçabilité** : la prise en charge et la remise dans « À prendre » sont
+   journalisées et figurent dans le parcours de l'échantillon (« Pris en
+   charge », « Remis dans « À prendre » »), sans motif à saisir.
+
+### 13.2 Ce qui disparaît
+
+- Sur la fiche de programme : le technicien par défaut, le technicien par
+  analyse, les raccourcis « tous à X » / « micro à X, chimie à Y », la
+  **charge de chaque technicien** (§11, point 9) et le refus « Choisissez le
+  technicien … avant de confirmer le programme » (§9, point 3).
+- La « visibilité sur la charge de chacun » à l'attribution, promise par le
+  cahier des charges d'origine, est remplacée par cette décision ; le
+  tableau de bord de l'administrateur montre à la place la liste « À
+  prendre » et qui tient quoi.
+
+### 13.3 Ce qui reste
+
+- **Les échantillons déjà attribués** avant la mise à jour comptent comme
+  pris par leur technicien : ils restent sur sa paillasse, il peut les
+  libérer tant que rien n'y est saisi. Aucune reprise de données, aucune
+  migration.
+- **Les échantillons répartis par paramètre** avant le 13/10 (micro à l'un,
+  chimie à l'autre) gardent leur règle : chacun saisit son paramètre, la
+  soumission attend que tout soit terminé.
+- La réception, le programme d'analyse, la double validation, le rapport et
+  la facturation ne changent pas autrement.
+- Q42 (répartir un échantillon entre plusieurs techniciens) est close :
+  un seul technicien prend l'échantillon entier.
+
+### 13.4 Point de retour
+
+Si la liste commune ne convient pas, on revient à l'attribution sur la
+fiche de programme : la version d'avant est gardée sous l'étiquette
+`v1.2-avant-sans-affectation`, et une sauvegarde de la base,
+`qualilab_avant-sans-affectation.sql.gz`, est prise juste avant le
+déploiement (`DEPLOY.md`, « Point de retour — avant la prise en charge
+libre »). Comme rien n'est migré, revenir en arrière ne demande pas de
+restaurer la base : un échantillon pris se lit comme attribué à son
+technicien.
+
+### 13.5 Questions au laboratoire
+
+Q106 (ordre de « À prendre »), Q107 (un technicien qui part avec des
+résultats saisis), Q108 (rechercher les échantillons des collègues) ; et
+Q104 (c) pour imprimer ou non « Analysé par » sur le rapport (`NEEDEDINFO.md`).

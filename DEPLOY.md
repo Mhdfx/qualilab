@@ -320,6 +320,52 @@ The restore recreates the database from the dump, so the Phase 9 tables
 disappear with it; `migrate deploy` then finds nothing pending on the old
 code. To resume Phase 9 later: `git checkout master` and redeploy.
 
+## Point de retour — avant la prise en charge libre (2026-10-13)
+
+The laboratory decided on 13/10 that nobody assigns technicians any more
+(« prise en charge libre », `PROGRAMME.md` §10). The version before that
+change is kept so the laboratory can go back to the assignment on the
+programme sheet if the shared bench does not suit them:
+
+- **Code:** annotated git tag `v1.2-avant-sans-affectation` = commit
+  `4b9c557` (master of 13/10), **pushed to origin**. Its message says how to
+  go back.
+- **Database:** `/var/backups/qualilab/qualilab_avant-sans-affectation.sql.gz`
+  on the VPS, **taken just before the deploy** of the change. Its name is
+  outside the rotation pattern `qualilab_????-??-??_????.sql.gz`, so
+  `backup-db.sh` never prunes it — do not delete it. ⏳ Not taken yet on
+  13/10: it is the first step of that deploy. As root, on the VPS:
+
+  ```bash
+  cd /opt/qualilab
+  set -a && . ./.env && set +a
+  docker compose exec -T db mysqldump --single-transaction --routines --triggers --no-tablespaces \
+    -u qualilab -p"$DB_PASSWORD" qualilab | gzip > /var/backups/qualilab/qualilab_avant-sans-affectation.sql.gz
+  gzip -t /var/backups/qualilab/qualilab_avant-sans-affectation.sql.gz \
+    && zcat /var/backups/qualilab/qualilab_avant-sans-affectation.sql.gz | tail -n 1   # « -- Dump completed … »
+  chown qualilab: /var/backups/qualilab/qualilab_avant-sans-affectation.sql.gz
+  ```
+
+To roll back (as root, on the VPS):
+
+```bash
+cd /opt/qualilab
+sudo -u qualilab git fetch --tags
+sudo -u qualilab git checkout v1.2-avant-sans-affectation
+sudo -u qualilab docker compose up -d --build          # rebuilds the old image
+```
+
+**No migration is involved**, so the database restore is optional. The old
+code reads a sample taken under the new rule as assigned to its holder (same
+`Sample.technicianId` / `assignedAt` columns); a PROGRAMME sample still
+« à prendre » (no technician) would need a technician picked on its
+programme sheet, under the old rule, before its bench work. Restore the dump
+(`DB_PASSWORD=... bash scripts/restore-db.sh
+/var/backups/qualilab/qualilab_avant-sans-affectation.sql.gz`) only to undo
+the data written since the deploy — it loses every result, report and
+invoice entered after it. To resume the shared bench later:
+`git checkout master` and redeploy.
+
 ## After every deploy — 5-minute check
 
 1. `/api/health` answers `ok`.

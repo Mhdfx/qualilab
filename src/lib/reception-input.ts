@@ -58,11 +58,11 @@ import {
  * laboratory says so (`LabSettings.consultationRequired`).
  *
  * The technician is not the réceptionniste's to choose (retour du 08/10,
- * RETOUR-LABO-06-10.md §9.3): the responsable des paramètres picks the
- * sample from the global queue and assigns the bench on the programme sheet
- * (PROGRAMME.md §6). A `technicianId` still sent — a page opened before the
- * change — is ignored, never refused: the reception goes through, without
- * a technician.
+ * RETOUR-LABO-06-10.md §9.3), nor anyone's since 13/10: the responsable des
+ * paramètres programmes the analyses, then the sample waits in « À prendre »
+ * until a technician takes it (prise en charge libre, PROGRAMME.md §10). A
+ * `technicianId` still sent — a page opened before the change — is ignored,
+ * never refused: the reception goes through, without a technician.
  *
  * The contrôles complémentaires (hors bon, `reception-complementary.ts`)
  * follow the same pattern: every line ticks C3 (emballage) and C5
@@ -409,8 +409,8 @@ export function validateReception(
     if (consultationMissing(policy.consultationRequired ?? false, decision, conformity, consultation)) {
       return fail(receptionLineMessage(ref, CONSULTATION_MESSAGES.required), n, ref);
     }
-    // `rawLine.technicianId` is deliberately not read (§9.3): the
-    // responsable des paramètres assigns the bench at programming time.
+    // `rawLine.technicianId` is deliberately not read (§9.3): nobody
+    // assigns a technician, one takes the sample from « À prendre ».
 
     lines.push({
       sampleId,

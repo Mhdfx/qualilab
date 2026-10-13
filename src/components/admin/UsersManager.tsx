@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Ban, Building2, Check, KeyRound, Plus, RotateCcw, Search, UserCog, X } from "lucide-react";
+import { AlertTriangle, Ban, Building2, Check, ChevronRight, KeyRound, Plus, RotateCcw, Search, UserCog, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { ASSIGNABLE_ROLES, PORTAL_ROLE, ROLE_LABELS, roleFunction, roleHint, type Role } from "@/lib/roles";
+import { viewHref } from "@/lib/dashboard-view";
 
 /** The client of a « Client (portail) » account (PORTAIL.md §1). */
 export type UserClient = {
@@ -63,6 +65,9 @@ function useAccountClients(users: UserRow[]): Record<string, UserClient | null> 
  *
  * The admin provisions everyone — there is no self-service sign-up. Disabling
  * an account also revokes its sessions, so a departure is effective at once.
+ * A technician leaving the bench (disabled, or another role) with samples
+ * still taken is not refused: the answer's `warning` says how many, and is
+ * shown until the next action (prise en charge libre, PROGRAMME.md §10).
  */
 export function UsersManager({
   users,
@@ -75,6 +80,8 @@ export function UsersManager({
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+  // The account just taken off the bench with samples still taken there.
+  const [benchWarning, setBenchWarning] = useState<{ name: string; message: string } | null>(null);
   const [resetFor, setResetFor] = useState<string | null>(null);
   // The account whose client is being chosen: on the way to « Client
   // (portail) », or to move a portal account to another client.
@@ -85,6 +92,7 @@ export function UsersManager({
     if (busy) return;
     setBusy(tag);
     setError("");
+    setBenchWarning(null);
     try {
       const response = await fetch(`/api/admin/users/${id}`, {
         method: "PATCH",
@@ -95,6 +103,11 @@ export function UsersManager({
       if (!response.ok) {
         setError(data.error ?? "Action impossible.");
         return false;
+      }
+      // Saved — but the account still holds samples at the bench.
+      if (typeof data.warning === "string" && data.warning) {
+        const name = typeof data.name === "string" ? data.name : (users.find((user) => user.id === id)?.name ?? "");
+        setBenchWarning({ name, message: data.warning });
       }
       router.refresh();
       return true;
@@ -128,6 +141,36 @@ export function UsersManager({
           {error}
         </p>
       )}
+
+      {/* Always in the page, so the warning is announced when it appears. */}
+      <div role="status">
+        {benchWarning && (
+          <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p>
+                {benchWarning.name && <b>{benchWarning.name} — </b>}
+                {benchWarning.message}
+              </p>
+              <Link
+                href={viewHref("/technicien", null, "analyses")}
+                className="mt-1 inline-flex items-center gap-1 font-semibold text-amber-900 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+              >
+                Ouvrir la paillasse
+                <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBenchWarning(null)}
+              aria-label="Masquer l'avertissement"
+              className="-m-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-amber-800 transition hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        )}
+      </div>
 
       {creating && (
         <CreateUserForm

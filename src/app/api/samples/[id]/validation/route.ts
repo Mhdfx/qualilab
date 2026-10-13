@@ -15,6 +15,7 @@ import {
 } from "@/lib/report-dispatch";
 import { getLabSettings } from "@/lib/lab-settings";
 import { needsRegulation } from "@/lib/regulation";
+import { reportTechnicianNames } from "@/lib/report-programme";
 
 /**
  * Quality validation — the two approvals, and the rejection.
@@ -25,8 +26,12 @@ import { needsRegulation } from "@/lib/regulation";
  * `action: "approve"`   DIRECTION or ADMIN gives the final approval (12/10),
  *                       which is what sets the status to VALIDE — never the
  *                       person who signed step 1.
- * `action: "reject"`    Either desk sends it back to the technician with a
+ * `action: "reject"`    Either desk sends it back to the technician who took
+ *                       it (prise en charge libre, PROGRAMME.md §10 — the
+ *                       holder stays, so it comes back to their bench) with a
  *                       mandatory reason (`RESULTATS_SAISIS → EN_ANALYSE`).
+ *                       The journal names who it went back to (« renvoyé à
+ *                       X »: the holder, plus any legacy parameter technician).
  *
  * Amendment (AMENDEMENT.md §2): a sample reopened for amendment goes
  * through the same two steps; its approval issues the amended version of
@@ -59,6 +64,14 @@ export async function POST(
       regulationId: true,
       regulation: { select: { title: true } },
       report: { select: { amendmentPending: true } },
+      // Who a send-back returns it to: the holder, and the technicians a
+      // legacy programme handed parameters to (only those rows are read).
+      technicianId: true,
+      technician: { select: { name: true } },
+      parameters: {
+        where: { technicianId: { not: null } },
+        select: { technician: { select: { name: true } } },
+      },
     },
   });
 
@@ -298,6 +311,9 @@ export async function POST(
         to: "EN_ANALYSE",
         code: sample.code,
         reason: motif,
+        // « Renvoyé à X »: the bench it goes back to.
+        technicianId: sample.technicianId,
+        technicianName: reportTechnicianNames(sample),
       },
     });
 

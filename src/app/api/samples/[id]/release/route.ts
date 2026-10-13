@@ -20,13 +20,17 @@ import { RELEASE_MESSAGES, parseReleaseBody, releaseRefusal } from "@/lib/releas
  * « Analyser » unblocks it and records the client's agreement when given
  * (required by `LabSettings.consultationRequired` for a non-conform sample).
  * It assigns NO technician: the sample is RECU and unblocked, so it is in
- * the programme queue like any received sample and the responsable des
- * paramètres gives it its bench (PROGRAMME.md §6). The old body
+ * the programme queue like any received sample; once its programme is
+ * confirmed it waits in « À prendre », where a technician takes it
+ * (prise en charge libre, PROGRAMME.md §10). The old body
  * `{ technicianId }` is read as « Analyser », the technician ignored.
  *
  * « Détruire » cancels it with the motif « Détruit à réception » (through
  * `canTransition`), then tells the client — never at the cost of the
  * cancellation itself.
+ *
+ * Not the bench's « Libérer » (`…/take`, DELETE), which gives a taken
+ * sample back to « À prendre »: this one releases a reception hold.
  */
 export async function POST(
   request: Request,
@@ -121,7 +125,8 @@ export async function POST(
           decision,
           awaitedClientSince: sample.awaitingClientSince,
           reason,
-          // The old body named a technician: ignored, the programme assigns the bench.
+          // The old body named a technician: ignored — nobody assigns one, a
+          // technician takes the sample from « À prendre » (PROGRAMME.md §10).
           ...(legacy ? { technicianIgnored: true } : {}),
         },
       }),

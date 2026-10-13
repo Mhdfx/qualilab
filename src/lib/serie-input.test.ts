@@ -608,7 +608,7 @@ describe("validateSerie — the deposit at the counter", () => {
     expect(destroyed).toMatchObject({ ok: true, value: { lines: [{ destroy: true }] } });
   });
 
-  it("never takes a technician at the counter — the programme assigns it (RETOUR-LABO-06-10 §9.3)", () => {
+  it("never takes a technician at the counter — one takes the sample from « À prendre » (RETOUR-LABO-06-10 §9.3, PROGRAMME.md §10)", () => {
     // Both lines still send `technicianId` (a page opened before 08/10):
     // the deposit goes through, the technician is dropped.
     const result = validateSerie(deposit, natures, { kind: "DEPOT" });

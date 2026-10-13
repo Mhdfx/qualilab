@@ -1,17 +1,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/auth";
-import { isOnBenchOf } from "@/lib/bench-access";
+import { TAKE_MESSAGES, isHeldByOther } from "@/lib/bench-access";
 
 /**
- * Loads a sample for the technician working on it.
+ * Loads a sample for the result operations of the bench (`PUT …/results`,
+ * `POST …/results/submit`).
  *
- * A technician may only ever touch the samples on their bench — checked
- * here, on the server, for every result operation. Since the programme
- * d'analyse (PROGRAMME.md §6) a line is on a technician's bench when they
- * hold the sample (`Sample.technicianId`) **or** one of its parameters
- * (`SampleParameter.technicianId`); which parameters they may actually type
- * is decided line by line by `canEditParameter`. ADMIN can act on any sample.
+ * Prise en charge libre (PROGRAMME.md §10): a technician types on the
+ * samples they took and on a free one (the first typed result takes it);
+ * a sample a colleague holds is refused here, on the server, with the
+ * colleague's name. This is the pre-check: the save reads the holder again
+ * under the row lock (`lockTakeState`), where a colleague's take that landed
+ * meanwhile is caught. Which parameters may be typed is decided line by
+ * line by `canEnterParameter` (legacy lines handed parameter by parameter).
+ * ADMIN can act on any sample.
  */
 export async function loadAssignedSample(
   sampleId: string,
@@ -22,15 +25,17 @@ export async function loadAssignedSample(
     select: {
       id: true,
       code: true,
+      controlCode: true,
       status: true,
       technicianId: true,
+      technician: { select: { name: true } },
       analysisBlocked: true,
       unitCount: true,
       parameters: {
         select: {
           parameterId: true,
-          // The programme per parameter: its technician, its norm version,
-          // its dilution (PROGRAMME.md §3).
+          // The programme per parameter: its legacy technician, its norm
+          // version, its dilution (PROGRAMME.md §3).
           technicianId: true,
           technician: { select: { name: true } },
           normVersionId: true,
@@ -59,18 +64,17 @@ export async function loadAssignedSample(
     };
   }
 
-  if (session.role === "TECHNICIEN" && !isOnBenchOf(sample, session.id)) {
+  if (session.role === "TECHNICIEN" && isHeldByOther(sample, session.id)) {
+    const holder =
+      sample.technician?.name ?? sample.parameters.find((line) => line.technician)?.technician?.name ?? "un collègue";
     return {
-      error: NextResponse.json(
-        { error: "Cet échantillon ne vous est pas attribué." },
-        { status: 403 }
-      ),
+      error: NextResponse.json({ error: TAKE_MESSAGES.heldByOther(holder) }, { status: 403 }),
     };
   }
 
   // Held at reception — « en attente du client » (A9), or another hold:
   // nobody, not even the ADMIN, analyses it before its release (which
-  // assigns nobody: the programme gives it its bench).
+  // assigns nobody: after its programme it waits in « À prendre »).
   if (sample.analysisBlocked) {
     return {
       error: NextResponse.json(
@@ -85,7 +89,3 @@ export async function loadAssignedSample(
 
   return { sample };
 }
-
-export type AssignedSample = NonNullable<
-  Awaited<ReturnType<typeof loadAssignedSample>>["sample"]
->;

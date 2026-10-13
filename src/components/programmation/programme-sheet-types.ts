@@ -12,7 +12,6 @@ import type {
   StorageClass,
   TemperatureSource,
 } from "@/generated/prisma/enums";
-import type { TechnicianLoad } from "@/lib/technician-load";
 
 /**
  * What the programme sheet receives (PROGRAMME.md §4–5): the line, its
@@ -27,6 +26,10 @@ export type ProgrammeParameterData = {
   name: string;
   unit: string | null;
   calcFactor: number;
+  /**
+   * A technician this analysis was handed to before 13/10 (« prise en
+   * charge libre »): read-only, kept while the analysis stays programmed.
+   */
   technicianId: string | null;
   technician: { id: string; name: string } | null;
   normVersionId: string | null;
@@ -86,8 +89,14 @@ export type ProgrammeSampleData = {
   unitCount: number;
   productTypeId: string | null;
   productType: { id: string; name: string } | null;
+  /**
+   * Who took the sample at the bench — « Prendre en charge », or a first
+   * result typed — and when (`assignedAt`, null on a line assigned before
+   * 13/10 without a stamp). Read-only: the programme assigns nobody.
+   */
   technicianId: string | null;
   technician: { id: string; name: string } | null;
+  assignedAt: string | null;
   priority: ProgrammePriority;
   dueAt: string | null;
   testPortion: string | null;
@@ -99,7 +108,7 @@ export type ProgrammeSampleData = {
   parameters: ProgrammeParameterData[];
 };
 
-/** The programme as stored, plus what the sheet may do with it. */
+/** The programme as stored, plus what the sheet may do with it — no technician (13/10). */
 export type ProgrammeState = {
   /** The nature the programme was decided for — changeable within its family (Q49). */
   natureId: string;
@@ -107,13 +116,11 @@ export type ProgrammeState = {
   parameterIds: string[];
   unitCount: number;
   testPortion: string | null;
-  technicianId: string | null;
   priority: ProgrammePriority;
   dueAt: string | null;
   programmeNote: string | null;
   parameters: {
     parameterId: string;
-    technicianId: string | null;
     normVersionId: string | null;
     dilutionFactor: number | null;
     note: string | null;
@@ -190,13 +197,6 @@ export type NormVersionRef = {
   current: boolean;
 };
 
-export type TechnicianRef = {
-  id: string;
-  name: string;
-  /** What is on their bench now (`benchLoadByTechnician`); absent on an older payload. */
-  load?: TechnicianLoad;
-};
-
 export type ProgrammeReferentialData = {
   /** The nature this referential was computed for — the line's, or the one the sheet is trying. */
   natureId: string;
@@ -209,7 +209,6 @@ export type ProgrammeReferentialData = {
   /** The parameters of the nature's category, each with its family. */
   parameters: ParameterRef[];
   profiles: ProfileRef[];
-  technicians: TechnicianRef[];
   /** The norm versions each parameter may be programmed with. */
   normVersions: Record<string, NormVersionRef[]>;
   /** The catalogue price of each parameter; null = « prix à saisir ». */

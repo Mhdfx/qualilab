@@ -146,7 +146,6 @@ préleveur photographie la feuille signée depuis le téléphone.
 | Q40 | Salmonelles sur « ABATS CRUS DE VOLAILLE AUTRES QUE LE FOIE GRAS… » : le critère repris du classeur dit « Absence /1g » alors que le paramètre est lu « /25 g ». Laquelle des deux prises d'essai doit figurer sur la paillasse et le rapport ? (même question pour tout type dont l'unité du critère diffère de celle du paramètre) | Critères (chantier 2) |
 
 | Q41 | Programme d'analyse : « les nombres » = unités à lire, prise d'essai et dilutions ? Les N° de contrôle restent-ils attribués à la réception ? | Programme (`PROGRAMME.md`) |
-| Q42 | Un même échantillon peut-il être réparti entre plusieurs techniciens (micro à l'un, chimie à l'autre) ? Si oui, qui soumet à la validation : le dernier qui termine ? | Programme (`PROGRAMME.md`) |
 | Q43 | Des types repris de l'ancien logiciel n'ont **aucun critère** (ex. « PLATS CUISINÉS-VOLAILLES ») : la fiche de programme les propose sans tableau n / c / m / M et le rapport n'imprime alors ni critère ni verdict. Quels types doivent être complétés avant le go-live, et avec quels critères ? | Critères (chantier 2) — `RECETTE-06-10-PARCOURS.md` §3 |
 | Q44 | Un échantillon jugé sans critère (seulement une limite du catalogue) n'imprime pas la ligne « Réglementation en vigueur », même si le validateur en a choisi une. Faut-il l'imprimer quand même, sans la croix Satisfaisant / Acceptable / Non satisfaisant ? | Rapport — `RECETTE-06-10-PARCOURS.md` §3 |
 | Q45 | Sites : rattacher les 426 sites de l'ancien logiciel à leurs 36 clients (84, 77, 55 sites pour les trois plus grands…) et archiver les « clients » créés pour chaque site à l'import ? Rapports et factures par site ? | Clients — `RETOUR-LABO-06-10.md` §2.1 |
@@ -182,7 +181,7 @@ questions Q1–Q66 encore ouvertes qu'elles complètent sont citées.
 | Q73 | **C6 — protocole signé par l'interlocuteur** (visites). Sans photo jointe, la réception peut indiquer « Protocole papier signé reçu ? » Oui / Non ; « Non » s'affiche en orange sans bloquer. Faut-il bloquer, imprimer une mention sur le rapport, ou l'appliquer aussi aux dépôts ? La photo du protocole est visible du préleveur (ses visites), de la réception, du validateur, du gestionnaire commercial et de l'administrateur, jamais du technicien, du responsable des paramètres ni du comptable : à confirmer | Défaut : facultatif, avertissement seulement, visites uniquement |
 | Q74 | **Avis écrit au client** (complète Q35). Aujourd'hui le client n'est prévenu que d'une destruction. Faut-il lui écrire quand un échantillon de la visite n'est jamais arrivé (« Non reçu au laboratoire »), quand un échantillon est mis « en attente du client », ou un seul e-mail par série listant toutes les non-conformités (analysé, en attente, détruit, non reçu) ? | Défaut : aucun envoi en dehors de la destruction |
 | Q75 | **Accord du client pour analyser un non-conforme** (ISO 17025 §7.4.3). Qui peut accepter au nom du client (l'interlocuteur du protocole ?) ? Un accord permanent dans la convention ou le devis suffit-il ? L'enregistrement de l'accord doit-il être obligatoire ? Combien de temps attendre la réponse avant de détruire ? Quand le client demande lui-même la destruction, faut-il aussi enregistrer son accord ? | Défaut : accord facultatif (nom, canal, date-heure, note) ; interrupteur « Accord du client obligatoire pour analyser un non-conforme » éteint ; aucun délai automatique |
-| Q76 | **Libérer un échantillon « en attente du client »** : la réceptionniste et l'administrateur, comme construit ? Les autres blocages (échantillon détruit puis réactivé) restent réservés à l'administrateur | Défaut : réception + administrateur ; aucun technicien n'est plus attribué à la libération, le programme le fait |
+| Q76 | **Libérer un échantillon « en attente du client »** : la réceptionniste et l'administrateur, comme construit ? Les autres blocages (échantillon détruit puis réactivé) restent réservés à l'administrateur | Défaut : réception + administrateur ; aucun technicien n'est attribué : l'échantillon libéré repasse par la programmation, puis rejoint « À prendre » (prise en charge libre du 13/10, `PROGRAMME.md` §10) |
 | Q77 | **Réserve sur le rapport** (complète la décision du 29/09, point 14). Pour un échantillon reçu non conforme et analysé avec l'accord du client, la norme demande une réserve sur le rapport. Faut-il l'imprimer, avec quels mots ? Elle ne figurerait que sur les rapports émis après le changement | Défaut : rien sur le rapport ; l'accord est imprimé sur le bon de réception et visible du validateur |
 | Q78 | **Lecture « > x » sous la limite** (ex. « > 50 » face à m = 10²). La fiche reste « Incomplet » et demande de lire une dilution supérieure. Faut-il pouvoir soumettre quand même, avec une réserve, quand l'échantillon est épuisé ? Sans critère, le technicien choisit la conformité après l'avertissement, et décide aussi pour « Indénombrable » sur un paramètre sans limite : à confirmer | Défaut : soumission bloquée avec un critère ; choix du technicien sans critère |
 | Q79 | **« > x » et dilution ; impression.** « > x » est-il bien la lecture brute de la boîte (le facteur de dilution la multiplie : « > 300 » au 1/10 devient « > 3.10³ ») ? Le rapport et l'alerte impriment « Indénombrable », « TNTC » ou « > x » tels que saisis : préférez-vous une formule fixe (toujours « Indénombrable ») ou « > 3.10⁵ UFC/g » calculé ? | Défaut : facteur appliqué ; impression telle que saisie |
@@ -216,12 +215,49 @@ trancher. Chaque question a, elle aussi, un **défaut déjà construit** (13/10)
 | Q101 | **Aliments stables et mains.** Un aliment reçu « Ambiant — aliment stable (conserve, sec, UHT…) » n'a pas de température obligatoire : ce choix de la réception est-il le bon critère, ou faut-il un indicateur sur le type de produit ? Les écouvillons de mains comptent-ils comme « surface » (température obligatoire) ? | Défaut : le choix « Ambiant » à la réception ; mains facultatives |
 | Q102 | **Rôle « Direction ».** À quels comptes le donner (les quatre signataires de votre liste — sur le compte existant de ceux qui valident déjà techniquement) ? L'administrateur du système garde-t-il aussi la validation administrative ? La Direction doit-elle garder les droits du validateur sur le système qualité (équipements, EIL, températures), « Corriger la fiche » et l'export ? | Défaut : Direction = droits du validateur + validation administrative, jamais l'administration ; l'administrateur garde la validation administrative ; jamais les deux étapes par la même personne |
 | Q103 | **Dates des nouvelles versions** : protocole PG04/EN01 version G et bon de réception PG05/EN04 version H (date de mise à jour de chacun). | Saisies dans `/admin/documents` par l'exploitant ; d'ici là les cartouches impriment F et G |
-| Q104 | **Rapport, là où le modèle M ne dit rien.** (a) Le modèle n'a que « Satisfaisant » / « Non satisfaisant » : une colonne « Acceptable » apparaît pour un échantillon acceptable — d'accord ? (b) Le pied du modèle n'a pas d'ICE : le rapport n'imprime plus l'ICE du laboratoire ni celui du client — d'accord ? (c) « Analyses réalisées par » n'est plus imprimé — d'accord ? (d) « Moyen de prélèvement » hors air (écouvillon, flacon stérile, sachet) : que mettre ? (e) Prélèvement fait par le client : « Référence prélèvement : N/A (prélèvement non effectué par le laboratoire) » — le bon libellé ? (f) « Date d'analyse » = de la confirmation du programme au dernier résultat, et « Nombre d'analyse/échantillon » = n : d'accord ? (g) La conclusion est imprimée dans l'annexe sous les critères, et « (VC) » suit le numéro d'un rapport amendé : d'accord ? (h) Quels paramètres sont accrédités ou sous-traités (la légende « * », SA, SN, DPC n'est encore appliquée à aucun) ? | Rapport PG06/EN03 M — défauts construits comme décrit |
+| Q104 | **Rapport, là où le modèle M ne dit rien.** (a) Le modèle n'a que « Satisfaisant » / « Non satisfaisant » : une colonne « Acceptable » apparaît pour un échantillon acceptable — d'accord ? (b) Le pied du modèle n'a pas d'ICE : le rapport n'imprime plus l'ICE du laboratoire ni celui du client — d'accord ? (c) « Analyses réalisées par » n'est plus imprimé — d'accord ? (d) « Moyen de prélèvement » hors air (écouvillon, flacon stérile, sachet) : que mettre ? (e) Prélèvement fait par le client : « Référence prélèvement : N/A (prélèvement non effectué par le laboratoire) » — le bon libellé ? (f) « Date d'analyse » = de la confirmation du programme au dernier résultat, et « Nombre d'analyse/échantillon » = n : d'accord ? (g) La conclusion est imprimée dans l'annexe sous les critères, et « (VC) » suit le numéro d'un rapport amendé : d'accord ? (h) Quels paramètres sont accrédités ou sous-traités (la légende « * », SA, SN, DPC n'est encore appliquée à aucun) ? | Rapport PG06/EN03 M — défauts construits comme décrit. (c) depuis le 13/10 : le nom serait celui du technicien qui a pris l'échantillon en charge (prise en charge libre) ; il est affiché « Analysé par » à la validation, jamais imprimé tant que vous ne le demandez pas |
 | Q105 | **Restes de Q58 / Q60.** Le « N° de fax » du client sur le bon : saisi sur la fiche client ou rempli à la main ? Facture, avoir et étiquettes restent-ils sans cartouche qualité ? | Défaut : fax du client rempli à la main ; facture, avoir, étiquettes sans cartouche |
+
+Décision du laboratoire du 13/10 — **plus d'affectation, prise en charge
+libre** (`PROGRAMME.md` §10, `RETOUR-LABO-06-10.md` §13) : personne n'attribue
+plus de technicien ; un programme confirmé rejoint la liste « À prendre » et
+le technicien qui prend l'échantillon le saisit seul. Q42 (répartition entre
+techniciens) est répondue par cette décision et archivée au §3. Ce qui reste
+à préciser, chaque fois avec un **défaut déjà construit** (13/10). La
+mention « Analysé par » sur le rapport n'est pas une nouvelle question : c'est
+Q104 (c).
+
+| # | Question | Ce que la réponse décide (défaut construit le 13/10) |
+|---|---|---|
+| Q106 | **Ordre de la liste « À prendre ».** Les échantillons urgents d'abord, puis la réception la plus ancienne — ou strictement la plus ancienne réception d'abord, urgences comprises ? La liste reste-t-elle groupée par série comme les autres (une série est alors placée à son échantillon le plus urgent ou le plus ancien, ses autres échantillons suivent), ou faut-il une liste échantillon par échantillon ? | Défaut : urgentes d'abord, puis la plus ancienne réception ; groupée par série, comme toutes les listes |
+| Q107 | **Un technicien part avec des résultats saisis** (compte désactivé, absence longue, changement de poste). Un échantillon ne peut être remis dans « À prendre » que tant que rien n'y est saisi ; ensuite il reste à son titulaire et l'administrateur le termine à sa place (il saisit et soumet ; « Analysé par » nomme toujours le titulaire). Faut-il permettre à l'administrateur de le **libérer quand même** (les résultats déjà saisis restent, journalisé) pour qu'un collègue le reprenne et le signe ? | Défaut : libération refusée dès qu'un résultat est saisi, à tous ; l'administrateur termine l'échantillon |
+| Q108 | **Recherche des échantillons des collègues.** Sur la paillasse, chaque technicien voit les échantillons pris par ses collègues en lecture seule (« Pris par un collègue »). Dans « Recherche des analyses » et son export, un technicien ne trouve aujourd'hui que les échantillons qu'il tient : doit-il pouvoir rechercher aussi ceux de ses collègues ? | Défaut : la recherche et l'export d'un technicien = ses échantillons |
 
 ## 2. Ready to send — current batch
 
 *Copy this into an email. Update the date when you send it.*
+
+> **Lot du 13/10 (soir) — prise en charge libre — à envoyer avec les deux lots ci-dessous :**
+> Objet : Plus d'affectation des techniciens — ce qui change, 3 précisions (Q106–Q108)
+>
+> Bonjour,
+>
+> Comme convenu le 13/10, plus personne n'attribue de technicien. Dès que
+> le programme d'analyse est confirmé, l'échantillon rejoint la liste
+> « À prendre » que voient tous les techniciens ; le premier qui clique
+> « Prendre en charge » (ou qui saisit le premier résultat) devient
+> responsable de tout l'échantillon et lui seul y saisit. Ses collègues le
+> voient en lecture seule (« Pris par un collègue »). Il peut le remettre
+> dans « À prendre » tant qu'aucun résultat n'est saisi ; l'administrateur
+> peut le remplacer mais ne prend jamais d'échantillon. Le validateur voit
+> « Analysé par » avec le nom du technicien. Les échantillons déjà attribués
+> restent à leur technicien. Il nous reste trois précisions : l'ordre de la
+> liste « À prendre » (Q106), le cas d'un technicien qui part avec des
+> résultats saisis (Q107) et la recherche des échantillons des collègues
+> (Q108). La question Q104 (c) — imprimer ou non le nom du technicien sur le
+> rapport — vaut aussi pour « Analysé par ».
+>
+> Bien cordialement,
 
 > **Lot du 13/10 (suites des réponses du 12/10) — à envoyer avec le lot du 10/10 :**
 > Objet : Vos réponses du 12/10 — ce qui est fait, 7 précisions (Q99–Q105)
@@ -363,3 +399,4 @@ Bien cordialement,
 | 2026-10-12 | Q63 — température obligatoire | Aliment, eau, air et surface, **sauf les aliments stables** ⇒ défaut `ALIMENT,EAU,AIR,SURFACE`, aliment « Ambiant » exempté. Mains et critère de stabilité : → Q101 |
 | 2026-10-12 | Q65 — validation administrative | « **Directeur et son suppléant** » ; quatre personnes, dont deux font aussi la validation technique ⇒ rôle `DIRECTION` (13/10). Comptes et droits exacts : → Q102 |
 | 2026-10-12 | Q66 — signatures du rapport | Celles du modèle M : « **Responsable Technique** » (validation technique) et « **Direction** » (validation administrative), avec le nom du signataire |
+| 2026-10-13 | Q42 — un même échantillon réparti entre plusieurs techniciens (micro à l'un, chimie à l'autre) ? qui soumet ? | **Non** : l'échantillon entier est pris en charge par un seul technicien (la micro et la physico-chimie sont déjà deux échantillons « …M » / « …P ») ; **plus d'affectation** — prise en charge libre depuis la liste « À prendre », le titulaire soumet (`PROGRAMME.md` §10). Les lignes réparties avant le 13/10 gardent leur règle. Suites : Q106–Q108 |

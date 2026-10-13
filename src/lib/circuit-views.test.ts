@@ -15,7 +15,7 @@ import {
   type BenchView,
   type ProgrammationView,
 } from "./circuit-views";
-import { benchQueueWhereFor, benchWhereFor } from "./bench-access";
+import { TAKEN_WHERE, UNCLAIMED_WHERE, benchQueueWhereFor, benchWhereFor } from "./bench-access";
 import { parseView, serverIsoDay, viewHref } from "./dashboard-view";
 import { parseSampleSearch, rechercheHref } from "./sample-search";
 
@@ -126,16 +126,30 @@ describe("benchViewWhere", () => {
     expect(benchViewWhere(null, admin)).toEqual(benchQueueWhereFor(admin));
   });
 
-  it("keeps every view inside the technician's own bench", () => {
+  it("keeps every view but « À prendre » inside the technician's own bench", () => {
     for (const view of Object.keys(BENCH_VIEWS) as BenchView[]) {
+      if (view === "a_prendre") continue;
       const where = benchViewWhere(view, technician);
       expect(where.AND).toEqual([benchWhereFor(technician), expect.any(Object)]);
     }
   });
 
-  it("filters the two bench steps", () => {
-    expect(benchViewWhere("a_commencer", technician)).toEqual({ AND: [benchWhereFor(technician), { status: "PROGRAMME" }] });
-    expect(benchViewWhere("en_analyse", technician)).toEqual({ AND: [benchWhereFor(technician), { status: "EN_ANALYSE" }] });
+  it("shares « À prendre » with every technician and the admin: the free samples (13/10)", () => {
+    expect(Object.keys(BENCH_VIEWS)[0]).toBe("a_prendre");
+    expect(benchViewWhere("a_prendre", technician)).toEqual(UNCLAIMED_WHERE);
+    expect(benchViewWhere("a_prendre", admin)).toEqual(UNCLAIMED_WHERE);
+    expect(benchViewWhere("a_prendre", { id: "tech2", role: "TECHNICIEN" })).toEqual(UNCLAIMED_WHERE);
+  });
+
+  it("filters the two bench steps, on taken samples only", () => {
+    expect(benchViewWhere("a_commencer", technician)).toEqual({
+      AND: [benchWhereFor(technician), { status: "PROGRAMME", ...TAKEN_WHERE }],
+    });
+    expect(benchViewWhere("en_analyse", technician)).toEqual({
+      AND: [benchWhereFor(technician), { status: "EN_ANALYSE", ...TAKEN_WHERE }],
+    });
+    // The admin's « À commencer » leaves the free samples to « À prendre ».
+    expect(benchViewWhere("a_commencer", admin)).toEqual({ AND: [{}, { status: "PROGRAMME", ...TAKEN_WHERE }] });
   });
 
   it("counts « Anomalies » in samples, whatever their step", () => {

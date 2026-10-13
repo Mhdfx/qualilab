@@ -1,6 +1,6 @@
 import type { Prisma } from "@/generated/prisma/client";
 import type { SampleStatus } from "@/generated/prisma/enums";
-import { benchQueueWhereFor, benchWhereFor } from "./bench-access";
+import { TAKEN_WHERE, UNCLAIMED_WHERE, benchQueueWhereFor, benchWhereFor } from "./bench-access";
 import type { Role } from "./roles";
 
 /**
@@ -73,9 +73,10 @@ export function programmationWhere(view: ProgrammationView | null, clock: DayClo
 
 // ─── /technicien ────────────────────────────────────────────────────────────
 
-/** The views of the bench. */
+/** The views of the bench, in tile order. */
 export const BENCH_VIEWS = {
-  a_commencer: "Qui m'attendent",
+  a_prendre: "À prendre",
+  a_commencer: "À commencer",
   en_analyse: "En analyse",
   anomalies: "Anomalies",
   soumis: "Résultats soumis",
@@ -83,11 +84,15 @@ export const BENCH_VIEWS = {
 export type BenchView = keyof typeof BENCH_VIEWS;
 
 /**
- * The samples of a bench view, always inside the viewer's bench (the lines
- * they hold or share a parameter of; everything for the admin —
- * `bench-access.ts`). « Anomalies » counts samples, not readings: a sample
- * with a parameter in anomaly, whatever its step; « Résultats soumis » the
- * samples handed to validation. Both reach past the bench statuses.
+ * The samples of a bench view (prise en charge libre, PROGRAMME.md §10).
+ * « À prendre » is shared: every technician and the admin see the same free
+ * samples (`UNCLAIMED_WHERE`). Every other view stays inside the viewer's
+ * bench — the samples they took (everything for the admin,
+ * `bench-access.ts`); « À commencer » and « En analyse » count taken samples
+ * only, so the admin's tiles never count a free one twice. « Anomalies »
+ * counts samples, not readings: a sample with a parameter in anomaly,
+ * whatever its step; « Résultats soumis » the samples handed to validation.
+ * Both reach past the bench statuses.
  */
 export function benchViewWhere(view: BenchView | null, session: { id: string; role: Role }): Prisma.SampleWhereInput {
   if (view === null) return benchQueueWhereFor(session);
@@ -95,10 +100,12 @@ export function benchViewWhere(view: BenchView | null, session: { id: string; ro
     AND: [benchWhereFor(session), where],
   });
   switch (view) {
+    case "a_prendre":
+      return UNCLAIMED_WHERE;
     case "a_commencer":
-      return within({ status: "PROGRAMME" });
+      return within({ status: "PROGRAMME", ...TAKEN_WHERE });
     case "en_analyse":
-      return within({ status: "EN_ANALYSE" });
+      return within({ status: "EN_ANALYSE", ...TAKEN_WHERE });
     case "anomalies":
       return within({ results: { some: { workStatus: "ANOMALIE" } } });
     case "soumis":

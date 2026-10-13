@@ -16,6 +16,7 @@ import {
   ReceiptText,
   Save,
   Search,
+  User,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -33,15 +34,12 @@ import {
   MAX_PARAMETER_NOTE,
   MAX_PROGRAMME_NOTE,
   MAX_TEST_PORTION,
-  MISSING_TECHNICIAN_MESSAGE,
   PROGRAMME_PRIORITIES,
-  lacksTechnician,
 } from "@/lib/programme-input";
 import type { ReceptionThresholds } from "@/lib/reception-rules";
 import type { Role } from "@/lib/roles";
 import { MAX_UNITS } from "@/lib/series";
 import { matchesQuery } from "@/lib/similar";
-import { technicianLoadLabel, technicianLoadText } from "@/lib/technician-load";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { LabDateTimeInput } from "@/components/LabDateTimeInput";
@@ -53,25 +51,25 @@ import {
   adoptReferential,
   applyProductType,
   applyProfile,
-  assignAll,
-  assignByFamily,
+  benchHolder,
+  benchHolderNotice,
   billingLines,
   clampUnits,
+  confirmationNotice,
   criteriaOf,
   entryChecks,
   groupParameters,
   initialDraft,
   natureChangeNotice,
   natureChoices,
-  parameterFamilies,
   profileApplied,
   settingOf,
-  spansFamilies,
   toRequestBody,
   toggleParameter,
   typeOf,
   unitWarning,
   updateSetting,
+  type BenchHolder,
   type ProgrammeDraft,
 } from "./programme-sheet-logic";
 import type {
@@ -81,7 +79,6 @@ import type {
   ProgrammeResponse,
   ProgrammeSampleData,
   ProgrammeState,
-  TechnicianRef,
 } from "./programme-sheet-types";
 
 /**
@@ -97,6 +94,11 @@ import type {
  * analyses it does not offer and says which; the sample takes the nature
  * when the programme is saved (`natureId` in the PUT). Nothing is written
  * before that save, so leaving the page keeps the old nature.
+ *
+ * The sheet hands the sample to nobody (« prise en charge libre », 13/10 —
+ * PROGRAMME.md §10): confirming puts it in the bench's « À prendre » list,
+ * where a technician takes it. « Organisation » only says who holds it —
+ * read-only — and an edit of a sample already taken leaves it with them.
  */
 
 type ProgrammeSheetProps = {
@@ -112,7 +114,10 @@ type ProgrammeSheetProps = {
 };
 
 type SavedState = Pick<ProgrammeSampleData, "status" | "analysisBlocked"> &
-  Pick<ProgrammeState, "programmedAt" | "programmedBy" | "editable">;
+  Pick<ProgrammeState, "programmedAt" | "programmedBy" | "editable"> & {
+    /** Who held the sample at the bench when the server last answered (`benchHolder`). */
+    holder: BenchHolder | null;
+  };
 
 const CHIP = "min-h-[40px] rounded-xl border px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50";
 const CHIP_ON = "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20";
@@ -133,27 +138,6 @@ function SectionTitle({ index, icon: Icon, title, hint }: { index: number; icon:
         {hint && <p className="mt-0.5 text-xs text-slate-500">{hint}</p>}
       </div>
     </div>
-  );
-}
-
-/**
- * The technicians as choices, each with their load — « Nom — 12 éch. · 3 en
- * retard » (finalversion.md: attribution « avec visibilité sur la charge de
- * chacun »); the full sentence as the option's tooltip.
- */
-function TechnicianOptions({ technicians }: { technicians: TechnicianRef[] }) {
-  return (
-    <>
-      {technicians.map((technician) => (
-        <option
-          key={technician.id}
-          value={technician.id}
-          title={technician.load ? technicianLoadText(technician.load) : undefined}
-        >
-          {technicianLoadLabel(technician.name, technician.load)}
-        </option>
-      ))}
-    </>
   );
 }
 
@@ -193,20 +177,17 @@ export function ProgrammeSheet({
     programmedAt: programme.programmedAt,
     programmedBy: programme.programmedBy,
     editable: programme.editable,
+    holder: benchHolder(sample),
   });
   const [busy, setBusy] = useState<"draft" | "confirm" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [typeQuery, setTypeQuery] = useState("");
-  const [allTech, setAllTech] = useState("");
-  const [microTech, setMicroTech] = useState("");
-  const [chimieTech, setChimieTech] = useState("");
 
   const readOnly = !saved.editable;
   const confirmed = saved.status === "PROGRAMME";
   const type = typeOf(referential, draft.productTypeId);
   const criteria = useMemo(() => criteriaOf(type), [type]);
-  const families = useMemo(() => parameterFamilies(referential, sample.nature.family), [referential, sample.nature.family]);
   const groups = useMemo(() => groupParameters(referential, sample.nature.family), [referential, sample.nature.family]);
   const natures = natureChoices(referential, sample.nature.family);
   const draftNature = referential.natures.find((nature) => nature.id === draft.natureId) ?? null;
@@ -219,8 +200,7 @@ export function ProgrammeSheet({
   const checks = entryChecks(sample, draft, referential, thresholds);
   const billing = billingLines(draft, referential);
   const warning = unitWarning(draft, type);
-  const defaultTechnician = referential.technicians.find((technician) => technician.id === draft.technicianId) ?? null;
-  const splitOffered = spansFamilies(draft, families);
+  const holderNotice = benchHolderNotice(saved.holder, saved);
 
   const visibleTypes = referential.productTypes.filter((candidate) => candidate.id === draft.productTypeId || matchesQuery(candidate.name, typeQuery));
   const clientTypes = visibleTypes.filter((candidate) => candidate.clientId);
@@ -253,6 +233,7 @@ export function ProgrammeSheet({
       programmedAt: data.programme.programmedAt,
       programmedBy: data.programme.programmedBy,
       editable: data.programme.editable,
+      holder: benchHolder(data.sample),
     });
   }
 
@@ -321,15 +302,6 @@ export function ProgrammeSheet({
       setError("Choisissez au moins une analyse avant de confirmer le programme.");
       return;
     }
-    // The route's own rule (§9.3), told before sending, next to the default technician.
-    if (
-      (confirm || confirmed) &&
-      lacksTechnician(draft.technicianId, draft.parameterIds.map((id) => settingOf(draft, id).technicianId))
-    ) {
-      setError(MISSING_TECHNICIAN_MESSAGE);
-      document.getElementById("programme-technician")?.focus();
-      return;
-    }
     if (draft.dueAt) {
       const due = fromLocalInput(draft.dueAt);
       if (!due) {
@@ -360,7 +332,7 @@ export function ProgrammeSheet({
           : "";
       setNotice(
         (confirm && data.sample.status === "PROGRAMME"
-          ? "Programme confirmé : l'échantillon est prêt pour la paillasse."
+          ? confirmationNotice(benchHolder(data.sample))
           : confirmed
             ? "Modifications du programme enregistrées."
             : "Brouillon enregistré — l'échantillon reste « Reçu » jusqu'à la confirmation.") + natureNote
@@ -824,123 +796,17 @@ export function ProgrammeSheet({
           index={5}
           icon={Users}
           title="Organisation"
-          hint="Le technicien par défaut lit tout l'échantillon ; une analyse peut être confiée à un autre. Priorité, délai de rendu promis et consignes."
+          hint="Priorité, délai de rendu promis et consignes. Le technicien n'est plus choisi ici : il prend lui-même l'échantillon à la paillasse."
         />
-        {referential.technicians.length === 0 && (
-          <p className="mb-3 text-sm text-amber-700">Aucun technicien actif : l&apos;administrateur doit créer un compte technicien avant l&apos;attribution.</p>
-        )}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="programme-technician" className="mb-1.5 block text-sm font-semibold text-slate-700">Technicien par défaut</label>
-            <select
-              id="programme-technician"
-              value={draft.technicianId}
-              onChange={(e) => patch({ technicianId: e.target.value })}
-              disabled={readOnly}
-              className="input-field px-3 disabled:bg-slate-50"
-            >
-              <option value="">— à attribuer —</option>
-              <TechnicianOptions technicians={referential.technicians} />
-            </select>
-            {defaultTechnician?.load && !readOnly && (
-              <p className="mt-1 text-xs text-slate-500">
-                Charge de {defaultTechnician.name} : {technicianLoadText(defaultTechnician.load)}.
-              </p>
-            )}
-            {/* The reception assigns nobody since 08/10 (RETOUR-LABO-06-10.md §9.3):
-                a saved technician comes from the programme, or from a reception before. */}
-            {sample.technician && sample.technician.id !== draft.technicianId && (
-              <p className="mt-1 text-xs text-slate-500">
-                {sample.programmedAt ? "Attribué au programme" : "Attribué à la réception"} : {sample.technician.name}.
-              </p>
-            )}
-          </div>
-          <div>
-            <p className="mb-1.5 text-sm font-semibold text-slate-700">Raccourcis</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <label htmlFor="programme-all-tech" className="sr-only">Technicien pour toutes les analyses</label>
-              <select
-                id="programme-all-tech"
-                value={allTech}
-                onChange={(e) => setAllTech(e.target.value)}
-                disabled={readOnly}
-                className="input-field w-auto min-w-[160px] flex-1 px-3 disabled:bg-slate-50"
-              >
-                <option value="">Choisir…</option>
-                <TechnicianOptions technicians={referential.technicians} />
-              </select>
-              <button
-                type="button"
-                onClick={() => allTech && setDraft((current) => assignAll(current, allTech))}
-                disabled={readOnly || !allTech}
-                className={chip(false, "font-semibold")}
-              >
-                Tous à ce technicien
-              </button>
-            </div>
-            {splitOffered && (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <label htmlFor="programme-micro-tech" className="text-xs text-slate-500">micro à</label>
-                <select
-                  id="programme-micro-tech"
-                  value={microTech}
-                  onChange={(e) => setMicroTech(e.target.value)}
-                  disabled={readOnly}
-                  className="input-field w-auto min-w-[120px] flex-1 px-3 disabled:bg-slate-50"
-                >
-                  <option value="">Choisir…</option>
-                  <TechnicianOptions technicians={referential.technicians} />
-                </select>
-                <label htmlFor="programme-chimie-tech" className="text-xs text-slate-500">chimie à</label>
-                <select
-                  id="programme-chimie-tech"
-                  value={chimieTech}
-                  onChange={(e) => setChimieTech(e.target.value)}
-                  disabled={readOnly}
-                  className="input-field w-auto min-w-[120px] flex-1 px-3 disabled:bg-slate-50"
-                >
-                  <option value="">Choisir…</option>
-                  <TechnicianOptions technicians={referential.technicians} />
-                </select>
-                <button
-                  type="button"
-                  onClick={() => microTech && chimieTech && setDraft((current) => assignByFamily(current, families, microTech, chimieTech))}
-                  disabled={readOnly || !microTech || !chimieTech}
-                  className={chip(false, "font-semibold")}
-                >
-                  Répartir
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {programmed.length > 0 && (
-          <div className="mt-4">
-            <p className="mb-2 text-sm font-semibold text-slate-700">Technicien par analyse</p>
-            <ul className="grid gap-2 sm:grid-cols-2">
-              {programmed.map((parameter) => {
-                const setting = settingOf(draft, parameter.id);
-                const id = `tech-${parameter.id}`;
-                return (
-                  <li key={parameter.id} className="flex items-center gap-3 rounded-xl border border-slate-200 px-3.5 py-2">
-                    <label htmlFor={id} className="min-w-0 flex-1 text-sm text-slate-800">{parameter.name}</label>
-                    <select
-                      id={id}
-                      value={setting.technicianId}
-                      onChange={(e) => setDraft((current) => updateSetting(current, parameter.id, { technicianId: e.target.value }))}
-                      disabled={readOnly}
-                      className="input-field w-auto max-w-[55%] px-3 disabled:bg-slate-50"
-                    >
-                      <option value="">{defaultTechnician ? `— ${defaultTechnician.name} —` : "— celui de l'échantillon —"}</option>
-                      <TechnicianOptions technicians={referential.technicians} />
-                    </select>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
+        {/* Read-only (13/10): who took the sample at the bench, or where it waits for a technician. */}
+        <p
+          className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${
+            saved.holder ? "border-teal-200 bg-teal-50 text-teal-800" : "border-slate-200 bg-slate-50 text-slate-700"
+          }`}
+        >
+          <User className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>{holderNotice}</span>
+        </p>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <fieldset>
@@ -1077,7 +943,7 @@ export function ProgrammeSheet({
         <p className="text-sm text-slate-600">
           <b className="font-semibold text-slate-800">{draft.parameterIds.length}</b> analyse{draft.parameterIds.length > 1 ? "s" : ""} · n = <b className="font-semibold text-slate-800">{draft.unitCount}</b>
           {type ? ` · ${type.name}` : " · sans type"}
-          {defaultTechnician ? ` · ${defaultTechnician.name}` : " · technicien à attribuer"}
+          {saved.holder ? ` · pris par ${saved.holder.names}` : confirmed ? " · à prendre" : ""}
           {draft.priority === "URGENTE" ? " · urgente" : ""}
           {natureChanged && draftNature ? ` · nature : ${draftNature.label} (à enregistrer)` : ""}
         </p>
@@ -1113,7 +979,7 @@ export function ProgrammeSheet({
         )}
         {!readOnly && !confirmed && (
           <p className="mt-2 text-xs text-slate-500">
-            Le brouillon laisse l&apos;échantillon « Reçu » ; la confirmation le passe à « Programmé » et ouvre la paillasse et la facturation.
+            Le brouillon laisse l&apos;échantillon « Reçu » ; la confirmation le passe à « Programmé », le place dans « À prendre » à la paillasse et ouvre la facturation.
           </p>
         )}
       </Card>

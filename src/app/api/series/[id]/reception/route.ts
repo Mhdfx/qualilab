@@ -18,10 +18,11 @@ class StaleReception extends Error {}
  * One button, one transaction: every sample still `PRELEVE` gets its
  * N° de contrôle (yearly counter, locked), its temperature, quantity and
  * conformity with a coded motif; the série records who received it and when.
- * No technician: the responsable des paramètres assigns the bench on the
- * programme sheet (RETOUR-LABO-06-10.md §9.3) — a `technicianId` still sent
- * by an old page is ignored (`validateReception`), and `Sample.technicianId`
- * is never written here. A non-conform sample the réceptionniste destroys is
+ * No technician (RETOUR-LABO-06-10.md §9.3): once programmed, the sample
+ * waits in « À prendre » until a technician takes it (prise en charge
+ * libre, PROGRAMME.md §10) — a `technicianId` still sent by an old page is
+ * ignored (`validateReception`), and `Sample.technicianId` is never written
+ * here. A non-conform sample the réceptionniste destroys is
  * received and numbered too (it prints on the bon de réception), then
  * cancelled in the same transaction with the motif DETRUIT_A_RECEPTION.
  * Either every sample is received or none is — two réceptionnistes on the

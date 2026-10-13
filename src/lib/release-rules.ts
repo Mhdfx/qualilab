@@ -12,9 +12,11 @@ import { parseConsultation, type ClientConsultation } from "./client-consultatio
  * answered. Any other hold — a destroyed sample reactivated (reactivate
  * route), a sample blocked under the retired policy — stays the admin's.
  *
- * The release decides, it never assigns: « Analyser » unblocks the sample
- * and the programme sheet gives it its bench, like any received sample;
- * « Détruire » cancels it (« Détruit à réception ») and the client is told.
+ * The release decides, it never assigns: « Analyser » unblocks the sample,
+ * which joins the programme queue like any received sample, then
+ * « À prendre » once programmed — a technician takes it there (prise en
+ * charge libre, PROGRAMME.md §10); « Détruire » cancels it (« Détruit à
+ * réception ») and the client is told.
  */
 
 export const RELEASE_DECISIONS = ["ANALYSER", "DETRUIRE"] as const;
@@ -66,7 +68,7 @@ export type ReleaseRequest = {
 /**
  * The body `{ decision, consultation?, reason? }`. The old « Libérer pour
  * analyse » sent `{ technicianId }` only: read as « Analyser », the
- * technician ignored — the programme assigns the bench.
+ * technician ignored — nobody assigns one, a technician takes the sample.
  */
 export function parseReleaseBody(
   raw: unknown,

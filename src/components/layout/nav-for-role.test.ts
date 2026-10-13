@@ -131,6 +131,18 @@ describe("activeHref", () => {
     expect(activeHref("/admin", nav)).toBeNull();
   });
 
+  it("gives the technician « À prendre » before « Mes analyses », and lights only the dashboard on the bench (13/10)", () => {
+    const nav = navFor("TECHNICIEN");
+    const labels = nav.flatMap((section) => section.items).map((item) => item.label);
+    expect(labels.indexOf("À prendre")).toBe(labels.indexOf("Mes analyses") - 1);
+    const href = (label: string) => nav.flatMap((section) => section.items).find((item) => item.label === label)?.href;
+    expect(href("À prendre")).toBe("/technicien?vue=a_prendre#analyses");
+    // Two shortcuts into one page never light together: the plain link wins.
+    expect(activeHref("/technicien", nav)).toBe("/technicien");
+    expect(activeHref("/technicien/abc123", nav)).toBe("/technicien");
+    expect(activeHref("/technicien/temperatures", nav)).toBe("/technicien/temperatures");
+  });
+
   it("does not light the dashboard on a sibling route", () => {
     expect(activeHref("/preleveur/nouvelle-visite", navFor("PRELEVEUR"))).toBe("/preleveur/nouvelle-visite");
     expect(activeHref("/qualite/metrologie", navFor("VALIDATEUR"))).toBe("/qualite/metrologie");

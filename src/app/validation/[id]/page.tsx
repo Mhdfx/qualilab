@@ -35,6 +35,7 @@ import { ReceptionObservation } from "@/components/samples/ReceptionObservation"
 import { ValidationPanel } from "@/components/validation/ValidationPanel";
 import { ReportActions } from "@/components/validation/ReportActions";
 import { amendedNumber } from "@/lib/report-amendment";
+import { reportTechnicianNames } from "@/lib/report-programme";
 import { sampleTimelineFor } from "@/lib/sample-timeline-server";
 import { SampleTimelineCard } from "@/components/validation/SampleTimelineCard";
 import { EmailSendsCard } from "@/components/validation/EmailSendsCard";
@@ -94,7 +95,8 @@ export default async function ValidationDetailPage({
       regulation: { select: { title: true } },
       product: { select: { regulationId: true } },
       nature: { select: { family: true } },
-      parameters: { select: { parameterId: true } },
+      // « Analysé par »: the legacy per-parameter technicians, after the taker.
+      parameters: { select: { parameterId: true, technician: { select: { name: true } } } },
       // The reception's decision (motif, agreement of the client) and its
       // observation (A7, A9).
       ...RECEPTION_NON_CONFORMITY_SELECT,
@@ -106,7 +108,9 @@ export default async function ValidationDetailPage({
       client: { select: { name: true } },
       serieId: true,
       serie: { select: { serialNumber: true } },
+      // Who took it at the bench, and when (prise en charge libre, PROGRAMME.md §10).
       technician: { select: { name: true } },
+      assignedAt: true,
       validatedBy: { select: { name: true } },
       report: { select: { id: true, number: true, version: true, sentTo: true, sentAt: true, amendmentPending: true, amendmentNote: true } },
       results: {
@@ -187,6 +191,9 @@ export default async function ValidationDetailPage({
   const designation = lineDesignation(sample);
   // Too few units for a plan: the report will carry no official verdict.
   const indicativeOnly = verdict === null && sample.results.some((r) => r.interpretation === null && r.informalInterpretation);
+  // « Analysé par »: who took the sample, then any technician a legacy
+  // programme handed a parameter to — the names the report will print.
+  const analysedBy = reportTechnicianNames(sample);
 
   return (
     <div>
@@ -371,8 +378,13 @@ export default async function ValidationDetailPage({
               <Field icon={Hash} label="N° de lot">
                 {sample.numeroLot ?? <span className="text-slate-400">Non renseigné</span>}
               </Field>
-              <Field icon={User} label="Technicien">
-                {sample.technician?.name ?? "—"}
+              <Field icon={User} label="Analysé par">
+                {analysedBy ?? "—"}
+                {sample.technician && sample.assignedAt && (
+                  <span className="block text-xs font-normal text-slate-500">
+                    pris en charge le {formatDateTime(sample.assignedAt)}
+                  </span>
+                )}
               </Field>
               <Field icon={Package} label="Lieu">
                 {sample.lieu}

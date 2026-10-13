@@ -30,3 +30,34 @@ describe("buildBenchSheetHtml — PG06/EN01 under the cartouche", () => {
     expect(html).toContain("<span>2 échantillons</span>");
   });
 });
+
+describe("buildBenchSheetHtml — prise en charge libre (13/10)", () => {
+  const day = new Date("2026-10-13T10:00:00Z");
+
+  it("names each sample's holder, and prints « À prendre » on a sample nobody took", () => {
+    const html = buildBenchSheetHtml(day, [{ ...sample, technicianName: "Karim Alaoui" }, sample]);
+    expect(html).toContain("· Karim Alaoui");
+    expect(html).toContain('· <span class="free">À prendre</span>');
+  });
+
+  it("leaves the signature blank, and an empty day says so, when no technician prints it", () => {
+    expect(buildBenchSheetHtml(day, [sample])).toContain("<span>Saisie effectuée par : ______________________</span>");
+    expect(buildBenchSheetHtml(day, [])).toContain("Aucun échantillon en analyse pour cette date.");
+  });
+
+  it("signs a technician's sheet with their name, escaped, and says when they took nothing", () => {
+    const mine = buildBenchSheetHtml(day, [{ ...sample, technicianName: "Karim Alaoui" }], { printedFor: "Karim Alaoui" });
+    expect(mine).toContain("<span>Saisie effectuée par : <b>Karim Alaoui</b></span>");
+    expect(mine).not.toContain("Saisie effectuée par : ______");
+
+    const empty = buildBenchSheetHtml(day, [], { printedFor: "Karim Alaoui" });
+    expect(empty).toContain("Vous n'avez pris en charge aucun échantillon.");
+    expect(empty).not.toContain("Aucun échantillon en analyse pour cette date.");
+
+    expect(buildBenchSheetHtml(day, [], { printedFor: "<b>Eve</b>" })).toContain("<b>&lt;b&gt;Eve&lt;/b&gt;</b>");
+  });
+
+  it("reads a blank name as no name: the line stays to be signed by hand", () => {
+    expect(buildBenchSheetHtml(day, [], { printedFor: "  " })).toContain("Saisie effectuée par : ______________________");
+  });
+});

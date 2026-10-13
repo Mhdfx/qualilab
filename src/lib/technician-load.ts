@@ -3,24 +3,29 @@ import { BENCH_STATUSES, parameterTechnicianId, type BenchSampleRef } from "./be
 import { isLate } from "./circuit-views";
 
 /**
- * The load of each technician, shown where a line is handed to one
- * (finalversion.md: « attribution … avec visibilité sur la charge de
- * chacun »).
+ * What each technician holds at the bench — the admin's « Paillasse — qui
+ * tient quoi » (prise en charge libre of 13/10, PROGRAMME.md §10).
  *
- * A technician's load is what is on their bench now — the lines programmed
- * or under analysis (`BENCH_STATUSES`) where they hold the sample or at least
- * one of its parameters (PROGRAMME.md §6, the same rule as the bench queue):
- * how many samples, how many parameters are theirs (a parameter's own
- * technician, else the sample's), and how many of those samples are past
- * their promised date (`isLate`, the « En retard » rule of the dashboards).
+ * Nobody hands a line to a technician any more: a technician holds the
+ * samples they took — « Prendre en charge », or the first result typed on a
+ * free sample (`Sample.technicianId`). A line programmed before 13/10 may
+ * still name a technician per parameter (`SampleParameter.technicianId`):
+ * that technician holds the line too, read exactly as the bench reads it
+ * (a parameter's own technician, else the sample's — `parameterTechnicianId`).
+ * A free line (« À prendre ») is nobody's load.
  *
- * Pure: `loadProgrammeReferential` loads the bench lines in one query and
- * hands them here. Kept apart from `bench-access.ts` because it reads
+ * A technician's load is the lines programmed or under analysis
+ * (`BENCH_STATUSES`) they hold: how many samples, how many of their
+ * parameters, and how many of those samples are past their promised date
+ * (`isLate`, the « En retard » rule of the dashboards).
+ *
+ * Pure: the dashboard loads the bench lines in one query and hands them
+ * here. Kept apart from `bench-access.ts` because it reads
  * `circuit-views.ts`, which itself imports `bench-access.ts`.
  */
 
 export type TechnicianLoad = {
-  /** Lines on their bench (the sample's technician or one of its parameters'). */
+  /** Lines they hold (the sample's holder, or a legacy parameter technician). */
   samples: number;
   /** Parameters of those lines that are theirs. */
   parameters: number;
@@ -36,7 +41,7 @@ export type BenchLoadSample = BenchSampleRef & {
   parameters: readonly { technicianId: string | null }[];
 };
 
-/** Per technician id, what is on their bench at `now`. A technician with nothing is absent. */
+/** Per technician id, what they hold at the bench at `now`. A technician holding nothing is absent. */
 export function benchLoadByTechnician(
   samples: readonly BenchLoadSample[],
   now: Date
@@ -65,25 +70,37 @@ export function benchLoadByTechnician(
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
-/**
- * A technician as a choice of the programme sheet: « Nom — 12 éch. · 3 en
- * retard » (the delay part only when some are late); the bare name when the
- * load is unknown (an older payload).
- */
-export function technicianLoadLabel(name: string, load?: TechnicianLoad | null): string {
-  if (!load) return name;
-  const parts = [`${load.samples} éch.`];
-  if (load.late > 0) parts.push(`${load.late} en retard`);
-  return `${name} — ${parts.join(" · ")}`;
+/** A load in words: « 3 échantillons pris · dont 1 en retard » (the delay only when some are late). */
+export function technicianLoadText(load: TechnicianLoad): string {
+  if (load.samples === 0) return "Aucun échantillon pris";
+  const taken = plural(load.samples, "échantillon pris", "échantillons pris");
+  return load.late > 0 ? `${taken} · dont ${load.late} en retard` : taken;
 }
 
-/** The same load in words: « 12 échantillons programmés ou en analyse · 40 paramètres · dont 3 en retard ». */
-export function technicianLoadText(load: TechnicianLoad): string {
-  if (load.samples === 0) return "Aucun échantillon programmé ou en analyse";
-  const parts = [
-    plural(load.samples, "échantillon programmé ou en analyse", "échantillons programmés ou en analyse"),
-    plural(load.parameters, "paramètre", "paramètres"),
-  ];
-  if (load.late > 0) parts.push(`dont ${load.late} en retard`);
-  return parts.join(" · ");
+/**
+ * Does this change of an account take its holder off the bench — disabled
+ * now, or no longer a technician? Its taken samples then wait for someone:
+ * the admin is warned (`benchHoldWarning`), never refused, since a departure
+ * must stay possible at once.
+ */
+export function leavesBench(
+  before: { role: string | null; banned: boolean | null },
+  after: { role: string | null; banned: boolean | null }
+): boolean {
+  const disabled = !before.banned && Boolean(after.banned);
+  const leftRole = before.role === "TECHNICIEN" && after.role !== "TECHNICIEN";
+  return disabled || leftRole;
+}
+
+/**
+ * What the admin is told when an account leaving the bench still holds
+ * samples there; null when it holds none. Those samples stay taken — a
+ * colleague cannot take them — until « Libérer » gives them back to
+ * « À prendre » (nothing typed yet) or the admin finishes them.
+ */
+export function benchHoldWarning(held: number): string | null {
+  if (held <= 0) return null;
+  return held === 1
+    ? "Ce technicien tient encore 1 échantillon à la paillasse : libérez-le depuis la paillasse (s'il n'a aucun résultat) ou terminez-le en tant qu'administrateur."
+    : `Ce technicien tient encore ${held} échantillons à la paillasse : libérez-les depuis la paillasse (s'ils n'ont aucun résultat) ou terminez-les en tant qu'administrateur.`;
 }

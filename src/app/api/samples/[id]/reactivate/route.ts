@@ -6,8 +6,11 @@ import { canTransition, reactivationTarget } from "@/lib/sample-status";
 
 /**
  * Bringing a cancelled sample back — ADMIN only, written reason. It returns
- * to the step it had reached: received (it keeps its N° de contrôle) or
- * still waiting at reception.
+ * to the step it had reached: programmed, received (it keeps its N° de
+ * contrôle) or still waiting at reception. A programmed one keeps whoever
+ * had taken it at the bench (prise en charge libre, PROGRAMME.md §10): back
+ * on their bench, or in « À prendre » if nobody had — « Libérer » gives a
+ * taken one back while nothing is typed on it.
  */
 export async function POST(
   request: Request,
@@ -53,8 +56,10 @@ export async function POST(
         validatedAt: null,
         alertsSentAt: null,
         // A line destroyed at reception (a mis-click, the sample still on the
-        // shelf) never had a technician: it comes back held, and « Échantillons
-        // bloqués » assigns one — otherwise it would sit in no queue at all.
+        // shelf) never reached the bench: it comes back held, and the admin
+        // decides again from « Échantillons bloqués ». Analysed, it joins the
+        // programme queue, then « À prendre » once programmed — nobody
+        // assigns a technician (PROGRAMME.md §10).
         ...(sample.cancelReason === "DETRUIT_A_RECEPTION" ? { analysisBlocked: true } : {}),
       },
     });

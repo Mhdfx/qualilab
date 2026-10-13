@@ -74,6 +74,10 @@ export const SAMPLE_LAB_SELECT = {
   conformity: true,
   conformityReason: true,
   conformityNote: true,
+  /** Who took it at the bench and when — « Prendre en charge », or the
+   * first result typed on a free sample (PROGRAMME.md §10); null =
+   * nobody took it (a line programmed before 13/10 may still be held by
+   * its parameters' technicians). Cleared together by « Libérer ». */
   assignedAt: true,
   technician: { select: { id: true, name: true } },
   validatedAt: true,

@@ -34,10 +34,18 @@ export type QueueLine = {
   analysisBlocked: boolean;
   nature: { id: string; label: string; family: Family };
   productType: { id: string; name: string } | null;
-  technician: { id: string; name: string } | null;
   client: { id: string; name: string };
   serie: { id: string; serialNumber: string; kind: SerieKind; receivedAt: Date | null };
   parameterCount: number;
+  /**
+   * Who holds the sample at the bench (« prise en charge libre », 13/10):
+   * the technician who took it, then any technician a programme before
+   * 13/10 handed one of its analyses to, joined by « · ». Null = nobody
+   * (`isUnclaimed`) — a programmed sample then waits in « À prendre ».
+   */
+  heldBy: string | null;
+  /** When the holder took it; null when nobody did, or for a line held only through its analyses. */
+  assignedAt: Date | null;
 };
 
 /** The sheet's verb: programme a received sample, amend a programmed one, read any later step. */
@@ -61,6 +69,10 @@ const DEFAULT_EMPTY = {
  * A dashboard view (`?vue=`, « Programmés aujourd'hui », « En retard ») may
  * bring samples already past the queue: their sheet opens read-only
  * (« Consulter »), and `empty` says what an empty view means.
+ *
+ * The programme assigns nobody (13/10): a programmed sample nobody took
+ * shows « À prendre » — it waits in the bench's shared list — and a taken
+ * one « Pris par X le … ».
  */
 export function ProgrammationQueue({
   lines,
@@ -116,6 +128,13 @@ export function ProgrammationQueue({
                             <span className="font-mono text-sm font-semibold text-slate-900">{labReference(line)}</span>
                             <span className="text-xs font-medium text-slate-500">Échantillon {sampleRef(line.lineNumber, line.code)}</span>
                             <StatusBadge status={line.status} />
+                            {/* Free on the bench: the same test as « À prendre » (UNCLAIMED_WHERE). */}
+                            {(line.status === "PROGRAMME" || line.status === "EN_ANALYSE") && !line.analysisBlocked && !line.heldBy && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700 ring-1 ring-teal-200">
+                                <User className="h-3 w-3" aria-hidden="true" />
+                                À prendre
+                              </span>
+                            )}
                             {line.priority === "URGENTE" && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
                                 <Zap className="h-3 w-3" aria-hidden="true" />
@@ -147,10 +166,10 @@ export function ProgrammationQueue({
                             {line.productType ? ` · ${line.productType.name}` : ""}
                           </p>
                           <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
-                            {line.technician && (
+                            {line.heldBy && (
                               <span className="inline-flex items-center gap-1">
                                 <User className="h-3.5 w-3.5" aria-hidden="true" />
-                                {line.technician.name}
+                                {`Pris par ${line.heldBy}${line.assignedAt ? ` le ${formatDayTime(line.assignedAt)}` : ""}`}
                               </span>
                             )}
                             {line.dueAt && (

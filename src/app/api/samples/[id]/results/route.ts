@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { loadAssignedSample } from "@/lib/sample-access";
 import { canTransition } from "@/lib/sample-status";
 import { loadBenchPlans } from "@/lib/bench-plan";
-import { canEditParameter } from "@/lib/bench-access";
+import { TYPED_RESULT_WHERE, canEnterParameter, hasTypedResult } from "@/lib/bench-access";
+import { lockTakeState } from "@/lib/bench-take-server";
 import { effectiveFactor } from "@/lib/dilution";
 import {
   applyUnitFactor,
@@ -27,6 +28,10 @@ import type { Interpretation, ResultWorkStatus } from "@/generated/prisma/enums"
 import { Prisma } from "@/generated/prisma/client";
 
 const WORK_STATUSES: ResultWorkStatus[] = ["EN_COURS", "TERMINE", "ANOMALIE"];
+/** A save is a sheet's worth of lines — a ceiling against a flooded body. */
+const MAX_LINES = 500;
+/** The sheet on screen is older than the programme: the form reloads on 409. */
+const PROGRAMME_CHANGED = "Le programme d'analyse de cet échantillon a changé : rechargez la fiche.";
 const MAX_UNIT_TEXT = 40;
 
 type IncomingResult = {
@@ -61,14 +66,20 @@ type Entry = {
  * Saves the technician's bench entries — the "save as you go" step.
  *
  * Results may be entered over several sittings, so this accepts a partial
- * sheet and never forces the sample forward on its own. The first save moves
- * `PROGRAMME → EN_ANALYSE`, because work has visibly started; a line still
- * waiting for its programme d'analyse is refused (PROGRAMME.md §1).
+ * sheet and never forces the sample forward on its own. The first save with
+ * something typed moves `PROGRAMME → EN_ANALYSE`, because work has visibly
+ * started; a line still waiting for its programme d'analyse is refused
+ * (PROGRAMME.md §1).
  *
- * Since the programme (PROGRAMME.md §6) each parameter has its technician:
- * a technician may only type their own lines (403 naming the parameter),
- * and the dilution programmed for this sample replaces the parameter's
- * catalogue factor when present.
+ * Prise en charge libre (PROGRAMME.md §10): a technician types on the
+ * samples they took, and on a free one — their first typed result takes it
+ * (holder and time, journalled SAMPLE_TAKEN « implicit »). A sample a
+ * colleague holds is refused (403 before, 409 « Déjà pris » when the
+ * colleague took it during the save). A line a legacy programme handed
+ * parameter by parameter keeps its rule: each technician types their own.
+ * The admin stands in on any sample and never takes one. The dilution
+ * programmed for this sample replaces the parameter's catalogue factor
+ * when present.
  *
  * A germ with a criterion (the sample's product type, CRITERES.md) is read
  * per unit, and so is every parameter of a sample taken on several units
@@ -128,7 +139,10 @@ export async function PUT(
 
   // Only the parameters actually requested for this sample may be filled in.
   const allowed = new Map(sample.parameters.map((line) => [line.parameter.id, line]));
-  if (results.length > allowed.size) {
+  // A line for an analysis the programme has since removed is answered 409
+  // below, line by line — not swallowed by this ceiling (duplicates are
+  // refused below too).
+  if (results.length > MAX_LINES) {
     return NextResponse.json({ error: "Trop de résultats pour cet échantillon." }, { status: 400 });
   }
   const bench = await loadBenchPlans(sample.id);
@@ -141,10 +155,9 @@ export async function PUT(
       typeof raw?.parameterId === "string" ? raw.parameterId : "";
     const line = allowed.get(parameterId);
     if (!line) {
-      return NextResponse.json(
-        { error: "Paramètre inconnu pour cet échantillon." },
-        { status: 400 }
-      );
+      // The programme can change while a taken sample is still « Programmé »:
+      // the sheet on screen is stale, not wrong (the form reloads on 409).
+      return NextResponse.json({ error: PROGRAMME_CHANGED }, { status: 409 });
     }
     const parameter = line.parameter;
     // The same germ twice in one payload would write itself over silently.
@@ -155,11 +168,11 @@ export async function PUT(
       );
     }
     seen.add(parameterId);
-    // A colleague's parameter is read-only on my sheet (PROGRAMME.md §6).
-    if (session.role === "TECHNICIEN" && !canEditParameter(sample, line, session.id)) {
+    // Mine, or a free sample's; a legacy line handed to a colleague stays theirs.
+    if (session.role === "TECHNICIEN" && !canEnterParameter(sample, line, session.id)) {
       return NextResponse.json(
         {
-          error: `Le paramètre ${parameter.name} est attribué à ${line.technician?.name ?? "un autre technicien"} : vous ne pouvez pas le saisir.`,
+          error: `Le paramètre ${parameter.name} est réservé à ${line.technician?.name ?? "un autre technicien"} : vous ne pouvez pas le saisir.`,
           parameterId,
         },
         { status: 403 }
@@ -188,6 +201,13 @@ export async function PUT(
     }
 
     const plan = bench.plans.get(parameterId);
+    // The sheet reads a line per unit or as one value exactly as the
+    // programme does; a line sent the other way comes from a sheet opened
+    // before the programme changed (units, product type) — nothing it holds
+    // would be stored, so it is refused rather than saved empty.
+    if (Boolean(plan) || bench.unitCount > 1 ? !Array.isArray(raw.units) : Array.isArray(raw.units)) {
+      return NextResponse.json({ error: PROGRAMME_CHANGED }, { status: 409 });
+    }
     if (plan || bench.unitCount > 1) {
       // ---- one reading per unit taken: R1 … Rn --------------------------------
       const typed = Array.isArray(raw.units) ? raw.units : [];
@@ -295,16 +315,77 @@ export async function PUT(
   }
 
   const now = new Date();
+  // Something typed (a value, a reading, a note, a step) — an « Enregistrer »
+  // with nothing in it neither takes the sample nor starts its analysis.
+  const typed = entries.some((entry) =>
+    hasTypedResult({
+      value: entry.value,
+      note: entry.note,
+      workStatus: entry.workStatus,
+      unitCount: (entry.units ?? []).filter((reading) => reading.kind !== "empty").length,
+    })
+  );
+  const startAllowed = canTransition("PROGRAMME", "EN_ANALYSE", session.role).ok;
 
-  const written = await prisma.$transaction(async (tx) => {
-    // Two saves of the same sheet (double click, two technicians of the line)
-    // are serialised on the sample row: racing upserts of a first reading and
-    // the clear-then-insert of the units deadlocked or collided (500). The
-    // status is read again under the lock: a sheet submitted meanwhile is
-    // no longer written.
-    const locked = await tx.$queryRaw<{ status: string }[]>`
-      SELECT \`status\` FROM \`Sample\` WHERE \`id\` = ${sample.id} FOR UPDATE`;
-    if (locked[0]?.status !== "PROGRAMME" && locked[0]?.status !== "EN_ANALYSE") return false;
+  type Written =
+    | { kind: "stale" }
+    | { kind: "programme" }
+    | { kind: "held"; holderName: string | null }
+    | { kind: "ok"; took: boolean; started: boolean; status: typeof sample.status };
+  const written: Written = await prisma.$transaction(async (tx) => {
+    // Two saves of the same sheet (double click, two technicians on a free
+    // sample) are serialised on the sample row: racing upserts of a first
+    // reading and the clear-then-insert of the units deadlocked or collided
+    // (500). The status and the holder are read again under the lock: a
+    // sheet submitted meanwhile is no longer written, and a sample a
+    // colleague took meanwhile is no longer mine to type on.
+    const locked = await lockTakeState(tx, sample.id);
+    if (!locked || (locked.status !== "PROGRAMME" && locked.status !== "EN_ANALYSE")) return { kind: "stale" };
+    // The programme read again under the lock: an edit committed since the
+    // reads above (analyses, dilutions, versions, units, product type) means
+    // these entries were computed from the old one — refused, never stored.
+    const programmed = await tx.sampleParameter.findMany({
+      where: { sampleId: sample.id },
+      select: { parameterId: true, dilutionFactor: true, normVersionId: true },
+    });
+    const programmedNow = new Map(programmed.map((line) => [line.parameterId, line]));
+    const programmeChanged =
+      locked.unitCount !== bench.unitCount ||
+      locked.productTypeId !== (bench.productType?.id ?? null) ||
+      programmed.length !== allowed.size ||
+      [...allowed.values()].some((was) => {
+        const is = programmedNow.get(was.parameterId);
+        return (
+          !is ||
+          is.normVersionId !== was.normVersionId ||
+          String(is.dilutionFactor ?? "") !== String(was.dilutionFactor ?? "")
+        );
+      });
+    if (programmeChanged) return { kind: "programme" };
+    const free = locked.technicianId === null && !locked.heldByParameter;
+    if (
+      session.role === "TECHNICIEN" &&
+      !free &&
+      locked.technicianId !== session.id &&
+      !locked.parameterHolderIds.includes(session.id)
+    ) {
+      return { kind: "held", holderName: locked.holderName };
+    }
+    // The first typed result of a technician on a free sample takes it — and
+    // so does a save that rewrites readings already typed there (by the admin
+    // standing in): whoever changes the readings answers for them.
+    let took = false;
+    const rewrites =
+      session.role === "TECHNICIEN" && free && !typed
+        ? (await tx.result.count({ where: { sampleId: sample.id, ...TYPED_RESULT_WHERE } })) > 0
+        : false;
+    if (session.role === "TECHNICIEN" && free && (typed || rewrites)) {
+      const taken = await tx.sample.updateMany({
+        where: { id: sample.id, technicianId: null },
+        data: { technicianId: session.id, assignedAt: now },
+      });
+      took = taken.count > 0;
+    }
     for (const entry of entries) {
       const { units, ...data } = entry;
       const result = await tx.result.upsert({
@@ -341,40 +422,55 @@ export async function PUT(
         }));
       if (rows.length > 0) await tx.resultUnit.createMany({ data: rows });
     }
-    return true;
+    // Starting to record results is what puts a sample « en analyse » — in
+    // the same transaction, so a programme edit cannot slip between the
+    // readings and the status (it is refused once the line is EN_ANALYSE).
+    // Only the save whose UPDATE changed the row journals the start.
+    let started = false;
+    if (locked.status === "PROGRAMME" && typed && startAllowed) {
+      const moved = await tx.sample.updateMany({
+        where: { id: sample.id, status: "PROGRAMME" },
+        data: { status: "EN_ANALYSE" },
+      });
+      started = moved.count > 0;
+    }
+    return { kind: "ok", took, started, status: started ? "EN_ANALYSE" : locked.status };
   });
-  if (!written) {
+  if (written.kind === "stale") {
     return NextResponse.json(
       { error: "Les résultats ne peuvent plus être modifiés à ce stade du circuit." },
       { status: 409 }
     );
   }
-
-  // Starting to record results is what puts a sample "en analyse".
-  let status = sample.status;
-  if (sample.status === "PROGRAMME") {
-    const transition = canTransition("PROGRAMME", "EN_ANALYSE", session.role);
-    if (transition.ok) {
-      // A concurrent save may already have moved it: only the save whose
-      // UPDATE changed the row journals the start (`updateMany` re-checks
-      // the status in the write itself).
-      const started = await prisma.sample.updateMany({
-        where: { id: sample.id, status: "PROGRAMME" },
-        data: { status: "EN_ANALYSE" },
-      });
-      status = "EN_ANALYSE";
-
-      if (started.count > 0) {
-        await logAudit({
-          actorId: session.id,
-          action: "SAMPLE_ANALYSIS_STARTED",
-          entity: "Sample",
-          entityId: sample.id,
-          metadata: { from: "PROGRAMME", to: "EN_ANALYSE", code: sample.code },
-        });
-      }
-    }
+  if (written.kind === "programme") {
+    return NextResponse.json({ error: PROGRAMME_CHANGED }, { status: 409 });
   }
+  if (written.kind === "held") {
+    return NextResponse.json(
+      { error: `Déjà pris par ${written.holderName ?? "un collègue"}.` },
+      { status: 409 }
+    );
+  }
+
+  if (written.took) {
+    await logAudit({
+      actorId: session.id,
+      action: "SAMPLE_TAKEN",
+      entity: "Sample",
+      entityId: sample.id,
+      metadata: { code: sample.code, controlCode: sample.controlCode, implicit: true },
+    });
+  }
+  if (written.started) {
+    await logAudit({
+      actorId: session.id,
+      action: "SAMPLE_ANALYSIS_STARTED",
+      entity: "Sample",
+      entityId: sample.id,
+      metadata: { from: "PROGRAMME", to: "EN_ANALYSE", code: sample.code },
+    });
+  }
+  const status = written.status;
 
   await logAudit({
     actorId: session.id,
@@ -392,6 +488,7 @@ export async function PUT(
   return NextResponse.json({
     status,
     saved: entries.length,
+    taken: written.took,
     verdicts: Object.fromEntries(entries.map((e) => [e.parameterId, e.interpretation])),
   });
 }

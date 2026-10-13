@@ -98,7 +98,10 @@ export const SERIE_LAB_SELECT = {
       // A9: held at reception, and since when it waits for the client.
       analysisBlocked: true,
       awaitingClientSince: true,
+      // Who took it at the bench, and when — « Prendre en charge » or a
+      // first result (prise en charge libre, PROGRAMME.md §10).
       technician: { select: { id: true, name: true } },
+      assignedAt: true,
     },
     orderBy: LINE_ORDER,
   },
