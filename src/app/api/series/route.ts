@@ -17,7 +17,7 @@ import {
 import { complementaryChecklist, complementaryRefusal } from "@/lib/reception-complementary";
 import { notifyDestroyed } from "@/lib/destruction-notice";
 import { createSerie, planSerieSamples, SerieCreationError } from "@/lib/serie-create";
-import { sampleLineMessage, validateSerie, type NatureRef } from "@/lib/serie-input";
+import { sampleLineMessage, sampleQuantity, validateSerie, type NatureRef } from "@/lib/serie-input";
 import { serieSelectFor, serializeSerie } from "@/lib/serie-select";
 import { serieStatus, type SerieStatus } from "@/lib/series";
 
@@ -28,6 +28,7 @@ const CIRCUIT_ROLES = [
   "RECEPTIONNISTE",
   "PROGRAMMATEUR",
   "VALIDATEUR",
+  "DIRECTION",
   "GESTIONNAIRE",
   "COMPTABLE",
   "ADMIN",
@@ -115,12 +116,17 @@ export async function GET(request: Request) {
  * admin may create either kind: a VISITE keyed in from a paper protocol, or
  * a DEPOT brought to the counter, received on the spot.
  *
- * A deposit runs the seven rules of the bon de réception as a checklist on
- * each sample (retour du 08/10): rule (1), exploitable or not, is answered
- * for every line (`validateSerie`); the measurable rules are recomputed here
- * with the laboratory's thresholds — histamine and Salmonella recognised on
- * the analyses' names and aliases — and each sample's checklist goes to its
- * SAMPLE_RECEIVED audit, as at the reception of a visit. The contrôles
+ * A deposit runs the eight rules of the bon de réception as a checklist on
+ * each sample (retour du 08/10, rule (8) since 12/10): rule (1), exploitable
+ * or not, is answered for every line (`validateSerie`); the measurable rules
+ * are recomputed here with the laboratory's thresholds — histamine and
+ * Salmonella recognised on the analyses' names and aliases, live bivalve
+ * molluscs on the désignation, the product type and the nature — and each
+ * sample's checklist goes to its SAMPLE_RECEIVED audit, as at the reception
+ * of a visit. Each sample is judged on its own weight: the « P » sample of a
+ * two-family line on « Quantité 2P » when the counter weighed it apart (one
+ * container per family, 12/10), and a food received « Ambiant » (a stable
+ * food) needs no temperature. The contrôles
  * complémentaires (hors bon) follow: C3 and C5 ticked for every line, a
  * failing one refuses « conforme », the coded rows audited beside. A row
  * « à vérifier » accepted conforme needs the line's « Observation de
@@ -146,7 +152,7 @@ export async function POST(request: Request) {
   // deposit reads the laboratory's thresholds and policy too.
   const [natures, settings] = await Promise.all([
     prisma.analysisNature.findMany({
-      select: { id: true, code: true, family: true, defaultLineKind: true, active: true },
+      select: { id: true, code: true, label: true, family: true, defaultLineKind: true, active: true },
     }),
     kind === "DEPOT" ? getLabSettings() : Promise.resolve(null),
   ]);
@@ -186,6 +192,14 @@ export async function POST(request: Request) {
               select: { id: true, name: true, aliases: true },
             });
       const spellingsOf = new Map(parameters.map((p) => [p.id, parameterSpellings(p)]));
+      // Rule (8) reads the product type's name beside the désignation and the nature.
+      const productTypeIds = [...new Set(lines.flatMap((l) => (l.productTypeId ? [l.productTypeId] : [])))];
+      const productTypes =
+        productTypeIds.length === 0
+          ? []
+          : await prisma.productType.findMany({ where: { id: { in: productTypeIds } }, select: { id: true, name: true } });
+      const typeNameOf = new Map(productTypes.map((t) => [t.id, t.name]));
+      const natureLabelOf = new Map(natures.map((n) => [n.id, n.label]));
       // C1: the deposit arrives now (unless an arrival was typed); an empty
       // « Prélevé le » is « heure de prélèvement non déclarée ».
       const receivedAt = new Date();
@@ -198,14 +212,22 @@ export async function POST(request: Request) {
       };
       for (const [index, line] of lines.entries()) {
         for (const planned of plans[index]) {
+          // The weight this sample is written with — the « P » one its own (12/10).
+          const weighed = sampleQuantity(line, planned.twin);
           const measured: ReceptionLine = {
             lineKind: line.lineKind,
             family: planned.family,
             parameterNames: planned.parameterIds.flatMap((id) => spellingsOf.get(id) ?? []),
-            quantity: line.quantity,
-            quantityUnit: line.quantityUnit,
+            quantity: weighed.quantity,
+            quantityUnit: weighed.quantityUnit,
             receptionTemperature: line.receptionTemperature,
             unitCount: line.unitCount,
+            storageClass: line.storageClass,
+            productNames: [
+              line.produit,
+              line.productTypeId ? typeNameOf.get(line.productTypeId) : null,
+              natureLabelOf.get(planned.natureId),
+            ],
           };
           const checklist = receptionChecklist(measured, settings, {
             exploitable: line.exploitable,
@@ -263,7 +285,7 @@ export async function POST(request: Request) {
     });
     if (created.kind === "DEPOT") {
       // Each deposit sample is received at its creation: its own entry, with
-      // the seven rules of the bon as checked at the counter.
+      // the eight rules of the bon as checked at the counter.
       const written = new Map(serie.samples.map((s) => [s.id, s]));
       await Promise.all(
         created.samples.map((sample) => {
@@ -295,8 +317,8 @@ export async function POST(request: Request) {
               receptionTemperature: line.receptionTemperature,
               temperatureSource: line.receptionTemperatureSource,
               storageClass: line.storageClass,
-              quantity: line.quantity,
-              quantityUnit: line.quantityUnit,
+              // The sample's own weight — « Quantité 2P » on the « P » one (12/10).
+              ...sampleQuantity(line, sample.twin),
               checklist: checklists.get(`${sample.lineIndex}:${sample.family}`) ?? null,
               packagingOk: line.packagingOk,
               identificationOk: line.identificationOk,

@@ -18,6 +18,7 @@ export const PROTOCOL_PHOTO_ROLES = [
   "PRELEVEUR",
   "RECEPTIONNISTE",
   "VALIDATEUR",
+  "DIRECTION",
   "GESTIONNAIRE",
   "ADMIN",
 ] as const satisfies readonly Role[];

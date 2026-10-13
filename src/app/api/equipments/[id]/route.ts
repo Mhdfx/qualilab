@@ -10,7 +10,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireApiRole("VALIDATEUR", "ADMIN");
+  const session = await requireApiRole("VALIDATEUR", "DIRECTION", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;

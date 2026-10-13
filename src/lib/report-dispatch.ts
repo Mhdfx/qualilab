@@ -1,19 +1,18 @@
 import { prisma } from "./prisma";
 import { AUDIT_ACTIONS, logAudit } from "./audit";
-import { renderPdf } from "./pdf";
 import {
   buildConclusion,
-  buildReportHtml,
   germFingerprints,
   germsToRealert,
   reportDataFromJson,
   reportDataToJson,
   withSilentCorrection,
-  REPORT_PDF_MARGIN,
   type AlertReading,
   type ReportAmendment,
   type ReportData,
 } from "./report-html";
+import { renderReportPdf } from "./report-pdf";
+import { reportSampler } from "./report-template";
 import { INTERPRETATION_LABELS, indicativeVerdict, legacyFailures, nothingJudged, sampleVerdict, storedPlan, unitStoredDisplay } from "./interpretation";
 import { getLabSettings } from "./lab-settings";
 import { ALERT_RESULT_WHERE } from "./contamination-alert";
@@ -66,15 +65,37 @@ const DESIGNATION_SELECT = {
 /** What the report prints of the sample itself — everything but the report's own fields. */
 const REPORT_SAMPLE_SELECT = {
   controlCode: true,
-  // The site of the client (a restaurant of a chain): printed under the
-  // client — RETOUR-LABO-06-10.md §5, V5.
-  serie: { select: { serialNumber: true, site: { select: { name: true } } } },
+  serie: {
+    select: {
+      serialNumber: true,
+      // The site of the client (a restaurant of a chain): printed under the
+      // client — RETOUR-LABO-06-10.md §5, V5.
+      site: { select: { name: true } },
+      // « Préleveur », and whether the laboratory's sampling procedures apply.
+      samplerKind: true,
+      samplerName: true,
+      samplerUser: { select: { name: true } },
+      // A deposit whose sampling time was not declared (C1).
+      samplingTimeDeclared: true,
+      // « Température glacière à la réception ».
+      coolerTemperature: true,
+    },
+  },
   ...DESIGNATION_SELECT,
   numeroLot: true,
   lieu: true,
   type: true,
   sampledAt: true,
   receivedAt: true,
+  // The template PG06/EN03 (version M): the client's dates, the
+  // temperatures, the start of the analyses and the issue of this version.
+  productionDate: true,
+  expiryDate: true,
+  productTemperature: true,
+  receptionTemperature: true,
+  receptionTemperatureSource: true,
+  programmedAt: true,
+  approvedAt: true,
   user: { select: { name: true } },
   approvedBy: { select: { name: true } },
   client: { select: { name: true, address: true, ice: true } },
@@ -90,6 +111,8 @@ const REPORT_SAMPLE_SELECT = {
       note: true,
       interpretation: true,
       criterion: true,
+      // « Date d'analyse » ends with the last result entered.
+      enteredAt: true,
       normVersion: { select: { label: true } },
       units: { select: { rawValue: true, value: true, detected: true }, orderBy: { unitIndex: "asc" } },
       parameter: {
@@ -139,10 +162,15 @@ const REPORT_SELECT = {
 
 type ReportRow = Prisma.ReportGetPayload<{ select: typeof REPORT_SELECT }>;
 
+/** The last instant of a list, or null. */
+function latest(dates: (Date | null)[]): Date | null {
+  return dates.reduce<Date | null>((last, date) => (date && (!last || date > last) ? date : last), null);
+}
+
 /** The `ReportData` of a sample with the given report fields and printed number. */
 function toReportData(
   sample: ReportSample,
-  fields: ReportFields & { number: string; amendment?: ReportAmendment | null }
+  fields: ReportFields & { number: string; amendment?: ReportAmendment | null; issuedAt?: Date | null }
 ): ReportData {
   const programmedNorm = new Map(sample.parameters.map((p) => [p.parameterId, p.normVersion?.label ?? null]));
 
@@ -159,7 +187,12 @@ function toReportData(
     type: sample.type,
     sampledAt: sample.sampledAt,
     receivedAt: sample.receivedAt,
-    preleveur: sample.user.name,
+    preleveur: reportSampler({
+      samplerKind: sample.serie.samplerKind,
+      samplerUserName: sample.serie.samplerUser?.name,
+      samplerName: sample.serie.samplerName,
+      recordedBy: sample.user.name,
+    }),
     technicianName: fields.technicianName,
     validatorName: fields.validatorName,
     approverName: sample.approvedBy?.name ?? null,
@@ -187,6 +220,19 @@ function toReportData(
       units: result.units.map((u) => ({ display: unitStoredDisplay(u), value: u.value, detected: u.detected })),
     })),
     amendment: fields.amendment ?? null,
+    sampledByLab: sample.serie.samplerKind === "QUALILAB",
+    samplingTimeDeclared: sample.serie.samplingTimeDeclared,
+    airMethod: sample.airMethod,
+    productionDate: sample.productionDate,
+    expiryDate: sample.expiryDate,
+    productTemperature: sample.productTemperature,
+    receptionTemperature: sample.receptionTemperature,
+    receptionTemperatureSource: sample.receptionTemperatureSource,
+    coolerTemperature: sample.serie.coolerTemperature,
+    analysisFrom: sample.programmedAt ?? sample.receivedAt,
+    analysisTo: latest(sample.results.map((r) => r.enteredAt)),
+    // The approval that issued this version (the frozen version keeps its own).
+    issuedAt: fields.issuedAt ?? sample.approvedAt,
   };
 }
 
@@ -197,11 +243,14 @@ export async function loadReportVersion(reportId: string, version: number) {
     select: { version: true, number: true, data: true, note: true, reconstructed: true, issuedAt: true },
   });
   if (!row) return null;
-  const data = reportDataFromJson(row.data);
-  if (!data) {
+  const frozen = reportDataFromJson(row.data);
+  if (!frozen) {
     console.error("[report] unreadable frozen version", { reportId, version });
     return null;
   }
+  // A version frozen before the template PG06/EN03 has no « Date d'édition »:
+  // it is the version's own issue, recorded beside it.
+  const data = frozen.issuedAt === undefined ? { ...frozen, issuedAt: row.issuedAt } : frozen;
   return { ...row, data };
 }
 
@@ -358,11 +407,13 @@ export async function createReportFor(sampleId: string): Promise<IssuedReport | 
     select: { ...REPORT_SAMPLE_SELECT, approvedAt: true, approvedById: true },
   });
   if (!fields || !sample) return null;
+  // One instant for the version and for the « Date d'édition » it prints.
+  const issuedAt = sample.approvedAt ?? new Date();
 
   try {
     return await retryOnDuplicate(async () => {
       const number = await generateReportNumber();
-      const data = toReportData(sample, { ...fields, number });
+      const data = toReportData(sample, { ...fields, number, issuedAt });
       return prisma.$transaction(async (tx) => {
         const report = await tx.report.create({
           data: { sampleId, number, ...fields },
@@ -374,7 +425,7 @@ export async function createReportFor(sampleId: string): Promise<IssuedReport | 
             version: 0,
             number,
             data: asJson(data),
-            issuedAt: sample.approvedAt ?? new Date(),
+            issuedAt,
             issuedById: sample.approvedById,
           },
         });
@@ -432,7 +483,7 @@ export async function amendReportFor(sampleId: string, actorId: string | null): 
   const number = amendedNumber(report.number, version);
   const note = report.amendmentNote?.trim() || null;
   const issuedAt = sample.approvedAt ?? new Date();
-  const data = toReportData(sample, { ...fields, number, amendment: { previousNumber, previousIssuedAt, note } });
+  const data = toReportData(sample, { ...fields, number, issuedAt, amendment: { previousNumber, previousIssuedAt, note } });
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -709,7 +760,7 @@ async function sendReportNow(sampleId: string, actorId: string | null) {
   try {
     attachment = {
       filename: `${data.number}.pdf`,
-      content: await renderPdf(buildReportHtml(data, company), { margin: REPORT_PDF_MARGIN }),
+      content: await renderReportPdf(data, { company }),
     };
   } catch (error) {
     console.error("[dispatch] could not render the report", { sampleId, error });

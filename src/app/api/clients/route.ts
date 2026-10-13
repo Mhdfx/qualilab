@@ -21,6 +21,7 @@ export async function GET(request: Request) {
     "RECEPTIONNISTE",
     "TECHNICIEN",
     "VALIDATEUR",
+    "DIRECTION",
     "GESTIONNAIRE",
     "COMPTABLE",
     "ADMIN"

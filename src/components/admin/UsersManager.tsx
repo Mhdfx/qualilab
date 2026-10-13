@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Ban, Building2, Check, KeyRound, Plus, RotateCcw, Search, UserCog, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { ASSIGNABLE_ROLES, PORTAL_ROLE, ROLE_LABELS, roleFunction, type Role } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, PORTAL_ROLE, ROLE_LABELS, roleFunction, roleHint, type Role } from "@/lib/roles";
 
 /** The client of a « Client (portail) » account (PORTAIL.md §1). */
 export type UserClient = {
@@ -334,6 +334,9 @@ function CreateUserForm({
   const [client, setClient] = useState<PickedClient | null>(null);
   const [saving, setSaving] = useState(false);
   const duty = roleFunction(role);
+  // What the function does not say (the Direction also signs step 1, 12/10).
+  const hint = roleHint(role);
+  const describedBy = [duty ? "u-role-duty" : null, hint ? "u-role-hint" : null].filter(Boolean).join(" ");
 
   async function save() {
     if (saving) return;
@@ -399,7 +402,7 @@ function CreateUserForm({
             id="u-role"
             value={role}
             onChange={(event) => setRole(event.target.value)}
-            aria-describedby={duty ? "u-role-duty" : undefined}
+            aria-describedby={describedBy || undefined}
             className="mt-1 min-h-[38px] w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           >
             {ASSIGNABLE_ROLES.map((r) => (
@@ -411,6 +414,11 @@ function CreateUserForm({
           {duty && (
             <p id="u-role-duty" className="mt-0.5 text-[11px] text-slate-500">
               {duty}
+            </p>
+          )}
+          {hint && (
+            <p id="u-role-hint" className="mt-0.5 text-[11px] text-slate-500">
+              {hint}
             </p>
           )}
         </div>

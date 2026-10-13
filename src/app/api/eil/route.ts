@@ -6,7 +6,7 @@ import { validateEil } from "@/lib/quality-validation";
 
 /** EIL campaigns (essais interlaboratoires) — the proficiency register. */
 export async function GET() {
-  const session = await requireApiRole("VALIDATEUR", "ADMIN");
+  const session = await requireApiRole("VALIDATEUR", "DIRECTION", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const campaigns = await prisma.eilCampaign.findMany({
@@ -18,7 +18,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const session = await requireApiRole("VALIDATEUR", "ADMIN");
+  const session = await requireApiRole("VALIDATEUR", "DIRECTION", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   let body: unknown;

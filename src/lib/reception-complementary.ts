@@ -6,14 +6,14 @@ import type { ChecklistRow, ChecklistStatus } from "./reception-rules";
 
 /**
  * The contrôles complémentaires of the reception — the checks the
- * laboratory runs on top of the seven rules of the paper bon de réception
- * (PG05/EN04), coded C1 … C7 so they never read as the paper's (1) … (7).
+ * laboratory runs on top of the eight rules of the paper bon de réception
+ * (PG05/EN04), coded C1 … C7 so they never read as the paper's (1) … (8).
  *
  * Pure: the screens run it live while the réceptionniste ticks, the APIs run
  * it again before writing, the programme sheet recomputes it. Each check
  * either is ticked by the réceptionniste (Oui / Non) or is computed from
  * what the série and the sample carry. The rows are `ChecklistRow`s that
- * carry a `code`: the screens list them after the paper's seven rules, in a
+ * carry a `code`: the screens list them after the paper's eight rules, in a
  * group of their own, and `proposedConformity` reads them after the paper's,
  * so a paper rule keeps the priority.
  *
@@ -210,6 +210,21 @@ function delayRow(line: ComplementaryLine, serie: ComplementarySerie | null, thr
 /** The classes and sources both APIs accept — derived from their labels, never listed twice. */
 export const STORAGE_CLASSES = Object.keys(STORAGE_CLASS_LABELS) as StorageClass[];
 export const TEMPERATURE_SOURCES = Object.keys(TEMPERATURE_SOURCE_LABELS) as TemperatureSource[];
+
+/**
+ * « Ambiant » as the « Conservation » select offers it on a food: a stable
+ * food — the one whose temperature at arrival rule (6) does not require
+ * (the laboratory's answer of 12/10, `isStableFood` in reception-rules.ts).
+ */
+export const STABLE_FOOD_STORAGE_LABEL = "Ambiant — aliment stable (conserve, sec, UHT…)";
+
+/**
+ * The wording of a class in the « Conservation » select: on a food,
+ * « Ambiant » says what choosing it means; elsewhere the class's label.
+ */
+export function storageClassOptionLabel(storage: StorageClass, lineKind: LineKind | null): string {
+  return storage === "AMBIANT" && lineKind === "ALIMENT" ? STABLE_FOOD_STORAGE_LABEL : STORAGE_CLASS_LABELS[storage];
+}
 
 /**
  * A class or a source as a request sends it: absent, null or "" → null (an

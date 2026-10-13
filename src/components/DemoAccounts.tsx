@@ -23,6 +23,7 @@ const DEMO_ACCOUNTS: { username: string; role: Role; name: string }[] = [
   { username: "tech1", role: "TECHNICIEN", name: "Yassine Amrani" },
   { username: "tech2", role: "TECHNICIEN", name: "Imane Cherkaoui" },
   { username: "valid1", role: "VALIDATEUR", name: "Dr. Nawal Bennani" },
+  { username: "direction1", role: "DIRECTION", name: "Direction (démo)" },
   { username: "commercial1", role: "GESTIONNAIRE", name: "Hicham Tazi" },
   { username: "compta1", role: "COMPTABLE", name: "Leila Fassi" },
   { username: "admin", role: "ADMIN", name: "Sara Mansouri" },

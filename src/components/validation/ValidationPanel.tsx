@@ -15,7 +15,11 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
-import type { ApprovalState } from "@/lib/sample-status";
+import {
+  ADMINISTRATIVE_SIGNATORY_LABEL,
+  validationControls,
+  type ApprovalState,
+} from "@/lib/sample-status";
 import { ROLE_LABELS, type Role } from "@/lib/roles";
 
 type ValidationPanelProps = {
@@ -53,7 +57,9 @@ type ValidationPanelProps = {
  *
  * Both signatures are required on every sample, so the panel always shows both
  * steps and where the sample currently stands — a validateur can see that the
- * admin still has to approve, and the admin can see who validated technically.
+ * Direction still has to approve, and the Direction can see who validated
+ * technically. What is offered comes from `validationControls`, the rules
+ * the route applies.
  */
 export function ValidationPanel({
   sampleId,
@@ -148,10 +154,10 @@ export function ValidationPanel({
     }
   }
 
-  const canValidate = state === "AWAITING_TECHNICAL" && (role === "VALIDATEUR" || role === "ADMIN");
-  const signedStepOne = validatedById !== null && validatedById === userId;
-  const canApprove = state === "AWAITING_ADMIN" && role === "ADMIN" && !signedStepOne;
-  const canReject = state !== "APPROVED" && (role === "VALIDATEUR" || role === "ADMIN");
+  const controls = validationControls(state, role, { validatedById, userId });
+  const canValidate = controls.validate;
+  const canApprove = controls.approve;
+  const canReject = controls.reject;
 
   return (
     <Card className="p-5">
@@ -189,7 +195,7 @@ export function ValidationPanel({
         <Step
           index={2}
           title="Validation administrative"
-          who={ROLE_LABELS.ADMIN}
+          who={ADMINISTRATIVE_SIGNATORY_LABEL}
           done={state === "APPROVED"}
           current={state === "AWAITING_ADMIN"}
           detail={
@@ -377,19 +383,19 @@ export function ValidationPanel({
             </PrimaryButton>
           )}
 
-          {state === "AWAITING_ADMIN" && role === "ADMIN" && signedStepOne && (
+          {controls.approvalLockedToOther && (
             <p className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
               <Lock className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
               Vous avez signé la validation technique : la validation
-              administrative revient à un autre administrateur.
+              administrative revient à une autre personne de la direction.
             </p>
           )}
 
-          {state === "AWAITING_ADMIN" && role !== "ADMIN" && (
+          {controls.approvalNotMine && (
             <p className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
               <Lock className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-              Validé techniquement. La validation administrative revient à
-              l&apos;administrateur.
+              Validé techniquement. La validation administrative revient à la
+              direction.
             </p>
           )}
 

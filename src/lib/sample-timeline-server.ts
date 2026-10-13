@@ -12,7 +12,7 @@ const ACTOR = { select: { name: true } } as const;
  * the journal's rows on the sample and on its report — through the
  * (entity, entityId) index, newest first, at most `TIMELINE_ROWS`, then
  * merged oldest first by `sampleTimeline`. For the validation page only
- * (VALIDATEUR, ADMIN): never served to the préleveur.
+ * (VALIDATEUR, DIRECTION, ADMIN): never served to the préleveur.
  */
 export async function sampleTimelineFor(
   sampleId: string

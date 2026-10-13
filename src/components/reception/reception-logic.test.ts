@@ -3,6 +3,7 @@ import { DEFAULT_THRESHOLDS, type ChecklistRow } from "@/lib/reception-rules";
 import {
   countLabel,
   depositLineChecklist,
+  depositSampleQuantity,
   errorConcernsSample,
   familiesSummary,
   lineSampleRefs,
@@ -148,10 +149,11 @@ describe("missingFamilies", () => {
   });
 });
 
-describe("depositLineChecklist — the seven rules of a deposit line", () => {
+describe("depositLineChecklist — the eight rules of a deposit line", () => {
   const food = {
     lineKind: "ALIMENT" as const,
     parameters: [],
+    productNames: ["Plat test", null],
     quantityUnit: "G" as const,
     receptionTemperature: 4,
     unitCount: 1,
@@ -170,12 +172,12 @@ describe("depositLineChecklist — the seven rules of a deposit line", () => {
       receivedAt: new Date("2026-10-10T10:00:00.000Z"),
     },
   };
-  /** A paper row by its number — the coded rows (C1 … C7) follow the seven. */
+  /** A paper row by its number — the coded rows (C1 … C7) follow the eight. */
   const row = (rows: ChecklistRow[], n: number) => rows.find((r) => r.n === n && !r.code)!;
   const paper = (rows: ChecklistRow[]) => rows.filter((r) => !r.code);
   const coded = (rows: ChecklistRow[], code: string) => rows.find((r) => r.code === code)!;
 
-  it("lists the seven rules of a one-family line, unprefixed", () => {
+  it("lists the eight rules of a one-family line, unprefixed", () => {
     const { rows, familyBlocking, proposal } = depositLineChecklist({ ...food, families: ["MICRO"], quantity: 150 }, DEFAULT_THRESHOLDS);
     expect(paper(rows).map((r) => [r.n, r.status])).toEqual([
       [1, "CONFORME"],
@@ -185,6 +187,7 @@ describe("depositLineChecklist — the seven rules of a deposit line", () => {
       [5, "SANS_OBJET"],
       [6, "CONFORME"],
       [7, "SANS_OBJET"],
+      [8, "SANS_OBJET"],
     ]);
     expect(row(rows, 2)).toMatchObject({ detail: "Quantité 150 g ≥ 100 g", rules: ["ALIMENT_MICRO_POIDS"] });
     // No analysis ticked: histamine is checked at the programme.
@@ -198,7 +201,7 @@ describe("depositLineChecklist — the seven rules of a deposit line", () => {
       { ...food, families: ["MICRO", "CHIMIE"], quantity: 150 },
       DEFAULT_THRESHOLDS
     );
-    expect(paper(rows)).toHaveLength(7);
+    expect(paper(rows)).toHaveLength(8);
     expect(row(rows, 2)).toMatchObject({
       status: "CONFORME",
       detail: "Microbiologie : quantité 150 g ≥ 100 g",
@@ -212,7 +215,7 @@ describe("depositLineChecklist — the seven rules of a deposit line", () => {
     });
     expect(row(rows, 6)).toMatchObject({ status: "CONFORME", detail: "4 °C", rules: ["TEMPERATURE_ARRIVEE"] });
     expect(row(rows, 1)).toMatchObject({ status: "CONFORME" });
-    // 2M could be conform on its own: today's quantity logic is kept (lab question).
+    // Without « Quantité 1P » (one container weighed for both), 2M could be conform on its own.
     expect(familyBlocking).toBe(true);
     expect(proposal).toMatchObject({ conformity: false, forced: true, rule: 3, reason: "QUANTITE_INSUFFISANTE" });
   });
@@ -269,7 +272,7 @@ describe("depositLineChecklist — the seven rules of a deposit line", () => {
     expect(row(rows, 2)).toMatchObject({ status: "SANS_OBJET", detail: "Sans objet : autre famille d'analyses" });
   });
 
-  it("lists the contrôles complémentaires after the seven rules, one answer for both samples", () => {
+  it("lists the contrôles complémentaires after the eight rules, one answer for both samples", () => {
     const { rows, proposal } = depositLineChecklist(
       { ...food, families: ["MICRO", "CHIMIE"], quantity: 500, packagingOk: false },
       DEFAULT_THRESHOLDS
@@ -355,6 +358,77 @@ describe("depositLineChecklist — the seven rules of a deposit line", () => {
 
   it("merges nothing for a single list", () => {
     expect(mergeFamilyRows([])).toEqual({ rows: [], familyBlocking: false });
+  });
+
+  it("weighs each family's container apart (12/10): rule (2) on « Quantité 1M », rule (3) on « Quantité 1P »", () => {
+    const twoContainers = depositLineChecklist(
+      { ...food, families: ["MICRO", "CHIMIE"], quantity: 120, chimieQuantity: { quantity: 350, quantityUnit: "G" } },
+      DEFAULT_THRESHOLDS
+    );
+    expect(row(twoContainers.rows, 2)).toMatchObject({ status: "CONFORME", detail: "Microbiologie : quantité 120 g ≥ 100 g" });
+    expect(row(twoContainers.rows, 3)).toMatchObject({ status: "CONFORME", detail: "Physico-chimie : quantité 350 g ≥ 300 g" });
+    expect(twoContainers.proposal).toMatchObject({ conformity: true, forced: false });
+
+    // The physico-chemistry part too light: rule (3) refuses, on its own weight.
+    const lightP = depositLineChecklist(
+      { ...food, families: ["MICRO", "CHIMIE"], quantity: 400, chimieQuantity: { quantity: 250, quantityUnit: "G" } },
+      DEFAULT_THRESHOLDS
+    );
+    expect(row(lightP.rows, 2)).toMatchObject({ status: "CONFORME", detail: "Microbiologie : quantité 400 g ≥ 100 g" });
+    expect(row(lightP.rows, 3)).toMatchObject({ status: "NON_CONFORME", detail: "Physico-chimie : quantité 250 g < 300 g requis" });
+    expect(lightP.proposal).toMatchObject({ forced: true, rule: 3, reason: "QUANTITE_INSUFFISANTE" });
+
+    // « Quantité 1P » left empty: that part is not weighed, « à vérifier ».
+    const unweighedP = depositLineChecklist(
+      { ...food, families: ["MICRO", "CHIMIE"], quantity: 400, chimieQuantity: { quantity: null, quantityUnit: "G" } },
+      DEFAULT_THRESHOLDS
+    );
+    expect(row(unweighedP.rows, 3)).toMatchObject({ status: "A_VERIFIER", detail: "Physico-chimie : quantité non renseignée — minimum 300 g" });
+  });
+
+  it("reads « Quantité nP » only for the physico-chemistry sample of a two-family line", () => {
+    const line = { families: ["MICRO", "CHIMIE"] as const, quantity: 150, quantityUnit: "G" as const, chimieQuantity: { quantity: 2, quantityUnit: "L" as const } };
+    expect(depositSampleQuantity({ ...line, families: [...line.families] }, "MICRO")).toEqual({ quantity: 150, quantityUnit: "G" });
+    expect(depositSampleQuantity({ ...line, families: [...line.families] }, "CHIMIE")).toEqual({ quantity: 2, quantityUnit: "L" });
+    // One family ticked: the line's own quantity, whatever was left in the second field.
+    expect(depositSampleQuantity({ ...line, families: ["CHIMIE"] }, "CHIMIE")).toEqual({ quantity: 150, quantityUnit: "G" });
+    // Not sent: the line's quantity serves both, as before.
+    expect(depositSampleQuantity({ families: ["MICRO", "CHIMIE"], quantity: 150, quantityUnit: "G" }, "CHIMIE")).toEqual({
+      quantity: 150,
+      quantityUnit: "G",
+    });
+    expect(depositSampleQuantity({ families: ["MICRO"], quantity: null, quantityUnit: "G" }, "MICRO")).toEqual({
+      quantity: null,
+      quantityUnit: null,
+    });
+  });
+
+  it("applies rule (8) to a deposit of live bivalve molluscs, on the désignation, the type or the nature", () => {
+    const clams = depositLineChecklist({ ...food, families: ["MICRO"], quantity: 120, productNames: ["Palourdes", null] }, DEFAULT_THRESHOLDS);
+    expect(row(clams.rows, 8)).toMatchObject({ status: "CONFORME", detail: "Poids 120 g ≥ 50 g · au moins 10 individus : à vérifier" });
+    const byType = depositLineChecklist(
+      { ...food, families: ["MICRO"], quantity: 120, productNames: ["Produit test", "Mollusques bivalves vivants"] },
+      DEFAULT_THRESHOLDS
+    );
+    expect(row(byType.rows, 8).status).toBe("CONFORME");
+    const byNature = depositLineChecklist(
+      { ...food, families: ["MICRO"], quantity: 120, natureLabels: { MICRO: "Microbiologie des coquillages — huîtres" } },
+      DEFAULT_THRESHOLDS
+    );
+    expect(row(byNature.rows, 8).status).toBe("CONFORME");
+    expect(row(depositLineChecklist({ ...food, families: ["MICRO"], quantity: 120 }, DEFAULT_THRESHOLDS).rows, 8).status).toBe("SANS_OBJET");
+  });
+
+  it("lifts rule (6) for a stable food received « Ambiant » (12/10)", () => {
+    const stable = depositLineChecklist(
+      { ...food, families: ["MICRO", "CHIMIE"], quantity: 150, chimieQuantity: { quantity: 400, quantityUnit: "G" }, receptionTemperature: null, storageClass: "AMBIANT" },
+      DEFAULT_THRESHOLDS
+    );
+    expect(row(stable.rows, 6)).toMatchObject({
+      status: "SANS_OBJET",
+      detail: "Sans objet : aliment stable (conservé à température ambiante)",
+    });
+    expect(stable.proposal).toMatchObject({ conformity: true, forced: false });
   });
 });
 

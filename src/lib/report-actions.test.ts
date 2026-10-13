@@ -4,8 +4,10 @@ import { describe, expect, it } from "vitest";
 import { ROLES } from "./roles";
 import {
   CONCLUSION_MAX_LENGTH,
+  REPORT_READ_ROLES,
   RESEND_REPORT_ROLES,
   canEditConclusion,
+  canReadReports,
   canResendReport,
   readConclusionEdit,
   resendOutcome,
@@ -38,8 +40,9 @@ function handler(text: string, method: string): string {
 }
 
 describe("« Renvoyer au client »", () => {
-  it("is offered to the gestionnaire, the validator and the administrator on an approved report", () => {
-    for (const role of ["GESTIONNAIRE", "VALIDATEUR", "ADMIN"]) {
+  it("is offered to the gestionnaire, the validator, the Direction and the administrator on an approved report", () => {
+    expect([...RESEND_REPORT_ROLES]).toEqual(["GESTIONNAIRE", "VALIDATEUR", "DIRECTION", "ADMIN"]);
+    for (const role of ["GESTIONNAIRE", "VALIDATEUR", "DIRECTION", "ADMIN"]) {
       expect(canResendReport(role, "VALIDE", false), role).toBe(true);
       expect(canResendReport(role, "RAPPORT_ENVOYE", false), role).toBe(true);
     }
@@ -64,6 +67,31 @@ describe("« Renvoyer au client »", () => {
     expect(calls).toHaveLength(1);
     expect([...calls[0]].sort()).toEqual([...RESEND_REPORT_ROLES].sort());
     expect(calls[0]).not.toContain("COMPTABLE");
+  });
+});
+
+describe("reading an issued report (download, duplicata, versions)", () => {
+  it("is open to the validation desks, the commercial side, the accountant and the admin", () => {
+    expect([...REPORT_READ_ROLES]).toEqual(["VALIDATEUR", "DIRECTION", "GESTIONNAIRE", "COMPTABLE", "ADMIN"]);
+    for (const role of ROLES) {
+      expect(canReadReports(role), role).toBe((REPORT_READ_ROLES as readonly string[]).includes(role));
+    }
+    for (const role of ["PRELEVEUR", "RECEPTIONNISTE", "PROGRAMMATEUR", "TECHNICIEN", "MAGASINIER", "CLIENT"]) {
+      expect(canReadReports(role), role).toBe(false);
+    }
+  });
+
+  it("matches the guards of GET /api/samples/[id]/report and of its versions", () => {
+    for (const route of ["../app/api/samples/[id]/report/route.ts", "../app/api/samples/[id]/report/versions/route.ts"]) {
+      const calls = guardedRoles(handler(source(route), "GET"));
+      expect(calls, route).toHaveLength(1);
+      expect([...calls[0]].sort(), route).toEqual([...REPORT_READ_ROLES].sort());
+    }
+  });
+
+  it("is what /recherche asks before offering the report actions", () => {
+    const page = source("../app/recherche/page.tsx");
+    expect(page).toMatch(/const canReport = canReadReports\(session\.role\)/);
   });
 });
 

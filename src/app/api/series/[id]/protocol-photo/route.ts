@@ -19,7 +19,7 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireApiRole("PRELEVEUR", "RECEPTIONNISTE", "VALIDATEUR", "GESTIONNAIRE", "ADMIN");
+  const session = await requireApiRole("PRELEVEUR", "RECEPTIONNISTE", "VALIDATEUR", "DIRECTION", "GESTIONNAIRE", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;

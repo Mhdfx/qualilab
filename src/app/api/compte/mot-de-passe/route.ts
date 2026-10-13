@@ -20,6 +20,7 @@ export async function POST(request: Request) {
     "PROGRAMMATEUR",
     "TECHNICIEN",
     "VALIDATEUR",
+    "DIRECTION",
     "GESTIONNAIRE",
     "COMPTABLE",
     "MAGASINIER",

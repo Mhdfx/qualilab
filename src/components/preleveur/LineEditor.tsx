@@ -77,6 +77,20 @@ type LineEditorProps = {
   /** The unit a sample leaving « Eau » (litres) falls back to: « UNITE » on
    *  a visit (default), « G » at the counter. */
   quantityUnitFallback?: QuantityUnit;
+  /**
+   * One container per family (the laboratory's answer of 12/10): passed by
+   * the counter on a line that becomes two samples. The quantity block then
+   * weighs each family's part — the line's own field becomes « Quantité 2M »,
+   * this one « Quantité 2P ». Absent (the préleveur's visit, a one-family
+   * line): one quantity for the line.
+   */
+  chimieQuantity?: {
+    /** The two samples' references, « 2M » / « 2P » (`lineSampleRefs`). */
+    refs: { micro: string; chimie: string };
+    value: string;
+    unit: QuantityUnit;
+    onChange: (patch: { value?: string; unit?: QuantityUnit }) => void;
+  };
 };
 
 const UNIT_CHOICES = [1, 3, 5, 9];
@@ -121,6 +135,53 @@ function Field({
       </label>
       {children}
       {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
+    </div>
+  );
+}
+
+/** A quantity and its unit, side by side. */
+function QuantityFields({
+  label,
+  unitLabel,
+  inputId,
+  unitId,
+  value,
+  unit,
+  onValue,
+  onUnit,
+  describedBy,
+}: {
+  label: string;
+  unitLabel: string;
+  inputId: string;
+  unitId: string;
+  value: string;
+  unit: QuantityUnit;
+  onValue: (value: string) => void;
+  onUnit: (unit: QuantityUnit) => void;
+  describedBy?: string;
+}) {
+  return (
+    <div className="grid grid-cols-[1fr_auto] gap-3">
+      <Field label={label} htmlFor={inputId}>
+        <input
+          id={inputId}
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={(e) => onValue(e.target.value)}
+          aria-describedby={describedBy}
+          placeholder="Ex. : 1"
+          className="input-field px-4"
+        />
+      </Field>
+      <Field label={unitLabel} htmlFor={unitId}>
+        <select id={unitId} value={unit} onChange={(e) => onUnit(e.target.value as QuantityUnit)} className="input-field px-3">
+          {(["UNITE", "G", "ML", "L"] as const).map((u) => (
+            <option key={u} value={u}>{QUANTITY_UNIT_LABELS[u]}</option>
+          ))}
+        </select>
+      </Field>
     </div>
   );
 }
@@ -195,6 +256,7 @@ export function LineEditor({
   showProfiles = true,
   productTypes = [],
   quantityUnitFallback = "UNITE",
+  chimieQuantity,
 }: LineEditorProps) {
   const kind: LineKind = line.lineKind;
   const number = index + 1;
@@ -526,33 +588,48 @@ export function LineEditor({
             </div>
           )}
 
-          {(kind === "ALIMENT" || kind === "EAU" || kind === "AUTRE") && (
-            <div className="grid grid-cols-[1fr_auto] gap-3">
-              <Field label="Quantité" htmlFor={id("quantity")}>
-                <input
-                  id={id("quantity")}
-                  type="text"
-                  inputMode="decimal"
+          {(kind === "ALIMENT" || kind === "EAU" || kind === "AUTRE") &&
+            (chimieQuantity ? (
+              // One container per family (12/10): each part weighed apart.
+              <div className="space-y-3">
+                <QuantityFields
+                  label={`Quantité ${chimieQuantity.refs.micro}`}
+                  unitLabel={`Unité ${chimieQuantity.refs.micro}`}
+                  inputId={id("quantity")}
+                  unitId={id("unit")}
                   value={line.quantity}
-                  onChange={(e) => onChange({ quantity: e.target.value })}
-                  placeholder="Ex. : 1"
-                  className="input-field px-4"
+                  unit={line.quantityUnit}
+                  onValue={(quantity) => onChange({ quantity })}
+                  onUnit={(quantityUnit) => onChange({ quantityUnit })}
+                  describedBy={id("quantity-hint")}
                 />
-              </Field>
-              <Field label="Unité" htmlFor={id("unit")}>
-                <select
-                  id={id("unit")}
-                  value={line.quantityUnit}
-                  onChange={(e) => onChange({ quantityUnit: e.target.value as LineDraft["quantityUnit"] })}
-                  className="input-field px-3"
-                >
-                  {(["UNITE", "G", "ML", "L"] as const).map((u) => (
-                    <option key={u} value={u}>{QUANTITY_UNIT_LABELS[u]}</option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-          )}
+                <QuantityFields
+                  label={`Quantité ${chimieQuantity.refs.chimie}`}
+                  unitLabel={`Unité ${chimieQuantity.refs.chimie}`}
+                  inputId={id("quantity-chimie")}
+                  unitId={id("unit-chimie")}
+                  value={chimieQuantity.value}
+                  unit={chimieQuantity.unit}
+                  onValue={(value) => chimieQuantity.onChange({ value })}
+                  onUnit={(unit) => chimieQuantity.onChange({ unit })}
+                  describedBy={id("quantity-hint")}
+                />
+                <p id={id("quantity-hint")} className="text-xs text-slate-500">
+                  Un contenant par famille : pesez la part de chaque famille.
+                </p>
+              </div>
+            ) : (
+              <QuantityFields
+                label="Quantité"
+                unitLabel="Unité"
+                inputId={id("quantity")}
+                unitId={id("unit")}
+                value={line.quantity}
+                unit={line.quantityUnit}
+                onValue={(quantity) => onChange({ quantity })}
+                onUnit={(quantityUnit) => onChange({ quantityUnit })}
+              />
+            ))}
 
           <Field label="Lieu / section" htmlFor={id("lieu")} required>
             <input

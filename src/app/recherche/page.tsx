@@ -11,6 +11,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ClientSiteFilter } from "@/components/recherche/ClientSiteFilter";
 import { ReportActions } from "@/components/validation/ReportActions";
 import { amendedNumber } from "@/lib/report-amendment";
+import { canReadReports } from "@/lib/report-actions";
 
 export const metadata = { title: "Recherche des analyses" };
 
@@ -35,7 +36,7 @@ const TONES: Record<Conclusion["tone"], string> = {
  * Server-side and paginated.
  */
 export default async function RecherchePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const session = await requireRole("RECEPTIONNISTE", "PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "GESTIONNAIRE", "COMPTABLE", "ADMIN");
+  const session = await requireRole("RECEPTIONNISTE", "PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "DIRECTION", "GESTIONNAIRE", "COMPTABLE", "ADMIN");
   const raw = await searchParams;
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(raw)) if (typeof v === "string") params.set(k, v);
@@ -69,11 +70,12 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
   const clients = clientRows.map((c) => ({ id: c.id, name: c.archived ? `${c.name} (archivé)` : c.name }));
   const pages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
   const canExport = session.role !== "TECHNICIEN";
-  const canReport = ["VALIDATEUR", "GESTIONNAIRE", "COMPTABLE", "ADMIN"].includes(session.role);
+  // The roles the report route admits (`REPORT_READ_ROLES`).
+  const canReport = canReadReports(session.role);
   // AMENDEMENT.md §4: the number of the version in force and any amendment
   // in progress, for the report actions of each row — and whether it has
   // left yet, for « Envoyer / Renvoyer au client » (gestionnaire, validator,
-  // administrator; finalversion.md:116).
+  // Direction, administrator; finalversion.md:116).
   const reports = canReport
     ? await prisma.report.findMany({
         where: { sampleId: { in: result.rows.filter((r) => r.hasReport).map((r) => r.id) } },

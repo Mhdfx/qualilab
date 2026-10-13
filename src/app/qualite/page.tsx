@@ -17,7 +17,7 @@ const RECENT_EXCURSIONS = 20;
 
 export default async function QualitePage() {
   // Belt and braces with the layout guard: a page must be safe on its own.
-  await requireRole("VALIDATEUR", "ADMIN");
+  await requireRole("VALIDATEUR", "DIRECTION", "ADMIN");
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
 

@@ -11,7 +11,7 @@ import { similarLabels } from "@/lib/similar";
  * the list (`?all=1` includes the archived).
  */
 export async function GET(request: Request) {
-  const session = await requireApiRole("VALIDATEUR", "ADMIN");
+  const session = await requireApiRole("VALIDATEUR", "DIRECTION", "ADMIN");
   if (session instanceof NextResponse) return session;
   const all = new URL(request.url).searchParams.get("all") === "1" && session.role === "ADMIN";
   const rows = await prisma.regulation.findMany({

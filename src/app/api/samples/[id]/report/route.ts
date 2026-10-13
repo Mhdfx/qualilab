@@ -2,11 +2,10 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { AUDIT_ACTIONS, logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { buildReportHtml, REPORT_PDF_MARGIN, type ReportData, type ReportMarks } from "@/lib/report-html";
-import { renderPdf } from "@/lib/pdf";
+import type { ReportData, ReportMarks } from "@/lib/report-html";
+import { renderReportPdf } from "@/lib/report-pdf";
 import { loadReportData, loadReportVersion } from "@/lib/report-dispatch";
 import { amendedNumber } from "@/lib/report-amendment";
-import { getCompany } from "@/lib/company-server";
 
 /**
  * Downloads the official analysis report as a PDF.
@@ -27,6 +26,7 @@ export async function GET(
 ) {
   const session = await requireApiRole(
     "VALIDATEUR",
+    "DIRECTION",
     "GESTIONNAIRE",
     "COMPTABLE",
     "ADMIN"
@@ -94,7 +94,8 @@ export async function GET(
   if (duplicata) marks.duplicataAt = new Date();
 
   try {
-    const pdf = await renderPdf(buildReportHtml(data, await getCompany(), marks), { margin: REPORT_PDF_MARGIN });
+    // The template PG06/EN03: page 1 and its annex, the cartouche, the legend and legal footer.
+    const pdf = await renderReportPdf(data, { marks });
 
     await logAudit({
       actorId: session.id,

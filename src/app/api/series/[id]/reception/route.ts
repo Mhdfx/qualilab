@@ -31,7 +31,8 @@ class StaleReception extends Error {}
  * §5, V3) are received like any other, each with its own N° de contrôle,
  * microbiology first.
  *
- * The seven rules of the bon de réception are a checklist (retour du 08/10):
+ * The eight rules of the bon de réception are a checklist (retour du 08/10,
+ * rule (8) since 12/10):
  * rule (1) — exploitable or not — is answered for every sample and stored on
  * it (`receptionExploitable`); the whole checklist, recomputed here with the
  * laboratory's thresholds, goes to the SAMPLE_RECEIVED audit. Histamine and
@@ -86,7 +87,10 @@ export async function POST(
             receptionTemperature: true,
             // C7: the DLC of a food sample, against the day of reception.
             expiryDate: true,
-            nature: { select: { family: true } },
+            // Rule (8): live bivalve molluscs are recognised on these names.
+            produit: true,
+            productType: { select: { name: true } },
+            nature: { select: { family: true, label: true } },
             parameters: { select: { parameter: { select: { name: true, aliases: true } } } },
           },
           orderBy: [{ lineNumber: "asc" }, { code: "asc" }],
@@ -126,6 +130,7 @@ export async function POST(
     receptionTemperature: s.receptionTemperature,
     unitCount: s.unitCount,
     expiryDate: s.expiryDate,
+    productNames: [s.produit, s.productType?.name, s.nature.label],
   }));
 
   // The old global switch (blockNonConformAtReception) is retired: each
@@ -298,7 +303,7 @@ export async function POST(
             quantity: line.quantity,
             quantityUnit: line.quantityUnit,
             checks: line.checks.filter((c) => c.level !== "OK"),
-            // The seven rules of the bon, as received (retour du 08/10).
+            // The eight rules of the bon, as received (retour du 08/10, 12/10).
             checklist: line.checklist,
             // The contrôles complémentaires (hors bon), C1 … C7, as received.
             complementary: line.complementary,

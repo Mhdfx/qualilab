@@ -310,10 +310,10 @@ describe("entry check and billing", () => {
   const ruleRow = <T extends { n: number; code?: string }>(rows: T[], n: number) => rows.find((r) => r.n === n && !r.code)!;
   const coded = <T extends { code?: string }>(rows: T[], code: string) => rows.find((r) => r.code === code)!;
 
-  it("recomputes the seven rules of the bon with the programmed analyses and units, never refusing", () => {
+  it("recomputes the eight rules of the bon with the programmed analyses and units, never refusing", () => {
     const draft = initialDraft(received, referential);
     const rows = entryChecks({ ...sample, receptionExploitable: true }, draft, referential, DEFAULT_THRESHOLDS);
-    expect(rows.filter((r) => !r.code).map((r) => r.n)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(rows.filter((r) => !r.code).map((r) => r.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     // 50 g of food for microbiology would be refused at reception: « à vérifier » here.
     expect(ruleRow(rows, 2)).toMatchObject({ status: "A_VERIFIER", reason: "QUANTITE_INSUFFISANTE", rules: ["ALIMENT_MICRO_POIDS"] });
     expect(rows.every((r) => r.status !== "NON_CONFORME" && r.status !== "A_CONFIRMER")).toBe(true);
@@ -433,6 +433,46 @@ describe("entry check and billing", () => {
     expect(ruleRow(entryChecks(chimieSample, draft, referential, DEFAULT_THRESHOLDS), 7)).toMatchObject({
       status: "SANS_OBJET",
       detail: "Si l'histamine est demandée : 9 × 100 g — vérifié au programme",
+    });
+  });
+
+  it("rule (8): recognises live bivalve molluscs on the désignation, the programmed type or the programmed nature (12/10)", () => {
+    const draft = initialDraft(received, referential);
+    // 50 g of oysters: the minimum met, the individuals to check.
+    expect(ruleRow(entryChecks({ ...sample, produit: "Huîtres creuses" }, draft, referential, DEFAULT_THRESHOLDS), 8)).toMatchObject({
+      status: "CONFORME",
+      detail: "Poids 50 g ≥ 50 g · au moins 10 individus : à vérifier",
+      rules: ["MOLLUSQUES_POIDS"],
+    });
+    // Never refusing: 20 g would be refused at reception, « à vérifier » here.
+    expect(ruleRow(entryChecks({ ...sample, produit: "Moules", quantity: 20 }, draft, referential, DEFAULT_THRESHOLDS), 8)).toMatchObject({
+      status: "A_VERIFIER",
+      reason: "QUANTITE_INSUFFISANTE",
+    });
+    // A plain product: « sans objet ».
+    expect(ruleRow(entryChecks({ ...sample, produit: "Salade test" }, draft, referential, DEFAULT_THRESHOLDS), 8).status).toBe("SANS_OBJET");
+    // The type and the nature chosen on the sheet count too.
+    const typed: ProgrammeReferentialData = {
+      ...referential,
+      productTypes: [...referential.productTypes, { id: "type-bivalves", name: "Mollusques bivalves vivants", family: "MICRO", clientId: null, criteria: [] }],
+      natures: referential.natures.map((n) => (n.id === "nat-fine" ? { ...n, label: "Coquillages — palourdes" } : n)),
+    };
+    expect(
+      ruleRow(entryChecks({ ...sample, produit: "Produit test" }, { ...draft, productTypeId: "type-bivalves" }, typed, DEFAULT_THRESHOLDS), 8).status
+    ).toBe("CONFORME");
+    expect(ruleRow(entryChecks({ ...sample, produit: "Produit test" }, { ...draft, natureId: "nat-fine" }, typed, DEFAULT_THRESHOLDS), 8).status).toBe(
+      "CONFORME"
+    );
+  });
+
+  it("rule (6): a food received « Ambiant » is a stable food, its temperature « sans objet » (12/10)", () => {
+    const draft = initialDraft(received, referential);
+    const stable = entryChecks({ ...sample, receptionTemperature: null, storageClass: "AMBIANT" }, draft, referential, DEFAULT_THRESHOLDS);
+    expect(ruleRow(stable, 6)).toMatchObject({ status: "SANS_OBJET", detail: "Sans objet : aliment stable (conservé à température ambiante)" });
+    // Chilled by default: the missing temperature shows, « à vérifier » here.
+    expect(ruleRow(entryChecks({ ...sample, receptionTemperature: null }, draft, referential, DEFAULT_THRESHOLDS), 6)).toMatchObject({
+      status: "A_VERIFIER",
+      reason: "TEMPERATURE_MANQUANTE",
     });
   });
 

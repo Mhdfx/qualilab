@@ -627,3 +627,113 @@ Restent ouvertes de l'envoi précédent : Q57–Q66.
 - Prévenir la réception des nouveaux contrôles (C3 / C5 obligatoires,
   observation obligatoire pour un doute accepté, « Prélevé le » à demander
   au client) et rafraîchir les pages ouvertes après le déploiement.
+
+## 12. Réponses du laboratoire du 12/10 — construit le 13/10, pas déployé
+
+Reçu le 12/10 : un e-mail répondant aux questions Q57 à Q66, le protocole
+PG04/EN01 et le bon de réception PG05/EN04 annotés à la main, et le modèle
+Word du rapport d'essai (PG06/EN03, version M, deux pages). Les noms, les
+numéros légaux et les coordonnées qui figurent sur ces documents ne sont
+**jamais** recopiés dans le dépôt : ce sont des données que l'exploitant
+saisit dans `/admin/entreprise` et `/admin/utilisateurs`.
+
+### 12.1 Les réponses
+
+| Sujet | Réponse du laboratoire | Question |
+|---|---|---|
+| Bon de réception PG05/EN04 | Version **H** (date à venir). « N° de factures » barré, « Référence client » gardée ; les ajouts du LIMS (N° de contrôle, cadre, site) restent. **Note (8) ajoutée** : « Pour le cas des mollusques bivalves vivants, un échantillon représentatif doit contenir au moins 10 individus et peser au moins 50 g (25 g pour les animaux de petite taille) ». | Q57, Q58 |
+| Protocole PG04/EN01 | Version **G** (date à venir) : « N° de factures » barré, « + les modifications du 05/10 », et les huit notes du bon ajoutées au protocole. | Q59 |
+| Rapport d'essai | Modèle **PG06/EN03, version M**, créé le 05/01/2006, mis à jour le 18/12/2023 : page 1 = le rapport, page 2 = « -ANNEXE- Interprétation des résultats ». Signatures « Responsable Technique » et « Direction ». | Q60, Q66 |
+| Échantillon micro + physico-chimie | **Un contenant par famille** : 100 g vérifiés sur l'échantillon micro, 300 g sur l'échantillon physico-chimie, chacun son poids. | Q61 |
+| Histamine, moins de 9 unités | **Pas encore tranché** : le comportement actuel est gardé (« à vérifier »). | Q62 |
+| Température obligatoire | Aliment, eau, air et surface, **sauf les aliments stables**. | Q63 |
+| Validation administrative | « Directeur et son suppléant » ; la liste nomme quatre personnes, dont deux font aussi la validation technique. | Q65 |
+
+### 12.2 Ce qui est construit (13/10)
+
+Une migration additive, `20261013100000_retour_labo_1210` (colonnes
+nullables ou avec défaut ; deux écritures qui ne remplissent que ce qui est
+vide), puis trois chantiers relus chacun par un relecteur indépendant, puis
+une passe d'intégration avec une recette complète sur une copie locale.
+
+- **Bon et protocole.** Les deux impriment les notes (1) à (8), (8) dans les
+  mots du laboratoire, chiffres lus dans `/admin/reglages` ; le protocole les
+  imprime sous son tableau. Ni l'un ni l'autre n'imprime « N° de factures » ;
+  « Référence client » reste. Le pied du protocole suit le papier : la raison
+  sociale en capitales, « Tél. : … - Fax : … - E-mail : … », « ICE : … », tout
+  lu dans `/admin/entreprise` (une partie vide est omise).
+- **Règle (8), mollusques bivalves vivants.** Reconnus sur la désignation, le
+  type de produit ou la nature (huître, moule, palourde, coque, praire, clam,
+  pétoncle, coquille, « mollusque », « bivalve » ; « œuf à la coque »,
+  « moulé », céphalopodes et gastéropodes exclus). Moins de 25 g : non
+  conforme ; de 25 à 50 g : « à vérifier » (une acceptation se justifie par
+  écrit) ; 50 g et plus : conforme ; « au moins 10 individus : à vérifier »
+  toujours, le logiciel ne comptant pas les individus. Trois seuils dans
+  `/admin/reglages` (10 individus, 50 g, 25 g ; le minimum « petite taille »
+  ne peut pas dépasser l'autre).
+- **Règle (6), température.** Obligatoire par défaut pour l'aliment, l'eau,
+  l'air et la surface (la ligne de réglages encore à l'ancien défaut est
+  déplacée par la migration). Un aliment reçu en conservation « Ambiant —
+  aliment stable (conserve, sec, UHT…) » n'en demande pas : la ligne (6) dit
+  « Sans objet : aliment stable ». Les mains restent facultatives.
+- **Un contenant par famille.** Au comptoir, une ligne aux deux familles
+  demande « Quantité 1M » et « Quantité 1P », chacune avec son unité ; à la
+  réception d'une visite, chaque carte jumelle dit « Quantité reçue (1M) » /
+  « (1P) » avec « Un contenant par famille : pesez la part de chaque
+  famille ». La règle (2) juge le poids de l'échantillon M, la règle (3) celui
+  du P ; chaque échantillon garde son poids.
+- **Rapport d'essai au modèle PG06/EN03 M**, deux pages : cartouche noire
+  (Réf, version, « Page x sur y », dates, depuis la ligne RAPPORT de
+  `/admin/documents`) ; page 1 « RAPPORT D'ANALYSES », N° de série, encadré
+  client, tableau « Produit (IC) » (prélèvement et réception, données du
+  client, information sur l'échantillon), résultats R1 … Rn, signatures
+  « Responsable Technique » (le validateur technique) et « Direction » (le
+  signataire de la validation administrative) ; page 2 « -ANNEXE-
+  Interprétation des résultats » (verdict coché, réglementation, critères
+  m | M avec n et c, conclusion) ; sur chaque page la légende, le N.B. et le
+  pied légal (raison sociale, adresse, Tél / Fax / E-mail / site, IF - RC -
+  Patente - CNSS, une valeur vide omise). Téléchargement, duplicata, versions,
+  portail et pièce jointe de l'e-mail : un seul rendu. Amendement : « annule et
+  remplace » et « (VC) » après le numéro.
+- **Identité.** `/admin/entreprise` a un groupe « Identifiants légaux » (ICE,
+  RC, IF, Patente, CNSS) et le fax ; vides jusqu'à la saisie par l'exploitant.
+- **Rôle « Direction — validation administrative ».** Les droits du
+  validateur (validation technique, renvoi, rapports, « Corriger la fiche »,
+  recherche et export, système qualité) **plus** la validation
+  administrative ; jamais l'administration du système (comptes, réglages,
+  documents, catalogue, fusions, facturation, réouverture, conclusion).
+  Jamais les deux étapes sur un même échantillon, quel que soit le rôle. Une
+  personne qui a déjà un compte de validateur reçoit le rôle sur **ce**
+  compte, jamais un second compte. L'administrateur garde la validation
+  administrative en attendant la réponse du laboratoire.
+
+**Recette locale du 13/10** (copie isolée sur localhost, base locale, client
+« TEST UI 1210 … », comptes de test) : **137 contrôles, tous verts** —
+réception d'une visite (refus de la règle (3) sur le P à 250 g, de la règle
+(6) sur l'air et la surface sans température, aliment stable accepté sans
+température, règle (8) « à vérifier » à 40 g et non conforme à 20 g), dépôt
+au comptoir à deux contenants (API et navigateur), bon et protocole PDF,
+circuit complet jusqu'au rapport (validation technique par un validateur,
+administrative par la Direction, refus de la même personne), rapport comparé
+page à page au modèle, amendement, portail, droits de la Direction. Détail :
+TESTPLAN V13.
+
+### 12.3 Ce qui reste ouvert
+
+- **Histamine** (Q62) : indécis ; le comportement actuel reste.
+- **Qui reçoit le rôle Direction**, et l'administrateur du système garde-t-il
+  la validation administrative (Q102) ? Les comptes réels et les noms des
+  techniciens sont saisis par l'exploitant dans `/admin/utilisateurs`, jamais
+  dans le dépôt.
+- **Dates des versions** : protocole G et bon H, à saisir dans
+  `/admin/documents` dès que le laboratoire les donne (Q103) ; d'ici là les
+  cartouches impriment F et G.
+- **Aliments stables** : confirmer que le choix « Ambiant » à la réception
+  est le bon critère, et si les mains demandent une température (Q101).
+- **Règle (8)** : remplace-t-elle les minima (2) / (3) pour les mollusques, ou
+  s'y ajoute-t-elle (Q99) ? Telle que construite, elle s'ajoute : avec les
+  seuils actuels, un mollusque sous 100 g reste non conforme par la règle (2).
+  Liste des mots et comptage des individus (Q100).
+- **Rapport** : les choix faits là où le modèle ne dit rien (Q104) ; le reste
+  de Q58 / Q60 (fax du client, documents sans cartouche) en Q105.
+- Toujours ouvertes de l'envoi précédent : Q64 (règle (1)), Q67–Q98.

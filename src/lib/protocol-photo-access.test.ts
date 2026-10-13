@@ -12,8 +12,8 @@ import { ROLES } from "./roles";
 const serie = { createdById: "pre1" };
 
 describe("protocolPhotoAccess — who sees the photo of the signed protocol (C6)", () => {
-  it("lets the reception, the validation, the commercial side and the admin see any série", () => {
-    for (const role of ["RECEPTIONNISTE", "VALIDATEUR", "GESTIONNAIRE", "ADMIN"] as const) {
+  it("lets the reception, the validation (validateur, Direction), the commercial side and the admin see any série", () => {
+    for (const role of ["RECEPTIONNISTE", "VALIDATEUR", "DIRECTION", "GESTIONNAIRE", "ADMIN"] as const) {
       expect(protocolPhotoAccess({ id: "someone", role }, serie)).toBe("ALLOWED");
     }
   });
@@ -31,7 +31,7 @@ describe("protocolPhotoAccess — who sees the photo of the signed protocol (C6)
   });
 
   it("names every admitted role explicitly, and every role is decided", () => {
-    expect([...PROTOCOL_PHOTO_ROLES]).toEqual(["PRELEVEUR", "RECEPTIONNISTE", "VALIDATEUR", "GESTIONNAIRE", "ADMIN"]);
+    expect([...PROTOCOL_PHOTO_ROLES]).toEqual(["PRELEVEUR", "RECEPTIONNISTE", "VALIDATEUR", "DIRECTION", "GESTIONNAIRE", "ADMIN"]);
     for (const role of ROLES) expect(typeof canSeeProtocolPhoto(role)).toBe("boolean");
   });
 

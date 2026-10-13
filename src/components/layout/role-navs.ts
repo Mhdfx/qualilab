@@ -3,6 +3,7 @@ import {
   Inbox,
   FlaskConical,
   ShieldCheck,
+  Stamp,
   Building2,
   FileText,
   Wallet,
@@ -17,6 +18,8 @@ import {
   PackagePlus,
   Search,
 } from "lucide-react";
+import { viewHref } from "@/lib/dashboard-view";
+import type { ValidationView } from "@/lib/circuit-views";
 import type { NavSection } from "./nav-types";
 
 /**
@@ -63,6 +66,28 @@ export const validationNav: NavSection[] = [
     items: [
       { label: "Tableau de bord", href: "/validation", icon: LayoutDashboard },
       { label: "À valider", href: "/validation#file", icon: ShieldCheck },
+      { label: "Recherche des analyses", href: "/recherche", icon: Search },
+    ],
+  },
+];
+
+/** A step of the validation queue, opened on its own view (`?vue=`, like the dashboard's tiles). */
+function validationStep(view: ValidationView): string {
+  return viewHref("/validation", view, "file");
+}
+
+/**
+ * The Direction's menu (12/10): the validation queue with its two steps —
+ * the Direction signs both, never both on one sample — and the search.
+ * The quality system is added by nav-for-role.ts, as for the validateur.
+ */
+export const directionNav: NavSection[] = [
+  {
+    title: "Menu principal",
+    items: [
+      { label: "Tableau de bord", href: "/validation", icon: LayoutDashboard },
+      { label: "Validation technique", href: validationStep("a_valider"), icon: ShieldCheck },
+      { label: "Validation administrative", href: validationStep("attente_admin"), icon: Stamp },
       { label: "Recherche des analyses", href: "/recherche", icon: Search },
     ],
   },

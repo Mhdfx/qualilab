@@ -34,8 +34,10 @@ import {
  * protocol and as two rows — one N° de contrôle each — on the bon.
  *
  * Both carry the paper's quality cartouche at the head of every page
- * (cartouche-html.ts); the protocol keeps the laboratory's coordinates as
- * its footer, the bon has none, as on the paper.
+ * (cartouche-html.ts) and the eight notes of the bon, figures from the
+ * laboratory's thresholds (the protocol since 12/10); the protocol keeps the
+ * laboratory's coordinates as its footer (name, phone, fax, e-mail, ICE from
+ * /admin/entreprise), the bon has none, as on the paper.
  *
  * Never the bench (TECHNICIEN): both name the client and the site, and the
  * analysis is blind — like the photo of the signed protocol.
@@ -48,6 +50,7 @@ export async function GET(
     "PRELEVEUR",
     "RECEPTIONNISTE",
     "VALIDATEUR",
+    "DIRECTION",
     "GESTIONNAIRE",
     "ADMIN"
   );
@@ -178,7 +181,8 @@ export async function GET(
   const [company, reference, settings] = await Promise.all([
     getCompany(),
     getDocumentReference(isDeposit ? "BON_RECEPTION" : "PROTOCOLE"),
-    isDeposit ? getLabSettings() : Promise.resolve(null),
+    // The notes (1) … (8) of both documents carry the laboratory's figures.
+    getLabSettings(),
   ]);
   const header = cartoucheTemplate({
     title: DOC_TYPE_LABELS[reference.docType],
@@ -215,7 +219,7 @@ export async function GET(
     lines,
   };
 
-  const html = isDeposit ? buildBonHtml(data, settings ?? undefined) : buildProtocolHtml(data);
+  const html = isDeposit ? buildBonHtml(data, settings) : buildProtocolHtml(data, settings);
   const stem = isDeposit ? "bon-reception" : "protocole";
 
   try {

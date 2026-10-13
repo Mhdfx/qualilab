@@ -9,7 +9,7 @@ export const metadata = { title: "Relevés de température" };
 
 /**
  * The fridges and incubators read from the bench: the technician records a
- * reading here without entering the quality space (VALIDATEUR / ADMIN), the
+ * reading here without entering the quality space (VALIDATEUR, DIRECTION, ADMIN), the
  * same board and the same route (`POST /api/temperatures`, which admits
  * TECHNICIEN). Declaring an equipment and its bounds stays in Qualité.
  */

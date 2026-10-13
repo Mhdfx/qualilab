@@ -40,15 +40,20 @@ import { DEFAULT_THRESHOLDS, RECEPTION_RULES, receptionRuleLine, type ReceptionT
  * (cartouche-html.ts), repeated on every page, so the route prints these
  * pages with `PROTOCOL_MARGIN` / `BON_MARGIN`, which their `@page` declares.
  *
- * - the **protocole de prélèvement** of a visit (PG04/EN01), printed for
- *   the interlocutor's signature — one row per échantillon number: the two
- *   samples of a line whose two families are ticked (« 1M » / « 1P »,
- *   RETOUR-LABO-06-10.md §5, V3) print as one row, their analyses in both
- *   columns under the same number;
- * - the **bon de réception** of a deposit (PG05/EN04 version G, scan of
- *   08/10 — RETOUR-LABO-06-10.md §10), drawn in the paper's navy ink: one
- *   row per sample, since each one carries its own N° de contrôle, then the
- *   paper's seven notes (1) … (7), « Avance », « Reste » and signatures.
+ * - the **protocole de prélèvement** of a visit (PG04/EN01 version G, the
+ *   laboratory's answers of 12/10), printed for the interlocutor's
+ *   signature — one row per échantillon number: the two samples of a line
+ *   whose two families are ticked (« 1M » / « 1P », RETOUR-LABO-06-10.md §5,
+ *   V3) print as one row, their analyses in both columns under the same
+ *   number; then the eight notes of the bon, and the laboratory's
+ *   coordinates as its footer (`documentFooter`);
+ * - the **bon de réception** of a deposit (PG05/EN04 version H, 12/10),
+ *   drawn in the paper's navy ink: one row per sample, since each one
+ *   carries its own N° de contrôle, then the paper's eight notes (1) … (8),
+ *   « Avance », « Reste » and signatures.
+ *
+ * Neither prints « N° de factures »: the laboratory struck it out of both
+ * forms (12/10) — « Référence client » takes its place (05/10).
  */
 
 export type DocumentLine = {
@@ -129,20 +134,58 @@ export type SerieDocumentData = {
 /** One list of payment-mode labels for the whole app: invoice-lifecycle.ts owns it. */
 export { PAYMENT_MODE_LABELS };
 
-/** The protocol keeps a footer line (the laboratory's coordinates, as on the paper). */
-export const PROTOCOL_MARGIN = cartoucheMargin({ footer: true });
+/**
+ * The protocol keeps a footer (the laboratory's coordinates, as on the
+ * paper): three lines, so a deeper bottom margin than a one-line footer.
+ */
+export const PROTOCOL_MARGIN = { ...cartoucheMargin({ footer: true }), bottom: "20mm" };
 /** The paper bon has no footer. */
 export const BON_MARGIN = cartoucheMargin();
 
 /**
+ * The lines of the protocol's footer, as at the foot of the paper
+ * (PG04/EN01): the laboratory's name, then « Tél. : … - Fax : … - E-mail :
+ * … », then « ICE : … » — every value from /admin/entreprise
+ * (`CompanySettings`), never written here. An empty value leaves its part
+ * out, an empty line goes.
+ */
+export function protocolFooterLines(company: Pick<CompanyInfo, "name" | "phone" | "fax" | "email" | "ice">): string[] {
+  const value = (text: string | null | undefined) => text?.trim() ?? "";
+  const contacts = [
+    value(company.phone) && `Tél. : ${value(company.phone)}`,
+    value(company.fax) && `Fax : ${value(company.fax)}`,
+    value(company.email) && `E-mail : ${value(company.email)}`,
+  ].filter(Boolean);
+  return [value(company.name), contacts.join(" - "), value(company.ice) && `ICE : ${value(company.ice)}`].filter(Boolean);
+}
+
+/**
  * Footer template for Chromium: the laboratory's coordinates, as at the foot
- * of the paper protocol. The Réf, the version and « Page n sur N » are in
- * the cartouche.
+ * of the paper protocol — the name in capitals, as printed (`protocolFooterLines`).
+ * The Réf, the version and « Page n sur N » are in the cartouche.
  */
 export function documentFooter(company: CompanyInfo) {
-  return `<div style="width:100%;box-sizing:border-box;padding:0 ${PROTOCOL_MARGIN.left};font-family:'Segoe UI',Arial,'Liberation Sans',sans-serif;font-size:7pt;color:#7d929c;text-align:center;">
-    ${escapeHtml(company.name)} · ${escapeHtml(company.address)}, ${escapeHtml(company.city)} · ICE ${escapeHtml(company.ice)}
-  </div>`;
+  // Only the name is set in capitals: without one, the first line is the contacts.
+  const named = Boolean(company.name?.trim());
+  const lines = protocolFooterLines(company)
+    .map((line, index) =>
+      named && index === 0
+        ? `<div style="font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#1f3a4d;">${escapeHtml(line)}</div>`
+        : `<div>${escapeHtml(line)}</div>`
+    )
+    .join("");
+  return `<div style="width:100%;box-sizing:border-box;padding:0 ${PROTOCOL_MARGIN.left};font-family:'Segoe UI',Arial,'Liberation Sans',sans-serif;font-size:7.4pt;line-height:1.35;color:#55707d;text-align:center;">${lines}</div>`;
+}
+
+/**
+ * The eight notes of the bon de réception, (1) … (8), figures from the
+ * laboratory's thresholds — printed under the table of the bon and, since
+ * 12/10, of the protocole (« ajouter les notes du bon au protocole »).
+ */
+function receptionNotesHtml(thresholds: ReceptionThresholds) {
+  return `<ul class="rules">
+  ${RECEPTION_RULES.map((rule) => `<li>${escapeHtml(receptionRuleLine(rule, thresholds))}</li>`).join("\n  ")}
+</ul>`;
 }
 
 const PROTOCOL_CSS = `
@@ -185,6 +228,10 @@ const PROTOCOL_CSS = `
   .case.checked { background: #1f3a4d; }
   .case.checked::after { content: ""; position: absolute; left: 2.6px; top: 0; width: 3px; height: 6px;
     border: solid #fff; border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); }
+  /* The bon's eight notes, under the table: kept together, as on the paper. */
+  .rules { list-style: none; margin: 0 0 10px; padding: 0; color: #1f3a4d; font-size: 7.8pt; font-weight: 600;
+    page-break-inside: avoid; break-inside: avoid; }
+  .rules li { padding-left: 5mm; text-indent: -5mm; margin-bottom: 1px; }
 `;
 
 /**
@@ -217,13 +264,17 @@ const BON_CSS = `
   .mono { font-family: Consolas, "DejaVu Sans Mono", monospace; font-weight: 600; }
   .small { font-size: 7.4pt; color: #55707d; }
   .nc { color: #a5203a; font-weight: 600; }
-  /* The seven notes stay together, as on the paper: a long bon moves them whole to the next page. */
+  /* The eight notes stay together, as on the paper: a long bon moves them whole to the next page. */
   .rules { list-style: none; margin: 0 0 4mm; padding: 0 0 0 2mm; color: ${CARTOUCHE_INK}; font-size: 8.4pt; font-weight: 600;
     page-break-inside: avoid; break-inside: avoid; }
   .rules li { padding-left: 6.5mm; text-indent: -6.5mm; margin-bottom: 0.4mm; }
   .money { width: 62%; margin-bottom: 2mm; }
   .notes { font-size: 8.4pt; color: #55707d; margin: 0 0 3mm; }
-  .signatures { display: flex; gap: 8mm; margin-top: 5mm; page-break-inside: avoid; }
+  /* The labels sit astride the boxes' top border: the block's own padding
+     holds their upper half, so a bon whose signatures move to the next page
+     (the eight notes, long désignations) moves them whole — never a label
+     cut across the page break. */
+  .signatures { display: flex; gap: 8mm; margin-top: 1.5mm; padding-top: 3.5mm; page-break-inside: avoid; break-inside: avoid; }
   .sig { flex: 1; position: relative; border: 1.2px solid ${CARTOUCHE_INK}; height: 30mm; padding: 6mm 4mm 2mm; }
   .sig .role { position: absolute; top: -0.75em; left: 5mm; background: #fff; padding: 0 1.5mm;
     color: ${CARTOUCHE_INK}; font-weight: 700; font-size: 11pt; line-height: 1.3; }
@@ -362,7 +413,7 @@ function familyTicked(data: SerieDocumentData, family: Family) {
 }
 
 /** PG04/EN01 — the protocole de prélèvement of a visit. */
-export function buildProtocolHtml(data: SerieDocumentData): string {
+export function buildProtocolHtml(data: SerieDocumentData, thresholds: ReceptionThresholds = DEFAULT_THRESHOLDS): string {
   const groups = protocolRows(data.lines);
   const rows = groups
     .map((samples) => {
@@ -413,6 +464,8 @@ export function buildProtocolHtml(data: SerieDocumentData): string {
   </tr></thead>
   <tbody>${rows}${padRows(8 - groups.length, 9, nextNumber(data.lines))}</tbody>
 </table>
+
+${receptionNotesHtml(thresholds)}
 
 <h2 class="small" style="margin:0 0 4px;text-transform:uppercase;letter-spacing:.5px">Analyses à effectuer :
   <span class="tick"><span class="case${familyTicked(data, "MICRO") ? " checked" : ""}"></span>${ANALYSIS_FAMILY_LABELS.MICRO}</span>
@@ -543,9 +596,7 @@ export function buildBonHtml(data: SerieDocumentData, thresholds: ReceptionThres
   <tbody>${rows}${blankRows}</tbody>
 </table>
 
-<ul class="rules">
-  ${RECEPTION_RULES.map((rule) => `<li>${escapeHtml(receptionRuleLine(rule, thresholds))}</li>`).join("\n  ")}
-</ul>
+${receptionNotesHtml(thresholds)}
 
 <div class="money">
   ${bonField("Avance :", advance)}

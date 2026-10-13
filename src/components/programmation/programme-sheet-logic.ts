@@ -416,16 +416,21 @@ export function billingLines(
 }
 
 /**
- * The reception's checklist — the seven rules of the bon de réception, then
+ * The reception's checklist — the eight rules of the bon de réception, then
  * the contrôles complémentaires (hors bon) — recomputed with the programmed
- * analyses and units (PROGRAMME.md §4, Vérification d'entrée). Every row is
- * informative here: the reception already accepted the line, so a rule it
- * would refuse on is only « à vérifier ». Rule (1) and the ticked controls
- * (C3, C5) show what the réceptionniste answered; a line received before
- * the checklist or before the controls has no answer, and says so.
+ * analyses, units, product type and nature (PROGRAMME.md §4, Vérification
+ * d'entrée). Every row is informative here: the reception already accepted
+ * the line, so a rule it would refuse on is only « à vérifier ». Rule (1)
+ * and the ticked controls (C3, C5) show what the réceptionniste answered; a
+ * line received before the checklist or before the controls has no answer,
+ * and says so. Rule (6) follows the class chosen at reception (a stable
+ * food needs no temperature) and rule (8) reads the désignation, the type
+ * and the nature on the sheet (12/10).
  */
 export function entryChecks(
   sample: Pick<ProgrammeSampleData, "lineKind" | "nature" | "quantity" | "quantityUnit" | "receptionTemperature"> & {
+    /** The désignation — rule (8) reads it. */
+    produit?: string | null;
     receptionExploitable?: boolean | null;
     receptionPackagingOk?: boolean | null;
     receptionIdentificationOk?: boolean | null;
@@ -444,6 +449,8 @@ export function entryChecks(
     return parameter ? parameterSpellings(parameter) : [];
   });
   const exploitable = sample.receptionExploitable ?? null;
+  // The nature and the type as programmed on the sheet (Q49), else the line's.
+  const nature = referential.natures.find((candidate) => candidate.id === draft.natureId) ?? sample.nature;
   const paper = receptionChecklist(
     {
       lineKind: sample.lineKind,
@@ -453,6 +460,8 @@ export function entryChecks(
       quantityUnit: sample.quantityUnit,
       receptionTemperature: sample.receptionTemperature,
       unitCount: draft.unitCount,
+      storageClass: sample.storageClass ?? null,
+      productNames: [sample.produit, typeOf(referential, draft.productTypeId || null)?.name, nature.label],
     },
     thresholds,
     { exploitable, temperatureSource: sample.receptionTemperatureSource ?? null }

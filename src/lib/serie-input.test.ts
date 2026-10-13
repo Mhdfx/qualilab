@@ -3,9 +3,11 @@ import { NON_CONFORMITY_REASON_LABELS } from "./labels";
 import {
   NON_CONFORMITY_REASONS,
   SERIE_MESSAGES,
+  chimieQuantityMessage,
   normalizeLabel,
   planLineSamples,
   sampleLineMessage,
+  sampleQuantity,
   validateLine,
   validateSerie,
   type CleanLine,
@@ -912,5 +914,71 @@ describe("validateSerie — the deposit's decision and the client's agreement (A
     // A visit carries no reception decision.
     const visit = validateSerie({ ...base, lines: [{ ...agreed, lieu: "Comptoir", decision: "EN_ATTENTE_CLIENT" }] }, natures, { kind: "VISITE" });
     expect(visit.ok && visit.value.lines[0]).toMatchObject({ decision: "ANALYSER", awaitClient: false, consultation: null });
+  });
+});
+
+describe("one container per family — « Quantité nP » (the laboratory's answer of 12/10)", () => {
+  const both = { ...aliment, analysesChimie: true, quantity: "120", quantityUnit: "G" };
+
+  it("keeps the physico-chemistry part of a two-family line beside the line's own quantity", () => {
+    const r = validateLine({ ...both, quantityChimie: "350,5", quantityUnitChimie: "G" }, 1, natures);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value).toMatchObject({ quantity: 120, quantityUnit: "G", chimieQuantity: { quantity: 350.5, quantityUnit: "G" } });
+    // Each sample is weighed on its own part.
+    expect(sampleQuantity(r.value, "M")).toEqual({ quantity: 120, quantityUnit: "G" });
+    expect(sampleQuantity(r.value, "P")).toEqual({ quantity: 350.5, quantityUnit: "G" });
+  });
+
+  it("an empty « Quantité nP » is a part not weighed; a missing unit is « unité(s) », like the line's", () => {
+    const empty = validateLine({ ...both, quantityChimie: "" }, 0, natures);
+    expect(empty.ok && empty.value.chimieQuantity).toEqual({ quantity: null, quantityUnit: null });
+    expect(empty.ok && sampleQuantity(empty.value, "P")).toEqual({ quantity: null, quantityUnit: null });
+    const nulled = validateLine({ ...both, quantityChimie: null }, 0, natures);
+    expect(nulled.ok && nulled.value.chimieQuantity).toEqual({ quantity: null, quantityUnit: null });
+    const noUnit = validateLine({ ...both, quantityChimie: "2" }, 0, natures);
+    expect(noUnit.ok && noUnit.value.chimieQuantity).toEqual({ quantity: 2, quantityUnit: "UNITE" });
+  });
+
+  it("an older page that does not send it keeps today's rule: the « P » sample takes the line's quantity", () => {
+    const r = validateLine(both, 0, natures);
+    expect(r.ok && r.value.chimieQuantity).toBeNull();
+    expect(r.ok && sampleQuantity(r.value, "P")).toEqual({ quantity: 120, quantityUnit: "G" });
+    expect(r.ok && sampleQuantity(r.value, null)).toEqual({ quantity: 120, quantityUnit: "G" });
+  });
+
+  it("refuses a P quantity that is not a positive number, naming the sample", () => {
+    for (const bad of ["-1", "0", "abc", "1000001", true]) {
+      expect(validateLine({ ...both, quantityChimie: bad }, 1, natures)).toEqual({ ok: false, error: chimieQuantityMessage(2), line: 2 });
+    }
+    expect(chimieQuantityMessage(2)).toBe("La quantité 2P doit être un nombre positif (1 000 000 au plus).");
+    const serie = validateSerie(
+      {
+        clientId: "c1",
+        samplerKind: "CLIENT",
+        cadre: "DEVIS_VALIDE",
+        lines: [{ ...both, quantityChimie: "-3", exploitable: true, packagingOk: true, identificationOk: true }],
+      },
+      natures,
+      { kind: "DEPOT" }
+    );
+    expect(serie).toEqual({ ok: false, error: "Échantillon 1 — la quantité 1P doit être un nombre positif (1 000 000 au plus).", line: 1 });
+  });
+
+  it("ignores it on a one-family line, an older caller's nature, and a kind that is not weighed", () => {
+    const micro = validateLine({ ...aliment, quantity: "120", quantityUnit: "G", quantityChimie: "999" }, 0, natures);
+    expect(micro.ok && micro.value.chimieQuantity).toBeNull();
+    const chosen = validateLine({ ...aliment, analysesMicro: undefined, natureId: "fine", quantityChimie: "999" }, 0, natures);
+    expect(chosen.ok && chosen.value.chimieQuantity).toBeNull();
+    const pcSurfaces = new Map([...natures, ["pc-surfaces", { ...natures.get("pc-surfaces")!, active: true }]]);
+    const swab = validateLine({ ...surface, analysesChimie: true, quantityChimie: "999" }, 0, pcSurfaces);
+    expect(swab.ok && swab.value.chimieQuantity).toBeNull();
+    // A garbage value on a line that cannot use it is dropped, never refused.
+    expect(validateLine({ ...aliment, quantityChimie: "abc" }, 0, natures).ok).toBe(true);
+  });
+
+  it("water weighs its two bottles apart too", () => {
+    const r = validateLine({ ...eau, analysesChimie: true, quantity: "1", quantityUnit: "L", quantityChimie: "2", quantityUnitChimie: "L" }, 0, natures);
+    expect(r.ok && r.value.chimieQuantity).toEqual({ quantity: 2, quantityUnit: "L" });
   });
 });

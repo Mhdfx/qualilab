@@ -62,6 +62,13 @@ import {
  * (RETOUR-LABO-06-10.md §9.3): the responsable des paramètres assigns it on
  * the programme sheet; a `technicianId` still sent is ignored.
  *
+ * One container per family (the laboratory's answer of 12/10): a two-family
+ * line weighs each family's part apart — the line's own quantity is the
+ * microbiology sample's (« Quantité 2M »), `quantityChimie` /
+ * `quantityUnitChimie` the physico-chemistry sample's (« Quantité 2P »). A
+ * caller that does not send them (a page opened before) keeps the old rule:
+ * the « P » sample takes the line's quantity (`sampleQuantity`).
+ *
  * Messages: `validateLine` returns the bare sentence (« Choisissez l'état de
  * la surface. ») with the line number aside — « Corriger la fiche » shows it
  * as is; `validateSerie` and `planLineSamples` name the sample in the
@@ -159,8 +166,16 @@ export type CleanLine = {
   numeroLot: string | null;
   productionDate: Date | null;
   expiryDate: Date | null;
+  /** The line's quantity — on a two-family line, its microbiology sample's (« Quantité 2M »). */
   quantity: number | null;
   quantityUnit: QuantityUnit | null;
+  /**
+   * « Quantité 2P »: what the physico-chemistry sample of a two-family line
+   * weighs (one container per family, 12/10) — `quantity` null when not
+   * weighed. Null when not sent (a page opened before: the « P » sample takes
+   * the line's quantity), on a line that is one sample, on a kind not weighed.
+   */
+  chimieQuantity: { quantity: number | null; quantityUnit: QuantityUnit | null } | null;
   productTemperature: number | null;
   ambientTemperature: number | null;
   receptionTemperature: number | null;
@@ -260,6 +275,11 @@ function tooLong(value: unknown, max = TEXT) {
 
 /** The largest quantity a line may carry — the reception's bound too. */
 const MAX_QUANTITY = 1_000_000;
+
+/** « Quantité 2P » refused: the twin's own wording, the bound of the line's. */
+export function chimieQuantityMessage(lineNumber: number): string {
+  return `La quantité ${lineNumber}P doit être un nombre positif (1 000 000 au plus).`;
+}
 
 function numberOrNull(value: unknown): number | null | "invalid" {
   if (value === undefined || value === null || value === "") return null;
@@ -412,6 +432,20 @@ export function validateLine(
   }
   const quantityUnit = quantity === null ? null : (oneOf(input.quantityUnit, QUANTITY_UNITS) ?? "UNITE");
 
+  // « Quantité 2P » (12/10): read only when the line becomes the two samples
+  // and is weighed; `undefined` is a page that does not know the field.
+  const weighedKind = lineKind !== "SURFACE" && lineKind !== "MAINS";
+  const twoSamples = natureSource === "FAMILIES" && lineNatures.length > 1;
+  let chimieQuantity: CleanLine["chimieQuantity"] = null;
+  if (twoSamples && weighedKind && input.quantityChimie !== undefined) {
+    const own = numberOrNull(input.quantityChimie);
+    if (own === "invalid" || (own !== null && (own <= 0 || own > MAX_QUANTITY))) return fail(chimieQuantityMessage(line));
+    chimieQuantity = {
+      quantity: own,
+      quantityUnit: own === null ? null : (oneOf(input.quantityUnitChimie, QUANTITY_UNITS) ?? "UNITE"),
+    };
+  }
+
   const productTemperature = numberOrNull(input.productTemperature);
   const ambientTemperature = numberOrNull(input.ambientTemperature);
   const receptionTemperature = numberOrNull(input.receptionTemperature);
@@ -437,7 +471,7 @@ export function validateLine(
   }
 
   const handsState = lineKind === "MAINS" ? oneOf(input.handsState, HANDS_STATES) : null;
-  const weighed = lineKind !== "SURFACE" && lineKind !== "MAINS";
+  const weighed = weighedKind;
 
   const unitCountRaw = numberOrNull(input.unitCount);
   const unitCount = unitCountRaw === null ? 1 : unitCountRaw;
@@ -533,6 +567,7 @@ export function validateLine(
       // the lot when the line changes kind.
       quantity: weighed ? (quantity as number | null) : null,
       quantityUnit: weighed ? quantityUnit : null,
+      chimieQuantity,
       productTemperature: productTemperature as number | null,
       ambientTemperature: ambientTemperature as number | null,
       receptionTemperature:
@@ -686,6 +721,21 @@ export function validateSerie(
 }
 
 // ---- From a line to its samples ----------------------------------------------
+
+/**
+ * What one sample of a line weighs: the « P » sample of a two-family line
+ * its own container when the counter weighed it apart (`chimieQuantity`,
+ * 12/10); every other sample — and the « P » one of a page that did not send
+ * it — the line's quantity. The deposit's acceptance rules and the creation
+ * both read it, so the rule (3) judged is the weight written.
+ */
+export function sampleQuantity(
+  line: Pick<CleanLine, "quantity" | "quantityUnit" | "chimieQuantity">,
+  twin: SampleTwin | null
+): { quantity: number | null; quantityUnit: QuantityUnit | null } {
+  if (twin === "P" && line.chimieQuantity) return line.chimieQuantity;
+  return { quantity: line.quantity, quantityUnit: line.quantityUnit };
+}
 
 /** A nature as loaded from the catalogue when the samples are written. */
 export type NatureRow = { id: string; family: Family; legacyType: SampleType };

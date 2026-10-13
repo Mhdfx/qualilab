@@ -1000,7 +1000,7 @@ export function ProgrammeSheet({
           index={6}
           icon={ClipboardCheck}
           title="Vérification d'entrée"
-          hint="Les sept règles du bon de réception, recalculées avec les analyses et les unités programmées."
+          hint="Les huit règles du bon de réception, recalculées avec les analyses et les unités programmées."
         />
         <Checklist rows={checks} />
         <p className="mt-3 text-xs text-slate-500">

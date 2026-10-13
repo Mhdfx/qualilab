@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { pageCss } from "./cartouche-html";
+import { COMPANY } from "./company";
 import {
   BON_MARGIN,
   PROTOCOL_MARGIN,
   buildBonHtml,
   buildProtocolHtml,
   designationHeading,
+  documentFooter,
+  protocolFooterLines,
   protocolRows,
   sampleDesignation,
   surfaceText,
@@ -127,7 +130,7 @@ describe("buildProtocolHtml — PG04/EN01", () => {
   });
 });
 
-describe("buildBonHtml — PG05/EN04 version G", () => {
+describe("buildBonHtml — PG05/EN04 version H", () => {
   const thresholds = { ...DEFAULT_THRESHOLDS, minFoodMicroG: 150 };
   const deposit: SerieDocumentData = {
     ...base,
@@ -194,15 +197,25 @@ describe("buildBonHtml — PG05/EN04 version G", () => {
     expect(body).toContain('<span class="k">P :</span> 01/09/2026</span><span><span class="k">E :</span> 04/09/2026');
   });
 
-  it("prints the seven rules as the paper's notes (1) … (7), in order, with the lab's thresholds and no heading", () => {
+  it("prints the eight rules as the paper's notes (1) … (8), in order, with the lab's thresholds and no heading", () => {
     const notes = html.slice(html.indexOf('<ul class="rules">'), html.indexOf("</ul>"));
     const lines = [...notes.matchAll(/<li>([^<]*)<\/li>/g)].map((m) => m[1]);
+    expect(lines).toHaveLength(8);
     expect(lines).toEqual(RECEPTION_RULES.map((rule) => escapeHtml(receptionRuleLine(rule, thresholds))));
     expect(lines[0]).toMatch(/^\(1\) critères : ne pas accepter/);
     expect(lines[1]).toBe("(2) poids minimal est de 150 g pour les aliments (analyses microbiologiques)");
     expect(lines[3]).toContain("et si Salmonella 6 L");
     expect(lines[6]).toBe("(7) échantillons destinés au dosage de l'histamine : 9 échantillons de 100 g");
+    // Note (8), added by the laboratory on 12/10 (version H).
+    expect(lines[7]).toBe(
+      "(8) pour le cas des mollusques bivalves vivants, un échantillon représentatif doit contenir au moins 10 individus et peser au moins 50 g (25 g pour les animaux de petite taille)"
+    );
     expect(html).not.toMatch(/critères de recevabilité/i);
+  });
+
+  it("takes note (8)'s figures from the laboratory's thresholds", () => {
+    const set = buildBonHtml(deposit, { ...DEFAULT_THRESHOLDS, molluscMinIndividuals: 12, molluscMinG: 60, molluscSmallMinG: 30 });
+    expect(set).toContain("(8) pour le cas des mollusques bivalves vivants, un échantillon représentatif doit contenir au moins 12 individus et peser au moins 60 g (30 g pour les animaux de petite taille)");
   });
 
   it("prints Avance (amount and mode) and Reste as lines, then the paper's signatures", () => {
@@ -567,5 +580,73 @@ describe("buildBonHtml — the client's agreement and the wait (A9)", () => {
     expect(html).toContain('<span class="nc">Non conforme — Emballage ou contenant non conforme</span>');
     expect(html).not.toContain("accord de");
     expect(html).not.toContain("avis du client");
+  });
+});
+
+describe("the laboratory's answers of 12/10 — protocole PG04/EN01 version G", () => {
+  const notesOf = (html: string) => {
+    const notes = html.slice(html.indexOf('<ul class="rules">'), html.indexOf("</ul>"));
+    return [...notes.matchAll(/<li>([^<]*)<\/li>/g)].map((m) => m[1]);
+  };
+
+  it("prints the bon's eight notes under the table, figures from the thresholds", () => {
+    const thresholds = { ...DEFAULT_THRESHOLDS, minFoodChemG: 350 };
+    const html = buildProtocolHtml(visit, thresholds);
+    expect(notesOf(html)).toEqual(RECEPTION_RULES.map((rule) => escapeHtml(receptionRuleLine(rule, thresholds))));
+    expect(notesOf(html)[2]).toBe("(3) poids minimal est de 350 g pour les aliments (analyses physicochimiques)");
+    // Under the table, before « Analyses à effectuer ».
+    expect(html.indexOf("</table>")).toBeLessThan(html.indexOf('<ul class="rules">'));
+    expect(html.indexOf('<ul class="rules">')).toBeLessThan(html.indexOf("Analyses à effectuer"));
+    // The defaults when no thresholds are given.
+    expect(notesOf(buildProtocolHtml(visit))[1]).toBe("(2) poids minimal est de 100 g pour les aliments (analyses microbiologiques)");
+  });
+
+  it("never prints « N° de factures », on either form; « Référence client » stays", () => {
+    for (const html of [buildProtocolHtml(visit), buildBonHtml({ ...visit, samplerKind: "CLIENT" })]) {
+      expect(html).not.toMatch(/factures?/i);
+      expect(html).toContain("Référence client");
+    }
+  });
+
+  it("writes the footer like the paper: name, then Tél. - Fax - E-mail, then ICE — from the company settings", () => {
+    const company = { ...COMPANY, name: "Laboratoire Test S.A.R.L", phone: "05 00 00 00 01", fax: "05 00 00 00 02", email: "contact@exemple.test", ice: "000000000000001" };
+    expect(protocolFooterLines(company)).toEqual([
+      "Laboratoire Test S.A.R.L",
+      "Tél. : 05 00 00 00 01 - Fax : 05 00 00 00 02 - E-mail : contact@exemple.test",
+      "ICE : 000000000000001",
+    ]);
+    const footer = documentFooter(company);
+    expect(footer).toContain("text-transform:uppercase");
+    expect(footer).toContain("<div>Tél. : 05 00 00 00 01 - Fax : 05 00 00 00 02 - E-mail : contact@exemple.test</div>");
+    expect(footer).toContain("<div>ICE : 000000000000001</div>");
+  });
+
+  it("leaves out an empty part, and an empty line", () => {
+    // No fax until the owner types one in /admin/entreprise.
+    expect(protocolFooterLines({ ...COMPANY, name: "Labo test", phone: "05 00", fax: null, email: "a@b.test", ice: "123" })).toEqual([
+      "Labo test",
+      "Tél. : 05 00 - E-mail : a@b.test",
+      "ICE : 123",
+    ]);
+    expect(protocolFooterLines({ ...COMPANY, name: "Labo test", phone: " ", fax: "", email: "", ice: "" })).toEqual(["Labo test"]);
+    expect(protocolFooterLines({ ...COMPANY, name: "", phone: "", fax: "05 99", email: "", ice: "" })).toEqual(["Fax : 05 99"]);
+    // Escaped in the template.
+    expect(documentFooter({ ...COMPANY, name: "A <b> & C", fax: null })).toContain("A &lt;b&gt; &amp; C");
+    // Without a name, the contacts are never set in capitals as if they were one.
+    const nameless = documentFooter({ ...COMPANY, name: " ", phone: "05 00", fax: null, email: "", ice: "123" });
+    expect(nameless).not.toContain("text-transform:uppercase");
+    expect(nameless).toContain("<div>Tél. : 05 00</div><div>ICE : 123</div>");
+  });
+
+  it("moves the bon's signatures whole to the next page, their labels with them", () => {
+    const css = buildBonHtml({ ...visit, samplerKind: "CLIENT" }).match(/\.signatures \{[^}]*\}/)?.[0] ?? "";
+    // The labels overhang the boxes' top border: the block's padding holds them.
+    expect(css).toContain("padding-top: 3.5mm");
+    expect(css).toContain("break-inside: avoid");
+  });
+
+  it("keeps room for the three footer lines in the protocol's page box", () => {
+    expect(PROTOCOL_MARGIN.bottom).toBe("20mm");
+    expect(buildProtocolHtml(visit)).toContain(pageCss(PROTOCOL_MARGIN));
   });
 });

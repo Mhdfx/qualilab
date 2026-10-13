@@ -6,6 +6,7 @@ import {
   canApprove,
   canTransition,
   canValidateTechnically,
+  signsAdministratively,
 } from "@/lib/sample-status";
 import {
   issueReportFor,
@@ -18,10 +19,12 @@ import { needsRegulation } from "@/lib/regulation";
 /**
  * Quality validation — the two approvals, and the rejection.
  *
- * `action: "validate"`  VALIDATEUR signs off technically. Recorded on the
- *                       sample; the status does not move yet.
- * `action: "approve"`   ADMIN gives the final approval, which is what sets
- *                       the status to VALIDE.
+ * `action: "validate"`  VALIDATEUR (or DIRECTION, ADMIN) signs off
+ *                       technically. Recorded on the sample; the status
+ *                       does not move yet.
+ * `action: "approve"`   DIRECTION or ADMIN gives the final approval (12/10),
+ *                       which is what sets the status to VALIDE — never the
+ *                       person who signed step 1.
  * `action: "reject"`    Either desk sends it back to the technician with a
  *                       mandatory reason (`RESULTATS_SAISIS → EN_ANALYSE`).
  *
@@ -38,7 +41,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireApiRole("VALIDATEUR", "ADMIN");
+  const session = await requireApiRole("VALIDATEUR", "DIRECTION", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;
@@ -163,9 +166,10 @@ export async function POST(
   if (action === "approve") {
     const check = canApprove(sample, session.role, session.id);
     if (!check.ok) {
-      // A role that may never approve is refused (403, HANDOFF §3); an
-      // ADMIN meeting a state that forbids it now gets the 409.
-      return NextResponse.json({ error: check.error }, { status: session.role === "ADMIN" ? 409 : 403 });
+      // A role that may never approve is refused (403, HANDOFF §3); the
+      // Direction or an ADMIN meeting a state that forbids it now (or its
+      // own technical signature) gets the 409.
+      return NextResponse.json({ error: check.error }, { status: signsAdministratively(session.role) ? 409 : 403 });
     }
 
     // Atomic: only the request whose UPDATE moved the sample goes on to

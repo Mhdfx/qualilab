@@ -6,14 +6,15 @@ import { sendContaminationAlerts, sendReport } from "@/lib/report-dispatch";
  * Sends — or resends — the report to the client.
  *
  * The gestionnaire commercial handles the client relationship, so a resend is
- * theirs to trigger; the admin can too. A resend never moves the sample
- * backwards, it only records another entry in the send journal.
+ * theirs to trigger; the validator, the Direction and the admin can too
+ * (`RESEND_REPORT_ROLES`). A resend never moves the sample backwards, it
+ * only records another entry in the send journal.
  */
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireApiRole("GESTIONNAIRE", "VALIDATEUR", "ADMIN");
+  const session = await requireApiRole("GESTIONNAIRE", "VALIDATEUR", "DIRECTION", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;

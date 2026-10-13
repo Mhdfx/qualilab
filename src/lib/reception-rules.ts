@@ -1,4 +1,11 @@
-import type { Family, LineKind, NonConformityReason, QuantityUnit, TemperatureSource } from "@/generated/prisma/enums";
+import type {
+  Family,
+  LineKind,
+  NonConformityReason,
+  QuantityUnit,
+  StorageClass,
+  TemperatureSource,
+} from "@/generated/prisma/enums";
 import { formatDecimal } from "./labels";
 import {
   DEFAULT_COMPLEMENTARY_THRESHOLDS,
@@ -8,8 +15,9 @@ import {
 } from "./reception-complementary";
 
 /**
- * Acceptance rules at reception — the seven rules printed on the laboratory's
- * bon de réception (PG05/EN04), computed instead of read.
+ * Acceptance rules at reception — the eight rules printed on the laboratory's
+ * bon de réception (PG05/EN04 version H, the laboratory's answers of 12/10),
+ * computed instead of read.
  *
  * Pure: the screen runs it live while the réceptionniste types, the API runs
  * it again before writing. The thresholds come from `LabSettings`; the
@@ -25,6 +33,14 @@ export type PaperThresholds = {
   minWaterChemL: number;
   histamineUnits: number;
   histamineUnitG: number;
+  /**
+   * Note (8) of the bon version H (12/10): a sample of live bivalve molluscs
+   * holds at least `molluscMinIndividuals` individuals and weighs at least
+   * `molluscMinG` g — `molluscSmallMinG` g for small animals.
+   */
+  molluscMinIndividuals: number;
+  molluscMinG: number;
+  molluscSmallMinG: number;
   /** Comma-separated `LineKind` codes, as stored in LabSettings. */
   temperatureRequiredKinds: string;
 };
@@ -45,14 +61,21 @@ export const DEFAULT_THRESHOLDS: ReceptionThresholds = {
   minWaterChemL: 2,
   histamineUnits: 9,
   histamineUnitG: 100,
-  temperatureRequiredKinds: "ALIMENT,EAU",
+  molluscMinIndividuals: 10,
+  molluscMinG: 50,
+  molluscSmallMinG: 25,
+  // The laboratory's answer of 12/10: food, water, air and surface (stable
+  // foods excepted — a reception rule, not this list).
+  temperatureRequiredKinds: "ALIMENT,EAU,AIR,SURFACE",
 };
 
 /**
- * The seven rules of the paper bon de réception (PG05/EN04 version G), in its
- * order and wording — the one source for the reception checklist and the
- * printed bon (lab's feedback of 08/10: « les règles comme une checklist »).
- * The figures come from the thresholds; the paper's own numbering is `n`.
+ * The eight rules of the paper bon de réception (PG05/EN04 version H), in its
+ * order and wording — the one source for the reception checklist, the
+ * printed bon and protocole, and /admin/reglages (lab's feedback of 08/10:
+ * « les règles comme une checklist »; note (8), the live bivalve molluscs,
+ * added by the laboratory on 12/10). The figures come from the thresholds;
+ * the paper's own numbering is `n`.
  */
 export type ReceptionRuleKey =
   | "EXPLOITABLE"
@@ -61,10 +84,11 @@ export type ReceptionRuleKey =
   | "EAU_MICRO"
   | "EAU_CHIMIE"
   | "TEMPERATURE"
-  | "HISTAMINE";
+  | "HISTAMINE"
+  | "MOLLUSQUES";
 
 export type ReceptionRule = {
-  /** The paper's number, (1) … (7). */
+  /** The paper's number, (1) … (8). */
   n: number;
   key: ReceptionRuleKey;
   text: (t: ReceptionThresholds) => string;
@@ -107,6 +131,13 @@ export const RECEPTION_RULES: readonly ReceptionRule[] = [
     key: "HISTAMINE",
     text: (t) => `échantillons destinés au dosage de l'histamine : ${t.histamineUnits} échantillons de ${grams(t.histamineUnitG)}`,
   },
+  {
+    // The laboratory's wording of 12/10, lower case like the other notes.
+    n: 8,
+    key: "MOLLUSQUES",
+    text: (t) =>
+      `pour le cas des mollusques bivalves vivants, un échantillon représentatif doit contenir au moins ${t.molluscMinIndividuals} individus et peser au moins ${grams(t.molluscMinG)} (${grams(t.molluscSmallMinG)} pour les animaux de petite taille)`,
+  },
 ];
 
 /** « (2) poids minimal est de 100 g pour les aliments (analyses microbiologiques) ». */
@@ -139,6 +170,18 @@ export type ReceptionLine = {
   quantityUnit: QuantityUnit | null;
   receptionTemperature: number | null;
   unitCount: number;
+  /**
+   * « Conservation » as chosen at reception (C2); null = the kind's default.
+   * A food kept at room temperature (AMBIANT — conserve, sec, UHT…) is a
+   * stable food: rule (6) does not concern it (`isStableFood`, 12/10).
+   */
+  storageClass: StorageClass | null;
+  /**
+   * What names the product — its désignation, its product type, its nature
+   * (the programme's fine nature once chosen): rule (8) reads them to
+   * recognise live bivalve molluscs (`mentionsBivalveMolluscs`).
+   */
+  productNames: readonly (string | null | undefined)[];
 };
 
 const LEVEL_RANK: Record<CheckLevel, number> = { OK: 0, AVERTISSEMENT: 1, BLOQUANT: 2 };
@@ -192,6 +235,84 @@ export function requestsSalmonella(parameterNames: string[]): boolean {
   return mentions(parameterNames, "salmonell");
 }
 
+/**
+ * A stable food (12/10, « température obligatoire … sauf les aliments
+ * stables »): a food the reception says travels at room temperature —
+ * « Ambiant » in « Conservation » (conserve, sec, UHT…). The kind's default
+ * class is never stable: a food is chilled unless the reception says so.
+ */
+export function isStableFood(line: Pick<ReceptionLine, "lineKind" | "storageClass">): boolean {
+  return line.lineKind === "ALIMENT" && line.storageClass === "AMBIANT";
+}
+
+/**
+ * The words that name live bivalve molluscs on a sample (rule 8) — the one
+ * list the screens, both APIs and the programme sheet read. Matched as whole
+ * words of the désignation, the product type or the nature, accents and
+ * case ignored, singular or plural (« Huîtres creuses », « MOULES »).
+ */
+export const BIVALVE_MOLLUSC_WORDS = [
+  "mollusque",
+  "bivalve",
+  "huitre",
+  "moule",
+  "palourde",
+  "coque",
+  "praire",
+  "clam",
+  "petoncle",
+  "coquille",
+] as const;
+
+/** « Œuf à la coque », « œufs coque »: an egg, never a cockle. */
+const EGG_COQUE = /\boeufs? (?:a la )?coques?\b|\ba la coque\b/g;
+
+/** « Mollusques céphalopodes / gastéropodes » are no bivalves: « mollusque » alone does not count then. */
+const NOT_BIVALVE_MOLLUSCS = new Set(["cephalopode", "cephalopodes", "gasteropode", "gasteropodes"]);
+
+/**
+ * « Camembert moulé à la louche », « chocolat moulé »: a word ending in « é »
+ * (« -ée », « -és », « -ées ») is a participle or another noun — none of the
+ * bivalves' words ends so. Read while the accents are still there: folded,
+ * « moulé » would be « moule ».
+ */
+const ENDS_IN_E_ACUTE = /\p{L}*é(?:es?|s)?(?!\p{L})/gu;
+
+/** Lower case, no accents, « œ » spelt « oe », words split on anything else. */
+function foldWords(text: string): string[] {
+  return text
+    .replace(/[œŒ]/g, "oe")
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(ENDS_IN_E_ACUTE, " ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(EGG_COQUE, " ")
+    .split(" ")
+    .filter(Boolean);
+}
+
+/**
+ * Rule (8) concerns the sample: one of its names mentions bivalve molluscs
+ * (`BIVALVE_MOLLUSC_WORDS`). A heuristic on what was typed and picked — the
+ * checklist row says how it was recognised, the réceptionniste keeps the
+ * last word with the conformity.
+ */
+export function mentionsBivalveMolluscs(names: readonly (string | null | undefined)[]): boolean {
+  return names.some((name) => {
+    if (!name) return false;
+    const words = foldWords(name);
+    const otherClass = words.some((word) => NOT_BIVALVE_MOLLUSCS.has(word));
+    return words.some((word) =>
+      BIVALVE_MOLLUSC_WORDS.some(
+        (stem) => (word === stem || word === `${stem}s`) && !(stem === "mollusque" && otherClass)
+      )
+    );
+  });
+}
+
 export function requiredKinds(thresholds: ReceptionThresholds): LineKind[] {
   return thresholds.temperatureRequiredKinds
     .split(",")
@@ -236,7 +357,8 @@ function quantityCheck(
 
 /**
  * Every measurable rule that applies to the line, in the paper's order —
- * (2)–(5) quantity, (6) temperature, (7) histamine. Rule (1) is the
+ * (2)–(5) quantity, (6) temperature, (7) histamine, (8) live bivalve
+ * molluscs. Rule (1) is the
  * réceptionniste's answer, not a measure: it is added by
  * `receptionChecklist`. The cold chain is not the paper's: it is C2, a
  * contrôle complémentaire (`reception-complementary.ts`), judged by
@@ -251,9 +373,14 @@ export function evaluateReception(
   const volumeL = toLitres(line.quantity, line.quantityUnit);
   const inUnits = line.quantity !== null && line.quantityUnit === "UNITE";
 
+  const bivalves = line.lineKind === "ALIMENT" && mentionsBivalveMolluscs(line.productNames);
   if (line.lineKind === "ALIMENT" && line.family === "MICRO") {
-    // (2) — food, microbiology.
-    checks.push(quantityCheck("ALIMENT_MICRO_POIDS", "Quantité", weightG, thresholds.minFoodMicroG, "g", inUnits));
+    // (2) — food, microbiology. Live bivalve molluscs follow their own
+    // minimum, note (8) (« pour le cas des mollusques… 50 g ») — the 100 g
+    // would refuse every sample the note allows (12/10, lab question Q99).
+    if (!bivalves) {
+      checks.push(quantityCheck("ALIMENT_MICRO_POIDS", "Quantité", weightG, thresholds.minFoodMicroG, "g", inUnits));
+    }
   } else if (line.lineKind === "ALIMENT" && line.family === "CHIMIE") {
     // (3) — food, physico-chemistry.
     checks.push(quantityCheck("ALIMENT_CHIMIE_POIDS", "Quantité", weightG, thresholds.minFoodChemG, "g", inUnits));
@@ -275,8 +402,10 @@ export function evaluateReception(
     checks.push(quantityCheck("EAU_CHIMIE_VOLUME", "Volume", volumeL, thresholds.minWaterChemL, "L", inUnits));
   }
 
-  // (6) — the temperature at arrival is mandatory for the configured kinds.
-  if (requiredKinds(thresholds).includes(line.lineKind)) {
+  // (6) — the temperature at arrival is mandatory for the configured kinds
+  // (food, water, air and surface since 12/10), stable foods excepted: a
+  // food kept at room temperature has no temperature to keep.
+  if (requiredKinds(thresholds).includes(line.lineKind) && !isStableFood(line)) {
     checks.push(
       line.receptionTemperature === null
         ? {
@@ -317,7 +446,50 @@ export function evaluateReception(
     );
   }
 
+  // (8) — live bivalve molluscs, recognised on the product's names.
+  if (bivalves) {
+    checks.push(molluscCheck(weightG, thresholds, inUnits));
+  }
+
   return checks;
+}
+
+/**
+ * Rule (8), the weight: under the small animals' minimum the sample cannot
+ * be conform; between it and the minimum it depends on the animals' size —
+ * « à vérifier », the réceptionniste justifies an acceptance (A7); from the
+ * minimum on it is met. The number of individuals is not counted by the
+ * application (`unitCount` is the analysis's n): the checklist row says it
+ * is to check (`receptionChecklist`).
+ */
+function molluscCheck(weightG: number | null, t: ReceptionThresholds, declaredInUnits: boolean): Check {
+  const rule = "MOLLUSQUES_POIDS";
+  const both = `au moins ${grams(t.molluscMinG)}, ${grams(t.molluscSmallMinG)} pour les animaux de petite taille`;
+  if (weightG === null) {
+    return {
+      rule,
+      level: "AVERTISSEMENT",
+      message: `Poids ${declaredInUnits ? "déclaré en unités, non pesé" : "non renseigné"} — ${both}.`,
+      reason: "QUANTITE_INSUFFISANTE",
+    };
+  }
+  if (weightG < t.molluscSmallMinG) {
+    return {
+      rule,
+      level: "BLOQUANT",
+      message: `Poids ${grams(weightG)} < ${grams(t.molluscSmallMinG)} requis, même pour des animaux de petite taille.`,
+      reason: "QUANTITE_INSUFFISANTE",
+    };
+  }
+  if (weightG < t.molluscMinG) {
+    return {
+      rule,
+      level: "AVERTISSEMENT",
+      message: `Poids ${grams(weightG)} : ${both}.`,
+      reason: "QUANTITE_INSUFFISANTE",
+    };
+  }
+  return { rule, level: "OK", message: `Poids ${grams(weightG)} ≥ ${grams(t.molluscMinG)}.` };
 }
 
 export function worstLevel(checks: Check[]): CheckLevel {
@@ -327,7 +499,7 @@ export function worstLevel(checks: Check[]): CheckLevel {
   );
 }
 
-// ---- The checklist: the seven rules of the paper, always -----------------------
+// ---- The checklist: the eight rules of the paper, always -----------------------
 
 /**
  * One row of the checklist:
@@ -350,12 +522,12 @@ export const CHECKLIST_STATUS_LABELS: Record<ChecklistStatus, string> = {
 };
 
 export type ChecklistRow = {
-  /** The paper's number, (1) … (7) — or the number of a complementary code (C3 → 3). */
+  /** The paper's number, (1) … (8) — or the number of a complementary code (C3 → 3). */
   n: number;
   key: ReceptionRuleKey | ComplementaryKey;
   /**
    * « C3 » on a contrôle complémentaire (hors bon, `reception-complementary.ts`);
-   * absent on the paper's seven rules. The screens list the coded rows in a
+   * absent on the paper's eight rules. The screens list the coded rows in a
    * group of their own, after the paper's.
    */
   code?: string;
@@ -388,6 +560,7 @@ const RULE_ROW: Record<string, ReceptionRuleKey> = {
   TEMPERATURE_ARRIVEE: "TEMPERATURE",
   HISTAMINE_UNITES: "HISTAMINE",
   HISTAMINE_POIDS: "HISTAMINE",
+  MOLLUSQUES_POIDS: "MOLLUSQUES",
 };
 
 const STATUS_OF: Record<CheckLevel, ChecklistStatus> = {
@@ -449,6 +622,9 @@ function notApplicable(
   analysesFixed: boolean
 ): string {
   const scope = QUANTITY_SCOPE[key];
+  if (key === "ALIMENT_MICRO" && line.lineKind === "ALIMENT" && line.family === "MICRO" && mentionsBivalveMolluscs(line.productNames)) {
+    return sentence(["sans objet : mollusques bivalves vivants, poids minimal de la note (8)"]);
+  }
   if (scope) {
     return sentence([
       `sans objet : ${line.lineKind !== scope.kind ? KIND_NOUN[line.lineKind] : FAMILY_NOUN[line.family]}`,
@@ -460,6 +636,15 @@ function notApplicable(
       : sentence([
           `si l'histamine est demandée : ${thresholds.histamineUnits} × ${formatDecimal(thresholds.histamineUnitG)} g — vérifié au programme`,
         ]);
+  }
+  if (key === "TEMPERATURE" && isStableFood(line)) {
+    return sentence([
+      "sans objet : aliment stable (conservé à température ambiante)",
+      line.receptionTemperature === null ? "" : `${formatDecimal(line.receptionTemperature)} °C relevée`,
+    ]);
+  }
+  if (key === "MOLLUSQUES" && line.lineKind === "ALIMENT") {
+    return sentence(["sans objet : pas de mollusques bivalves dans la désignation, le type ou la nature"]);
   }
   return sentence([`sans objet : ${KIND_NOUN[line.lineKind]}`]);
 }
@@ -484,6 +669,8 @@ function measuredDetail(
   if (key === "EAU_MICRO" && !analysesFixed) {
     parts.push(`${formatDecimal(thresholds.minWaterSalmonellaL)} L si Salmonella — vérifié au programme`);
   }
+  // The individuals are counted by the réceptionniste, never by the application.
+  if (key === "MOLLUSQUES") parts.push(`au moins ${thresholds.molluscMinIndividuals} individus : à vérifier`);
   return sentence(parts);
 }
 
@@ -495,7 +682,7 @@ function exploitableRow(exploitable: boolean | null): Pick<ChecklistRow, "status
 }
 
 /**
- * The checklist of one sample: ALWAYS the seven rules of the paper, in its
+ * The checklist of one sample: ALWAYS the eight rules of the paper, in its
  * order and wording, each with its status — the rules that do not concern
  * the sample are listed « sans objet » with a short reason. Built on
  * `evaluateReception` (its rule ids travel in `rules`); rule (1) is the
@@ -572,7 +759,7 @@ export type ChecklistProposal = {
  * What the screen proposes: the first NON_CONFORME row in the list's order
  * forces « non conforme » with its motif; an A_VERIFIER row leaves the
  * sample conform with its motif at hand; an A_CONFIRMER row blocks the
- * submission until it is answered. The list is the paper's seven rules
+ * submission until it is answered. The list is the paper's eight rules
  * followed by the contrôles complémentaires: a paper rule keeps the priority.
  */
 export function proposedConformity(rows: readonly ChecklistRow[]): ChecklistProposal {

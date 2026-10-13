@@ -41,7 +41,8 @@ import { twinFor } from "@/lib/sample-code";
  * RETOUR-LABO-06-10.md §5: the screens speak of « Échantillon N » (V2); a
  * line whose two families are ticked becomes two samples « NM » and « NP »
  * (V3), each with its own N° de contrôle and its own acceptance rules
- * (100 g in microbiology, 300 g in physico-chemistry); a surface carries its
+ * (100 g in microbiology, 300 g in physico-chemistry) — and, since 12/10, its
+ * own container: each family's part is weighed apart; a surface carries its
  * state and an air sample its method (V2, V4).
  */
 
@@ -214,7 +215,7 @@ function lowerFirst(text: string) {
 }
 
 /**
- * One checklist for the card of a two-family line — still the seven rules of
+ * One checklist for the card of a two-family line — still the eight rules of
  * the paper, in its order. A row both samples share (rule 1, the
  * temperature, a quantity rule that concerns neither) is shown once; a row
  * that differs keeps what concerns each sample, headed by its family
@@ -259,10 +260,20 @@ export type DepositLineInput = {
   families: readonly LineFamily[];
   /** The ticked analyses, with their family and their aliases. */
   parameters: readonly { name: string; aliases?: string | null; family: Family }[];
+  /** The line's quantity — on a two-family line, the microbiology part's (« Quantité 2M »). */
   quantity: number | null;
   quantityUnit: QuantityUnit;
+  /**
+   * « Quantité 2P » of a two-family line: the physico-chemistry part, weighed
+   * in its own container (12/10). Absent: the line's quantity serves both.
+   */
+  chimieQuantity?: { quantity: number | null; quantityUnit: QuantityUnit };
   receptionTemperature: number | null;
   unitCount: number;
+  /** The désignation and the product type's name — rule (8) reads them. */
+  productNames: readonly (string | null | undefined)[];
+  /** The nature of each family's sample, read by rule (8) too. */
+  natureLabels?: Partial<Record<Family, string>>;
   /** Rule (1), one answer for the line — both samples share it. */
   exploitable: boolean | null;
   /** C3 (emballage) and C5 (identification), one answer for the line too. */
@@ -278,12 +289,27 @@ export type DepositLineInput = {
 };
 
 /**
+ * The weight one sample of a deposit line is judged on: the physico-chemistry
+ * sample of a two-family line its own part when weighed apart (12/10), every
+ * other sample the line's quantity — as `sampleQuantity` decides on the
+ * server.
+ */
+export function depositSampleQuantity(
+  line: Pick<DepositLineInput, "families" | "quantity" | "quantityUnit" | "chimieQuantity">,
+  family: LineFamily | null
+): { quantity: number | null; quantityUnit: QuantityUnit | null } {
+  const own = family === "CHIMIE" && line.families.length > 1 && line.chimieQuantity ? line.chimieQuantity : line;
+  return { quantity: own.quantity, quantityUnit: own.quantity === null ? null : own.quantityUnit };
+}
+
+/**
  * The checklist of a deposit line, computed for each sample it becomes — as
  * `POST /api/series` computes it before writing — merged into one list, and
  * the proposal that follows: a NON_CONFORME row on either sample makes the
  * line non-conform (the counter's answer, temperature, conformity and
- * decision apply to both samples). Each sample's list is the paper's seven
- * rules, then the contrôles complémentaires (hors bon).
+ * decision apply to both samples). Each sample's list is the paper's eight
+ * rules, then the contrôles complémentaires (hors bon); each sample is
+ * weighed on its own part (`depositSampleQuantity`).
  */
 export function depositLineChecklist(line: DepositLineInput, thresholds: ReceptionThresholds) {
   const families: (LineFamily | null)[] = line.families.length > 0 ? [...line.families] : [null];
@@ -297,10 +323,11 @@ export function depositLineChecklist(line: DepositLineInput, thresholds: Recepti
           parameterNames: line.parameters
             .filter((p) => family === null || p.family === family)
             .flatMap((p) => parameterSpellings(p)),
-          quantity: line.quantity,
-          quantityUnit: line.quantity === null ? null : line.quantityUnit,
+          ...depositSampleQuantity(line, family),
           receptionTemperature: line.receptionTemperature,
           unitCount: line.unitCount,
+          storageClass: line.storageClass,
+          productNames: [...line.productNames, family ? line.natureLabels?.[family] : undefined],
         },
         thresholds,
         { exploitable: line.exploitable, temperatureSource: line.temperatureSource }

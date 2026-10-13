@@ -15,8 +15,8 @@ import { ResendReportButton } from "./ResendReportButton";
 /**
  * The actions on an issued report (AMENDEMENT.md §4), on the validation page
  * and in the search: « Duplicata (PDF) », « Versions du rapport »,
- * « Renvoyer au client » (gestionnaire, validator, administrator —
- * finalversion.md:116) and, for the administrator, « Modifier la
+ * « Renvoyer au client » (gestionnaire, validator, direction, administrator —
+ * finalversion.md:116, `RESEND_REPORT_ROLES`) and, for the administrator, « Modifier la
  * conclusion » (the silent correction, HANDOFF §8 18/08) and « Rouvrir pour
  * amendement » with its mandatory reason. The API decides again; this only
  * hides what a role cannot do.

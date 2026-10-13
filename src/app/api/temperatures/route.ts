@@ -12,7 +12,7 @@ import { validateReading } from "@/lib/quality-validation";
  * against the bounds of that day.
  */
 export async function GET(request: Request) {
-  const session = await requireApiRole("VALIDATEUR", "ADMIN", "TECHNICIEN");
+  const session = await requireApiRole("VALIDATEUR", "DIRECTION", "ADMIN", "TECHNICIEN");
   if (session instanceof NextResponse) return session;
 
   const { searchParams } = new URL(request.url);
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const session = await requireApiRole("VALIDATEUR", "ADMIN", "TECHNICIEN");
+  const session = await requireApiRole("VALIDATEUR", "DIRECTION", "ADMIN", "TECHNICIEN");
   if (session instanceof NextResponse) return session;
 
   let body: unknown;

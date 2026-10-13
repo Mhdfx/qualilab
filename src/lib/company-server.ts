@@ -18,6 +18,8 @@ export function pickCompanyInfo(
     phone: row.phone, email: row.email, website: row.website, ice: row.ice,
     rc: row.rc, bank: row.bank, rib: row.rib, iban: row.iban, swift: row.swift,
     logoData: row.logoData ?? null,
+    fiscalId: row.fiscalId ?? null, patente: row.patente ?? null,
+    cnss: row.cnss ?? null, fax: row.fax ?? null,
   };
 }
 

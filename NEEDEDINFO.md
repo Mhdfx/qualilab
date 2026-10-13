@@ -161,16 +161,10 @@ préleveur photographie la feuille signée depuis le téléphone.
 | Q54 | Clients en double : valider le fichier `doublons-clients.xlsx` (colonne « Décision du labo ») — 74 fusions, 109 clients facturés à lier, 14 sites, 27 cas à trancher. Un client facturé (franchisé) doit-il recevoir les rapports, les factures, ou les deux ? | Clients — `RETOUR-LABO-06-10.md` §7 |
 | Q55 | Numérotation aveugle : les étiquettes n'affichent plus le client ni le site (08/10). La feuille de paillasse imprime encore « Série NN · client » : faut-il l'enlever aussi ? | Paillasse — `RETOUR-LABO-06-10.md` §9.4 |
 | Q56 | Physico-chimie des surfaces / mains / air : quelles analyses (et unités) ajouter au catalogue ? Aucune aujourd'hui : ces échantillons se créent et se réceptionnent mais ne se programment pas encore (complète Q50). | Catalogue — `RETOUR-LABO-06-10.md` §9.2 |
-| Q57 | Bon de réception : « N° de factures » (version G) ou « Référence client » (votre demande du 05/10) ? Si « Référence client » reste, une version H du PG05/EN04 est-elle émise (lettre et date) ? | Bon de réception — `RETOUR-LABO-06-10.md` §10 |
-| Q58 | Le bon du LIMS ajoute le N° de contrôle, le cadre, le site, l'état de conformité : les garder (nouvelle version du PG05/EN04) ou les retirer pour coller à la version G ? Le « N° de fax » est-il à saisir sur la fiche client ou à remplir à la main ? | Bon de réception |
-| Q59 | Protocole PG04/EN01 : son contenu a changé le 05/10 (Référence client, cadre, analyses par échantillon). Nouvelle lettre de version et date de mise à jour, ou F reste ? | Protocole |
-| Q60 | Rapport d'analyse : sa référence, sa version et ses dates pour la cartouche (Q14). Facture, avoir, étiquettes : sans cartouche, confirmé ? | Documents |
-| Q61 | Réception — échantillon M + P : un seul contenant (au moins 100 g + 300 g = 400 g) ou un contenant par famille ? Les poids minimaux s'entendent-ils par échantillon ou par unité (n = 5) ? | Réception — règles (2)(3) |
-| Q62 | Réception — histamine : moins de 9 unités rend-il l'échantillon non conforme, ou seulement un avertissement ? L'histamine est-elle bien dans la famille physico-chimie du catalogue ? | Réception — règle (7) |
-| Q63 | Réception — température : obligatoire pour tous les échantillons (surfaces, mains, air aussi) ou seulement aliments et eaux ? La température de la glacière suffit-elle ? Garder le contrôle complémentaire de chaîne du froid à 8 °C ? | Réception — règle (6) |
-| Q64 | Réception — règle (1) : une réponse par échantillon (actuel), ou un bouton « tous exploitables » par série ? Un échantillon non exploitable : « Détruire » par défaut ? | Réception — règle (1) |
-| Q65 | Validation administrative : signée par la Direction, un responsable administratif ou l'administrateur du système ? Cette personne doit-elle avoir les droits d'administration (comptes, normes, fusions) ? Une même personne peut-elle tenir plusieurs fonctions ? Noms des comptes (point 9) | Rôles |
-| Q66 | Rapport PDF : remplacer « Validé par · Responsable qualité » et « Approuvé par · Direction du laboratoire » par « Validation technique » et « Validation administrative » ? Quels titres imprimer sous chaque nom ? | Rapport |
+| Q62 | Réception — histamine : moins de 9 unités rend-il l'échantillon non conforme, ou seulement un avertissement ? L'histamine est-elle bien dans la famille physico-chimie du catalogue ? | Réception — règle (7). **12/10 : pas encore tranché** — le comportement actuel reste (moins de 9 unités = « à vérifier », jamais un refus) |
+| Q64 | Réception — règle (1) : une réponse par échantillon (actuel), ou un bouton « tous exploitables » par série ? Un échantillon non exploitable : « Détruire » par défaut ? | Réception — règle (1) — **sans réponse le 12/10**, toujours ouverte |
+
+> **Q57–Q66 : réponses du laboratoire du 12/10** (`RETOUR-LABO-06-10.md` §12) — Q57, Q58, Q59, Q60, Q61, Q63, Q65 et Q66 répondues, archivées au §3 ; Q62 (histamine) laissée en suspens par le laboratoire et Q64 sans réponse restent ci-dessus ; les suites sont Q99–Q105.
 
 Analyse des écarts du 10/10 (`RETOUR-LABO-06-10.md` §11) : chaque question
 ci-dessous a reçu une **valeur par défaut déjà construite** (indiquée dans la
@@ -212,11 +206,42 @@ questions Q1–Q66 encore ouvertes qu'elles complètent sont citées.
 | Q97 | **Exploitation du serveur.** Où envoyer la copie hors site des sauvegardes (stockage chiffré S3 / B2 / SFTP, ou un serveur à vous), qui la paie et la détient, et qui garde la clé de chiffrement hors du serveur ? Qui sont les détenteurs d'une clé SSH (une par personne) et quel créneau de maintenance (jour et heure hors activité) pour les redémarrages ? | Défaut : copie hors site désactivée (« offsite skipped » chaque nuit) ; connexion SSH par mot de passe encore ouverte jusqu'au passage de `harden-ssh.sh` |
 | Q98 | **Mise en service.** Les derniers N° de série et de contrôle de l'ancien logiciel le jour de la bascule ; confirmation que le client « TEST UI 2026-10-06 Traiteur » et le compte « portail.test » peuvent être supprimés à la mise en service | Bascule ; nettoyage des données de test |
 
+Réponses du laboratoire du 12/10 (`RETOUR-LABO-06-10.md` §12) : ce qui reste à
+trancher. Chaque question a, elle aussi, un **défaut déjà construit** (13/10).
+
+| # | Question | Ce que la réponse décide (défaut construit le 13/10) |
+|---|---|---|
+| Q99 | **Note (8), mollusques bivalves vivants.** Les 50 g (25 g pour les animaux de petite taille) **remplacent-ils** les minima des notes (2) 100 g et (3) 300 g pour ces échantillons, ou **s'y ajoutent-ils** ? Les 50 g sont-ils le poids total (coquilles comprises) ou la chair et le liquide intervalvaire ? | Défaut : (8) s'ajoute à (2) / (3) — un mollusque sous 100 g reste non conforme par (2). S'il remplace : (2) / (3) passent « sans objet » pour un mollusque (petit changement) |
+| Q100 | **Reconnaître un mollusque bivalve vivant.** Aujourd'hui par les mots de la désignation, du type ou de la nature : huître, moule, palourde, coque, praire, clam, pétoncle, coquille, mollusque, bivalve. Faut-il ajouter tellines, couteaux, amandes de mer, coquillages… ou plutôt une case « mollusques bivalves vivants » / un indicateur sur le type de produit ? Les 10 individus doivent-ils être comptés à la réception (un champ « Nombre d'individus ») ? | Défaut : la liste de mots ; « au moins 10 individus : à vérifier » toujours affiché |
+| Q101 | **Aliments stables et mains.** Un aliment reçu « Ambiant — aliment stable (conserve, sec, UHT…) » n'a pas de température obligatoire : ce choix de la réception est-il le bon critère, ou faut-il un indicateur sur le type de produit ? Les écouvillons de mains comptent-ils comme « surface » (température obligatoire) ? | Défaut : le choix « Ambiant » à la réception ; mains facultatives |
+| Q102 | **Rôle « Direction ».** À quels comptes le donner (les quatre signataires de votre liste — sur le compte existant de ceux qui valident déjà techniquement) ? L'administrateur du système garde-t-il aussi la validation administrative ? La Direction doit-elle garder les droits du validateur sur le système qualité (équipements, EIL, températures), « Corriger la fiche » et l'export ? | Défaut : Direction = droits du validateur + validation administrative, jamais l'administration ; l'administrateur garde la validation administrative ; jamais les deux étapes par la même personne |
+| Q103 | **Dates des nouvelles versions** : protocole PG04/EN01 version G et bon de réception PG05/EN04 version H (date de mise à jour de chacun). | Saisies dans `/admin/documents` par l'exploitant ; d'ici là les cartouches impriment F et G |
+| Q104 | **Rapport, là où le modèle M ne dit rien.** (a) Le modèle n'a que « Satisfaisant » / « Non satisfaisant » : une colonne « Acceptable » apparaît pour un échantillon acceptable — d'accord ? (b) Le pied du modèle n'a pas d'ICE : le rapport n'imprime plus l'ICE du laboratoire ni celui du client — d'accord ? (c) « Analyses réalisées par » n'est plus imprimé — d'accord ? (d) « Moyen de prélèvement » hors air (écouvillon, flacon stérile, sachet) : que mettre ? (e) Prélèvement fait par le client : « Référence prélèvement : N/A (prélèvement non effectué par le laboratoire) » — le bon libellé ? (f) « Date d'analyse » = de la confirmation du programme au dernier résultat, et « Nombre d'analyse/échantillon » = n : d'accord ? (g) La conclusion est imprimée dans l'annexe sous les critères, et « (VC) » suit le numéro d'un rapport amendé : d'accord ? (h) Quels paramètres sont accrédités ou sous-traités (la légende « * », SA, SN, DPC n'est encore appliquée à aucun) ? | Rapport PG06/EN03 M — défauts construits comme décrit |
+| Q105 | **Restes de Q58 / Q60.** Le « N° de fax » du client sur le bon : saisi sur la fiche client ou rempli à la main ? Facture, avoir et étiquettes restent-ils sans cartouche qualité ? | Défaut : fax du client rempli à la main ; facture, avoir, étiquettes sans cartouche |
+
 ## 2. Ready to send — current batch
 
 *Copy this into an email. Update the date when you send it.*
 
-> **Lot du 10/10 (analyse des écarts) — à envoyer avec Q57–Q66 :**
+> **Lot du 13/10 (suites des réponses du 12/10) — à envoyer avec le lot du 10/10 :**
+> Objet : Vos réponses du 12/10 — ce qui est fait, 7 précisions (Q99–Q105)
+>
+> Bonjour,
+>
+> Merci pour vos réponses du 12/10. Le logiciel les applique : bon de
+> réception et protocole avec la note (8) et sans « N° de factures », rapport
+> au modèle PG06/EN03 version M (deux pages, annexe d'interprétation), un
+> contenant par famille au comptoir et à la réception, température obligatoire
+> pour les aliments, eaux, air et surfaces sauf les aliments stables, rôle
+> « Direction » pour la validation administrative. Il nous reste sept
+> précisions (Q99 à Q105), surtout : la note (8) remplace-t-elle les 100 g /
+> 300 g pour les mollusques (Q99), à qui donner le rôle Direction (Q102), et
+> les dates des versions G du protocole et H du bon (Q103). La question de
+> l'histamine (Q62) attend votre décision.
+>
+> Bien cordialement,
+
+> **Lot du 10/10 (analyse des écarts) — à envoyer avec Q62, Q64 et Q99–Q105 :**
 > Objet : Réception, paillasse, facturation — 32 points à valider (Q67–Q98)
 >
 > Bonjour,
@@ -330,3 +355,11 @@ Bien cordialement,
 | 2026-10-06 | Service vétérinaire (05/10 demande 3) | Confirmé une seconde fois : à retirer de « Prélèvement effectué par » ⇒ V1 |
 | 2026-10-06 | Deux familles par ligne (05/10 demande 6) | Confirmé : « Analyses microbiologiques » et « Analyses physico-chimiques » sur chaque échantillon ⇒ V3 (Q48, Q49) |
 | 2026-10-07 | Surfaces | « Surface prélevée* » devient « État de la surface » : Aseptique / En cours de travail / Nettoyé ⇒ V2 (Q51) |
+| 2026-10-12 | Q57 — bon de réception | Version **H** (date à venir) : « N° de factures » barré, « Référence client » gardée ⇒ construit le 13/10 (`RETOUR-LABO-06-10.md` §12) |
+| 2026-10-12 | Q58 — ajouts du LIMS sur le bon | N° de contrôle, cadre et site **restent** ; note (8) mollusques bivalves vivants ajoutée (10 individus, 50 g, 25 g pour les animaux de petite taille). Le fax du client : → Q105 |
+| 2026-10-12 | Q59 — protocole | Version **G** (date à venir) : « N° de factures » barré, « + les modifications du 05/10 », les huit notes du bon ajoutées ⇒ construit le 13/10 |
+| 2026-10-12 | Q60 — rapport | Modèle **PG06/EN03, version M**, créé le 05/01/2006, mis à jour le 18/12/2023, deux pages (rapport + « -ANNEXE- Interprétation des résultats ») ⇒ cartouche RAPPORT remplie par la migration du 13/10. Documents sans cartouche : → Q105 |
+| 2026-10-12 | Q61 — échantillon M + P | **Un contenant par famille** : 100 g sur l'échantillon micro, 300 g sur l'échantillon physico-chimie, chacun son poids ⇒ « Quantité 1M / 1P » au comptoir, « Quantité reçue (1M) / (1P) » à la réception |
+| 2026-10-12 | Q63 — température obligatoire | Aliment, eau, air et surface, **sauf les aliments stables** ⇒ défaut `ALIMENT,EAU,AIR,SURFACE`, aliment « Ambiant » exempté. Mains et critère de stabilité : → Q101 |
+| 2026-10-12 | Q65 — validation administrative | « **Directeur et son suppléant** » ; quatre personnes, dont deux font aussi la validation technique ⇒ rôle `DIRECTION` (13/10). Comptes et droits exacts : → Q102 |
+| 2026-10-12 | Q66 — signatures du rapport | Celles du modèle M : « **Responsable Technique** » (validation technique) et « **Direction** » (validation administrative), avec le nom du signataire |

@@ -11,7 +11,7 @@ export const metadata = { title: "Métrologie" };
 
 export default async function MetrologiePage() {
   // Belt and braces with the layout guard: a page must be safe on its own.
-  await requireRole("VALIDATEUR", "ADMIN");
+  await requireRole("VALIDATEUR", "DIRECTION", "ADMIN");
   const equipments = await prisma.equipment.findMany({
     where: { archived: false },
     orderBy: { name: "asc" },

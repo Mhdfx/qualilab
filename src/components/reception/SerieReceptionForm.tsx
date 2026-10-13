@@ -110,18 +110,20 @@ import {
  * The header carries what the cooler tells (arrival, temperature); every
  * sample (« Échantillon N », RETOUR-LABO-06-10.md §5, V2) shows what the
  * préleveur wrote, what the réceptionniste measures, the acceptance
- * checklist — the seven rules of the bon de réception, computed live with
+ * checklist — the eight rules of the bon de réception, computed live with
  * the lab's thresholds — and the conformity with its coded motif. Rule (1),
  * « exploitable or not », is the réceptionniste's answer, one per sample,
  * required before the série can be received (retour du 08/10). Below the
- * seven rules, the contrôles complémentaires (hors bon): C3 (emballage) and
+ * eight rules, the contrôles complémentaires (hors bon): C3 (emballage) and
  * C5 (identification) are ticked Oui / Non for every sample — a « Non »
  * makes it non conforme with the matching motif. C6, the protocol signed by
  * the interlocutor, is the série's own row on a visit, above the samples:
  * the préleveur's photo, or an optional « reçu » Oui / Non. The two
  * samples of a two-family line (« 2M », « 2P » — V3) are received one by
- * one, each with its own rules (100 g micro, 300 g physico-chimie). One
- * button numbers everything.
+ * one, each with its own rules (100 g micro, 300 g physico-chimie) and its
+ * own container (12/10): both cards start from the quantity the préleveur
+ * wrote for the line, and say to weigh each family's part. One button
+ * numbers everything.
  *
  * A non-conform sample is analysed anyway — the client's agreement noted
  * (« Accord du client », required when the laboratory says so) —, held
@@ -481,7 +483,7 @@ export function SerieReceptionForm({
     });
   }
 
-  /** The live evaluation of one sample: the seven rules, the complementary controls, proposal, effective choice. */
+  /** The live evaluation of one sample: the eight rules, the complementary controls, proposal, effective choice. */
   function evaluate(line: LineState) {
     const sample = byId.get(line.sampleId)!;
     const quantity = numberOrNull(line.quantity);
@@ -494,6 +496,10 @@ export function SerieReceptionForm({
         quantityUnit: quantity === null ? null : line.quantityUnit,
         receptionTemperature: numberOrNull(line.temperature),
         unitCount: sample.unitCount,
+        // « Ambiant » on a food: a stable food, no temperature required (rule 6).
+        storageClass: line.storageClass,
+        // Rule (8): live bivalve molluscs, recognised on these names.
+        productNames: [sample.produit, sample.productType?.name, sample.nature.label],
       },
       thresholds,
       // The cooler pre-fills every sample until one is measured apart.
@@ -756,6 +762,8 @@ export function SerieReceptionForm({
           {activeLines.map((line) => {
             const { sample, rows, proposal, conformity, reason, doubt } = evaluate(line);
             const highlighted = errorConcernsSample(error, sample);
+            // One of the two samples of a two-family line: its own container (12/10).
+            const twin = sampleRef(sample.lineNumber, sample.code) !== String(sample.lineNumber);
             return (
               <Card
                 key={line.sampleId}
@@ -806,13 +814,14 @@ export function SerieReceptionForm({
                   </div>
                   <div className="sm:col-span-2">
                     <label htmlFor={`q-${line.sampleId}`} className="block text-sm font-medium text-slate-700">
-                      Quantité reçue
+                      Quantité reçue{twin ? ` (${sampleRef(sample.lineNumber, sample.code)})` : ""}
                     </label>
                     <div className="mt-1.5 flex gap-2">
                       <input
                         id={`q-${line.sampleId}`}
                         type="text"
                         inputMode="decimal"
+                        aria-describedby={twin ? `q-hint-${line.sampleId}` : undefined}
                         value={line.quantity}
                         onChange={(e) => updateLine(line.sampleId, { quantity: e.target.value })}
                         placeholder="Ex. : 250"
@@ -831,6 +840,11 @@ export function SerieReceptionForm({
                         ))}
                       </select>
                     </div>
+                    {twin && (
+                      <p id={`q-hint-${line.sampleId}`} className="mt-1 text-xs text-slate-500">
+                        Un contenant par famille : pesez la part de chaque famille.
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label htmlFor={`sc-${line.sampleId}`} className="block text-sm font-medium text-slate-700">
@@ -840,6 +854,7 @@ export function SerieReceptionForm({
                       id={`sc-${line.sampleId}`}
                       value={line.storageClass}
                       defaultLabel={storageDefaultLabel(sample.lineKind, [sample.nature.family])}
+                      lineKind={sample.lineKind}
                       onChange={(storageClass) => updateLine(line.sampleId, { storageClass })}
                     />
                   </div>

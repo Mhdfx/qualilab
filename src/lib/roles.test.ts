@@ -12,6 +12,7 @@ import {
   isPortalRole,
   roleAllowed,
   roleFunction,
+  roleHint,
 } from "./roles";
 
 describe("assignable roles", () => {
@@ -68,14 +69,15 @@ describe("role wording — the laboratory's list of 08/10", () => {
     expect(ROLE_LABELS.VALIDATEUR).toBe("Validateur technique");
   });
 
-  it("maps the six functions to the six circuit roles, in the lab's order", () => {
-    expect(LAB_FUNCTION_ROLES).toEqual(["PRELEVEUR", "RECEPTIONNISTE", "PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "ADMIN"]);
+  it("maps the six functions to the circuit roles, in the lab's order — step 6 signed by the Direction or the admin", () => {
+    expect(LAB_FUNCTION_ROLES).toEqual(["PRELEVEUR", "RECEPTIONNISTE", "PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "DIRECTION", "ADMIN"]);
     expect(LAB_FUNCTION_ROLES.map((role) => ROLE_FUNCTIONS[role])).toEqual([
       "Prélèvement des échantillons",
       "Réception des échantillons",
       "Enregistrement des paramètres",
       "Saisie des résultats",
       "Validation technique des résultats",
+      "Validation administrative",
       "Validation administrative et administration du système",
     ]);
     for (const role of LAB_FUNCTION_ROLES) {
@@ -92,6 +94,45 @@ describe("role wording — the laboratory's list of 08/10", () => {
     expect(roleFunction("SOMETHING")).toBeNull();
     expect(roleFunction(null)).toBeNull();
     expect(roleFunction(undefined)).toBeNull();
+  });
+});
+
+describe("the Direction role (answer of 12/10)", () => {
+  it("is a laboratory role an administrator can give, never the portal's", () => {
+    expect(ROLES).toContain("DIRECTION");
+    expect(LAB_ROLES).toContain("DIRECTION");
+    expect(ASSIGNABLE_ROLES).toContain("DIRECTION");
+    expect(isPortalRole("DIRECTION")).toBe(false);
+  });
+
+  it("follows the validateur in the pickers (step 1, then step 2)", () => {
+    expect(ROLES.indexOf("DIRECTION")).toBe(ROLES.indexOf("VALIDATEUR") + 1);
+  });
+
+  it("is named « Direction — validation administrative », with the function « Validation administrative »", () => {
+    expect(ROLE_LABELS.DIRECTION).toBe("Direction — validation administrative");
+    expect(roleFunction("DIRECTION")).toBe("Validation administrative");
+    // The administrator keeps both halves of its function.
+    expect(roleFunction("ADMIN")).toBe("Validation administrative et administration du système");
+  });
+
+  it("lands on the validation queue, like the validateur", () => {
+    expect(ROLE_HOME.DIRECTION).toBe("/validation");
+    expect(getDashboardPath("DIRECTION")).toBe("/validation");
+  });
+
+  it("warns the administrator that the Direction also signs step 1, never both steps of one sample", () => {
+    expect(roleHint("DIRECTION")).toMatch(/validation technique/);
+    expect(roleHint("DIRECTION")).toMatch(/jamais les deux étapes d'un même échantillon/);
+    expect(roleHint("DIRECTION")).toMatch(/Sans accès à l'administration du système/);
+    // The two signatures are two accounts: never a second account for one person.
+    expect(roleHint("DIRECTION")).toMatch(/donnez ce rôle sur ce compte/);
+  });
+
+  it("gives no hint to the other roles nor to a non-role", () => {
+    for (const role of ROLES.filter((r) => r !== "DIRECTION")) expect(roleHint(role), role).toBeNull();
+    expect(roleHint("SOMETHING")).toBeNull();
+    expect(roleHint(null)).toBeNull();
   });
 });
 

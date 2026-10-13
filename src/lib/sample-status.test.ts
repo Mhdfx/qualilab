@@ -12,8 +12,16 @@ import {
   REOPENED_SAMPLE_FIELDS,
   SAMPLE_STATUS_ORDER,
   amendmentIssueRefusal,
+  ADMINISTRATIVE_SIGNATORY_LABEL,
+  ADMINISTRATIVE_VALIDATION_ROLES,
+  TECHNICAL_VALIDATION_ROLES,
+  signsAdministratively,
+  signsTechnically,
+  validationControls,
 } from "./sample-status";
 import { REOPENABLE_STATUSES, REOPENED_STATUS } from "./report-amendment";
+import { ROLES, type Role } from "./roles";
+import type { SampleStatus } from "@/generated/prisma/enums";
 
 /**
  * The state machine is the laboratory's traceability guarantee: a sample may
@@ -189,7 +197,217 @@ describe("approvalState", () => {
     });
     const refused = canApprove({ status: "RESULTATS_SAISIS", validatedById: "u1" }, "VALIDATEUR");
     expect(refused.ok).toBe(false);
-    if (!refused.ok) expect(refused.error).toBe("Seul un administrateur peut donner la validation administrative.");
+    if (!refused.ok) expect(refused.error).toBe("Seule la direction ou un administrateur peut donner la validation administrative.");
+  });
+});
+
+/**
+ * The Direction (answer of 12/10): « Validation administrative : Directeur et
+ * son suppléant » — four people, two of whom also sign the technical
+ * validation. Every role is decided here, so a role added later is decided
+ * on purpose, not by accident.
+ */
+describe("who signs which step — every role (12/10)", () => {
+  const submitted = { status: "RESULTATS_SAISIS" as const, validatedById: null };
+  const validated = { status: "RESULTATS_SAISIS" as const, validatedById: "user-step1" };
+
+  const TECHNICAL: Record<Role, boolean> = {
+    PRELEVEUR: false,
+    RECEPTIONNISTE: false,
+    PROGRAMMATEUR: false,
+    TECHNICIEN: false,
+    VALIDATEUR: true,
+    DIRECTION: true,
+    GESTIONNAIRE: false,
+    COMPTABLE: false,
+    ADMIN: true,
+    CLIENT: false,
+    MAGASINIER: false,
+  };
+  const ADMINISTRATIVE: Record<Role, boolean> = {
+    PRELEVEUR: false,
+    RECEPTIONNISTE: false,
+    PROGRAMMATEUR: false,
+    TECHNICIEN: false,
+    VALIDATEUR: false,
+    DIRECTION: true,
+    GESTIONNAIRE: false,
+    COMPTABLE: false,
+    ADMIN: true,
+    CLIENT: false,
+    MAGASINIER: false,
+  };
+
+  it("decides every role of the application", () => {
+    expect(Object.keys(TECHNICAL).sort()).toEqual([...ROLES].sort());
+    expect(Object.keys(ADMINISTRATIVE).sort()).toEqual([...ROLES].sort());
+  });
+
+  it("canValidateTechnically: the validateur, the Direction and the admin", () => {
+    for (const role of ROLES) {
+      expect(canValidateTechnically(submitted, role).ok, role).toBe(TECHNICAL[role]);
+      expect(signsTechnically(role), role).toBe(TECHNICAL[role]);
+    }
+    expect([...TECHNICAL_VALIDATION_ROLES]).toEqual(["VALIDATEUR", "DIRECTION", "ADMIN"]);
+  });
+
+  it("canApprove: the Direction and the admin only", () => {
+    for (const role of ROLES) {
+      expect(canApprove(validated, role, "user-step2").ok, role).toBe(ADMINISTRATIVE[role]);
+      expect(signsAdministratively(role), role).toBe(ADMINISTRATIVE[role]);
+    }
+    expect([...ADMINISTRATIVE_VALIDATION_ROLES]).toEqual(["DIRECTION", "ADMIN"]);
+  });
+
+  it("refuses every other role with a message naming who signs step 2", () => {
+    for (const role of ROLES.filter((r) => !ADMINISTRATIVE[r])) {
+      const check = canApprove(validated, role, "user-step2");
+      expect(check.ok, role).toBe(false);
+      if (!check.ok) expect(check.error, role).toBe("Seule la direction ou un administrateur peut donner la validation administrative.");
+    }
+  });
+
+  it("moves the sample to VALIDE only for the two signatories of step 2", () => {
+    for (const role of ROLES) {
+      expect(canTransition("RESULTATS_SAISIS", "VALIDE", role).ok, role).toBe(ADMINISTRATIVE[role]);
+    }
+  });
+
+  it("lets the Direction send a sample back to the bench, with a reason, like the validateur", () => {
+    for (const role of ROLES) {
+      expect(canTransition("RESULTATS_SAISIS", "EN_ANALYSE", role, "valeur incohérente").ok, role).toBe(TECHNICAL[role]);
+    }
+    expect(canTransition("RESULTATS_SAISIS", "EN_ANALYSE", "DIRECTION").ok).toBe(false);
+    expect(canTransition("RESULTATS_SAISIS", "EN_ANALYSE", "DIRECTION", "  ").ok).toBe(false);
+  });
+
+  it("lets the Direction send the report (first send), like the validateur", () => {
+    expect(canTransition("VALIDE", "RAPPORT_ENVOYE", "DIRECTION").ok).toBe(true);
+    expect(canTransition("VALIDE", "RAPPORT_ENVOYE", "VALIDATEUR").ok).toBe(true);
+  });
+
+  it("gives the Direction no other move: no reception, programme, bench, cancel, reactivation or amendment", () => {
+    const moves: [SampleStatus, SampleStatus][] = [
+      ["PRELEVE", "RECU"],
+      ["RECU", "PROGRAMME"],
+      ["PROGRAMME", "EN_ANALYSE"],
+      ["EN_ANALYSE", "RESULTATS_SAISIS"],
+      ["PRELEVE", "ANNULE"],
+      ["RECU", "ANNULE"],
+      ["PROGRAMME", "ANNULE"],
+      ["EN_ANALYSE", "ANNULE"],
+      ["RESULTATS_SAISIS", "ANNULE"],
+      ["ANNULE", "PRELEVE"],
+      ["ANNULE", "RECU"],
+      ["ANNULE", "PROGRAMME"],
+      ["VALIDE", "RESULTATS_SAISIS"],
+      ["RAPPORT_ENVOYE", "RESULTATS_SAISIS"],
+    ];
+    for (const [from, to] of moves) {
+      expect(canTransition(from, to, "DIRECTION", "motif").ok, `${from} → ${to}`).toBe(false);
+    }
+  });
+});
+
+describe("the same-person rule holds for the Direction (12/10)", () => {
+  const validatedBy = (id: string) => ({ status: "RESULTATS_SAISIS" as const, validatedById: id });
+
+  it("refuses the approval of the Direction member who signed step 1", () => {
+    const check = canApprove(validatedBy("direction-a"), "DIRECTION", "direction-a");
+    expect(check.ok).toBe(false);
+    if (!check.ok) expect(check.error).toMatch(/deux signataires différents/);
+  });
+
+  it("accepts another Direction member, or the deputy, as second signatory", () => {
+    expect(canApprove(validatedBy("direction-a"), "DIRECTION", "direction-b").ok).toBe(true);
+    expect(canApprove(validatedBy("validateur-1"), "DIRECTION", "direction-a").ok).toBe(true);
+  });
+
+  it("lets the Direction approve what an administrator validated, and the reverse — two people", () => {
+    expect(canApprove(validatedBy("admin-1"), "DIRECTION", "direction-a").ok).toBe(true);
+    expect(canApprove(validatedBy("direction-a"), "ADMIN", "admin-1").ok).toBe(true);
+    expect(canApprove(validatedBy("admin-1"), "ADMIN", "admin-1").ok).toBe(false);
+  });
+
+  it("still needs the technical validation first", () => {
+    const check = canApprove({ status: "RESULTATS_SAISIS", validatedById: null }, "DIRECTION", "direction-a");
+    expect(check.ok).toBe(false);
+    if (!check.ok) expect(check.error).toContain("validation technique");
+  });
+
+  it("refuses a sample that is not awaiting its approval", () => {
+    for (const status of ["EN_ANALYSE", "VALIDE", "RAPPORT_ENVOYE", "ANNULE"] as const) {
+      expect(canApprove({ status, validatedById: "validateur-1" }, "DIRECTION", "direction-a").ok, status).toBe(false);
+    }
+  });
+
+  it("keeps an amended report issued only on two different signatures, the Direction's included", () => {
+    expect(amendmentIssueRefusal({ status: "VALIDE", validatedById: "direction-a", approvedById: "direction-b" })).toBeNull();
+    expect(amendmentIssueRefusal({ status: "VALIDE", validatedById: "direction-a", approvedById: "direction-a" })).toMatch(
+      /deux signataires différents/
+    );
+  });
+});
+
+describe("validationControls — what the validation panel offers", () => {
+  const me = "user-me";
+  const other = "user-other";
+
+  it("offers step 1 and the send-back to the three validation desks only", () => {
+    for (const role of ROLES) {
+      const controls = validationControls("AWAITING_TECHNICAL", role, { validatedById: null, userId: me });
+      expect(controls.validate, role).toBe(signsTechnically(role));
+      expect(controls.reject, role).toBe(signsTechnically(role));
+      expect(controls.approve, role).toBe(false);
+      expect(controls.approvalLockedToOther, role).toBe(false);
+      expect(controls.approvalNotMine, role).toBe(false);
+    }
+  });
+
+  it("offers step 2 to the Direction and the admin, unless they signed step 1", () => {
+    for (const role of ["DIRECTION", "ADMIN"] as const) {
+      const fresh = validationControls("AWAITING_ADMIN", role, { validatedById: other, userId: me });
+      expect(fresh, role).toEqual({ validate: false, approve: true, reject: true, approvalLockedToOther: false, approvalNotMine: false });
+      const own = validationControls("AWAITING_ADMIN", role, { validatedById: me, userId: me });
+      expect(own, role).toEqual({ validate: false, approve: false, reject: true, approvalLockedToOther: true, approvalNotMine: false });
+    }
+  });
+
+  it("tells the validateur step 2 is not theirs, and still lets them send it back", () => {
+    expect(validationControls("AWAITING_ADMIN", "VALIDATEUR", { validatedById: me, userId: me })).toEqual({
+      validate: false,
+      approve: false,
+      reject: true,
+      approvalLockedToOther: false,
+      approvalNotMine: true,
+    });
+  });
+
+  it("offers nothing once both signatures are on the sample", () => {
+    for (const role of ROLES) {
+      expect(validationControls("APPROVED", role, { validatedById: other, userId: me }), role).toEqual({
+        validate: false,
+        approve: false,
+        reject: false,
+        approvalLockedToOther: false,
+        approvalNotMine: false,
+      });
+    }
+  });
+
+  it("agrees with canApprove for every role, both signers", () => {
+    const validated = { status: "RESULTATS_SAISIS" as const, validatedById: other };
+    for (const role of ROLES) {
+      for (const userId of [me, other]) {
+        expect(validationControls("AWAITING_ADMIN", role, { validatedById: other, userId }).approve, `${role} ${userId}`).toBe(
+          canApprove(validated, role, userId).ok
+        );
+      }
+    }
+  });
+
+  it("names the signatory of step 2 « Direction »", () => {
+    expect(ADMINISTRATIVE_SIGNATORY_LABEL).toBe("Direction");
   });
 });
 

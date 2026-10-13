@@ -20,7 +20,8 @@ export const DOC_TYPE_LABELS: Record<DocType, string> = {
   BON_RECEPTION: "Bon de réception",
   FEUILLE_PAILLASSE: "Feuille de paillasse",
   CAHIER_PHYSICO: "Cahier de détermination (physico-chimie)",
-  RAPPORT: "Rapport d'analyse",
+  /** The title of the template PG06/EN03 (version M), printed in its cartouche. */
+  RAPPORT: "Rapport d'essai",
   ETIQUETTE: "Étiquette d'échantillon",
 };
 
@@ -34,7 +35,7 @@ export const DOC_TYPE_PRINTED_ON: Record<DocType, string | null> = {
   BON_RECEPTION: "Bon de réception (PDF du dépôt)",
   FEUILLE_PAILLASSE: "Feuille de paillasse (PDF du jour)",
   CAHIER_PHYSICO: null,
-  RAPPORT: null,
+  RAPPORT: "Rapport d'essai (PDF du rapport et de son annexe)",
   ETIQUETTE: null,
 };
 

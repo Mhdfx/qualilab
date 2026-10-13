@@ -155,8 +155,9 @@ npm run db:check         # scripts/check-db.ts — connectivity smoke test
 npm run db:studio        # prisma studio
 ```
 
-Demo logins after seed (all password `password`): `pre1`, `recep1`, `tech1`,
-`valid1`, `commercial1`, `compta1`, `admin`.
+Demo logins after seed (all password `password`): `pre1`, `recep1`, `param1`,
+`tech1`, `tech2`, `valid1`, `direction1`, `commercial1`, `compta1`, `admin`,
+`magasin1`.
 
 ## 7. Session protocol — how continuity survives across platforms
 

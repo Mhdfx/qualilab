@@ -10,8 +10,13 @@ import {
   type ChecklistRow,
   type ChecklistStatus,
 } from "@/lib/reception-rules";
-import { STORAGE_CLASSES, type ComplementaryKey, type SignedProtocolRow } from "@/lib/reception-complementary";
-import { CONSULTATION_CHANNEL_LABELS, RECEPTION_DECISION_LABELS, STORAGE_CLASS_LABELS } from "@/lib/labels";
+import {
+  STORAGE_CLASSES,
+  storageClassOptionLabel,
+  type ComplementaryKey,
+  type SignedProtocolRow,
+} from "@/lib/reception-complementary";
+import { CONSULTATION_CHANNEL_LABELS, RECEPTION_DECISION_LABELS } from "@/lib/labels";
 import {
   CONSULTATION_CHANNELS,
   CONSULTATION_NAME_MAX,
@@ -20,7 +25,7 @@ import {
   type ConsultationDraft,
   type ReceptionDecision,
 } from "@/lib/client-consultation";
-import type { ConsultationChannel, StorageClass } from "@/generated/prisma/enums";
+import type { ConsultationChannel, LineKind, StorageClass } from "@/generated/prisma/enums";
 import { LabDateTimeInput } from "@/components/LabDateTimeInput";
 
 const MINUTE_MS = 60_000;
@@ -84,7 +89,7 @@ export type TickControl = {
 };
 
 /**
- * The acceptance checklist of one sample: the seven rules of the bon de
+ * The acceptance checklist of one sample: the eight rules of the bon de
  * réception (PG05/EN04), always all of them, in the paper's order and
  * wording, each with its status — the rules that do not concern the sample
  * stay listed, greyed, « sans objet ». Rule (1) is answered here when the
@@ -325,12 +330,15 @@ export function ReceptionNoteField({
 /**
  * « Conservation » (C2): the class the sample travelled in. The first option
  * is the kind's default (`value` null — stored as such); the four classes
- * follow. The parent renders the <label htmlFor={id}>.
+ * follow. On a food, « Ambiant » reads « aliment stable (conserve, sec,
+ * UHT…) »: choosing it lifts the temperature of rule (6) (12/10). The parent
+ * renders the <label htmlFor={id}>.
  */
 export function StorageClassSelect({
   id,
   value,
   defaultLabel,
+  lineKind,
   onChange,
   className = "input-field mt-1.5 px-3",
 }: {
@@ -338,6 +346,8 @@ export function StorageClassSelect({
   value: StorageClass | null;
   /** « Réfrigéré (par défaut) », « Sans objet (par défaut) »… */
   defaultLabel: string;
+  /** The sample's kind — words « Ambiant » as a stable food on a food. */
+  lineKind: LineKind;
   onChange: (storageClass: StorageClass | null) => void;
   className?: string;
 }) {
@@ -351,7 +361,7 @@ export function StorageClassSelect({
       <option value="">{defaultLabel}</option>
       {STORAGE_CLASSES.map((storage) => (
         <option key={storage} value={storage}>
-          {STORAGE_CLASS_LABELS[storage]}
+          {storageClassOptionLabel(storage, lineKind)}
         </option>
       ))}
     </select>

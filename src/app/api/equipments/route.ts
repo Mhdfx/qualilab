@@ -11,7 +11,7 @@ import { validateEquipment } from "@/lib/quality-validation";
  * calibration state so every screen judges the schedule identically.
  */
 export async function GET(request: Request) {
-  const session = await requireApiRole("VALIDATEUR", "ADMIN");
+  const session = await requireApiRole("VALIDATEUR", "DIRECTION", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { searchParams } = new URL(request.url);
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const session = await requireApiRole("VALIDATEUR", "ADMIN");
+  const session = await requireApiRole("VALIDATEUR", "DIRECTION", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   let body: unknown;

@@ -3,11 +3,15 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { getCompany, pickCompanyInfo } from "@/lib/company-server";
+import { COMPANY_OPTIONAL_FIELDS } from "@/lib/company";
+import { COMPANY_FIELD_LABELS, COMPANY_REQUIRED_FIELDS, readCompanyOptionalFields } from "@/lib/company-input";
 
 /**
  * The laboratory's identity — printed on every report, invoice and email.
- * One row, upserted; every field required so a half-empty identity can never
- * reach an official document.
+ * One row, upserted; every text field required so a half-empty identity can
+ * never reach an official document — except the report footer's IF,
+ * Patente, CNSS and fax (PG06/EN03 version M), optional: an empty one is
+ * left out of the footer (`readCompanyOptionalFields`).
  */
 export async function GET() {
   const session = await requireApiRole("ADMIN");
@@ -15,10 +19,7 @@ export async function GET() {
   return NextResponse.json(await getCompany());
 }
 
-const FIELDS = [
-  "name", "tagline", "address", "city", "phone", "email",
-  "website", "ice", "rc", "bank", "rib", "iban", "swift",
-] as const;
+const FIELDS = COMPANY_REQUIRED_FIELDS;
 
 export async function PUT(request: Request) {
   const session = await requireApiRole("ADMIN");
@@ -38,18 +39,24 @@ export async function PUT(request: Request) {
     const value = typeof input[field] === "string" ? (input[field] as string).trim() : "";
     if (!value) {
       return NextResponse.json(
-        { error: `Le champ « ${field} » est obligatoire.` },
+        { error: `Le champ « ${COMPANY_FIELD_LABELS[field]} » est obligatoire.` },
         { status: 400 }
       );
     }
     // VARCHAR(191) except the tagline (TEXT): refuse rather than crash on insert.
     if (field !== "tagline" && value.length > 191) {
       return NextResponse.json(
-        { error: `Le champ « ${field} » est trop long (191 caractères maximum).` },
+        { error: `Le champ « ${COMPANY_FIELD_LABELS[field]} » est trop long (191 caractères maximum).` },
         { status: 400 }
       );
     }
     data[field] = value;
+  }
+
+  // IF, Patente, CNSS, fax: absent = unchanged, blank = cleared.
+  const optional = readCompanyOptionalFields(input);
+  if (!optional.ok) {
+    return NextResponse.json({ error: optional.error }, { status: 400 });
   }
 
   // The logo is optional (NEEDEDINFO item 5 — the HD file is still awaited):
@@ -84,8 +91,8 @@ export async function PUT(request: Request) {
 
   const saved = await prisma.companySettings.upsert({
     where: { id: "company" },
-    create: { id: "company", ...data, logoData: logoData ?? null },
-    update: { ...data, ...(logoData !== undefined ? { logoData } : {}) },
+    create: { id: "company", ...data, ...optional.data, logoData: logoData ?? null },
+    update: { ...data, ...optional.data, ...(logoData !== undefined ? { logoData } : {}) },
   });
 
   await logAudit({
@@ -96,6 +103,7 @@ export async function PUT(request: Request) {
     metadata: {
       changed: [
         ...FIELDS.filter((f) => before[f] !== data[f]),
+        ...COMPANY_OPTIONAL_FIELDS.filter((f) => f in optional.data && before[f] !== optional.data[f]),
         ...(logoData !== undefined && logoData !== before.logoData
           ? ["logo"]
           : []),

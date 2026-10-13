@@ -13,6 +13,10 @@ export const ROLES = [
   "PROGRAMMATEUR",
   "TECHNICIEN",
   "VALIDATEUR",
+  // « Direction » (answer of 12/10): the director and the deputy who sign
+  // the validation administrative — every right of the validateur plus the
+  // approval, none of the administrator's system powers.
+  "DIRECTION",
   "GESTIONNAIRE",
   "COMPTABLE",
   "ADMIN",
@@ -28,8 +32,9 @@ export const ROLE_LABELS: Record<Role, string> = {
   PROGRAMMATEUR: "Responsable des paramètres",
   TECHNICIEN: "Technicien",
   // Step 1 of the double validation; step 2, the « Validation
-  // administrative », is the administrator's (message of 08/10).
+  // administrative », is signed by the Direction (12/10) or an administrator.
   VALIDATEUR: "Validateur technique",
+  DIRECTION: "Direction — validation administrative",
   GESTIONNAIRE: "Gestionnaire commercial",
   COMPTABLE: "Comptable",
   ADMIN: "Administrateur",
@@ -40,9 +45,10 @@ export const ROLE_LABELS: Record<Role, string> = {
 /**
  * The roles of the sample circuit, in the order of the laboratory's list of
  * 08/10 (« Les rôles : 1. Prélèvement des échantillons … 6. Validation
- * administrative »): one role per function of that list. Wording only —
- * never a guard list: the API's own `CIRCUIT_ROLES` also admit the
- * gestionnaire and the comptable.
+ * administrative »): one role per function of that list, the sixth signed
+ * by the Direction since 12/10 (« Directeur et son suppléant ») and still
+ * by the administrator. Wording only — never a guard list: the API's own
+ * `CIRCUIT_ROLES` also admit the gestionnaire and the comptable.
  */
 export const LAB_FUNCTION_ROLES = [
   "PRELEVEUR",
@@ -50,6 +56,7 @@ export const LAB_FUNCTION_ROLES = [
   "PROGRAMMATEUR",
   "TECHNICIEN",
   "VALIDATEUR",
+  "DIRECTION",
   "ADMIN",
 ] as const satisfies readonly Role[];
 
@@ -67,8 +74,28 @@ export const ROLE_FUNCTIONS: Record<LabFunctionRole, string> = {
   PROGRAMMATEUR: "Enregistrement des paramètres",
   TECHNICIEN: "Saisie des résultats",
   VALIDATEUR: "Validation technique des résultats",
+  DIRECTION: "Validation administrative",
   ADMIN: "Validation administrative et administration du système",
 };
+
+/**
+ * What the administrator must know when giving a role whose rights its
+ * function does not say — shown under the role picker of /admin/utilisateurs.
+ * The Direction also signs the technical validation (two of the four people
+ * of the laboratory's list do both), never both steps of one sample. The
+ * two-signature rule compares accounts, not people: a second account for
+ * someone who already has one would let that person sign both steps.
+ */
+const ROLE_HINTS: Partial<Record<Role, string>> = {
+  DIRECTION:
+    "Signe aussi la validation technique, jamais les deux étapes d'un même échantillon. Sans accès à l'administration du système. " +
+    "À une personne qui a déjà un compte, donnez ce rôle sur ce compte : un second compte lui permettrait de signer les deux étapes.",
+};
+
+/** The hint of a role for the account screen, or null. */
+export function roleHint(role: unknown): string | null {
+  return isRole(role) ? (ROLE_HINTS[role] ?? null) : null;
+}
 
 /** The lab's function of a role, or null for a role outside the circuit (commercial, comptabilité, magasin, portail). */
 export function roleFunction(role: unknown): string | null {
@@ -82,6 +109,8 @@ export const ROLE_HOME: Record<Role, string> = {
   PROGRAMMATEUR: "/programmation",
   TECHNICIEN: "/technicien",
   VALIDATEUR: "/validation",
+  // Both steps of the validation are on the same queue (12/10).
+  DIRECTION: "/validation",
   GESTIONNAIRE: "/commercial",
   COMPTABLE: "/comptabilite",
   ADMIN: "/admin",

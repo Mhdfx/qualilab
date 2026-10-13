@@ -20,7 +20,7 @@ export default async function EilPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   // Belt and braces with the layout guard: a page must be safe on its own.
-  await requireRole("VALIDATEUR", "ADMIN");
+  await requireRole("VALIDATEUR", "DIRECTION", "ADMIN");
   const view = parseView((await searchParams).vue, EIL_VIEWS);
   const statuses = eilViewStatuses(view);
   const campaigns = await prisma.eilCampaign.findMany({

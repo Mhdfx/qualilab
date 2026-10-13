@@ -13,6 +13,7 @@ export default async function CompteLayout({ children }: { children: React.React
     "PROGRAMMATEUR",
     "TECHNICIEN",
     "VALIDATEUR",
+    "DIRECTION",
     "GESTIONNAIRE",
     "COMPTABLE",
     "MAGASINIER",

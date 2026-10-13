@@ -46,7 +46,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   // Metadata renders alongside the layout's redirect: the sample's blind
   // reference goes in the title only for a role that may open the page.
   const session = await getSession();
-  if (!session || !roleAllowed(session.role, ["VALIDATEUR", "ADMIN"])) return { title: "Validation des résultats" };
+  if (!session || !roleAllowed(session.role, ["VALIDATEUR", "DIRECTION", "ADMIN"])) return { title: "Validation des résultats" };
   const { id } = await params;
   const sample = await prisma.sample.findUnique({ where: { id }, select: { code: true, controlCode: true } });
   return { title: sample ? `Contrôle ${labReference(sample)}` : "Validation des résultats" };
@@ -57,7 +57,7 @@ export default async function ValidationDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireRole("VALIDATEUR", "ADMIN");
+  const session = await requireRole("VALIDATEUR", "DIRECTION", "ADMIN");
   const { id } = await params;
 
   const sample = await prisma.sample.findUnique({

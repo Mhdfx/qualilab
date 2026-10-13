@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 import { logAudit } from "@/lib/audit";
-import { getCompany } from "@/lib/company-server";
-import { renderPdf } from "@/lib/pdf";
 import { prisma } from "@/lib/prisma";
 import { portalSampleByIdWhere } from "@/lib/portal-query";
 import { portalNotFound, requirePortalApi } from "@/lib/portal-server";
 import { PORTAL_REPORT_NOT_YET, portalReportRefusal } from "@/lib/portal-status";
-import { buildReportHtml, REPORT_PDF_MARGIN } from "@/lib/report-html";
 import { loadReportData } from "@/lib/report-dispatch";
+import { renderReportPdf } from "@/lib/report-pdf";
 
 /**
  * The report of one of the client's samples, as a PDF (PORTAIL.md §2).
@@ -46,7 +44,7 @@ export async function GET(
   }
 
   try {
-    const pdf = await renderPdf(buildReportHtml(data, await getCompany()), { margin: REPORT_PDF_MARGIN });
+    const pdf = await renderReportPdf(data);
 
     await logAudit({
       actorId: guard.session.id,

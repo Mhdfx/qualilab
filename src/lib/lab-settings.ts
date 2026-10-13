@@ -49,6 +49,10 @@ export const LAB_SETTINGS_SELECT = {
   minWaterChemL: true,
   histamineUnits: true,
   histamineUnitG: true,
+  // Note (8) of the bon version H — live bivalve molluscs (12/10).
+  molluscMinIndividuals: true,
+  molluscMinG: true,
+  molluscSmallMinG: true,
   temperatureRequiredKinds: true,
   coldChainMaxC: true,
   // Contrôles complémentaires (hors bon) — reception-complementary.ts.

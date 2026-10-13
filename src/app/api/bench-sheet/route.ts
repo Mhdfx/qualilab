@@ -26,7 +26,7 @@ import { sampleDesignation } from "@/lib/document-html";
  * Every page carries the paper's quality cartouche (PG06/EN01).
  */
 export async function GET(request: Request) {
-  const session = await requireApiRole("PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "ADMIN");
+  const session = await requireApiRole("PROGRAMMATEUR", "TECHNICIEN", "VALIDATEUR", "DIRECTION", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   // The day on the laboratory's clock, as the sheet prints it — never the

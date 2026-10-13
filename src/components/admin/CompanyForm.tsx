@@ -2,29 +2,41 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Check, ImageIcon, X } from "lucide-react";
+import { Building2, Check, ImageIcon, Landmark, Scale, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import type { CompanyInfo } from "@/lib/company";
+import { COMPANY_OPTIONAL_FIELDS, type CompanyInfo, type CompanyOptionalField } from "@/lib/company";
+import { COMPANY_FIELD_LABELS, COMPANY_OPTIONAL_MAX } from "@/lib/company-input";
 
 /** ~300 KB before base64 — matches the server's 400 000-character ceiling. */
 const LOGO_MAX_BYTES = 300 * 1024;
 const LOGO_TYPES = ["image/png", "image/jpeg", "image/svg+xml", "image/webp"];
 
-const LABELS: Record<Exclude<keyof CompanyInfo, "logoData">, string> = {
-  name: "Raison sociale",
-  tagline: "Activité (sous le logo)",
-  address: "Adresse",
-  city: "Ville",
-  phone: "Téléphone",
-  email: "Email",
-  website: "Site web",
-  ice: "ICE",
-  rc: "RC",
-  bank: "Banque",
-  rib: "RIB",
-  iban: "IBAN",
-  swift: "SWIFT",
-};
+type TextField = Exclude<keyof CompanyInfo, "logoData">;
+
+/** The fields in three groups: the identity, the legal identifiers, the bank. */
+const GROUPS: { title: string; icon: typeof Building2; hint?: string; fields: TextField[] }[] = [
+  {
+    title: "Identité imprimée sur les documents",
+    icon: Building2,
+    fields: ["name", "tagline", "address", "city", "phone", "fax", "email", "website"],
+  },
+  {
+    title: "Identifiants légaux",
+    icon: Scale,
+    hint: "L'ICE et le RC sont imprimés sur les factures (l'ICE aussi sur le protocole) ; le RC, l'IF, la Patente et la CNSS au pied du rapport d'essai, avec le fax. Un champ facultatif laissé vide n'est pas imprimé.",
+    fields: ["ice", "rc", "fiscalId", "patente", "cnss"],
+  },
+  {
+    title: "Coordonnées bancaires (factures)",
+    icon: Landmark,
+    fields: ["bank", "rib", "iban", "swift"],
+  },
+];
+
+const WIDE: ReadonlySet<TextField> = new Set(["tagline", "address"]);
+
+const isOptional = (field: TextField): field is CompanyOptionalField =>
+  (COMPANY_OPTIONAL_FIELDS as readonly string[]).includes(field);
 
 /**
  * The identity printed on every report, invoice and email.
@@ -87,37 +99,54 @@ export function CompanyForm({ initial }: { initial: CompanyInfo }) {
     reader.readAsDataURL(file);
   }
 
-  const fields = Object.keys(LABELS) as Exclude<keyof CompanyInfo, "logoData">[];
-
   return (
     <form onSubmit={save} noValidate>
       <Card className="p-5">
-        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
-          <Building2 className="h-4 w-4 text-brand" aria-hidden="true" />
-          Identité imprimée sur les documents
-        </h2>
+        {GROUPS.map((group, index) => {
+          const Icon = group.icon;
+          const Heading = index === 0 ? "h2" : "h3";
+          const hintId = group.hint ? `c-hint-${index}` : undefined;
+          return (
+            <section key={group.title} className={index === 0 ? "" : "mt-6 border-t border-slate-200 pt-5"}>
+              <Heading className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                <Icon className="h-4 w-4 text-brand" aria-hidden="true" />
+                {group.title}
+              </Heading>
+              {group.hint && (
+                <p id={hintId} className="mt-1 text-sm text-slate-500">
+                  {group.hint}
+                </p>
+              )}
 
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {fields.map((field) => (
-            <div
-              key={field}
-              className={field === "tagline" || field === "address" ? "sm:col-span-2" : ""}
-            >
-              <label htmlFor={`c-${field}`} className="block text-sm font-medium text-slate-700">
-                {LABELS[field]}
-              </label>
-              <input
-                id={`c-${field}`}
-                type="text"
-                value={values[field]}
-                onChange={(event) =>
-                  setValues((current) => ({ ...current, [field]: event.target.value }))
-                }
-                className="mt-1.5 min-h-[42px] w-full rounded-xl border border-slate-300 px-3 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-              />
-            </div>
-          ))}
-        </div>
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {group.fields.map((field) => {
+                  const optional = isOptional(field);
+                  return (
+                    <div key={field} className={WIDE.has(field) ? "sm:col-span-2" : ""}>
+                      <label htmlFor={`c-${field}`} className="block text-sm font-medium text-slate-700">
+                        {COMPANY_FIELD_LABELS[field]}
+                        {optional && <span className="font-normal text-slate-500"> (facultatif)</span>}
+                      </label>
+                      <input
+                        id={`c-${field}`}
+                        type="text"
+                        inputMode={field === "fax" ? "tel" : undefined}
+                        autoComplete="off"
+                        maxLength={optional ? COMPANY_OPTIONAL_MAX[field] : undefined}
+                        aria-describedby={optional && field !== "fax" ? hintId : undefined}
+                        value={values[field] ?? ""}
+                        onChange={(event) =>
+                          setValues((current) => ({ ...current, [field]: event.target.value }))
+                        }
+                        className="mt-1.5 min-h-[42px] w-full rounded-xl border border-slate-300 px-3 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
 
         <div className="mt-6 border-t border-slate-200 pt-5">
           <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">

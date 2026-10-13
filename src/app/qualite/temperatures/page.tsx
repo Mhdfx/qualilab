@@ -7,7 +7,7 @@ export const metadata = { title: "Températures" };
 
 export default async function TemperaturesPage() {
   // Belt and braces with the layout guard: a page must be safe on its own.
-  await requireRole("VALIDATEUR", "ADMIN");
+  await requireRole("VALIDATEUR", "DIRECTION", "ADMIN");
   const rows = await loadMonitoredEquipment();
 
   return (

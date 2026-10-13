@@ -4,7 +4,7 @@
 > "where do I change X" map. Read after `AGENTS.md`. **Keep this current** — it
 > is what lets any AI on any platform continue without archaeology.
 >
-> Last updated: **2026-10-12** · Branch: `master` · Remote:
+> Last updated: **2026-10-13** · Branch: `master` · Remote:
 > `github.com/Mhdfx/qualilab.git`
 
 ---
@@ -15,7 +15,7 @@
 |---|---|---|
 | Préleveur | Field intake (mobile 3-step, param by domain, history) | ✅ **Built & client-approved** |
 | Facturation | Manual invoice: catalog, `FAC-YYYY-NNNN`, 20% VAT, statuses, PDF export | ✅ **Built & client-approved** — superseded by the « Facturation : cycle complet » row below |
-| Auth | **Better Auth** (username + admin plugins), **9 roles**: 7 core + `MAGASINIER` (Phase 6) + `CLIENT` (portal, `PORTAIL.md`) | ✅ **Phase 1 done** |
+| Auth | **Better Auth** (username + admin plugins), **11 roles**: 9 core (`PROGRAMMATEUR` since 05/10, `DIRECTION` since 13/10) + `MAGASINIER` (Phase 6) + `CLIENT` (portal, `PORTAIL.md`) | ✅ **Phase 1 done** |
 | Authorization | Central `requireRole()` / `requireApiRole()` on every page + route | ✅ **Phase 1 done** |
 | Role spaces | 7 dashboards with live indicators | ✅ **Phase 1 done** |
 | Data model | **26 tables** — LIMS core, invoicing, `CompanySettings`/`LabSettings`, Achat & Stock, Qualité | ✅ |
@@ -25,8 +25,8 @@
 | Administration | users, parameters, catalogue, entreprise, journal | ✅ **Phase 4 · E3 done** |
 | LIMS core — **réception** | queue, verify, conformity, **blind numbering** (no technician since 08/10 — the programme assigns) | ✅ **Phase 2 · C1 done** |
 | LIMS core — **saisie résultats** | bench sheet, automatic conformity, submit | ✅ **Phase 2 · C2 done** |
-| LIMS core — **validation** | double validation (validateur + admin), rejet motivé | ✅ **Phase 2 · C3 done** |
-| LIMS core — **rapport PDF** | official report, 3 signatures, on-demand render | ✅ **Phase 3 · started** |
+| LIMS core — **validation** | double validation (validateur technique, puis Direction ou admin — jamais la même personne), rejet motivé | ✅ **Phase 2 · C3 done** |
+| LIMS core — **rapport PDF** | official report on the lab's template PG06/EN03 version M since 13/10 (report + « -ANNEXE- »), on-demand render | ✅ **Phase 3 · started** |
 | LIMS core — **email, alertes** | auto send, grouped contamination alerts, bench sheet | ✅ **Phase 3 done** (delivery simulated until DNS) |
 | Direction & recherche | direction view, DB-backed global search | ✅ **Phase 5 done** |
 | Infra | Docker image + compose, backups, `DEPLOY.md` — PM2 kept as fallback | ✅ **live on the VPS since 2026-08-26** |
@@ -40,7 +40,8 @@
 | **Retour du 08/10 — live 08/10, TESTPLAN V8** | champs date-heure qui lisent l'heure de l'appareil et enregistrent l'heure légale (`LabDateTimeInput`, « = HH:MM heure légale », « dans le futur » refusé à côté du champ), Air et Autre en deux familles (`PC_AIR`, `MICRO_AUTRE`), « Profil d'analyses » et bloc « Analyses à effectuer » de la visite retirés, pas de « T° produit » sur l'air — spec **`RETOUR-LABO-06-10.md`** §8 | ✅ **live 2026-10-08** (`a5925b6`, `b0defab`), migration `20261010100000_natures_air_autre` ; recettes v8 27/27 + v8b 20/20 sur un appareil émulé à +1 h ; reste au laboratoire : paramètres de physico-chimie de l'air et de « Autre » (Q50), mise à jour des appareils |
 | **Retour du 08/10 (suite) — live 08/10, TESTPLAN V9** | arrivée au laboratoire saisie au retour (plus à la création de la visite), mains en deux familles, réception sans technicien (le programme ne se confirme qu'avec un technicien, file la plus ancienne en tête), étiquettes sans client ni site, chaque bloc chiffré des tableaux de bord cliquable — spec **`RETOUR-LABO-06-10.md`** §9 | ✅ **live 2026-10-08** (`7612a18`, `73d7119`) ; recettes v9 + v9b 12/12, tableaux de bord 51 blocs cliqués en production ; reste au laboratoire : paramètres de physico-chimie d'ambiance (0 au catalogue, Q50) |
 | **Message du 08/10 (soir) — live 09/10, TESTPLAN V10** | réception : les 7 règles du bon en checklist par échantillon (règle (1) « exploitable » exigée, motif « non exploitable »), cartouche du papier sur le protocole, le bon et la feuille de paillasse, bon aligné sur la version G, vocabulaire des rôles du laboratoire (« Validation administrative »…), dates sans heure corrigées — spec **`RETOUR-LABO-06-10.md`** §10 | ✅ **live 2026-10-09** (`4a1c1e8`, migration `20261011100000_reception_checklist`) ; dates des cartouches rétablies en production ; questions Q57–Q66 au laboratoire |
-| **Analyse des écarts du 10/10 — construit, pas déployé (TESTPLAN V11)** | réception : contrôles complémentaires hors bon C1–C7 (délai, température de transport par classe de conservation, emballage, identification, protocole signé, DLC), « Non reçu au laboratoire », observation de réception et justification d'un « à vérifier » accepté, checklist décidée visible après réception, accord du client et « En attente du client », libération sans technicien, dépôt avec recherche du client ; paillasse « > x » / « Indénombrable » / « TNTC », motif du renvoi ; renvoi du rapport par le gestionnaire, « Modifier la conclusion », e-mails signés de l'identité `/admin/entreprise`, parcours daté de l'échantillon, journal des envois, historique des réceptions, relevés de température au technicien ; « Mon compte » du personnel, limite de tentatives, déconnexion après inactivité, journal d'audit filtré et paginé, export comptable Excel, compteurs FAC / AV, facture figée à l'émission, avoir lié à la ligne reprise, charge des techniciens ; sauvegarde hors site (opt-in), durcissement SSH, purge du cache Docker — spec **`RETOUR-LABO-06-10.md` §11** | ◀ **built 2026-10-10, not deployed** — 37 items in 3 streams + integration; one additive migration `20261012100000_gaps_build`; gates green (tsc 0, eslint 0, vitest 90 files / 1 396 tests, `npm run build`); nothing checked in a browser (no local DB) → TESTPLAN V11 on production; questions Q67–Q98 au laboratoire |
+| **Analyse des écarts du 10/10 — déployé le 12/10 (`1229862`, TESTPLAN V11)** | réception : contrôles complémentaires hors bon C1–C7 (délai, température de transport par classe de conservation, emballage, identification, protocole signé, DLC), « Non reçu au laboratoire », observation de réception et justification d'un « à vérifier » accepté, checklist décidée visible après réception, accord du client et « En attente du client », libération sans technicien, dépôt avec recherche du client ; paillasse « > x » / « Indénombrable » / « TNTC », motif du renvoi ; renvoi du rapport par le gestionnaire, « Modifier la conclusion », e-mails signés de l'identité `/admin/entreprise`, parcours daté de l'échantillon, journal des envois, historique des réceptions, relevés de température au technicien ; « Mon compte » du personnel, limite de tentatives, déconnexion après inactivité, journal d'audit filtré et paginé, export comptable Excel, compteurs FAC / AV, facture figée à l'émission, avoir lié à la ligne reprise, charge des techniciens ; sauvegarde hors site (opt-in), durcissement SSH, purge du cache Docker — spec **`RETOUR-LABO-06-10.md` §11** | ◀ **built 2026-10-10, not deployed** — 37 items in 3 streams + integration; one additive migration `20261012100000_gaps_build`; gates green (tsc 0, eslint 0, vitest 90 files / 1 396 tests, `npm run build`); nothing checked in a browser (no local DB) → TESTPLAN V11 on production; questions Q67–Q98 au laboratoire |
+| **Réponses du laboratoire du 12/10 — construit 13/10, pas déployé (TESTPLAN V13)** | bon de réception (version H) et protocole (version G) : notes (1)…(8) — (8) mollusques bivalves vivants 10 individus / 50 g / 25 g —, plus de « N° de factures », pied du protocole depuis `/admin/entreprise` ; règle (8) à la réception (reconnue par les mots, seuils dans `/admin/reglages`) ; température obligatoire pour aliment, eau, air et surface sauf l'aliment « Ambiant — aliment stable » ; un contenant par famille (« Quantité 1M / 1P », règle (2) sur M, (3) sur P) ; rapport d'essai au modèle PG06/EN03 M (deux pages, cartouche noire, annexe d'interprétation, légende, N.B., pied légal IF - RC - Patente - CNSS) ; IF / Patente / CNSS / Fax dans `/admin/entreprise` ; rôle `DIRECTION` (droits du validateur + validation administrative, jamais l'administration) — spec **`RETOUR-LABO-06-10.md` §12** | ◀ **built 2026-10-13, not deployed** — one additive migration `20261013100000_retour_labo_1210`; gates green (prisma generate, tsc 0, eslint `src` 0, vitest 96 files / 1 590 tests); local recette **137/137** on an isolated copy (TESTPLAN V13); questions Q99–Q105 au laboratoire, Q62 (histamine) en suspens |
 | **Clients en double / sites / clients facturés** | « Fusionner avec… » et « Rattacher comme site de… » (ADMIN, aperçu puis confirmation, une transaction, fiche archivée avec `mergedIntoId`), client facturé d'un client principal et « Facturé à » par site (facturation : un échantillon n'est proposé qu'à un seul client), quasi-doublon à la création et au renommage (409 + « Ce n'est pas le même client ») — spec **`CLIENTS-FUSION.md`** (`RETOUR-LABO-06-10.md` §7) | ✅ **live 2026-10-08** (`722da85`) — migration `20261008100000_clients_fusion` appliquée ; recette TESTPLAN W 36/36 en production sur des clients de test (archivés ensuite) ; **exécution sur les vrais clients seulement après validation de `doublons-clients.xlsx` (Q54)** |
 
 | **Facturation : cycle complet** | brouillon sans numéro (échantillons réservés), « Émettre » (numéro `FAC-AAAA-NNNN` tiré du compteur `FACTURE` dans la transaction), annulation motivée, avoirs `AV-AAAA-NNNN`, règlements (`Payment`, modes Espèces / Chèque / Effet / Carte / Virement), reste à payer, PDF filigrane / tampon / bloc réglé, liste filtrée par état et type, chiffres « Facturé / Encaissé » uniques (`billingFigures()`) — spec **`FACTURATION.md`** | ✅ **live 2026-10-09** (`b938b10`, migration `20261009100000_facturation_rapports_portail`, shared with the two rows below) — recette TESTPLAN X 21/21 en production |
@@ -220,7 +221,7 @@ wrong. Role → landing page mapping lives in `src/lib/roles.ts` (`ROLE_HOME`).
   `auth-server.ts`). A password change goes through an audited route of ours
   that calls `auth.api.changePassword` server-side: `POST
   /api/portail/compte/mot-de-passe` (portal) and `POST /api/compte/mot-de-passe`
-  (staff, `/compte`, the 9 lab roles named one by one), both through
+  (staff, `/compte`, the 10 lab roles named one by one), both through
   `changeOwnPassword` (`src/lib/password-change-server.ts`): other sessions
   revoked, journal `USER_PASSWORD_CHANGED { username, portal }`, and at most
   5 wrong current passwords per account per 15 min (`passwordChangeLimiter`,
@@ -239,6 +240,31 @@ activity shared across tabs in `localStorage`). A tab reopened after the limit
 signs out on arrival (`expiredOnArrival`); the login page then reads « Session
 fermée après inactivité. » (`/login?motif=inactivite`). It is enforced in the
 browser only: the server session still rolls for 7 days (§9).
+
+**The Direction role (`DIRECTION`, since 2026-10-13, not deployed yet).** The
+laboratory's answer of 12/10: « Validation administrative : Directeur et son
+suppléant », four people, two of whom also sign the technical validation.
+Label « Direction — validation administrative », function « Validation
+administrative » (the administrator keeps « Validation administrative et
+administration du système »), home `/validation`, idle sign-out like every
+lab role. **Rights = the validateur's, plus step 2**: technical validation,
+send-back, report read / duplicata / versions / (re)send, « Corriger la
+fiche », /recherche and its export, the quality system, « Mon compte » — and
+the administrative validation (`ADMINISTRATIVE_VALIDATION_ROLES` =
+DIRECTION, ADMIN in `sample-status.ts`; `canApprove` still refuses the
+person who signed step 1, whatever the role). **Never**: users, settings,
+company, documents, catalogue writes, merges, imports, journal, e-mail log,
+billing, the silent conclusion edit, reopening for amendment, cancel /
+reactivate / release, reception, programme, bench. Every guard that names
+`VALIDATEUR` also names `DIRECTION`, and no other does:
+`src/lib/direction-guards.test.ts` reads every page and route and lists the
+46 places it is admitted. Better Auth's `adminRoles` stays `["ADMIN"]`. The
+report's « Direction » signature prints the approver's name, so a Direction
+approval signs with its own name. Demo account `direction1` (seed).
+⚠️ The two-signature rule compares **accounts**, not people: a signatory who
+already has a `VALIDATEUR` account gets `DIRECTION` on that same account
+(/admin/utilisateurs, role picker), never a second account — with two
+accounts one person could sign both steps of one sample.
 
 ## 3b. Traceability & workflow foundations
 
@@ -291,7 +317,22 @@ backfill); `InvoiceItem.creditedItemId` (self-relation, SET NULL); indexes
 `Serie(receivedAt)`, `EmailLog(createdAt)`, `AuditLog(action, createdAt)`,
 `Invoice(issuedAt)`, `InvoiceItem(creditedItemId)`.
 
-Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
+Since 2026-10-13 (migration `20261013100000_retour_labo_1210`, the lab's
+answers of 12/10, additive, **not deployed yet**): `CompanySettings.fiscalId`
+(IF) / `patente` / `cnss` / `fax` (nullable, null until the owner types them in
+/admin/entreprise — never in the repo); `LabSettings.molluscMinIndividuals`
+(10) / `molluscMinG` (50) / `molluscSmallMinG` (25) (note (8) of the bon
+version H); `LabSettings.temperatureRequiredKinds` default
+`ALIMENT,EAU,AIR,SURFACE`, the stored row moved only while it still held
+`ALIMENT,EAU`; the `RAPPORT` cartouche filled (PG06/EN03, version M,
+05/01/2006, 18/12/2023) only while its reference is empty; `Role` gains
+`DIRECTION` in the Prisma enum (no SQL: `User.role` is a string; in `ROLES`
+of `roles.ts` since the same day, §3). No column for the rest: the « P » twin's
+own weight (one container per family) is written to its own `Sample.quantity` /
+`quantityUnit`, and « aliment stable » is `Sample.storageClass = AMBIANT` on a
+food (`StorageClass`, 10/10).
+
+Enums: `Role`(11: 9 core, `PROGRAMMATEUR` and `DIRECTION` included, + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
 `SampleStatus`(6) · `ResultWorkStatus`(EN_COURS|TERMINE|ANOMALIE) ·
 `ReportSendStatus` · `InvoiceStatus`.
 
@@ -301,13 +342,16 @@ Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|E
 |---|---|
 | The old software's catalogue (extract / import) | `scripts/legacy/extract-legacy.py` → `/admin/import` « Catalogue de l'ancien logiciel »; `src/lib/legacy-catalogue.ts` |
 | The regulation list / its proposal at validation | `/admin/reglementations`; `src/lib/regulation.ts` (`proposeRegulation`) |
-| The report's layout (R1 … Rn, verdict table, densities, one page) | `src/lib/report-html.ts` (+ `report-onepage.test.ts`) |
+| The report's layout (template PG06/EN03 version M since 13/10: page 1 « RAPPORT D'ANALYSES » + « -ANNEXE- Interprétation des résultats », R1 … Rn under « Résultats », verdict ticked in the annex, densities) | `buildReportHtml` / `resultColumns` / `reportDensity` (the first guess of the type, weighing page 1 and the annex) / `printReport` (prints, then steps the type down while the PDF runs over two pages) in `src/lib/report-html.ts` (+ `report-onepage.test.ts`: page 1 and the annex each on one page — a PDF of exactly two pages, heaviest cases and the 8–18-germ ones in between) |
+| The report template's fixed wording (legend, « N.B », « Lieu d'exécution », sampling references PG04/EN01 & PG04/IT03, air PG06/IT55) and its field rules (préleveur, temperatures, « Date d'analyse », legal footer) | `src/lib/report-template.ts` (pure, tested) — change it with the RAPPORT row of /admin/documents when the lab issues a new version |
+| How the report PDF is assembled (cartouche, footer, margins) | `renderReportPdf` in `src/lib/report-pdf.ts` — the one path for download, duplicata, versions, portal and e-mail, through `printReport`; `reportPdfParts` / `reportFooterTemplate` / `reportCartouche` / `reportPdfMargin` in `report-html.ts` (the foot grows with a print's marks and with long identity fields; `@page` and `page.pdf()` read the same box) |
 | Too few units / indicative verdict / « Non spécifié » | `judgeUnits`, `informalVerdict`, `hasLimit` in `src/lib/interpretation.ts` |
 | « Réglementation en vigueur » text | `/admin/types-produits/[id]` (per type), `/admin/reglages` (per family) |
 | Search filters and conclusion per sample | `src/lib/sample-search.ts` (pure) + `sample-search-server.ts` |
 | Excel export columns | `src/app/api/samples/export/route.ts` |
 | Destroy at reception | `src/lib/reception-input.ts`, `serie-create.ts` (deposit) |
 | Company name / ICE / RC / RIB / IBAN / bank | `/admin/entreprise` (DB row); defaults in `src/lib/company.ts` |
+| IF / Patente / CNSS / Fax (the report's legal footer — optional, left out when empty, never in the repo) | `/admin/entreprise` « Identifiants légaux »; `PUT /api/admin/company` (absent = unchanged, blank = cleared, audited as `changed` field names); rules and the labels of every field `readCompanyOptionalFields` / `COMPANY_FIELD_LABELS` in `src/lib/company-input.ts` |
 | Sample numbering (field / control / blind serial) | `src/lib/sample-code.ts` |
 | How a result is judged (n, c, m, M, absence, dilutions) | `src/lib/interpretation.ts` — pure, tested; the bench, the validation screen and the report all call it |
 | The criteria themselves (a limit, a norm version, a germ) | `/admin/types-produits/[id]` — data, no code; `/admin/normes` for the versions |
@@ -324,11 +368,11 @@ Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|E
 | Access rules for a page or route | `requireRole` / `requireApiRole` in `src/lib/auth.ts` |
 | Add a role / change a role's landing page | `src/lib/roles.ts` + Prisma `Role` enum |
 | Who may move a sample to a status | `src/lib/sample-status.ts` (`TRANSITIONS`) |
-| The two-approval rule | `canValidateTechnically()` / `canApprove()` in `sample-status.ts` |
+| The two-approval rule | `canValidateTechnically()` / `canApprove()` in `sample-status.ts`; who signs which step: `TECHNICAL_VALIDATION_ROLES` (VALIDATEUR, DIRECTION, ADMIN) / `ADMINISTRATIVE_VALIDATION_ROLES` (DIRECTION, ADMIN); what the panel offers: `validationControls()` (same file, used by `ValidationPanel`) |
 | What the global search matches | `GET /api/samples` (`q` param) — préleveur excluded from numbering fields |
 | Deploy / backups / restore | `DEPLOY.md` + `Dockerfile` + `docker-compose.yml` + `scripts/backup-db.sh` |
 | How a typed result is read / conformity computed | `src/lib/result-value.ts` |
-| The report's layout, wording or conclusion | `src/lib/report-html.ts` |
+| The report's layout, wording or conclusion | `src/lib/report-html.ts` (layout, conclusion), `src/lib/report-template.ts` (the template's fixed wording) |
 | The email wording (report / alert) | `src/lib/emails/templates.ts` |
 | What is sent on approval | `src/lib/report-dispatch.ts` |
 | How a growing list is paged | `src/lib/pagination.ts` (cursor, not page numbers) |
@@ -396,10 +440,15 @@ Enums: `Role`(9: 7 core + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|E
 | The programme queue's order (oldest reception first, série « 9/26 » before « 10/26 ») | `orderQueue` / `compareSerialNumbers` in `src/lib/programmation-queue.ts`; status-first `orderBy` in `/programmation` and `GET /api/programmation/queue` |
 | What a sample label prints | `src/lib/labels-html.ts` (no client, no site since 08/10 — blind bench) |
 | The reception rules (wording, order, numbering) | `RECEPTION_RULES` in `src/lib/reception-rules.ts` — the one source for the checklist, the printed bon and /admin/reglages; thresholds stay in LabSettings |
-| A sample's reception checklist (7 rows, statuses, rule (1)) | `receptionChecklist` / `proposedConformity` / `EXPLOITABLE_MESSAGES` in `reception-rules.ts`; `Checklist` in `reception-widgets.tsx`; enforced by `validateReception` and the deposit path of `serie-input.ts`; stored in `Sample.receptionExploitable` |
-| The cartouche of a printed form (grid, labels, Page x sur y) | `src/lib/cartouche-html.ts` (Chromium header template) + `/admin/documents` (Réf, version, dates); logo from `document-logo.ts`; protocol, bon and bench sheet only — the `@page` and `page.pdf()` margins must stay equal |
+| A sample's reception checklist (8 rows since 13/10 — 7 before —, statuses, rule (1)) | `receptionChecklist` / `proposedConformity` / `EXPLOITABLE_MESSAGES` in `reception-rules.ts`; `Checklist` in `reception-widgets.tsx`; enforced by `validateReception` and the deposit path of `serie-input.ts`; stored in `Sample.receptionExploitable` |
+| The cartouche of a printed form (grid, labels, Page x sur y) | `src/lib/cartouche-html.ts` (Chromium header template) + `/admin/documents` (Réf, version, dates); logo from `document-logo.ts`; protocol, bon, bench sheet and, since 13/10, the rapport d'essai (« Rapport d'essai », RAPPORT row, black `ink` — `REPORT_CARTOUCHE_INK`) — the `@page` and `page.pdf()` margins must stay equal |
 | A calendar date without a time (DLC, document and norm versions) | `parseIsoDay` / `isoDayOf` / `formatDateOnly` in `src/lib/date-only.ts` — never `new Date("AAAA-MM-JJT00:00:00")` (it slipped a day for UTC+1-era dates) |
-| The lab's function of a role, the step names | `ROLE_FUNCTIONS` / `LAB_FUNCTION_ROLES` in `src/lib/roles.ts`; step 2 is « Validation administrative » (labels only — ADMIN signs it) |
+| The lab's function of a role, the step names | `ROLE_FUNCTIONS` / `LAB_FUNCTION_ROLES` in `src/lib/roles.ts`; step 2 is « Validation administrative », signed by DIRECTION or ADMIN since 13/10 (`ADMINISTRATIVE_SIGNATORY_LABEL` « Direction » on the panel); the hint under the role picker of /admin/utilisateurs: `roleHint()` |
+| Where the Direction is admitted (12/10) | every guard naming `VALIDATEUR` names `DIRECTION` too — the list is in `src/lib/direction-guards.test.ts` (`DIRECTION_ADMITTED`, `ADMIN_ONLY`); its menu `directionNav` (`role-navs.ts`), the two steps as `?vue=` links; the lists that are not guards: `REPORT_READ_ROLES` / `RESEND_REPORT_ROLES` (`report-actions.ts`), `FICHE_CORRECTION_ROLES` (`sample-verbs.ts`), `PROTOCOL_PHOTO_ROLES` |
+| Rule (8), live bivalve molluscs (wording, figures, which samples) | `RECEPTION_RULES` (n 8, `MOLLUSQUES`) and `molluscCheck` in `src/lib/reception-rules.ts`; recognised by `mentionsBivalveMolluscs` on the désignation, product type and nature with the one word list `BIVALVE_MOLLUSC_WORDS` (egg « à la coque », « moulé », céphalopodes / gastéropodes excluded); figures `LabSettings.molluscMinIndividuals` / `molluscMinG` / `molluscSmallMinG` on /admin/reglages (`LabSettingsForm.tsx`, PUT refuses small > normal). It is **added** to (2) / (3), never replaces them (Q99) |
+| Rule (6): which kinds need a temperature, the stable-food exception | `LabSettings.temperatureRequiredKinds` (default `ALIMENT,EAU,AIR,SURFACE` since 13/10, /admin/reglages); `isStableFood` in `reception-rules.ts` (a food received « Ambiant »); the option's wording `STABLE_FOOD_STORAGE_LABEL` / `storageClassOptionLabel` in `src/lib/reception-complementary.ts` |
+| One container per family (« Quantité 1M / 1P », 12/10) | the line's `quantityChimie` / `quantityUnitChimie`, read by `validateLine` (`chimieQuantityMessage`) and `sampleQuantity` in `src/lib/serie-input.ts` (the deposit's rules and `serie-create.ts` both use it); counter preview `depositSampleQuantity` in `src/components/reception/reception-logic.ts`; the `chimieQuantity` prop of `LineEditor.tsx` (the counter only); visit reception labels in `SerieReceptionForm.tsx` |
+| The protocol's footer (name in capitals, Tél. / Fax / E-mail, ICE) and the notes on bon and protocole | `protocolFooterLines` / `documentFooter` in `src/lib/document-html.ts` (from `getCompany()`, an empty part left out); notes from `RECEPTION_RULES` with the lab's thresholds (`GET /api/series/[id]/document` passes `getLabSettings()`) |
 
 **Added 2026-10-10 (analyse des écarts, `RETOUR-LABO-06-10.md` §11 — not deployed yet):**
 
@@ -655,6 +704,15 @@ Found by the end-to-end recette of 06/10 (`RECETTE-06-10-PARCOURS.md`).
 - **Removed**: `src/lib/invoice-types.ts` and the 410 `PATCH /api/invoices/[id]/payment` (the « one release later » of 2026-10-08); `src/components/reception/types.ts` (no technician at release). Kept: `GET /api/invoices`, `/api/invoices/stats`, `/api/programmation/queue`, `/api/preleveurs`, `/api/portail/tableau-de-bord` (recette probes).
 - **Defaults applied until the lab answers** (NEEDEDINFO Q67–Q98): C1 24 h micro / none in chemistry, à vérifier; C2 0–8 °C chilled, ≤ 8 °C water micro, ≤ −15 °C frozen, chilled by default for food, surfaces, hands and water micro; C7 warning with motif « Autre »; « > x » below the limit blocks as Incomplet; idle 30 min; a 0,00 invoice can be cancelled; export one workbook, credit notes negative, cancelled invoices listed but out of the totals; the protocol photo is never shown to the technician, the programmer or the accountant.
 
+### 2026-10-13 — réponses du laboratoire du 12/10 (`RETOUR-LABO-06-10.md` §12), as built — not deployed
+- **One migration, three streams, one integration pass.** `20261013100000_retour_labo_1210`, additive: `CompanySettings.fiscalId` / `patente` / `cnss` / `fax` (null — never backfilled, the owner types them), `LabSettings.mollusc*` (10 / 50 / 25), `temperatureRequiredKinds` default `ALIMENT,EAU,AIR,SURFACE` (the stored row moved only from the old default), the RAPPORT cartouche filled only while empty (PG06/EN03, M, 05/01/2006, 18/12/2023), `Role.DIRECTION` (enum only). Streams: report (template M), reception (rule (8), stable food, per-family weights, bon / protocole), Direction role; each reviewed by a hostile reviewer (report: three-page overflows fixed by `printReport`; reception: bon signature cut across a page break, « moulé » read as « moule »; direction: two-accounts hint).
+- **Rule (8) is an extra row beside (2) / (3)**, never a replacement: the note reads « pour le cas des mollusques bivalves vivants », which may be an exception (50 g instead of 100 g) or an additional constraint (50 g of flesh). Built additive until Q99 — with the lab's thresholds a mollusc under 100 g stays non conforme by rule (2), so (8) decides alone only between 25 and 50 g of a sample already above (2) / (3). Recognised by words (Q100); the 10 individuals are never counted (« à vérifier » always).
+- **« Sauf les aliments stables » = the reception's « Ambiant » on a food.** No product-type flag: a tin left on the kind's default class (« Réfrigéré ») still needs a temperature; water, air and surface always need one; hands stay optional (Q101).
+- **One container per family**: the counter types two quantities, the visit reception already had one card per twin; an old page that sends no `quantityChimie` keeps the former behaviour (the P sample takes the line's quantity). A two-family deposit line still has one conformity and one decision for both samples (product decision, unchanged).
+- **The report follows template M** and keeps what the lab already validated (R1 … Rn, red / amber results, amendment « annule et remplace » + « (VC) », duplicata / superseded marks, conclusion, regulation). Where the template is silent the choices are listed in Q104 (« Acceptable » column only for an acceptable verdict, no ICE nor analyst printed, conclusion in the annex, « N/A » sampling reference for a client sample). The legend's « * », SA, SN, DPC mark no parameter yet (no accreditation field).
+- **`DIRECTION` = the validateur's rights + step 2**, never system administration; ADMIN keeps step 2 until Q102. The two-signature rule compares accounts: a person with a VALIDATEUR account gets DIRECTION on that account (the role picker says so).
+- **Integration recette on an isolated copy.** The shared dev server (:3210) was started before the migration and still held the old Prisma client (`Unknown field molluscMinIndividuals`); it was not restarted (another session owns it). The recette ran on a copy of the working tree served by `next dev --webpack` on :3230 against the same local database (`.ui-tests/e2e1210-*.mjs`, gitignored): 137/137, no defect found in the build; two cosmetic leftovers fixed (a stale doc comment in `ReportActions.tsx`, the demo-login list of AGENTS.md).
+
 ## 8c. A lesson written down (2026-08-25)
 
 Importing anything that touches Prisma from a **client** component drags the
@@ -728,6 +786,7 @@ importing a server module.
   - `GET /api/invoices` and `/api/invoices/stats` are no longer called by the screens (they read through `invoice-queries.ts`) but stay: the recette probes use them. (`invoice-types.ts` and the 410 `PATCH …/payment` were deleted 2026-10-10.)
   - ~~The counters screen shows SERIE and CONTROLE only~~ → **resolved 2026-10-10**: « Factures et avoirs » on `/admin/reglages`. Set them on switch-over day, before the first real invoice (Q83).
 - **Reports, after 2026-10-08 (AMENDEMENT.md):** a version frozen at issue does not take a later silent admin correction until the next reopen (the current version renders live, so screens and downloads show it). If `loadReportData` cannot read a pending report's frozen JSON (damaged row), it falls back to the live data (logged).
+- **Reports, template PG06/EN03 (13/10, not deployed):** a version frozen before 13/10 (an older `?version=N`, or the version in force while an amendment is pending) has none of the template's new fields: it prints « — » for Dates Prod / Exp, temperatures, « Date d'analyse », and « Référence prélèvement : — » (who sampled is unknown, so the lab's procedures are not claimed); « Date d'édition » is taken from `ReportVersion.issuedAt` (`loadReportVersion`). The report no longer prints the analyst (« Analyses réalisées par ») nor the client's ICE — the template has neither; both stay in `ReportData`. The legal footer's height is estimated from the identity's lengths (`legalFooterExtraLines`, 150 characters a line); the heaviest checked case (37 germs × 9 repetitions, 500-character amendment reason, duplicata and superseded marks) keeps ≈ 1 mm to spare on page 1. The type is a guess (`reportDensity`, measured 13/10 on 3–37 germs × 1–12 repetitions, client names up to 191 characters) checked on the PDF itself: `printReport` prints again one type denser while the PDF has more than two pages (one print in 232 of the 260 cases measured, two at most; every case up to nine repetitions holds on two pages, only twelve repetitions — two bands — of 20 germs and more run onto a third), and at the densest type a report that still does not hold runs on, its tables' heads repeated — the annex's criteria frame may break (`frame long`) so that it never leaves a page empty.
 - ~~Portal password change outside the HTTP rate limit; `x-forwarded-for` trust~~ → **resolved 2026-10-10**: per-account counter on both password routes (`attempt-limiter.ts`) and `advanced.ipAddress` reading `x-real-ip` first. Check read-only at the next deploy that the live nginx site sets `X-Real-IP $remote_addr` (`DEPLOY.md`), else a client could forge it.
 - **After 2026-10-10 (analyse des écarts, not deployed yet):**
   - ⚠️ **URGENT, ops — the phase-9 restore point will be pruned.** The `backup-db.sh` deployed on the VPS deletes `qualilab_*.sql.gz` older than 30 days; that pattern matches `/var/backups/qualilab/qualilab_avant-phase-9.sql.gz` (13/09), so the 02:00 run of about **14–15/10/2026** removes it. Before then: deploy the new script (it rotates only `qualilab_????-??-??_????.sql.gz`), or copy the file off the server, or rename it out of the pattern (`DEPLOY.md` « Backups »).
@@ -757,6 +816,14 @@ importing a server module.
   - **Sign-in limiter verified in production mode** (in-process, `NODE_ENV=production`, `.ui-tests/full-verify-ratelimit.mts`): 3 tries per 10 s per address, then 429; another address has its own bucket.
   - **Still open:** the day cuts of /recherche and the « aujourd'hui » tiles on a box with stale tz data (see above — production relies on the DEPLOY.md tz check); /programmation renders the whole queue (3 s in `next dev` with 407 queued test samples); the early contamination alert has no `EmailLog.reportId` (needs a column); a NON_CONFORME calibration still moves the next due date (question for the laboratory); the invoice list searches the live client name, not the name frozen at issue; the DB pool is 5 connections (`database-url.ts`) — `pool timeout` 500s were seen only under the four recettes' combined load.
 
+- **After 2026-10-13 (réponses du 12/10, not deployed):**
+  - ⚠️ **Restart every dev server after pulling the migration** (`prisma generate` then restart): a server started before answers « Unknown field molluscMinIndividuals » on `/api/admin/lab-settings`, every deposit and `/validation/[id]` (they all read `getLabSettings()`). In production the image rebuild does it.
+  - **Rule (8) is additive (Q99)** and **recognised by words (Q100)**: false matches only add a row (8) (« coquilles » pasta / brioche, « coques de macaron »), misses (« coquillages », tellines, couteaux, amandes de mer) fall back to (2) / (3). Change `BIVALVE_MOLLUSC_WORDS` (one list, tested) or add a product-type flag after the lab answers.
+  - **Stable food depends on the receptionist choosing « Ambiant »** (Q101); the kind's default class stays « Réfrigéré ».
+  - **Cartouches of the bon and the protocole still print versions G and F** until the owner types H and G with their dates in /admin/documents (Q103) — the content is already the new version's.
+  - **Report numbers of `?version=N` frozen before 13/10** print « — » for the template's new fields (see the PG06/EN03 bullet above).
+  - **The legal footer prints only what /admin/entreprise holds**: IF, Patente, CNSS and Fax are null until typed; « S.A.R.L » appears only if typed in « Raison sociale ».
+  - Cosmetic, left: the Direction's « Validation technique » / « Validation administrative » menu links (`?vue=`) are never highlighted (`activeHref` reads the pathname only); the validate response still says `awaiting: "ADMIN"` (no client reads it); the step-1 chip of the panel reads « Validateur technique » even when a Direction account signed it.
 ## 10. Scope additions — client meeting 2026-07-28
 
 New requests on top of the signed `finalversion.xlsx` scope (full detail in
@@ -790,9 +857,7 @@ client portal confirmed, admin-managed accounts (#10).
 **alert trigger timing** (before or after full double validation) - **the norm
 limits per sensitive germ** (the model email shows E. coli limit 1.10² UFC/g).
 
-**Real company details** appeared in the client's model email (2026-08-17) and
-should replace the placeholders in `src/lib/company.ts` once confirmed:
-Laboratoire Qualilab International - Tél 0522-470-083/086 -
-info@qualilabinternational.com - 6, rue Ibn Al Jaouzi (Ex Colonel Gros),
-Quartier des Hôpitaux, 20360 - Responsable technique: Boutiri Abdellah -
-direction@qualilabinternational.com (alert CC). ICE/RC/RIB still needed.
+**Real company details** (address, phones, e-mails, legal identifiers, the
+names of the signatories) are data, entered by the owner in `/admin/entreprise`
+and `/admin/utilisateurs` — never written in this public repository. The lab's
+report template (PG06/EN03, 12/10) carries the full legal footer to copy from.

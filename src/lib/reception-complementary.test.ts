@@ -13,10 +13,12 @@ import {
   labDayOf,
   packagingHint,
   parseChoice,
+  STABLE_FOOD_STORAGE_LABEL,
   STORAGE_CLASSES,
   TEMPERATURE_SOURCES,
   serieDelayMinutes,
   signedProtocolRow,
+  storageClassOptionLabel,
   storedSignedProtocolAnswer,
   type ComplementaryAnswers,
   type ComplementaryLine,
@@ -203,6 +205,21 @@ describe("C2 — température de transport", () => {
     }
   });
 
+  it("words « Ambiant » as a stable food on a food only (12/10)", () => {
+    expect(storageClassOptionLabel("AMBIANT", "ALIMENT")).toBe("Ambiant — aliment stable (conserve, sec, UHT…)");
+    expect(STABLE_FOOD_STORAGE_LABEL).toBe(storageClassOptionLabel("AMBIANT", "ALIMENT"));
+    for (const lineKind of ["EAU", "SURFACE", "MAINS", "AIR", "AUTRE"] as const) {
+      expect(storageClassOptionLabel("AMBIANT", lineKind)).toBe("Ambiant");
+    }
+    expect(storageClassOptionLabel("AMBIANT", null)).toBe("Ambiant");
+    expect(STORAGE_CLASSES.map((storage) => storageClassOptionLabel(storage, "ALIMENT"))).toEqual([
+      "Réfrigéré",
+      "Congelé",
+      "Ambiant — aliment stable (conserve, sec, UHT…)",
+      "Chaud",
+    ]);
+  });
+
   it("accepts a known class or source, nothing for an older page, refuses the rest", () => {
     expect(parseChoice(undefined, TEMPERATURE_SOURCES)).toBeNull();
     expect(parseChoice("", STORAGE_CLASSES)).toBeNull();
@@ -329,6 +346,8 @@ describe("the rows and the proposal", () => {
         quantityUnit: "G",
         receptionTemperature: 4,
         unitCount: 1,
+        storageClass: null,
+        productNames: ["Produit test"],
       },
       DEFAULT_THRESHOLDS,
       { exploitable: true }

@@ -20,7 +20,7 @@ import {
  * implementing it is a click on this screen.
  *
  * The thresholds are named by the paper's own numbering and wording,
- * (1) … (7) (`RECEPTION_RULES`), figures as typed.
+ * (1) … (8) (`RECEPTION_RULES`, version H of 12/10), figures as typed.
  *
  * The limits of the contrôles complémentaires (hors bon) follow in a block
  * of their own: C1, the delay sampling → arrival per family and whether an
@@ -36,7 +36,10 @@ type NumberKey =
   | "minWaterSalmonellaL"
   | "minWaterChemL"
   | "histamineUnits"
-  | "histamineUnitG";
+  | "histamineUnitG"
+  | "molluscMinIndividuals"
+  | "molluscMinG"
+  | "molluscSmallMinG";
 
 // The non-conform-at-reception switch is gone (29/09): the réceptionniste
 // decides line by line, « Analyser malgré tout » or « Détruire ».
@@ -64,6 +67,9 @@ const THRESHOLDS: { key: NumberKey; label: string; unit: string; rule: Reception
   { key: "minWaterChemL", label: "Eau — physico-chimie", unit: "L", rule: "EAU_CHIMIE" },
   { key: "histamineUnits", label: "Histamine — nombre d'unités", unit: "unités", rule: "HISTAMINE" },
   { key: "histamineUnitG", label: "Histamine — poids par unité", unit: "g", rule: "HISTAMINE" },
+  { key: "molluscMinIndividuals", label: "Mollusques bivalves — individus", unit: "individus", rule: "MOLLUSQUES" },
+  { key: "molluscMinG", label: "Mollusques bivalves — poids minimal", unit: "g", rule: "MOLLUSQUES" },
+  { key: "molluscSmallMinG", label: "Mollusques bivalves — animaux de petite taille", unit: "g", rule: "MOLLUSQUES" },
 ];
 
 /** The limits of the contrôles complémentaires — `nullable`: empty = no limit; `decimal`: a temperature. */
@@ -282,11 +288,13 @@ export function LabSettingsForm({
           Règles d&apos;acceptation à la réception
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          Les sept règles du bon de réception (PG05/EN04), en liste de contrôle sur chaque
-          échantillon au moment de la réception. La règle (1) est la réponse du réceptionniste ;
-          une quantité sous le minimum ou une température manquante rend l&apos;échantillon non
-          conforme ; la réception décide alors, échantillon par échantillon, de l&apos;analyser
-          malgré tout ou de le détruire.
+          Les huit règles du bon de réception (PG05/EN04), en liste de contrôle sur chaque
+          échantillon au moment de la réception, imprimées aussi sous le bon et le protocole. La
+          règle (1) est la réponse du réceptionniste ; une quantité sous le minimum ou une
+          température manquante rend l&apos;échantillon non conforme ; la réception décide alors,
+          échantillon par échantillon, de l&apos;analyser malgré tout ou de le détruire. La règle (8)
+          s&apos;applique aux aliments dont la désignation, le type ou la nature nomme des mollusques
+          bivalves.
         </p>
         <ol className="mt-3 space-y-1 rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-600 ring-1 ring-slate-100">
           {RECEPTION_RULES.map((rule) => (
@@ -345,12 +353,16 @@ export function LabSettingsForm({
               );
             })}
           </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Sauf un aliment stable : un aliment réceptionné en conservation « Ambiant » (conserve, sec, UHT…)
+            n&apos;a pas de température obligatoire.
+          </p>
         </fieldset>
 
         <fieldset className="mt-5 rounded-xl border border-slate-200 p-4">
           <legend className="px-1 text-sm font-semibold text-slate-800">Contrôles complémentaires (hors bon)</legend>
           <p className="text-xs text-slate-500">
-            Ajoutés par le laboratoire aux sept règles du bon, ils s&apos;affichent sous la checklist de chaque
+            Ajoutés par le laboratoire aux huit règles du bon, ils s&apos;affichent sous la checklist de chaque
             échantillon, codés C1 … C7.
           </p>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">

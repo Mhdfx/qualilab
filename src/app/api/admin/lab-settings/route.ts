@@ -7,7 +7,8 @@ import { getLabSettings, LAB_SETTINGS_SELECT, type LabSettings } from "@/lib/lab
 /**
  * The workflow policy — one row, ADMIN only. The two switches encode client
  * decisions still pending (NEEDEDINFO §4); the thresholds are the acceptance
- * rules of the bon de réception (WORKFLOW.md §6), editable without code.
+ * rules of the bon de réception (WORKFLOW.md §6, rules (2) … (8) — the
+ * molluscs' figures since 12/10), editable without code.
  */
 export async function GET() {
   const session = await requireApiRole("ADMIN");
@@ -33,6 +34,16 @@ const NUMBERS: { key: keyof LabSettings; label: string; min: number; max: number
   { key: "minWaterChemL", label: "Volume minimal eau (physico-chimie)", min: 0, max: 1_000, integer: false },
   { key: "histamineUnits", label: "Unités pour l'histamine", min: 1, max: 100, integer: true },
   { key: "histamineUnitG", label: "Poids par unité pour l'histamine", min: 0, max: 100_000, integer: true },
+  // Rule (8), live bivalve molluscs (note (8) of the bon version H, 12/10).
+  { key: "molluscMinIndividuals", label: "Mollusques bivalves — nombre minimal d'individus", min: 1, max: 1_000, integer: true },
+  { key: "molluscMinG", label: "Mollusques bivalves — poids minimal", min: 0, max: 100_000, integer: true },
+  {
+    key: "molluscSmallMinG",
+    label: "Mollusques bivalves — poids minimal (animaux de petite taille)",
+    min: 0,
+    max: 100_000,
+    integer: true,
+  },
   // Contrôles complémentaires (hors bon), C2 — the ranges of the transport temperature.
   { key: "coldChainMinC", label: "Température minimale (réfrigéré)", min: -80, max: 300, integer: false },
   { key: "coldChainMaxC", label: "Température maximale (réfrigéré)", min: -80, max: 300, integer: false },
@@ -98,6 +109,18 @@ export async function PUT(request: Request) {
       {
         error:
           "« Température minimale (réfrigéré) » dépasse une température maximale (réfrigéré ou eau en microbiologie) : la plage serait vide.",
+      },
+      { status: 400 }
+    );
+  }
+
+  // Rule (8): the small animals' minimum is the lower one — above the
+  // minimum it would refuse what the rule accepts.
+  if ((data.molluscSmallMinG ?? before.molluscSmallMinG) > (data.molluscMinG ?? before.molluscMinG)) {
+    return NextResponse.json(
+      {
+        error:
+          "« Mollusques bivalves — poids minimal (animaux de petite taille) » dépasse le poids minimal des mollusques bivalves.",
       },
       { status: 400 }
     );

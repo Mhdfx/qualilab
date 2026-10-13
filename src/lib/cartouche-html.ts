@@ -60,9 +60,16 @@ export function pageCss(margin: PageMargin): string {
 /** The logo cell takes an image data URI only — the same whole-string check as the upload. */
 const IMAGE_DATA_URI = /^data:image\/(png|jpe?g|svg\+xml|webp);base64,[A-Za-z0-9+/]+=*$/;
 
+/** The ink of the report's template (PG06/EN03 version M): drawn in black, not in the forms' navy. */
+export const REPORT_CARTOUCHE_INK = "#000000";
+
+/** An ink colour as the template accepts it: « #rgb » or « #rrggbb » only — it lands in a style attribute. */
+const INK = /^#(?:[0-9a-fA-F]{3}){1,2}$/;
+
 const SERIF = "font-family:'Times New Roman','Liberation Serif',Times,serif;";
 const SANS = "font-family:Arial,'Liberation Sans',Helvetica,sans-serif;";
-const CELL = `border:1px solid ${CARTOUCHE_INK};padding:0 1.5mm;text-align:center;vertical-align:middle;color:${CARTOUCHE_INK};font-weight:700;`;
+const cell = (ink: string) =>
+  `border:1px solid ${ink};padding:0 1.5mm;text-align:center;vertical-align:middle;color:${ink};font-weight:700;`;
 /** Each of the two rows, as on the paper (≈ 11 mm). */
 const ROW = "height:11mm;";
 /** The two date cells: label above, date below, each on one line. */
@@ -74,10 +81,13 @@ export type CartoucheInput = {
   reference: DocumentRef;
   /** The laboratory's logo (`documentLogo()`); null leaves the cell blank. */
   logoDataUri: string | null;
+  /** The ink of the grid and its text; the forms' navy (`CARTOUCHE_INK`) by default. */
+  ink?: string;
 };
 
 /** Chromium's header template: the cartouche, with « Page n sur N » filled per page. */
-export function cartoucheTemplate({ title, reference, logoDataUri }: CartoucheInput): string {
+export function cartoucheTemplate({ title, reference, logoDataUri, ink }: CartoucheInput): string {
+  const CELL = cell(ink && INK.test(ink) ? ink : CARTOUCHE_INK);
   const text = (value: string) => escapeHtml(value.trim());
   const date = (value: Date | null) => (value ? formatDateOnly(value) : "");
   const logo =

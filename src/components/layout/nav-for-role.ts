@@ -8,17 +8,25 @@ import {
   receptionNav,
   technicienNav,
   validationNav,
+  directionNav,
   commercialNav,
   comptabiliteNav,
   magasinNav,
   qualiteNav,
 } from "./role-navs";
 
+/** The quality system as one block of a validation menu (validateur, Direction). */
+const QUALITY_SECTION: NavSection = {
+  title: "Système qualité",
+  items: qualiteNav.flatMap((section) => section.items),
+};
+
 /**
  * The sidebar depends on WHO is signed in, never on which URL segment is
  * being rendered. An administrator keeps the administration menu while
- * working inside /reception; a validateur sees validation and the quality
- * system as one menu whether the page lives under /validation or /qualite.
+ * working inside /reception; a validateur (or the Direction) sees validation
+ * and the quality system as one menu whether the page lives under
+ * /validation or /qualite.
  *
  * No JSX here so vitest (node environment) can import it directly. RoleShell
  * calls it on the client: nav items carry Lucide components, which cannot
@@ -30,13 +38,10 @@ const NAVS: Record<Role, NavSection[]> = {
   RECEPTIONNISTE: receptionNav,
   PROGRAMMATEUR: programmationNav,
   TECHNICIEN: technicienNav,
-  VALIDATEUR: [
-    ...validationNav,
-    {
-      title: "Système qualité",
-      items: qualiteNav.flatMap((section) => section.items),
-    },
-  ],
+  VALIDATEUR: [...validationNav, QUALITY_SECTION],
+  // Everything the validateur opens, with the queue's two steps by name;
+  // none of the administration (12/10).
+  DIRECTION: [...directionNav, QUALITY_SECTION],
   GESTIONNAIRE: commercialNav,
   COMPTABLE: comptabiliteNav,
   MAGASINIER: magasinNav,

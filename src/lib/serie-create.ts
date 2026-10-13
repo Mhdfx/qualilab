@@ -7,6 +7,7 @@ import { sampleCodeFor, type SampleTwin } from "./sample-code";
 import {
   normalizeLabel,
   planLineSamples,
+  sampleQuantity,
   type CleanSerie,
   type NatureRow,
   type ParameterRef,
@@ -26,10 +27,13 @@ import type { Role } from "./roles";
  *
  * A line becomes one sample per ticked family (RETOUR-LABO-06-10.md §5, V3):
  * the two samples of a two-family line share the line number and everything
- * the préleveur typed (désignation, lot, lieu, quantities, temperatures,
- * remarks), and differ by their code (« 1/26-1M » / « 1/26-1P »), their
- * nature, their analyses and — for a deposit — their N° de contrôle. The
- * série's two boxes « Analyses à effectuer » are the union of the lines.
+ * the préleveur typed (désignation, lot, lieu, temperatures, remarks), and
+ * differ by their code (« 1/26-1M » / « 1/26-1P »), their nature, their
+ * analyses and — for a deposit — their N° de contrôle. Since 12/10 (one
+ * container per family) they may differ by their quantity too: the « P »
+ * sample is written with « Quantité 1P » when the form sent it
+ * (`sampleQuantity`), the line's quantity otherwise. The série's two boxes
+ * « Analyses à effectuer » are the union of the lines.
  *
  * A deposit line decided « En attente du client » (A9) is received like the
  * others, held (`analysisBlocked`) since its creation; a line analysed with
@@ -271,6 +275,8 @@ export async function createSerie(
 
         for (const planned of plans[index]) {
           const controlCode = isDeposit ? (await nextNumber(tx, "CONTROLE", year)).formatted : null;
+          // One container per family (12/10): the « P » sample its own weight.
+          const weighed = sampleQuantity(line, planned.twin);
           const sample = await tx.sample.create({
             data: {
               code: sampleCodeFor(serie.serialNumber, lineNumber, planned.twin ?? undefined),
@@ -296,8 +302,8 @@ export async function createSerie(
               numeroLot: line.numeroLot,
               productionDate: line.productionDate,
               expiryDate: line.expiryDate,
-              quantity: line.quantity,
-              quantityUnit: line.quantityUnit,
+              quantity: weighed.quantity,
+              quantityUnit: weighed.quantityUnit,
               productTemperature: line.productTemperature,
               ambientTemperature: line.ambientTemperature,
               receptionTemperature: isDeposit ? line.receptionTemperature : null,

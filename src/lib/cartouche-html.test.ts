@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CARTOUCHE_INK, cartoucheMargin, cartoucheTemplate, pageCss } from "./cartouche-html";
+import { CARTOUCHE_INK, REPORT_CARTOUCHE_INK, cartoucheMargin, cartoucheTemplate, pageCss } from "./cartouche-html";
 import { emptyReference, type DocumentRef } from "./document-types";
 
 const BON: DocumentRef = {
@@ -96,6 +96,19 @@ describe("cartoucheTemplate — values", () => {
   it("takes an image data URI only for the logo", () => {
     for (const logo of ['data:image/png;base64,AAAA" onload="alert(1)', "https://example.com/logo.png", "javascript:alert(1)"]) {
       expect(cartoucheTemplate({ title: "Bon de réception", reference: BON, logoDataUri: logo })).not.toContain("<img");
+    }
+  });
+
+  it("draws in the ink a template asks for — the report's black — and a colour only", () => {
+    const black = cartoucheTemplate({ title: "Rapport d'essai", reference: BON, logoDataUri: null, ink: REPORT_CARTOUCHE_INK });
+    expect(black).toContain("border:1px solid #000000");
+    expect(black).toContain("color:#000000");
+    expect(black).not.toContain(CARTOUCHE_INK);
+    // Anything but « #rgb » / « #rrggbb » keeps the forms' navy: the ink lands in a style attribute.
+    for (const ink of ["red;background:url(x)", "#12345", "", "#00000g"]) {
+      const html = cartoucheTemplate({ title: "Bon de réception", reference: BON, logoDataUri: null, ink });
+      expect(html, ink).toContain(`border:1px solid ${CARTOUCHE_INK}`);
+      expect(html, ink).not.toContain("url(");
     }
   });
 });

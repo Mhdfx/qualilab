@@ -21,6 +21,7 @@ import type {
   Family,
   NonConformityReason,
   PaymentMode,
+  QuantityUnit,
   SampleStatus,
   SampleType,
   SamplerKind,
@@ -32,6 +33,7 @@ import {
   CADRE_LABELS,
   LINE_KIND_LABELS,
   NON_CONFORMITY_REASON_LABELS,
+  QUANTITY_UNIT_LABELS,
   SAMPLER_KIND_LABELS,
   formatCadre,
   formatDateTime,
@@ -107,10 +109,16 @@ const subscribeNoop = () => () => {};
  * What the counter records on top of the sample itself. Keyed by the line:
  * when both families are ticked the line becomes two samples (« 2M »,
  * « 2P ») and `POST /api/series` gives both the same answer to rule (1),
- * temperature, conformity and decision. No technician (RETOUR-LABO-06-10.md
- * §9.3): the responsable des paramètres assigns it on the programme sheet.
+ * temperature, conformity and decision — but each its own weight (one
+ * container per family, 12/10: « Quantité 2P » is kept here, the line's own
+ * quantity is the « 2M » part). No technician (RETOUR-LABO-06-10.md §9.3):
+ * the responsable des paramètres assigns it on the programme sheet.
  */
 type LineIntake = {
+  /** « Quantité 2P »: the physico-chemistry part of a two-family line, as typed. */
+  chimieQuantity: string;
+  /** Its unit; null = the line's own unit until one is chosen. */
+  chimieQuantityUnit: QuantityUnit | null;
   /** Rule (1) of the bon: null until the counter answers — never pre-answered. */
   exploitable: boolean | null;
   /** C3 (emballage) and C5 (identification): null until ticked — never pre-answered. */
@@ -197,6 +205,11 @@ function reveal(id: string) {
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     document.getElementById(id)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
   });
+}
+
+/** « 250 g », « 1,5 L », « quantité non pesée » — the recap of a typed quantity. */
+function quantityRecap(value: string, unit: QuantityUnit) {
+  return value.trim() ? `${value.trim()} ${QUANTITY_UNIT_LABELS[unit]}` : "quantité non pesée";
 }
 
 function numberOrNull(value: string) {
@@ -363,6 +376,8 @@ export function DepositForm({
   function intakeOf(key: string): LineIntake {
     return (
       intake[key] ?? {
+        chimieQuantity: "",
+        chimieQuantityUnit: null,
         exploitable: null,
         packagingOk: null,
         identificationOk: null,
@@ -457,10 +472,10 @@ export function DepositForm({
   }
 
   /**
-   * Live rules for one line: the seven rules of the bon for each sample it
-   * becomes (one per ticked family — 100 g micro, 300 g physico-chimie),
-   * merged into one checklist, the proposal and the effective conformity,
-   * shared by both samples.
+   * Live rules for one line: the eight rules of the bon for each sample it
+   * becomes (one per ticked family — 100 g micro on « Quantité 2M », 300 g
+   * physico-chimie on « Quantité 2P »), merged into one checklist, the
+   * proposal and the effective conformity, shared by both samples.
    */
   function evaluate(line: LineDraft) {
     const category = lineCategory(natures, line);
@@ -468,15 +483,23 @@ export function DepositForm({
     const ticked = line.parameterIds.flatMap((id) => catalogue.filter((p) => p.id === id));
     const samples = lineNatures(natures, line);
     const families = samples.map((s) => s.family);
+    const twins = samples.length > 1;
     const extra = intakeOf(line.key);
+    const chimieUnit = extra.chimieQuantityUnit ?? line.quantityUnit;
     const typedStart = localInputDate(startedAt);
-    const { rows, familyBlocking, proposal } = depositLineChecklist(
+    const productType = productTypes.find((t) => t.id === line.productTypeId);
+    const { rows, proposal } = depositLineChecklist(
       {
         lineKind: line.lineKind,
         families,
         parameters: ticked.map((p) => ({ name: p.name, aliases: p.aliases ?? null, family: parameterFamily(p) })),
         quantity: numberOrNull(line.quantity),
         quantityUnit: line.quantityUnit,
+        // One container per family (12/10): the « P » sample on its own part.
+        ...(twins ? { chimieQuantity: { quantity: numberOrNull(extra.chimieQuantity), quantityUnit: chimieUnit } } : {}),
+        // Rule (8): the désignation, the type and each sample's nature.
+        productNames: [line.produit, line.lineKind === "ALIMENT" ? productType?.name : null],
+        natureLabels: Object.fromEntries(samples.map((s) => [s.family, s.nature.label])),
         receptionTemperature: numberOrNull(extra.temperature),
         unitCount: line.unitCount,
         exploitable: extra.exploitable,
@@ -509,11 +532,11 @@ export function DepositForm({
       doubt,
       decision,
       families,
-      twins: samples.length > 1,
+      twins,
+      chimieUnit,
       names: ticked.map((p) => p.name),
       extra,
       rows,
-      familyBlocking,
       proposal,
       conformity,
       reason,
@@ -615,9 +638,11 @@ export function DepositForm({
           advanceMode: advanceMode || undefined,
           // The série's two boxes are computed by the API from the samples.
           lines: lines.map((line) => {
-            const { conformity, reason, extra, decision } = evaluate(line);
+            const { conformity, reason, extra, decision, twins, chimieUnit } = evaluate(line);
             return {
               ...linePayload(line),
+              // « Quantité 2P », a two-family line only (one container per family, 12/10).
+              ...(twins ? { quantityChimie: extra.chimieQuantity, quantityUnitChimie: chimieUnit } : {}),
               exploitable: extra.exploitable,
               packagingOk: extra.packagingOk,
               identificationOk: extra.identificationOk,
@@ -1009,7 +1034,7 @@ export function DepositForm({
 
           {lines.map((line, index) => {
             const number = index + 1;
-            const { families, twins, rows, familyBlocking, proposal, conformity, reason, extra, destroy, doubt, decision } = evaluate(line);
+            const { families, twins, chimieUnit, rows, proposal, conformity, reason, extra, destroy, doubt, decision } = evaluate(line);
             const category = lineCategory(natures, line);
             const [microRef, chimieRef] = lineSampleRefs(number, families);
             return (
@@ -1036,6 +1061,20 @@ export function DepositForm({
                   profiles={profiles}
                   productTypes={productTypes}
                   quantityUnitFallback="G"
+                  chimieQuantity={
+                    twins
+                      ? {
+                          refs: { micro: microRef, chimie: chimieRef },
+                          value: extra.chimieQuantity,
+                          unit: chimieUnit,
+                          onChange: (patch) =>
+                            updateIntake(line.key, {
+                              ...(patch.value !== undefined ? { chimieQuantity: patch.value } : {}),
+                              ...(patch.unit ? { chimieQuantityUnit: patch.unit } : {}),
+                            }),
+                        }
+                      : undefined
+                  }
                 />
                 <Card className="p-4 sm:p-6">
                   <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -1044,8 +1083,9 @@ export function DepositForm({
                   {twins && (
                     <p className="mt-1 text-xs text-slate-500">
                       Deux familles cochées : deux échantillons, {microRef} (microbiologie) et {chimieRef}{" "}
-                      (physico-chimie), chacun avec son N° de contrôle. La réponse à la règle (1), la température,
-                      les contrôles complémentaires, la conformité et la décision saisis ici valent pour les deux.
+                      (physico-chimie), chacun avec son N° de contrôle et son propre contenant, pesé à part. La
+                      réponse à la règle (1), la température, les contrôles complémentaires, la conformité et la
+                      décision saisis ici valent pour les deux.
                     </p>
                   )}
                   <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -1071,6 +1111,7 @@ export function DepositForm({
                         id={`sc-${line.key}`}
                         value={extra.storageClass}
                         defaultLabel={storageDefaultLabel(line.lineKind, families)}
+                        lineKind={line.lineKind}
                         onChange={(storageClass) => updateIntake(line.key, { storageClass })}
                         className="input-field px-4"
                       />
@@ -1137,9 +1178,6 @@ export function DepositForm({
                             : `La règle (${proposal.rule}) n'est pas respectée : corrigez la mesure ou réceptionnez ${
                               twins ? "les deux échantillons" : "l'échantillon"
                             } comme non conforme${twins ? "s" : ""}.`}
-                        {twins && familyBlocking
-                          ? " Elle ne concerne qu'une famille : pour réceptionner l'autre comme conforme, dupliquez l'échantillon et ne cochez qu'une famille sur chaque copie."
-                          : ""}
                       </p>
                     )}
                   </fieldset>
@@ -1275,7 +1313,8 @@ export function DepositForm({
             <ul className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-100">
               {lines.map((line, i) => {
                 const number = i + 1;
-                const { families, twins, names, conformity, reason, extra, destroy, decision } = evaluate(line);
+                const { families, twins, chimieUnit, names, conformity, reason, extra, destroy, decision } = evaluate(line);
+                const [microRef, chimieRef] = lineSampleRefs(number, families);
                 return (
                   <li key={line.key} className="px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
@@ -1289,7 +1328,10 @@ export function DepositForm({
                           {twins ? ` — deux échantillons : ${lineSampleRefs(number, families).join(" et ")}` : ""}
                         </p>
                         <p className="text-xs text-slate-500">
-                          {line.quantity ? `${line.quantity} ${line.quantityUnit === "UNITE" ? "unité(s)" : line.quantityUnit.toLowerCase()}` : "quantité non pesée"}
+                          {/* Each family's container once one of them is weighed (12/10). */}
+                          {twins && (line.quantity.trim() || extra.chimieQuantity.trim())
+                            ? `${microRef} : ${quantityRecap(line.quantity, line.quantityUnit)} · ${chimieRef} : ${quantityRecap(extra.chimieQuantity, chimieUnit)}`
+                            : quantityRecap(line.quantity, line.quantityUnit)}
                           {extra.temperature ? ` · ${extra.temperature} °C à l'arrivée` : ""}
                           {line.unitCount > 1 ? ` · n = ${line.unitCount}` : ""}
                         </p>

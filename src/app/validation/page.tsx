@@ -32,7 +32,7 @@ export default async function ValidationPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   // Belt and braces with the layout guard: a page must be safe on its own.
-  await requireRole("VALIDATEUR", "ADMIN");
+  await requireRole("VALIDATEUR", "DIRECTION", "ADMIN");
   // A tile is a sort (« comme un tri »): `?vue=` narrows the queue below to
   // exactly what that tile counts (`inValidationView`, one rule for both).
   const view = parseView((await searchParams)[VIEW_PARAM], VALIDATION_VIEWS);

@@ -6,7 +6,7 @@ export default async function ValidationLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await requireRole("VALIDATEUR", "ADMIN");
+  const session = await requireRole("VALIDATEUR", "DIRECTION", "ADMIN");
 
   return (
     <RoleShell role={session.role} userName={session.name}>

@@ -1,16 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { Family, LineKind } from "@/generated/prisma/enums";
 import {
+  BIVALVE_MOLLUSC_WORDS,
   DEFAULT_THRESHOLDS,
   EXPLOITABLE_MESSAGES,
   RECEPTION_RULES,
   checklistRowLabel,
   checklistSummary,
   evaluateReception,
+  isStableFood,
   justifyAcceptanceMessage,
+  mentionsBivalveMolluscs,
   parameterSpellings,
   proposedConformity,
   receptionChecklist,
+  receptionRuleLine,
   rowToJustify,
   requestsHistamine,
   requestsSalmonella,
@@ -21,9 +25,9 @@ import {
 } from "./reception-rules";
 
 /**
- * The seven rules of the bon de réception PG05/EN04 (version G) as a
- * checklist — retour du 08/10, « les règles comme une checklist ». Invented
- * analyses only.
+ * The eight rules of the bon de réception PG05/EN04 (version H, the
+ * laboratory's answers of 12/10) as a checklist — retour du 08/10, « les
+ * règles comme une checklist ». Invented analyses and products only.
  */
 
 const food = (over: Partial<ReceptionLine> = {}): ReceptionLine => ({
@@ -34,8 +38,14 @@ const food = (over: Partial<ReceptionLine> = {}): ReceptionLine => ({
   quantityUnit: "G",
   receptionTemperature: 4,
   unitCount: 1,
+  storageClass: null,
+  productNames: ["Salade composée", "Plat cuisiné", "Microbiologie des aliments"],
   ...over,
 });
+
+/** A food the bivalve molluscs' rule (8) concerns. */
+const oysters = (over: Partial<ReceptionLine> = {}): ReceptionLine =>
+  food({ productNames: ["Huîtres creuses", null, "Microbiologie des aliments"], quantity: 120, ...over });
 
 const water = (over: Partial<ReceptionLine> = {}): ReceptionLine =>
   food({ lineKind: "EAU", parameterNames: ["Coliformes totaux"], quantity: 1.5, quantityUnit: "L", ...over });
@@ -146,9 +156,20 @@ describe("evaluateReception — water", () => {
 });
 
 describe("evaluateReception — surfaces, hands, thresholds", () => {
-  it("has no quantity or temperature rule for a surface or hands by default", () => {
-    expect(evaluateReception(food({ lineKind: "SURFACE", quantity: null, quantityUnit: null, receptionTemperature: null }))).toEqual([]);
+  it("has no quantity rule for a surface, air or hands; by default the temperature is required for surface and air (12/10), never for hands", () => {
     expect(evaluateReception(food({ lineKind: "MAINS", quantity: null, quantityUnit: null, receptionTemperature: null }))).toEqual([]);
+    for (const lineKind of ["SURFACE", "AIR"] as const) {
+      expect(evaluateReception(food({ lineKind, quantity: null, quantityUnit: null, receptionTemperature: null }))).toEqual([
+        expect.objectContaining({ rule: "TEMPERATURE_ARRIVEE", level: "BLOQUANT", reason: "TEMPERATURE_MANQUANTE" }),
+      ]);
+      expect(evaluateReception(food({ lineKind, quantity: null, quantityUnit: null, receptionTemperature: 5 }))).toEqual([
+        expect.objectContaining({ rule: "TEMPERATURE_ARRIVEE", level: "OK" }),
+      ]);
+    }
+  });
+
+  it("requires the temperature of food, water, air and surface by default (the laboratory's answer of 12/10)", () => {
+    expect(requiredKinds(DEFAULT_THRESHOLDS)).toEqual(["ALIMENT", "EAU", "AIR", "SURFACE"]);
   });
 
   it("follows the configured thresholds and required kinds", () => {
@@ -186,15 +207,15 @@ describe("analyses recognised on their name and their aliases", () => {
   });
 });
 
-describe("receptionChecklist — always the seven rules of the paper", () => {
+describe("receptionChecklist — always the eight rules of the paper", () => {
   const KINDS: LineKind[] = ["ALIMENT", "SURFACE", "MAINS", "EAU", "AIR", "AUTRE"];
   const FAMILIES: Family[] = ["MICRO", "CHIMIE"];
 
-  it("lists the seven rules in the paper's order and wording, whatever the sample", () => {
+  it("lists the eight rules in the paper's order and wording, whatever the sample", () => {
     for (const lineKind of KINDS) {
       for (const family of FAMILIES) {
         const rows = checklist(food({ lineKind, family }), null);
-        expect(rows.map((r) => r.n)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+        expect(rows.map((r) => r.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
         expect(rows.map((r) => r.key)).toEqual(RECEPTION_RULES.map((rule) => rule.key));
         expect(rows.map((r) => r.text)).toEqual(RECEPTION_RULES.map((rule) => rule.text(DEFAULT_THRESHOLDS)));
       }
@@ -219,13 +240,14 @@ describe("receptionChecklist — always the seven rules of the paper", () => {
       [5, "SANS_OBJET", "Sans objet : aliment"],
       [6, "CONFORME", "4 °C (glacière)"],
       [7, "SANS_OBJET", "Histamine non demandée"],
+      [8, "SANS_OBJET", "Sans objet : pas de mollusques bivalves dans la désignation, le type ou la nature"],
     ]);
     expect(row(rows, 2).rules).toEqual(["ALIMENT_MICRO_POIDS"]);
-    expect(checklistSummary(rows)).toBe("3 conformes · 4 sans objet");
+    expect(checklistSummary(rows)).toBe("3 conformes · 5 sans objet");
   });
 
   it("names the kind of a sample the rules do not concern", () => {
-    const rows = checklist(food({ lineKind: "SURFACE", quantity: null, quantityUnit: null, receptionTemperature: null }), null);
+    const rows = checklist(food({ lineKind: "MAINS", quantity: null, quantityUnit: null, receptionTemperature: null }), null);
     expect(rows.map((r) => r.status)).toEqual([
       "A_CONFIRMER",
       "SANS_OBJET",
@@ -234,10 +256,11 @@ describe("receptionChecklist — always the seven rules of the paper", () => {
       "SANS_OBJET",
       "SANS_OBJET",
       "SANS_OBJET",
+      "SANS_OBJET",
     ]);
-    expect(rows.slice(1).every((r) => r.detail === "Sans objet : surface")).toBe(true);
-    expect(checklistSummary(rows)).toBe("1 à confirmer · 6 sans objet");
-    expect(row(checklist(food({ lineKind: "MAINS" })), 6).detail).toBe("Sans objet : mains");
+    expect(rows.slice(1).every((r) => r.detail === "Sans objet : mains")).toBe(true);
+    expect(checklistSummary(rows)).toBe("1 à confirmer · 7 sans objet");
+    expect(row(checklist(food({ lineKind: "SURFACE" })), 2).detail).toBe("Sans objet : surface");
     expect(row(checklist(water({ family: "CHIMIE" })), 4).detail).toBe("Sans objet : physico-chimie");
   });
 
@@ -412,5 +435,184 @@ describe("rowToJustify / justifyAcceptanceMessage — an accepted doubt is justi
     expect(rowToJustify(rows, true, "Vu avec le responsable")).toBeNull();
     expect(rowToJustify(rows, false, "")).toBeNull();
     expect(rowToJustify([rows[0]], true, "")).toBeNull();
+  });
+});
+
+describe("rule (6) — the temperature, stable foods excepted (12/10)", () => {
+  it("a food received « Ambiant » is a stable food: no temperature required, « sans objet » with the reason", () => {
+    const stable = food({ storageClass: "AMBIANT", receptionTemperature: null });
+    expect(isStableFood(stable)).toBe(true);
+    expect(evaluateReception(stable).some((c) => c.rule === "TEMPERATURE_ARRIVEE")).toBe(false);
+    const rows = checklist(stable);
+    expect(row(rows, 6)).toMatchObject({
+      status: "SANS_OBJET",
+      detail: "Sans objet : aliment stable (conservé à température ambiante)",
+      rules: [],
+    });
+    expect(proposedConformity(rows)).toMatchObject({ conformity: true, forced: false });
+    // A temperature typed anyway is said, never judged.
+    expect(row(checklist(food({ storageClass: "AMBIANT", receptionTemperature: 21 })), 6).detail).toBe(
+      "Sans objet : aliment stable (conservé à température ambiante) · 21 °C relevée"
+    );
+  });
+
+  it("a food left on its default class, or chilled, frozen or hot, still needs its temperature", () => {
+    for (const storageClass of [null, "REFRIGERE", "CONGELE", "CHAUD"] as const) {
+      const line = food({ storageClass, receptionTemperature: null });
+      expect(isStableFood(line)).toBe(false);
+      expect(row(checklist(line), 6)).toMatchObject({ status: "NON_CONFORME", reason: "TEMPERATURE_MANQUANTE" });
+    }
+  });
+
+  it("« Ambiant » stabilises a food only: water, air and surfaces still need their temperature", () => {
+    for (const lineKind of ["EAU", "AIR", "SURFACE"] as const) {
+      const line = food({ lineKind, storageClass: "AMBIANT", receptionTemperature: null, quantity: null, quantityUnit: null });
+      expect(isStableFood(line)).toBe(false);
+      expect(row(checklist(line), 6)).toMatchObject({ status: "NON_CONFORME", reason: "TEMPERATURE_MANQUANTE" });
+    }
+  });
+});
+
+describe("rule (8) — live bivalve molluscs (note (8) of the bon version H, 12/10)", () => {
+  it("replaces the 100 g of rule (2) for the microbiology of live bivalves (a 60 g sample is not refused)", () => {
+    const checks = evaluateReception(oysters({ quantity: 60 }));
+    expect(checks.find((c) => c.rule === "ALIMENT_MICRO_POIDS")).toBeUndefined();
+    expect(checks.find((c) => c.rule === "MOLLUSQUES_POIDS")?.level).toBe("OK");
+    const rows = checklist(oysters({ quantity: 60 }));
+    expect(row(rows, 2)).toMatchObject({ status: "SANS_OBJET" });
+    expect(row(rows, 2).detail).toMatch(/note \(8\)/);
+    expect(row(rows, 8).status).toBe("CONFORME");
+    // Physico-chemistry keeps its 300 g (the note does not say otherwise).
+    expect(evaluateReception(oysters({ family: "CHIMIE", quantity: 60 })).find((c) => c.rule === "ALIMENT_CHIMIE_POIDS")?.level).toBe("BLOQUANT");
+  });
+
+  it("prints the laboratory's wording, figures from the thresholds", () => {
+    const rule = RECEPTION_RULES.find((r) => r.key === "MOLLUSQUES")!;
+    expect(rule.n).toBe(8);
+    expect(receptionRuleLine(rule, DEFAULT_THRESHOLDS)).toBe(
+      "(8) pour le cas des mollusques bivalves vivants, un échantillon représentatif doit contenir au moins 10 individus et peser au moins 50 g (25 g pour les animaux de petite taille)"
+    );
+    expect(
+      rule.text({ ...DEFAULT_THRESHOLDS, molluscMinIndividuals: 12, molluscMinG: 60, molluscSmallMinG: 30 })
+    ).toContain("au moins 12 individus et peser au moins 60 g (30 g pour les animaux de petite taille)");
+  });
+
+  it("recognises the molluscs on the désignation, the product type or the nature — accents, case and plural ignored", () => {
+    for (const name of [
+      "Huîtres creuses",
+      "HUITRE",
+      "Moules de bouchot",
+      "Palourdes",
+      "coques",
+      "Praires",
+      "Clams",
+      "Pétoncles",
+      "Coquilles Saint-Jacques",
+      "Mollusques bivalves vivants",
+      "Bivalves",
+    ]) {
+      expect(mentionsBivalveMolluscs([name]), name).toBe(true);
+    }
+    // Any of the three names will do.
+    expect(mentionsBivalveMolluscs([null, "Mollusques bivalves", undefined])).toBe(true);
+    expect(mentionsBivalveMolluscs(["Plat test", null, "Produits de la mer — huîtres"])).toBe(true);
+    // One list, in one place.
+    expect(BIVALVE_MOLLUSC_WORDS).toContain("palourde");
+  });
+
+  it("does not take an egg, a pasta, a squid or a word containing a keyword for a bivalve", () => {
+    for (const name of [
+      "Œuf à la coque",
+      "Oeufs coque",
+      "Coquillettes au beurre",
+      "Moulage chocolat",
+      "Calmar frit",
+      "Mollusques céphalopodes",
+      "Mollusque gastéropode (escargot)",
+      "Salade composée",
+      // « moulé » is no « moule »: read before the accents are folded.
+      "Camembert moulé à la louche",
+      "CHOCOLAT MOULÉ",
+      "Pâtes moulées",
+      "",
+    ]) {
+      expect(mentionsBivalveMolluscs([name]), name).toBe(false);
+    }
+    // A participle beside a bivalve word leaves the bivalve recognised.
+    expect(mentionsBivalveMolluscs(["Moules fumées"])).toBe(true);
+    expect(mentionsBivalveMolluscs(["Pétoncles décortiqués"])).toBe(true);
+    expect(mentionsBivalveMolluscs([null, undefined])).toBe(false);
+    expect(mentionsBivalveMolluscs([])).toBe(false);
+  });
+
+  it("under the small animals' minimum: non conforme, quantity motif, forced", () => {
+    // Rule (2) lowered for the case: rule (8) alone refuses.
+    const rows = checklist(oysters({ quantity: 20 }), true, { ...DEFAULT_THRESHOLDS, minFoodMicroG: 10 });
+    expect(row(rows, 8)).toMatchObject({
+      status: "NON_CONFORME",
+      reason: "QUANTITE_INSUFFISANTE",
+      rules: ["MOLLUSQUES_POIDS"],
+      detail: "Poids 20 g < 25 g requis, même pour des animaux de petite taille · au moins 10 individus : à vérifier",
+    });
+    expect(proposedConformity(rows)).toMatchObject({ conformity: false, forced: true, rule: 8, reason: "QUANTITE_INSUFFISANTE" });
+    expect(evaluateReception(oysters({ quantity: 20 })).find((c) => c.rule === "MOLLUSQUES_POIDS")?.level).toBe("BLOQUANT");
+  });
+
+  it("between the two minimums: « à vérifier » — 50 g, 25 g for small animals; the acceptance is justified (A7)", () => {
+    // Rule (2) is met by a 100 g threshold lowered for the case; rule (8) alone doubts.
+    const thresholds = { ...DEFAULT_THRESHOLDS, minFoodMicroG: 25 };
+    const rows = checklist(oysters({ quantity: 40 }), true, thresholds);
+    expect(row(rows, 8)).toMatchObject({
+      status: "A_VERIFIER",
+      reason: "QUANTITE_INSUFFISANTE",
+      detail: "Poids 40 g : au moins 50 g, 25 g pour les animaux de petite taille · au moins 10 individus : à vérifier",
+    });
+    expect(proposedConformity(rows)).toMatchObject({ conformity: true, forced: false, reason: "QUANTITE_INSUFFISANTE" });
+    expect(rowToJustify(rows, true, "")).toMatchObject({ n: 8 });
+    expect(justifyAcceptanceMessage(row(rows, 8))).toBe("Justifiez l'acceptation (règle 8 à vérifier).");
+    // The boundaries: 25 g is « à vérifier », 50 g conforme.
+    expect(row(checklist(oysters({ quantity: 25 }), true, thresholds), 8).status).toBe("A_VERIFIER");
+    expect(row(checklist(oysters({ quantity: 50 }), true, thresholds), 8).status).toBe("CONFORME");
+  });
+
+  it("from the minimum on: conforme — the individuals stay « à vérifier » in the detail, never counted", () => {
+    const rows = checklist(oysters({ quantity: 120, unitCount: 1 }));
+    expect(row(rows, 8)).toMatchObject({
+      status: "CONFORME",
+      detail: "Poids 120 g ≥ 50 g · au moins 10 individus : à vérifier",
+      rules: ["MOLLUSQUES_POIDS"],
+    });
+    expect(row(rows, 8).reason).toBeUndefined();
+    // A litre counts as a kilogram, like every weight rule.
+    expect(row(checklist(oysters({ quantity: 0.5, quantityUnit: "L" })), 8).status).toBe("CONFORME");
+  });
+
+  it("a weight not given or declared in units is « à vérifier »", () => {
+    expect(row(checklist(oysters({ quantity: null, quantityUnit: null })), 8)).toMatchObject({
+      status: "A_VERIFIER",
+      detail: "Poids non renseigné — au moins 50 g, 25 g pour les animaux de petite taille · au moins 10 individus : à vérifier",
+    });
+    expect(row(checklist(oysters({ quantity: 24, quantityUnit: "UNITE" })), 8).detail).toMatch(/^Poids déclaré en unités, non pesé/);
+  });
+
+  it("follows the thresholds set in /admin/reglages", () => {
+    const thresholds = { ...DEFAULT_THRESHOLDS, molluscMinG: 80, molluscSmallMinG: 40, molluscMinIndividuals: 12 };
+    expect(row(checklist(oysters({ quantity: 60 }), true, thresholds), 8)).toMatchObject({
+      status: "A_VERIFIER",
+      detail: "Poids 60 g : au moins 80 g, 40 g pour les animaux de petite taille · au moins 12 individus : à vérifier",
+    });
+    expect(row(checklist(oysters({ quantity: 39 }), true, thresholds), 8).status).toBe("NON_CONFORME");
+  });
+
+  it("applies on either family, beside rule (2) or (3), and never off a food", () => {
+    const chemistry = checklist(oysters({ family: "CHIMIE", quantity: 350 }));
+    expect(row(chemistry, 3).status).toBe("CONFORME");
+    expect(row(chemistry, 8).status).toBe("CONFORME");
+    for (const lineKind of ["EAU", "SURFACE", "MAINS", "AIR", "AUTRE"] as const) {
+      const rows = checklist(oysters({ lineKind }));
+      expect(row(rows, 8)).toMatchObject({ status: "SANS_OBJET" });
+      expect(row(rows, 8).detail).toMatch(/^Sans objet : /);
+      expect(row(rows, 8).detail).not.toContain("mollusques");
+    }
   });
 });

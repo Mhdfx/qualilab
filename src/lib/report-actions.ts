@@ -11,10 +11,23 @@ import type { Role } from "./roles";
 
 /**
  * Who may send or resend a report: the gestionnaire commercial (the client
- * relationship is theirs), the validator and the administrator — exactly the
- * guard of `POST /api/samples/[id]/report/send` (checked by its test).
+ * relationship is theirs), the validator, the Direction and the
+ * administrator — exactly the guard of `POST /api/samples/[id]/report/send`
+ * (checked by its test).
  */
-export const RESEND_REPORT_ROLES = ["GESTIONNAIRE", "VALIDATEUR", "ADMIN"] as const satisfies readonly Role[];
+export const RESEND_REPORT_ROLES = ["GESTIONNAIRE", "VALIDATEUR", "DIRECTION", "ADMIN"] as const satisfies readonly Role[];
+
+/**
+ * Who may read an issued report — download, duplicata, older versions:
+ * exactly the guards of `GET /api/samples/[id]/report` and of
+ * `GET /api/samples/[id]/report/versions` (checked by the tests). /recherche
+ * offers the report actions to these roles only.
+ */
+export const REPORT_READ_ROLES = ["VALIDATEUR", "DIRECTION", "GESTIONNAIRE", "COMPTABLE", "ADMIN"] as const satisfies readonly Role[];
+
+export function canReadReports(role: string): boolean {
+  return (REPORT_READ_ROLES as readonly string[]).includes(role);
+}
 
 /** A report leaves the laboratory only once both signatures are on it. */
 export const SENDABLE_STATUSES: readonly SampleStatus[] = ["VALIDE", "RAPPORT_ENVOYE"];

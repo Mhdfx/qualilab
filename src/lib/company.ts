@@ -4,7 +4,23 @@ export type CompanyInfo = {
   rib: string; iban: string; swift: string;
   /** Logo as a data URI, printed on the PDFs; null = styled text brand. */
   logoData: string | null;
+  /** Identifiant fiscal (IF) — see `COMPANY_OPTIONAL_FIELDS`. */
+  fiscalId: string | null;
+  patente: string | null;
+  cnss: string | null;
+  fax: string | null;
 };
+
+/**
+ * The fields of the report's footer (PG06/EN03 version M) beyond the
+ * required identity: the legal identifiers IF, Patente, CNSS and the fax.
+ * Optional — null until the owner types them in /admin/entreprise, and never
+ * a placeholder in the defaults: a document leaves a missing one out rather
+ * than print a made-up identifier.
+ */
+export const COMPANY_OPTIONAL_FIELDS = ["fiscalId", "patente", "cnss", "fax"] as const;
+
+export type CompanyOptionalField = (typeof COMPANY_OPTIONAL_FIELDS)[number];
 
 /** Fallback defaults — used until the admin saves the real identity. */
 export const COMPANY: CompanyInfo = {
@@ -22,10 +38,8 @@ export const COMPANY: CompanyInfo = {
   iban: "MA64 1907 8021 2110 0001 2345 678",
   swift: "BCPOMAMC",
   logoData: null,
+  fiscalId: null,
+  patente: null,
+  cnss: null,
+  fax: null,
 };
-
-/**
- * The identity to print on documents: the row the admin edits, or the
- * defaults above when none has been saved yet. Reading it must never break a
- * document, so any failure falls back to the defaults.
- */

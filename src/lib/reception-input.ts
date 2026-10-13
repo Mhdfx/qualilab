@@ -44,8 +44,10 @@ import {
  * Rule (1) of the bon de réception (retour du 08/10, « les règles comme une
  * checklist »): every line says whether the sample is exploitable for the
  * analysis. A page opened before the checklist sends no answer and is told
- * so; a non-exploitable sample cannot be declared conform. The seven-row
- * checklist travels with each clean line, for the audit.
+ * so; a non-exploitable sample cannot be declared conform. The eight-row
+ * checklist travels with each clean line, for the audit. Rule (6) follows
+ * the class chosen here: a food received « Ambiant » is a stable food, its
+ * temperature is not required (12/10).
  *
  * A non-conform line is decided case by case (RETOUR-LABO-29-09.md, slice
  * E): analysed anyway, or destroyed — received and numbered like the others
@@ -91,8 +93,13 @@ import {
 
 const QUANTITY_UNITS = ["UNITE", "G", "ML", "L"] as const;
 
-/** A line of the série as the database holds it before reception. */
-export type ReceptionCandidate = ReceptionLine & {
+/**
+ * A line of the série as the database holds it before reception. Its
+ * « Conservation » is the reception's own answer (`storageClass` of the
+ * payload), never the stored one; `productNames` (désignation, product type,
+ * nature) let rule (8) recognise live bivalve molluscs.
+ */
+export type ReceptionCandidate = Omit<ReceptionLine, "storageClass"> & {
   id: string;
   lineNumber: number;
   status: string;
@@ -144,7 +151,7 @@ export type CleanReceptionLine = {
   /** The client's agreement to analyse a non-conform line; null = not recorded. */
   consultation: ClientConsultation | null;
   checks: Check[];
-  /** The seven rules of the bon, as computed with the laboratory's thresholds — audited. */
+  /** The eight rules of the bon, as computed with the laboratory's thresholds — audited. */
   checklist: ChecklistRow[];
   /** The contrôles complémentaires (hors bon), C1 … C7 — audited beside the checklist. */
   complementary: ChecklistRow[];
@@ -332,6 +339,9 @@ export function validateReception(
       receptionTemperature:
         receptionTemperature === null ? null : Math.round(receptionTemperature * 10) / 10,
       unitCount: candidate.unitCount,
+      // The class chosen at reception: a stable food needs no temperature (rule 6).
+      storageClass,
+      productNames: candidate.productNames,
     };
     const checks = evaluateReception(measured, thresholds);
     const checklist = receptionChecklist(measured, thresholds, { exploitable, temperatureSource });

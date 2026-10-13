@@ -6,9 +6,9 @@ import { CHECKLIST_STATUS_LABELS, type ChecklistRow, type ChecklistStatus } from
  * The checklist of a sample as it was decided at reception, read back from
  * its SAMPLE_RECEIVED journal entry — `POST /api/series/[id]/reception`
  * (`entity` « Sample », `entityId` the sample) and the deposit's
- * `POST /api/series` (same entry, `deposit: true`) write the seven rules of
- * the bon (`checklist`, since 09/10) and the contrôles complémentaires
- * (`complementary`, C1 … C7).
+ * `POST /api/series` (same entry, `deposit: true`) write the rules of the
+ * bon (`checklist`: seven since 09/10, eight since 12/10) and the contrôles
+ * complémentaires (`complementary`, C1 … C7).
  *
  * What was decided, never a recomputation: the thresholds may have changed
  * since. Pure and defensive — the metadata is a journal's free text: a
@@ -18,7 +18,7 @@ import { CHECKLIST_STATUS_LABELS, type ChecklistRow, type ChecklistStatus } from
  */
 
 export type ReceivedChecklist = {
-  /** The paper's seven rules, (1) … (7), as decided. */
+  /** The paper's rules as decided: (1) … (7) before 12/10, (1) … (8) since. */
   checklist: ChecklistRow[];
   /** The coded rows, C1 … C7, as decided; empty before they existed. */
   complementary: ChecklistRow[];

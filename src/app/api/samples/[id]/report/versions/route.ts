@@ -8,13 +8,13 @@ import { RECONSTRUCTED_LABEL, amendedNumber } from "@/lib/report-amendment";
  * date, reason, who approved it — newest first, each with its PDF
  * (`/api/samples/[id]/report?version=N`). The version in force of a report
  * never amended is not frozen yet: it is listed from the report itself.
- * Read-only; the roles that already read the report.
+ * Read-only; the roles that already read the report (`REPORT_READ_ROLES`).
  */
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireApiRole("VALIDATEUR", "GESTIONNAIRE", "COMPTABLE", "ADMIN");
+  const session = await requireApiRole("VALIDATEUR", "DIRECTION", "GESTIONNAIRE", "COMPTABLE", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;

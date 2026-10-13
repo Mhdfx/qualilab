@@ -53,6 +53,25 @@ describe("navFor", () => {
     expect(sections.map((section) => section.title)).toContain("Système qualité");
   });
 
+  it("gives the Direction the validation queue with both steps by name, the search and the quality system (12/10)", () => {
+    const sections = navFor("DIRECTION");
+    const items = sections.flatMap((section) => section.items);
+    const href = (label: string) => items.find((item) => item.label === label)?.href;
+    expect(href("Tableau de bord")).toBe("/validation");
+    expect(href("Validation technique")).toBe("/validation?vue=a_valider#file");
+    expect(href("Validation administrative")).toBe("/validation?vue=attente_admin#file");
+    expect(href("Recherche des analyses")).toBe("/recherche");
+    expect(sections.map((section) => section.title)).toContain("Système qualité");
+    // Exactly the validateur's spaces, never the administration's.
+    const all = hrefs(sections);
+    const spaces = new Set(all.map((h) => h.split(/[?#]/)[0].split("/")[1]));
+    expect([...spaces].sort()).toEqual(["qualite", "recherche", "validation"]);
+    expect(all.some((h) => h.startsWith("/admin") || h.startsWith("/comptabilite") || h.startsWith("/commercial"))).toBe(false);
+    for (const h of hrefs(navFor("VALIDATEUR"))) {
+      expect(all.map((x) => x.split(/[?#]/)[0]), h).toContain(h.split(/[?#]/)[0]);
+    }
+  });
+
   it("gives the client portal its own screens and nothing of the laboratory", () => {
     const all = hrefs(navFor("CLIENT"));
     expect(all).toEqual(["/portail", "/portail/echantillons", "/portail/compte"]);
@@ -102,6 +121,14 @@ describe("activeHref", () => {
   it("lights the plain dashboard link, not its anchor shortcut, on the dashboard", () => {
     expect(activeHref("/admin", navFor("ADMIN"))).toBe("/admin");
     expect(activeHref("/preleveur", navFor("PRELEVEUR"))).toBe("/preleveur");
+  });
+
+  it("reads a « ?vue= » step as a shortcut of its page: the Direction's dashboard lights, on the list and on a sample", () => {
+    const nav = navFor("DIRECTION");
+    expect(activeHref("/validation", nav)).toBe("/validation");
+    expect(activeHref("/validation/abc123", nav)).toBe("/validation");
+    expect(activeHref("/qualite/metrologie", nav)).toBe("/qualite/metrologie");
+    expect(activeHref("/admin", nav)).toBeNull();
   });
 
   it("does not light the dashboard on a sibling route", () => {

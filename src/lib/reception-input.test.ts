@@ -14,6 +14,7 @@ const candidates: ReceptionCandidate[] = [
     quantityUnit: null,
     receptionTemperature: null,
     unitCount: 5,
+    productNames: ["Salade composée", null, "Microbiologie des aliments"],
   },
   {
     id: "s2",
@@ -26,6 +27,7 @@ const candidates: ReceptionCandidate[] = [
     quantityUnit: null,
     receptionTemperature: null,
     unitCount: 1,
+    productNames: ["Planche verte", null, "Microbiologie des surfaces"],
   },
 ];
 
@@ -35,7 +37,8 @@ const good = {
   // `technicianId`: what a page opened before 08/10 still sends — ignored (§9.3).
   lines: [
     { sampleId: "s1", receptionTemperature: "4", quantity: "250", quantityUnit: "G", exploitable: true, packagingOk: true, identificationOk: true, conformity: true, technicianId: "t1" },
-    { sampleId: "s2", exploitable: true, packagingOk: true, identificationOk: true, conformity: true, technicianId: "t1" },
+    // A surface needs its temperature at arrival too since the answer of 12/10.
+    { sampleId: "s2", receptionTemperature: "5", exploitable: true, packagingOk: true, identificationOk: true, conformity: true, technicianId: "t1" },
   ],
 };
 
@@ -61,11 +64,11 @@ describe("validateReception", () => {
     expect(result.value.arrivedAt?.toISOString()).toBe("2026-09-13T10:30:00.000Z");
     expect(result.value.lines.map((l) => [l.lineNumber, l.receptionTemperature, l.quantity, l.quantityUnit])).toEqual([
       [1, 4, 250, "G"],
-      [2, null, null, null],
+      [2, 5, null, null],
     ]);
     expect(result.value.lines[0].checks.map((c) => c.level)).toEqual(["OK", "OK"]);
     expect(result.value.lines[1].destroy).toBe(false);
-    // The seven rules travel with each line, for the audit.
+    // The eight rules travel with each line, for the audit (rule (8) since 12/10).
     expect(result.value.lines[0].checklist.map((r) => [r.n, r.status])).toEqual([
       [1, "CONFORME"],
       [2, "CONFORME"],
@@ -74,8 +77,9 @@ describe("validateReception", () => {
       [5, "SANS_OBJET"],
       [6, "CONFORME"],
       [7, "SANS_OBJET"],
+      [8, "SANS_OBJET"],
     ]);
-    expect(result.value.lines[1].checklist).toHaveLength(7);
+    expect(result.value.lines[1].checklist).toHaveLength(8);
     expect(result.value.lines.map((l) => l.exploitable)).toEqual([true, true]);
   });
 
@@ -347,7 +351,7 @@ describe("validateReception — the contrôles complémentaires C3 and C5", () =
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.lines[0]).toMatchObject({ packagingOk: false, identificationOk: true, conformityReason: "EMBALLAGE" });
-    expect(result.value.lines[0].checklist).toHaveLength(7);
+    expect(result.value.lines[0].checklist).toHaveLength(8);
     expect(result.value.lines[0].complementary.map((row) => [row.code, row.status])).toEqual([
       ["C1", "CONFORME"],
       ["C2", "CONFORME"],
@@ -376,8 +380,14 @@ describe("validateReception — C2, température de transport", () => {
     expect(result.ok && result.value.lines[0].temperatureSource).toBe("GLACIERE");
     expect(result.ok && result.value.lines[0].checklist[5].detail).toBe("4 °C (glacière)");
     expect(c2(result)?.detail).toBe("4 °C, réfrigéré entre 0 et 8 °C (glacière)");
-    // No temperature, no source.
-    const none = validate({ ...good, lines: [good.lines[0], { ...good.lines[1], receptionTemperatureSource: "ECHANTILLON" }] });
+    // No temperature, no source (on a kind whose temperature the laboratory made optional).
+    const optional = { ...DEFAULT_THRESHOLDS, temperatureRequiredKinds: "ALIMENT,EAU" };
+    const none = validateReception(
+      { ...good, lines: [good.lines[0], { ...good.lines[1], receptionTemperature: "", receptionTemperatureSource: "ECHANTILLON" }] },
+      candidates,
+      optional,
+      times
+    );
     expect(none.ok && none.value.lines[1].temperatureSource).toBeNull();
   });
 
@@ -670,5 +680,90 @@ describe("validateReception — analyse with the client's agreement, or wait for
       expect(validateReception(raw, candidates, DEFAULT_THRESHOLDS, sameDay, required).ok).toBe(true);
     }
     expect(validateReception(good, candidates, DEFAULT_THRESHOLDS, times, required).ok).toBe(true);
+  });
+});
+
+describe("validateReception — the laboratory's answers of 12/10", () => {
+  const food = candidates[0];
+  const accepted = { sampleId: "s1", quantityUnit: "G", exploitable: true, packagingOk: true, identificationOk: true, conformity: true };
+  const surface = good.lines[1];
+
+  it("a stable food (« Ambiant ») is received without a temperature; the default class still needs one", () => {
+    const stable = validateReception(
+      { lines: [{ ...accepted, quantity: "250", storageClass: "AMBIANT" }, surface] },
+      candidates,
+      DEFAULT_THRESHOLDS,
+      sameDay
+    );
+    expect(stable.ok).toBe(true);
+    if (stable.ok) {
+      expect(stable.value.lines[0].checklist.find((r) => r.n === 6)).toMatchObject({
+        status: "SANS_OBJET",
+        detail: "Sans objet : aliment stable (conservé à température ambiante)",
+      });
+      expect(stable.value.lines[0].storageClass).toBe("AMBIANT");
+    }
+    // Same line on its default (chilled) class: the temperature is missing.
+    expect(
+      validateReception({ lines: [{ ...accepted, quantity: "250" }, surface] }, candidates, DEFAULT_THRESHOLDS, sameDay)
+    ).toMatchObject({ ok: false, ref: "1", error: expect.stringMatching(/^Échantillon 1 : Température à l'arrivée obligatoire pour un produit alimentaire\./) });
+    // A surface stays required, whatever its class.
+    expect(
+      validateReception(
+        { lines: [{ ...accepted, quantity: "250", receptionTemperature: "4" }, { ...surface, receptionTemperature: "", storageClass: "AMBIANT" }] },
+        candidates,
+        DEFAULT_THRESHOLDS,
+        sameDay
+      )
+    ).toMatchObject({ ok: false, ref: "2" });
+  });
+
+  it("live bivalve molluscs (rule 8): refused under 25 g, justified between 25 and 50 g", () => {
+    const mussels: ReceptionCandidate[] = [{ ...food, productNames: ["Moules de bouchot", null, "Microbiologie des aliments"] }, candidates[1]];
+    // Rule (2) lowered for the case: rule (8) alone decides.
+    const thresholds = { ...DEFAULT_THRESHOLDS, minFoodMicroG: 10 };
+    const tooLight = validateReception(
+      { lines: [{ ...accepted, quantity: "20", receptionTemperature: "4" }, surface] },
+      mussels,
+      thresholds,
+      sameDay
+    );
+    expect(tooLight).toMatchObject({ ok: false, ref: "1" });
+    if (!tooLight.ok) {
+      expect(tooLight.error).toBe(
+        "Échantillon 1 : Poids 20 g < 25 g requis, même pour des animaux de petite taille. L'échantillon ne peut pas être déclaré conforme."
+      );
+    }
+
+    const small = { lines: [{ ...accepted, quantity: "40", receptionTemperature: "4" }, surface] };
+    expect(validateReception(small, mussels, thresholds, sameDay)).toMatchObject({
+      ok: false,
+      ref: "1",
+      error: "Échantillon 1 : justifiez l'acceptation (règle 8 à vérifier).",
+    });
+    const justifiedSmall = validateReception(
+      { lines: [{ ...small.lines[0], receptionNote: "Petites moules : 14 individus comptés" }, surface] },
+      mussels,
+      thresholds,
+      sameDay
+    );
+    expect(justifiedSmall.ok).toBe(true);
+    if (justifiedSmall.ok) {
+      expect(justifiedSmall.value.lines[0].checklist.find((r) => r.n === 8)).toMatchObject({ status: "A_VERIFIER", rules: ["MOLLUSQUES_POIDS"] });
+    }
+
+    // Received non conforme with the quantity motif, the light sample goes through.
+    const nonConform = validateReception(
+      {
+        lines: [
+          { ...accepted, quantity: "20", receptionTemperature: "4", conformity: false, conformityReason: "QUANTITE_INSUFFISANTE" },
+          surface,
+        ],
+      },
+      mussels,
+      thresholds,
+      sameDay
+    );
+    expect(nonConform.ok).toBe(true);
   });
 });

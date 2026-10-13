@@ -20,6 +20,11 @@ enum Role {
   /// Responsable des paramètres — confirms the programme d'analyse of each
   /// received line before the bench (PROGRAMME.md §2).
   PROGRAMMATEUR
+  /// « Direction » — the director and the deputy who sign the validation
+  /// administrative (the laboratory's answer of 12/10). `User.role` is a
+  /// string column and no column uses this enum: the value costs no SQL
+  /// (migration 20261013100000_retour_labo_1210).
+  DIRECTION
 }
 
 enum EmailType {
@@ -1238,6 +1243,14 @@ model CompanySettings {
   /// documents. The styled text brand is the fallback while it is absent —
   /// the HD file from the lab (NEEDEDINFO item 5) just gets uploaded here.
   logoData  String?  @db.LongText
+  /// The report's footer (PG06/EN03 version M) — the legal identifiers
+  /// beside `rc` / `ice`, and the fax. Typed by the owner in
+  /// /admin/entreprise, never written in the code: null until then.
+  /// Identifiant fiscal (IF).
+  fiscalId  String?
+  patente   String?
+  cnss      String?
+  fax       String?
   updatedAt DateTime @updatedAt
 }
 
@@ -1272,8 +1285,17 @@ model LabSettings {
   /// Histamine: units expected and minimum weight of each (g).
   histamineUnits           Int      @default(9)
   histamineUnitG           Int      @default(100)
-  /// Line kinds whose temperature at arrival is mandatory (comma-separated LineKind codes).
-  temperatureRequiredKinds String   @default("ALIMENT,EAU")
+  /// Note (8) of the bon version H (the laboratory's answer of 12/10): a
+  /// sample of live bivalve molluscs holds at least `molluscMinIndividuals`
+  /// individuals and weighs at least `molluscMinG` g (`molluscSmallMinG` g for
+  /// small animals).
+  molluscMinIndividuals    Int      @default(10)
+  molluscMinG              Int      @default(50)
+  molluscSmallMinG         Int      @default(25)
+  /// Line kinds whose temperature at arrival is mandatory (comma-separated
+  /// LineKind codes). Food, water, air and surface since the laboratory's
+  /// answer of 12/10 (stable foods excepted — a reception rule, not this list).
+  temperatureRequiredKinds String   @default("ALIMENT,EAU,AIR,SURFACE")
   /// Above this temperature at arrival a food line raises a cold-chain warning (°C).
   coldChainMaxC            Float    @default(8)
 

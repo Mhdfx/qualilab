@@ -21,6 +21,7 @@ export default async function ComptePage() {
     "PROGRAMMATEUR",
     "TECHNICIEN",
     "VALIDATEUR",
+    "DIRECTION",
     "GESTIONNAIRE",
     "COMPTABLE",
     "MAGASINIER",

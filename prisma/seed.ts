@@ -15,6 +15,8 @@ const demoUsers = [
   { username: "tech1", name: "Yassine Amrani", role: "TECHNICIEN" },
   { username: "tech2", name: "Imane Cherkaoui", role: "TECHNICIEN" },
   { username: "valid1", name: "Dr. Nawal Bennani", role: "VALIDATEUR" },
+  // « Direction » (12/10): signs the validation administrative.
+  { username: "direction1", name: "Direction (démo)", role: "DIRECTION" },
   { username: "commercial1", name: "Hicham Tazi", role: "GESTIONNAIRE" },
   { username: "compta1", name: "Leila Fassi", role: "COMPTABLE" },
   { username: "admin", name: "Sara Mansouri", role: "ADMIN" },

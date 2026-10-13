@@ -21,10 +21,36 @@ export const SAMPLE_STATUS_ORDER: SampleStatus[] = [
   "RAPPORT_ENVOYE",
 ];
 
+/**
+ * Who signs step 1 of the double validation, the « Validation technique »:
+ * the validateur, the Direction (two of the laboratory's four signatories do
+ * both steps, 12/10) and the administrator. The same roles send a sample
+ * back to the bench.
+ */
+export const TECHNICAL_VALIDATION_ROLES = ["VALIDATEUR", "DIRECTION", "ADMIN"] as const satisfies readonly Role[];
+
+/**
+ * Who signs step 2, the « Validation administrative »: the Direction
+ * (« Directeur et son suppléant », 12/10) and the administrator — never the
+ * person who signed step 1 of the same sample (`canApprove`).
+ */
+export const ADMINISTRATIVE_VALIDATION_ROLES = ["DIRECTION", "ADMIN"] as const satisfies readonly Role[];
+
+/** How the validation screens name the signatory of step 2. */
+export const ADMINISTRATIVE_SIGNATORY_LABEL = "Direction";
+
+export function signsTechnically(role: Role): boolean {
+  return (TECHNICAL_VALIDATION_ROLES as readonly Role[]).includes(role);
+}
+
+export function signsAdministratively(role: Role): boolean {
+  return (ADMINISTRATIVE_VALIDATION_ROLES as readonly Role[]).includes(role);
+}
+
 type Transition = {
   from: SampleStatus;
   to: SampleStatus;
-  roles: Role[];
+  roles: readonly Role[];
   /** Backwards move: allowed only with a documented reason (rejection). */
   requiresReason?: boolean;
 };
@@ -39,17 +65,19 @@ const TRANSITIONS: Transition[] = [
   { from: "PROGRAMME", to: "EN_ANALYSE", roles: ["TECHNICIEN", "ADMIN"] },
   { from: "EN_ANALYSE", to: "RESULTATS_SAISIS", roles: ["TECHNICIEN", "ADMIN"] },
   // Double validation (client, 2026-08-18): the VALIDATEUR signs off technically
-  // first — recorded on the sample, not as a status change — then the ADMIN
-  // approves, and only that second step moves the sample to VALIDE.
-  { from: "RESULTATS_SAISIS", to: "VALIDE", roles: ["ADMIN"] },
+  // first — recorded on the sample, not as a status change — then the
+  // Direction or the ADMIN approves (12/10), and only that second step moves
+  // the sample to VALIDE.
+  { from: "RESULTATS_SAISIS", to: "VALIDE", roles: ADMINISTRATIVE_VALIDATION_ROLES },
   // The first send is what moves the sample; the gestionnaire commercial
-  // may trigger it (client relationship), the validateur and admin too.
-  { from: "VALIDE", to: "RAPPORT_ENVOYE", roles: ["GESTIONNAIRE", "VALIDATEUR", "ADMIN"] },
+  // may trigger it (client relationship), the validateur, the Direction and
+  // the admin too.
+  { from: "VALIDE", to: "RAPPORT_ENVOYE", roles: ["GESTIONNAIRE", "VALIDATEUR", "DIRECTION", "ADMIN"] },
   // Quality rejection — returns the sample to the technician, reason required.
   {
     from: "RESULTATS_SAISIS",
     to: "EN_ANALYSE",
-    roles: ["VALIDATEUR", "ADMIN"],
+    roles: TECHNICAL_VALIDATION_ROLES,
     requiresReason: true,
   },
   // Phase 9 — « Annuler »: terminal, with a coded motif (the route checks
@@ -167,7 +195,7 @@ export function statusLabel(status: SampleStatus) {
  * The two approvals a sample needs before its report may be issued.
  *
  * The client requires both on every sample: the VALIDATEUR checks the results
- * technically, then the ADMIN approves. "Awaiting approval" is derived — the
+ * technically, then the Direction (or the ADMIN) approves. "Awaiting approval" is derived — the
  * sample is still `RESULTATS_SAISIS`, but its technical validation is recorded
  * — so the six tracked statuses stay exactly as specified.
  */
@@ -196,7 +224,7 @@ export function canValidateTechnically(
   sample: { status: SampleStatus; validatedById: string | null },
   role: Role
 ): TransitionCheck {
-  if (role !== "VALIDATEUR" && role !== "ADMIN") {
+  if (!signsTechnically(role)) {
     return { ok: false, error: "Votre profil n'est pas autorisé à valider." };
   }
   if (sample.status !== "RESULTATS_SAISIS") {
@@ -237,16 +265,19 @@ export function amendmentIssueRefusal(sample: {
   return null;
 }
 
-/** Guards the admin's final approval, which is what sets the status to VALIDE. */
+/**
+ * Guards the final approval — the « Validation administrative » of the
+ * Direction or of an administrator — which is what sets the status to VALIDE.
+ */
 export function canApprove(
   sample: { status: SampleStatus; validatedById: string | null },
   role: Role,
   approverId?: string
 ): TransitionCheck {
-  if (role !== "ADMIN") {
+  if (!signsAdministratively(role)) {
     return {
       ok: false,
-      error: "Seul un administrateur peut donner la validation administrative.",
+      error: "Seule la direction ou un administrateur peut donner la validation administrative.",
     };
   }
   if (!sample.validatedById) {
@@ -257,8 +288,8 @@ export function canApprove(
     };
   }
   // Two signatures means two people: whoever signed technically cannot
-  // also give the final approval (an ADMIN who validated lets another
-  // ADMIN approve).
+  // also give the final approval (a Direction or ADMIN account that
+  // validated lets another one approve).
   if (approverId && sample.validatedById === approverId) {
     return {
       ok: false,
@@ -267,4 +298,39 @@ export function canApprove(
     };
   }
   return canTransition(sample.status, "VALIDE", role);
+}
+
+/** What the validation panel offers one signed-in person on one sample. */
+export type ValidationControls = {
+  /** « Valider techniquement ». */
+  validate: boolean;
+  /** « Valider administrativement ». */
+  approve: boolean;
+  /** « Renvoyer au technicien ». */
+  reject: boolean;
+  /** Step 2 is due, this role signs it, but this person signed step 1. */
+  approvalLockedToOther: boolean;
+  /** Step 2 is due and this role never signs it. */
+  approvalNotMine: boolean;
+};
+
+/**
+ * The panel's decision, from the same rules as the route
+ * (`canValidateTechnically`, `canApprove`, the send-back transition): the
+ * screen hides what the route would refuse, the route decides again.
+ */
+export function validationControls(
+  state: ApprovalState,
+  role: Role,
+  signer: { validatedById: string | null; userId: string }
+): ValidationControls {
+  const signedStepOne = signer.validatedById !== null && signer.validatedById === signer.userId;
+  const awaitingApproval = state === "AWAITING_ADMIN";
+  return {
+    validate: state === "AWAITING_TECHNICAL" && signsTechnically(role),
+    approve: awaitingApproval && signsAdministratively(role) && !signedStepOne,
+    reject: state !== "APPROVED" && signsTechnically(role),
+    approvalLockedToOther: awaitingApproval && signsAdministratively(role) && signedStepOne,
+    approvalNotMine: awaitingApproval && !signsAdministratively(role),
+  };
 }
