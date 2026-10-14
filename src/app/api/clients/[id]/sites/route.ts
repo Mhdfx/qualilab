@@ -3,6 +3,7 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { validateSite } from "@/lib/site-input";
+import { createdSiteActive } from "@/lib/site-creation";
 
 const SITE_SELECT = {
   id: true,
@@ -57,17 +58,20 @@ export async function POST(
 
   const checked = validateSite(body);
   if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: 400 });
+  // The préleveur and the reception create the site they need: always
+  // active, an `active: false` from them is ignored (src/lib/site-creation.ts).
+  const value = { ...checked.value, active: createdSiteActive(session.role, checked.value.active) };
 
   // One name per client (the schema's unique index); say so instead of a 500.
   const duplicate = await prisma.site.findUnique({
-    where: { clientId_name: { clientId: id, name: checked.value.name } },
+    where: { clientId_name: { clientId: id, name: value.name } },
     select: { id: true },
   });
   if (duplicate) return NextResponse.json({ error: "Ce client a déjà un site de ce nom." }, { status: 409 });
 
   let site;
   try {
-    site = await prisma.site.create({ data: { clientId: id, ...checked.value }, select: SITE_SELECT });
+    site = await prisma.site.create({ data: { clientId: id, ...value }, select: SITE_SELECT });
   } catch (error) {
     // The same name created at the same instant (double click): the unique
     // index refuses the second, which answers like the check above.

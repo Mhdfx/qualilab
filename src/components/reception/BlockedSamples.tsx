@@ -16,7 +16,8 @@ import {
 import { RELEASE_DECISIONS, RELEASE_REASON_MAX } from "@/lib/release-rules";
 import { futureFieldError } from "@/lib/device-time";
 import { fromLocalInput } from "@/components/preleveur/visit-types";
-import { ConsultationFields, DecisionChips } from "./reception-widgets";
+import { dateTimePending } from "@/components/LabDateTimeInput";
+import { ConsultationFields, DecisionChips, consultationAtId } from "./reception-widgets";
 
 export type BlockedSample = {
   id: string;
@@ -88,6 +89,13 @@ function BlockedRow({ sample, consultationRequired }: { sample: BlockedSample; c
   async function release() {
     if (busy || !decision) return;
     if (decision === "ANALYSER") {
+      // An unfinished or invalid date-time of the agreement before checking it:
+      // the form still holds the value from before it (the field gets the focus).
+      const pending = dateTimePending(consultationAtId(`release-${sample.id}`));
+      if (pending) {
+        setError(pending);
+        return;
+      }
       const problem =
         consultationDraftError(consultation, required) ?? futureFieldError(CONSULTATION_TIME_LABEL, consultation.at);
       if (problem) {

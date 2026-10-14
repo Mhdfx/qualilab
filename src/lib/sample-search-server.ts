@@ -1,7 +1,7 @@
 import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "./prisma";
-import { sampleConclusion, sampleSearchWhere, type Conclusion, type SampleSearch } from "./sample-search";
+import { declaredSampledAt, sampleConclusion, sampleSearchWhere, type Conclusion, type SampleSearch } from "./sample-search";
 
 /**
  * The rows the search screen, the client summary and the Excel export print
@@ -24,7 +24,9 @@ export type SearchRow = {
   lieu: string;
   nature: string;
   parameters: string[];
-  sampledAt: Date;
+  /** The sampling date, null on a deposit whose sampling time was not
+   *  declared — never the instant it was entered (`declaredSampledAt`). */
+  sampledAt: Date | null;
   receivedAt: Date | null;
   hasReport: boolean;
   conclusion: Conclusion;
@@ -46,6 +48,8 @@ export async function searchSamples(
     ...(options.scope ? { AND: [options.scope] } : {}),
     ...(options.excludeCancelled ? { NOT: { status: "ANNULE" as const } } : {}),
   };
+  // On the column itself: an undeclared deposit takes its place by the
+  // instant it was entered, the same instant the period filter reads.
   const orderBy =
     search.dateField === "prelevement"
       ? [{ sampledAt: "desc" as const }, { createdAt: "desc" as const }]
@@ -67,7 +71,8 @@ export async function searchSamples(
         sampledAt: true,
         receivedAt: true,
         client: { select: { id: true, name: true } },
-        serie: { select: { serialNumber: true, site: { select: { name: true } } } },
+        // Whether a deposit's « Prélevé le » was declared (R6 / C5).
+        serie: { select: { serialNumber: true, site: { select: { name: true } }, samplingTimeDeclared: true } },
         nature: { select: { label: true } },
         parameters: { select: { parameter: { select: { name: true } } } },
         report: { select: { interpretation: true } },
@@ -92,7 +97,7 @@ export async function searchSamples(
       lieu: s.lieu,
       nature: s.nature.label,
       parameters: s.parameters.map((p) => p.parameter.name),
-      sampledAt: s.sampledAt,
+      sampledAt: declaredSampledAt(s.sampledAt, s.serie.samplingTimeDeclared),
       receivedAt: s.receivedAt,
       hasReport: s.report !== null,
       conclusion: sampleConclusion(s),

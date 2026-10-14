@@ -36,7 +36,7 @@ import { ClientSummary } from "@/components/commercial/ClientSummary";
 import { ClientMergeActions } from "@/components/commercial/ClientMergeActions";
 import { BillingClientsCard } from "@/components/commercial/BillingClientsCard";
 import { archivedBanner, archivedKind, importedParentId } from "@/components/commercial/client-actions-logic";
-import { parseSampleSearch, rechercheHref } from "@/lib/sample-search";
+import { declaredSampledAt, parseSampleSearch, rechercheHref } from "@/lib/sample-search";
 import { parseView } from "@/lib/dashboard-view";
 import {
   CLIENT_INVOICE_VIEW_FILTERS,
@@ -124,6 +124,9 @@ export default async function ClientDetailPage({
         status: true,
         produit: true,
         sampledAt: true,
+        // A deposit without a declared sampling time: its `sampledAt` is the
+        // instant it was entered, never printed as a sampling (R6 / C5).
+        serie: { select: { samplingTimeDeclared: true } },
         report: { select: { number: true, version: true, sentAt: true, amendmentPending: true } },
         // Billed already? The programme lets the invoice precede the result.
         // Only a line that holds its sample counts (a draft or an issued
@@ -131,6 +134,7 @@ export default async function ClientDetailPage({
         // carries one (FACTURATION.md §1–2).
         invoiceItems: { where: holdingInvoiceItemWhere(), select: { invoiceId: true }, take: 1 },
       },
+      // The most recent first — an undeclared deposit by the instant it was entered.
       orderBy: { sampledAt: "desc" },
       take: 25,
     }),
@@ -383,6 +387,7 @@ export default async function ClientDetailPage({
                     sample.invoiceItems.length > 0
                       ? sampleBillingNotice(sample.status, sample.report?.amendmentPending === true)
                       : null;
+                  const sampledAt = declaredSampledAt(sample.sampledAt, sample.serie.samplingTimeDeclared);
                   return (
                   <li key={sample.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
                     <div className="min-w-0">
@@ -407,7 +412,11 @@ export default async function ClientDetailPage({
                       </p>
                       <p className="mt-0.5 text-xs text-slate-500">
                         {sample.produit ? `${sample.produit} · ` : ""}
-                        {formatDate(sample.sampledAt)}
+                        {sampledAt
+                          ? formatDate(sampledAt)
+                          : sample.produit
+                            ? "date de prélèvement non déclarée"
+                            : "Date de prélèvement non déclarée"}
                       </p>
                     </div>
                     {sample.report && (

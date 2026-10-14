@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { COMPANY, type CompanyInfo } from "@/lib/company";
-import { alertEmail, destructionEmail, reportEmail, signature, type ReportEmailInput } from "./templates";
+import { formatDate } from "@/lib/labels";
+import { alertEmail, destructionEmail, reportEmail, signature, type DestructionEmailInput, type ReportEmailInput } from "./templates";
 
 const base: ReportEmailInput = {
   clientName: "Client Démo",
@@ -10,6 +11,7 @@ const base: ReportEmailInput = {
   serialNumber: "12/26",
   controlCode: "101/26",
   sampledAt: new Date("2026-10-07T08:00:00Z"),
+  samplingTimeDeclared: null,
   receivedAt: new Date("2026-10-07T10:00:00Z"),
   analyse: "Microbiologie des aliments",
   produit: "Salade composée",
@@ -47,6 +49,49 @@ describe("reportEmail — the client's site (RETOUR-LABO-06-10.md §5, V5)", () 
     expect(html).toContain(">Désignation</td>");
     expect(html).toContain("Planche verte — surface nettoyée");
     expect(html).not.toContain(">Produit</td>");
+  });
+});
+
+/** The cell of a summary row, as the templates write it. */
+const cell = (label: string, value: string) => `${label}</td><td style="border:1px solid #9aa9b3;padding:6px 8px">${value}</td>`;
+
+describe("the sampling date of a deposit whose time was not declared (RETOUR-LABO-14-10 R6)", () => {
+  // Entered at the counter on the 5th, received on the 7th: the 5th is the
+  // instant the deposit was typed in, never a sampling when undeclared.
+  const entered = new Date("2026-10-05T09:30:00Z");
+  const received = new Date("2026-10-07T10:00:00Z");
+
+  it("prints « Non déclarée » in the report e-mail, never the entry instant", () => {
+    const { html } = reportEmail({ ...base, sampledAt: entered, samplingTimeDeclared: false, receivedAt: received });
+    expect(html).toContain(cell("Date de prélèvement", "Non déclarée"));
+    expect(html).not.toContain(formatDate(entered));
+    // The reception date is still printed.
+    expect(html).toContain(cell("Date de réception", formatDate(received)));
+  });
+
+  it("prints the date of a declared deposit and of a visit (null) as recorded", () => {
+    for (const samplingTimeDeclared of [true, null]) {
+      const { html } = reportEmail({ ...base, sampledAt: entered, samplingTimeDeclared, receivedAt: received });
+      expect(html, String(samplingTimeDeclared)).toContain(cell("Date de prélèvement", formatDate(entered)));
+      expect(html, String(samplingTimeDeclared)).not.toContain("Non déclarée");
+    }
+  });
+
+  it("does the same in the notice of a line destroyed at reception", () => {
+    const notice: DestructionEmailInput = {
+      serialNumber: "12/26",
+      sampledAt: entered,
+      samplingTimeDeclared: false,
+      receivedAt: received,
+      lines: [{ controlCode: "101/26", designation: "Salade", numeroLot: null, lieu: "Cuisine", motif: "Emballage non conforme" }],
+    };
+    const undeclared = destructionEmail(notice).html;
+    expect(undeclared).toContain(cell("Date de prélèvement", "Non déclarée"));
+    expect(undeclared).not.toContain(formatDate(entered));
+    for (const samplingTimeDeclared of [true, null]) {
+      const { html } = destructionEmail({ ...notice, samplingTimeDeclared });
+      expect(html, String(samplingTimeDeclared)).toContain(cell("Date de prélèvement", formatDate(entered)));
+    }
   });
 });
 
@@ -176,6 +221,7 @@ describe("the e-mails sign with the identity of /admin/entreprise", () => {
       {
         serialNumber: "12/26",
         sampledAt: new Date("2026-10-07T08:00:00Z"),
+        samplingTimeDeclared: null,
         receivedAt: null,
         lines: [{ controlCode: "101/26", designation: "Salade", numeroLot: null, lieu: "Cuisine", motif: "Emballage non conforme" }],
       },
@@ -218,5 +264,8 @@ describe("the e-mails sign with the identity of /admin/entreprise", () => {
       expect(found[0], `${file} ${fn}`).toMatch(/,\s*company\s*\)$/);
       expect(text, file).toMatch(/await getCompany\(\)|getCompany\(\)\]\)/);
     }
+    // R6: both senders read the série's flag from the database, never a constant.
+    expect(calls(dispatch, "reportEmail").found[0]).toMatch(/samplingTimeDeclared:\s*sample\.serie\.samplingTimeDeclared\b/);
+    expect(calls(destruction, "destructionEmail").found[0]).toMatch(/samplingTimeDeclared:\s*first\.serie\.samplingTimeDeclared\b/);
   });
 });

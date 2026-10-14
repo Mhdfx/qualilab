@@ -8,7 +8,7 @@ import type {
   SurfaceState,
 } from "@/generated/prisma/enums";
 import { fromLabWallTime, toLabWallTime } from "@/lib/lab-time";
-import { AIR_METHOD_LABELS, LINE_KIND_LABELS, withSurfaceState } from "@/lib/labels";
+import { AIR_METHOD_LABELS, LINE_KIND_LABELS, SURFACE_AREA_CHOICES, withSurfaceState } from "@/lib/labels";
 import {
   LINE_FAMILIES,
   defaultFamiliesFor,
@@ -44,9 +44,17 @@ export type ClientOption = {
  * `AnalysisParameter.family` (RETOUR-LABO-06-10.md §5, V3): the analyses
  * proposed on a sample are grouped by it. Optional only so that an older
  * payload still reads — a parameter without it counts as MICRO, the
- * column's default.
+ * column's default. `normLabel` is the norm version in force, as the report
+ * prints it (`normInForce`); with `unit` it makes the muted line under the
+ * analysis (`parameterCaption`, 14/10). Null or absent when unknown.
  */
-export type ParameterOption = { id: string; name: string; unit?: string | null; family?: Family | null };
+export type ParameterOption = {
+  id: string;
+  name: string;
+  unit?: string | null;
+  family?: Family | null;
+  normLabel?: string | null;
+};
 
 /** A panel of analyses proposed in one tap (client-specific ones first). */
 export type ProfileOption = {
@@ -359,7 +367,8 @@ export function kindPatch(
     productTypeId: kind === "ALIMENT" ? line.productTypeId : "",
     quantityUnit: kind === "EAU" ? "L" : line.quantityUnit === "L" ? fallbackUnit : line.quantityUnit,
     // L'aire de 100 cm² est la valeur d'usage d'une ligne surface : on la
-    // propose en y entrant, on la retire en en sortant.
+    // propose en y entrant, on la retire en en sortant. Une autre aire
+    // (« 1000 cm² », une valeur saisie) est gardée, comme le texte tapé.
     surfaceAreaCm2:
       kind === "SURFACE" ? line.surfaceAreaCm2 || "100" : line.surfaceAreaCm2 === "100" ? "" : line.surfaceAreaCm2,
     surfaceState: kind === "SURFACE" ? line.surfaceState : "",
@@ -371,6 +380,19 @@ function sameFamilies(a: readonly LineFamily[], b: readonly LineFamily[]) {
   return a.length === b.length && a.every((family) => b.includes(family));
 }
 
+/**
+ * The quick choice (« 100 cm² », « 1000 cm² » — `SURFACE_AREA_CHOICES`) a
+ * typed « Surface prélevée (cm²) » equals, read the way the server reads it
+ * (trimmed, a comma as the decimal mark); null for any other value and for
+ * an empty field. The préleveur's card and « Corriger la fiche » press the
+ * chip it names.
+ */
+export function surfaceAreaChoice(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const area = Number(trimmed.replace(",", "."));
+  return SURFACE_AREA_CHOICES.find((choice) => choice === area) ?? null;
+}
 
 /**
  * A new sample. With the catalogue's natures and the previous sample, it

@@ -3,7 +3,7 @@ import { Download, FileText, Search } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SAMPLE_STATUS_LABELS, SAMPLE_TYPE_LABELS, formatDate } from "@/lib/labels";
-import { parseSampleSearch, searchQueryString, type Conclusion } from "@/lib/sample-search";
+import { UNDECLARED_SAMPLING, parseSampleSearch, searchQueryString, type Conclusion } from "@/lib/sample-search";
 import { searchSamples } from "@/lib/sample-search-server";
 import { benchWhereFor } from "@/lib/bench-access";
 import { Card } from "@/components/ui/Card";
@@ -238,7 +238,11 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
                       {row.numeroLot && <span className="block text-xs text-slate-500">Lot {row.numeroLot}</span>}
                     </td>
                     <td className="py-2.5 pr-3 text-slate-600">{row.nature}</td>
-                    <td className="py-2.5 pr-3 text-slate-600">{formatDate(row.sampledAt)}</td>
+                    {/* A deposit without a declared sampling time: its entry
+                        instant is no sampling date (R6 / C5). */}
+                    <td className="py-2.5 pr-3 text-slate-600">
+                      {row.sampledAt ? formatDate(row.sampledAt) : <span className="text-slate-400">{UNDECLARED_SAMPLING}</span>}
+                    </td>
                     <td className="py-2.5 pr-3 text-slate-600">{row.receivedAt ? formatDate(row.receivedAt) : "—"}</td>
                     <td className="py-2.5 pr-3"><StatusBadge status={row.status} /></td>
                     <td className="py-2.5">

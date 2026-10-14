@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, Building2, Package, Hash, Calendar, ClipboardList, Hourglass, Undo2, UserCheck, Eye } from "lucide-react";
+import { ArrowLeft, Building2, Package, Hash, Calendar, ClipboardList, Hourglass, Undo2, UserCheck, Eye, FlaskConical } from "lucide-react";
 import { requireRole, getSession } from "@/lib/auth";
 import { roleAllowed } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
@@ -69,6 +69,8 @@ export default async function AnalysePage({
       surfaceAreaCm2: true,
       personName: true,
       airMethod: true,
+      // The nature of analysis, as the old bench header named it (14/10).
+      nature: { select: { label: true } },
       notes: true,
       receivedAt: true,
       // The reception's decision (motif, agreement of the client) and its
@@ -284,6 +286,9 @@ export default async function AnalysePage({
               </Field>
               <Field icon={Building2} label="Client">
                 {sample.client.name}
+              </Field>
+              <Field icon={FlaskConical} label="Nature d'analyse">
+                {sample.nature.label}
               </Field>
               <Field icon={Package} label="Désignation">
                 {designation === "—" ? <span className="text-slate-400">Non renseignée</span> : designation}

@@ -2,13 +2,21 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
+import { normInForce } from "@/lib/parameter-caption";
 import { PARAMETER_FAMILIES, SAMPLE_TYPES, validateParameter } from "@/lib/parameter-validation";
+import { normVersionsForParameters } from "@/lib/programme-referential";
 import type { Family, SampleType } from "@/generated/prisma/client";
 
 /**
  * The analysis parameters, each with its domain (`category`) and its family
  * (`family`: MICRO / CHIMIE / AUTRE — RETOUR-LABO-06-10.md §5, V3).
  * `?category=` and `?family=` narrow the list.
+ *
+ * Each one also carries `normLabel`: the norm version in force, as the
+ * report prints it (`normInForce` over the norms its catalogue criteria
+ * cite — the version the programme sheet proposes by default), null when
+ * unknown. The sample card shows it under the analysis with the unit
+ * (14/10); an added field, so the other readers are unaffected.
  */
 export async function GET(request: Request) {
   // The lab's own norms (limits, alert flags, factors): circuit roles only.
@@ -41,8 +49,11 @@ export async function GET(request: Request) {
     where: { ...(category ? { category } : {}), ...(family ? { family } : {}) },
     orderBy: { name: "asc" },
   });
+  const versions = await normVersionsForParameters(parameters.map((parameter) => parameter.id));
 
-  return NextResponse.json(parameters);
+  return NextResponse.json(
+    parameters.map((parameter) => ({ ...parameter, normLabel: normInForce(versions[parameter.id] ?? []) }))
+  );
 }
 
 /**

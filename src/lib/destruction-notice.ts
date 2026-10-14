@@ -36,7 +36,9 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
       receivedAt: true,
       conformityReason: true,
       conformityNote: true,
-      serie: { select: { serialNumber: true } },
+      // `samplingTimeDeclared`: « Non déclarée » rather than the instant a
+      // deposit was entered (R6).
+      serie: { select: { serialNumber: true, samplingTimeDeclared: true } },
     },
     // The two samples of a two-family line: « …M » before « …P ».
     orderBy: [{ lineNumber: "asc" }, { code: "asc" }],
@@ -48,6 +50,7 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
   const { subject, html } = destructionEmail({
     serialNumber: first.serie.serialNumber,
     sampledAt: first.sampledAt,
+    samplingTimeDeclared: first.serie.samplingTimeDeclared,
     receivedAt: first.receivedAt,
     lines: samples.map((s) => ({
       controlCode: s.controlCode,

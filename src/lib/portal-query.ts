@@ -10,6 +10,7 @@ import {
   type PortalStage,
 } from "./portal-status";
 import { amendedNumber } from "./report-amendment";
+import { declaredSampledAt } from "./sample-search";
 
 /**
  * The portal's queries (PORTAIL.md §2) — pure: filters read from the URL,
@@ -31,7 +32,9 @@ export type PortalFilters = {
   /** A site id, or `PORTAL_SIEGE`. A site of another client simply matches nothing. */
   siteId: string | null;
   stage: PortalStage | null;
-  /** Inclusive day bounds on the sampling date, the lab's wall clock. */
+  /** Inclusive day bounds on the sampling date, the lab's wall clock — the
+   *  `sampledAt` column, i.e. the instant a deposit without a declared
+   *  sampling time was entered (see `portalSampleWhere`). */
   from: Date | null;
   to: Date | null;
   page: number;
@@ -93,6 +96,9 @@ export function portalSampleWhere(clientId: string, filters: Omit<PortalFilters,
     and.push({ serie: { siteId: filters.siteId === PORTAL_SIEGE ? null : filters.siteId } });
   }
   if (filters.from || filters.to) {
+    // « Prélevé du … au … » reads the column itself: a deposit whose sampling
+    // time was not declared is found by the instant it was entered at the
+    // counter, though the row never prints that instant (`toPortalRow`).
     and.push({
       sampledAt: { ...(filters.from ? { gte: filters.from } : {}), ...(filters.to ? { lte: filters.to } : {}) },
     });
@@ -123,7 +129,8 @@ export function portalSampleByIdWhere(clientId: string, sampleId: string): Prism
   return { id: sampleId, clientId };
 }
 
-/** Newest sampling first; the id breaks ties so the pages never overlap. */
+/** Newest sampling first (an undeclared deposit by its entry instant); the
+ *  id breaks ties so the pages never overlap. */
 export const PORTAL_ORDER_BY: Prisma.SampleOrderByWithRelationInput[] = [{ sampledAt: "desc" }, { id: "desc" }];
 
 /** The 12 months of the dashboard (PORTAIL.md §2): from the same day one year ago, 00:00. */
@@ -161,7 +168,9 @@ export const PORTAL_SAMPLE_SELECT = {
   numeroLot: true,
   sampledAt: true,
   receivedAt: true,
-  serie: { select: { serialNumber: true, site: { select: { name: true } } } },
+  // Whether a deposit's « Prélevé le » was declared (R6): otherwise
+  // `sampledAt` is the counter's entry instant and never leaves as a sampling.
+  serie: { select: { serialNumber: true, site: { select: { name: true } }, samplingTimeDeclared: true } },
   report: { select: { number: true, version: true, sentAt: true, amendedAt: true, amendmentPending: true } },
 } as const;
 
@@ -178,7 +187,12 @@ export type PortalSampleRecord = {
   numeroLot: string | null;
   sampledAt: Date;
   receivedAt: Date | null;
-  serie: { serialNumber: string; site: { name: string } | null };
+  serie: {
+    serialNumber: string;
+    site: { name: string } | null;
+    /** False on a deposit whose sampling time was not declared; null on a visit. */
+    samplingTimeDeclared: boolean | null;
+  };
   report: {
     number: string;
     version: number;
@@ -197,7 +211,9 @@ export type PortalRow = {
   siteName: string | null;
   designation: string | null;
   numeroLot: string | null;
-  sampledAt: Date;
+  /** The sampling date; null on a deposit whose sampling time was not
+   *  declared — the instant it was entered is never sent as one (R6). */
+  sampledAt: Date | null;
   receivedAt: Date | null;
   stage: PortalStage;
   /** Set only once the report is available: before that nothing of it leaves the laboratory. */
@@ -222,7 +238,7 @@ export function toPortalRow(sample: PortalSampleRecord): PortalRow {
     siteName: sample.serie.site?.name ?? null,
     designation: sampleDesignation(sample),
     numeroLot: sample.numeroLot,
-    sampledAt: sample.sampledAt,
+    sampledAt: declaredSampledAt(sample.sampledAt, sample.serie.samplingTimeDeclared),
     receivedAt: sample.receivedAt,
     stage: portalStage(sample.status),
     report:

@@ -94,7 +94,7 @@ réglages, pas des développements.
 | # | Question | Ce que la réponse décide |
 |---|---|---|
 | Q1 | Le préleveur saisit-il le protocole sur site (téléphone) ou au retour depuis le papier ? La signature de l'interlocuteur reste-t-elle sur papier ? | Écran mobile vs desktop du protocole ; signature tactile ou non |
-| Q2 | Autres aires que 100 cm² pour les surfaces ? Le nom des employés prélevés figure-t-il sur le rapport ? | Champ aire ; protection des données |
+| Q2 | *(1re partie — autres aires que 100 cm² — répondue le 14/10 : « 100cm2 » et « 1000cm », archivée au §3)* Le nom des employés prélevés figure-t-il sur le rapport ? | Protection des données — voir aussi Q111 (état des mains, « personne ou poste prélevé ») |
 | Q3 | Une règle de recevabilité en défaut bloque-t-elle la réception ou ouvre-t-elle une non-conformité ? Bornes de chaîne du froid ? | Réglage LabSettings |
 | Q4 | Encaissez-vous des avances au comptoir, sous quelle forme ? | Bloc avance + reçu |
 | Q5 | Règle à trois classes : ≤ m / entre m et M / > M, ou < 3m / 3m–10m / > M ? Utilisez-vous c ? | Moteur de critères |
@@ -191,7 +191,6 @@ questions Q1–Q66 encore ouvertes qu'elles complètent sont citées.
 | Q84 | **Facture émise à 0,00** (« Payée » sans règlement) : peut-elle être annulée comme une facture impayée (son numéro reste dans la séquence, ses échantillons redeviennent facturables) ? | Défaut construit : oui |
 | Q85 | **Export comptable** (Excel, Factures → « Export comptable »). Une ligne par document émis à sa date d'émission, avoirs en négatif, factures annulées listées mais hors totaux, « reste à payer » au jour de l'export, feuille « Règlements » par date d'encaissement : est-ce le format attendu par votre cabinet comptable ? Un classeur à deux feuilles ou deux fichiers ? Faut-il plus que le nom et l'ICE du client (adresse, IF, RC) ? | Défaut : un classeur, deux feuilles, nom et ICE tels qu'imprimés sur la facture |
 | Q86 | **Facturation, compléments** (complète Q4, Q16, Q30). Délai de paiement par défaut (« à réception », 30 ou 60 jours) ? Une avance encaissée au comptoir doit-elle solder la facture ? Que signifie « avec remise » dans l'ancien logiciel ? Faut-il reprendre les 6 695 prix clients de l'ancien logiciel ? | Facturation (chantier 5) |
-| Q87 | **Création d'un client sur le terrain ou au comptoir.** Quels champs le préleveur saisit-il sur place ? Le gestionnaire complète-t-il ensuite l'ICE et les destinataires des rapports ? Le comptoir doit-il pouvoir créer un client ? (risque de doublons dans une base d'environ 1 516 clients) | Non construit ; aujourd'hui la recherche de client remplace les listes complètes (visite, dépôt, facture) |
 | Q88 | **Liste des surfaces.** Une liste commune au laboratoire ou une par client ? « Autre (préciser) » autorisé sur place ? Qui ajoute une surface ? Liste de départ, avec la surface par défaut en cm² ? | Non construit |
 | Q89 | **Familles des analyses** (complète Q8). Une fois la vraie famille (microbiologie / physico-chimie) de chaque paramètre saisie dans `/admin/parametres`, faut-il interdire sur un échantillon les analyses de l'autre famille ? | Aujourd'hui proposées, regroupées et signalées, jamais refusées |
 | Q90 | **Feuille de paillasse** (complète Q9, Q10, Q29, Q55). Doit-elle suivre le papier (une par série, deux boîtes B1/B2, RD/RF, liste du matériel, visa) ? C'est un document maîtrisé : valider la mise en page ou émettre une nouvelle version. Physico-chimie : un document par famille ? Envoyez le scan d'une page remplie du PG06/EN06 | Paillasse (chantier 3) |
@@ -203,6 +202,8 @@ questions Q1–Q66 encore ouvertes qu'elles complètent sont citées.
 | Q96 | **Pièces jointes** au-delà de la photo du protocole signé (photos d'échantillons, documents du client) : en voulez-vous ? | Non construit (hors périmètre signé) |
 | Q97 | **Exploitation du serveur.** Où envoyer la copie hors site des sauvegardes (stockage chiffré S3 / B2 / SFTP, ou un serveur à vous), qui la paie et la détient, et qui garde la clé de chiffrement hors du serveur ? Qui sont les détenteurs d'une clé SSH (une par personne) et quel créneau de maintenance (jour et heure hors activité) pour les redémarrages ? | Défaut : copie hors site désactivée (« offsite skipped » chaque nuit) ; connexion SSH par mot de passe encore ouverte jusqu'au passage de `harden-ssh.sh` |
 | Q98 | **Mise en service.** Les derniers N° de série et de contrôle de l'ancien logiciel le jour de la bascule ; confirmation que le client « TEST UI 2026-10-06 Traiteur » et le compte « portail.test » peuvent être supprimés à la mise en service | Bascule ; nettoyage des données de test |
+
+> **Q87 : répondue sur le principe le 14/10** (« Ajouter la possibilité d'ajouter un client avec ses sites et informations (dans le rôle Préleveur aussi) »), archivée au §3 ; les détails — champs obligatoires, destinataires des rapports, suivi par le commercial — sont Q116 et Q117.
 
 Réponses du laboratoire du 12/10 (`RETOUR-LABO-06-10.md` §12) : ce qui reste à
 trancher. Chaque question a, elle aussi, un **défaut déjà construit** (13/10).
@@ -230,9 +231,138 @@ Q104 (c).
 | Q107 | **Un technicien part avec des résultats saisis** (compte désactivé, absence longue, changement de poste). Un échantillon ne peut être remis dans « À prendre » que tant que rien n'y est saisi ; ensuite il reste à son titulaire et l'administrateur le termine à sa place (il saisit et soumet ; « Analysé par » nomme toujours le titulaire). Faut-il permettre à l'administrateur de le **libérer quand même** (les résultats déjà saisis restent, journalisé) pour qu'un collègue le reprenne et le signe ? | Défaut : libération refusée dès qu'un résultat est saisi, à tous ; l'administrateur termine l'échantillon |
 | Q108 | **Recherche des échantillons des collègues.** Sur la paillasse, chaque technicien voit les échantillons pris par ses collègues en lecture seule (« Pris par un collègue »). Dans « Recherche des analyses » et son export, un technicien ne trouve aujourd'hui que les échantillons qu'il tient : doit-il pouvoir rechercher aussi ceux de ses collègues ? | Défaut : la recherche et l'export d'un technicien = ses échantillons |
 
+Remarques du laboratoire du 14/10 (`RETOUR-LABO-14-10.md`, §6 pour le texte
+complet et l'élément lié). Le lot 1 (ce qui ne demandait aucune réponse) est
+construit ; tout le reste attend ces réponses. Q2 (1re partie) et Q87 sont
+répondues par le même message (§3). Questions déjà ouvertes que ce lot
+touche : Q2 (2e partie), Q68, Q71, Q101, Q104 (d) (f) (h), Q7.
+
+| # | Question | Ce que la réponse décide (défaut) |
+|---|---|---|
+| Q109 | **États des mains.** « Surface : ajouter état des mains » et « État de la surface\* (Aseptique / En cours de travail / Nettoyé) dans Mains du personnel » : une seule demande — un état obligatoire à ces trois choix sur « Mains du personnel » (affiché « État des mains »), rien de nouveau sur « Surface » ? Ou deux choix sur les mains, ou un « État des mains » sur une ligne Surface ? | P1, P2, P5 — une migration additive de l'enum. Défaut proposé : un seul état obligatoire à trois valeurs sur les mains ; « Mains non lavées » n'est plus proposé. Rien de construit avant la réponse |
+| Q110 | **Mains déjà enregistrées.** Les échantillons « Mains lavées » / « Mains non lavées » gardent-ils ce libellé sur leurs documents, ou faut-il les convertir ? | Défaut proposé : ils gardent leur libellé ; aucune donnée réécrite |
+| Q111 | **Mains sur le rapport et l'étiquette.** L'état des mains dans la désignation imprimée (« Mains — Chef cuisine — en cours de travail ») ? « Personne prélevée » (obligatoire, imprimée) : la fonction ou un repère peut-il suffire ? | Défaut proposé : état imprimé ; « Personne ou poste prélevé » obligatoire (nom ou fonction). Le nom sur le rapport reste Q2 (2e partie) |
+| Q112 | **« T° relevée (à remplacer le mot) ».** Quel libellé sur tous les types : « T° relevée », « Température de prélèvement » (ancien logiciel), autre ? Protocole « T°p / T°a » et rapport « Température du produit » gardés ? T° ambiante sur le rapport ? | P3. Défaut proposé : « T° relevée » à l'écran partout ; protocole et rapport inchangés ; T° ambiante non imprimée sur le rapport |
+| Q113 | **Températures obligatoires.** Sur la visite seulement, chaque échantillon ; air = T° ambiante seule (demande du 08/10) ; comptoir facultatif (la règle (6) garde la « T° à l'arrivée ») ? Un choix « Non mesurée » si le thermomètre manque ? | P4, P8, P9. Défaut proposé : comme décrit, sans « Non mesurée ». Lien Q101 |
+| Q114 | **Case texte à côté de « Surface prélevée (cm²) ».** Une autre aire (déjà possible) ou une description libre (« 10 × 10 cm », « surface totale ») ? Libellé, impression sur le protocole et le rapport ? | P6. Défaut construit (14/10) : puces 100 / 1000 cm² + nombre ; pas de case texte avant la réponse (une colonne additive si c'est une description) |
+| Q115 | **Sites au comptoir.** Construit : site toujours affiché au dépôt (« Siège », « + Nouveau site… »), recherche du client par le nom d'un site, y compris un ancien client devenu site. Est-ce la demande ? Afficher la ville ou l'adresse de chaque site ? | R1, R10. Défaut construit : le nom du site seul |
+| Q116 | **Créer un client au comptoir et sur le terrain.** Champs obligatoires (raison sociale seule, ou ICE, téléphone, adresse, e-mail) ? La réception et le préleveur saisissent-ils les destinataires des rapports, ou le commercial ensuite ? Le préleveur : client complet ou raison sociale, contact, téléphone et site ? | R2, R3 (Q87 répondue sur le principe). Défaut proposé : raison sociale obligatoire, le reste facultatif, le site sur place ; pas de destinataires saisis par ces rôles ; contrôle des doublons obligatoire ; un nom devenu site propose le client et son site. Rien de construit avant la réponse |
+| Q117 | **Suivi des clients créés hors du commercial.** Signalés « à compléter » au gestionnaire commercial ? Qui fusionne un doublon créé par erreur (aujourd'hui l'administrateur seul) ? | R4 — migration additive `Client.createdById` / `toComplete`. Défaut proposé : signal « À compléter », fusion à l'administrateur |
+| Q118 | **« Arrivé le » au dépôt** (un vrai champ, jamais un renommage de « Prélevé le »). (a) Garder « Prélevé le (si connu) » facultatif ? (b) C1 d'un dépôt sans heure de prélèvement : simple avertissement, sans observation obligatoire ? (c) « Date et heure de réception » du rapport : l'arrivée saisie ou l'enregistrement ? | R5. Défaut proposé : (a) gardé, facultatif ; (b) avertissement ; (c) l'arrivée saisie. Complète Q68, Q71 |
+| Q119 | **Dates seules.** Les heures se saisissent en 24 h (construit). Les dates seules (DLC, filtres « Du / Au ») s'affichent-elles aussi mois/jour/année sur vos postes ? Les forcer en JJ/MM/AAAA partout ? | R8. Défaut : selon la langue du navigateur ; contournement : navigateur et format régional en français |
+| Q120 | **Vocabulaire.** Renommer partout « Type de produit » en « Famille de produits » (et Microbiologie / Physico-chimie en « Domaine ») ? | RP4. Défaut proposé : oui, libellés seulement |
+| Q121 | **Catégories.** « Catégorie » = le « Group famille » de l'ancien logiciel (8 groupes) ? Une catégorie et un type d'analyse par famille ? Reprise depuis l'ancien logiciel ? Les 252 familles sans catégorie : « Autres » ou à classer à la main ? | RP2a, RP2b — une migration additive. Défaut proposé : 8 catégories, une catégorie et un type d'analyse par famille, reprise automatique, familles sans catégorie à classer à la main |
+| Q122 | **« Afficher les critères par famille ».** (a) Écran de consultation par catégorie puis famille ; (b) liste des paramètres de la famille à cocher sur la fiche de programme ; (c) autre ? Version imprimable ? | RP1. Défaut proposé : (a) et (b), pas de version imprimable |
+| Q123 | **Paramètres d'une famille.** Cochés d'office ou listés avec « Cocher tout » ? Changer de famille remplace-t-il la liste, comme dans l'ancien logiciel (les germes cochés à la main restent) ? | RP6. Défaut proposé : cochés d'office, « Cocher tout / Décocher tout », remplacement au changement de famille |
+| Q124 | **Filtre « Type d'analyse »** du choix de la famille : imposé, ou préréglé et modifiable ? | RP5. Défaut proposé : préréglé, modifiable |
+| Q125 | **Droits du responsable des paramètres.** Catégories, familles, critères — et aussi paramètres d'analyse, normes, profils, réglementations (aujourd'hui l'administrateur) ? | RP2c, RP2d. Défaut proposé : catégories, familles et critères ; le reste à l'administrateur |
+| Q126 | **Familles des mains, surfaces, eaux, air** de l'ancien logiciel (ex. « Hygiène du personnel », UFC/mains) : proposées et appliquées sur la fiche de programme de ces échantillons ? Reprendre les analyses des mains, leurs unités et leurs critères ? | RP2b (N2), OLD31. Défaut proposé : oui, critères rattachés aux analyses de la bonne catégorie à la reprise (copie locale d'abord) |
+| Q127 | **Droits du technicien.** Il ne peut déjà modifier ni analyses, ni programme, ni catalogue (un test le vérifie) : est-ce la règle voulue ? Le responsable des paramètres travaille-t-il aussi à la paillasse (deux comptes) ? | RP3. Défaut construit : la règle telle quelle ; proposé : deux comptes |
+| Q128 | **Analyses changées après le programme** (« Corriger la fiche ») : les réserver au responsable des paramètres et à l'administrateur ? | RP3b. Défaut proposé : oui pour les analyses ; l'identification reste aux rôles actuels |
+| Q129 | **« Analyse sensorielle » / « Analyse physique ».** Qui choisit la sensorielle, à quelle étape ? La physique est-elle encore pratiquée ? | RP7. Défaut proposé : sensorielle sur la fiche de programme d'un aliment ; physique abandonnée |
+| Q130 | **Fonctions de l'ancien logiciel.** Lesquelles manquent : (a) échantillon témoin ; (b) référence client par échantillon ; (c) neutralisant ; (d) diluant ; (e) « DPC » ; (f) multi duplication ; (g) boutons rapides de saisie ; (h) commentaire de saisie (rapport ou interne) ; (i) préleveur Qualilab attribué au comptoir ; (j) échantillon précédent / suivant ; (k) filtre « reçu depuis plus de N jours » ? | OLD9 … OLD50. Défaut construit : aucune ; chacune est une petite addition |
+
 ## 2. Ready to send — current batch
 
 *Copy this into an email. Update the date when you send it.*
+
+> **Lot du 14/10 — remarques sur le préleveur, le dépôt et le responsable des paramètres — à envoyer après la mise en ligne du lot 1 (TESTPLAN V15), avec les lots ci-dessous :**
+> Objet : Vos remarques du 14/10 — ce qui est fait, 22 précisions (Q109–Q130)
+>
+> Bonjour,
+>
+> Merci pour vos remarques du 14/10 et les captures de l'ancien logiciel.
+> Ce qui ne demandait pas de précision est fait : les heures se saisissent
+> en 24 h sur tous les postes ; « 100 cm² » et « 1000 cm² » en un clic sur
+> une surface ; au « Nouveau dépôt », les sites du client toujours affichés,
+> avec « + Nouveau site », et la recherche d'un client par le nom de son
+> site ; la norme et l'unité à côté de chaque analyse ; la nature de
+> l'échantillon à la paillasse ; « Non déclarée » au lieu de l'heure
+> d'enregistrement quand l'heure de prélèvement d'un dépôt est inconnue. Le
+> technicien ne pouvait déjà modifier ni les analyses, ni le programme, ni
+> les critères : c'est maintenant vérifié par un test. Pour le reste, nous
+> avons besoin de vos précisions ; chaque question indique ce que nous
+> proposons si cela vous convient.
+>
+> **Préleveur**
+> - Q109 — États des mains : sur « Mains du personnel », un état
+>   obligatoire Aseptique / En cours de travail / Nettoyé, et rien de
+>   nouveau sur « Surface » ? *Proposition : oui ; « Mains non lavées »
+>   n'est plus proposé.*
+> - Q110 — Les mains déjà enregistrées « lavées » / « non lavées » gardent-
+>   elles ce libellé ? *Proposition : oui, rien n'est réécrit.*
+> - Q111 — L'état des mains sur le rapport et l'étiquette ; la fonction
+>   (« Chef cuisine ») peut-elle remplacer le nom de la personne ?
+>   *Proposition : état imprimé ; nom ou fonction au choix.*
+> - Q112 — « à remplacer le mot » : quel mot pour la température au
+>   prélèvement, sur tous les types ? *Proposition : « T° relevée »
+>   partout à l'écran ; protocole et rapport inchangés.*
+> - Q113 — Températures obligatoires : sur la visite, chaque échantillon ;
+>   pour l'air la T° ambiante seule ; facultatives au comptoir ?
+>   *Proposition : oui, sans choix « Non mesurée ».*
+> - Q114 — La case texte à côté de « Surface prélevée (cm²) » : une autre
+>   aire, ou une description de la zone ? À imprimer ? *Proposition :
+>   rien de plus que les choix 100 / 1000 cm² et le nombre.*
+>
+> **Nouveau dépôt et clients**
+> - Q115 — Les sites toujours affichés et la recherche par site
+>   répondent-ils à votre demande ? Faut-il la ville du site ?
+>   *Proposition : le nom seul.*
+> - Q116 — Créer un client au comptoir et sur le terrain : quels champs
+>   obligatoires ? Qui saisit les adresses qui reçoivent les rapports ?
+>   *Proposition : raison sociale obligatoire ; les adresses des rapports
+>   complétées par le gestionnaire commercial.*
+> - Q117 — Signaler ces clients « à compléter » au commercial ? Qui
+>   fusionne un doublon ? *Proposition : oui ; l'administrateur.*
+> - Q118 — « Arrivé le » sera un vrai champ (renommer « Prélevé le »
+>   ferait imprimer l'arrivée comme heure de prélèvement) : garder
+>   « Prélevé le (si connu) » ? Sans heure de prélèvement, un simple
+>   avertissement au lieu d'une observation obligatoire ? Quelle heure de
+>   réception sur le rapport ? *Proposition : gardé et facultatif ;
+>   avertissement ; l'heure d'arrivée saisie.*
+> - Q119 — Les dates seules (DLC, filtres) s'affichent-elles en
+>   mois/jour/année sur vos postes ? *En attendant : régler la langue du
+>   navigateur et le format régional en français.*
+>
+> **Responsable des paramètres**
+> - Q120 — Renommer « Type de produit » en « Famille de produits » ?
+>   *Proposition : oui.*
+> - Q121 — « Catégorie » = le « Group famille » de l'ancien logiciel
+>   (8 groupes), repris avec le type d'analyse de chaque famille ?
+>   *Proposition : oui ; les familles sans catégorie classées à la main.*
+> - Q122 — « Afficher les critères par famille » : un écran de
+>   consultation, la liste des paramètres de la famille sur la fiche de
+>   programme, ou les deux ? *Proposition : les deux.*
+> - Q123 — Changer de famille remplace-t-il la liste des paramètres,
+>   comme dans l'ancien logiciel ? *Proposition : oui, les germes cochés à
+>   la main restent.*
+> - Q124 — Le filtre « Type d'analyse » : imposé ou modifiable ?
+>   *Proposition : préréglé, modifiable.*
+> - Q125 — Le responsable des paramètres gère-t-il aussi les paramètres
+>   d'analyse, normes, profils et réglementations ? *Proposition : non,
+>   les catégories, familles et critères seulement.*
+> - Q126 — Les familles des mains, surfaces, eaux et air de l'ancien logiciel,
+>   avec leurs critères (UFC/mains…), à reprendre et appliquer ?
+>   *Proposition : oui.*
+> - Q127 — Le technicien ne modifie ni analyses, ni programme, ni
+>   catalogue : est-ce bien la règle ? Si une personne fait la paillasse et
+>   le programme : deux comptes ? *Proposition : oui et oui.*
+> - Q128 — Après le programme, réserver le changement des analyses au
+>   responsable des paramètres et à l'administrateur ? *Proposition :
+>   oui.*
+> - Q129 — « Analyse sensorielle » : qui la choisit ? « Analyse physique »
+>   est-elle encore pratiquée ? *Proposition : sur la fiche de programme
+>   d'un aliment ; la physique abandonnée.*
+>
+> **Ancien logiciel**
+> - Q130 — Parmi ces fonctions, lesquelles vous manquent : échantillon
+>   témoin, référence client par échantillon, neutralisant, diluant,
+>   « DPC », multi duplication, boutons rapides de saisie, commentaire de
+>   saisie (rapport ou interne), préleveur Qualilab attribué au comptoir,
+>   échantillon précédent / suivant, filtre « plus de N jours » ?
+>   *Aucune n'est construite ; chacune est une petite addition.*
+>
+> Bien cordialement,
 
 > **Lot du 13/10 (soir) — prise en charge libre — à envoyer avec les deux lots ci-dessous :**
 > Objet : Plus d'affectation des techniciens — ce qui change, 3 précisions (Q106–Q108)
@@ -400,3 +530,5 @@ Bien cordialement,
 | 2026-10-13 | Q62 — histamine : moins de 9 unités | **Pas une non-conformité** : l'échantillon est analysé comme le client le demande (même n = 1) et le rapport donne les résultats **sans interprétation**. ⇒ règle (7) : moins de 9 unités = ligne « conforme » informative (« analysée telle que demandé, résultats sans interprétation sur le rapport »), plus de « à vérifier » ni d'observation obligatoire ; le rapport imprimait déjà « communiqués sans interprétation » quand n est inférieur au plan |
 | 2026-10-13 | Q99 — note (8), mollusques bivalves vivants | **Oui** : la note (8) **remplace** les 100 g de la note (2) en microbiologie (au moins 50 g, 25 g pour les animaux de petite taille) — c'est ce qui est en ligne depuis le 13/10 ; la physico-chimie garde ses 300 g |
 | 2026-10-13 | Q102 — rôle « Direction » | **Les quatre personnes de la liste** ; elles peuvent faire **les deux validations** (jamais les deux sur le même échantillon, règle conservée), « **mais il faut avoir la main sur les signatures** » ⇒ chaque signataire a son compte nominatif avec son propre mot de passe (rôle `DIRECTION`, créé par l'exploitant dans `/admin/utilisateurs`) et le panneau public « Comptes de démonstration » est retiré avant que ces comptes signent — sinon n'importe qui peut signer à leur place |
+| 2026-10-14 | Q2 (1re partie) — autres aires que 100 cm² pour les surfaces ? | « Ajourer le choix de : "100cm2" et "1000cm" dans Surface prélevée (cm²) » ⇒ **100 cm² et 1000 cm²** ; puces « 100 cm² » / « 1000 cm² » à côté du champ nombre (gardé pour toute autre aire), sur la visite, le dépôt et « Corriger la fiche » (lot 1, `RETOUR-LABO-14-10.md` P7). La case texte demandée à côté : Q114. La 2e partie de Q2 (le nom des employés sur le rapport) reste ouverte |
+| 2026-10-14 | Q87 — création d'un client sur le terrain ou au comptoir | **Oui, sur le principe** : « Ajouter la possibilité d'ajouter un client avec ses sites et informations (dans le rôle Préleveur aussi) » ⇒ au comptoir et dans le rôle préleveur, avec ses sites (`RETOUR-LABO-14-10.md` R2, R3). Les détails — champs obligatoires, destinataires des rapports, suivi par le commercial — sont Q116 et Q117 ; rien n'est construit avant leurs réponses |

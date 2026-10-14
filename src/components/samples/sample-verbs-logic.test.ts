@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cancelReasonsFor, correctionBody, correctionValues, type VerbSample } from "./sample-verbs-logic";
 import { validateIntake, type IntakeCurrent } from "@/lib/intake-input";
+import { SURFACE_AREA_CHOICES } from "@/lib/labels";
 
 /**
  * « Corriger la fiche » ↔ `PATCH /api/samples/[id]/intake`: the body the
@@ -88,6 +89,29 @@ describe("correctionBody against validateIntake", () => {
     const untouched = correctionBody("SURFACE", { ...correctionValues(sample), lieu: "Plonge" }, null, "lieu");
     expect(untouched).not.toHaveProperty("surfaceState");
     expect(validateIntake(untouched, currentOf(sample))).toMatchObject({ ok: true, value: { changes: { lieu: "Plonge" } } });
+  });
+
+  it("surface: each quick area (« 100 cm² », « 1000 cm² », 14/10) is sent as typed and accepted", () => {
+    const sample: VerbSample = {
+      ...base,
+      type: "AMBIANCE",
+      lineKind: "SURFACE",
+      produit: null,
+      quantity: null,
+      quantityUnit: null,
+      numeroLot: null,
+      productionDate: null,
+      expiryDate: null,
+      surfaceLabel: "Planche verte",
+      surfaceAreaCm2: 250,
+      surfaceState: "NETTOYE",
+    };
+    expect(SURFACE_AREA_CHOICES).toEqual([100, 1000]);
+    for (const area of SURFACE_AREA_CHOICES) {
+      const body = correctionBody("SURFACE", { ...correctionValues(sample), surfaceAreaCm2: String(area) }, null, "aire");
+      expect(body).toHaveProperty("surfaceAreaCm2", String(area));
+      expect(validateIntake(body, currentOf(sample))).toMatchObject({ ok: true, value: { changes: { surfaceAreaCm2: area } } });
+    }
   });
 
   it("surface: renaming the designation keeps the stored state", () => {

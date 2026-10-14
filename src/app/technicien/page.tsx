@@ -90,6 +90,8 @@ const WORK_ITEM_SELECT = {
   surfaceState: true,
   personName: true,
   airMethod: true,
+  // The nature of analysis — « Microbiologie des aliments »… (14/10).
+  nature: { select: { label: true } },
   receivedAt: true,
   conformity: true,
   // « Renvoyé » on a sample a validator sent back to the bench.

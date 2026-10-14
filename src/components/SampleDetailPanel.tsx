@@ -1,5 +1,6 @@
 import type { SampleRow } from "./SampleTable";
 import { formatDateTime } from "@/lib/labels";
+import { UNDECLARED_SAMPLING, declaredSampledAt } from "@/lib/sample-search";
 import { SampleStatusTimeline } from "./SampleStatusTimeline";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
@@ -11,6 +12,9 @@ type SampleDetailPanelProps = {
 
 export function SampleDetailPanel({ sample, onClose }: SampleDetailPanelProps) {
   if (!sample) return null;
+  // « Non déclarée » for a deposit without a declared sampling time: its
+  // `sampledAt` is the instant it was entered, no sampling (R6 / C5).
+  const sampledAt = declaredSampledAt(sample.sampledAt, sample.serie?.samplingTimeDeclared);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:justify-end sm:p-6">
@@ -53,7 +57,9 @@ export function SampleDetailPanel({ sample, onClose }: SampleDetailPanelProps) {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Date</p>
-                <p className="mt-0.5 text-sm text-slate-700">{formatDateTime(sample.sampledAt)}</p>
+                <p className="mt-0.5 text-sm text-slate-700">
+                  {sampledAt ? formatDateTime(sampledAt) : UNDECLARED_SAMPLING}
+                </p>
               </div>
               {sample.user && (
                 <div>

@@ -30,7 +30,7 @@ function record(overrides: Partial<PortalSampleRecord> = {}): PortalSampleRecord
     numeroLot: "L-7",
     sampledAt: new Date(2026, 8, 1),
     receivedAt: new Date(2026, 8, 2),
-    serie: { serialNumber: "2780/26", site: { name: "Atelier Nord" } },
+    serie: { serialNumber: "2780/26", site: { name: "Atelier Nord" }, samplingTimeDeclared: null },
     report: { number: "RAP-2026-00001", version: 0, sentAt: new Date(2026, 8, 10), amendedAt: null },
     ...overrides,
   };
@@ -75,6 +75,12 @@ describe("portalSampleWhere — the client scope", () => {
 
   it("reads « Siège » as the séries without a site", () => {
     expect(portalSampleWhere("c-alpha", { ...NO_FILTER, siteId: PORTAL_SIEGE }).AND).toEqual([{ serie: { siteId: null } }]);
+  });
+
+  it("filters the period on the sampledAt column — an undeclared deposit by its entry instant (R6)", () => {
+    const from = new Date(2026, 0, 1);
+    const to = new Date(2026, 0, 31, 23, 59, 59, 999);
+    expect(portalSampleWhere("c-alpha", { ...NO_FILTER, from, to }).AND).toEqual([{ sampledAt: { gte: from, lte: to } }]);
   });
 
   it("refuses to build a query without a client", () => {
@@ -162,7 +168,27 @@ describe("toPortalRow", () => {
 
   it("names the site, or the « Siège » as null", () => {
     expect(toPortalRow(record()).siteName).toBe("Atelier Nord");
-    expect(toPortalRow(record({ serie: { serialNumber: "2780/26", site: null } })).siteName).toBeNull();
+    expect(toPortalRow(record({ serie: { serialNumber: "2780/26", site: null, samplingTimeDeclared: null } })).siteName).toBeNull();
+  });
+
+  it("never sends a deposit's entry instant as its sampling date (RETOUR-LABO-14-10 R6)", () => {
+    const entered = new Date(2026, 8, 1, 9, 30);
+    const undeclared = toPortalRow(
+      record({ sampledAt: entered, serie: { serialNumber: "2780/26", site: null, samplingTimeDeclared: false } })
+    );
+    expect(undeclared.sampledAt).toBeNull();
+    expect(Object.values(undeclared)).not.toContain(entered);
+    // The reception date is the laboratory's own fact: still sent.
+    expect(undeclared.receivedAt).toEqual(new Date(2026, 8, 2));
+    // A declared deposit, and a visit (null), keep their sampling date.
+    for (const samplingTimeDeclared of [true, null]) {
+      const row = toPortalRow(record({ sampledAt: entered, serie: { serialNumber: "2780/26", site: null, samplingTimeDeclared } }));
+      expect(row.sampledAt, String(samplingTimeDeclared)).toEqual(entered);
+    }
+  });
+
+  it("selects the série's flag with the row", () => {
+    expect(PORTAL_SAMPLE_SELECT.serie.select.samplingTimeDeclared).toBe(true);
   });
 
   it("never carries prices, results nor staff", () => {

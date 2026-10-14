@@ -29,7 +29,7 @@ const base: SerieDocumentData = {
   cadreNote: null,
   interlocutor: "Karim",
   samplerKind: "QUALILAB",
-  samplerName: "Aymane Labi",
+  samplerName: "Préleveur Test",
   samplerFunction: "Préleveur",
   analysesMicro: true,
   analysesChimie: false,
@@ -45,7 +45,7 @@ const base: SerieDocumentData = {
     {
       lineNumber: 1,
       lineKind: "ALIMENT",
-      designation: "Salade Gaillardière",
+      designation: "Salade maison",
       surface: null,
       numeroLot: "L-2409",
       productionDate: new Date("2026-09-01"),
@@ -67,7 +67,7 @@ const base: SerieDocumentData = {
     {
       lineNumber: 2,
       lineKind: "MAINS",
-      designation: "Hamza Bassou — Chef cuisine (mains lavées)",
+      designation: "Personne Test — Chef cuisine (mains lavées)",
       surface: "MAIN",
       numeroLot: null,
       productionDate: null,
@@ -106,12 +106,13 @@ describe("buildProtocolHtml — PG04/EN01", () => {
     expect(html).toContain("Référence client : <b>F-1021</b>");
     expect(html).not.toContain("N° de factures");
     expect(html).toContain("Cuisine centrale");
-    expect(html).toContain("Aymane Labi");
+    expect(html).toContain("Préleveur Test");
     expect(html).toContain("1 °C");
   });
 
   it("lays the lines out like the paper (surface column, DLC, temperatures) and pads to eight rows", () => {
     expect(html).toContain("MAIN");
+    expect(html).toContain(escapeHtml("Personne Test — Chef cuisine (mains lavées)"));
     expect(html).toContain("L-2409");
     expect(html).toContain("P : 01/09/2026");
     expect(html).toContain("T°p 25 °C");

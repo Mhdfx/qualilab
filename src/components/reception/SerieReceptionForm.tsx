@@ -75,7 +75,7 @@ import { repetitionRange } from "@/lib/series";
 import { futureFieldError } from "@/lib/device-time";
 import { arrivalRefusal } from "@/lib/serie-input";
 import { Card } from "@/components/ui/Card";
-import { LabDateTimeInput } from "@/components/LabDateTimeInput";
+import { LabDateTimeInput, dateTimePending } from "@/components/LabDateTimeInput";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
@@ -88,6 +88,7 @@ import {
   ReceptionNoteField,
   SignedProtocolCheck,
   StorageClassSelect,
+  consultationAtId,
   useMinuteClock,
 } from "./reception-widgets";
 import { receptionLineMessage, sampleRef } from "@/lib/reception-input";
@@ -542,6 +543,27 @@ export function SerieReceptionForm({
 
   async function submit() {
     if (busy) return;
+    // An unfinished or invalid date-time before any check of the times: the
+    // form still holds the value from before it (the field gets the focus,
+    // its own message stays under it). The arrival, then the client's
+    // agreement of each sample where it is shown.
+    const arrivalPending = dateTimePending("arrivedAt");
+    if (arrivalPending) {
+      setArrivedError(null);
+      setError({ message: arrivalPending, lineNumber: null });
+      return;
+    }
+    for (const line of activeLines) {
+      const atId = consultationAtId(`accord-${line.sampleId}`);
+      const atPending = dateTimePending(atId);
+      if (!atPending) continue;
+      const sample = byId.get(line.sampleId)!;
+      const ref = sampleRef(sample.lineNumber, sample.code);
+      setError({ message: receptionLineMessage(ref, atPending), lineNumber: sample.lineNumber, ref });
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      document.getElementById(atId)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+      return;
+    }
     // The server's own checks (5 min of tolerance; never before the
     // sampling), told next to the field first (§8.1).
     const arrival = localInputDate(arrivedAt);

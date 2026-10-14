@@ -987,7 +987,7 @@ model ClientPlace {
   @@index([clientId, siteId, normalizedLabel])
 }
 
-/// A client's memory of product designations (« Salade Gaillardière »).
+/// A client's memory of product designations (« Salade maison »).
 model ClientProduct {
   id              String      @id @default(cuid())
   clientId        String

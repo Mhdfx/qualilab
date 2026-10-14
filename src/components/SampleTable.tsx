@@ -1,5 +1,6 @@
 import type { SampleStatus, SampleType } from "@/generated/prisma/client";
 import { formatDateTime } from "@/lib/labels";
+import { UNDECLARED_SAMPLING, declaredSampledAt } from "@/lib/sample-search";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
 
@@ -10,6 +11,9 @@ export type SampleRow = {
   type: SampleType;
   status: SampleStatus;
   sampledAt: string;
+  /** `samplingTimeDeclared` false: a deposit whose « Prélevé le » was left
+   *  empty — `sampledAt` is the instant it was entered, never shown (R6 / C5). */
+  serie?: { samplingTimeDeclared?: boolean | null } | null;
   notes: string | null;
   client: { name: string };
   user?: { name: string };
@@ -34,6 +38,7 @@ function SampleCard({
   onSelect?: (sample: SampleRow) => void;
   selected?: boolean;
 }) {
+  const sampledAt = declaredSampledAt(sample.sampledAt, sample.serie?.samplingTimeDeclared);
   return (
     <button
       type="button"
@@ -53,7 +58,10 @@ function SampleCard({
       <p className="mt-1 line-clamp-2 text-sm text-slate-600">{sample.lieu}</p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <TypeBadge type={sample.type} />
-        <span className="text-xs text-slate-400">{formatDateTime(sample.sampledAt)}</span>
+        {/* No column header on a card: an undeclared time is said in full. */}
+        <span className="text-xs text-slate-400">
+          {sampledAt ? formatDateTime(sampledAt) : "Date de prélèvement non déclarée"}
+        </span>
       </div>
       {showPreleveur && sample.user && (
         <p className="mt-2 text-xs text-slate-500">Préleveur : {sample.user.name}</p>
@@ -113,39 +121,44 @@ export function SampleTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {samples.map((sample) => (
-                <tr
-                  key={sample.id}
-                  onClick={() => onSelect?.(sample)}
-                  className={`transition-colors ${
-                    onSelect ? "cursor-pointer hover:bg-brand-light/40" : ""
-                  } ${selectedId === sample.id ? "bg-brand-light/60" : ""}`}
-                >
-                  <td className="px-5 py-4">
-                    <span className="font-mono font-semibold text-brand">{sample.code}</span>
-                  </td>
-                  <td className="px-5 py-4 font-medium text-slate-800">
-                    {sample.client.name}
-                  </td>
-                  <td className="max-w-[200px] truncate px-5 py-4 text-slate-600">
-                    {sample.lieu}
-                  </td>
-                  <td className="px-5 py-4">
-                    <TypeBadge type={sample.type} />
-                  </td>
-                  {showPreleveur && (
-                    <td className="px-5 py-4 text-slate-600">
-                      {sample.user?.name ?? "—"}
+              {samples.map((sample) => {
+                // « Non déclarée » for a deposit without a declared sampling
+                // time: its `sampledAt` is the instant it was entered (R6 / C5).
+                const sampledAt = declaredSampledAt(sample.sampledAt, sample.serie?.samplingTimeDeclared);
+                return (
+                  <tr
+                    key={sample.id}
+                    onClick={() => onSelect?.(sample)}
+                    className={`transition-colors ${
+                      onSelect ? "cursor-pointer hover:bg-brand-light/40" : ""
+                    } ${selectedId === sample.id ? "bg-brand-light/60" : ""}`}
+                  >
+                    <td className="px-5 py-4">
+                      <span className="font-mono font-semibold text-brand">{sample.code}</span>
                     </td>
-                  )}
-                  <td className="px-5 py-4 text-slate-500">
-                    {formatDateTime(sample.sampledAt)}
-                  </td>
-                  <td className="px-5 py-4">
-                    <StatusBadge status={sample.status} />
-                  </td>
-                </tr>
-              ))}
+                    <td className="px-5 py-4 font-medium text-slate-800">
+                      {sample.client.name}
+                    </td>
+                    <td className="max-w-[200px] truncate px-5 py-4 text-slate-600">
+                      {sample.lieu}
+                    </td>
+                    <td className="px-5 py-4">
+                      <TypeBadge type={sample.type} />
+                    </td>
+                    {showPreleveur && (
+                      <td className="px-5 py-4 text-slate-600">
+                        {sample.user?.name ?? "—"}
+                      </td>
+                    )}
+                    <td className="px-5 py-4 text-slate-500">
+                      {sampledAt ? formatDateTime(sampledAt) : UNDECLARED_SAMPLING}
+                    </td>
+                    <td className="px-5 py-4">
+                      <StatusBadge status={sample.status} />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -8,7 +8,17 @@
 
 ## ▶ NEXT ACTION
 
-**Réponses du laboratoire du 13/10 (après-midi) — à appliquer.** Prise en charge libre **en production depuis le 13/10** (`9d338ae`, TESTPLAN V14 : 40/40 sur la copie locale puis 40/40 en production). Réponses reçues le 13/10 (archivées dans `NEEDEDINFO.md` §3) :
+**Remarques du laboratoire du 14/10 (`RETOUR-LABO-14-10.md`) — lot 1 construit sur la branche `retour-labo-14-10`, pas vérifié, pas déployé.** Lot 1 = ce qui ne demandait aucune réponse : puces 100 / 1000 cm² (P7), heure saisie en 24 h (R7, `LabDateTimeInput` + `src/lib/wall-input.ts`), site toujours affiché au dépôt + recherche du client par site et par fiche archivée (R1, R10, `SitePicker`, `client-search.ts`, `site-creation.ts`), norme et unité sous chaque analyse (OLD29, `parameter-caption.ts`), nature à la paillasse (OLD40), « Non déclarée » au lieu de l'instant du comptoir (R6, `declaredSampledAt`), test des gardes du technicien + `GET …/programme` refusé au technicien (RP3, RP3c), nettoyage du dépôt public. **Aucune migration.** Point de retour : tag `v1.3-avant-retour-14-10` = `cd0054f` (poussé).
+Next, in this order:
+1. **Lot 1 gates** on the merged tree: `prisma generate`, tsc 0, eslint `src` 0, vitest (all, new tests included), `npm run build`; review the whole diff for real names (TESTPLAN V15-H).
+2. **Local browser test** on the local copy (Docker `qlab-local-db`, never production): TESTPLAN V15-A → V15-H, including a browser in **English (US)** for the 24 h fields; fix what fails; update `.ui-tests` scripts that fill a `datetime-local` (HANDOFF §9).
+3. **Commit, deploy, production check**: labelled production dump, deploy outside working hours (`bash scripts/deploy.sh`), refresh open pages, then **TESTPLAN V15 on production** on « TEST UI 2026-10-06 Traiteur » only; set the « construit, à vérifier » statuses of `RETOUR-LABO-14-10.md` §3 and HANDOFF §1 to what was seen.
+4. **Send the 14/10 questions** — `NEEDEDINFO.md` §2 « Lot du 14/10 » (Q109–Q130) — with the batches still unsent (13/10 soir, 13/10, 10/10).
+5. **Lot 2 as the answers arrive**, in the order of `RETOUR-LABO-14-10.md` §4.10: « Arrivé le » (Q118), mains (Q109–Q111), températures + correction (Q112, Q113); then client creation (Q116, Q117); then the catalogue RP2a → RP2b (+ N2, local copy first) → RP2c / RP2d → RP1 / RP5 / RP6 → RP4 (Q120–Q126); RP3b, RP7, P6, R8, Q130 as answered. ≈ 116 h in all.
+Still open from 13/10 (owner): before the deploy, confirm on the VPS that production runs `cd0054f` (the histamine change, step 1 of the 13/10 next action — the 14/10 batch was started from it as production); personal accounts per signatory (`DIRECTION`) and per technician, then the public demo panel off (`NEXT_PUBLIC_DEMO_MODE=false`); /admin/documents protocole G and bon H once dated (Q103); bank details in /admin/entreprise; the few V14 lines left to run by hand.
+Waiting on the lab: **Q109–Q130**, plus Q2 (2e partie), Q64, Q67–Q98 (Q87 answered 14/10), Q100, Q101, Q103 (dates), Q104, Q105, Q106–Q108, Q50 / Q54–Q56; the technicians' names and the « 7e point » announced on 13/10.
+
+_Previous next action:_ **Réponses du laboratoire du 13/10 (après-midi) — à appliquer.** Prise en charge libre **en production depuis le 13/10** (`9d338ae`, TESTPLAN V14 : 40/40 sur la copie locale puis 40/40 en production). Réponses reçues le 13/10 (archivées dans `NEEDEDINFO.md` §3) :
 - **Q62 histamine** : moins de 9 unités n'est pas une non-conformité, analysé comme demandé (même n = 1), rapport sans interprétation ⇒ règle (7) informative, construit le 13/10 (à déployer avec le prochain lot).
 - **Q99 mollusques** : oui, la note (8) remplace les 100 g de la note (2) — déjà en ligne.
 - **Q102 Direction** : les quatre personnes de la liste, les deux validations possibles (jamais sur le même échantillon), « il faut avoir la main sur les signatures » ⇒ comptes nominatifs avec mots de passe personnels + retrait du panneau public de démonstration.
@@ -107,7 +117,7 @@ the PRELEVEUR accounts (+ fonction) or vétérinaire / autre, arrivée and T°
 à l'arrivée, N° de factures; the line type first (« Surface prélevée » on
 any line); n up to 50 with labels beyond Z; the two « Analyses à
 effectuer » boxes saved on the série, printed on the PDF, flagged at
-reception when no line matches. Verified with the Gaillardière protocol
+reception when no line matches. Verified with a client's paper protocol
 (série 14/26) on the dev server and on the VPS (TESTPLAN L1b).
 **NEXT: slice 6, the recette** with the lab's staff (three real visits +
 one deposit on the VPS, sign-off in TESTPLAN L6 and HANDOFF) — it needs
@@ -315,6 +325,12 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-10-14 — remarques du laboratoire du 14/10 : analyse, lot 1 construit (`RETOUR-LABO-14-10.md`, TESTPLAN V15, not deployed)
+- The lab's WhatsApp message of 14/10 (16 lines: préleveur, « Nouveau dépôt », responsable des paramètres, AM/PM) and 14 screenshots of the old software were analysed read-only on `cd0054f` by four analysts (préleveur, réception, responsable des paramètres, old software) and a critic whose corrections win: hands state = one additive enum migration, no rewrite, `surfaceState` never reused; temperatures mandatory on the visit only, air = ambient only, counter optional; « Arrivé le » a real field, never a relabel of « Prélevé le »; the client search must find site names and archived merged fiches; N2 — the legacy criteria of hands / surface / water / air familles are bound to food parameters. One id scheme (P1–P10, R1–R10, RP1–RP7, OLD1–OLD50), questions Q109–Q130. Restore point first: tag `v1.3-avant-retour-14-10` = `cd0054f` (pushed); branch `retour-labo-14-10`.
+- Lot 1 (no answer needed) built in parallel by file ownership, no migration: P7, R7, R1 + R10, OLD29, OLD40, R6 + C5, RP3 + RP3c, the public-repo cleanup (a person's name in `document-html.test.ts` → « Personne Test »).
+- Docs: `RETOUR-LABO-14-10.md` (new: the message, coverage, vocabulary, the table of every item, lot 1, lot 2 design and order, Q109–Q130, public-repo rule); NEEDEDINFO Q109–Q130 + batch « Lot du 14/10 », Q2 (1re partie) and Q87 archived; HANDOFF drift fixed (10/10, 12/10, 13/10 builds and V14 deployed; the restore-point pruning watch-out resolved), 14/10 rows in §1 / §2 / §5, §8 entry, §9 watch-outs; TESTPLAN V15 + « V15 lot 2 — à venir » + sign-off row; AGENTS reading order (4d); WORKFLOW header pointer; PROGRAMME dated note; real names removed from WORKFLOW §10, TESTPLAN L1 / L1b / L4 and this file.
+- Not done: gates on the merged tree, local browser test, commit, deploy, TESTPLAN V15. Lot 2 waits on Q109–Q130.
 
 ### 2026-10-13 — plus d'affectation : prise en charge libre (`PROGRAMME.md` §10, TESTPLAN V14, not deployed)
 - The lab decided (13/10) that nobody assigns technicians any more. Restore point first: annotated tag `v1.2-avant-sans-affectation` on `4b9c557`, pushed; work on branch `prise-en-charge-libre`. The codebase was mapped spot by spot (programme, bench, reception lifecycle, downstream, docs / tests / seeds) and the map reviewed by a critic before any edit (contradictions settled: one « À prendre » predicate, one typed-result predicate, route `/take`, codes `SAMPLE_TAKEN` / `SAMPLE_UNTAKEN`, admin never takes, release while nothing is typed).

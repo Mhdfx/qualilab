@@ -28,9 +28,13 @@ class StaleProgramme extends Error {}
  * The programme d'analyse of a line (PROGRAMME.md §5).
  *
  * GET — the line, its current programme and the referential the fiche
- * needs. The responsable des paramètres and the admin write it; a
- * technician reads it (the bench shows what was decided). The line carries
- * who took it at the bench (`technician`, `assignedAt`), read-only.
+ * needs. Only the responsable des paramètres and the admin, who write it,
+ * read it here: the referential carries every famille with its criteria,
+ * the profiles and the catalogue prices, and no bench screen calls this
+ * route — the bench reads the programme from its own pages (RETOUR-LABO-14-10
+ * RP3c: « le technicien n'a pas les droits pour changer les paramètres »;
+ * technician-guards.test.ts). The line carries who took it at the bench
+ * (`technician`, `assignedAt`), read-only.
  *
  * `?natureId=` computes the referential for another nature the line may
  * take (RETOUR-LABO-06-10.md §5, V3 — Q49 by default: an active nature of
@@ -41,7 +45,7 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireApiRole("PROGRAMMATEUR", "ADMIN", "TECHNICIEN");
+  const session = await requireApiRole("PROGRAMMATEUR", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;

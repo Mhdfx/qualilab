@@ -19,11 +19,14 @@ import {
   primaryNature,
   resolveFamilies,
   serieAnalyses,
+  surfaceAreaChoice,
   visibleParameters,
   type LineDraft,
   type NatureOption,
   type ParameterOption,
 } from "./visit-types";
+import { SURFACE_AREA_CHOICES } from "@/lib/labels";
+import { validateLine } from "@/lib/serie-input";
 
 /**
  * RETOUR-LABO-06-10.md §5 — the sample card's rules: the nature follows the
@@ -289,6 +292,58 @@ describe("changing the type", () => {
     const water = line({ lineKind: "EAU", quantityUnit: "L" });
     expect(kindPatch(NATURES, water, "ALIMENT")).toMatchObject({ quantityUnit: "UNITE" });
     expect(kindPatch(NATURES, water, "ALIMENT", { fallbackUnit: "G" })).toMatchObject({ quantityUnit: "G" });
+  });
+});
+
+describe("the surface area's quick choices (14/10: « 100 cm² » / « 1000 cm² »)", () => {
+  it("names the chip a typed area equals, read the way the server reads it", () => {
+    expect(surfaceAreaChoice("100")).toBe(100);
+    expect(surfaceAreaChoice("1000")).toBe(1000);
+    expect(surfaceAreaChoice(" 1000 ")).toBe(1000);
+    expect(surfaceAreaChoice("1000,0")).toBe(1000);
+    // Any other area is typed in the field and presses no chip.
+    for (const other of ["250", "10000", "10", "", "  ", "cent"]) {
+      expect(surfaceAreaChoice(other)).toBeNull();
+    }
+  });
+
+  it("starts a new surface sample on the 100 cm² chip", () => {
+    expect(surfaceAreaChoice(emptyLine(NATURES, line({ lineKind: "SURFACE" })).surfaceAreaCm2)).toBe(100);
+    expect(surfaceAreaChoice(kindPatch(NATURES, line(), "SURFACE").surfaceAreaCm2 ?? "")).toBe(100);
+  });
+
+  it("keeps a chosen 1000 cm² through a mis-tap on another type, and drops the default 100", () => {
+    const surface = line({
+      lineKind: "SURFACE",
+      natureId: byCode("MICRO_SURFACES").id,
+      surfaceLabel: "Planche verte",
+      surfaceAreaCm2: "1000",
+    });
+    const food = { ...surface, ...kindPatch(NATURES, surface, "ALIMENT") };
+    expect(food.surfaceAreaCm2).toBe("1000");
+    // Never sent on the food line…
+    expect(linePayload(food).surfaceAreaCm2).toBe("");
+    // …and back on the surface, the chosen area is still pressed.
+    expect(kindPatch(NATURES, food, "SURFACE").surfaceAreaCm2).toBe("1000");
+    const byDefault = { ...surface, surfaceAreaCm2: "100" };
+    expect(kindPatch(NATURES, byDefault, "ALIMENT").surfaceAreaCm2).toBe("");
+  });
+
+  it("sends each choice as an area the server accepts", () => {
+    const catalogue = new Map(NATURES.map((n) => [n.id, { ...n, active: true }]));
+    for (const area of SURFACE_AREA_CHOICES) {
+      const draft = line({
+        ...kindPatch(NATURES, line(), "SURFACE"),
+        lieu: "Cuisine",
+        surfaceLabel: "Planche verte",
+        surfaceState: "NETTOYE",
+        surfaceAreaCm2: String(area),
+        productTemperature: "4",
+        ambientTemperature: "18",
+      });
+      expect(lineDraftError(draft, NATURES)).toBeNull();
+      expect(validateLine(linePayload(draft), 0, catalogue)).toMatchObject({ ok: true, value: { surfaceAreaCm2: area } });
+    }
   });
 });
 

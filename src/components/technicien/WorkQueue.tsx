@@ -28,6 +28,8 @@ export type WorkItem = {
   surfaceState: SurfaceState | null;
   personName: string | null;
   airMethod: AirMethod | null;
+  /** The nature of analysis — « Microbiologie des aliments »… (the old bench header's « Nature échantillon », 14/10). */
+  nature: { label: string };
   receivedAt: Date | null;
   conformity: boolean | null;
   /** The validator's last « Renvoyer au technicien » (never cleared). */
@@ -151,6 +153,9 @@ function RowDetails({
         </span>
       </p>
       <p className="mt-0.5 text-sm text-slate-500">
+        {/* The nature of analysis first: which bench reads it (14/10). */}
+        <span className="font-medium text-slate-600">{item.nature.label}</span>
+        {" · "}
         {done} / {total} paramètre{total > 1 ? "s" : ""} saisi{total > 1 ? "s" : ""}
         {mine < total ? ` · ${mine} pour vous` : ""} · reçu le{" "}
         {item.receivedAt ? formatDate(item.receivedAt) : "—"}

@@ -17,6 +17,8 @@
 > git tag **`v1.2-avant-sans-affectation`** (13/10, commit `4b9c557`) and the
 > production dump `qualilab_avant-sans-affectation.sql.gz` — `DEPLOY.md`,
 > « Point de retour — avant la prise en charge libre ».
+>
+> The laboratory's remarks of 14/10 (hands and surface states, sampling temperatures, sites and clients at the counter, « Arrivé le », 24 h input, criteria by famille) and the current plan: **`RETOUR-LABO-14-10.md`** (lot 1 built, lot 2 waiting on NEEDEDINFO Q109–Q130).
 
 ---
 
@@ -387,7 +389,7 @@ rule 5), which is about the sample's facts.
 | 3 | 4 | « Nouveau dépôt »; protocol and bon PDFs with the cartouche; `DocumentReference` admin | **Shipped 2026-09-13** — a walk-in deposit numbered at once; both PDFs match the paper layout; TESTPLAN L3 |
 | 4 | 5 | Profiles; `ClientPlace` / `ClientProduct` pickers with quasi-duplicate refusal; sampler kind; sites imported from the old database | **Shipped 2026-09-13** (sites created on the client fiche; the legacy import waits for the client import of chantier 6) — no field typed twice on a second visit to the same site; TESTPLAN L4 |
 | 5 | 6 | The verbs Corriger / Annuler; lists grouped by série for technician and validation; `unitCount`; photo of the signed sheet; old routes removed | **Shipped 2026-09-13** — an intake error fixed with a trace; a cancelled sample leaves every queue; TESTPLAN L5 |
-| 1b | 6 | **Retour du laboratoire (14/09) — the form must read like the paper (§13)**: every header field on the one screen (N° de série slot, site always shown, heure de fin, effectué par + fonction, arrivée date/heure, T° à l'arrivée), the line type first with « Surface prélevée » on every line, `unitCount` up to 50 with unit labels beyond Z, the two « Analyses à effectuer » boxes on the série and the PDF | **Shipped 2026-09-14** — the Gaillardière protocol entered on one screen (série 14/26, site created inline, MAIN / 100 cm² lines by type, n = 30, boxes); TESTPLAN L1b |
+| 1b | 6 | **Retour du laboratoire (14/09) — the form must read like the paper (§13)**: every header field on the one screen (N° de série slot, site always shown, heure de fin, effectué par + fonction, arrivée date/heure, T° à l'arrivée), the line type first with « Surface prélevée » on every line, `unitCount` up to 50 with unit labels beyond Z, the two « Analyses à effectuer » boxes on the série and the PDF | **Shipped 2026-09-14** — a client's paper protocol entered on one screen (série 14/26, site created inline, MAIN / 100 cm² lines by type, n = 30, boxes); TESTPLAN L1b |
 | 6 | 7 | Recette with the lab on real visits; fixes; docs; demo data reseeded on the VPS | Sign-off of chantier 1 recorded in TESTPLAN and HANDOFF |
 
 Tests: `src/lib/counters.test.ts`, `src/lib/reception-rules.test.ts`,

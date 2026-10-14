@@ -29,13 +29,14 @@ import {
   formatDateTime,
 } from "@/lib/labels";
 import { SERIE_MESSAGES, sampleLineMessage } from "@/lib/serie-input";
-import { LabDateTimeInput } from "@/components/LabDateTimeInput";
+import { LabDateTimeInput, dateTimePending } from "@/components/LabDateTimeInput";
 import { futureFieldError } from "@/lib/device-time";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StepIndicator } from "@/components/ui/StepIndicator";
 import { Card } from "@/components/ui/Card";
 import { ClientPicker, type PickedClient } from "@/components/commercial/ClientPicker";
+import { SitePicker, withNewSite } from "@/components/commercial/SitePicker";
 import { LineEditor } from "./LineEditor";
 import {
   duplicateDraft,
@@ -148,12 +149,13 @@ export function VisitForm({ me }: { me: Preleveur }) {
 
   // ---- the header, in the paper's order --------------------------------------
   // The client is searched on the server (ClientPicker), never the whole base
-  // loaded onto the phone; its active sites come with it.
+  // loaded onto the phone; its active sites come with it, and a client found
+  // by one of its sites comes with that site chosen.
   const [client, setClient] = useState<PickedClient | null>(null);
   const clientId = client?.id ?? "";
   const [siteId, setSiteId] = useState("");
-  const [newSiteName, setNewSiteName] = useState<string | null>(null);
-  const [creatingSite, setCreatingSite] = useState(false);
+  /** A new site's name typed in SitePicker but not created yet: « Continuer » refuses. */
+  const [sitePending, setSitePending] = useState(false);
   const [interlocutor, setInterlocutor] = useState("");
   const [startedAt, setStartedAt] = useState(() => toLocalInput(new Date()));
   const [endedAt, setEndedAt] = useState("");
@@ -286,32 +288,6 @@ export function VisitForm({ me }: { me: Preleveur }) {
     setLines((prev) => (prev.length > 1 ? prev.filter((l) => l.key !== key) : prev));
   }
 
-  async function createSite() {
-    const name = (newSiteName ?? "").trim();
-    if (!clientId || !name) return setStepError("Indiquez le nom du site.");
-    setCreatingSite(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/clients/${clientId}/sites`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-      const data = await res.json();
-      if (!res.ok) return setStepError(data.error ?? "Impossible de créer le site.");
-      // The new site joins the picked client's list (no reload of the base).
-      setClient((prev) =>
-        prev && prev.id === clientId ? { ...prev, sites: [...prev.sites, { id: data.id, name: data.name }] } : prev
-      );
-      setSiteId(data.id);
-      setNewSiteName(null);
-    } catch {
-      setStepError("Une erreur réseau est survenue. Réessayez.");
-    } finally {
-      setCreatingSite(false);
-    }
-  }
-
   function setStepError(message: string, line: number | null = null) {
     setError(message);
     setErrorLine(line);
@@ -337,6 +313,16 @@ export function VisitForm({ me }: { me: Preleveur }) {
   }
 
   function validateStep1() {
+    // An unfinished or invalid date-time before any check of the times: the
+    // form still holds the value from before it (the field gets the focus,
+    // its own message stays under it).
+    for (const field of ["visit-started", "visit-ended"] as const) {
+      const pending = dateTimePending(field);
+      if (pending) {
+        reveal(field);
+        return setStepError(pending);
+      }
+    }
     // « Dans le futur » first, next to the field, as the server would refuse
     // it (§8.1): the commonest slip on a device whose clock is off.
     const now = new Date();
@@ -348,6 +334,11 @@ export function VisitForm({ me }: { me: Preleveur }) {
       if (future) return setFieldError(field, future);
     }
     if (!clientId) return setStepError("Choisissez le client.");
+    // A new site typed but not created would be lost with step 1: the série would go to the siège.
+    if (sitePending) {
+      reveal("visit-site");
+      return setStepError("Créez le nouveau site ou annulez sa saisie.");
+    }
     if (!cadre) {
       // The cadre sits at the top of a long form: bring it into view.
       reveal("visit-cadre");
@@ -511,70 +502,29 @@ export function VisitForm({ me }: { me: Preleveur }) {
                   label="Client"
                   labelClassName="section-title mb-2"
                   labelIcon={<Building2 className="h-4 w-4" aria-hidden="true" />}
-                  placeholder="Nom ou ICE du client (2 caractères minimum)"
+                  placeholder="Client, site ou ICE (2 caractères minimum)"
                   excludeIds={NO_EXCLUDED_CLIENTS}
                   selected={client}
+                  siteRows
                   onSelect={(next) => {
                     setClient(next);
-                    setSiteId("");
-                    setNewSiteName(null);
+                    // « Client — Site » chosen: that site; otherwise the siège.
+                    setSiteId(next?.siteId ?? "");
                     setMemory({ places: [], products: [] });
                   }}
                 />
-                <div>
-                  <label htmlFor="visit-site" className="section-title mb-2">
-                    <MapPin className="h-4 w-4" />
-                    Site de prélèvement
-                  </label>
-                  {newSiteName === null ? (
-                    <select
-                      id="visit-site"
-                      value={siteId}
-                      disabled={!clientId}
-                      onChange={(e) => {
-                        if (e.target.value === "__new__") {
-                          setNewSiteName("");
-                        } else {
-                          setSiteId(e.target.value);
-                        }
-                      }}
-                      className="input-field px-4"
-                    >
-                      <option value="">Siège (adresse du client)</option>
-                      {sites.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                      <option value="__new__">+ Nouveau site…</option>
-                    </select>
-                  ) : (
-                    <div className="flex gap-2">
-                      <input
-                        id="visit-site"
-                        type="text"
-                        value={newSiteName}
-                        onChange={(e) => setNewSiteName(e.target.value)}
-                        placeholder="Nom du site (ex. : Cuisine centrale)"
-                        className="input-field px-4"
-                        autoFocus
-                      />
-                      <button
-                        type="button"
-                        onClick={createSite}
-                        disabled={creatingSite}
-                        className="inline-flex shrink-0 items-center rounded-xl bg-brand px-3 text-sm font-semibold text-white disabled:opacity-50"
-                      >
-                        {creatingSite ? "…" : "Créer"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setNewSiteName(null)}
-                        className="inline-flex shrink-0 items-center rounded-xl border border-slate-300 px-3 text-sm text-slate-600"
-                      >
-                        Annuler
-                      </button>
-                    </div>
-                  )}
-                </div>
+                {/* The new site joins the picked client's list (no reload of the base). */}
+                <SitePicker
+                  id="visit-site"
+                  client={client}
+                  value={siteId}
+                  onChange={setSiteId}
+                  onDraftChange={setSitePending}
+                  onCreated={(site, forClient) => {
+                    setClient((prev) => withNewSite(prev, forClient, site));
+                    setSiteId(site.id);
+                  }}
+                />
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">

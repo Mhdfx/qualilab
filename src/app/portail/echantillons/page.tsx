@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { formatDate } from "@/lib/labels";
 import { PORTAL_SIEGE, isoDay, parsePortalFilters, portalQueryString } from "@/lib/portal-query";
+import { UNDECLARED_SAMPLING } from "@/lib/sample-search";
 import { loadPortalSamples, loadPortalSites, requirePortalPage } from "@/lib/portal-server";
 import { PORTAL_STAGES, PORTAL_STAGE_LABELS } from "@/lib/portal-status";
 import { PortalClosed } from "../_components/PortalClosed";
@@ -16,6 +17,9 @@ export const metadata = { title: "Mes échantillons" };
  * The client's samples (PORTAIL.md §2): a plain GET form — the URL is the
  * search — over the period (sampling date), the site, the state and free
  * text; 50 per page, newest first. Only the account's own client, always.
+ * A deposit whose sampling time was not declared reads « Non déclarée » in
+ * « Prélevé le » (R6); the period and the order still use the instant it
+ * was entered (`portalSampleWhere`).
  */
 export default async function PortailEchantillonsPage({
   searchParams,
@@ -141,7 +145,9 @@ export default async function PortailEchantillonsPage({
                     <td className="py-2.5 pr-3 text-slate-700">{row.siteName ?? "Siège"}</td>
                     <td className="py-2.5 pr-3 text-slate-800">{row.designation ?? "—"}</td>
                     <td className="py-2.5 pr-3 text-slate-600">{row.numeroLot ?? "—"}</td>
-                    <td className="py-2.5 pr-3 text-slate-600">{formatDate(row.sampledAt)}</td>
+                    <td className="py-2.5 pr-3 text-slate-600">
+                      {row.sampledAt ? formatDate(row.sampledAt) : <span className="text-slate-400">{UNDECLARED_SAMPLING}</span>}
+                    </td>
                     <td className="py-2.5 pr-3 text-slate-600">{row.receivedAt ? formatDate(row.receivedAt) : "—"}</td>
                     <td className="py-2.5 pr-3"><StageBadge stage={row.stage} /></td>
                     <td className="py-2.5">

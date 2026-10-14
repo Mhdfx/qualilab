@@ -4,6 +4,7 @@ import { designationHeading } from "@/lib/document-html";
 import { escapeHtml as escape } from "@/lib/html-text";
 import { formatDate } from "@/lib/labels";
 import { amendedReportSubject, amendmentHeader } from "@/lib/report-amendment";
+import { UNDECLARED_SAMPLING, declaredSampledAt } from "@/lib/sample-search";
 
 /**
  * The messages the laboratory sends: the report, the contamination alert and
@@ -56,6 +57,17 @@ function subjectSuffix(company: CompanyInfo) {
   return name ? ` — ${name}` : "";
 }
 
+/**
+ * « Date de prélèvement »: « Non déclarée » for a deposit whose sampling
+ * time was not declared — `sampledAt` then holds the instant it was entered
+ * at the counter, which the client must never read as a sampling
+ * (RETOUR-LABO-14-10 R6; the report prints the same words).
+ */
+function samplingDateText(sampledAt: Date, samplingTimeDeclared: boolean | null) {
+  const declared = declaredSampledAt(sampledAt, samplingTimeDeclared);
+  return declared ? formatDate(declared) : UNDECLARED_SAMPLING;
+}
+
 /* ---------------------------------- report --------------------------------- */
 
 export type ReportEmailInput = {
@@ -68,6 +80,9 @@ export type ReportEmailInput = {
   serialNumber: string;
   controlCode: string | null;
   sampledAt: Date;
+  /** The série's `samplingTimeDeclared`: false on a deposit whose « Prélevé
+   *  le » was left empty, null on a visit. Required, so no sender forgets it. */
+  samplingTimeDeclared: boolean | null;
   receivedAt: Date | null;
   /** The analysis requested (the nature of the line). */
   analyse: string;
@@ -110,7 +125,7 @@ export function reportEmail(input: ReportEmailInput, company: CompanyInfo = COMP
   const rows: [string, string][] = [
     ["N° dossier", input.serialNumber],
     ["N° de contrôle", input.controlCode ?? "—"],
-    ["Date de prélèvement", formatDate(input.sampledAt)],
+    ["Date de prélèvement", samplingDateText(input.sampledAt, input.samplingTimeDeclared)],
     ["Date de réception", input.receivedAt ? formatDate(input.receivedAt) : "—"],
     ["Analyse", input.analyse],
     [designationHeading(input.lineKind), input.produit ?? "—"],
@@ -242,6 +257,8 @@ export type DestructionLine = {
 export type DestructionEmailInput = {
   serialNumber: string;
   sampledAt: Date;
+  /** As in `ReportEmailInput`: false prints « Non déclarée ». */
+  samplingTimeDeclared: boolean | null;
   receivedAt: Date | null;
   lines: DestructionLine[];
 };
@@ -256,7 +273,7 @@ export function destructionEmail(input: DestructionEmailInput, company: CompanyI
   const subject = `Échantillon${many ? "s" : ""} non analysé${many ? "s" : ""} — dossier ${input.serialNumber}${subjectSuffix(company)}`;
   const header: [string, string][] = [
     ["N° dossier", input.serialNumber],
-    ["Date de prélèvement", formatDate(input.sampledAt)],
+    ["Date de prélèvement", samplingDateText(input.sampledAt, input.samplingTimeDeclared)],
     ["Date de réception", input.receivedAt ? formatDate(input.receivedAt) : "—"],
   ];
   const rows = input.lines

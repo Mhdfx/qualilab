@@ -10,10 +10,12 @@ import {
   HANDS_STATE_LABELS,
   LINE_KIND_LABELS,
   QUANTITY_UNIT_LABELS,
+  SURFACE_AREA_CHOICES,
   SURFACE_STATE_CHOICES,
   SURFACE_STATE_LABELS,
 } from "@/lib/labels";
 import { LINE_FAMILIES } from "@/lib/nature-family";
+import { parameterCaption } from "@/lib/parameter-caption";
 import { Card } from "@/components/ui/Card";
 import { normalizeLabel } from "@/lib/serie-input";
 import { matchesQuery, similarLabels } from "@/lib/similar";
@@ -28,6 +30,7 @@ import {
   lineNatureIds,
   parameterFamily,
   profileParameterIds,
+  surfaceAreaChoice,
   visibleParameters,
   type LineDraft,
   type LineFamily,
@@ -271,6 +274,9 @@ export function LineEditor({
     ? profiles.filter((p) => natureIds.includes(p.natureId) && profileParameterIds(p, parameters, ticked).length > 0)
     : [];
 
+  // The quick choice the typed area equals, if any — its chip is pressed.
+  const pickedArea = surfaceAreaChoice(line.surfaceAreaCm2);
+
   const placeTwin = knownTwin(line.lieu, placeSuggestions);
   const productTwin = knownTwin(line.produit, productSuggestions);
   // « Vouliez-vous dire … ? » — only when the exact rewrite has nothing.
@@ -405,19 +411,42 @@ export function LineEditor({
                 value={line.surfaceState}
                 onPick={(surfaceState) => onChange({ surfaceState })}
               />
-              <div className="sm:max-w-[16rem]">
-                <Field label="Surface prélevée (cm²)" htmlFor={id("area")}>
+              {/* L'aire : les deux valeurs d'usage en un geste (« 100 cm² »,
+                  « 1000 cm² » — retour du 14/10), le champ pour toute autre. */}
+              <div role="group" aria-labelledby={id("area")}>
+                <p id={id("area")} className="mb-1.5 text-sm font-semibold text-slate-700">
+                  Surface prélevée (cm²)
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {SURFACE_AREA_CHOICES.map((area) => (
+                    <button
+                      key={area}
+                      type="button"
+                      onClick={() => onChange({ surfaceAreaCm2: String(area) })}
+                      aria-pressed={pickedArea === area}
+                      className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                        pickedArea === area ? CHIP_ON : CHIP_OFF
+                      }`}
+                    >
+                      {`${area} cm²`}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <label htmlFor={id("area-other")} className="text-xs text-slate-500">
+                    ou saisir une autre valeur :
+                  </label>
                   <input
-                    id={id("area")}
+                    id={id("area-other")}
                     type="number"
                     inputMode="numeric"
                     min={1}
                     value={line.surfaceAreaCm2}
                     onChange={(e) => onChange({ surfaceAreaCm2: e.target.value })}
                     placeholder="100"
-                    className="input-field px-4"
+                    className="input-field w-28 px-3"
                   />
-                </Field>
+                </div>
               </div>
             </>
           )}
@@ -833,6 +862,8 @@ export function LineEditor({
                         <div className="grid gap-2 sm:grid-cols-2">
                           {list.map((param) => {
                             const checked = line.parameterIds.includes(param.id);
+                            // « Norme en vigueur · unité » under the name, when known (14/10).
+                            const caption = parameterCaption(param);
                             return (
                               <label
                                 key={param.id}
@@ -848,7 +879,10 @@ export function LineEditor({
                                   onChange={() => toggleParameter(param.id)}
                                   className="accent-brand h-4 w-4 shrink-0"
                                 />
-                                {param.name}
+                                <span className="min-w-0">
+                                  <span className="block">{param.name}</span>
+                                  {caption && <span className="block text-xs text-slate-600">{caption}</span>}
+                                </span>
                               </label>
                             );
                           })}

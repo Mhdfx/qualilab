@@ -25,7 +25,7 @@ import type { LineFamily } from "@/lib/nature-family";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
-import { LabDateTimeInput } from "@/components/LabDateTimeInput";
+import { LabDateTimeInput, dateTimePending } from "@/components/LabDateTimeInput";
 import { futureFieldError } from "@/lib/device-time";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { protocolPhotoHref } from "@/lib/protocol-photo-access";
@@ -144,6 +144,13 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
 
   async function save() {
     setSaved(false);
+    // An unfinished or invalid date-time first: the form still holds the value
+    // from before it, which would be saved in its place (the field gets the focus).
+    const pending = dateTimePending("endedAt") ?? dateTimePending("arrivedAt");
+    if (pending) {
+      setError(pending);
+      return;
+    }
     // « Dans le futur » before sending, as the server would refuse it (§8.1).
     const now = new Date();
     const future =

@@ -14,9 +14,11 @@ import {
   CANCEL_REASON_LABELS,
   HANDS_STATE_LABELS,
   QUANTITY_UNIT_LABELS,
+  SURFACE_AREA_CHOICES,
   SURFACE_STATE_CHOICES,
   SURFACE_STATE_LABELS,
 } from "@/lib/labels";
+import { surfaceAreaChoice } from "@/components/preleveur/visit-types";
 import {
   cancelReasonsFor,
   correctionBody,
@@ -189,6 +191,8 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
   }, [sample.type]);
 
   const shown = correctionFields(kind);
+  // The quick choice the typed area equals, if any — its chip is pressed.
+  const pickedArea = surfaceAreaChoice(values.surfaceAreaCm2);
   const set = (key: keyof CorrectionValues, value: string | number) => setValues((v) => ({ ...v, [key]: value }));
   const input = (key: keyof CorrectionValues, label: string, type = "text", hint?: string) => (
     <div>
@@ -265,7 +269,41 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
             </div>
           )}
           {shown.surface && input("surfaceLabel", "Désignation", "text", "Ce qui est prélevé (ex. : planche verte)")}
-          {shown.surface && input("surfaceAreaCm2", "Surface prélevée (cm²)", "number", "Vide = 100 cm²")}
+          {shown.surface && (
+            // The two usual areas in one tap (« 100 cm² », « 1000 cm² » —
+            // 14/10), the field for any other.
+            <div>
+              <label id="correct-surface-area" htmlFor="correct-surfaceAreaCm2" className="block text-xs font-medium text-slate-600">
+                Surface prélevée (cm²)
+              </label>
+              <div role="group" aria-labelledby="correct-surface-area" className="mt-1 flex flex-wrap gap-2">
+                {SURFACE_AREA_CHOICES.map((area) => (
+                  <button
+                    key={area}
+                    type="button"
+                    onClick={() => set("surfaceAreaCm2", String(area))}
+                    aria-pressed={pickedArea === area}
+                    className={choice(pickedArea === area)}
+                  >
+                    {`${area} cm²`}
+                  </button>
+                ))}
+              </div>
+              <input
+                id="correct-surfaceAreaCm2"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                value={values.surfaceAreaCm2}
+                onChange={(e) => set("surfaceAreaCm2", e.target.value)}
+                aria-describedby="correct-surface-area-hint"
+                className="input-field mt-2 px-3"
+              />
+              <p id="correct-surface-area-hint" className="mt-0.5 text-[11px] text-slate-500">
+                Ou saisissez une autre valeur ; vide = 100 cm².
+              </p>
+            </div>
+          )}
           {shown.surface && (
             <div className="sm:col-span-2" role="group" aria-labelledby="correct-surface-state">
               <p id="correct-surface-state" className="text-xs font-medium text-slate-600">

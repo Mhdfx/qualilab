@@ -821,6 +821,7 @@ paillasse, four rapports, facture — one page each. Script:
 | Analyse des écarts du 10/10 (V11) — build | Claude Code | 2026-10-10 | ⏳ code gates green (tsc 0, eslint 0, vitest 90 files / 1 396 tests, build); not deployed — production recette V11 pending |
 | Réponses du 12/10 (V13) — build + local recette | Claude Code | 2026-10-13 | ✅ 137/137 on an isolated local copy (:3230, local DB); gates green (prisma generate, tsc 0, eslint `src` 0, vitest 96 files / 1 590 tests); not deployed — V13-E pending |
 | Prise en charge libre (V14) | Claude Code | 2026-10-13 | ✅ deployed 13/10 (`9d338ae`) — tsc, lint, vitest 1 632/1 632, build; adversarial review (18 findings fixed); `v14-take.mjs` 40/40 local and 40/40 on production; remaining unticked V14 items (users warning, `?date=` bench sheet, legacy split line) to run by hand |
+| Remarques du 14/10, lot 1 (V15) | — | 2026-10-14 | ⏳ built on branch `retour-labo-14-10`, not verified yet — gates, local browser test, deploy and V15 on production pending |
 | Extensions (G3) | | | |
 
 ## Checkpoint I — Audit round 1 (2026-09-07)
@@ -1024,6 +1025,78 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 ### Left
 - The germs of a chosen type are listed « non programmé » when a profile chip replaces the ticked analyses afterwards: visible and deliberate, but the lab may prefer the type's germs to stay ticked (to confirm).
 - Q41 (« les nombres », numbering) and Q42 (one sample split between technicians) in NEEDEDINFO.
+
+## Checkpoint V15 — Remarques du 14/10, lot 1 (built 14/10, **not deployed** — `RETOUR-LABO-14-10.md` §3)
+
+Spec `RETOUR-LABO-14-10.md` §3: what the laboratory's message of 14/10 asked that needs no answer — P7 (100 / 1000 cm²), R7 (24 h input), R1 + R10 (sites at the counter, search by site and by archived fiche), OLD29 (norm and unit under an analysis), OLD40 (nature on the bench), R6 + C5 (« Non déclarée »), RP3 + RP3c (technician rights), the public-repo cleanup. Built on branch `retour-labo-14-10` from `cd0054f`, **no migration**. Restore point: tag `v1.3-avant-retour-14-10` = `cd0054f`. Run it first on the local copy (Docker `qlab-local-db`), then on production after the deploy.
+
+Rules for the production run — production holds real laboratory data:
+- Work **only** on the test client « TEST UI 2026-10-06 Traiteur » (and invented « TEST UI … » sites or clients); create new test séries on it, cancel them at the end. Never create, rename or attach a real client or site; never type on a real sample.
+- The steps name the roles by their demo account (`pre1`, `recep1`, `param1`, `tech1`, `admin`, `portail.test`).
+- Refresh every page opened before the deploy.
+
+### V15.0 — Gates, restore point, deployment
+- [ ] Gates on the merged tree: `prisma generate`, tsc 0, eslint `src` 0, vitest green (with `wall-input.test.ts`, `client-search.test.ts`, `site-creation.test.ts`, `parameter-caption.test.ts`, `technician-guards.test.ts`, `jsx-entity-space.test.ts`), `npm run build`.
+- [ ] No migration folder added (`git diff --stat cd0054f -- prisma/migrations` empty); no model or field change in `prisma/schema.prisma` (the only diff is the `ClientProduct` `///` comment example, public-repo cleanup).
+- [ ] Tag `v1.3-avant-retour-14-10` on origin = `cd0054f` (`git ls-remote --tags origin v1.3-avant-retour-14-10`); a labelled production dump taken just before the deploy (`DEPLOY.md`), `gzip -t` passes, the last line reads « -- Dump completed ».
+- [ ] After the deploy: `_prisma_migrations` unchanged, `/api/health` 200, app container 0 restarts, no error in its log after the first deposit.
+
+### V15-A — L'heure en 24 h (R7)
+- [ ] **Browser in English (US)** (Chrome / Edge display language English, Windows region English (United States)): every date-time field shows a day « JJ/MM/AAAA » and an hour « HH:MM », never AM/PM — Nouvelle visite « Prélevé le … à … » and « Heure de fin »; fiche de visite « Fin du prélèvement » and « Arrivée au laboratoire »; Nouveau dépôt « Prélevé le »; réception « Arrivée au laboratoire »; « Date et heure de l'accord » (dépôt, réception, « Bloqués »); fiche de programme « Délai de rendu promis ».
+- [ ] Typing 14:05 on a test visit stores 14:05 legal time (série page, protocol PDF « 14h05 »); 00:30 and 23:59 accepted.
+- [ ] « 24:00 », « 9:75 » and « 31/04/2026 » are refused next to the field (« Heure invalide (00:00 à 23:59) » / « Date invalide (JJ/MM/AAAA) »), never reinterpreted, and nothing is sent: a half-typed value (« 14:7 » on the way to « 14:75 ») is never kept; « 2:30 PM » is refused (« sans AM/PM »); « Enregistrer » / « Continuer » / « Valider » refuse while a date-time field is unfinished (message, field shown).
+- [ ] « Maintenant » fills the laboratory's hour; « dans le futur » is still refused next to the field; on a device one hour ahead the hint « = HH:MM heure légale » still shows and the stored value is the legal hour (V8 behaviour kept).
+- [ ] Keyboard and phone: clicking the label focuses the day; Tab moves through the day, the hour and « Maintenant » in that order; the calendar button opens the browser's date picker where it has one; the error is read through `aria-describedby`; the numeric keypad opens on a phone (pre1) and the targets are ≥ 44 px.
+- [ ] A page opened before the deploy still saves (the value sent is the same « AAAA-MM-JJTHH:mm »).
+
+### V15-B — Surface 100 / 1000 cm² (P7)
+- [ ] Nouvelle visite (pre1), Surface line: chips « 100 cm² » and « 1000 cm² » beside the number field; « 100 cm² » pressed on a new line; « 1000 cm² » fills 1000 and is pressed; typing 250 presses neither; the saved test série stores 100 / 1000 / 250 (`Sample.surfaceAreaCm2`) and the protocol PDF prints « 100 cm² », « 1000 cm² », « 250 cm² ».
+- [ ] Nouveau dépôt (recep1): the same chips on a Surface line.
+- [ ] « Corriger la fiche » of a received test surface sample (recep1): the chips are there; « 1000 cm² » with a reason → saved, journal entry.
+- [ ] A Surface line left on 100 cm² switched to another type and back to Surface starts on 100 again; a line on 1000 or on a typed area (250) keeps that area through the round trip, its chip or value still shown (`kindPatch` drops only the default 100; the area is never sent on a non-surface line — unchanged rule).
+
+### V15-C — Sites au comptoir, recherche par site (R1, R10)
+- [ ] Nouveau dépôt: « Site de prélèvement » is always shown, disabled until a client is picked; for a test client without any site it offers « Siège (adresse du client) » and « + Nouveau site… ».
+- [ ] « + Nouveau site… » as recep1 on the test client creates « TEST UI Site V15 », selected at once; /admin/journal « Site créé » (`SITE_CREATED`); the site is active on the client fiche. Typing the name of a site already listed (other case or accents) selects it instead of creating a second one.
+- [ ] A new-site name typed but not created blocks « Continuer » at the counter and at the visit (« Créez le nouveau site ou annulez sa saisie. », the site field shown); the série is never saved on the siège by mistake.
+- [ ] The exact name of a client is found first even when 20 other clients contain the same word; a plain `GET /api/clients` (no `q`, admin tools) still returns every client.
+- [ ] A name already used by a deactivated site of the test client → the message under the field says it is deactivated and to ask the gestionnaire commercial to reactivate it; nothing created.
+- [ ] The chosen site shows on the step-2 recap and on the confirmation (step 3), and the bon de réception PDF prints « client — site ».
+- [ ] Nouvelle visite (pre1) uses the same field: « + Nouveau site… » still creates and selects the site.
+- [ ] Typing the name of an active test site (≥ 2 characters) lists « TEST UI … — <site> »; choosing it picks the client and preselects that site, at the deposit and at the visit.
+- [ ] Typing the name of an archived test fiche now part of another test client (local copy: attach a « TEST UI » client as a site with « Rattacher comme site de… » first; production: only if such a TEST UI pair exists) returns the live client with the site made from the fiche preselected — never the archived fiche.
+- [ ] `GET /api/clients?q=…` answers at most 20 rows and no archived client; a plain search by name, ICE or contact still works; the invoice, merge and attach pickers still show one row per client; changing the client still resets site and memory (V11 A10).
+
+### V15-D — Norme et unité des analyses (OLD29)
+- [ ] Nouvelle visite and Nouveau dépôt: under each analysis to tick, a muted line « norme en vigueur · unité » (e.g. « NM ISO 6579 - 1:2021 · /25g » for Salmonella), the unit alone when no norm version is in force; what is sent is unchanged.
+- [ ] The programme sheet (param1) shows the same « norme en vigueur · unité » line under each analysis of §2, and its criteria table is unchanged.
+- [ ] `GET /api/parameters` carries `normLabel` (null when unknown).
+
+### V15-E — Nature à la paillasse (OLD40)
+- [ ] tech1: each row of « À prendre », « À commencer » and « En analyse » shows the sample's nature first (« Microbiologie des aliments », « Microbiologie des surfaces »…); the sheet `/technicien/[id]` shows « Nature d'analyse »; a « …P » twin shows its physico-chimie nature.
+
+### V15-F — « Non déclarée » (R6, C5)
+- [ ] A test deposit saved with « Prélevé le » left empty (DB `Serie.samplingTimeDeclared = 0`): /recherche column « Prélevé » reads « Non déclarée »; so do the test client's commercial fiche, the admin dashboard's sample table and its detail panel (`SampleTable` / `SampleDetailPanel`), the portal home and « Mes échantillons » (`portail.test`), the report e-mail (`EmailLog` body, SIMULE) and the destruction notice; the report still prints « Non déclarée » (unchanged).
+- [ ] A deposit with a typed « Prélevé le » and a visit print their date everywhere (unchanged).
+- [ ] The « date de prélèvement » filter of /recherche and the portal's « du / au » still find the undeclared deposit by its entry day, and sort it the same way (documented behaviour).
+
+### V15-G — Droits du technicien (RP3, RP3c)
+- [ ] `src/lib/technician-guards.test.ts` green in the vitest run.
+- [ ] As tech1: `GET /api/samples/<id>/programme` → 403; `PUT` same → 403; `PATCH /api/samples/<id>/intake` → 403; `POST /api/product-types` → 403; `PUT /api/product-types/<id>/criteria` → 403; `/programmation` and `/admin/types-produits` redirect to /technicien.
+- [ ] param1 still opens a programme sheet (GET 200) and confirms it; tech1's bench is unchanged (take, results, submit, temperatures).
+
+### V15-H — Dépôt public
+- [ ] The diff of the batch (code, tests, docs, commit message) carries no real client, site, staff or employee name; `src/lib/document-html.test.ts` reads « Personne Test »; no screenshot of the old software and no `backups/` file is staged (`git status`).
+
+### V15 lot 2 — à venir (après les réponses Q109–Q130, `RETOUR-LABO-14-10.md` §4)
+- [ ] Mains (Q109–Q111): one required « État des mains » Aseptique / En cours de travail / Nettoyé on a Mains line (visit, deposit), « Mains non lavées » no longer offered; an old « Mains lavées » sample reprints unchanged and stays correctable; the state printed where Q111 says; migration additive, no row rewritten.
+- [ ] Températures (Q112, Q113): « Continuer » refused on a visit sample without T° relevée or T° ambiante (air: T° ambiante only), « 0 » accepted; a deposit without them accepted; « Corriger la fiche » offers both temperatures; an old sample without temperature stays correctable; the agreed wording on screen.
+- [ ] Surface (Q114): the text box beside the area, if asked, saved and printed where agreed.
+- [ ] « Arrivé le » (Q118): a real arrival field at the deposit (prefilled, « Maintenant », future refused), stored as `Serie.arrivedAt` and printed on the bon; an arrival typed before the save accepted for a deposit without sampling time; C1 and the report's reception time as agreed.
+- [ ] Clients (Q116, Q117): « + Nouveau client » at the deposit (recep1) and the visit (pre1, phone width) creates a « TEST UI » client with its sites and selects it; a near-duplicate offers « Utiliser ce client »; the exact name of an archived merged test fiche proposes its client and site, never a new client; TECHNICIEN → 403; « À compléter » for the gestionnaire if agreed.
+- [ ] Dates seules (Q119): the agreed fields in JJ/MM/AAAA on an English (US) browser.
+- [ ] Catégories et familles (Q120–Q126): catégories created, re-imported and editable by param1 under /programmation; « Familles & critères »; the famille picker with its filters; a famille's parameters as a checklist with « Cocher tout » and replace-on-change; hands / surface / water / air familles applying their criteria on those samples (local copy first); technician refused everywhere.
+- [ ] Analyses after the programme (Q128), « Analyse sensorielle » (Q129), old-software functions asked in Q130.
 
 ## Checkpoint V14 — Prise en charge libre (13/10)
 
@@ -1487,7 +1560,7 @@ Tick only what was seen in the browser. One sub-checkpoint per slice of
 ### L1 — Nouvelle visite (slice 1) — dev server 2026-09-13, `pre1` / `recep1` / `tech2` / `valid1` / `admin`
 - [x] Header once: client → site cascade, interlocuteur, préleveur pre-filled, start time editable (série **9/26**, Restaurant Le Palmier, created through the real form).
 - [ ] Cadre derived — not on the préleveur form (lab-side field, `PATCH /api/series/[id]`), to observe in L2.
-- [~] Lines of mixed natures on one visit — observed with **two** lines (aliment « Suprême de poulet » lot LOT-0913, mains « Hamza Bassou » under MICRO_SURFACES): the fields shown change with the nature and the kind chips (SURFACE / MAINS), temperatures optional, unit count chips. Six-line mix and quantity « 01 » in `UNITE` not yet exercised.
+- [~] Lines of mixed natures on one visit — observed with **two** lines (aliment « Suprême de poulet » lot LOT-0913, mains of a person (name removed from the public repository 14/10) under MICRO_SURFACES): the fields shown change with the nature and the kind chips (SURFACE / MAINS), temperatures optional, unit count chips. Six-line mix and quantity « 01 » in `UNITE` not yet exercised.
 - [x] The visit gets a N° de série NNNN/AA at creation (9/26 shown on the success screen and on « Mes visites »); the préleveur never sees a N° de contrôle — `/api/series/[id]` and `/api/samples?q=9/26` payloads checked as `pre1`: no `controlCode`, no `receivedBy`, no « 9103 ».
 - [x] « Mes visites » lists séries with the progress of each sample (« 2 échantillons · 1 en cours · 1 terminé », status « En cours » derived).
 - [x] Visit detail: « Arrivée au laboratoire » panel saves fin / arrivée / T° glacière (chronology enforced: an end before the start is refused with the French message).
@@ -1514,7 +1587,7 @@ Tick only what was seen in the browser. One sub-checkpoint per slice of
 - [x] **Production (185.217.126.53, after deploy):** `recep1` enters a deposit through the real form (Pastilla au poulet, 300 g, 5 °C, avance 200 DH — chèque) → **série 17/26 · N° de contrôle 15/26**, bon PDF and labels answer 200; `admin` sees the six cartouches at `/admin/documents` and the protocol of série 16/26 renders.
 
 ### L4 — Rien n'est tapé deux fois (slice 4) — dev server 2026-09-13, `admin` / `pre1`
-- [x] A second visit to the same client proposes its places and products (datalists fed by `/api/clients/[id]/memory`: « Poste salades », « Chef cuisine », « Chambre froide », « Salade Gaillardière », « Tajine de poulet »…); typing « poste salades » shows « Déjà connu sous « Poste salades » — cette orthographe sera utilisée »; the saved line takes the memory's spelling of the product (série 13/26 via the API: « salade gaillardière » → « Salade Gaillardière »); places are memorised per site, a client-wide place being reused when the site has none of that name.
+- [x] A second visit to the same client proposes its places and products (datalists fed by `/api/clients/[id]/memory`: « Poste salades », « Chef cuisine », « Chambre froide », a salad named after the client (name removed 14/10), « Tajine de poulet »…); typing « poste salades » shows « Déjà connu sous « Poste salades » — cette orthographe sera utilisée »; the saved line takes the memory's spelling of the product (série 13/26 via the API: that salad typed in lower case was saved in the memory's spelling); places are memorised per site, a client-wide place being reused when the site has none of that name.
 - [x] `/admin/profils`: « Micro aliments standard » (n = 5, Coliformes totaux + E. coli) created for Microbiologie des aliments; on the visit form the chip « Micro aliments standard · n = 5 » ticks both analyses and sets n = 5 in one tap. Client-specific profiles are listed first by the API (`clientId` desc) — not exercised with a contractual client yet.
 - [x] Sites: « Cuisine centrale » added on the client fiche (« Sites de prélèvement » card, gestionnaire / admin) and proposed in the visit's client → site cascade; the série records it.
 - [x] « Prélèvement effectué par » on the visit: Service vétérinaire + name → the série carries samplerKind SERVICE_VETERINAIRE, the name and cadre OFFICIEL.
@@ -1535,7 +1608,7 @@ Tick only what was seen in the browser. One sub-checkpoint per slice of
 - [x] Every line starts with its type (Produit alimentaire / Surface / Mains du personnel / Eau / Air / Autre): choosing « Mains du personnel » on line 2 and « Surface » on line 3 switched their nature to Microbiologie des surfaces and showed the person / « Surface prélevée » + « Aire (100 cm²) » fields; the nature select stays editable.
 - [x] Nombre d'unités: the number input accepted 30 on line 3 (chips 1/3/5/9 kept); the recap and the série page print « 30 unités (A–AD) »; after reception the sheet holds 36 labels (5 + 1 + 30) on two A4 pages, « 9114/26 AA » … « 9114/26 AD » among them (pdftotext); the validator refuses 51 (unit test).
 - [x] The two « Analyses à effectuer » boxes at the end of the form were pre-ticked from the lines (micro), editable, saved on série 14/26 (`analysesMicro: true`, `analysesChimie: false`) and printed as boxes on the protocol PDF (« ANALYSES À EFFECTUER : [x] Analyses microbiologiques [ ] Analyses physico-chimiques », drawn in CSS); série 15/26 created with « physico-chimie » ticked and no chimie line shows at reception « Demandé sur le protocole sans ligne correspondante : analyses physico-chimiques — à programmer ».
-- [~] The Gaillardière protocol entered on one screen: 3 of its 6 lines (Salade Gaillardière « 01 » T°p 1 / T°a 2 with the profile in one tap, MP Hamza Bassou — Chef cuisine, mains lavées, T°p 25, MS Planche verte 100 cm²), fin, arrivée and 1 °C typed on the form → série **14/26**, the protocol PDF prints them field for field (site « Site démo », « Prélevé le … — fin … », « Arrivé au laboratoire », « T° à l'arrivée : 1 °C », « Fonction : Préleveur », MAIN / 100 cm² / n = 30). Entered from the desktop pane, not a phone; the three remaining lines (Suprême de poulet, Zaalouk, Plan travail) are the same kinds.
+- [~] A client's paper protocol (client and person names removed from the public repository 14/10) entered on one screen: 3 of its 6 lines (a salad « 01 » T°p 1 / T°a 2 with the profile in one tap, MP <person> — Chef cuisine, mains lavées, T°p 25, MS Planche verte 100 cm²), fin, arrivée and 1 °C typed on the form → série **14/26**, the protocol PDF prints them field for field (site « Site démo », « Prélevé le … — fin … », « Arrivé au laboratoire », « T° à l'arrivée : 1 °C », « Fonction : Préleveur », MAIN / 100 cm² / n = 30). Entered from the desktop pane, not a phone; the three remaining lines (Suprême de poulet, Zaalouk, Plan travail) are the same kinds.
 - [x] The visit page still completes what was not typed on site (end, arrival, temperature, photo) and the reception still overrides arrival and temperature: the série page came pre-filled with the form's fin / arrivée / 1 °C on every line; an arrival typed in the future is refused (« L'heure d'arrivée est dans le futur ») both on the form and at reception; « Maintenant » then « Valider la réception » numbered the three lines 9112/26 – 9114/26.
 - [x] **Production (185.217.126.53, after deploy):** the migration backfilled the boxes of the existing séries (14/26, 15/26, 16/26 → micro ticked); `pre1`'s « Nouvelle visite » shows the header in the paper's order, the six type chips, « Siège » + « Nouveau site… », the n input and the pre-ticked boxes; série **18/26** created with « Siège », fin / arrivée / 1 °C, a 30-unit surface line and both boxes, its protocol PDF renders (200); `GET /api/preleveurs` lists the préleveur accounts.
 

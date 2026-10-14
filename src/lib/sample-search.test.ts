@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   EMPTY_SAMPLE_SEARCH,
   SIEGE,
+  UNDECLARED_SAMPLING,
+  declaredSampledAt,
   parseSampleSearch,
   rechercheHref,
   sampleConclusion,
@@ -152,6 +156,59 @@ describe("rechercheHref", () => {
     expect(s.from?.getDate()).toBe(1);
     expect(s.to?.getDate()).toBe(31);
     expect(sampleSearchWhere(s)).toHaveProperty("sampledAt.gte");
+  });
+});
+
+describe("declaredSampledAt — a deposit without a declared sampling time (RETOUR-LABO-14-10 R6 / C5)", () => {
+  const entered = new Date("2026-10-05T09:30:00Z");
+
+  it("hides the entry instant of an undeclared deposit", () => {
+    expect(declaredSampledAt(entered, false)).toBeNull();
+    // The JSON of the samples API carries the date as a string.
+    expect(declaredSampledAt(entered.toISOString(), false)).toBeNull();
+  });
+
+  it("keeps the date of a declared deposit, a visit (null) and a série entered before the flag", () => {
+    expect(declaredSampledAt(entered, true)).toBe(entered);
+    expect(declaredSampledAt(entered, null)).toBe(entered);
+    expect(declaredSampledAt(entered, undefined)).toBe(entered);
+    expect(declaredSampledAt("2026-10-05T09:30:00.000Z", true)).toBe("2026-10-05T09:30:00.000Z");
+  });
+
+  it("says it in the report's own words", () => {
+    expect(UNDECLARED_SAMPLING).toBe("Non déclarée");
+    const report = readFileSync(fileURLToPath(new URL("./report-html.ts", import.meta.url)), "utf8");
+    expect(report).toMatch(/samplingTimeDeclared === false \? (?:"Non déclarée"|UNDECLARED_SAMPLING)/);
+  });
+
+  it("still filters and sorts « date de prélèvement » on the column itself", () => {
+    const where = sampleSearchWhere(parse("date=prelevement&du=2026-10-01&au=2026-10-31"));
+    expect(where).toHaveProperty("sampledAt.gte");
+    expect(where).toHaveProperty("sampledAt.lte");
+    expect(JSON.stringify(where)).not.toContain("samplingTimeDeclared");
+  });
+
+  it("is applied by every list, fiche and message that prints the sampling date", () => {
+    const read = (relative: string) => readFileSync(fileURLToPath(new URL(relative, import.meta.url)), "utf8");
+    // Each one selects the série's flag, then prints through `declaredSampledAt`.
+    for (const file of [
+      "./sample-search-server.ts", // /recherche
+      "./portal-query.ts", // the portal's home and list
+      "../app/commercial/[id]/page.tsx", // the client fiche
+      "./emails/templates.ts", // the report e-mail and the destruction notice
+    ]) {
+      const source = read(file);
+      expect(source, file).toMatch(/samplingTimeDeclared/);
+      expect(source, file).toMatch(/declaredSampledAt\(/);
+    }
+    // The admin dashboard's table and panel read the flag from the samples API.
+    expect(read("./sample-select.ts")).toMatch(/samplingTimeDeclared:\s*true/);
+    for (const file of ["../components/SampleTable.tsx", "../components/SampleDetailPanel.tsx"]) {
+      expect(read(file), file).toMatch(/declaredSampledAt\(sample\.sampledAt, sample\.serie\?\.samplingTimeDeclared\)/);
+      expect(read(file), file).not.toMatch(/formatDateTime\(sample\.sampledAt\)/);
+    }
+    // /recherche and the portal print the rows built above, whose
+    // `sampledAt` is typed `Date | null`: the compiler refuses a raw format.
   });
 });
 

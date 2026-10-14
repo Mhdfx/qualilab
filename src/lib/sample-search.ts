@@ -90,6 +90,10 @@ export function parseSampleSearch(params: URLSearchParams): SampleSearch {
  */
 export function sampleSearchWhere(search: SampleSearch, options: { blind?: boolean } = {}) {
   const { q } = search;
+  // « Période sur la date de prélèvement » reads the `sampledAt` column
+  // itself: a deposit whose sampling time was not declared is found (and
+  // sorted) by the instant it was entered at the counter, although no
+  // screen prints that instant as a sampling (`declaredSampledAt`).
   const dateKey = search.dateField === "prelevement" ? "sampledAt" : "receivedAt";
   const range =
     search.from || search.to
@@ -216,6 +220,26 @@ export function rechercheHref(link: RechercheLink = {}): string {
   const query = params.toString();
   return query ? `/recherche?${query}` : "/recherche";
 }
+
+/**
+ * The sampling date a list, a fiche or an e-mail may print of a sample
+ * (RETOUR-LABO-14-10, reception R6 and C5): null on a deposit whose « Prélevé
+ * le » was left empty (`Serie.samplingTimeDeclared === false`) —
+ * `Sample.sampledAt` then holds the instant the deposit was entered at the
+ * counter, which is no sampling. A visit, or a série entered before the flag
+ * existed (null or absent), keeps `sampledAt` as recorded. The report
+ * (`report-html.ts`) and the timeline (`sample-timeline.ts`) apply the same
+ * rule. Filters and sorts still read the column (`sampleSearchWhere`).
+ */
+export function declaredSampledAt<T extends Date | string>(
+  sampledAt: T,
+  samplingTimeDeclared: boolean | null | undefined
+): T | null {
+  return samplingTimeDeclared === false ? null : sampledAt;
+}
+
+/** What is printed in place of an undeclared sampling date — the report's own words. */
+export const UNDECLARED_SAMPLING = "Non déclarée";
 
 type ConclusionInput = {
   status: SampleStatus;

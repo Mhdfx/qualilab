@@ -407,6 +407,12 @@ export function DecisionChips({
 }
 
 /**
+ * The id of the agreement's date-time in `ConsultationFields` (`idPrefix`):
+ * what a validation hands `dateTimePending` before checking the time.
+ */
+export const consultationAtId = (idPrefix: string) => `${idPrefix}-at`;
+
+/**
  * « Accord du client » (A9, ISO/IEC 17025 §7.4.3) — under « Analyser malgré
  * tout » of a non-conform sample, and at the release of a held one: who was
  * consulted, how, when, a note. Optional unless the laboratory requires it
@@ -481,11 +487,11 @@ export function ConsultationFields({
           </select>
         </div>
         <div className="sm:col-span-2">
-          <label htmlFor={`${idPrefix}-at`} className="block text-sm font-medium text-slate-700">
+          <label htmlFor={consultationAtId(idPrefix)} className="block text-sm font-medium text-slate-700">
             Date et heure de l&apos;accord
           </label>
           <LabDateTimeInput
-            id={`${idPrefix}-at`}
+            id={consultationAtId(idPrefix)}
             value={value.at}
             onChange={(at) => set({ at })}
             nowButton

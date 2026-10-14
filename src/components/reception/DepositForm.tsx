@@ -62,9 +62,10 @@ import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StepIndicator } from "@/components/ui/StepIndicator";
 import { Card } from "@/components/ui/Card";
-import { LabDateTimeInput } from "@/components/LabDateTimeInput";
+import { LabDateTimeInput, dateTimePending } from "@/components/LabDateTimeInput";
 import { LineEditor } from "@/components/preleveur/LineEditor";
 import { ClientPicker, type PickedClient } from "@/components/commercial/ClientPicker";
+import { SitePicker, withNewSite } from "@/components/commercial/SitePicker";
 import {
   duplicateDraft,
   emptyLine,
@@ -92,6 +93,7 @@ import {
   DecisionChips,
   ReceptionNoteField,
   StorageClassSelect,
+  consultationAtId,
   useMinuteClock,
 } from "./reception-widgets";
 import {
@@ -143,6 +145,8 @@ type CreatedDeposit = {
   id: string;
   serialNumber: string;
   client: { name: string };
+  /** The site of the deposit; null: the client's siège. */
+  site: { name: string } | null;
   arrivedAt: string | null;
   samples: {
     id: string;
@@ -262,10 +266,13 @@ export function DepositForm({
   const [errorLine, setErrorLine] = useState<number | null>(null);
   const [created, setCreated] = useState<CreatedDeposit | null>(null);
 
-  // The client picked in the search, with its active sites.
+  // The client picked in the search, with its active sites — and, found by
+  // one of its sites (« Client — Site »), that site chosen.
   const [client, setClient] = useState<PickedClient | null>(null);
   const clientId = client?.id ?? "";
   const [siteId, setSiteId] = useState("");
+  /** A new site's name typed in SitePicker but not created yet: « Continuer » refuses. */
+  const [sitePending, setSitePending] = useState(false);
   const [samplerKind, setSamplerKind] = useState<SamplerKind>("CLIENT");
   // A choice, never deduced from who sampled, none preselected (V1).
   const [cadre, setCadre] = useState<Cadre | null>(null);
@@ -359,6 +366,7 @@ export function DepositForm({
 
   // The sites of the client picked (the search returns them with it).
   const sites = client?.sites ?? [];
+  const selectedSite = sites.find((s) => s.id === siteId);
 
   const productSuggestions = useMemo(
     () => mergeSuggestions(memory.products, lines.map((l) => l.produit)),
@@ -554,10 +562,34 @@ export function DepositForm({
 
   function validateStep1() {
     if (!clientId) return setStepError("Choisissez le client.");
+    // A new site typed but not created would be lost with step 1: the série would go to the siège.
+    if (sitePending) {
+      reveal("deposit-site");
+      return setStepError("Créez le nouveau site ou annulez sa saisie.");
+    }
     if (samplerKind === "AUTRE" && !samplerName.trim()) {
       return setStepError("Indiquez qui a effectué le prélèvement.");
     }
     if (!cadre) return setStepError(SERIE_MESSAGES.cadreMissing);
+    // An unfinished or invalid date-time before any check of the times: the
+    // form still holds the value from before it (the field gets the focus,
+    // its own message stays under it). « Prélevé le », then the client's
+    // agreement of each line where it is shown.
+    const startedPending = dateTimePending("deposit-started");
+    if (startedPending) {
+      setStartedError(null);
+      reveal("deposit-started");
+      return setStepError(startedPending);
+    }
+    for (const [i, line] of lines.entries()) {
+      const atId = consultationAtId(`accord-${line.key}`);
+      const atPending = dateTimePending(atId);
+      if (atPending) {
+        setStepError(sampleLineMessage(i + 1, atPending), i + 1);
+        reveal(atId);
+        return false;
+      }
+    }
     // The server's own check (5 min of tolerance), told next to the field before « Continuer » (§8.1).
     const future = futureFieldError("L'heure du prélèvement", startedAt);
     setStartedError(future);
@@ -700,9 +732,15 @@ export function DepositForm({
             <div>
               <h2 className="text-xl font-semibold text-slate-900">Dépôt enregistré et réceptionné</h2>
               <p className="text-sm text-slate-500">
-                {created.client.name} · {created.arrivedAt ? formatDateTime(created.arrivedAt) : ""} ·{" "}
-                {countLabel(samples.length, "échantillon numéroté", "échantillons numérotés")} ·{" "}
-                {countLabel(units, "étiquette")}
+                {[
+                  created.client.name,
+                  created.site?.name,
+                  created.arrivedAt ? formatDateTime(created.arrivedAt) : null,
+                  countLabel(samples.length, "échantillon numéroté", "échantillons numérotés"),
+                  countLabel(units, "étiquette"),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             </div>
             <div className="ml-auto rounded-2xl bg-brand px-5 py-3 text-white shadow-lg shadow-brand/20">
@@ -811,16 +849,18 @@ export function DepositForm({
             <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">Le dépôt</h2>
             <div className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className={sites.length > 0 ? "" : "sm:col-span-2"}>
+                <div>
                   <ClientPicker
                     label="Client"
                     labelClassName="section-title mb-0.5"
                     labelIcon={<Building2 className="h-4 w-4" aria-hidden="true" />}
                     excludeIds={[]}
                     selected={client}
+                    siteRows
                     onSelect={(picked) => {
                       setClient(picked);
-                      setSiteId("");
+                      // « Client — Site » chosen: that site; otherwise the siège.
+                      setSiteId(picked?.siteId ?? "");
                       setMemory({ places: [], products: [] });
                       clearError();
                       // A type of the previous client must not stay on a sample.
@@ -828,17 +868,19 @@ export function DepositForm({
                     }}
                   />
                 </div>
-                {sites.length > 0 && (
-                  <div>
-                    <label htmlFor="deposit-site" className="section-title mb-2">Site (facultatif)</label>
-                    <select id="deposit-site" value={siteId} onChange={(e) => setSiteId(e.target.value)} className="input-field px-4">
-                      <option value="">— Siège —</option>
-                      {sites.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                {/* Always shown, as in the old software (retour du 14/10, R1): disabled until
+                    a client is picked; a new site joins its list without reloading the base. */}
+                <SitePicker
+                  id="deposit-site"
+                  client={client}
+                  value={siteId}
+                  onChange={setSiteId}
+                  onDraftChange={setSitePending}
+                  onCreated={(site, forClient) => {
+                    setClient((prev) => withNewSite(prev, forClient, site));
+                    setSiteId(site.id);
+                  }}
+                />
               </div>
 
               <div role="group" aria-labelledby="deposit-sampler">
@@ -1296,6 +1338,7 @@ export function DepositForm({
             <h2 className="text-lg font-semibold text-slate-900">Récapitulatif</h2>
             <div className="space-y-3 rounded-xl bg-slate-50 p-5 text-sm ring-1 ring-slate-100">
               <Row label="Client" value={client?.name ?? "—"} />
+              <Row label="Site" value={selectedSite?.name ?? "Siège"} />
               <Row label="Prélèvement" value={samplerKind === "CLIENT" ? "Par le client" : `${SAMPLER_KIND_LABELS[samplerKind]} — ${samplerName}`} />
               <Row label="Cadre" value={cadre ? formatCadre(cadre, cadreNote) : "—"} />
               {interlocutor && <Row label="Déposé par" value={interlocutor} />}

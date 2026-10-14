@@ -95,6 +95,14 @@ export function withSurfaceState(designation: string, state?: SurfaceState | nul
   return state ? `${designation} — ${SURFACE_STATE_PHRASES[state]}` : designation;
 }
 
+/**
+ * The areas a surface is usually swabbed on, offered as one-tap choices
+ * beside « Surface prélevée (cm²) » (the laboratory's remark of 14/10:
+ * « 100 cm² » and « 1000 cm² »). Any other whole number stays typeable; a
+ * new surface line still starts on 100 cm² (`emptyLine`, `kindPatch`).
+ */
+export const SURFACE_AREA_CHOICES: readonly number[] = [100, 1000];
+
 /** « Méthode de prélèvement » of an AIR line (RETOUR-LABO-06-10.md §5, V4). */
 export const AIR_METHOD_LABELS = {
   BOITE_EXPOSEE_30MIN: "Boîte exposée 30 min",

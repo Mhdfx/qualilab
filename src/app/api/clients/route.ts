@@ -5,7 +5,31 @@ import { prisma } from "@/lib/prisma";
 import { validateClient, validateClientEmails } from "@/lib/client-validation";
 import { findSimilarClients } from "@/lib/client-identity";
 import { LOCK_RETRIES, isLockConflict, lockRetryPause } from "@/lib/billing";
+import {
+  ARCHIVED_SCAN_LIMIT,
+  ARCHIVING_ACTIONS,
+  CLIENT_SEARCH_LIMIT,
+  MAX_PARENT_HOPS,
+  SITE_SCAN_LIMIT,
+  clientSearchRows,
+  directMatches,
+  ficheOrigins,
+  firstParentId,
+  mergeTargets,
+  missingParents,
+  type ArchivedFiche,
+  type JournalEntry,
+} from "@/lib/client-search";
 import type { Prisma } from "@/generated/prisma/client";
+
+/** What every client of the list carries. */
+const CLIENT_INCLUDE = {
+  // Phase 9: the préleveur picks the site from the client's list.
+  sites: { where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } },
+  // CLIENTS-FUSION.md §4 and §6: « client facturé de » and « fusionnée dans ».
+  billedFor: { select: { id: true, name: true } },
+  mergedInto: { select: { id: true, name: true } },
+} as const;
 
 /**
  * The client base.
@@ -14,6 +38,20 @@ import type { Prisma } from "@/generated/prisma/client";
  * field — but only the gestionnaire commercial and the admin may change it.
  * The stock module and the future portal have no business here. Archived
  * clients are hidden unless asked for, so the pickers stay short.
+ *
+ * `GET` without `q` is the whole list (archived clients with
+ * `archived=true`), by name, uncapped as before the 14/10: the owner's
+ * scripts read the base through it (relecture du lot 1).
+ *
+ * `GET ?q=` is the pickers' search, at most `CLIENT_SEARCH_LIMIT` rows, the
+ * closest matches first. Besides the clients whose name, ICE or contact
+ * matches, it answers the clients one of whose active sites matches, and
+ * the live client of an archived fiche that matches — merged, attached as a
+ * site, archived by the import of the sites (retour du 14/10, C7): such a
+ * row carries
+ * `matchedSiteId` (the site to preselect, null for the siège) and
+ * `matchedLabel` (« Client — label » in the picker). The rules are
+ * `clientSearchRows` (src/lib/client-search.ts); this handler reads.
  */
 export async function GET(request: Request) {
   const session = await requireApiRole(
@@ -31,31 +69,104 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const includeArchived = params.get("archived") === "true";
   const search = params.get("q")?.trim();
+  const archivedFilter = includeArchived ? {} : { archived: false };
 
-  const clients = await prisma.client.findMany({
-    where: {
-      ...(includeArchived ? {} : { archived: false }),
-      ...(search
-        ? {
-            OR: [
-              { name: { contains: search } },
-              { ice: { contains: search } },
-              { contact: { contains: search } },
-            ],
-          }
-        : {}),
-    },
-    orderBy: { name: "asc" },
-    // Phase 9: the préleveur picks the site from the client's list.
-    include: {
-      sites: { where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } },
-      // CLIENTS-FUSION.md §4 and §6: « client facturé de » and « fusionnée dans ».
-      billedFor: { select: { id: true, name: true } },
-      mergedInto: { select: { id: true, name: true } },
-    },
-  });
+  if (!search) {
+    const clients = await prisma.client.findMany({ where: archivedFilter, orderBy: { name: "asc" }, include: CLIENT_INCLUDE });
+    return NextResponse.json(clients);
+  }
 
-  return NextResponse.json(clients);
+  // Four reads at once: the clients whose name starts with the text (the
+  // closest matches, read apart so twenty names that merely contain it never
+  // cut them); the clients by name, ICE or contact; the active sites by
+  // name; the archived fiches by name — not read when archived clients are
+  // asked for, since they then answer themselves.
+  const [prefixed, contained, sites, fiches] = await Promise.all([
+    prisma.client.findMany({
+      where: { ...archivedFilter, name: { startsWith: search } },
+      orderBy: { name: "asc" },
+      take: CLIENT_SEARCH_LIMIT,
+      include: CLIENT_INCLUDE,
+    }),
+    prisma.client.findMany({
+      where: {
+        ...archivedFilter,
+        OR: [{ name: { contains: search } }, { ice: { contains: search } }, { contact: { contains: search } }],
+      },
+      orderBy: { name: "asc" },
+      take: CLIENT_SEARCH_LIMIT,
+      include: CLIENT_INCLUDE,
+    }),
+    prisma.site.findMany({
+      where: { active: true, name: { contains: search }, ...(includeArchived ? {} : { client: { archived: false } }) },
+      select: { id: true, name: true, clientId: true },
+      orderBy: [{ client: { name: "asc" } }, { name: "asc" }],
+      take: SITE_SCAN_LIMIT,
+    }),
+    includeArchived
+      ? Promise.resolve<ArchivedFiche[]>([])
+      : prisma.client.findMany({
+          where: { archived: true, name: { contains: search } },
+          select: { id: true, name: true, mergedIntoId: true },
+          orderBy: { name: "asc" },
+          take: ARCHIVED_SCAN_LIMIT,
+        }),
+  ]);
+
+  // The name matches, each client once, by name.
+  const direct = directMatches(prefixed, contained);
+
+  // Every client a row may stand for, each read once.
+  const clients = new Map<string, (typeof direct)[number]>(direct.map((client) => [client.id, client]));
+  const read = new Set(clients.keys());
+  const load = async (ids: Iterable<string>) => {
+    const wanted = [...new Set(ids)].filter((id) => !read.has(id));
+    if (wanted.length === 0) return;
+    for (const id of wanted) read.add(id);
+    const rows = await prisma.client.findMany({ where: { id: { in: wanted } }, include: CLIENT_INCLUDE });
+    for (const row of rows) clients.set(row.id, row);
+  };
+  /** The journal entries that tell where these clients went, latest first. */
+  const readJournal = (ids: readonly string[]): Promise<JournalEntry[]> =>
+    ids.length > 0
+      ? prisma.auditLog.findMany({
+          where: { entity: "Client", entityId: { in: [...ids] }, action: { in: [...ARCHIVING_ACTIONS] } },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          select: { entityId: true, action: true, metadata: true },
+        })
+      : Promise.resolve([]);
+
+  // Where each fiche went (its journal: the import of 07/10 wrote its parent
+  // there only), alongside the clients of the sites and the fiches' parents.
+  const [journal] = await Promise.all([
+    readJournal(fiches.map((fiche) => fiche.id)),
+    load([...sites.map((site) => site.clientId), ...fiches.flatMap((fiche) => (fiche.mergedIntoId ? [fiche.mergedIntoId] : []))]),
+  ]);
+  const origins = ficheOrigins(journal);
+
+  // A parent merged since leads further (B into A, A into C): one link per round.
+  const starts = fiches.map((fiche) => firstParentId(fiche, origins.get(fiche.id)));
+  for (let round = 0; round <= MAX_PARENT_HOPS; round += 1) {
+    const missing = missingParents(starts, clients).filter((id) => !read.has(id));
+    if (missing.length === 0) break;
+    await load(missing);
+  }
+
+  // A fiche merged into a client that became a site since (attached, or
+  // archived by the import of the sites) stands for that site: the journal
+  // of the client it was merged into names it (`mergedFicheSite`). Added
+  // to the origins, never over a fiche's own; one link per round.
+  const asked = new Set(fiches.map((fiche) => fiche.id));
+  for (let round = 0; round <= MAX_PARENT_HOPS; round += 1) {
+    const via = mergeTargets(origins, clients).filter((id) => !asked.has(id));
+    if (via.length === 0) break;
+    for (const id of via) asked.add(id);
+    for (const [id, origin] of ficheOrigins(await readJournal(via))) {
+      if (!origins.has(id)) origins.set(id, origin);
+    }
+  }
+
+  return NextResponse.json(clientSearchRows({ direct, sites, fiches, origins, clients, includeArchived, query: search }));
 }
 
 export async function POST(request: Request) {

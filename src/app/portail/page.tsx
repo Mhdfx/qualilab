@@ -74,8 +74,10 @@ export default async function PortailPage() {
                     <span className="truncate text-slate-600">{row.designation ?? "—"}</span>
                     {row.report?.amended && <AmendedBadge />}
                   </p>
+                  {/* `sampledAt` is null on a deposit whose sampling time was
+                      not declared: its entry instant is no sampling (R6). */}
                   <p className="mt-0.5 text-xs text-slate-500">
-                    {row.siteName ?? "Siège"} · prélevé le {formatDate(row.sampledAt)}
+                    {row.siteName ?? "Siège"} · {row.sampledAt ? `prélevé le ${formatDate(row.sampledAt)}` : "date de prélèvement non déclarée"}
                     {row.report?.sentAt && <> · rapport envoyé le {formatDate(row.report.sentAt)}</>}
                   </p>
                 </div>

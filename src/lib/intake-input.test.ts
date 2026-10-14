@@ -3,7 +3,7 @@ import { validateIntake, type IntakeCurrent } from "./intake-input";
 
 const current: IntakeCurrent = {
   lineKind: "ALIMENT",
-  produit: "Salade Gaillardière",
+  produit: "Salade maison",
   lieu: "Poste salades",
   numeroLot: "L-2409",
   productionDate: new Date("2026-09-01T00:00:00"),
@@ -59,7 +59,7 @@ const air: IntakeCurrent = {
 
 describe("validateIntake", () => {
   it("keeps only what actually changed, with the reason", () => {
-    const result = validateIntake({ numeroLot: "L-2410", produit: "Salade Gaillardière", reason: "Erreur de lot sur le protocole" }, current);
+    const result = validateIntake({ numeroLot: "L-2410", produit: "Salade maison", reason: "Erreur de lot sur le protocole" }, current);
     expect(result).toEqual({
       ok: true,
       value: { changes: { numeroLot: "L-2410" }, parameterIds: null, reason: "Erreur de lot sur le protocole" },

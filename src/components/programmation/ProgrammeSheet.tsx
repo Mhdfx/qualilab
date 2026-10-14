@@ -29,6 +29,7 @@ import {
   formatDateTime,
 } from "@/lib/labels";
 import { fmt } from "@/lib/interpretation";
+import { normInForce, parameterCaption } from "@/lib/parameter-caption";
 import {
   DUE_AT_TOLERANCE_MS,
   MAX_PARAMETER_NOTE,
@@ -42,7 +43,7 @@ import { MAX_UNITS } from "@/lib/series";
 import { matchesQuery } from "@/lib/similar";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
-import { LabDateTimeInput } from "@/components/LabDateTimeInput";
+import { LabDateTimeInput, dateTimePending } from "@/components/LabDateTimeInput";
 import { Checklist } from "@/components/reception/reception-widgets";
 import { fromLocalInput } from "@/components/preleveur/visit-types";
 import { SampleVerbs, type VerbSample } from "@/components/samples/SampleVerbs";
@@ -300,6 +301,13 @@ export function ProgrammeSheet({
     setNotice("");
     if ((confirm || confirmed) && draft.parameterIds.length === 0) {
       setError("Choisissez au moins une analyse avant de confirmer le programme.");
+      return;
+    }
+    // An unfinished or invalid date-time before checking the delay: the sheet
+    // still holds the value from before it (the field gets the focus).
+    const duePending = dateTimePending("programme-due");
+    if (duePending) {
+      setError(duePending);
       return;
     }
     if (draft.dueAt) {
@@ -585,6 +593,11 @@ export function ProgrammeSheet({
                     <div className="grid gap-2 sm:grid-cols-2">
                       {group.parameters.map((parameter) => {
                         const checked = draft.parameterIds.includes(parameter.id);
+                        // « Norme en vigueur · unité » under the name, when known (14/10).
+                        const caption = parameterCaption({
+                          normLabel: normInForce(referential.normVersions[parameter.id] ?? []),
+                          unit: parameter.unit,
+                        });
                         return (
                           <label
                             key={parameter.id}
@@ -600,8 +613,8 @@ export function ProgrammeSheet({
                               className="accent-brand h-4 w-4"
                             />
                             <span className="min-w-0 flex-1">
-                              {parameter.name}
-                              {parameter.unit && <span className="ml-1.5 text-xs text-slate-400">{parameter.unit}</span>}
+                              <span className="block">{parameter.name}</span>
+                              {caption && <span className="block text-xs text-slate-600">{caption}</span>}
                             </span>
                           </label>
                         );

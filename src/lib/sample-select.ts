@@ -52,6 +52,10 @@ const COMMON = {
       serialNumber: true,
       site: { select: { id: true, name: true } },
       startedAt: true,
+      // False on a deposit whose « Prélevé le » was left empty: `sampledAt`
+      // is then the instant it was entered, which the lists print as
+      // « Non déclarée » (`declaredSampledAt`, R6 / C5).
+      samplingTimeDeclared: true,
     },
   },
   parameters: {

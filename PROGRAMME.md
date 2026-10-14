@@ -10,6 +10,21 @@
 > technicien : un programme confirmé rejoint la liste partagée « À prendre »,
 > et le technicien qui prend l'échantillon en charge est le seul à le saisir
 > (§10). Point de retour : tag `v1.2-avant-sans-affectation` (`DEPLOY.md`).
+>
+> **14/10/2026 — remarques du laboratoire** (`RETOUR-LABO-14-10.md`).
+> Vocabulaire : le laboratoire appelle « famille » ce que ce document et
+> l'écran appellent « type de produit » (`ProductType`), et « catégorie »
+> l'ancien « Group famille » ; ici « famille » désigne encore Microbiologie /
+> Physico-chimie — voir `RETOUR-LABO-14-10.md` §1, et §4.7 pour les
+> catégories et la gestion des familles par le responsable des paramètres
+> (lot 2, en attente de Q120–Q126). Droits (§2, RP3) : le technicien de
+> paillasse ne modifie ni les analyses d'un échantillon, ni son programme,
+> ni le catalogue (paramètres, familles, critères) ; il saisit les résultats
+> des analyses programmées, les soumet, prend les échantillons en charge et
+> relève les températures — fixé par `src/lib/technician-guards.test.ts`.
+> Depuis le lot 1 du 14/10 (à vérifier), il ne lit plus `GET
+> /api/samples/[id]/programme` (403, RP3c) : cela remplace « TECHNICIEN en
+> lecture » au §5.
 
 ## 1. Le circuit
 
@@ -142,8 +157,8 @@ ou au-delà : fiche en lecture seule avec le lien « Corriger la fiche ».
 
 ## 5. API
 
-- `GET /api/samples/[id]/programme` (PROGRAMMATEUR, ADMIN, TECHNICIEN en
-  lecture) : l'échantillon, son programme courant, et le référentiel utile
+- `GET /api/samples/[id]/programme` (PROGRAMMATEUR, ADMIN ; refusé au
+  technicien depuis le 14/10 : 403, RP3c) : l'échantillon, son programme courant, et le référentiel utile
   (types de produits du client + catalogue avec critères, paramètres de la
   catégorie, profils, versions de norme par paramètre, prix du catalogue par
   paramètre). Depuis le 13/10, ni la liste des techniciens ni leur charge.

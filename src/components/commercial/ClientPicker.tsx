@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Building2, RefreshCw, Search, X } from "lucide-react";
+import { pickerRows, type PickerRow } from "@/lib/client-search";
 
 /** A client as the picker returns it (from `GET /api/clients?q=`). */
 export type PickedClient = {
@@ -10,19 +11,33 @@ export type PickedClient = {
   ice: string | null;
   /** Its active sites (the list route includes them). */
   sites: { id: string; name: string }[];
+  /**
+   * With `siteRows` only: the site of the row chosen (« Client — Site »),
+   * one of `sites`, for the form to preselect. Absent: no site in particular.
+   */
+  siteId?: string;
 };
 
 const MAX_RESULTS = 8;
 
 const DEFAULT_PLACEHOLDER = "Nom, ICE ou contact (2 caractères minimum)";
+const SITE_ROWS_PLACEHOLDER = "Client, site, ICE ou contact (2 caractères minimum)";
 const DEFAULT_LABEL_CLASS = "block text-sm font-medium text-slate-700";
 
 /**
  * Searchable client picker for the fiche actions (merge, attach, billing
- * clients), the préleveur's visit and the invoice draft — the client base is
- * searched on the server, never loaded whole. Active clients only — the list
- * route hides archived ones — minus `excludeIds` (the fiche itself, clients
- * already linked).
+ * clients), the préleveur's visit, the reception's deposit and the invoice
+ * draft — the client base is searched on the server, never loaded whole.
+ * Active clients only — the list route never answers an archived one —
+ * minus `excludeIds` (the fiche itself, clients already linked).
+ *
+ * The search also finds a client by one of its sites, or by an archived
+ * fiche now part of it (src/lib/client-search.ts): such a row reads
+ * « Client — Site ». With `siteRows` (the visit and the deposit) there is
+ * one row per client and site, and the choice carries the site
+ * (`PickedClient.siteId`) for the form to preselect. Without it (billing,
+ * merge, attach, invoice) one row per client, and the choice is the client
+ * alone, as before.
  *
  * Optional look: `labelClassName` / `labelIcon` (a form's « section-title »
  * heading), `placeholder`.
@@ -36,7 +51,8 @@ export function ClientPicker({
   selected,
   onSelect,
   disabled,
-  placeholder = DEFAULT_PLACEHOLDER,
+  siteRows = false,
+  placeholder = siteRows ? SITE_ROWS_PLACEHOLDER : DEFAULT_PLACEHOLDER,
   labelClassName = DEFAULT_LABEL_CLASS,
   labelIcon,
 }: {
@@ -45,6 +61,8 @@ export function ClientPicker({
   selected: PickedClient | null;
   onSelect: (client: PickedClient | null) => void;
   disabled?: boolean;
+  /** One row per client and site, the choice carrying the site (the sampling forms). */
+  siteRows?: boolean;
   placeholder?: string;
   labelClassName?: string;
   /** Shown before the label (decorative). */
@@ -53,7 +71,7 @@ export function ClientPicker({
   const inputId = useId();
   const listId = useId();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<PickedClient[]>([]);
+  const [results, setResults] = useState<PickerRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -71,13 +89,7 @@ export function ClientPicker({
         .then((response) => (response.ok ? response.json() : Promise.reject(new Error("liste"))))
         .then((data: unknown) => {
           const excluded = new Set(excludeKey.split("|"));
-          const rows = Array.isArray(data) ? (data as PickedClient[]) : [];
-          setResults(
-            rows
-              .filter((row) => !excluded.has(row.id))
-              .slice(0, MAX_RESULTS)
-              .map((row) => ({ id: row.id, name: row.name, ice: row.ice ?? null, sites: row.sites ?? [] }))
-          );
+          setResults(pickerRows(data, { excluded, siteRows, max: MAX_RESULTS }));
         })
         .catch((error: unknown) => {
           if ((error as { name?: string })?.name === "AbortError") return;
@@ -92,9 +104,12 @@ export function ClientPicker({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, excludeKey]);
+  }, [query, excludeKey, siteRows]);
 
   const showResults = query.trim().length >= 2;
+  const found = siteRows
+    ? `${results.length} résultat${results.length > 1 ? "s" : ""}`
+    : `${results.length} client${results.length > 1 ? "s" : ""} trouvé${results.length > 1 ? "s" : ""}`;
 
   function focusOption(index: number) {
     const buttons = listRef.current?.querySelectorAll<HTMLButtonElement>("button[data-option]");
@@ -103,8 +118,14 @@ export function ClientPicker({
     buttons[clamped].focus();
   }
 
-  function choose(client: PickedClient) {
-    onSelect(client);
+  function choose(row: PickerRow) {
+    onSelect({
+      id: row.id,
+      name: row.name,
+      ice: row.ice,
+      sites: row.sites,
+      ...(siteRows && row.siteId ? { siteId: row.siteId } : {}),
+    });
     setQuery("");
     setResults([]);
   }
@@ -130,7 +151,7 @@ export function ClientPicker({
               // Back to the search field once it is rendered again.
               setTimeout(() => inputRef.current?.focus(), 0);
             }}
-            className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-slate-600 transition hover:bg-white hover:text-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-slate-600 transition hover:bg-white hover:text-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
             Changer
@@ -172,8 +193,10 @@ export function ClientPicker({
       <p id={`${listId}-status`} aria-live="polite" className="sr-only">
         {showResults && !loading
           ? results.length === 0
-            ? "Aucun client trouvé."
-            : `${results.length} client${results.length > 1 ? "s" : ""} trouvé${results.length > 1 ? "s" : ""}. Flèche bas pour parcourir.`
+            ? siteRows
+              ? "Aucun client ni site trouvé."
+              : "Aucun client trouvé."
+            : `${found}. Flèche bas pour parcourir.`
           : ""}
       </p>
 
@@ -189,7 +212,9 @@ export function ClientPicker({
               La recherche a échoué. Réessayez.
             </p>
           ) : results.length === 0 ? (
-            <p className="px-1 py-2 text-sm text-slate-500">Aucun client actif ne correspond.</p>
+            <p className="px-1 py-2 text-sm text-slate-500">
+              {siteRows ? "Aucun client ni site actif ne correspond." : "Aucun client actif ne correspond."}
+            </p>
           ) : (
             <ul
               ref={listRef}
@@ -197,12 +222,12 @@ export function ClientPicker({
               aria-label={`Résultats : ${label}`}
               className="max-h-72 space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5"
             >
-              {results.map((client, index) => (
-                <li key={client.id}>
+              {results.map((row, index) => (
+                <li key={row.key}>
                   <button
                     type="button"
                     data-option
-                    onClick={() => choose(client)}
+                    onClick={() => choose(row)}
                     onKeyDown={(event) => {
                       if (event.key === "ArrowDown") {
                         event.preventDefault();
@@ -216,16 +241,26 @@ export function ClientPicker({
                         inputRef.current?.focus();
                       }
                     }}
-                    className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-brand-light/50 focus:bg-brand-light/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                    className="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-brand-light/50 focus:bg-brand-light/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   >
-                    <span className="min-w-0 truncate font-medium text-slate-800">{client.name}</span>
-                    <span className="shrink-0 text-xs text-slate-500">
-                      {client.sites.length > 0
-                        ? `${client.sites.length} site${client.sites.length > 1 ? "s" : ""}`
-                        : client.ice
-                          ? `ICE ${client.ice}`
-                          : ""}
-                    </span>
+                    {row.label ? (
+                      // Found through a site or an archived fiche: « Client — Site », wrapped on a phone rather than cut.
+                      <span className="min-w-0 break-words font-medium text-slate-800">
+                        {row.name}
+                        <span className="font-normal text-slate-600">{` — ${row.label}`}</span>
+                      </span>
+                    ) : (
+                      <>
+                        <span className="min-w-0 truncate font-medium text-slate-800">{row.name}</span>
+                        <span className="shrink-0 text-xs text-slate-500">
+                          {row.sites.length > 0
+                            ? `${row.sites.length} site${row.sites.length > 1 ? "s" : ""}`
+                            : row.ice
+                              ? `ICE ${row.ice}`
+                              : ""}
+                        </span>
+                      </>
+                    )}
                   </button>
                 </li>
               ))}

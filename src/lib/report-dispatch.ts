@@ -703,7 +703,9 @@ async function sendReportNow(sampleId: string, actorId: string | null) {
       receivedAt: true,
       clientId: true,
       client: { select: { name: true } },
-      serie: { select: { serialNumber: true, site: { select: { name: true } } } },
+      // `samplingTimeDeclared`: a deposit without a declared sampling time
+      // prints « Non déclarée », never its entry instant (R6).
+      serie: { select: { serialNumber: true, site: { select: { name: true } }, samplingTimeDeclared: true } },
       nature: { select: { label: true } },
       report: { select: { id: true, amendmentPending: true } },
       results: { select: { conform: true, interpretation: true, informalInterpretation: true } },
@@ -781,6 +783,7 @@ async function sendReportNow(sampleId: string, actorId: string | null) {
     serialNumber: sample.serie.serialNumber,
     controlCode: sample.controlCode,
     sampledAt: sample.sampledAt,
+    samplingTimeDeclared: sample.serie.samplingTimeDeclared,
     receivedAt: sample.receivedAt,
     analyse: sample.nature.label,
     produit: sampleDesignation(sample),
