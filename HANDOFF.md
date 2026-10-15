@@ -783,6 +783,11 @@ Found by the end-to-end recette of 06/10 (`RECETTE-06-10-PARCOURS.md`).
 - **Technician rights pinned, not changed.** The rule was already enforced on the server; `technician-guards.test.ts` now fails if a guard admits TECHNICIEN beyond results, submit, take and temperatures; the technician no longer reads the programme referential (`GET …/programme` carried every famille, criteria and catalogue prices; no bench screen called it).
 - **Public repository.** The screenshots and the full analysis (real client, site, staff and employee names; familles named after clients) stay outside the repo (`backups/` is git-ignored). A person's name was replaced by « Personne Test » in a test fixture and real names were removed from the docs; the example product designation that carried a client's name now reads « Salade maison » (`ClientProduct` comment of `prisma/schema.prisma`, `document-html.test.ts`, `intake-input.test.ts`) and a lab staff name in a fixture became « Préleveur Test »; git history keeps what was already published — rewriting it is the owner's decision.
 
+### 2026-10-15 — extrait d'un rapport réel : préleveurs, dénomination, champs vides (`RETOUR-LABO-14-10.md` §8)
+- **What the lab sent.** A capture of the « Prélèvement et réception » block of a report issued by the old software, « pour info ce qui s'écrit sur le rapport concernant les préleveurs et dénomination ». The capture holds a real staff name and client data: it is never committed (`RETOUR-LABO-14-10.md` §7).
+- **What it settles.** The sampler prints as « Technicien de QUALILAB 'X.NOM' » (Q22, first part); empty fields print « N/A » (Q104 (d) for the empty case); one « Date d'analyse » (Q104 (f)); the date-time format « JJ/MM/AAAA HH:MM »; the reception time is the real arrival (supports Q118); no ambient temperature on the report (supports Q112).
+- **Decision (owner, 15/10).** « Lot 1b — rapport aligné » is specified (`RETOUR-LABO-14-10.md` §8: `User.documentName`, `reportSampler`, `reportDateTime`, `analysisPeriodText`, « N/A » and the template's labels) and **built together with lot 2**, after the lab's answers — nothing is built now.
+
 ## 8c. A lesson written down (2026-08-25)
 
 Importing anything that touches Prisma from a **client** component drags the

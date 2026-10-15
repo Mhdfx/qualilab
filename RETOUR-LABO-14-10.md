@@ -633,3 +633,47 @@ Le dépôt GitHub est public.
 - L'historique git garde les noms déjà publiés : le réécrire est une
   décision du propriétaire.
 - Vérifier chaque diff avant le commit (TESTPLAN V15-H).
+
+## 8. Extrait d'un rapport réel (15/10) — préleveurs, dénomination, champs vides
+
+Le 15/10, le laboratoire a envoyé « pour info ce qui s'écrit sur le rapport
+concernant les préleveurs et dénomination » : une capture du bloc
+« Prélèvement et réception » d'un rapport émis par l'ancien logiciel (produit,
+site et numéros masqués ou non repris ici ; la capture n'est jamais ajoutée au
+dépôt, §7). Comparaison ligne à ligne avec le rapport PG06/EN03 M du logiciel :
+
+| Sur leur rapport | Notre rapport aujourd'hui | À faire |
+|---|---|---|
+| « Préleveur : Technicien de QUALILAB 'X.NOM' » — la fonction, le laboratoire, puis l'initiale du prénom et le nom entre apostrophes (même forme que dans les listes de personnes de l'ancien logiciel) | Le nom complet du préleveur (`reportSampler`, `src/lib/report-template.ts`) | Une « dénomination sur les documents » par compte, préremplie depuis le nom (« Technicien de QUALILAB 'K.BENALI' » pour « Karim Benali ») et modifiable dans /admin/utilisateurs ; `reportSampler` l'imprime pour un prélèvement Qualilab. Elle protège aussi le nom complet (initiale + nom). |
+| « Moyen de prélèvement : N/A » | « — », rempli seulement pour l'air | « N/A » quand rien n'est renseigné (la légende du modèle dit déjà « N/A Non applicable »). |
+| « Lieu de prélèvement : N/A », « Date Prod : N/A », « Date Exp : N/A » | « — » quand vide ; libellés « Lieu du prélèvement », « Dates Prod », « Dates Exp » | « N/A » pour tout champ vide du bloc ; leurs libellés exacts « Lieu de prélèvement », « Date Prod », « Date Exp ». |
+| « 25/08/2026 10:40 » | « 25/08/2026 à 10h40 » (`reportDateTime`) | Leur format « JJ/MM/AAAA HH:MM ». |
+| « Date d'analyse : 26/08/2026 » — une seule date | « du … au … » quand les analyses durent plusieurs jours (`analysisPeriodText`) | Une seule date : le début des analyses (confirmation du programme, sinon la réception). |
+| « Date et heure de réception : 25/08/2026 16:05 » — l'arrivée réelle, environ 5 h après le prélèvement | L'heure d'enregistrement de l'écran de réception (`Sample.receivedAt`) | Imprimer l'heure d'arrivée saisie (`Serie.arrivedAt`) — confirme la proposition de Q118. |
+| « Température du produit : Au prélèvement / à la réception » et « Température glacière à la réception » ; pas de température ambiante | Identique | Rien. Confirme que la T° ambiante reste hors du rapport (Q112). |
+| Lot dans « Données fournies par le client (IC) », Lieu d'exécution, Référence prélèvement | Identique | Rien. |
+
+**Ce que cela règle** : Q22 (1re partie, la fonction imprimée : « Technicien
+de QUALILAB » et la dénomination de la personne) ; Q104 (d) pour le cas vide
+(« N/A ») — la liste des moyens par type reste à demander ; Q104 (f) (une
+seule date d'analyse) ; un appui à la proposition de Q118 (l'heure d'arrivée
+saisie sur le rapport) et à celle de Q112 (T° ambiante hors du rapport).
+
+**Lot 1b — « rapport aligné »** : ne demande aucune réponse ; **décision du
+15/10 : construit avec le lot 2**, après les réponses du laboratoire.
+- Migration additive : `User.documentName VARCHAR(191) NULL` (la
+  dénomination), remplie à la volée par défaut, jamais réécrite.
+- `src/lib/report-template.ts` : `reportSampler` (dénomination),
+  `reportDateTime` (« JJ/MM/AAAA HH:MM »), `analysisPeriodText` (une date) ;
+  `src/lib/report-html.ts` : « N/A » pour les vides du bloc, libellés
+  « Lieu de prélèvement », « Date Prod », « Date Exp » ; la réception
+  imprime `Serie.arrivedAt` (avec R5 / Q118).
+- /admin/utilisateurs : le champ « Dénomination sur les documents » ; aide
+  pure et testée qui propose « Technicien de QUALILAB 'I.NOM' » à partir du
+  nom (prénoms composés, particules, accents).
+- Les rapports déjà émis gardent leur version figée (`ReportVersion`) ; un
+  duplicata d'un ancien rapport ne change pas.
+- Tests : `report-template.test.ts`, `report-html.test.ts` (dont la tenue sur
+  deux pages, `report-onepage.test.ts`), l'aide de dénomination. TESTPLAN :
+  un rapport de test comparé à la capture.
+- Effort : environ une demi-journée.
