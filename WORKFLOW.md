@@ -18,7 +18,7 @@
 > production dump `qualilab_avant-sans-affectation.sql.gz` — `DEPLOY.md`,
 > « Point de retour — avant la prise en charge libre ».
 >
-> The laboratory's remarks of 14/10 (hands and surface states, sampling temperatures, sites and clients at the counter, « Arrivé le », 24 h input, criteria by famille) and the current plan: **`RETOUR-LABO-14-10.md`** (lot 1 built, lot 2 waiting on NEEDEDINFO Q109–Q130).
+> The laboratory's remarks of 14/10 (hands and surface states, sampling temperatures, sites and clients at the counter, « Arrivé le », 24 h input, criteria by famille): **`RETOUR-LABO-14-10.md`** (lot 1 built). Their answers of 16/10 and the current plan: **`RETOUR-LABO-16-10.md`** (nothing built yet).
 
 ---
 
@@ -331,7 +331,7 @@ the complementary control C2, computed with C1 and C7 by
 | RECEPTIONNISTE | Réception de la série | `/reception/series/[id]` (`/reception/[sampleId]` stays for the transition) | `POST /api/series/[id]/reception` (one transaction) |
 | RECEPTIONNISTE | Étiquettes | button on the received série | `GET /api/series/[id]/labels` (PDF, A4 3 × 8, Code128 via `bwip-js`) |
 | RECEPTIONNISTE, PRELEVEUR (own visit) | Protocole / bon PDF | links on the visit, the série reception and the deposit success | `GET /api/series/[id]/document` (PDF, kind-aware, cartouche + page numbers) |
-| RECEPTIONNISTE, VALIDATEUR, ADMIN | Corriger la fiche | `SampleVerbs` dialog on the série reception page and the validation view | `PATCH /api/samples/[id]/intake` (reason, before/after audited; new analyses → results emptied, back to EN_ANALYSE) |
+| RECEPTIONNISTE, VALIDATEUR, DIRECTION, ADMIN | Corriger la fiche | `SampleVerbs` dialog on the série reception page and the validation view | `PATCH /api/samples/[id]/intake` (reason, before/after audited; analyses, famille or unit count changed → every result emptied; a RESULTATS_SAISIS sample goes back to EN_ANALYSE) |
 | RECEPTIONNISTE (before analysis), ADMIN | Annuler | same dialog, coded motif | `POST /api/samples/[id]/cancel` (`ANNULE`, terminal) |
 | ADMIN | Réactiver | same dialog, written reason | `POST /api/samples/[id]/reactivate` (back to RECU or PRELEVE) |
 | TECHNICIEN, VALIDATEUR | lists grouped by série | `/technicien`, `/validation` | existing routes, `groupBy serie` |
@@ -349,7 +349,7 @@ The old routes (`POST /api/samples`, `POST /api/samples/[id]/reception`,
 
 | Verb | Who | From → to | Reason | Effect |
 |---|---|---|---|---|
-| Corriger la fiche | RECEPTIONNISTE, VALIDATEUR, ADMIN | any status before VALIDE | coded + text | edits identification fields with before/after audit; if the parameter list changes the sample returns to EN_ANALYSE with empty lines |
+| Corriger la fiche | RECEPTIONNISTE, VALIDATEUR, DIRECTION, ADMIN (`FICHE_CORRECTION_ROLES`; analyses after the programme: PROGRAMMATEUR + ADMIN once `RETOUR-LABO-16-10.md` F8 is built) | any status before VALIDE | coded + text | edits identification fields with before/after audit; if the analyses, the famille or the unit count change, every result is emptied and a RESULTATS_SAISIS sample returns to EN_ANALYSE |
 | Renvoyer au technicien | VALIDATEUR, ADMIN | RESULTATS_SAISIS → EN_ANALYSE | text (exists) | unchanged |
 | Annuler | RECEPTIONNISTE (before analysis), ADMIN | PRELEVE / RECU / EN_ANALYSE / RESULTATS_SAISIS → ANNULE | coded motif | terminal; out of queues, reports, invoicing; ADMIN may reactivate |
 | Amender | ADMIN, VALIDATEUR | VALIDE / RAPPORT_ENVOYE → EN_ANALYSE | text | chantier 4 (new report version « annule et remplace ») |

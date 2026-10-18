@@ -11,6 +11,13 @@
 > et le technicien qui prend l'échantillon en charge est le seul à le saisir
 > (§10). Point de retour : tag `v1.2-avant-sans-affectation` (`DEPLOY.md`).
 >
+> **16/10/2026 — réponses du laboratoire** (`RETOUR-LABO-16-10.md`, rien
+> n'est encore construit) : pas de catégories (Q121) ; le responsable des
+> paramètres gère familles et critères sous /programmation (F4) ; changer de
+> famille remplacera la liste (F6, contraire au §4 actuel) ; après le
+> programme, les analyses se changeront par lui et l'administrateur (F8) ;
+> « Reprendre » l'échantillon d'un collègue est dans la relance (C3, §10).
+>
 > **14/10/2026 — remarques du laboratoire** (`RETOUR-LABO-14-10.md`).
 > Vocabulaire : le laboratoire appelle « famille » ce que ce document et
 > l'écran appellent « type de produit » (`ProductType`), et « catégorie »
@@ -223,9 +230,9 @@ ou au-delà : fiche en lecture seule avec le lien « Corriger la fiche ».
   saisir de résultats. ») ; `PUT …/results` relit le titulaire sous le
   verrou de la ligne ; `POST …/results/submit` exige un titulaire et tous
   les paramètres TERMINE quel qu'en soit le technicien (lignes héritées :
-  « il reste N paramètres à d'autres techniciens »). `/api/samples`, la
-  recherche et l'export d'un technicien : les échantillons qu'il tient
-  (`benchWhereFor`). Feuille de paillasse (`/api/bench-sheet`) d'un
+  « il reste N paramètres à d'autres techniciens »). `/api/samples` et la
+  recherche d'un technicien : les échantillons qu'il tient
+  (`benchWhereFor`) ; pas d'export pour le technicien. Feuille de paillasse (`/api/bench-sheet`) d'un
   technicien : ce qu'il tient (§10). La dilution programmée
   (`dilutionFactor`) remplace `calcFactor` du paramètre quand elle est
   présente (bench, results, report).
@@ -392,9 +399,10 @@ libre »). Recette : TESTPLAN V14.
   à moi. Les lignes héritées gardent leur règle (`canEditParameter` :
   chacun son paramètre, 403 « Le paramètre … est réservé à … : vous ne
   pouvez pas le saisir. »).
-- `/api/samples`, la recherche et l'export d'un technicien restent limités
-  aux échantillons qu'il tient (`benchWhereFor`) — à confirmer avec le
-  laboratoire (NEEDEDINFO Q108).
+- `/api/samples` et la recherche d'un technicien restent limités aux
+  échantillons qu'il tient (`benchWhereFor`) ; le technicien n'a **pas
+  d'export** (`canExport`, `/api/samples/export`) — à confirmer avec le
+  laboratoire (NEEDEDINFO Q108, relance 2.14 du 18/10).
 - **La feuille de paillasse d'un technicien = ce qu'il tient** : sans date,
   tout ce qu'il tient maintenant, dans l'ordre où il l'a pris ; avec
   `?date=`, ceux reçus ce jour-là. Les autres rôles impriment la paillasse

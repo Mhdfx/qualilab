@@ -1,6 +1,12 @@
 # Remarques du laboratoire du 14/10 — analyse, lot 1 et lot 2
 
-> **Le plan en cours.** Message du laboratoire reçu le 14/10/2026 (16 lignes,
+> **16/10 — réponses reçues (pages 1 à 6 du questionnaire) : le plan en cours
+> est maintenant `RETOUR-LABO-16-10.md`**, qui l'emporte sur le §4 ci-dessous
+> pour tout ce qu'il modifie (mains, températures, « Arrivé le », clients,
+> catégories abandonnées, lot 1b corrigé) ; le §4 reste la conception de
+> référence pour le reste. Ce document garde l'analyse du 14/10.
+>
+> **Le plan du 14/10.** Message du laboratoire reçu le 14/10/2026 (16 lignes,
 > trois rôles) et 14 captures d'écran de l'ancien logiciel. Chaque point a été
 > vérifié dans le code de la production (`master` = `cd0054f`), en lecture
 > seule, par quatre lectures (préleveur, réception, responsable des
@@ -136,7 +142,7 @@ RP4, Q120).
 | Mot | Chez le laboratoire | Dans le logiciel |
 |---|---|---|
 | **famille** (de produits) | ensemble de produits qui partagent les mêmes critères (ex. « SALADES AVEC SOURCE PROTÉIQUE ») ; fenêtre « Choix famille produits » de l'ancien logiciel, champ « Nature échantillon » ; réponse Q34 du 30/09 : « Ce sont des familles pour faciliter les paramétrages à l'interne » | « Type de produit » à l'écran (« Types de produits & critères », « Nature, type de produit et critères ») ; modèle `ProductType` (catalogue, ou propre à un client par `clientId`) portant ses `Criterion` (germe × version de norme, n, c, m, M). Jamais imprimé pour le client |
-| **catégorie** | regroupement de familles = « Group famille » de l'ancien logiciel, 8 groupes : Lait et produits à base de lait · Viandes et produits dérivés · Produits de pêche et produits dérivés · Fruits légumes et dérivés · Produit traiteur et restaurant · Conserve semi conserve · Produit de pâtisserie · Autres (céréales, épices, chocolat…) | **n'existe pas** : `ProductType` n'a aucune colonne de groupe ; l'import de l'ancien logiciel lit le groupe (`src/lib/legacy-catalogue.ts`) sans l'enregistrer → RP2a |
+| **catégorie** | *(abandonnée le 16/10 : « Pas important d'avoir groupe famille », Q121)* regroupement de familles = « Group famille » de l'ancien logiciel, 8 groupes : Lait et produits à base de lait · Viandes et produits dérivés · Produits de pêche et produits dérivés · Fruits légumes et dérivés · Produit traiteur et restaurant · Conserve semi conserve · Produit de pâtisserie · Autres (céréales, épices, chocolat…) | **n'existe pas** : `ProductType` n'a aucune colonne de groupe ; l'import de l'ancien logiciel lit le groupe (`src/lib/legacy-catalogue.ts`) sans l'enregistrer → RP2a |
 | **famille** (au sens du logiciel) | — | Microbiologie / Physico-chimie : enum `Family` (MICRO, CHIMIE, AUTRE) sur `AnalysisParameter.family`, `ProductType.family` (MICRO par défaut), `AnalysisNature.family` ; libellés `ANALYSIS_FAMILY_LABELS` / `FAMILY_SHORT_LABELS` (`src/lib/labels.ts`) ; « …M » / « …P » sur une ligne à deux familles |
 | **Type d'analyse** (ancien logiciel) | Microbiologie des aliments, des surfaces, de l'air, Analyse sensorielle… | la **nature d'analyse**, `AnalysisNature` : les 16 natures de l'ancien logiciel (`legacyId`) plus `PC_AIR` et `MICRO_AUTRE` (08/10) ; déduite du type de prélèvement et des cases Micro / PC (`src/lib/nature-family.ts`), nature fine choisie sur la fiche de programme |
 | **Type de prélèvement** | Produit alimentaire, Surface, Mains du personnel, Eau, Air, Autre | `lineKind` (`LINE_KIND_LABELS`) |
@@ -295,10 +301,18 @@ obligatoires, ni rien du catalogue (RP1, RP2, RP4–RP7).
 
 ## 4. Lot 2 — en attente du laboratoire
 
+> **16/10** : les réponses sont arrivées. Ce qui change est au §2 de
+> `RETOUR-LABO-16-10.md` (une ligne par sous-section ci-dessous) ; le plan
+> complet, ordonné en vagues, est au §3–§4 de `RETOUR-LABO-16-10.md`.
+
 Rien de ce qui suit n'est construit. Chaque thème : le défaut recommandé (ce
 que l'on construira si le laboratoire l'accepte), la conception, l'ordre.
 
 ### 4.1 Mains : un état obligatoire à trois valeurs (P1, P2, P5 ; Q109–Q111)
+
+> **16/10 — remplacé** : une seule valeur ajoutée (`ASEPTISEES`) ; `LAVEES` se
+> lit « Lavées », `NON_LAVEES` « En cours de travail » ; la case « Fonction »
+> retirée (`RETOUR-LABO-16-10.md` A1–A3).
 
 **Défaut recommandé** : sur « Mains du personnel », un seul « État des
 mains »\* — Aseptique / En cours de travail / Nettoyé ; rien de nouveau sur
@@ -340,6 +354,9 @@ Effort : M (≈ 10 h, P1 et P2 compris). Migration : oui (une).
 
 ### 4.2 Températures obligatoires (P3, P4, P8, P9 ; Q112, Q113)
 
+> **16/10** : « Température au prélèvement » ; la T° ambiante seule
+> obligatoire sur la visite, air compris (`RETOUR-LABO-16-10.md` A4–A6).
+
 **Défaut recommandé** : T° relevée et T° ambiante obligatoires **sur la
 visite seulement** ; **air = T° ambiante seule** (le laboratoire a lui-même
 retiré la première température de l'air le 08/10) ; **comptoir facultatif**
@@ -366,12 +383,19 @@ Effort : P4 + P8 M (≈ 7 h), P3 S, P9 S. Migration : non.
 
 ### 4.3 Surface : la case texte (P6 ; Q114)
 
+> **16/10** : un choix « Autre » dont le texte remplace l'aire
+> (`RETOUR-LABO-16-10.md` A7).
+
 **Défaut construit** (lot 1) : puces 100 / 1000 cm² + nombre. **Rien de plus
 avant Q114.** Si la case sert à « une autre aire », P7 la couvre déjà ; si
 elle sert à « décrire la zone », colonne additive `Sample.surfaceAreaNote`
 VARCHAR(191) et ses impressions (§2.1). Effort : S, M avec la colonne.
 
 ### 4.4 « Arrivé le » au dépôt (R5 ; Q118, avec Q68 et Q71)
+
+> **16/10 — défaut remplacé** : « Prélevé le » et « Arrivé le » sont
+> **obligatoires** ; l'exception « heure inconnue » est dans la relance
+> (`RETOUR-LABO-16-10.md` B1). La règle « jamais un renommage » tient.
 
 **Jamais un renommage.** Le champ « Prélevé le » du dépôt écrit l'heure de
 prélèvement (`Serie.startedAt`, `Sample.sampledAt`) : renommé, la
@@ -408,6 +432,11 @@ l'arrivée saisie.
 Effort : M (≈ 8 h). Migration : non.
 
 ### 4.5 Créer un client au comptoir et sur le terrain (R2, R3, R4 ; Q116, Q117)
+
+> **16/10** : « Nom du client (société ou particulier) » seul obligatoire ;
+> lieux de prélèvement à la création ; `email` et `emails` ignorés pour ces
+> rôles ; `Client.toComplete` seul ; fusion ouverte au commercial
+> (`RETOUR-LABO-16-10.md` E1–E4).
 
 Q87 est répondue sur le principe (oui, au comptoir et dans le rôle
 préleveur) ; les détails sont Q116 et Q117.
@@ -458,6 +487,8 @@ seulement.
 
 ### 4.6 Dates seules en JJ/MM/AAAA (R8 ; Q119)
 
+> **16/10** : le contournement est accepté — rien à construire.
+
 **Défaut** : les dates seules suivent la langue du navigateur ;
 contournement immédiat : régler la langue du navigateur et le format
 régional en français sur chaque poste et téléphone du laboratoire. Si Q119
@@ -465,6 +496,10 @@ le demande : `LabDateInput` « JJ/MM/AAAA » tiré de `wall-input.ts`, DLC
 d'abord, puis les filtres (champ caché ISO). Effort : M. Migration : non.
 
 ### 4.7 Catégories et familles (RP1, RP2a–RP2d, RP4, RP5, RP6 ; Q120–Q126)
+
+> **16/10 — catégories abandonnées** (Q121) : `ProductType.natureId` seul,
+> RP2c abandonné, RP1 fondu dans RP2d, reprise étendue à Q43 et Q56
+> (`RETOUR-LABO-16-10.md` F1–F7, ≈ 40 h).
 
 **Défaut recommandé** : catégorie = « Group famille » de l'ancien logiciel
 (8 groupes) ; famille = famille de produits (`ProductType`) ; une catégorie
@@ -501,6 +536,9 @@ RP6 S, RP4 S). Migration : oui (RP2a, une).
 
 ### 4.8 Droits et natures (RP3b, RP7 ; Q127–Q129)
 
+> **16/10** : RP3b variante (a) et RP7 confirmés ; RP3 / C10 fermés (deux
+> comptes) (`RETOUR-LABO-16-10.md` F8, F9).
+
 - **RP3b** — défaut recommandé : après la confirmation du programme, les
   analyses (paramètres, famille, n) ne se changent que par le responsable
   des paramètres et l'administrateur ; l'identification (lot, désignation,
@@ -516,11 +554,17 @@ RP6 S, RP4 S). Migration : oui (RP2a, une).
 
 ### 4.9 Ancien logiciel « si demandé » (Q130) et questions déjà ouvertes
 
+> **16/10** : OLD9, OLD13, OLD21, OLD28, OLD33, OLD36 abandonnés ; OLD12,
+> OLD37, OLD44, OLD47, OLD50 à confirmer (`RETOUR-LABO-16-10.md` G1–G5).
+
 Rien n'est construit pour OLD9, OLD12, OLD13, OLD21, OLD28, OLD33, OLD36,
 OLD37, OLD44, OLD47, OLD50 avant la réponse à Q130 (≈ 27 h si tout était
 demandé). OLD18, OLD22 et OLD30 attendent Q104 (d), (f), (h) et Q7 (≈ 14 h).
 
 ### 4.10 Ordre, dépendances, migrations, total
+
+> **16/10 — remplacé** par `RETOUR-LABO-16-10.md` §4 (quatre vagues, ≈ 150 h
+> lot 1b compris).
 
 1. **Dès les réponses sur le travail quotidien** : R5 « Arrivé le » (Q118),
    les mains (Q109–Q111), les températures et la correction (Q112, Q113 —
@@ -568,6 +612,8 @@ Pour mémoire, le lot 1 : ≈ 35 h.
 | **Hors périmètre** (4) | OLD9 « Échantillon témoin » (60 lignes sur 200 072 dans l'ancienne base, absent des formulaires papier et du périmètre signé ; posée quand même en Q130 a) ; OLD14 « Type de teste » (0 ligne) ; OLD39 (saisie un par un : remplacée exprès par le circuit série, validé par le laboratoire) ; OLD45 LQ / LD (0 ligne) | ni l'usage ni le périmètre ne le justifient |
 
 ## 6. Questions au laboratoire (Q109–Q130)
+
+> **16/10** : réponses lues et classées dans `RETOUR-LABO-16-10.md` §1.1.
 
 Une seule suite, reprise dans `NEEDEDINFO.md` (§1 et lot du 14/10 au §2).
 « Défaut construit » = déjà dans le logiciel ; « défaut proposé » = ce que
@@ -658,6 +704,16 @@ de QUALILAB » et la dénomination de la personne) ; Q104 (d) pour le cas vide
 (« N/A ») — la liste des moyens par type reste à demander ; Q104 (f) (une
 seule date d'analyse) ; un appui à la proposition de Q118 (l'heure d'arrivée
 saisie sur le rapport) et à celle de Q112 (T° ambiante hors du rapport).
+
+> **16/10 — corrections** (`RETOUR-LABO-16-10.md` D5, D6, §5 D-03) : « un
+> duplicata d'un ancien rapport ne change pas » est **faux** — la version
+> courante et son duplicata se rendent depuis les données vivantes avec le
+> code du jour ; le lot 1b ajoute donc un marqueur de mise en page et un rendu
+> d'abord figé. La date d'analyse unique = la prise en charge à la paillasse
+> (`assignedAt`), sinon la confirmation du programme, sinon la réception.
+> Effort ≈ 10 h, pas une demi-journée. La dénomination s'imprime aussi sur le
+> protocole (réponse Q22). « K.BENALI » ci-dessus est le compte de
+> démonstration `pre1`, pas une personne réelle.
 
 **Lot 1b — « rapport aligné »** : ne demande aucune réponse ; **décision du
 15/10 : construit avec le lot 2**, après les réponses du laboratoire.

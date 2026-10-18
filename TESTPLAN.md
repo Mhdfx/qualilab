@@ -1026,6 +1026,55 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 - The germs of a chosen type are listed « non programmé » when a profile chip replaces the ticked analyses afterwards: visible and deliberate, but the lab may prefer the type's germs to stay ticked (to confirm).
 - Q41 (« les nombres », numbering) and Q42 (one sample split between technicians) in NEEDEDINFO.
 
+## Checkpoint V16 — Lot 2 et lot 1b (plan du 16/10, `RETOUR-LABO-16-10.md` §3–§4) — à venir
+
+Nothing is built yet. One section per wave; run each on the local copy, then on production. A restore point (tag + labelled dump outside the rotation) before each deploy that carries a migration.
+
+Rules for the production run — production holds real laboratory data:
+- Work **only** on the test client « TEST UI 2026-10-06 Traiteur » (and invented « TEST UI V16 … » clients, sites or familles); create new test séries on it, cancel them at the end. Never create, rename, merge or attach a real client or site; never type on a real sample; **never edit a real famille or criterion** (the catalogue is shared and bench plans read live criteria).
+- On production every role signs in by clicking its demo account, nothing typed (V14 / V15 rule). Once the demo accounts are disabled (precondition of V16-3), the production lines of V16-3 and V16-4 are run by the owner with their own accounts; an agent never types a password on production.
+- Refresh every page opened before the deploy.
+
+### V16-1 — Vague 1 : corrections sûres (no migration)
+- [ ] A2: the « Fonction » input is gone at the visit, the deposit and « Corriger la fiche »; an old sample with a function still prints it on its protocole.
+- [ ] A4: « Température au prélèvement » on food, water, other, surface and hands lines (phone width), absent on air; reception card « T° au prélèvement … · T° ambiante … »; protocole and report unchanged.
+- [ ] B5: the bon of a non-conforming deposit analysed with the client's agreement no longer prints « analysé avec l'accord de … »; « en attente de l'avis du client » still prints.
+- [ ] C1: the bench sheet (tech1, then admin) carries no client name; control number, nature, designation, série and lot remain.
+- [ ] C4: « 3(-2) » on a single-value line → stored and printed « 3.10² »; the « Facteur ×N » chip shows on single-value lines.
+- [ ] C6: a « TEST UI » sample with the « Abats crus de volaille… » family shows « /1 g » on the entry screen, the sheet and the report.
+- [ ] C7: a submit with a required manual conformity left empty → 400.
+- [ ] F2: a family with an imported limitless criterion saves in the criteria grid (local copy only; on production: open the grid of such a family, do not save).
+- [ ] D-04: a site-bound address shows its site in the client form and never receives another site's reports. D-05: a QUALILAB deposit without a sampler from a non-PRELEVEUR account → 400.
+
+### V16-2 — Vague 2 : terrain, comptoir, lot 1b (one additive migration)
+- [ ] A1: a hands line requires one of « Aseptisées ou désinfectées » / « En cours de travail » / « Lavées » (visit, deposit, correction); an old « Mains non lavées » sample reprints « mains en cours de travail » on its protocole and stays correctable; no row rewritten (`_prisma_migrations` + a count before / after).
+- [ ] A5 / A6: « Continuer » refused on a visit line without T° ambiante (air included), « 0 » accepted; a deposit without temperatures accepted; « Corriger la fiche » offers both temperatures, a set value cannot be emptied.
+- [ ] A7: « Autre » on a surface line saves a text (« couteau entier ») with no area; protocole, reception, programme and bench show the text.
+- [ ] A8: « Boîte exposée » with 45 min prints « Boîte exposée 45 min » (protocole, report « Moyen de prélèvement »); an old air sample prints 30 min.
+- [ ] B1: deposit with « Prélevé le » 07:00 and « Arrivé le » 08:30 saved at 09:40 → C1 1 h 30, bon « Heure 08h30 », report « Date et heure de réception » 08:30; « Prélevé le » empty → refused (or the « heure inconnue » box, per the re-ask → « Non déclarée » + observation); a visit with an emptied « Prélevé le » refused.
+- [ ] B2: a 5-sample visit → « Tous exploitables » → one switched to « Non exploitable » → received; the journal shows 4 true and 1 false.
+- [ ] B3: no « emballage » question at reception or at the counter; the motif « Emballage ou contenant non conforme » still selectable.
+- [ ] B4: « Non reçu » on a TEST UI visit sample → one EmailLog row type NON_RECU (SIMULE while sending is off); the card says « Client prévenu (envoi simulé) ».
+- [ ] D5 / D6: a TEST UI report compared line by line with the lab's excerpt of 15/10 (« Technicien de QUALILAB 'I.NOM' », « N/A », « Lieu de prélèvement », « Date Prod », « Date Exp », « JJ/MM/AAAA HH:MM », one « Date d'analyse », reception = arrival); the protocole header prints the denomination without « — Fonction : »; **a report issued before the deploy re-downloads unchanged** (frozen-first); still two pages.
+
+### V16-3 — Vague 3 : droits, envoi, clients (`Client.toComplete`)
+- [ ] Preconditions: named DIRECTION accounts exist and the demo accounts are disabled (`scripts/disable-demo-accounts.sh`, not only the panel hidden) (D1); the owner's `Invoice.clientSnapshot` decision is recorded (E4).
+- [ ] D1: valid1 reopens a TEST UI report with a reason, two different people sign again, « -A1 annule et remplace » issued; direction1 cancels an EN_ANALYSE TEST UI sample; recep1 gets 409 on a PROGRAMME sample.
+- [ ] D2: « Valider » leaves the sample VALIDE (portal « En analyse », no RAPPORT EmailLog); « Envoyer au client » → RAPPORT_ENVOYE; « Valider et envoyer » path; an amended -A1 not sent reads « Envoyer », not « Renvoyer »; the contamination alert still leaves at the technical validation.
+- [ ] E1–E3: « + Nouveau client » at the deposit (recep1) and the visit (pre1, phone width) with only a name starting « TEST UI V16 … », then with address, site and two places (every client created is archived at the end); the places are offered on the next line; a typed e-mail is not stored; a near-duplicate offers « Utiliser ce client »; « À compléter » shown to commercial1 and cleared by « Enregistrer »; TECHNICIEN → 403.
+- [ ] E4: commercial1 merges two « TEST UI V16 … » fiches created for the test — a merge cannot be undone, never a real fiche (preview, commit, journal names the gestionnaire); RECEPTIONNISTE / PRELEVEUR / TECHNICIEN → 403 on merge.
+- [ ] C5 + F8: param1 withdraws one analysis of an EN_ANALYSE TEST UI sample: the other results stay, the status stays; recep1 changing analyses after the programme → 403, changing the lot → 200; « NE » typed as a value refused.
+
+### V16-4 — Vague 4 : catalogue (`ProductType.natureId`)
+- [ ] F3 on the local copy first: the measurement (families by type d'analyse, criteria re-bound, families still empty) read before the run; a second run plans nothing; production by the operator after a tag and a dump.
+- [ ] F4: param1 opens « Familles & critères », filters « Sans critère », edits a criterion of a « TEST UI V16 … » famille created for the test (production: never a real famille; archive it afterwards); tech1 → 403 on every catalogue route; parameters, norms, profiles, regulations stay ADMIN.
+- [ ] F5 / F6 (on a TEST UI sample; on production only TEST UI familles are edited): on a hands sample the picker is preset to its type d'analyse and lists the personnel-hygiene families first; choosing it prints UFC/mains on the sheet and the report; changing family removes the old family's germs and keeps the hand-ticked ones; « Cocher tout » / « Décocher tout » / counter.
+- [ ] F9: « Analyse sensorielle » chosen on a food sample's programme sheet; code and control number unchanged.
+- [ ] F7 last: « Famille de produits » and « Domaine » on every screen; nothing printed changes.
+
+### V16-2B — après la relance du 18/10
+- [ ] One line per accepted re-ask point (A3, A9, A10, B2 (a)(b), B6, C2, C3, D3, D4, D7–D9, E4 rattachement, E5, G1–G5), written when the answers arrive.
+
 ## Checkpoint V15 — Remarques du 14/10, lot 1 (built 14/10, **not deployed** — `RETOUR-LABO-14-10.md` §3)
 
 Spec `RETOUR-LABO-14-10.md` §3: what the laboratory's message of 14/10 asked that needs no answer — P7 (100 / 1000 cm²), R7 (24 h input), R1 + R10 (sites at the counter, search by site and by archived fiche), OLD29 (norm and unit under an analysis), OLD40 (nature on the bench), R6 + C5 (« Non déclarée »), RP3 + RP3c (technician rights), the public-repo cleanup. Built on branch `retour-labo-14-10` from `cd0054f`, **no migration**. Restore point: tag `v1.3-avant-retour-14-10` = `cd0054f`. Run it first on the local copy (Docker `qlab-local-db`), then on production after the deploy.
@@ -1091,6 +1140,7 @@ Rules for the production run — production holds real laboratory data:
 - [x] The diff of the batch (code, tests, docs, commit message) carries no real client, site, staff or employee name; `src/lib/document-html.test.ts` reads « Personne Test »; no screenshot of the old software and no `backups/` file is staged (`git status`).
 
 ### V15 lot 2 — à venir (après les réponses Q109–Q130, `RETOUR-LABO-14-10.md` §4)
+> **16/10 — remplacé par le Checkpoint V16** (plan `RETOUR-LABO-16-10.md`) : les lignes ci-dessous gardent le plan du 14/10 pour l'histoire ; les catégories, les trois nouveaux états des mains et la T° relevée obligatoire n'y sont plus.
 - [ ] Lot 1b, rapport aligné (`RETOUR-LABO-14-10.md` §8), built with lot 2: a test report compared with the lab's real excerpt of 15/10 — « Préleveur : Technicien de QUALILAB 'I.NOM' » from the account's « Dénomination sur les documents » (prefilled, editable in /admin/utilisateurs), « N/A » for an empty « Moyen de prélèvement », « Lieu de prélèvement », « Date Prod », « Date Exp », date-times « JJ/MM/AAAA HH:MM », one « Date d'analyse », « Date et heure de réception » = the arrival typed; still two pages; an older report's duplicata unchanged.
 - [ ] Mains (Q109–Q111): one required « État des mains » Aseptique / En cours de travail / Nettoyé on a Mains line (visit, deposit), « Mains non lavées » no longer offered; an old « Mains lavées » sample reprints unchanged and stays correctable; the state printed where Q111 says; migration additive, no row rewritten.
 - [ ] Températures (Q112, Q113): « Continuer » refused on a visit sample without T° relevée or T° ambiante (air: T° ambiante only), « 0 » accepted; a deposit without them accepted; « Corriger la fiche » offers both temperatures; an old sample without temperature stays correctable; the agreed wording on screen.
