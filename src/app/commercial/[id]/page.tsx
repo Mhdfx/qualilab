@@ -47,6 +47,7 @@ import {
 import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
 import { INVOICE_NOTICE_LABELS, sampleBillingNotice } from "@/lib/invoice-notices";
 import { amendedNumber } from "@/lib/report-amendment";
+import { resolveRecipients } from "@/lib/email-recipients";
 import { canResendReport } from "@/lib/report-actions";
 import { ResendReportButton } from "@/components/validation/ResendReportButton";
 import { searchSamples } from "@/lib/sample-search-server";
@@ -98,7 +99,8 @@ export default async function ClientDetailPage({
     prisma.client.findUnique({
       where: { id },
       include: {
-        emails: { orderBy: { email: "asc" } },
+        // D-04: a site's address receives only that site's mail — said here too.
+        emails: { orderBy: { email: "asc" }, include: { site: { select: { name: true } } } },
         sites: {
           orderBy: [{ active: "desc" }, { name: "asc" }],
           include: { billingClient: { select: { id: true, name: true } } },
@@ -194,6 +196,9 @@ export default async function ClientDetailPage({
       ? archivedBanner("attached", importedParent.name)
       : null;
   const activeBillingClients = client.billingClients.filter((row) => !row.archived);
+  // Addresses on the fiche, yet a report without a site (the siège) would
+  // reach nobody: every one of them belongs to a site (D-04).
+  const onlySiteAddresses = resolveRecipients(client, "reports", null).otherSitesOnly;
 
   // What each invoice reads as (Émise, Partiellement payée, Annulée…); a
   // view keeps the documents of its group.
@@ -320,30 +325,44 @@ export default async function ClientDetailPage({
               pas être envoyés.
             </p>
           ) : (
-            <ul className="mt-3 space-y-2">
-              {client.emails.map((entry) => (
-                <li key={entry.id} className="rounded-xl bg-slate-50 px-3 py-2">
-                  <p className="truncate text-sm font-medium text-slate-800">
-                    {entry.email}
-                  </p>
-                  <p className="mt-0.5 flex flex-wrap gap-1.5 text-[11px]">
-                    {entry.label && (
-                      <span className="text-slate-500">{entry.label}</span>
-                    )}
-                    {entry.forReports && (
-                      <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700">
-                        rapports
-                      </span>
-                    )}
-                    {entry.forAlerts && (
-                      <span className="rounded-full bg-rose-50 px-1.5 py-0.5 font-medium text-rose-700">
-                        alertes
-                      </span>
-                    )}
-                  </p>
-                </li>
-              ))}
-            </ul>
+            <>
+              {onlySiteAddresses && (
+                <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">
+                  Aucune adresse générale : chaque adresse ne reçoit que les envois
+                  de son site — les rapports sans site (siège) ne pourront pas être
+                  envoyés.
+                </p>
+              )}
+              <ul className="mt-3 space-y-2">
+                {client.emails.map((entry) => (
+                  <li key={entry.id} className="rounded-xl bg-slate-50 px-3 py-2">
+                    <p className="truncate text-sm font-medium text-slate-800">
+                      {entry.email}
+                    </p>
+                    <p className="mt-0.5 flex flex-wrap gap-1.5 text-[11px]">
+                      {entry.label && (
+                        <span className="text-slate-500">{entry.label}</span>
+                      )}
+                      {entry.forReports && (
+                        <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700">
+                          rapports
+                        </span>
+                      )}
+                      {entry.forAlerts && (
+                        <span className="rounded-full bg-rose-50 px-1.5 py-0.5 font-medium text-rose-700">
+                          alertes
+                        </span>
+                      )}
+                      {entry.site && (
+                        <span className="rounded-full bg-sky-50 px-1.5 py-0.5 font-medium text-sky-700">
+                          site {entry.site.name} — ce site seulement
+                        </span>
+                      )}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </Card>
 

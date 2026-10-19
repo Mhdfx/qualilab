@@ -7,6 +7,8 @@ import { canTransition } from "@/lib/sample-status";
 import type { SampleStatus } from "@/generated/prisma/enums";
 import { TAKE_MESSAGES, canEnterParameter } from "@/lib/bench-access";
 import { lockTakeState } from "@/lib/bench-take-server";
+import { awaitsManualConformity } from "@/lib/bench-reading";
+import { effectiveFactor } from "@/lib/dilution";
 
 /**
  * Submits the completed sheet to quality validation:
@@ -17,7 +19,11 @@ import { lockTakeState } from "@/lib/bench-take-server";
  * germ read per unit (CRITERES.md) must have every unit read: an
  * « Incomplet » verdict stays on the bench — and so must any parameter of a
  * sample taken on several units with a repetition left blank or typed in a
- * notation the engine cannot read.
+ * notation the engine cannot read. A line judged against the parameter's own
+ * limit whose reading asks the technician for « Conforme » / « Non
+ * conforme » (« Présence », a « > x » below the limit…) stays too until the
+ * choice is stored: the screen keeps « Soumettre » closed, and this route
+ * checks it again with the screen's own rule (`awaitsManualConformity`).
  *
  * Only a sample somebody took leaves the bench (PROGRAMME.md §10): its
  * holder submits it — the sheet saves first, and a first typed result takes
@@ -75,18 +81,25 @@ export async function POST(
     // Read after the lock: the programme and the readings as they are now.
     const lines = await tx.sampleParameter.findMany({
       where: { sampleId: id },
-      select: { technicianId: true, parameter: { select: { id: true, name: true } } },
+      select: {
+        technicianId: true,
+        // The programmed dilution, the factor and the limit the reading is judged with.
+        dilutionFactor: true,
+        parameter: { select: { id: true, name: true, limitValue: true, calcFactor: true } },
+      },
     });
     const results = await tx.result.findMany({
       where: { sampleId: id },
       select: {
         parameterId: true,
         value: true,
+        rawValue: true,
         workStatus: true,
         conform: true,
         interpretation: true,
+        criterion: true,
         // value null + detected null = a reading the engine could not parse.
-        units: { select: { value: true, detected: true } },
+        units: { select: { unitIndex: true, rawValue: true, value: true, detected: true } },
       },
     });
     const perUnit = locked.unitCount > 1;
@@ -105,7 +118,12 @@ export async function POST(
         result.workStatus === "EN_COURS" ||
         result.interpretation === "INCOMPLET" ||
         (perUnit && result.units.length < locked.unitCount) ||
-        result.units.some((u) => u.value === null && u.detected === null)
+        result.units.some((u) => u.value === null && u.detected === null) ||
+        awaitsManualConformity(result, {
+          unitCount: locked.unitCount,
+          factor: effectiveFactor(line.dilutionFactor, parameter.calcFactor),
+          limitValue: parameter.limitValue,
+        })
       ) {
         if (session.role === "TECHNICIEN" && !canEnterParameter(bench, line, session.id)) {
           foreign.push(parameter.name);

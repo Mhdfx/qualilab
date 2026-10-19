@@ -451,7 +451,7 @@ export function validateLine(
   const ambientTemperature = numberOrNull(input.ambientTemperature);
   const receptionTemperature = numberOrNull(input.receptionTemperature);
   for (const [t, label] of [
-    [productTemperature, "La température du produit"],
+    [productTemperature, "La température au prélèvement"],
     [ambientTemperature, "La température ambiante"],
     [receptionTemperature, "La température à l'arrivée"],
   ] as const) {

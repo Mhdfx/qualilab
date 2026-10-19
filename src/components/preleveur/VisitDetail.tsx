@@ -113,7 +113,8 @@ function lineDetails(sample: VisitSample, withUnits: boolean) {
     sample.numeroLot ? `lot ${sample.numeroLot}` : "",
     sample.lineKind === "SURFACE" && sample.surfaceAreaCm2 ? `${sample.surfaceAreaCm2} cm²` : "",
     withUnits && sample.unitCount > 1 ? `n = ${sample.unitCount}` : "",
-    sample.productTemperature !== null ? `${decimal(sample.productTemperature)} °C` : "",
+    // Named, never a bare figure: « T° au prélèvement » (Q112, 16/10).
+    sample.productTemperature !== null ? `T° au prélèvement ${decimal(sample.productTemperature)} °C` : "",
   ]
     .filter(Boolean)
     .join(" · ");

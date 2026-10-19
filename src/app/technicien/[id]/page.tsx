@@ -16,6 +16,7 @@ import {
 } from "@/lib/bench-access";
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { effectiveFactor } from "@/lib/dilution";
+import { benchUnit } from "@/lib/bench-reading";
 import { formatDate, formatDateTime, PROGRAMME_PRIORITY_LABELS } from "@/lib/labels";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
@@ -181,14 +182,17 @@ export default async function AnalysePage({
       units,
       parameterId: parameter.id,
       name: parameter.name,
-      unit: parameter.unit,
+      // The criterion's unit, as the bench sheet, the stored result and the
+      // report print it (« /1 g » rather than the parameter's « /25 g »).
+      unit: benchUnit(plan, parameter.unit),
       threshold: parameter.threshold,
       limitValue: parameter.limitValue,
       // The programmed dilution of this sample replaces the catalogue's factor.
       calcFactor: effectiveFactor(line.dilutionFactor, parameter.calcFactor),
-      // When a factor transformed the entry, the bench reading (rawValue) is
-      // what the technician typed and re-edits; `value` holds the computed
-      // final figure.
+      // When the stored value rewrote the entry (a factor, or the shorthand
+      // « 3(-2) » printed « 3.10² »), the bench reading (rawValue) is what
+      // the technician typed and re-edits; `value` holds the figure the
+      // report prints.
       value: existing?.rawValue ?? existing?.value ?? "",
       note: existing?.note ?? "",
       workStatus: existing?.workStatus ?? "EN_COURS",

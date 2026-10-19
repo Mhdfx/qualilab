@@ -350,8 +350,9 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
               )}
             </div>
           )}
+          {/* La fonction n'est plus demandée (Q111, 16/10) : celle d'une
+              fiche ancienne est renvoyée telle quelle, donc gardée. */}
           {shown.hands && input("personName", "Personne")}
-          {shown.hands && input("personRole", "Fonction")}
           {shown.food && input("numeroLot", "N° du lot")}
           {shown.food && input("productionDate", "DLC — production", "date")}
           {shown.food && input("expiryDate", "DLC — expiration", "date")}

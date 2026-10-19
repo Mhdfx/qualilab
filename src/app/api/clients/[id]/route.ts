@@ -190,9 +190,9 @@ export async function PATCH(
 
     if (emails !== undefined) {
       // The list is replaced wholesale: simpler than diffing, and the client
-      // form always submits the complete set. The form does not know an
-      // address's site (set by the sites import, RETOUR-LABO-06-10.md §5 V5):
-      // an address kept in the list keeps its site.
+      // form always submits the complete set. The form shows an address's
+      // site but never sends it (set by the sites import, RETOUR-LABO-06-10.md
+      // §5 V5): an address kept in the list keeps its site (D-04).
       const previous = await tx.clientEmail.findMany({
         where: { clientId: id, siteId: { not: null } },
         select: { email: true, siteId: true },

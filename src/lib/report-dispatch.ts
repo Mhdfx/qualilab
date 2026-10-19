@@ -18,6 +18,7 @@ import { getLabSettings } from "./lab-settings";
 import { ALERT_RESULT_WHERE } from "./contamination-alert";
 import { proposeRegulation } from "./regulation";
 import { sendEmail, recipientsFor } from "./email";
+import { otherSitesMessage } from "./email-recipients";
 import { reportEmail, alertEmail, type AlertRow } from "./emails/templates";
 import { getCompany } from "./company-server";
 import { generateReportNumber } from "./report-number";
@@ -705,7 +706,7 @@ async function sendReportNow(sampleId: string, actorId: string | null) {
       client: { select: { name: true } },
       // `samplingTimeDeclared`: a deposit without a declared sampling time
       // prints « Non déclarée », never its entry instant (R6).
-      serie: { select: { serialNumber: true, site: { select: { name: true } }, samplingTimeDeclared: true } },
+      serie: { select: { serialNumber: true, siteId: true, site: { select: { name: true } }, samplingTimeDeclared: true } },
       nature: { select: { label: true } },
       report: { select: { id: true, amendmentPending: true } },
       results: { select: { conform: true, interpretation: true, informalInterpretation: true } },
@@ -745,11 +746,14 @@ async function sendReportNow(sampleId: string, actorId: string | null) {
     return { ok: false as const, error: "Aucun rapport à envoyer." };
   }
 
-  const to = await recipientsFor(sample.clientId, "reports");
+  // The site's own addresses too, never another site's (D-04).
+  const { to, otherSitesOnly } = await recipientsFor(sample.clientId, "reports", sample.serie.siteId);
   if (to.length === 0) {
     return {
       ok: false as const,
-      error: "Aucune adresse email enregistrée pour ce client.",
+      error: otherSitesOnly
+        ? otherSitesMessage("reports", sample.serie.siteId)
+        : "Aucune adresse email enregistrée pour ce client.",
     };
   }
 
@@ -907,7 +911,7 @@ export async function sendContaminationAlerts(
       receivedAt: true,
       clientId: true,
       alertsSentAt: true,
-      serie: { select: { site: { select: { name: true } } } },
+      serie: { select: { siteId: true, site: { select: { name: true } } } },
       report: { select: { id: true, version: true, amendmentPending: true } },
       results: {
         // A sensitive germ over its limit — including one judged only
@@ -963,11 +967,13 @@ export async function sendContaminationAlerts(
 
   // Nobody to write to: leave the sample unclaimed so the alert goes out as
   // soon as the gestionnaire records an address and the next step retries.
-  const to = await recipientsFor(sample.clientId, "alerts");
+  const { to, otherSitesOnly } = await recipientsFor(sample.clientId, "alerts", sample.serie.siteId);
   if (to.length === 0) {
     return {
       ok: false as const,
-      error: "Aucune adresse d'alerte enregistrée pour ce client.",
+      error: otherSitesOnly
+        ? otherSitesMessage("alerts", sample.serie.siteId)
+        : "Aucune adresse d'alerte enregistrée pour ce client.",
     };
   }
 

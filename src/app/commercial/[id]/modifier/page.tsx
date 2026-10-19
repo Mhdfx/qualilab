@@ -19,7 +19,8 @@ export default async function ModifierClientPage({
   const client = await prisma.client.findUnique({
     where: { id },
     include: {
-      emails: { orderBy: { email: "asc" } },
+      // An address of a site says so on the form (D-04).
+      emails: { orderBy: { email: "asc" }, include: { site: { select: { name: true } } } },
       mergedInto: { select: { id: true, name: true } },
     },
   });
@@ -59,6 +60,7 @@ export default async function ModifierClientPage({
               label: entry.label ?? "",
               forReports: entry.forReports,
               forAlerts: entry.forAlerts,
+              site: entry.site ? { name: entry.site.name, email: entry.email } : null,
             })),
           }}
         />

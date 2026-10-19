@@ -2,11 +2,11 @@
  * Reading the values a microbiology technician actually writes.
  *
  * The laboratory notes counts the way they appear on the bench sheet:
- * `8,9.10²`, `3.10²`, `1,5 x 10^4`, `< 10`, `Absence`, and for a plate too
- * crowded to count `> 3.10⁵` or `Indénombrable` / `TNTC`. A contamination
- * alert has to compare those against a limit, so every entry is kept twice —
- * exactly as typed (for the report) and parsed to a number (for the
- * comparison).
+ * `8,9.10²`, `3.10²`, `1,5 x 10^4`, `< 10`, `Absence`, the colonies with
+ * their dilution `3(-2)`, and for a plate too crowded to count `> 3.10⁵` or
+ * `Indénombrable` / `TNTC`. A contamination alert has to compare those
+ * against a limit, so every entry is kept twice — exactly as typed (for the
+ * report) and parsed to a number (for the comparison).
  *
  * Anything we cannot read is never guessed: `numeric` is null and the
  * technician decides conformity themselves.
@@ -50,7 +50,38 @@ export type ParsedValue = {
   kind: "number" | "absence" | "below" | "above" | "uncountable" | "unreadable";
 };
 
+/**
+ * The lab's dilution shorthand, « 3(-2) »: 3 colonies read at 10⁻², the
+ * same notation the unit grid reads (`parseUnitReading`).
+ */
+const DILUTION = /^(\d+)\s*\(\s*-?\s*(\d)\s*\)$/;
+
+function dilutionShorthand(text: string): { colonies: number; exponent: number } | null {
+  const match = text.trim().match(DILUTION);
+  return match ? { colonies: Number(match[1]), exponent: Number(match[2]) } : null;
+}
+
+/** Whether a text is the bench shorthand « 3(-2) » — a reading, never a criterion's limit. */
+export function isDilutionShorthand(text: string): boolean {
+  return dilutionShorthand(text) !== null;
+}
+
+/**
+ * Reads one entry. « 3(-2) » reads exactly as on the unit grid: 3 × 10² =
+ * 300, and « 0(-1) » — no colony at 10⁻¹ — is below the detection limit
+ * (« < 10 »). The shorthand stands alone: « > 3(-2) » is not a notation.
+ */
 export function parseLabValue(raw: string): ParsedValue {
+  const shorthand = dilutionShorthand(raw ?? "");
+  if (shorthand) {
+    return shorthand.colonies === 0
+      ? { numeric: 0, kind: "below" }
+      : { numeric: shorthand.colonies * 10 ** shorthand.exponent, kind: "number" };
+  }
+  return parseNotation(raw);
+}
+
+function parseNotation(raw: string): ParsedValue {
   const input = raw?.trim();
   if (!input) return { numeric: null, kind: "unreadable" };
 
@@ -61,7 +92,7 @@ export function parseLabValue(raw: string): ParsedValue {
   // takes it for an exact count (it can only prove a limit exceeded).
   const above = input.match(/^>\s*(.+)$/);
   if (above) {
-    const inner = parseLabValue(above[1]);
+    const inner = parseNotation(above[1]);
     return inner.kind === "number" && inner.numeric !== null && inner.numeric >= 0
       ? { numeric: inner.numeric, kind: "above" }
       : { numeric: null, kind: "unreadable" };
@@ -71,7 +102,7 @@ export function parseLabValue(raw: string): ParsedValue {
   // flagged so the UI can say so rather than pretending it is an exact count.
   const below = input.match(/^<\s*(.+)$/);
   if (below) {
-    const inner = parseLabValue(below[1]);
+    const inner = parseNotation(below[1]);
     return inner.numeric === null
       ? { numeric: null, kind: "unreadable" }
       : { numeric: 0, kind: "below" };
@@ -177,6 +208,36 @@ export function factoredText(parsed: ParsedValue): string | null {
   if (parsed.kind === "number") return formatLabValue(parsed.numeric);
   if (parsed.kind === "above") return `> ${formatLabValue(parsed.numeric)}`;
   return null;
+}
+
+/**
+ * What `PUT …/results` stores for a line read as one value: the parsed
+ * reading — the factor (the programmed dilution, else the parameter's
+ * calcFactor) applied once — the text the report prints, and the bench
+ * reading as typed when the two differ. A factor rewrites a count or the
+ * bound of « > x » into the final figure; the shorthand « 3(-2) » prints in
+ * the lab's notation (« 3.10² », « 0(-1) » → « < 10 »), as a unit of the
+ * grid does (`unitStoredDisplay`). Anything else — « Absence », « < 10 »,
+ * « Indénombrable », a text the engine cannot read — is stored as typed,
+ * with no raw value.
+ */
+export function singleValueEntry(
+  typed: string,
+  factor: number
+): { parsed: ParsedValue; value: string | null; rawValue: string | null } {
+  const text = typed.trim();
+  if (!text) return { parsed: { numeric: null, kind: "unreadable" }, value: null, rawValue: null };
+  const parsed = applyCalcFactor(parseLabValue(text), factor);
+  const factored = factor !== 1 ? factoredText(parsed) : null;
+  const shorthand = dilutionShorthand(text);
+  const rewritten =
+    factored ??
+    (shorthand === null
+      ? null
+      : parsed.kind === "below"
+        ? `< ${formatLabValue(10 ** shorthand.exponent)}`
+        : factoredText(parsed));
+  return { parsed, value: rewritten ?? text, rawValue: rewritten !== null ? text : null };
 }
 
 /** Formats a number back into the lab's notation for display. */

@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "./prisma";
 import { logAudit } from "./audit";
 import { recipientsFor, sendEmail } from "./email";
+import { otherSitesMessage } from "./email-recipients";
 import { getCompany } from "./company-server";
 import { destructionEmail } from "./emails/templates";
 import { NON_CONFORMITY_REASON_LABELS } from "./labels";
@@ -38,7 +39,7 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
       conformityNote: true,
       // `samplingTimeDeclared`: « Non déclarée » rather than the instant a
       // deposit was entered (R6).
-      serie: { select: { serialNumber: true, samplingTimeDeclared: true } },
+      serie: { select: { serialNumber: true, siteId: true, samplingTimeDeclared: true } },
     },
     // The two samples of a two-family line: « …M » before « …P ».
     orderBy: [{ lineNumber: "asc" }, { code: "asc" }],
@@ -46,7 +47,8 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
   if (samples.length === 0) return null;
 
   const first = samples[0];
-  const [to, company] = await Promise.all([recipientsFor(first.clientId, "reports"), getCompany()]);
+  // The site's own addresses too, never another site's (D-04).
+  const [{ to, otherSitesOnly }, company] = await Promise.all([recipientsFor(first.clientId, "reports", first.serie.siteId), getCompany()]);
   const { subject, html } = destructionEmail({
     serialNumber: first.serie.serialNumber,
     sampledAt: first.sampledAt,
@@ -65,7 +67,12 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
   }, company);
 
   let status: string = "NON_ENVOYE";
-  let error: string | null = to.length === 0 ? "Aucune adresse e-mail enregistrée pour ce client." : null;
+  let error: string | null =
+    to.length > 0
+      ? null
+      : otherSitesOnly
+        ? otherSitesMessage("reports", first.serie.siteId)
+        : "Aucune adresse e-mail enregistrée pour ce client.";
   if (to.length > 0) {
     try {
       const result = await sendEmail({ to, subject, html, type: "DESTRUCTION", reportId: null });

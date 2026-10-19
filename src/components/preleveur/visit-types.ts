@@ -120,7 +120,9 @@ export type LineDraft = {
   /** « Méthode de prélèvement » of an Air line; "" = not chosen yet. */
   airMethod: AirMethod | "";
   personName: string;
-  personRole: string;
+  /** « État des mains » of a Mains line; "" = not chosen yet. The
+   *  « Fonction » the form asked before 16/10 (Q111) is no longer entered:
+   *  `Sample.personRole` keeps the old values, printed as they were. */
   handsState: HandsState | "";
   remarks: string;
   unitCount: number;
@@ -428,7 +430,6 @@ export function emptyLine(natures: readonly NatureOption[], previous?: LineDraft
     surfaceAreaCm2: kind === "SURFACE" ? "100" : "",
     airMethod: kind === "AIR" && previous?.lineKind === "AIR" ? previous.airMethod : "",
     personName: "",
-    personRole: "",
     handsState: "",
     remarks: "",
     unitCount: 1,
@@ -529,10 +530,9 @@ export function linePayload(line: LineDraft): LinePayload {
     surfaceState: surface && surfaceState ? surfaceState : undefined,
     airMethod: line.lineKind === "AIR" && airMethod ? airMethod : undefined,
     personName: hands ? rest.personName : "",
-    personRole: hands ? rest.personRole : "",
     handsState: hands && handsState ? handsState : undefined,
     productTypeId: line.lineKind === "ALIMENT" ? rest.productTypeId : "",
-    // An air line has no product, so no « T° produit » field (§8.5): a value
+    // An air line has no « Température au prélèvement » field (§8.5): a value
     // typed before switching the type to Air is not sent.
     productTemperature: line.lineKind === "AIR" ? "" : rest.productTemperature,
   };

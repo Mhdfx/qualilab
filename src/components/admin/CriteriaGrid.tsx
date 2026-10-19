@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Plus, Save, Trash2 } from "lucide-react";
 import type { Family, LimitKind, SampleType } from "@/generated/prisma/enums";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
+import { LIMITLESS_HINT, bigMChange, kindChange, toleranceApplies, wideToleranceNote } from "@/lib/criteria-input";
 import { fmt } from "@/lib/interpretation";
 import { parseLabValue } from "@/lib/result-value";
 import { MAX_UNITS } from "@/lib/series";
@@ -42,7 +43,7 @@ type Draft = {
   active: boolean;
 };
 
-const KIND_LABELS: Record<LimitKind, string> = { VALUE: "m et M chiffrés", ABSENCE: "Absence exigée", UNSPECIFIED: "m non spécifiée (M seule)" };
+const KIND_LABELS: Record<LimitKind, string> = { VALUE: "m et M chiffrés", ABSENCE: "Absence exigée", UNSPECIFIED: "m non spécifiée" };
 
 /**
  * A limit is shown in the laboratory's notation only when that notation
@@ -58,6 +59,33 @@ function limitText(value: number | null): string {
 let seed = 0;
 const key = () => `c-${Date.now()}-${(seed += 1)}`;
 
+/**
+ * Whether the c cell is open. A « m et M chiffrés » row keeps it open while
+ * m is being typed (m is mandatory there anyway); « m non spécifiée » opens
+ * it with M; an absence test never.
+ */
+function offersTolerance(row: Draft): boolean {
+  return toleranceApplies(row.mKind, true, row.bigM.trim() !== "");
+}
+
+/** A limit cell read as a figure, or null while it is empty or unreadable. */
+function cellFigure(text: string): number | null {
+  const parsed = parseLabValue(text);
+  return parsed.kind === "number" ? parsed.numeric : null;
+}
+
+/** The row as the engine would read it once saved — for the note under it. */
+function draftNote(row: Draft): string | null {
+  const c = offersTolerance(row) && row.c.trim() !== "" ? Number(row.c) : null;
+  return wideToleranceNote({
+    n: Number(row.n),
+    c: c !== null && Number.isInteger(c) ? c : null,
+    mKind: row.mKind,
+    m: row.mKind === "VALUE" ? cellFigure(row.m) : null,
+    bigM: cellFigure(row.bigM),
+  });
+}
+
 function toDraft(c: CriterionRow): Draft {
   return {
     key: key(),
@@ -66,7 +94,9 @@ function toDraft(c: CriterionRow): Draft {
     normVersionId: c.normVersionId ?? "",
     unit: c.unit ?? "",
     n: String(c.n),
-    c: c.c === null ? "" : String(c.c),
+    // The old software's import stored its CONTROL column on absence tests
+    // and limitless rows too, where c means nothing: not shown, saved empty.
+    c: c.c === null || !toleranceApplies(c.mKind, c.m !== null, c.bigM !== null) ? "" : String(c.c),
     mKind: c.mKind,
     m: limitText(c.m),
     bigM: limitText(c.bigM),
@@ -96,6 +126,8 @@ export function CriteriaGrid({
   const router = useRouter();
   const [header, setHeader] = useState({ name: type.name, family: type.family, clientId: type.clientId ?? "", active: type.active });
   const [rows, setRows] = useState<Draft[]>(criteria.map(toDraft));
+  // Row keys come from Date.now(): fine for React, not for an id the server renders too.
+  const hintId = useId();
   const [busy, setBusy] = useState<"header" | "grid" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -159,7 +191,7 @@ export function CriteriaGrid({
             normVersionId: r.normVersionId || null,
             unit: r.unit,
             n: r.n,
-            c: r.c,
+            c: offersTolerance(r) ? r.c : "",
             mKind: r.mKind,
             m: r.m,
             bigM: r.bigM,
@@ -229,7 +261,8 @@ export function CriteriaGrid({
           </button>
         </div>
         <p className="px-5 pt-1 text-xs text-slate-500">
-          Limites en notation du laboratoire (« 1.10² », « 1,5.10⁶ ») ou en chiffres. c = nombre d&apos;unités tolérées entre m et M.
+          Limites en notation du laboratoire (« 1.10² », « 1,5.10⁶ ») ou en chiffres. c = nombre d&apos;unités tolérées entre m et M,
+          ou au-dessus de la limite quand il n&apos;y en a qu&apos;une. « m non spécifiée » sans M : {LIMITLESS_HINT}.
         </p>
 
         <div className="mt-3 overflow-x-auto">
@@ -256,67 +289,82 @@ export function CriteriaGrid({
                   </td>
                 </tr>
               )}
-              {rows.map((row, index) => (
-                <tr key={row.key} className="border-b border-slate-100 align-middle">
-                  <td className="px-3 py-1.5">
-                    <select aria-label={`Germe ligne ${index + 1}`} value={row.parameterId} onChange={(e) => update(row.key, { parameterId: e.target.value })} className={CELL}>
-                      <option value="">Choisir…</option>
-                      <optgroup label="Microbiologie alimentaire">
-                        {food.map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </optgroup>
-                      {others.length > 0 && (
-                        <optgroup label="Autres paramètres">
-                          {others.map((p) => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
+              {rows.map((row, index) => {
+                const note = draftNote(row);
+                return (
+                  <Fragment key={row.key}>
+                    <tr className={`${note ? "" : "border-b border-slate-100 "}align-middle`}>
+                      <td className="px-3 py-1.5">
+                        <select aria-label={`Germe ligne ${index + 1}`} value={row.parameterId} onChange={(e) => update(row.key, { parameterId: e.target.value })} className={CELL}>
+                          <option value="">Choisir…</option>
+                          <optgroup label="Microbiologie alimentaire">
+                            {food.map((p) => (
+                              <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                          </optgroup>
+                          {others.length > 0 && (
+                            <optgroup label="Autres paramètres">
+                              {others.map((p) => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <select aria-label={`Norme ligne ${index + 1}`} value={row.normVersionId} onChange={(e) => update(row.key, { normVersionId: e.target.value })} className={CELL}>
+                          <option value="">— sans norme —</option>
+                          {versions.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.code}{v.version ? `:${v.version}` : ""}{v.current ? " · en vigueur" : ""}
+                            </option>
                           ))}
-                        </optgroup>
-                      )}
-                    </select>
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <select aria-label={`Norme ligne ${index + 1}`} value={row.normVersionId} onChange={(e) => update(row.key, { normVersionId: e.target.value })} className={CELL}>
-                      <option value="">— sans norme —</option>
-                      {versions.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.code}{v.version ? `:${v.version}` : ""}{v.current ? " · en vigueur" : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <input aria-label={`n ligne ${index + 1}`} type="number" min={1} max={MAX_UNITS} value={row.n} onChange={(e) => update(row.key, { n: e.target.value })} className={CELL} />
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <input aria-label={`c ligne ${index + 1}`} type="number" min={0} value={row.c} onChange={(e) => update(row.key, { c: e.target.value })} disabled={row.mKind !== "VALUE"} placeholder="—" className={CELL} />
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <select aria-label={`Type de limite ligne ${index + 1}`} value={row.mKind} onChange={(e) => update(row.key, { mKind: e.target.value as LimitKind, ...(e.target.value !== "VALUE" ? { c: "" } : {}), ...(e.target.value === "ABSENCE" ? { m: "", bigM: "" } : {}), ...(e.target.value === "UNSPECIFIED" ? { m: "" } : {}) })} className={CELL}>
-                      {(Object.keys(KIND_LABELS) as LimitKind[]).map((k) => (
-                        <option key={k} value={k}>{KIND_LABELS[k]}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <input aria-label={`m ligne ${index + 1}`} type="text" value={row.m} onChange={(e) => update(row.key, { m: e.target.value })} disabled={row.mKind !== "VALUE"} placeholder={row.mKind === "VALUE" ? "1.10²" : "—"} className={`${CELL} font-mono`} />
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <input aria-label={`M ligne ${index + 1}`} type="text" value={row.bigM} onChange={(e) => update(row.key, { bigM: e.target.value })} disabled={row.mKind === "ABSENCE"} placeholder={row.mKind === "ABSENCE" ? "—" : "1.10³"} className={`${CELL} font-mono`} />
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <input aria-label={`Unité ligne ${index + 1}`} type="text" value={row.unit} onChange={(e) => update(row.key, { unit: e.target.value })} placeholder="ufc/g" className={CELL} />
-                  </td>
-                  <td className="px-2 py-1.5 text-center">
-                    <input aria-label={`Actif ligne ${index + 1}`} type="checkbox" checked={row.active} onChange={(e) => update(row.key, { active: e.target.checked })} className="h-4 w-4 accent-brand" />
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <button type="button" onClick={() => setRows((c) => c.filter((r) => r.key !== row.key))} aria-label={`Supprimer la ligne ${index + 1}`} title="Supprimer" className="rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                        </select>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input aria-label={`n ligne ${index + 1}`} type="number" min={1} max={MAX_UNITS} value={row.n} onChange={(e) => update(row.key, { n: e.target.value })} className={CELL} />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input aria-label={`c ligne ${index + 1}`} aria-describedby={note ? `${hintId}-c-${index}` : undefined} type="number" min={0} value={offersTolerance(row) ? row.c : ""} onChange={(e) => update(row.key, { c: e.target.value })} disabled={!offersTolerance(row)} placeholder="—" className={CELL} />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <select aria-label={`Type de limite ligne ${index + 1}`} value={row.mKind} onChange={(e) => update(row.key, kindChange(row, e.target.value as LimitKind))} className={CELL}>
+                          {(Object.keys(KIND_LABELS) as LimitKind[]).map((k) => (
+                            <option key={k} value={k}>{KIND_LABELS[k]}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input aria-label={`m ligne ${index + 1}`} type="text" value={row.m} onChange={(e) => update(row.key, { m: e.target.value })} disabled={row.mKind !== "VALUE"} placeholder={row.mKind === "VALUE" ? "1.10²" : "—"} className={`${CELL} font-mono`} />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input aria-label={`M ligne ${index + 1}`} aria-describedby={row.mKind === "UNSPECIFIED" && !row.bigM.trim() ? `${hintId}-${index}` : undefined} type="text" value={row.bigM} onChange={(e) => update(row.key, bigMChange(row, e.target.value))} disabled={row.mKind === "ABSENCE"} placeholder={row.mKind === "ABSENCE" ? "—" : "1.10³"} className={`${CELL} font-mono`} />
+                        {row.mKind === "UNSPECIFIED" && !row.bigM.trim() && (
+                          <p id={`${hintId}-${index}`} className="mt-1 text-[11px] leading-tight text-slate-500">{LIMITLESS_HINT}</p>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input aria-label={`Unité ligne ${index + 1}`} type="text" value={row.unit} onChange={(e) => update(row.key, { unit: e.target.value })} placeholder="ufc/g" className={CELL} />
+                      </td>
+                      <td className="px-2 py-1.5 text-center">
+                        <input aria-label={`Actif ligne ${index + 1}`} type="checkbox" checked={row.active} onChange={(e) => update(row.key, { active: e.target.checked })} className="h-4 w-4 accent-brand" />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <button type="button" onClick={() => setRows((c) => c.filter((r) => r.key !== row.key))} aria-label={`Supprimer la ligne ${index + 1}`} title="Supprimer" className="rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      </td>
+                    </tr>
+                    {note && (
+                      <tr className="border-b border-slate-100">
+                        <td colSpan={10} className="px-3 pb-2">
+                          <p id={`${hintId}-c-${index}`} className="text-[11px] leading-tight text-amber-800">{note}</p>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>

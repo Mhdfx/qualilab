@@ -14,6 +14,7 @@ import {
   type PlannedSample,
 } from "./serie-input";
 import type { Role } from "./roles";
+import { qualilabSampler, SAMPLER_MESSAGES } from "./serie-sampler";
 
 /**
  * Creating a série with all its lines — ONE transaction (WORKFLOW.md, rule 4).
@@ -197,20 +198,20 @@ export async function createSerie(
 
   // « Prélèvement effectué par »: a sampler always enters his own visits —
   // one account per person, no shared tablet (29/09, point 13). The
-  // réception keying in a paper protocol names the sampler who signed it.
+  // réception keying in a paper protocol names the sampler who signed it,
+  // never itself by default (D-05, `qualilabSampler`).
   let samplerUserId: string | null = null;
   if (input.samplerKind === "QUALILAB") {
-    if (actor.role === "PRELEVEUR" && input.samplerUserId && input.samplerUserId !== actor.id) {
-      throw new SerieCreationError("Chaque préleveur saisit ses prélèvements avec son propre compte.");
-    }
-    samplerUserId = input.samplerUserId ?? actor.id;
-    if (samplerUserId !== actor.id) {
+    const sampler = qualilabSampler(input.samplerUserId, actor);
+    if (!sampler.ok) throw new SerieCreationError(sampler.error);
+    samplerUserId = sampler.samplerUserId;
+    if (sampler.checkAccount) {
       const preleveur = await prisma.user.findUnique({
         where: { id: samplerUserId },
         select: { id: true, role: true, banned: true },
       });
       if (!preleveur || preleveur.banned || preleveur.role !== "PRELEVEUR") {
-        throw new SerieCreationError("Préleveur invalide.");
+        throw new SerieCreationError(SAMPLER_MESSAGES.invalid);
       }
     }
   }

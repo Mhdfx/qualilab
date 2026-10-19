@@ -412,10 +412,30 @@ describe("before saving", () => {
       productTypeId: "",
     });
     expect(linePayload({ ...food, lineKind: "AIR" }).airMethod).toBe("BIOCOLLECTEUR");
-    // §8.5: no « T° produit » on an air line — a value typed before the switch is dropped.
+    // §8.5: no « Température au prélèvement » on an air line — a value typed before the switch is dropped.
     expect(linePayload({ ...food, productTemperature: "4", lineKind: "AIR" }).productTemperature).toBe("");
     expect(linePayload({ ...food, productTemperature: "4" }).productTemperature).toBe("4");
     expect(linePayload({ ...food, lineKind: "MAINS", handsState: "" }).handsState).toBeUndefined();
+  });
+
+  it("sends no « Fonction » on a hands line any more (Q111, 16/10)", () => {
+    const hands = line({
+      ...kindPatch(NATURES, line(), "MAINS"),
+      lieu: "Cuisine",
+      personName: "Personne Test",
+      handsState: "LAVEES",
+    });
+    expect(hands).not.toHaveProperty("personRole");
+    const payload = linePayload(hands);
+    expect(payload).toMatchObject({ lineKind: "MAINS", personName: "Personne Test", handsState: "LAVEES" });
+    expect(payload).not.toHaveProperty("personRole");
+    // The server still reads the line; the column stays empty on a new sample.
+    const catalogue = new Map(NATURES.map((n) => [n.id, { ...n, active: true }]));
+    expect(lineDraftError(hands, NATURES)).toBeNull();
+    expect(validateLine(payload, 0, catalogue)).toMatchObject({
+      ok: true,
+      value: { personName: "Personne Test", personRole: null, handsState: "LAVEES" },
+    });
   });
 });
 

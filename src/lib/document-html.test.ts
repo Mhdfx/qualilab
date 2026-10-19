@@ -562,12 +562,12 @@ describe("buildBonHtml — the client's agreement and the wait (A9)", () => {
     conformityReason: "EMBALLAGE",
   };
 
-  it("appends who agreed to the analysis, how and when", () => {
-    const html = buildBonHtml({
-      ...base,
-      lines: [{ ...nonConform, consultation: { name: "M. Exemple", channel: "TELEPHONE", at: new Date("2026-10-10T14:05:00.000Z") } }],
-    });
-    expect(html).toContain("Non conforme — Emballage ou contenant non conforme — analysé avec l'accord de M. Exemple (tél., 10/10 14:05)");
+  it("prints the non-conformity without the client's agreement (Q75, 16/10)", () => {
+    // Who agreed, how and when stay in the software (« Non conforme à
+    // réception » on the validator's screen): a bon line has no field for them.
+    const html = buildBonHtml({ ...base, lines: [nonConform] });
+    expect(html).toContain('<span class="nc">Non conforme — Emballage ou contenant non conforme</span>');
+    expect(html).not.toContain("accord de");
   });
 
   it("says the sample waits for the client's opinion", () => {

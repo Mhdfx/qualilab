@@ -16,9 +16,11 @@ import { repetitionLabel } from "./series";
  * holder — « À prendre » while nobody took it.
  * A sample taken on several units gets one cell per repetition (R1 … Rn) and
  * the criterion of its product type, exactly as the bench screen shows them.
- * Samples are identified by their blind serial number, which is what appears
- * on the tube; the two samples of a two-family échantillon (« 1M » / « 1P »)
- * are two blocks, each under its own N° de contrôle.
+ * Samples are identified by their code, never by their client (the
+ * laboratory's answer of 16/10, Q55): each block carries what the tube label
+ * carries — N° de contrôle, nature, designation, série — plus the lot and the
+ * holder. The two samples of a two-family échantillon (« 1M » / « 1P ») are
+ * two blocks, each under its own N° de contrôle.
  *
  * The quality cartouche (PG06/EN01) is Chromium's header template
  * (cartouche-html.ts), on every page with « Page n sur N »: the route prints
@@ -37,7 +39,6 @@ export type BenchSheetSample = {
    *  « Salle — Boîte exposée 30 min ». */
   designation: string | null;
   numeroLot: string | null;
-  clientName: string;
   /** Who took the sample (`reportTechnicianNames`); null = nobody yet, printed « À prendre ». */
   technicianName: string | null;
   /** Readings per parameter: one cell per unit taken (R1 … Rn), 1 = a single value. */
@@ -78,7 +79,7 @@ export function buildBenchSheetHtml(date: Date, samples: BenchSheetSample[], opt
           <span class="type">${escapeHtml(SAMPLE_TYPE_LABELS[sample.type])}</span>
         </div>
         <div class="meta">
-          Série ${escapeHtml(sample.serieNumber)} · ${show(sample.clientName)}
+          Série ${escapeHtml(sample.serieNumber)}
           ${sample.designation ? ` · ${escapeHtml(sample.designation)}` : ""}
           ${sample.numeroLot ? ` · lot ${escapeHtml(sample.numeroLot)}` : ""}
           · ${sample.technicianName ? escapeHtml(sample.technicianName) : '<span class="free">À prendre</span>'}

@@ -13,6 +13,7 @@ import { labDayBounds } from "@/lib/lab-day-range";
 import { labReference } from "@/lib/sample-select";
 import { loadBenchPlans } from "@/lib/bench-plan";
 import { benchQueueWhereFor, canEditParameter } from "@/lib/bench-access";
+import { benchUnit } from "@/lib/bench-reading";
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { sampleDesignation } from "@/lib/document-html";
 
@@ -65,7 +66,6 @@ export async function GET(request: Request) {
       personName: true,
       airMethod: true,
       numeroLot: true,
-      client: { select: { name: true } },
       technicianId: true,
       technician: { select: { name: true } },
       parameters: {
@@ -102,7 +102,6 @@ export async function GET(request: Request) {
         type: row.type,
         designation: sampleDesignation(row),
         numeroLot: row.numeroLot,
-        clientName: row.client.name,
         // Null when nobody took it: the sheet prints « À prendre ».
         technicianName: reportTechnicianNames(row),
         unitCount: perUnit ? Math.max(1, row.unitCount) : 1,
@@ -112,7 +111,7 @@ export async function GET(request: Request) {
           const norm = normVersion?.label ?? plan?.normLabel ?? null;
           return {
             name: parameter.name,
-            unit: plan?.unit ?? parameter.unit,
+            unit: benchUnit(plan, parameter.unit),
             threshold: plan ? `${plan.label}${norm ? ` · ${norm}` : ""}` : parameter.threshold,
           };
         }),

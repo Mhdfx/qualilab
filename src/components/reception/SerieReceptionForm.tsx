@@ -809,8 +809,9 @@ export function SerieReceptionForm({
                       {sample.numeroLot ? ` · lot ${sample.numeroLot}` : ""}
                       {sample.productionDate ? ` · DLC P ${formatDate(sample.productionDate)}` : ""}
                       {sample.expiryDate ? ` · DLC E ${formatDate(sample.expiryDate)}` : ""}
-                      {sample.productTemperature !== null ? ` · T°p ${formatDecimal(sample.productTemperature)} °C` : ""}
-                      {sample.ambientTemperature !== null ? ` · T°a ${formatDecimal(sample.ambientTemperature)} °C` : ""}
+                      {/* Les mots de l'écran du préleveur (Q112, 16/10) ; le protocole garde « T°p / T°a ». */}
+                      {sample.productTemperature !== null ? ` · T° au prélèvement ${formatDecimal(sample.productTemperature)} °C` : ""}
+                      {sample.ambientTemperature !== null ? ` · T° ambiante ${formatDecimal(sample.ambientTemperature)} °C` : ""}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
                       {unitsLabel(sample.unitCount)} ·{" "}

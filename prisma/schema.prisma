@@ -653,12 +653,14 @@ model Result {
   parameterId String
   parameter   AnalysisParameter @relation(fields: [parameterId], references: [id])
 
-  /// The FINAL value, as printed on the report (e.g. "8,9.10²"). When the
-  /// parameter has a calcFactor it is computed from the raw reading;
-  /// otherwise it is exactly what the technician typed.
+  /// The FINAL value, as printed on the report (e.g. "8,9.10²"). Computed
+  /// from the bench reading when a factor applies (the programmed dilution,
+  /// else the parameter's calcFactor) or when the lab's shorthand « 3(-2) »
+  /// was typed (printed « 3.10² »); otherwise exactly what was typed.
   value                  String?
-  /// The bench reading as typed, kept when a calcFactor transformed it —
-  /// null means value IS the raw entry (factor 1, today's default).
+  /// The bench reading as typed, kept when the stored value rewrites it (a
+  /// factor, or the shorthand « 3(-2) » → « 3.10² ») — null means value IS
+  /// the raw entry.
   rawValue               String?
   /// The final value parsed to a number. A contamination alert compares a
   /// result to its limit, and a display string cannot be compared — so both

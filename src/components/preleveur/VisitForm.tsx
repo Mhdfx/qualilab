@@ -823,7 +823,10 @@ export function VisitForm({ me }: { me: Preleveur }) {
                           {line.lieu}
                           {line.numeroLot ? ` · lot ${line.numeroLot}` : ""}
                           {line.lineKind === "SURFACE" && line.surfaceAreaCm2 ? ` · ${line.surfaceAreaCm2} cm²` : ""}
-                          {line.productTemperature ? ` · ${line.productTemperature} °C` : ""}
+                          {/* Named, never a bare figure (Q112, 16/10); an air line sends none. */}
+                          {line.lineKind !== "AIR" && line.productTemperature.trim()
+                            ? ` · T° au prélèvement ${line.productTemperature.trim()} °C`
+                            : ""}
                           {line.unitCount > 1 ? ` · n = ${line.unitCount}` : ""}
                         </p>
                         {families.length > 1 && (

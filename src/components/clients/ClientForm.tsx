@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Archive, ArchiveRestore, ExternalLink, Users } from "lucide-react";
+import { Plus, Trash2, Archive, ArchiveRestore, ExternalLink, MapPin, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import type { SimilarClient } from "@/lib/client-identity";
+import { siteAddressHint } from "@/lib/email-recipients";
 import {
   SIMILAR_DEBOUNCE_MS,
   shouldCheckSimilar,
@@ -17,6 +18,13 @@ export type EmailRow = {
   label: string;
   forReports: boolean;
   forAlerts: boolean;
+  /**
+   * The site the address belongs to (sites import, a client attached as a
+   * site), as saved — read-only here. Such an address receives only the
+   * mail of its site (D-04); the server keeps the binding while the address
+   * is unchanged (PATCH /api/clients/[id]).
+   */
+  site?: { name: string; email: string } | null;
 };
 
 export type ClientFormValues = {
@@ -123,8 +131,11 @@ export function ClientForm({ clientId, initial, archived, mergedInto }: ClientFo
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...values,
-            // Rows the user started and abandoned are not an error.
-            emails: values.emails.filter((row) => row.email.trim()),
+            // Rows the user started and abandoned are not an error; the
+            // site is the server's to keep, never sent.
+            emails: values.emails
+              .filter((row) => row.email.trim())
+              .map(({ email, label, forReports, forAlerts }) => ({ email, label, forReports, forAlerts })),
             ...(conflict && notSame ? { confirmDuplicate: true } : {}),
           }),
         }
@@ -240,52 +251,66 @@ export function ClientForm({ clientId, initial, archived, mergedInto }: ClientFo
         )}
 
         <ul className="mt-3 space-y-3">
-          {values.emails.map((row, index) => (
-            <li key={index} className="rounded-xl border border-slate-200 p-3">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_150px_auto]">
-                <Field
-                  id={`email-${index}`}
-                  label="Adresse"
-                  type="email"
-                  value={row.email}
-                  onChange={(v) => setEmail(index, { email: v })}
-                />
-                <Field
-                  id={`label-${index}`}
-                  label="Libellé"
-                  value={row.label}
-                  onChange={(v) => setEmail(index, { label: v })}
-                  placeholder="Ex. : Direction"
-                />
-                <button
-                  type="button"
-                  onClick={() =>
-                    setValues((c) => ({
-                      ...c,
-                      emails: c.emails.filter((_, i) => i !== index),
-                    }))
-                  }
-                  aria-label={`Retirer ${row.email || "cette adresse"}`}
-                  className="mt-auto flex h-[42px] w-[42px] items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                </button>
-              </div>
+          {values.emails.map((row, index) => {
+            const siteHint = row.site ? siteAddressHint(row.site.name, row.site.email, row.email, row) : null;
+            return (
+              <li key={index} className="rounded-xl border border-slate-200 p-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_150px_auto]">
+                  <Field
+                    id={`email-${index}`}
+                    label="Adresse"
+                    type="email"
+                    value={row.email}
+                    onChange={(v) => setEmail(index, { email: v })}
+                    describedBy={siteHint ? `email-${index}-site` : undefined}
+                  />
+                  <Field
+                    id={`label-${index}`}
+                    label="Libellé"
+                    value={row.label}
+                    onChange={(v) => setEmail(index, { label: v })}
+                    placeholder="Ex. : Direction"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setValues((c) => ({
+                        ...c,
+                        emails: c.emails.filter((_, i) => i !== index),
+                      }))
+                    }
+                    aria-label={`Retirer ${row.email || "cette adresse"}`}
+                    className="mt-auto flex h-[42px] w-[42px] items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
 
-              <div className="mt-2.5 flex flex-wrap gap-4">
-                <Toggle
-                  checked={row.forReports}
-                  onChange={(v) => setEmail(index, { forReports: v })}
-                  label="Reçoit les rapports"
-                />
-                <Toggle
-                  checked={row.forAlerts}
-                  onChange={(v) => setEmail(index, { forAlerts: v })}
-                  label="Reçoit les alertes"
-                />
-              </div>
-            </li>
-          ))}
+                {siteHint && (
+                  <p
+                    id={`email-${index}-site`}
+                    className={`mt-2 flex items-start gap-1.5 text-xs ${siteHint.kept ? "text-slate-500" : "text-amber-800"}`}
+                  >
+                    <MapPin className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    {siteHint.text}
+                  </p>
+                )}
+
+                <div className="mt-2.5 flex flex-wrap gap-4">
+                  <Toggle
+                    checked={row.forReports}
+                    onChange={(v) => setEmail(index, { forReports: v })}
+                    label="Reçoit les rapports"
+                  />
+                  <Toggle
+                    checked={row.forAlerts}
+                    onChange={(v) => setEmail(index, { forAlerts: v })}
+                    label="Reçoit les alertes"
+                  />
+                </div>
+              </li>
+            );
+          })}
         </ul>
 
         <button
@@ -417,6 +442,7 @@ function Field({
   placeholder,
   className = "",
   inputMode,
+  describedBy,
 }: {
   id: string;
   label: string;
@@ -428,6 +454,8 @@ function Field({
   placeholder?: string;
   className?: string;
   inputMode?: "numeric" | "text";
+  /** The id of a sentence about the field, outside it. */
+  describedBy?: string;
 }) {
   return (
     <div className={className}>
@@ -438,6 +466,7 @@ function Field({
         id={id}
         type={type}
         inputMode={inputMode}
+        aria-describedby={describedBy}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}

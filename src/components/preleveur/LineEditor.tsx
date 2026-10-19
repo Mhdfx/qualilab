@@ -451,8 +451,10 @@ export function LineEditor({
             </>
           )}
 
+          {/* Mains : la personne et l'état de ses mains. La fonction n'est
+              plus demandée (Q111, 16/10) : les fiches déjà saisies la gardent. */}
           {kind === "MAINS" && (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <>
               <Field label="Personne prélevée" htmlFor={id("person")} required>
                 <input
                   id={id("person")}
@@ -463,27 +465,15 @@ export function LineEditor({
                   className="input-field px-4"
                 />
               </Field>
-              <Field label="Fonction" htmlFor={id("role")}>
-                <input
-                  id={id("role")}
-                  type="text"
-                  value={line.personRole}
-                  onChange={(e) => onChange({ personRole: e.target.value })}
-                  placeholder="Ex. : Chef cuisine"
-                  className="input-field px-4"
-                />
-              </Field>
-              <div className="sm:col-span-2">
-                <ChoiceChips
-                  id={id("hands")}
-                  label="État des mains"
-                  choices={HANDS_STATE_CHOICES}
-                  labels={HANDS_STATE_LABELS}
-                  value={line.handsState}
-                  onPick={(handsState) => onChange({ handsState })}
-                />
-              </div>
-            </div>
+              <ChoiceChips
+                id={id("hands")}
+                label="État des mains"
+                choices={HANDS_STATE_CHOICES}
+                labels={HANDS_STATE_LABELS}
+                value={line.handsState}
+                onPick={(handsState) => onChange({ handsState })}
+              />
+            </>
           )}
 
           {(kind === "ALIMENT" || kind === "EAU" || kind === "AIR" || kind === "AUTRE") && (
@@ -683,13 +673,13 @@ export function LineEditor({
             <DidYouMean options={placeNear} onPick={(v) => onChange({ lieu: v })} />
           </Field>
 
-          {/* Air : pas de produit, donc pas de « T° produit » (§8.5). */}
-          <div className={kind === "AIR" ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-2 gap-3"}>
+          {/* « Température au prélèvement » sur tous les types, le mot du
+              laboratoire (Q112, 16/10) ; le protocole garde « T°p / T°a ».
+              L'air n'en a pas (§8.5) : la T° ambiante seule. Les champs
+              s'alignent par le bas quand le libellé passe sur deux lignes. */}
+          <div className={kind === "AIR" ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-2 items-end gap-3"}>
             {kind !== "AIR" && (
-              <Field
-                label={kind === "MAINS" || kind === "SURFACE" ? "T° relevée (°C)" : "T° produit (°C)"}
-                htmlFor={id("product-temperature")}
-              >
+              <Field label="Température au prélèvement (°C)" htmlFor={id("product-temperature")}>
                 <input
                   id={id("product-temperature")}
                   type="text"

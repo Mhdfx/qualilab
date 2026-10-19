@@ -105,7 +105,7 @@ describe("consultationDraftError — the screens' check, the API's words", () =>
   });
 });
 
-describe("consultationText — what the bon de réception appends", () => {
+describe("consultationText — the agreement shown under « Non conforme à réception »", () => {
   it("names who agreed, how and when, on the laboratory's clock", () => {
     expect(consultationText({ name: "M. Exemple", channel: "TELEPHONE", at: new Date("2026-10-10T14:05:00.000Z") })).toBe(
       "accord de M. Exemple (tél., 10/10 14:05)"

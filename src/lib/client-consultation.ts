@@ -146,7 +146,7 @@ export function consultationPayload(
   return { name: draft.name.trim(), channel: draft.channel, at: toInstant(draft.at), note: draft.note.trim() };
 }
 
-/** Who agreed, how and when — what a screen or the bon prints of a recorded agreement. */
+/** Who agreed, how and when — what a screen shows of a recorded agreement (the bon no longer prints it, Q75). */
 export type StoredConsultation = { name: string; channel: ConsultationChannel; at: Date | string };
 
 /**
@@ -165,8 +165,10 @@ export function storedConsultation(row: {
 }
 
 /**
- * « accord de M. Exemple (tél., 10/10 14:05) » — what the bon de réception
- * appends to a non-conform line analysed with the client's agreement.
+ * « accord de M. Exemple (tél., 10/10 14:05) » — who agreed to analyse a
+ * non-conform line, shown under « Non conforme à réception » on the bench,
+ * programming and validation screens (`ReceptionNonConformity`). The bon de
+ * réception no longer prints it (Q75, 16/10).
  */
 export function consultationText(consultation: StoredConsultation): string {
   return `accord de ${consultation.name} (${CONSULTATION_CHANNEL_SHORT[consultation.channel]}, ${formatDayTime(consultation.at)})`;

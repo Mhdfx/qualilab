@@ -13,29 +13,16 @@ import {
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { VerdictBadge } from "@/components/samples/VerdictBadge";
-import {
-  applyCalcFactor,
-  factoredText,
-  parseLabValue,
-  suggestConformity,
-} from "@/lib/result-value";
-import {
-  aboveBelowLimit,
-  applyUnitFactor,
-  hasLimit,
-  judgeUnits,
-  parseUnitReading,
-  suggestUnitsConformity,
-  summariseReadings,
-  type Plan,
-  type Verdict as PlanVerdict,
-} from "@/lib/interpretation";
+import { factoredText, singleValueEntry, type ParsedValue } from "@/lib/result-value";
+import { hasLimit, judgeUnits, type Plan, type Verdict as PlanVerdict } from "@/lib/interpretation";
+import { benchUnits, unitsAgainstLimit, valueAgainstLimit } from "@/lib/bench-reading";
 import { repetitionLabel } from "@/lib/series";
 import type { ResultWorkStatus } from "@/generated/prisma/enums";
 
 export type ParameterLine = {
   parameterId: string;
   name: string;
+  /** The criterion's unit, else the parameter's (`benchUnit`). */
   unit: string | null;
   threshold: string | null;
   limitValue: number | null;
@@ -142,7 +129,7 @@ const INPUT =
   "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50 disabled:text-slate-500";
 
 type Reading = {
-  parsed: ReturnType<typeof parseLabValue> | null;
+  parsed: ParsedValue | null;
   conform: boolean | null;
   needsManual: boolean;
   /** The engine's verdict for a germ read per unit against its criterion. */
@@ -154,6 +141,11 @@ type Reading = {
   unreadable: string[];
   /** « > x » below the limit: why the conformity cannot be computed. */
   undecided: string | null;
+  /**
+   * A single value the report prints otherwise than typed — « 3(-2) » →
+   * « 3.10² », a reading × its factor — and whether the factor rewrote it.
+   */
+  stored: { value: string; factored: boolean } | null;
 };
 
 const NO_UNREADABLE: string[] = [];
@@ -194,59 +186,47 @@ export function ResultEntryForm({
         if (line.perUnit) {
           // The same engine and the same dilution the server will apply, so
           // the verdict shown while typing is the verdict stored.
-          const units = line.units.map((u) => applyUnitFactor(parseUnitReading(u), line.calcFactor));
-          const typedUnits = units.filter((u) => u.kind !== "empty").length;
-          // A reading the engine cannot parse is neither a count nor an
-          // absence: it must be retyped, never silently dropped.
-          const unreadable = units.flatMap((u, i) => (u.kind === "unreadable" ? [repetitionLabel(i + 1)] : []));
           if (line.plan) {
+            const { readings: units, typedUnits, unreadable } = benchUnits(line.units, line.calcFactor);
             const judged = typedUnits > 0 ? judgeUnits(line.plan, units) : null;
             const verdict = judged ? judged.official ?? judged.informal : null;
-            return { parsed: null, conform: null, needsManual: false, verdict, indicative: !!judged && !judged.official, typedUnits, unreadable, undecided: null };
+            return { parsed: null, conform: null, needsManual: false, verdict, indicative: !!judged && !judged.official, typedUnits, unreadable, undecided: null, stored: null };
           }
-          // No criterion: the worst unit against the parameter's limit.
-          const summary = summariseReadings(units);
-          const parsed = summary.value ? { ...parseLabValue(summary.value), numeric: summary.numeric } : null;
-          const auto = suggestUnitsConformity(units, line.limitValue);
-          const undecided = auto === null ? aboveBelowLimit(units, line.limitValue) : null;
-          // The technician only decides when the reading is meaningful but
-          // not a number (« Présence »), or a « > x » below the limit — a
-          // decision taken earlier must not outlive the reading it was about.
-          const needsManual =
-            typedUnits > 0 && unreadable.length === 0 && auto === null && (parsed?.numeric == null || undecided !== null);
+          // No criterion: the worst unit against the parameter's limit. The
+          // technician only decides when the reading is meaningful but not a
+          // number (« Présence »), or a « > x » below the limit — the rule the
+          // submission checks again (`awaitsManualConformity`).
+          const read = unitsAgainstLimit(line.units, line.calcFactor, line.limitValue);
           return {
-            parsed,
-            conform: auto ?? (needsManual ? line.manualConform : null),
-            needsManual,
+            parsed: read.parsed,
+            conform: read.suggested ?? (read.needsManual ? line.manualConform : null),
+            needsManual: read.needsManual,
             verdict: null,
             indicative: false,
-            typedUnits,
-            unreadable,
-            undecided,
+            typedUnits: read.typedUnits,
+            unreadable: read.unreadable,
+            undecided: read.undecided,
+            stored: null,
           };
         }
         // The suggestion compares the FINAL value — raw reading × factor —
-        // exactly as the server will store it.
-        const parsed = line.value
-          ? applyCalcFactor(parseLabValue(line.value), line.calcFactor)
-          : null;
-        const auto = parsed
-          ? suggestConformity(parsed.numeric, line.limitValue, parsed.kind)
-          : null;
-        const undecided =
-          parsed?.kind === "above" && auto === null
-            ? aboveBelowLimit([applyUnitFactor(parseUnitReading(line.value), line.calcFactor)], line.limitValue)
-            : null;
-        const needsManual = !!line.value && auto === null && (parsed?.numeric === null || undecided !== null);
+        // and the line shows the text the report will print, both exactly as
+        // the server will store them.
+        const read = valueAgainstLimit(line.value, line.calcFactor, line.limitValue);
+        const entry = singleValueEntry(line.value, line.calcFactor);
         return {
-          parsed,
-          conform: auto ?? (needsManual ? line.manualConform : null),
-          needsManual,
+          parsed: read.parsed,
+          conform: read.suggested ?? (read.needsManual ? line.manualConform : null),
+          needsManual: read.needsManual,
           verdict: null,
           indicative: false,
           typedUnits: 0,
           unreadable: NO_UNREADABLE,
-          undecided,
+          undecided: read.undecided,
+          stored:
+            entry.value !== null && entry.rawValue !== null && entry.value !== entry.rawValue
+              ? { value: entry.value, factored: line.calcFactor !== 1 && factoredText(entry.parsed) !== null }
+              : null,
         };
       }),
     [lines]
@@ -261,7 +241,7 @@ export function ResultEntryForm({
     if (line.plan && !hasLimit(line.plan)) return reading.verdict?.verdict !== "INCOMPLET";
     if (line.plan) return reading.verdict !== null && reading.verdict.verdict !== "INCOMPLET";
     if (line.perUnit) return !(reading.needsManual && reading.conform === null);
-    return !!line.value && !(reading.needsManual && reading.conform === null);
+    return reading.parsed !== null && !(reading.needsManual && reading.conform === null);
   }).length;
   const allComplete = completed === lines.length && lines.length > 0;
 
@@ -423,14 +403,15 @@ export function ResultEntryForm({
                       <>
                         Critère : <span className="font-mono text-slate-700">{line.planLabel}</span>
                         {line.normLabel && <span className="ml-2 text-slate-400">{line.normLabel}</span>}
-                        {line.calcFactor !== 1 && (
-                          <span className="ml-2 rounded-full bg-violet-50 px-2 py-0.5 font-medium text-violet-700">
-                            Facteur ×{line.calcFactor}
-                          </span>
-                        )}
                       </>
                     ) : (
                       <>Seuil : {line.threshold ?? "non défini"}</>
+                    )}
+                    {/* Every line a factor multiplies says so, read per unit or as one value. */}
+                    {line.calcFactor !== 1 && (
+                      <span className="ml-2 rounded-full bg-violet-50 px-2 py-0.5 font-medium text-violet-700">
+                        Facteur ×{line.calcFactor} — votre lecture sera multipliée
+                      </span>
                     )}
                   </p>
                 </div>
@@ -489,19 +470,14 @@ export function ResultEntryForm({
                         placeholder="Ex. : 8,9.10²  ·  < 10  ·  > 3.10⁵  ·  Absence"
                         className={INPUT}
                       />
-                      {line.calcFactor !== 1 &&
-                        reading.parsed?.numeric != null &&
-                        reading.parsed.numeric !== 0 &&
-                        factoredText(reading.parsed) !== null && (
-                          <p className="mt-1 text-xs text-violet-700">
-                            Valeur finale (lecture ×{line.calcFactor}) :{" "}
-                            <b className="font-mono">
-                              {factoredText(reading.parsed)}
-                            </b>
-                            {line.unit ? ` ${line.unit}` : ""}{" "}— c&apos;est elle
-                            qui figure au rapport.
-                          </p>
-                        )}
+                      {reading.stored && (
+                        <p className="mt-1 text-xs text-violet-700">
+                          {reading.stored.factored ? `Valeur finale (lecture ×${line.calcFactor}) : ` : "Au rapport : "}
+                          <b className="font-mono">{reading.stored.value}</b>
+                          {line.unit ? ` ${line.unit}` : ""}
+                          {reading.stored.factored ? " — c'est elle qui figure au rapport." : "."}
+                        </p>
+                      )}
                     </div>
                   )}
 

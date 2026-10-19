@@ -10,7 +10,6 @@ import type {
   SurfaceState,
 } from "@/generated/prisma/enums";
 import type { CompanyInfo } from "./company";
-import { consultationText, type StoredConsultation } from "./client-consultation";
 import { CARTOUCHE_INK, cartoucheMargin, pageCss } from "./cartouche-html";
 import { formatDateOnly } from "./date-only";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
@@ -94,8 +93,6 @@ export type DocumentLine = {
   conformityReason: NonConformityReason | null;
   /** « Observation de réception » (A7) — printed under the line of the bon. */
   receptionNote?: string | null;
-  /** « Accord du client » of a non-conform line analysed anyway (A9). */
-  consultation?: StoredConsultation | null;
   /** Held « en attente du client » (A9), until released. */
   awaitingClient?: boolean;
 };
@@ -515,17 +512,13 @@ export function buildBonHtml(data: SerieDocumentData, thresholds: ReceptionThres
         .filter((d): d is string => Boolean(d))
         .map((d) => `<span class="small"> · ${escapeHtml(d)}</span>`)
         .join("");
-      // A9: who agreed to the analysis of a non-conform line, or the wait for the client.
-      const agreement = l.cancelled
-        ? ""
-        : l.consultation
-          ? ` — analysé avec l'${escapeHtml(consultationText(l.consultation))}`
-          : l.awaitingClient
-            ? " — en attente de l'avis du client"
-            : "";
+      // A9: the wait for the client's opinion. Their agreement to the analysis
+      // is not printed on the bon (Q75, 16/10): it stays recorded and visible
+      // to the validator.
+      const waiting = !l.cancelled && l.awaitingClient ? " — en attente de l'avis du client" : "";
       const status =
         l.conformity === false
-          ? `<br><span class="nc">Non conforme${l.conformityReason ? ` — ${escapeHtml(NON_CONFORMITY_REASON_LABELS[l.conformityReason])}` : ""}${l.destroyed ? " — détruit" : l.cancelled ? " — annulé" : ""}${agreement}</span>`
+          ? `<br><span class="nc">Non conforme${l.conformityReason ? ` — ${escapeHtml(NON_CONFORMITY_REASON_LABELS[l.conformityReason])}` : ""}${l.destroyed ? " — détruit" : l.cancelled ? " — annulé" : ""}${waiting}</span>`
           : l.cancelled
             ? `<br><span class="nc">${cancelledText(l)}</span>`
             : "";

@@ -10,7 +10,6 @@ import { cartoucheTemplate } from "@/lib/cartouche-html";
 import { getLabSettings } from "@/lib/lab-settings";
 import { HANDS_STATE_LABELS } from "@/lib/labels";
 import { sampleRef } from "@/lib/reception-input";
-import { storedConsultation } from "@/lib/client-consultation";
 import { ROLE_LABELS, type Role } from "@/lib/roles";
 import {
   BON_MARGIN,
@@ -113,12 +112,9 @@ export async function GET(
           conformity: true,
           conformityReason: true,
           receptionNote: true,
-          // A9: the wait for the client, the client's agreement.
+          // A9: the wait for the client (its agreement is not printed, Q75).
           analysisBlocked: true,
           awaitingClientSince: true,
-          clientConsultedName: true,
-          clientConsultationChannel: true,
-          clientConsultedAt: true,
           nature: { select: { family: true } },
           parameters: { select: { parameter: { select: { name: true } } } },
         },
@@ -173,8 +169,7 @@ export async function GET(
     conformityReason: isDeposit ? s.conformityReason : null,
     // The bon prints the reception's observation under the line (A7).
     receptionNote: isDeposit ? s.receptionNote : null,
-    // A9: « analysé avec l'accord de … », « en attente de l'avis du client ».
-    consultation: isDeposit ? storedConsultation(s) : null,
+    // A9: « en attente de l'avis du client » (l'accord n'est plus imprimé, Q75).
     awaitingClient: isDeposit && s.status === "RECU" && s.analysisBlocked && s.awaitingClientSince !== null,
   }));
 

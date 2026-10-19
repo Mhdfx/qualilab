@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { COMPANY } from "./company";
 import type { EmailType } from "@/generated/prisma/enums";
+import { resolveRecipients, type RecipientKind, type RecipientPick } from "./email-recipients";
 
 /**
  * Sending mail.
@@ -131,25 +132,26 @@ async function deliver(
   }
 }
 
-/** The addresses a client should receive a given kind of mail on. */
+/**
+ * The addresses a client should receive a given kind of mail on — about the
+ * site `siteId` (the série's), whose own addresses are added to the
+ * client-wide ones; another site's never are (`resolveRecipients`, D-04).
+ * Without a site, the client-wide addresses only. `otherSitesOnly` says
+ * when nobody applies because every address belongs to another site.
+ */
 export async function recipientsFor(
   clientId: string,
-  kind: "reports" | "alerts"
-): Promise<string[]> {
+  kind: RecipientKind,
+  siteId: string | null = null
+): Promise<RecipientPick> {
   const client = await prisma.client.findUnique({
     where: { id: clientId },
     select: {
       email: true,
-      emails: {
-        where: kind === "reports" ? { forReports: true } : { forAlerts: true },
-        select: { email: true },
-      },
+      // The whole list, ticked or not: the rule needs the other sites'
+      // addresses to keep the record's address from leaking to them.
+      emails: { select: { email: true, siteId: true, forReports: true, forAlerts: true } },
     },
   });
-
-  const listed = client?.emails.map((entry) => entry.email) ?? [];
-  // Fall back to the single address on the client record if no list exists yet.
-  if (listed.length === 0 && client?.email) return [client.email];
-
-  return Array.from(new Set(listed));
+  return client ? resolveRecipients(client, kind, siteId) : { to: [], otherSitesOnly: false };
 }

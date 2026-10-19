@@ -32,9 +32,9 @@ import {
  * (onto the site, merged by label), its products (merged by label), its
  * addresses (onto the site, labelled with its name), its own product types
  * and profiles. The addresses arrive with the report and alert boxes
- * unticked: the reports are not sent per site yet (Q45, `recipientsFor`
- * ignores the site), and a ticked box would send every report of the client
- * to every one of its sites.
+ * unticked: whether a site's own address receives its reports waits for the
+ * laboratory (Q45). Ticked, it receives only its site's mail (D-04,
+ * `pickRecipients`).
  */
 
 const MAX_CSV_CHARS = 5 * 1024 * 1024;

@@ -5,9 +5,11 @@ import {
   factoredText,
   isUncountableText,
   parseLabValue,
+  singleValueEntry,
   suggestConformity,
   formatLabValue,
 } from "./result-value";
+import { parseUnitReading } from "./interpretation";
 
 /**
  * Reading a bench value is the single most consequential function here: it
@@ -230,5 +232,78 @@ describe("benchConformity — what the server stores against the parameter's lim
     expect(stored("Indénombrable", null, true)).toBe(true);
     expect(stored("Indénombrable", null, "non")).toBeNull();
     expect(stored("Présence", 100, undefined)).toBeNull();
+  });
+});
+
+describe("« 3(-2) » on a line read as one value (D-01, 16/10)", () => {
+  it("reads the colonies and their dilution exactly as the unit grid does", () => {
+    expect(parseLabValue("3(-2)")).toEqual({ numeric: 300, kind: "number" });
+    expect(parseLabValue(" 15 ( -1 ) ")).toEqual({ numeric: 150, kind: "number" });
+    expect(parseLabValue("3(2)")).toEqual({ numeric: 300, kind: "number" });
+    for (const typed of ["3(-2)", "15(-1)", "0(-1)", "0(-3)", "120(-4)"]) {
+      const unit = parseUnitReading(typed);
+      expect(parseLabValue(typed).numeric, typed).toBe(unit.value);
+      expect(parseLabValue(typed).kind, typed).toBe(unit.kind === "count" ? "number" : unit.kind);
+    }
+  });
+
+  it("reads « 0(-1) » — no colony at 10⁻¹ — as below the detection limit", () => {
+    expect(parseLabValue("0(-1)")).toEqual({ numeric: 0, kind: "below" });
+  });
+
+  it("takes the shorthand alone, never after « > » or « < », nor with a two-digit exponent", () => {
+    for (const typed of ["> 3(-2)", "< 3(-2)", "3(-12)", "3(-2", "(-2)", "3,5(-2)"]) {
+      expect(parseLabValue(typed), typed).toEqual({ numeric: null, kind: "unreadable" });
+    }
+  });
+
+  it("judges it against the limit, so no manual conformity is asked for", () => {
+    const over = parseLabValue("3(-2)");
+    expect(suggestConformity(over.numeric, 100, over.kind)).toBe(false);
+    expect(suggestConformity(over.numeric, 1000, over.kind)).toBe(true);
+    const none = parseLabValue("0(-1)");
+    expect(suggestConformity(none.numeric, 100, none.kind)).toBe(true);
+  });
+});
+
+describe("singleValueEntry — what a line read as one value stores", () => {
+  it("stores the shorthand in the lab's notation, with the typed reading kept", () => {
+    expect(singleValueEntry("3(-2)", 1)).toEqual({
+      parsed: { numeric: 300, kind: "number" },
+      value: "3.10²",
+      rawValue: "3(-2)",
+    });
+    expect(singleValueEntry(" 0(-1) ", 1)).toEqual({ parsed: { numeric: 0, kind: "below" }, value: "< 10", rawValue: "0(-1)" });
+    expect(singleValueEntry("0(-3)", 1).value).toBe("< 1.10³");
+    expect(singleValueEntry("4(-1)", 1)).toMatchObject({ value: "40", rawValue: "4(-1)" });
+  });
+
+  it("applies a programmed factor once, to the shorthand as to any count", () => {
+    const factored = singleValueEntry("3(-2)", 10);
+    expect(factored).toEqual({ parsed: { numeric: 3000, kind: "number" }, value: "3.10³", rawValue: "3(-2)" });
+    // The same final value as the count typed in full.
+    expect(singleValueEntry("300", 10)).toEqual({ ...factored, rawValue: "300" });
+    // No colony stays below the limit of detection, whatever the factor.
+    expect(singleValueEntry("0(-1)", 10)).toEqual({ parsed: { numeric: 0, kind: "below" }, value: "< 10", rawValue: "0(-1)" });
+  });
+
+  it("rewrites a count or the bound of « > x » only under a factor, as before", () => {
+    expect(singleValueEntry("> 300", 10)).toEqual({ parsed: { numeric: 3000, kind: "above" }, value: "> 3.10³", rawValue: "> 300" });
+    expect(singleValueEntry("8,9.10²", 1)).toEqual({ parsed: { numeric: 890, kind: "number" }, value: "8,9.10²", rawValue: null });
+    expect(singleValueEntry("> 3.10⁵", 1)).toMatchObject({ value: "> 3.10⁵", rawValue: null });
+  });
+
+  it("stores as typed, with no raw value, what neither rewrites", () => {
+    for (const typed of ["Absence", "< 10", "Indénombrable", "voir cahier"]) {
+      for (const factor of [1, 10]) {
+        const entry = singleValueEntry(typed, factor);
+        expect(entry.value, `${typed} ×${factor}`).toBe(typed);
+        expect(entry.rawValue, `${typed} ×${factor}`).toBeNull();
+      }
+    }
+  });
+
+  it("stores nothing for an empty line", () => {
+    expect(singleValueEntry("   ", 10)).toEqual({ parsed: { numeric: null, kind: "unreadable" }, value: null, rawValue: null });
   });
 });

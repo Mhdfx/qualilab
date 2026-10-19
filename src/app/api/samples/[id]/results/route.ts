@@ -8,6 +8,7 @@ import { loadBenchPlans } from "@/lib/bench-plan";
 import { TYPED_RESULT_WHERE, canEnterParameter, hasTypedResult } from "@/lib/bench-access";
 import { lockTakeState } from "@/lib/bench-take-server";
 import { effectiveFactor } from "@/lib/dilution";
+import { benchUnit } from "@/lib/bench-reading";
 import {
   applyUnitFactor,
   judgeUnits,
@@ -17,13 +18,7 @@ import {
   verdictToConform,
   type UnitReading,
 } from "@/lib/interpretation";
-import {
-  applyCalcFactor,
-  benchConformity,
-  factoredText,
-  parseLabValue,
-  suggestConformity,
-} from "@/lib/result-value";
+import { benchConformity, singleValueEntry, suggestConformity } from "@/lib/result-value";
 import type { Interpretation, ResultWorkStatus } from "@/generated/prisma/enums";
 import { Prisma } from "@/generated/prisma/client";
 
@@ -233,7 +228,7 @@ export async function PUT(
           value: summary.value,
           rawValue: null,
           numericValue: summary.numeric,
-          unit: plan.unit ?? parameter.unit,
+          unit: benchUnit(plan, parameter.unit),
           threshold: plan.label,
           conform: verdictToConform(judged.official?.verdict ?? null),
           workStatus,
@@ -275,29 +270,26 @@ export async function PUT(
 
     // The value is stored as typed and as a number: the alert compares
     // figures. A factor (the programmed dilution, else the parameter's
-    // calcFactor) turns the bench reading into the final value; the raw
-    // entry is kept alongside so nothing is lost. Only a
-    // genuine count, or the bound of « > x », is rewritten — « Absence »,
-    // « < 10 » and « Indénombrable » stay as typed (their numeric 0 × factor
-    // is still 0, or there is none), otherwise the report would print "0"
-    // where the technician wrote « Absence ».
+    // calcFactor) turns the bench reading into the final value, and the
+    // lab's shorthand « 3(-2) » prints in its notation (« 3.10² », « 0(-1) »
+    // → « < 10 »), as on the unit grid; the raw entry is kept alongside so
+    // nothing is lost. Only a genuine count, or the bound of « > x », is
+    // rewritten — « Absence », « < 10 » and « Indénombrable » stay as typed
+    // (their numeric 0 × factor is still 0, or there is none), otherwise the
+    // report would print "0" where the technician wrote « Absence ».
     if (value.length > 191) {
       return NextResponse.json(
         { error: `Valeur trop longue pour ${parameter.name} (191 caractères max).` },
         { status: 400 }
       );
     }
-    const parsed = value
-      ? applyCalcFactor(parseLabValue(value), factor)
-      : { numeric: null, kind: "unreadable" as const };
-    // A count, or the bound of « > x », rewritten by the factor.
-    const factored = factor !== 1 ? factoredText(parsed) : null;
-    const transformed = factored !== null;
+    const stored = singleValueEntry(value, factor);
+    const parsed = stored.parsed;
 
     entries.push({
       parameterId,
-      value: factored ?? (value || null),
-      rawValue: transformed ? value : null,
+      value: stored.value,
+      rawValue: stored.rawValue,
       numericValue: parsed.numeric,
       unit: parameter.unit,
       threshold: parameter.threshold,

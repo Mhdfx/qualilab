@@ -124,6 +124,39 @@ describe("validateLine — the paper line, field by field", () => {
     expect(validateLine({ ...aliment, productTemperature: "999" }, 0, natures)).toMatchObject({ ok: false });
   });
 
+  it("names the temperature with the screen's words (Q112, 16/10)", () => {
+    // « Température au prélèvement » on every type — no longer « du produit ».
+    for (const line of [aliment, surface, mains, eau]) {
+      expect(validateLine({ ...line, productTemperature: "301" }, 0, natures)).toMatchObject({
+        ok: false,
+        error: "La température au prélèvement doit être un nombre plausible (−80 à 300 °C).",
+      });
+    }
+    expect(validateLine({ ...aliment, productTemperature: "chaud" }, 0, natures)).toMatchObject({
+      ok: false,
+      error: "La température au prélèvement doit être un nombre plausible (−80 à 300 °C).",
+    });
+    expect(validateLine({ ...aliment, ambientTemperature: "-81" }, 0, natures)).toMatchObject({
+      ok: false,
+      error: "La température ambiante doit être un nombre plausible (−80 à 300 °C).",
+    });
+    // The bounds themselves are plausible.
+    expect(validateLine({ ...aliment, productTemperature: "-80", ambientTemperature: "300" }, 0, natures)).toMatchObject({ ok: true });
+  });
+
+  it("still reads the « Fonction » a page opened before 16/10 sends (Q111)", () => {
+    // The form no longer asks it; the column keeps what was entered.
+    expect(validateLine(mains, 0, natures)).toMatchObject({ ok: true, value: { personRole: "Cuisinier" } });
+    const { personRole: _role, ...withoutRole } = mains;
+    void _role;
+    expect(validateLine(withoutRole, 0, natures)).toMatchObject({ ok: true, value: { personRole: null } });
+    // Ignored on any other kind of line.
+    expect(validateLine({ ...aliment, personRole: "Cuisinier" }, 0, natures)).toMatchObject({
+      ok: true,
+      value: { personRole: null },
+    });
+  });
+
   it("reads a DLC as the calendar day written, never an instant's UTC day (full-db 12/10)", () => {
     const at = validateLine({ ...aliment, productionDate: "2026-09-19", expiryDate: "2026-09-20T00:30:00+01:00" }, 0, natures);
     expect(at.ok && at.value.expiryDate?.toISOString()).toBe("2026-09-20T00:00:00.000Z");

@@ -1,5 +1,6 @@
 import type { Family, LimitKind } from "@/generated/prisma/enums";
-import { parseLabValue } from "./result-value";
+import { singleLimit, type Plan } from "./interpretation";
+import { isDilutionShorthand, parseLabValue } from "./result-value";
 import { normalizeLabel } from "./serie-input";
 import { MAX_UNITS } from "./series";
 
@@ -58,12 +59,77 @@ export function validateProductType(raw: unknown): Ok<CleanProductType> | Fail {
   };
 }
 
-/** A limit typed by the admin: a number, the lab's notation, or empty. */
+/**
+ * A limit typed by the admin: a number, the lab's notation, or empty. The
+ * bench shorthand « 1(-2) » is a colony count with its dilution, not a
+ * limit: refused rather than silently saved as 100.
+ */
 function limit(v: unknown): number | null | "invalid" {
   if (v === undefined || v === null || v === "") return null;
   if (typeof v === "number") return Number.isFinite(v) && v >= 0 ? v : "invalid";
+  if (isDilutionShorthand(String(v))) return "invalid";
   const parsed = parseLabValue(String(v));
   return parsed.kind === "number" && parsed.numeric !== null && parsed.numeric >= 0 ? parsed.numeric : "invalid";
+}
+
+/**
+ * Whether the tolerance c means anything: only against a figure — the
+ * units between m and M of a three-class plan, or the units above the one
+ * limit of a single-limit plan (m alone, M alone, m = M: answer of the
+ * laboratory to Q31, `judgeCounts`). An absence test and a « m non
+ * spécifiée » criterion without M have no figure, so no c.
+ */
+export function toleranceApplies(mKind: LimitKind, hasM: boolean, hasBigM: boolean): boolean {
+  if (mKind === "UNSPECIFIED") return hasBigM;
+  return mKind === "VALUE" && hasM;
+}
+
+/**
+ * « m non spécifiée » without M: the germ is analysed and printed, never
+ * judged (`hasLimit` in the interpretation engine). The workbook and the
+ * old software's import both write such rows (RETOUR-LABO-16-10.md F2).
+ */
+export const LIMITLESS_HINT = "sans limite — résultat sans verdict";
+
+/**
+ * The note the grid shows on a single-limit row with n = 1 and c ≥ 1. n = 1
+ * bounds c by what a sample holds (the imported grids need it), so c units
+ * above the limit are tolerated whatever the sample: a sample of one unit
+ * above the limit is « Acceptable », never « Non satisfaisant » — a rule the
+ * laboratory is asked to confirm (RETOUR-LABO-16-10.md F2).
+ */
+export function wideToleranceNote(plan: Plan): string | null {
+  if (plan.n !== 1 || plan.c === null || plan.c < 1 || singleLimit(plan) === null) return null;
+  return `c = ${plan.c} avec n = 1 : un échantillon d'une seule unité au-dessus de la limite sera « Acceptable », jamais « Non satisfaisant ».`;
+}
+
+/** The limit cells of a grid row, as typed. */
+export type LimitCells = { mKind: LimitKind; c: string; m: string; bigM: string };
+
+/**
+ * What choosing another kind of limit clears on a grid row. c counts the
+ * units tolerated between m and M, or above the one limit: another kind
+ * changes what it tolerates, so it is typed again, never carried over — a
+ * c = 2 between m = 10 and M = 100 must not become two units tolerated
+ * above M = 100.
+ */
+export function kindChange(cells: LimitCells, next: LimitKind): Partial<LimitCells> {
+  return {
+    mKind: next,
+    ...(next !== cells.mKind ? { c: "" } : {}),
+    ...(next === "ABSENCE" ? { m: "", bigM: "" } : {}),
+    ...(next === "UNSPECIFIED" ? { m: "" } : {}),
+  };
+}
+
+/**
+ * Typing M on a grid row. Emptying the M of a « m et M chiffrés » row turns
+ * c from « between m and M » into « above m »: cleared. Typing an M only
+ * narrows what c tolerates (above M is never tolerated), so c is kept.
+ */
+export function bigMChange(cells: LimitCells, value: string): Partial<LimitCells> {
+  const emptied = cells.mKind === "VALUE" && cells.bigM.trim() !== "" && value.trim() === "";
+  return { bigM: value, ...(emptied ? { c: "" } : {}) };
 }
 
 export function validateCriterion(raw: unknown, row = 0): Ok<CleanCriterion> | Fail {
@@ -79,7 +145,11 @@ export function validateCriterion(raw: unknown, row = 0): Ok<CleanCriterion> | F
   let c: number | null = null;
   if (input.c !== undefined && input.c !== null && input.c !== "") {
     c = Number(input.c);
-    if (!Number.isInteger(c) || c < 0 || c >= n) return fail("c doit être un entier entre 0 et n − 1.");
+    // n = 1 is also the old software's « the units are the sample's » (NBR
+    // left empty, `derivePlan`): the plan applies to every unit taken
+    // (`judgeUnits`), so c is bounded by what a sample holds, not by n.
+    const cMax = n === 1 ? MAX_UNITS - 1 : n - 1;
+    if (!Number.isInteger(c) || c < 0 || c > cMax) return fail(n === 1 ? `c doit être un entier entre 0 et ${cMax}.` : "c doit être un entier entre 0 et n − 1.");
   }
 
   const mKind = KINDS.includes(input.mKind as LimitKind) ? (input.mKind as LimitKind) : "VALUE";
@@ -88,11 +158,16 @@ export function validateCriterion(raw: unknown, row = 0): Ok<CleanCriterion> | F
   if (m === "invalid") return fail("la limite m est illisible.");
   if (bigM === "invalid") return fail("la limite M est illisible.");
 
+  // « m non spécifiée » with M empty is accepted: no limit, no verdict. An m
+  // sent with it (a stale page, a script, a mistyped kind) is refused, never
+  // dropped: the row would silently become a limitless criterion.
   if (mKind === "ABSENCE" && (m !== null || bigM !== null)) return fail("un critère d'absence ne porte pas de limite chiffrée.");
-  if (mKind === "UNSPECIFIED" && bigM === null) return fail("« m non spécifiée » exige une limite M.");
+  if (mKind === "UNSPECIFIED" && m !== null) return fail("« m non spécifiée » ne porte pas de m : indiquez M, ou laissez M vide pour « sans limite ».");
   if (mKind === "VALUE" && m === null) return fail("la limite m est obligatoire.");
-  if (m !== null && bigM !== null && bigM < m) return fail("M doit être supérieur ou égal à m.");
-  if (c !== null && (mKind !== "VALUE" || bigM === null)) return fail("la tolérance c n'a de sens qu'avec m et M.");
+  if (mKind === "VALUE" && m !== null && bigM !== null && bigM < m) return fail("M doit être supérieur ou égal à m.");
+  if (c !== null && !toleranceApplies(mKind, m !== null, bigM !== null)) {
+    return fail(mKind === "ABSENCE" ? "un critère d'absence ne porte pas de tolérance c." : "la tolérance c n'a de sens qu'avec une limite chiffrée (m ou M).");
+  }
 
   return {
     ok: true,

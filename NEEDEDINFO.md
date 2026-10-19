@@ -239,6 +239,13 @@ Q68, Q101 archivées au §3).
 | Q118 | *(16/10 : date et heure du prélèvement et de la réception obligatoires (archivé au §3) ; le client qui ne connaît pas l'heure : relance 2.6)* **« Arrivé le » au dépôt** (un vrai champ, jamais un renommage de « Prélevé le »). (a) Garder « Prélevé le (si connu) » facultatif ? (b) C1 d'un dépôt sans heure de prélèvement : simple avertissement, sans observation obligatoire ? (c) « Date et heure de réception » du rapport : l'arrivée saisie ou l'enregistrement ? | R5. Défaut proposé : (a) gardé, facultatif ; (b) avertissement ; (c) l'arrivée saisie. Complète Q68, Q71 |
 | Q130 | *(16/10 : six fonctions barrées, abandonnées (§3) ; (g) (h) (i) (j) (k) : relance 2.20)* **Fonctions de l'ancien logiciel.** Lesquelles manquent : (a) échantillon témoin ; (b) référence client par échantillon ; (c) neutralisant ; (d) diluant ; (e) « DPC » ; (f) multi duplication ; (g) boutons rapides de saisie ; (h) commentaire de saisie (rapport ou interne) ; (i) préleveur Qualilab attribué au comptoir ; (j) échantillon précédent / suivant ; (k) filtre « reçu depuis plus de N jours » ? | OLD9 … OLD50. Défaut construit : aucune ; chacune est une petite addition |
 
+Lot 2, vague 1 (19/10, `RETOUR-LABO-16-10.md` F2) — une règle construite
+pour enregistrer les grilles reprises de l'ancien logiciel, à confirmer :
+
+| # | Question | Ce que la réponse décide (défaut construit le 19/10) |
+|---|---|---|
+| Q131 | **Tolérance c avec n = 1 sur une limite unique.** L'ancien logiciel écrit n = 1 (« les unités de l'échantillon ») avec c = 1 ou 2 sur des critères à une seule limite (m seule, M seule, m = M). Une telle ligne tolère c unités au-dessus de la limite quel que soit l'échantillon : un échantillon d'une seule unité au-dessus de la limite est « Acceptable » (conforme, sans alerte de contamination), jamais « Non satisfaisant ». Est-ce votre règle, ou c doit-il rester inférieur au nombre d'unités prélevées ? | Défaut construit : accepté (c jusqu'à 998 quand n = 1, pour que les grilles reprises s'enregistrent) ; la grille des critères l'écrit sous chaque ligne concernée. Si la règle est « c < unités prélevées », le moteur jugera « Non satisfaisant » au-delà |
+
 ## 2. Ready to send — current batch
 
 *Copy this into an email. Update the date when you send it.*
