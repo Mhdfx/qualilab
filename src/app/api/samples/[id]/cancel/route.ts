@@ -7,6 +7,8 @@ import { canTransition } from "@/lib/sample-status";
 import { cancelRefusalForReport } from "@/lib/report-amendment";
 import { cancelNotifiesClient } from "@/lib/not-received";
 import { notifyNotReceived } from "@/lib/not-received-notice";
+import { heldInvoiceLabel } from "@/lib/billing";
+import { heldInvoices } from "@/lib/billing-hold";
 
 const REASONS: CancelReason[] = ["NON_EXPLOITABLE", "QUANTITE_INSUFFISANTE", "DOUBLON", "ANNULATION_CLIENT", "AUTRE", "NON_RECU"];
 
@@ -17,7 +19,10 @@ const REASONS: CancelReason[] = ["NON_EXPLOITABLE", "QUANTITE_INSUFFISANTE", "DO
  * the validateur, the Direction and the administrator up to the results
  * (16/10, Q13: `ANALYSIS_CANCEL_ROLES`); this guard only admits every role
  * that cancels somewhere. The sample keeps everything it had (numbers,
- * results) so an admin can bring it back.
+ * results) so an admin can bring it back. From the programme on it may be
+ * billed already: its line stays on the invoice (« Échantillon annulé après
+ * facturation » for the accountant), and a contamination alert may have
+ * reached the client — both journalled (`billedOn`, `alertsSentAt`).
  *
  * « Non reçu au laboratoire » (NON_RECU) only concerns a sample of a visit
  * still waiting for its reception (PRELEVE): once received, it was received.
@@ -44,6 +49,7 @@ export async function POST(
       status: true,
       serie: { select: { serialNumber: true } },
       report: { select: { amendmentPending: true } },
+      alertsSentAt: true,
     },
   });
   if (!sample) return NextResponse.json({ error: "Échantillon introuvable." }, { status: 404 });
@@ -90,10 +96,14 @@ export async function POST(
     if (moved.count === 0) {
       return NextResponse.json({ error: "L'échantillon vient de changer d'état — rechargez la page." }, { status: 409 });
     }
-    const updated = await prisma.sample.findUniqueOrThrow({
-      where: { id },
-      select: { id: true, code: true, controlCode: true, status: true, cancelledAt: true, cancelReason: true },
-    });
+    const [updated, held] = await Promise.all([
+      prisma.sample.findUniqueOrThrow({
+        where: { id },
+        select: { id: true, code: true, controlCode: true, status: true, cancelledAt: true, cancelReason: true },
+      }),
+      heldInvoices([id]),
+    ]);
+    const heldInvoice = held.get(id) ?? null;
 
     await logAudit({
       actorId: session.id,
@@ -110,6 +120,9 @@ export async function POST(
         note: note || null,
         // Who cancels is no longer the admin alone (16/10, Q13).
         role: session.role,
+        // What stays with the accountant and the client (D1).
+        billedOn: heldInvoice ? { invoiceId: heldInvoice.invoiceId, number: heldInvoiceLabel(heldInvoice) } : undefined,
+        alertsSentAt: sample.alertsSentAt ?? undefined,
       },
     });
 

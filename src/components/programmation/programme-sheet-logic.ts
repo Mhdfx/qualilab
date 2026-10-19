@@ -583,30 +583,50 @@ export function natureHint(family: Family, twin: SampleTwin | null, choices: num
 }
 
 /**
+ * What moving a line into « Autres analyses » undid (`adoptReferential`):
+ * the units it had, and the family it carried — null when unchanged.
+ */
+export type OtherAnalysesReset = { unitCount: number; productType: string | null };
+
+/**
  * The draft once the referential of another nature replaced the one on
  * screen: the nature follows, and the analyses the new nature does not
  * offer are dropped — their names are returned so the sheet can say which.
  * Everything else (type, units, priority and dates, the settings of every
  * analysis) is kept: re-choosing the first nature loses nothing but the
  * dropped analyses, which the user ticks again.
+ *
+ * Except into « Autres analyses » from a micro or PC nature (« Analyse
+ * sensorielle », 16/10, Q129 — RETOUR-LABO-16-10.md F9: « garder n = 1 pour
+ * la sensorielle »): n goes back to 1 and the family is detached — the
+ * micro family's n = 5 would have every analysis read per unit, R1–R5, and
+ * its criteria are not the sensory analysis's. `reset` says what changed;
+ * the laboratory confirms the rule against its old software's n = 5
+ * (NEEDEDINFO Q133).
  */
 export function adoptReferential(
   draft: ProgrammeDraft,
   previous: ProgrammeReferentialData,
   next: ProgrammeReferentialData
-): { draft: ProgrammeDraft; dropped: string[] } {
+): { draft: ProgrammeDraft; dropped: string[]; reset: OtherAnalysesReset | null } {
   const known = new Set(next.parameters.map((parameter) => parameter.id));
   const kept = draft.parameterIds.filter((id) => known.has(id));
   const dropped = draft.parameterIds
     .filter((id) => !known.has(id))
     .map((id) => previous.parameters.find((parameter) => parameter.id === id)?.name ?? id);
+  const familyOf = (r: ProgrammeReferentialData) => r.natures.find((nature) => nature.id === r.natureId)?.family ?? null;
+  const intoOther = familyOf(next) === "AUTRE" && familyOf(previous) !== "AUTRE";
+  if (intoOther && (draft.unitCount !== 1 || draft.productTypeId)) {
+    const reset = { unitCount: draft.unitCount, productType: draft.productTypeId ? typeOf(previous, draft.productTypeId)?.name ?? null : null };
+    return { draft: { ...draft, natureId: next.natureId, parameterIds: kept, productTypeId: "", unitCount: 1 }, dropped, reset };
+  }
   // The product type stays only while the client may still use it.
   const productTypeId = draft.productTypeId && typeOf(next, draft.productTypeId) ? draft.productTypeId : "";
-  return { draft: { ...draft, natureId: next.natureId, parameterIds: kept, productTypeId }, dropped };
+  return { draft: { ...draft, natureId: next.natureId, parameterIds: kept, productTypeId }, dropped, reset: null };
 }
 
 /** « Nature « Huiles » choisie : 2 analyses retirées (« A », « B ») … ». */
-export function natureChangeNotice(label: string, dropped: string[], current: boolean): string {
+export function natureChangeNotice(label: string, dropped: string[], current: boolean, reset: OtherAnalysesReset | null = null): string {
   const head = current ? `Nature d'origine « ${label} » rétablie` : `Nature « ${label} » choisie`;
   const removed =
     dropped.length === 0
@@ -614,7 +634,14 @@ export function natureChangeNotice(label: string, dropped: string[], current: bo
       : dropped.length === 1
         ? ` : l'analyse « ${dropped[0]} » n'existe pas pour cette nature et a été retirée`
         : ` : ${dropped.length} analyses n'existent pas pour cette nature et ont été retirées (${dropped.map((name) => `« ${name} »`).join(", ")})`;
-  return `${head}${removed}. Enregistrez le programme pour l'appliquer.`;
+  const parts = reset
+    ? [
+        ...(reset.unitCount !== 1 ? [`n ramené à 1 (au lieu de ${reset.unitCount})`] : []),
+        ...(reset.productType ? [`famille « ${reset.productType} » retirée`] : []),
+      ]
+    : [];
+  const otherAnalyses = parts.length > 0 ? ` ; ${parts.join(", ")} : une autre analyse se lit sur une seule unité` : "";
+  return `${head}${removed}${otherAnalyses}. Enregistrez le programme pour l'appliquer.`;
 }
 
 /** The warning of PROGRAMME.md §3 when the units read are fewer than the type's plans need. */

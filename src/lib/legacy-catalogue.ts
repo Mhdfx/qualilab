@@ -1,6 +1,7 @@
 import type { Family, LimitKind, SampleStatus, SampleType } from "@/generated/prisma/enums";
 import { catalogueKey } from "./billing";
 import { parameterKey, parameterLabel, parseNorm } from "./criteria-import";
+import { toleranceApplies } from "./criteria-input";
 import type { Plan } from "./interpretation";
 import { normalizeLabel } from "./serie-input";
 import { similarLabels } from "./similar";
@@ -147,8 +148,21 @@ function bound(r: Row, line: number): number | null {
   return Math.round(max * 10 ** exp * 1e6) / 1e6;
 }
 
-/** The plan of one legacy criterion, or the reason there is none. */
+/**
+ * The plan of one legacy criterion, or the reason there is none. The old
+ * software's CONTROL column is kept as c only where c means something
+ * (`toleranceApplies`): on an absence test or a limitless « non spécifiée »
+ * row it is dropped, so the import writes only what the grid saves back
+ * (`validateCriterion`) — the verdict never read it there.
+ */
 export function derivePlan(r: Row): { plan: Plan | null; reason: string | null } {
+  const derived = deriveRawPlan(r);
+  if (!derived.plan) return derived;
+  const { plan } = derived;
+  return { plan: { ...plan, c: toleranceApplies(plan.mKind, plan.m !== null, plan.bigM !== null) ? plan.c : null }, reason: null };
+}
+
+function deriveRawPlan(r: Row): { plan: Plan | null; reason: string | null } {
   if (int(r.obsolete) === 1) return { plan: null, reason: "obsolète" };
   const typePm = int(r.type_pm);
   const qualitative = int(r.type_resultat) === 12;
@@ -235,7 +249,10 @@ export function usableNorm(norm: string): boolean {
 //       takes the old software's (the workbook wins when it says something);
 //   (d) Q56 / Q129: a germ is looked up — and, when asked, created — in the
 //       category and domain of its family's nature, no longer always as a
-//       food microbiology parameter.
+//       food microbiology parameter;
+//   (e) F2 (19/10): the tolerance c an earlier import wrote where it means
+//       nothing (absence tests, limitless rows) is cleared (`PlannedTidy`),
+//       so every imported grid saves back as it is shown.
 //
 // What a person changed is never undone (« jamais sur une modification
 // manuelle »): a family whose criteria grid was saved by hand
@@ -414,6 +431,14 @@ export type PlannedRow = {
 /** An existing family without a regulation, linked to the old software's. */
 export type PlannedLink = { typeId: string; name: string; regulationLegacyId: number };
 
+/**
+ * A stored row whose tolerance c means nothing (`toleranceApplies`): an
+ * absence test or a limitless row an earlier import wrote with the old
+ * software's CONTROL column. Its c is cleared — no verdict ever read it — so
+ * the grid saves back as it is shown.
+ */
+export type PlannedTidy = { criterionId: string; productTypeId: string };
+
 /** One line of the journal per existing family the import changes (`LEGACY_CATALOGUE_REPRISE`). */
 export type RepriseJournalEntry = {
   typeId: string;
@@ -427,6 +452,8 @@ export type RepriseJournalEntry = {
     rebound?: { criterionId: string; from: string; to: string }[];
     /** Criteria of the old software added (a family filled, Q43). */
     added?: number;
+    /** Rows whose meaningless tolerance c was cleared (`PlannedTidy`). */
+    toleranceCleared?: number;
   };
 };
 
@@ -495,6 +522,8 @@ export type CataloguePlanSummary = {
     /** Food parameters left without any active criterion once their rows are copied (D-13: to fix in /admin/parametres). */
     orphanedSources: { name: string; category: SampleType }[];
     inFlight: InFlightImpact;
+    /** Stored rows whose meaningless tolerance c is cleared (`PlannedTidy`). */
+    tolerances: { rows: number; families: number };
   };
 };
 
@@ -505,6 +534,7 @@ export type CataloguePlan = {
   natureUpdates: NatureUpdate[];
   links: PlannedLink[];
   copies: PlannedCopy[];
+  tolerances: PlannedTidy[];
   rows: PlannedRow[];
   normsToCreate: PlannedNorm[];
   journal: RepriseJournalEntry[];
@@ -908,7 +938,8 @@ export function planLegacyCatalogue(input: {
         normVersionId: criterion.normVersionId,
         unit: criterion.unit,
         n: criterion.n,
-        c: criterion.c,
+        // A c an earlier import left where it means nothing is not copied.
+        c: toleranceApplies(criterion.mKind, criterion.m !== null, criterion.bigM !== null) ? criterion.c : null,
         mKind: criterion.mKind,
         m: criterion.m,
         bigM: criterion.bigM,
@@ -1118,6 +1149,13 @@ export function planLegacyCatalogue(input: {
     byStatus: [...byStatus.entries()].filter(([, c]) => c.startJudged + c.loseCriteria > 0).map(([status, c]) => ({ status, ...c })),
   };
 
+  // ---- the meaningless tolerances an earlier import left (F2) ------------------
+  const tolerances: PlannedTidy[] = snapshot.criteria
+    .filter((c) => c.c !== null && !toleranceApplies(c.mKind, c.m !== null, c.bigM !== null))
+    .map((c) => ({ criterionId: c.id, productTypeId: c.productTypeId }));
+  const tidiedOf = new Map<string, number>();
+  for (const t of tolerances) tidiedOf.set(t.productTypeId, (tidiedOf.get(t.productTypeId) ?? 0) + 1);
+
   // ---- the journal: one line per existing family changed ----------------------
   const journal = new Map<string, RepriseJournalEntry>();
   const entryOf = (typeId: string) => {
@@ -1139,6 +1177,7 @@ export function planLegacyCatalogue(input: {
     entry.metadata.rebound = [...(entry.metadata.rebound ?? []), { criterionId: copy.criterionId, from: copy.fromParameter, to: copy.toParameter }];
   }
   for (const [ref, count] of added) if (typeById.has(ref)) entryOf(ref).metadata.added = count;
+  for (const [typeId, count] of tidiedOf) if (typeById.has(typeId)) entryOf(typeId).metadata.toleranceCleared = count;
 
   natures.assigned = natureUpdates.length;
   natures.created = typesToCreate.filter((t) => t.natureId !== null).length;
@@ -1150,6 +1189,7 @@ export function planLegacyCatalogue(input: {
     natureUpdates,
     links,
     copies,
+    tolerances,
     rows,
     normsToCreate: [...normsToCreate.values()],
     journal: [...journal.values()],
@@ -1194,6 +1234,7 @@ export function planLegacyCatalogue(input: {
         handEdited,
         orphanedSources,
         inFlight,
+        tolerances: { rows: tolerances.length, families: tidiedOf.size },
       },
     },
   };

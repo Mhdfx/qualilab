@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { invoiceNotices, sampleBillingNotice } from "./invoice-notices";
+import { billedOnInvoice, invoiceNotices, sampleBillingNotice, sampleBillingNotices } from "./invoice-notices";
 
 /**
  * PROGRAMME.md §6 — the invoice says when it was issued before the result,
@@ -59,5 +59,40 @@ describe("invoiceNotices", () => {
 
   it("is empty for an invoice typed by hand or fully validated", () => {
     expect(invoiceNotices([{ sample: null }, { sample: sample("x", "RAPPORT_ENVOYE") }])).toEqual([]);
+  });
+});
+
+describe("« Analyses modifiées après facturation » (16/10 — F6, F8, C5 after billing)", () => {
+  const sample = (id: string, status: Parameters<typeof sampleBillingNotice>[0], analysesChanged = false) => ({
+    id,
+    code: `CODE-${id}`,
+    controlCode: null,
+    status,
+    analysesChanged,
+  });
+
+  it("is said with the sample's status notice, after the cancellation and before « avant résultat »", () => {
+    expect(sampleBillingNotices({ status: "EN_ANALYSE", analysesChanged: true })).toEqual(["BEFORE_RESULT", "ANALYSES_CHANGED"]);
+    expect(sampleBillingNotices({ status: "VALIDE", analysesChanged: true })).toEqual(["ANALYSES_CHANGED"]);
+    expect(sampleBillingNotices({ status: "VALIDE" })).toEqual([]);
+    expect(
+      invoiceNotices([
+        { sample: sample("a", "EN_ANALYSE", true) },
+        { sample: sample("b", "ANNULE") },
+        { sample: sample("c", "RAPPORT_ENVOYE", true) },
+      ])
+    ).toEqual([
+      { kind: "CANCELLED", references: ["CODE-b"] },
+      { kind: "ANALYSES_CHANGED", references: ["CODE-a", "CODE-c"] },
+      { kind: "BEFORE_RESULT", references: ["CODE-a"] },
+    ]);
+  });
+
+  it("reads the invoice a journal line names, and nothing from anything else", () => {
+    expect(billedOnInvoice(JSON.stringify({ reason: "x", billedOn: { invoiceId: "inv1", number: "FAC-2026-00001" } }))).toBe("inv1");
+    expect(billedOnInvoice(JSON.stringify({ reason: "x" }))).toBeNull();
+    expect(billedOnInvoice(JSON.stringify({ billedOn: { invoiceId: 3 } }))).toBeNull();
+    expect(billedOnInvoice("{pas du json")).toBeNull();
+    expect(billedOnInvoice(null)).toBeNull();
   });
 });

@@ -123,6 +123,40 @@ export function holdsSamples(invoice: { kind: InvoiceKind; status: InvoiceStatus
   return invoice.kind === "FACTURE" && SAMPLE_HOLDING_STATUSES.includes(invoice.status);
 }
 
+/** The invoice holding a sample (`holdingInvoiceItemWhere`): a draft (no number yet) or an issued invoice. */
+export type HeldInvoice = { invoiceId: string; number: string | null };
+
+/** « FAC-2026-00012 », or « brouillon » for a draft — as the journal and the screens write it. */
+export function heldInvoiceLabel(held: Pick<HeldInvoice, "number">): string {
+  return held.number ?? "brouillon";
+}
+
+/**
+ * Whether a change of a sample's analyses reaches its invoice: one line per
+ * analysis, priced by the sample's category (`proposeLines`) — so the list
+ * of analyses or the category changed. n, the family and the rest do not.
+ */
+export function billedAnalysesChanged(
+  before: { parameterIds: readonly string[]; type: SampleType },
+  after: { parameterIds: readonly string[]; type: SampleType }
+): boolean {
+  if (before.type !== after.type) return true;
+  const kept = new Set(before.parameterIds);
+  return after.parameterIds.length !== kept.size || after.parameterIds.some((id) => !kept.has(id));
+}
+
+/**
+ * What the screen says once the analyses of a sample an invoice holds have
+ * changed (16/10: F6 on the programme, F8 and C5 at the bench): the invoice
+ * still bills the former list, so the accountant is told — the invoice
+ * sheet says it too (« Analyses modifiées après facturation »).
+ */
+export function billedAnalysesNotice(held: Pick<HeldInvoice, "number">): string {
+  return held.number === null
+    ? "Échantillon sur un brouillon de facture : prévenez la comptabilité — ses lignes sont à corriger avant l'émission."
+    : `Échantillon déjà facturé (${held.number}) : prévenez la comptabilité — avoir pour une analyse retirée, facture complémentaire pour une analyse ajoutée.`;
+}
+
 /**
  * The Prisma filter matching the invoice lines that hold their sample — the
  * one billing rule (CLIENTS-FUSION.md §4: a sample is billed once, to one

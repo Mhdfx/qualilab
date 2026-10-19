@@ -153,7 +153,7 @@ export function FactureDetail({
               key={notice.kind}
               role="status"
               className={`rounded-xl border px-4 py-3 text-sm ${
-                notice.kind === "CANCELLED"
+                notice.kind === "CANCELLED" || notice.kind === "ANALYSES_CHANGED"
                   ? "border-rose-200 bg-rose-50 text-rose-800"
                   : "border-amber-200 bg-amber-50 text-amber-800"
               }`}

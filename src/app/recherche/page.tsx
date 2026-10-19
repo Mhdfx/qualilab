@@ -265,7 +265,7 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
                       <td className="py-2.5 pr-3 text-slate-600">
                         {row.sampledAt ? formatDate(row.sampledAt) : <span className="text-slate-400">{UNDECLARED_SAMPLING}</span>}
                       </td>
-                      <td className="py-2.5 pr-3 text-slate-600">{row.receivedAt ? formatDate(row.receivedAt) : "—"}</td>
+                      <td className="py-2.5 pr-3 text-slate-600">{row.receptionAt ? formatDate(row.receptionAt) : "—"}</td>
                       <td className="py-2.5 pr-3"><StatusBadge status={row.status} /></td>
                       <td className="py-2.5">
                         <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ${TONES[row.conclusion.tone]}`}>

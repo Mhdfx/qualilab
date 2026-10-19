@@ -876,6 +876,22 @@ describe("nature d'analyse (Q49 by default)", () => {
       natures: withSensory.natures.map((n) => ({ ...n, current: n.id === "nat-sens" })),
     };
 
+    it("keeps n = 1 into « Analyse sensorielle » and detaches the micro family (F9); back, nothing is reset", () => {
+      const micro = { ...initialDraft(received, withSensory), unitCount: 5, productTypeId: "type-catalogue" };
+      const { draft, reset } = adoptReferential(micro, withSensory, onSensory);
+      expect(draft).toMatchObject({ natureId: "nat-sens", unitCount: 1, productTypeId: "" });
+      expect(reset).toEqual({ unitCount: 5, productType: withSensory.productTypes.find((t) => t.id === "type-catalogue")!.name });
+      expect(natureChangeNotice("Analyse sensorielle", [], false, reset)).toBe(
+        `Nature « Analyse sensorielle » choisie ; n ramené à 1 (au lieu de 5), famille « ${reset!.productType} » retirée : une autre analyse se lit sur une seule unité. Enregistrez le programme pour l'appliquer.`
+      );
+      // Already n = 1 without a family: nothing to say.
+      expect(adoptReferential({ ...micro, unitCount: 1, productTypeId: "" }, withSensory, onSensory).reset).toBeNull();
+      // Back to the food domain: n and the family are the programmer's again.
+      const back = adoptReferential({ ...draft, unitCount: 3 }, onSensory, { ...withSensory, natures: onSensory.natures });
+      expect(back.reset).toBeNull();
+      expect(back.draft.unitCount).toBe(3);
+    });
+
     it("offers the sensory analysis beside the line's own family, never the other family", () => {
       expect(natureChoices(withSensory, "MICRO", "M").map((n) => n.id)).toEqual(["nat", "nat-fine", "nat-sens"]);
       expect(natureChoices(withSensory, "MICRO", null).map((n) => n.id)).toEqual(["nat", "nat-fine", "nat-sens"]);

@@ -25,6 +25,9 @@ import {
   unpricedLineRefusal,
   type CatalogueEntry,
   type BillableSample,
+  billedAnalysesChanged,
+  billedAnalysesNotice,
+  heldInvoiceLabel,
 } from "./billing";
 
 const catalogue: CatalogueEntry[] = [
@@ -522,5 +525,25 @@ describe("lockRetryPause", () => {
 
   it("is jittered, so requests that deadlocked together do not meet again", () => {
     expect(lockRetryPause(1, () => 0)).not.toBe(lockRetryPause(1, () => 0.5));
+  });
+});
+
+describe("analyses changed on a billed sample (16/10 — F6, F8, C5)", () => {
+  it("reaches the invoice when the list or the category changes — never n, the family or the order", () => {
+    const before = { parameterIds: ["p1", "p2"], type: "ALIMENTAIRE" as const };
+    expect(billedAnalysesChanged(before, { ...before, parameterIds: ["p2", "p1"] })).toBe(false);
+    expect(billedAnalysesChanged(before, { ...before, parameterIds: ["p1"] })).toBe(true);
+    expect(billedAnalysesChanged(before, { ...before, parameterIds: ["p1", "p3"] })).toBe(true);
+    expect(billedAnalysesChanged(before, { ...before, parameterIds: ["p1", "p2", "p3"] })).toBe(true);
+    expect(billedAnalysesChanged(before, { ...before, type: "EAU" })).toBe(true);
+  });
+
+  it("names the invoice, or the draft, and what the accountant does", () => {
+    expect(heldInvoiceLabel({ number: "FAC-2026-00012" })).toBe("FAC-2026-00012");
+    expect(heldInvoiceLabel({ number: null })).toBe("brouillon");
+    expect(billedAnalysesNotice({ number: "FAC-2026-00012" })).toBe(
+      "Échantillon déjà facturé (FAC-2026-00012) : prévenez la comptabilité — avoir pour une analyse retirée, facture complémentaire pour une analyse ajoutée."
+    );
+    expect(billedAnalysesNotice({ number: null })).toContain("brouillon de facture");
   });
 });

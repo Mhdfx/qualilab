@@ -8,6 +8,8 @@ import type {
   SampleType,
   SurfaceState,
 } from "@/generated/prisma/enums";
+import { BILLABLE_STATUSES } from "@/lib/billing-status";
+import { billedAnalysesNotice } from "@/lib/billing";
 import { CANCEL_REASON_LABELS, isExposedPlate } from "@/lib/labels";
 import { resultsToReset } from "@/lib/intake-input";
 import { cancellersLabel, type CorrectionRights } from "@/lib/sample-verbs";
@@ -61,6 +63,14 @@ export type VerbSample = {
   /** Its name, so « Corriger la fiche » names a family its list no longer offers. */
   productTypeName?: string | null;
   clientId: string;
+  /**
+   * The invoice holding it (`heldInvoices`): its number, null for a draft;
+   * null = on no invoice; absent = not read by this page (the dialogs then
+   * say what holds whatever the case).
+   */
+  invoiced?: { number: string | null } | null;
+  /** When a contamination alert left for it (ISO); null = none; absent = not read. */
+  alertsSentAt?: string | null;
 };
 
 /**
@@ -76,11 +86,18 @@ export function cancelReasonsFor(status: SampleStatus): CancelReason[] {
   );
 }
 
-/** Which identification fields a kind of sample shows — and sends. */
+/**
+ * Which fields a kind of sample shows — and sends. The famille de produits
+ * on every kind (RETOUR-LABO-16-10.md F3 / F5): the water, surface, hands
+ * and air families carry their own criteria since the reprise, and the
+ * programme sheet gives one to any line — once the bench has started, this
+ * dialog is the only place to correct it.
+ */
 export function correctionFields(kind: LineKind) {
   return {
     produit: kind === "ALIMENT" || kind === "EAU" || kind === "AIR" || kind === "AUTRE",
     food: kind === "ALIMENT",
+    family: true,
     quantity: kind === "ALIMENT" || kind === "EAU" || kind === "AUTRE",
     // The air has no « Température au prélèvement » (§8.5): its ambient one only.
     productTemperature: kind !== "AIR",
@@ -154,7 +171,7 @@ export const FULL_CORRECTION: CorrectionRights = { identification: true, analyse
  * for this kind, nothing else — a value of another kind stays as it was.
  * Only the halves this person may change are sent (16/10, Q128 —
  * `correctionRights`): the identification fields, and/or the analyses' —
- * the list, the product type, the number of units. An
+ * the list, the product type (any kind of line), the number of units. An
  * empty state, method or hands state is left out: an older sample stays
  * without one, and the API refuses to empty one that is set. The
  * temperatures are always sent (an empty one stays empty on an older
@@ -173,7 +190,7 @@ export function correctionBody(
   const analyses = scope.analyses
     ? {
         unitCount: values.unitCount,
-        ...(shown.food ? { productTypeId: values.productTypeId } : {}),
+        ...(shown.family ? { productTypeId: values.productTypeId } : {}),
         ...(parameterIds ? { parameterIds } : {}),
       }
     : {};
@@ -211,6 +228,52 @@ export function correctionBody(
     ...(shown.air && isExposedPlate(values.airMethod) ? { airExposureMin: values.airExposureMin } : {}),
     reason,
   };
+}
+
+/**
+ * What « Annuler » says the cancellation does (16/10, Q13 — the validation
+ * desks cancel billable work since D1): the sample leaves the queues and the
+ * report; the billing only when no invoice holds it yet — a billed line
+ * stays on its invoice, for the accountant to credit (« Échantillon annulé
+ * après facturation »); and a contamination alert already sent stays with
+ * the client, who will get no report for it. Before the programme nothing is
+ * billable. A page that did not read the invoice says what happens if one
+ * holds it.
+ */
+export function cancelConsequences(
+  sample: Pick<VerbSample, "status" | "invoiced" | "alertsSentAt">
+): { text: string; warnings: string[] } {
+  const billable = BILLABLE_STATUSES.includes(sample.status);
+  const warnings: string[] = [];
+  let text = "L'échantillon sort de toutes les files, du rapport et de la facturation.";
+  if (billable && sample.invoiced === undefined) {
+    text = "L'échantillon sort de toutes les files et du rapport ; s'il est déjà facturé, sa ligne reste sur la facture et la comptabilité établit un avoir.";
+  } else if (billable && sample.invoiced) {
+    text = "L'échantillon sort de toutes les files et du rapport.";
+    warnings.push(
+      sample.invoiced.number === null
+        ? "Il est sur un brouillon de facture : la comptabilité retirera sa ligne avant l'émission."
+        : `Déjà facturé (${sample.invoiced.number}) : sa ligne reste sur la facture, la comptabilité établira un avoir.`
+    );
+  }
+  if (sample.alertsSentAt) {
+    warnings.push("Une alerte de contamination est déjà partie chez le client : il ne recevra pas de rapport pour cet échantillon.");
+  }
+  return { text, warnings };
+}
+
+/**
+ * The warning « Corriger les analyses » shows while an invoice holds the
+ * sample and the list on screen differs from it: the invoice keeps billing
+ * the former list (`billedAnalysesNotice`, the route says it again).
+ */
+export function billedCorrectionWarning(
+  sample: Pick<VerbSample, "invoiced" | "parameterIds">,
+  parameterIds: readonly string[]
+): string | null {
+  if (!sample.invoiced) return null;
+  const same = parameterIds.length === sample.parameterIds.length && parameterIds.every((id) => sample.parameterIds.includes(id));
+  return same ? null : billedAnalysesNotice(sample.invoiced);
 }
 
 /** What the dialog says under the analyses: an information, or a warning. */

@@ -50,6 +50,14 @@ describe("derivePlan — the old software's criteria", () => {
   it("falls back to VALEUR_PM × 10^EXPM when no interval line exists", () => {
     expect(derivePlan(row({ type_pm: "3", type_resultat: "11", obsolete: "0", valeur_pm: "1.5000", exp_pm: "2" })).plan).toMatchObject({ mKind: "VALUE", m: 150, bigM: null });
   });
+
+  it("keeps CONTROL as c only where c means something — never on an absence test or a limitless row (F2)", () => {
+    expect(derivePlan(row({ type_pm: "1", type_resultat: "12", control: "2", obsolete: "0" })).plan).toEqual({ n: 1, c: null, mKind: "ABSENCE", m: null, bigM: null });
+    expect(derivePlan(row({ type_pm: "2", type_resultat: "11", nbr: "5", control: "1", obsolete: "0" })).plan).toEqual({ n: 5, c: null, mKind: "UNSPECIFIED", m: null, bigM: null });
+    // A limit kept: c with it, whether M alone or m alone.
+    expect(derivePlan(row({ type_pm: "2", type_resultat: "11", control: "1", obsolete: "0", l1_max: "1.0000", l1_exp_max: "3", l1_concl: "2" })).plan).toMatchObject({ mKind: "UNSPECIFIED", bigM: 1000, c: 1 });
+    expect(derivePlan(row({ type_pm: "3", type_resultat: "11", control: "1", obsolete: "0", l1_max: "3.0000", l1_exp_max: "1", l1_concl: "2" })).plan).toMatchObject({ mKind: "VALUE", m: 30, c: 1 });
+  });
 });
 
 describe("the CSV parsers", () => {
@@ -292,10 +300,11 @@ function applyPlan(snapshot: CatalogueSnapshot, written: CataloguePlan): Catalog
     types.push(family({ id: p.ref, name: p.name, legacyId: p.legacyId, natureId: p.natureId, family: p.family, active: p.active }));
   }
   const deactivated = new Set(written.copies.map((c) => c.criterionId));
-  const criteria = snapshot.criteria.map((c) => (deactivated.has(c.id) ? { ...c, active: false } : c));
+  const tidied = new Set(written.tolerances.map((t) => t.criterionId));
+  const criteria = snapshot.criteria.map((c) => ({ ...c, ...(deactivated.has(c.id) ? { active: false } : {}), ...(tidied.has(c.id) ? { c: null } : {}) }));
   written.copies.forEach((c, i) => {
     const from = snapshot.criteria.find((k) => k.id === c.criterionId)!;
-    criteria.push({ ...from, id: `copie-${i}`, parameterId: c.parameterRef, active: true });
+    criteria.push({ ...from, id: `copie-${i}`, parameterId: c.parameterRef, c: c.c, active: true });
   });
   written.rows.forEach((r, i) => {
     criteria.push(criterion({
@@ -452,6 +461,35 @@ describe("planLegacyCatalogue — (c) Q43 and (d) the categories of new germs", 
   });
 });
 
+describe("planLegacyCatalogue — (e) the tolerance c an earlier import left where it means nothing (F2)", () => {
+  // Imported before 19/10 with the old software's CONTROL column: an absence
+  // test and a limitless row carrying c, a hands row among them (copied in (b)).
+  const stale: CatalogueSnapshot = {
+    ...SNAPSHOT,
+    criteria: [
+      ...SNAPSHOT.criteria.filter((c) => c.id !== "k-mains-ecoli"),
+      criterion({ id: "k-mains-ecoli", productTypeId: "t-mains", parameterId: "p-ecoli", unit: "UFC/mains", mKind: "ABSENCE", m: null, bigM: null, c: 1 }),
+      criterion({ id: "k-fromages-coli", productTypeId: "t-fromages", parameterId: "p-coli", mKind: "UNSPECIFIED", m: null, bigM: null, c: 2 }),
+      // c with a figure: kept.
+      criterion({ id: "k-fromages-staph", productTypeId: "t-fromages", parameterId: "p-staph", mKind: "UNSPECIFIED", m: null, bigM: 1000, c: 1 }),
+    ],
+  };
+  const result = plan(stale, false);
+
+  it("clears c on those rows only, and copies none", () => {
+    expect(result.tolerances.map((t) => t.criterionId).sort()).toEqual(["k-fromages-coli", "k-mains-ecoli"]);
+    expect(result.summary.reprise.tolerances).toEqual({ rows: 2, families: 2 });
+    expect(result.copies.find((c) => c.criterionId === "k-mains-ecoli")).toMatchObject({ mKind: "ABSENCE", c: null });
+  });
+
+  it("journals the count per family, and plans nothing more once written", () => {
+    const journal = Object.fromEntries(result.journal.map((e) => [e.typeId, e.metadata]));
+    expect(journal["t-fromages"]).toMatchObject({ toleranceCleared: 1 });
+    expect(journal["t-mains"]).toMatchObject({ toleranceCleared: 1 });
+    expect(plan(applyPlan(stale, result), false).tolerances).toEqual([]);
+  });
+});
+
 describe("planLegacyCatalogue — idempotence", () => {
   for (const createMissing of [false, true]) {
     it(`plans nothing more once its plan is written (créer les paramètres inconnus : ${createMissing ? "oui" : "non"})`, () => {
@@ -463,10 +501,11 @@ describe("planLegacyCatalogue — idempotence", () => {
         parameters: second.parameters,
         natureUpdates: second.natureUpdates,
         copies: second.copies,
+        tolerances: second.tolerances,
         rows: second.rows,
         normsToCreate: second.normsToCreate,
         journal: second.journal,
-      }).toEqual({ typesToCreate: [], parameters: [], natureUpdates: [], copies: [], rows: [], normsToCreate: [], journal: [] });
+      }).toEqual({ typesToCreate: [], parameters: [], natureUpdates: [], copies: [], tolerances: [], rows: [], normsToCreate: [], journal: [] });
       // What only a person can settle is still listed.
       expect(second.summary.reprise.rebinding.collisions).toHaveLength(1);
       expect(second.summary.reprise.natures.conflicts).toHaveLength(1);

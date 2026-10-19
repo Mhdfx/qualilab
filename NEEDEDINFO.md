@@ -240,17 +240,34 @@ Q68, Q101 archivées au §3).
 | Q130 | *(16/10 : six fonctions barrées, abandonnées (§3) ; (g) (h) (i) (j) (k) : relance 2.20)* **Fonctions de l'ancien logiciel.** Lesquelles manquent : (a) échantillon témoin ; (b) référence client par échantillon ; (c) neutralisant ; (d) diluant ; (e) « DPC » ; (f) multi duplication ; (g) boutons rapides de saisie ; (h) commentaire de saisie (rapport ou interne) ; (i) préleveur Qualilab attribué au comptoir ; (j) échantillon précédent / suivant ; (k) filtre « reçu depuis plus de N jours » ? | OLD9 … OLD50. Défaut construit : aucune ; chacune est une petite addition |
 
 Lot 2, vague 1 (19/10, `RETOUR-LABO-16-10.md` F2) — une règle construite
-pour enregistrer les grilles reprises de l'ancien logiciel, à confirmer :
+pour enregistrer les grilles reprises de l'ancien logiciel, à confirmer.
+*Pas dans le PDF du 18/10 (produit avant) : posée à part, dans le corps de
+l'e-mail du lot du 18/10 (§2), avec Q132 et Q133.*
 
 | # | Question | Ce que la réponse décide (défaut construit le 19/10) |
 |---|---|---|
 | Q131 | **Tolérance c avec n = 1 sur une limite unique.** L'ancien logiciel écrit n = 1 (« les unités de l'échantillon ») avec c = 1 ou 2 sur des critères à une seule limite (m seule, M seule, m = M). Une telle ligne tolère c unités au-dessus de la limite quel que soit l'échantillon : un échantillon d'une seule unité au-dessus de la limite est « Acceptable » (conforme, sans alerte de contamination), jamais « Non satisfaisant ». Est-ce votre règle, ou c doit-il rester inférieur au nombre d'unités prélevées ? | Défaut construit : accepté (c jusqu'à 998 quand n = 1, pour que les grilles reprises s'enregistrent) ; la grille des critères l'écrit sous chaque ligne concernée. Si la règle est « c < unités prélevées », le moteur jugera « Non satisfaisant » au-delà |
 
+Lot 2, revue finale (19/10) — deux règles construites par défaut, à
+confirmer avant ou avec le déploiement du lot 2 (posées comme Q131, dans le
+corps de l'e-mail du lot du 18/10) :
+
+| # | Question | Ce que la réponse décide (défaut construit le 19/10) |
+|---|---|---|
+| Q132 | **Corriger un rapport validé mais pas encore envoyé.** Depuis le 16/10 (Q92), « Valider » n'envoie plus rien : un rapport peut être validé, puis corrigé avant son envoi. La seule correction possible est « Rouvrir pour amendement » : le client reçoit alors directement le rapport « …-A1 », imprimé « Rapport amendé — Annule et remplace le rapport … » (et l'e-mail « Rapport amendé »), alors qu'il n'a jamais reçu le rapport remplacé. Est-ce acceptable (la trace de l'amendement est gardée), ou un rapport jamais envoyé doit-il être corrigé sans amendement (même numéro, sans « annule et remplace ») ? | D2 × D1 (`RETOUR-LABO-16-10.md` §3.D). Défaut construit : l'amendement, comme pour un rapport envoyé ; la fenêtre « Rouvrir pour amendement » prévient que le client n'a jamais reçu le rapport remplacé. Si la réponse est « sans amendement », la réouverture d'une version jamais envoyée ne numérote plus de « -A1 » et n'imprime plus « annule et remplace » |
+| Q133 | **n de l'analyse sensorielle.** Le plan du 16/10 (F9) garde n = 1 pour « Analyse sensorielle » ; l'ancien logiciel donne n = 5, c = 1 à sa famille sensorielle « PRODUIT ALIMENTAIRE » (déshydratation profonde, corps étranger, texture…), n = 1 à « Détermination de l'odeur ». Combien d'unités pour une analyse sensorielle : 1, ou 5 comme dans l'ancien logiciel ? | F9. Défaut construit : passer un échantillon en « Analyse sensorielle » ramène n à 1 et retire la famille microbiologique (la fiche le dit) ; choisir ensuite la famille sensorielle reprise de l'ancien logiciel reprend son n = 5. Si la réponse est « 5 », la remise à 1 disparaît ; si c'est « 1 », les critères repris de cette famille passent à n = 1 |
+
 ## 2. Ready to send — current batch
 
 *Copy this into an email. Update the date when you send it.*
 
-> **Lot du 18/10 — suite des réponses du 16/10 — à envoyer avec le PDF `backups/Qualilab-suite-reponses-16-10-2026-10-18.pdf` (11 pages, hors dépôt ; détail `RETOUR-LABO-16-10.md` §7) :**
+*19/10 — the PDF of 18/10 was produced before lot 2 was built: it does
+**not** hold Q131 (raised by wave 1, F2) nor Q132 / Q133 (raised by the
+final verification). They must be asked separately — the « Trois questions
+en plus » paragraph below carries them in the e-mail itself; do not
+regenerate the PDF for them.*
+
+> **Lot du 18/10 — suite des réponses du 16/10 — à envoyer avec le PDF `backups/Qualilab-suite-reponses-16-10-2026-10-18.pdf` (11 pages, hors dépôt ; détail `RETOUR-LABO-16-10.md` §7) — plus Q131, Q132, Q133 dans le corps de l'e-mail (19/10, hors du PDF) :**
 > Objet : Vos réponses du 16/10 — ce que nous avons compris, et ce qui reste
 >
 > Bonjour,
@@ -267,6 +284,31 @@ pour enregistrer les grilles reprises de l'ancien logiciel, à confirmer :
 > bancaires, l'envoi des e-mails, et la numérotation (Q19) — tant que les
 > deux logiciels tournent, un même numéro de série peut désigner deux
 > échantillons différents.
+>
+> **Trois questions en plus**, nées en préparant vos réponses (elles ne sont
+> pas dans le document joint ; une ligne de réponse suffit) :
+> - Q131 — **Tolérance c quand n = 1.** L'ancien logiciel écrit, sur des
+>   critères à une seule limite, n = 1 avec c = 1 ou 2. Avec une telle
+>   ligne, un échantillon d'une seule unité au-dessus de la limite est jugé
+>   « Acceptable » (conforme, sans alerte de contamination), jamais « Non
+>   satisfaisant ». Est-ce votre règle, ou c doit-il rester inférieur au
+>   nombre d'unités prélevées ? *Ce que nous avons prévu : nous l'acceptons
+>   tel que l'ancien logiciel l'écrit ; la grille des critères le signale
+>   sous chaque ligne concernée.*
+> - Q132 — **Corriger un rapport validé, pas encore envoyé.** Comme vous
+>   l'avez demandé (Q92), le rapport ne partira plus automatiquement à la
+>   validation. S'il faut le corriger avant de l'envoyer, la seule voie est
+>   « Rouvrir pour amendement » : le client
+>   reçoit alors directement le rapport « …-A1 », imprimé « Annule et
+>   remplace le rapport … », alors qu'il n'a jamais reçu le premier. Est-ce
+>   acceptable, ou un rapport jamais envoyé doit-il se corriger sans
+>   amendement (même numéro, sans « annule et remplace ») ? *Ce que nous
+>   avons prévu : l'amendement, avec un avertissement à la réouverture.*
+> - Q133 — **Nombre d'unités de l'analyse sensorielle.** Nous avons gardé
+>   n = 1 pour « Analyse sensorielle » ; l'ancien logiciel donne n = 5 à sa
+>   famille sensorielle des produits alimentaires. 1 ou 5 ? *Ce que nous
+>   avons prévu : 1 au passage en analyse sensorielle ; 5 si vous choisissez
+>   ensuite la famille reprise de l'ancien logiciel.*
 >
 > Bien cordialement,
 

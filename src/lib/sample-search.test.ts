@@ -11,6 +11,7 @@ import {
   sampleConclusion,
   sampleSearchWhere,
   searchQueryString,
+  searchReceptionAt,
 } from "./sample-search";
 import { formatIsoDay } from "./labels";
 
@@ -227,5 +228,18 @@ describe("sampleConclusion", () => {
   it("says « En cours » before validation and « Annulé » for a cancelled line", () => {
     expect(sampleConclusion({ status: "EN_ANALYSE", report: null, results: [] }).label).toBe("En cours");
     expect(sampleConclusion({ status: "ANNULE", report: null, results: [] }).label).toBe("Annulé");
+  });
+});
+
+describe("searchReceptionAt — the reception the client reads (lot 1b)", () => {
+  const received = new Date("2026-10-19T08:00:00.000Z");
+  const arrived = new Date("2026-10-18T22:00:00.000Z");
+  it("prints the arrival, like the report and the portal; else the reception", () => {
+    expect(searchReceptionAt(received, arrived)).toEqual(arrived);
+    expect(searchReceptionAt(received, null)).toEqual(received);
+    expect(searchReceptionAt(received, undefined)).toEqual(received);
+  });
+  it("prints nothing before the sample is received", () => {
+    expect(searchReceptionAt(null, arrived)).toBeNull();
   });
 });

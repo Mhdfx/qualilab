@@ -98,7 +98,13 @@ Docker volume. The two manual commands still work
 they just leave the cache to grow.
 
 Rollback: `git checkout <previous-tag>` and the same command. Migrations
-are additive by policy (see CODE_QUALITY), so going back one version is safe.
+are additive by policy (see CODE_QUALITY): an added column or table is
+harmless to the previous code, so going back one version is safe **as long
+as no row holds a value the previous code does not know**. An enum value
+appended by a migration is the exception: once the new code has stored it,
+the previous version's Prisma client refuses to read that row (« Value '…'
+not found in enum '…' ») — check the « Point de retour » section of the
+deploy for its rollback rule (lot 2 du 16/10: `ASEPTISEES`, `NON_RECU`).
 
 **Check once, read-only, at the next deploy — the client's real address.**
 Better Auth reads the client IP from `X-Real-IP` first (`advanced.ipAddress`
@@ -365,6 +371,273 @@ programme sheet, under the old rule, before its bench work. Restore the dump
 the data written since the deploy — it loses every result, report and
 invoice entered after it. To resume the shared bench later:
 `git checkout master` and redeploy.
+
+## Point de retour — avant le lot 2 du 16/10 (2026-10-19)
+
+Lot 2 (`RETOUR-LABO-16-10.md`, four waves) is the first deploy with
+migrations since 13/10: five, additive — `20261019100000_retour_labo_16_10_terrain`
+(`HandsState` + `ASEPTISEES`, `Sample.surfaceAreaNote`, `Sample.airExposureMin`),
+`20261019110000_retour_labo_16_10_non_recu` (`EmailType` + `NON_RECU`),
+`20261019120000_retour_labo_16_10_denomination` (`User.documentName`),
+`20261019130000_retour_labo_16_10_client_a_completer` (`Client.toComplete`),
+`20261019140000_retour_labo_16_10_famille_type_analyse` (`ProductType.natureId`).
+Rehearsed on 19/10 on a local copy at the production schema (no row
+changed, the Docker `migrate` command included). ⏳ Not deployed: the tag
+and the dump below are the first steps of that deploy — the whole order,
+its gates and checks, and the reprise F3 that follows are in « Lot 2 du
+16/10 » below.
+
+- **Code:** annotated git tag `v1.4-avant-lot2-16-10` = commit `a1ad186`
+  (what production runs: `52e0d27` plus documents), **pushed to origin**.
+- **Database:** `/var/backups/qualilab/qualilab_avant-lot2-16-10.sql.gz`,
+  taken with the app stopped (`docker compose stop app`), just before
+  `scripts/deploy.sh` — same commands as the 13/10 dump above, with this
+  name; outside the rotation pattern, do not delete it.
+
+**Expected in `docker compose logs migrate`:** five « Applying migration
+`20261019…` » lines, then « All migrations have been successfully applied. »
+and exit 0. Two lines « prisma:warn Prisma failed to detect the
+libssl/openssl version… Please manually install OpenSSL » come before them:
+**harmless** — the build stage (`node:22-slim`) has no `openssl` binary
+for Prisma to read its version from, and the migrations apply all the same
+(rehearsed 19/10 with this exact command). The same warning shows during
+`next build`. (Silencing it means `apt-get install -y openssl`
+in the build stage — an image change, not part of this deploy.)
+
+**Rollback — code only, or with the dump.** The new columns are harmless
+to the old code (it rendered all 92 local reports identically on the
+migrated schema), but two migrations **append enum values**, and the old
+Prisma client refuses to read a row holding one: `Sample.handsState =
+'ASEPTISEES'` (written by the first hands line entered with that state —
+the state is required since this lot) and `EmailLog.type = 'NON_RECU'`
+(written by the first « Non reçu au laboratoire » cancellation, even when
+the send is only simulated). Either one breaks `/admin/envois` (the whole
+EmailLog list) or every screen and document that reads that sample
+(reception, protocole, correction) on the old code. So, as root, on the VPS:
+
+```bash
+cd /opt/qualilab
+set -a && . ./.env && set +a
+docker compose exec -T db mysql -u qualilab -p"$DB_PASSWORD" qualilab -e \
+  "SELECT COUNT(*) FROM Sample WHERE handsState='ASEPTISEES'; SELECT COUNT(*) FROM EmailLog WHERE type='NON_RECU'"
+```
+
+- **Both 0 — code-only rollback is allowed:**
+  `sudo -u qualilab git fetch --tags && sudo -u qualilab git checkout v1.4-avant-lot2-16-10 && sudo -u qualilab bash scripts/deploy.sh`.
+  The five migrations stay applied; the old code ignores the new columns.
+- **Either one above 0 — restore the dump:** check the tag out **first**
+  (so the restore does not replay the new migrations), then
+  `DB_PASSWORD=... bash scripts/restore-db.sh /var/backups/qualilab/qualilab_avant-lot2-16-10.sql.gz`
+  and `sudo -u qualilab bash scripts/deploy.sh`. **This loses everything
+  entered since the deploy** (samples, results, reports, invoices): say so
+  to the laboratory before doing it.
+
+To resume lot 2 later: `git checkout master` and redeploy.
+
+## Lot 2 du 16/10 — deploy order, checks, reprise F3 (rehearsed 19/10, not deployed)
+
+Branch `lot2-retour-16-10` (`RETOUR-LABO-16-10.md` §4 « État au 19/10 »):
+the four waves (`9770bb0`, `d7b8750`, `124af3a`, `b898586`), the final
+verification's fixes, five additive migrations (listed in the section
+above). **One deploy carries the four waves**, so it carries the
+preconditions of waves 2 and 3. Rehearsed on 19/10 on a local copy at the
+production schema (34 migrations): `npx prisma migrate deploy`, then the
+compose `migrate` command run from an image built out of `git archive HEAD`
+— no row changed in any of the 44 tables (every row hashed before / after),
+the appended enum values keep the stored positions, the 92 local reports
+render byte-identical to `master`'s, 84 pages and PDFs answer 200 on a
+standalone production build. No change to `package*.json`, `Dockerfile`,
+`docker-compose.yml`, `.env.production.example` or `scripts/*.sh`: **no new
+environment variable**.
+
+### 0. Before the window — the gates (owner)
+
+- **Commit first.** The final verification's fixes and these docs sit in
+  the working tree of `lot2-retour-16-10` (`src/lib/billing-hold.ts` is a new
+  file — add it). Gates again on that commit: `npx tsc --noEmit -p .`,
+  `npx eslint src`, `npx vitest run`, `npm run build`. They add no migration:
+  the rehearsal above stays valid.
+- **Wave 2 (A1, B1).** The laboratory answered the re-ask 2.1 (hands'
+  states) and 2.6 (« Heure de prélèvement inconnue du client »), **or** the
+  owner decided in writing to ship the proposals — recorded in HANDOFF §9
+  and PROGRESS. Each is a one-line switch (`HANDS_STATE_CHOICES` in
+  `labels.ts`, `SAMPLING_TIME_UNKNOWN.allowed` in `serie-input.ts`).
+- **D1 — reopen and cancel open to the validateur and the Direction.** Named
+  accounts exist for the people who sign, with at least one real ADMIN;
+  `bash scripts/disable-demo-accounts.sh` has run (« Go-live » above);
+  `NEXT_PUBLIC_DEMO_MODE=false` is in `.env` **before** the build of step 2
+  (the build bakes it in). Hiding the panel alone leaves the demo accounts
+  open.
+- **E4 — merges open to the gestionnaire commercial.** The owner's decision
+  on `Invoice.clientSnapshot` for the invoices issued before 10/10 (HANDOFF
+  §9 « Billing »), written there.
+- **Q131, Q132, Q133** (`NEEDEDINFO.md` §1b): the defaults built ship unless
+  the owner says otherwise.
+- **Read-only, on production — the largest criteria grid.** « Familles &
+  critères » saves a family's whole grid, active rows and inactive ones,
+  capped at 1000 rows (`CRITERIA_GRID_MAX_ROWS`). Locally the largest is 346
+  after the reprise. As root, in `/opt/qualilab`:
+
+  ```bash
+  set -a && . ./.env && set +a
+  docker compose exec -T db mysql -u qualilab -p"$DB_PASSWORD" qualilab -e \
+    'SELECT pt.name, COUNT(*) AS n FROM `Criterion` c JOIN `ProductType` pt ON pt.id = c.productTypeId GROUP BY pt.id, pt.name ORDER BY n DESC LIMIT 5'
+  ```
+
+  Every count at most 1000, and at most 500 for a hands, surface, water or
+  air family (the reprise F3 keeps each copied criterion's deactivated
+  original in the same family, so such a grid can double). Otherwise stop:
+  the cap is raised first. Not checked yet (no production access on 19/10).
+- **Tell the laboratory, in writing, before the deploy:**
+  - the T° ambiante is required on every visit sample, air included (A5);
+  - at the counter « Prélevé le » **and** « Arrivé le » are required (B1),
+    with the box « Heure de prélèvement inconnue du client » if 2.6 ships;
+  - the hands' state is required (A1); the packaging question is gone (B3);
+  - « Valider » no longer sends the report: « Valider et envoyer », or
+    « Envoyer au client » later from « Validés — à envoyer » (D2);
+  - reopening a report and cancelling a sample in analysis: validateur,
+    Direction, admin (D1); merging a duplicate: the gestionnaire commercial
+    too (E4); the réception and the préleveur create a client (E1);
+  - changing a family on the programme removes its analyses (F6); after the
+    programme only the responsable des paramètres changes analyses (F8);
+  - reprinted protocoles and bons change wording (« Technicien de QUALILAB
+    'X.NOM' », « mains en cours de travail », « Boîte exposée 30 min », no
+    « analysé avec l'accord de »);
+  - every page or phone opened before the deploy must be reloaded, and a
+    visit in progress on a phone is submitted **before** the deploy (the old
+    page sends no ambient temperature and is refused afterwards).
+- Outside the laboratory's hours.
+
+### 1. Restore point (development machine)
+
+```bash
+git tag -a v1.4-avant-lot2-16-10 a1ad186 -m "Version stable avant le lot 2 du 16/10 (5 migrations additives) — retour : DEPLOY.md « Point de retour — avant le lot 2 du 16/10 »"
+git push origin v1.4-avant-lot2-16-10
+git checkout master && git merge --ff-only lot2-retour-16-10 && git push origin master
+```
+
+`a1ad186` is what production runs: `52e0d27` plus documents
+(`52e0d27..a1ad186` touches only `.md` files, checked 19/10).
+
+### 2. On the VPS, as root
+
+```bash
+cd /opt/qualilab
+sudo -u qualilab git rev-parse --short HEAD                     # → a1ad186 (52e0d27 if the documents were never pulled: same code)
+set -a && . ./.env && set +a
+docker compose exec -T db mysql -u qualilab -p"$DB_PASSWORD" qualilab -e \
+  "SELECT migration_name, finished_at FROM _prisma_migrations ORDER BY migration_name DESC LIMIT 1; SELECT COUNT(*) FROM _prisma_migrations WHERE finished_at IS NULL"
+# → 20261013100000_retour_labo_1210 (finished) and 0 — anything else: stop
+docker compose exec -T db mysql -u qualilab -p"$DB_PASSWORD" qualilab -e \
+  'SELECT (SELECT COUNT(*) FROM `Sample`) s, (SELECT COUNT(*) FROM `Serie`) se, (SELECT COUNT(*) FROM `Report`) r, (SELECT COUNT(*) FROM `Client`) c, (SELECT COUNT(*) FROM `User`) u, (SELECT COUNT(*) FROM `EmailLog`) e, (SELECT COUNT(*) FROM `ProductType`) pt, (SELECT COUNT(*) FROM `Criterion`) cr'
+# → write the eight counts down
+sudo -u qualilab git pull --ff-only
+sudo -u qualilab docker compose build                           # the old app keeps serving meanwhile
+docker compose stop app                                         # freeze writes
+docker compose exec -T db mysqldump --single-transaction --routines --triggers --no-tablespaces \
+  -u qualilab -p"$DB_PASSWORD" qualilab | gzip > /var/backups/qualilab/qualilab_avant-lot2-16-10.sql.gz
+gzip -t /var/backups/qualilab/qualilab_avant-lot2-16-10.sql.gz \
+  && zcat /var/backups/qualilab/qualilab_avant-lot2-16-10.sql.gz | tail -n 1   # « -- Dump completed … »
+chown qualilab: /var/backups/qualilab/qualilab_avant-lot2-16-10.sql.gz
+sudo -u qualilab bash scripts/deploy.sh   # up -d --build (cached) → migrate → app → health → prune
+```
+
+The dump's name is outside the rotation pattern; copy it off the machine
+too when `BACKUP_REMOTE` is set (« Backups » above).
+
+### 3. Checks right after
+
+```bash
+docker compose ps -a migrate                       # Exited (0)
+docker compose logs migrate | tail -25             # five « Applying migration `20261019…` », then « All migrations have been successfully applied. »
+curl -s localhost:3000/api/health                  # {"status":"ok","database":"connected"}
+docker compose exec -T db mysql -u qualilab -p"$DB_PASSWORD" qualilab -e \
+  "SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations WHERE migration_name LIKE '20261019%'"
+# → 5 rows, finished_at set, rolled_back_at NULL
+docker compose exec -T db mysql -u qualilab -p"$DB_PASSWORD" qualilab -e \
+  "SHOW COLUMNS FROM Sample LIKE 'handsState'; SHOW COLUMNS FROM EmailLog LIKE 'type'"
+# → enum('LAVEES','NON_LAVEES','ASEPTISEES') · enum('RAPPORT','ALERTE_CONTAMINATION','DESTRUCTION','NON_RECU')
+docker compose logs app --since 10m                # no error
+```
+
+- The eight counts of step 2 again: equal.
+- The two « prisma:warn … openssl » lines before the migrations are
+  expected (section above).
+- The image was rebuilt: run the tzdata check of « Time zone ».
+
+### 4. Five-minute check — the owner, with their own accounts
+
+- The demo panel is absent from the login page and a demo account cannot
+  sign in.
+- Each role's dashboard opens.
+- An **old report** downloads with the 13/10 layout (« Lieu du
+  prélèvement », « Dates Prod / Dates Exp », « … à HHhMM », the préleveur's
+  full name) — and so does its duplicata.
+- An old protocole and an old bon reprint with the new wording (the
+  denomination, « mains en cours de travail », « Boîte exposée 30 min »).
+- Then the production lines of `TESTPLAN.md` V16, on « TEST UI 2026-10-06
+  Traiteur » and « TEST UI V16 … » data only.
+
+### 5. Reprise F3 — « Catalogue de l'ancien logiciel » (operator, after the deploy)
+
+The criteria of the hands, surface, water and air families **start to
+apply the moment they are imported**, samples already at the bench
+included. Run it outside the laboratory's hours, once the bench confirms
+that no MAINS, SURFACE, EAU or AIR sample is in progress. The production
+path was replayed once on 19/10 on a local schema rebuilt to production's
+01/10 state (`HANDOFF.md` §8, wave 4).
+
+1. **Restore point.** The code does not change: tag the deployed commit
+   (proposed name `git tag -a v1.5-lot2-16-10 <commit> -m "Lot 2 du 16/10 en
+   production, avant la reprise F3"`, then `git push origin
+   v1.5-lot2-16-10`). On the VPS: `docker compose stop app`, a second
+   labelled dump with the commands of step 2 and the name
+   `qualilab_avant-reprise-F3.sql.gz` (`gzip -t`, « -- Dump completed »,
+   `chown`), then `docker compose start app`.
+2. **Files.** The three CSV of `legacy-export/` on the development machine
+   (outside the repo, written by `scripts/legacy/extract-legacy.py`):
+   `regulations.csv`, `types.csv` (its `echantillon` column is the type
+   d'analyse), `criteria.csv`. As an ADMIN: `/admin/import` → « Catalogue de
+   l'ancien logiciel » → the three files; leave « Créer les paramètres
+   inconnus du catalogue… » ticked.
+3. **Analyser.** Nothing is written. Read « Reprise du 16/10 »: types
+   d'analyse, « Critères rattachés » (copies, old rows to deactivate,
+   collisions), « Familles remplies », « Familles encore vides », the
+   tolerances c without meaning to clear, « Paramètres à créer » (alert,
+   « sans prix », look-alikes), « Familles modifiées à la main — non
+   reprises », the food parameters left without criteria, and the samples in
+   progress whose verdict changes.
+4. **Aliases for the look-alikes.** For each « Ressemble à « X » » under
+   « Paramètres à créer »: if it is the same germ, add the name to the
+   existing parameter's « Autres libellés » in `/admin/parametres`, then
+   **Analyser** again — it is no longer created. Distinct germs are confirmed
+   at step 6.
+5. **Samples in progress.** When the analysis counts samples whose verdict
+   changes (« commencent à être jugés » / « perdent leurs critères », by
+   status), check each one with the bench first. Best: zero.
+6. **Importer…** The confirmation repeats the samples in progress (« J'ai
+   vérifié ces échantillons avec la paillasse : importer quand même. ») and
+   the look-alikes left (« Ce sont des germes distincts : les créer. »);
+   **Importer** writes the analysed plan in one transaction, journalled
+   `LEGACY_CATALOGUE_REPRISE` per family. A 409 « relancez l'analyse » means
+   the catalogue changed since the analysis (another tab, another admin):
+   nothing was written — analyse again, then import.
+7. **Analyser once more: it must plan nothing** (no family, criterion, copy,
+   link, parameter nor c to clear) — the reprise is idempotent.
+8. **Afterwards.** In `/admin/utilisateurs`, check each préleveur's
+   « Dénomination sur les documents » (left empty, it is computed from the
+   name: « Technicien de QUALILAB 'I.NOM' »). Send the laboratory the list
+   « Familles actives encore sans critère » — outside the repo (some families
+   carry a client's name).
+
+To undo the reprise only: restore `qualilab_avant-reprise-F3.sql.gz` with
+`scripts/restore-db.sh` (the code stays; everything entered since is lost).
+
+### 6. Rollback of the deploy
+
+« Point de retour — avant le lot 2 du 16/10 » above: first the two counts
+(`ASEPTISEES`, `NON_RECU`); both 0 → code only; otherwise check the tag out
+**then** restore the dump — it loses everything entered since the deploy.
 
 ## After every deploy — 5-minute check
 

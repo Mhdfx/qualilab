@@ -17,6 +17,7 @@ import { requireRole, getSession } from "@/lib/auth";
 import { roleAllowed } from "@/lib/roles";
 import { BENCH_STATUSES } from "@/lib/bench-access";
 import { prisma } from "@/lib/prisma";
+import { heldInvoices } from "@/lib/billing-hold";
 import { getLabSettings } from "@/lib/lab-settings";
 import {
   LINE_KIND_LABELS,
@@ -82,6 +83,8 @@ const IDENTITY_SELECT = {
   clientConsultationChannel: true,
   clientConsultedAt: true,
   awaitingClientSince: true,
+  // « Annuler » says whether an alert already reached the client (D1).
+  alertsSentAt: true,
 } as const;
 
 /** The programme sheet of one sample (PROGRAMME.md §4). */
@@ -93,12 +96,16 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
   const row = await loadProgrammeSample(id);
   if (!row) notFound();
 
-  const [referential, settings, identity] = await Promise.all([
+  const [referential, settings, identity, held] = await Promise.all([
     loadProgrammeReferential(row),
     getLabSettings(),
     prisma.sample.findUnique({ where: { id }, select: IDENTITY_SELECT }),
+    // A confirmed programme is billable: the invoice holding it, if any.
+    heldInvoices([id]),
   ]);
   if (!identity) notFound();
+  const heldInvoice = held.get(id) ?? null;
+  const invoiced = heldInvoice ? { number: heldInvoice.number } : null;
 
   // Dates become strings and decimals numbers: the client component reads
   // exactly what the API would have answered.
@@ -258,6 +265,7 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
           referential={referentialData}
           thresholds={settings}
           role={session.role}
+          invoiced={invoiced}
           verbSample={
             hasVerbs
               ? {
@@ -291,6 +299,8 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
                   productTypeId: sample.productTypeId,
                   productTypeName: sample.productType?.name ?? null,
                   clientId: sample.clientId,
+                  invoiced,
+                  alertsSentAt: identity.alertsSentAt?.toISOString() ?? null,
                 }
               : null
           }

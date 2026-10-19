@@ -11,6 +11,7 @@ import {
   reopenRefusal,
   reopensReports,
   supersededMention,
+  unsentReopenWarning,
 } from "./report-amendment";
 import { REPORT_REOPEN_ROLES } from "./sample-status";
 import { ROLES } from "./roles";
@@ -119,5 +120,21 @@ describe("printed mentions", () => {
     expect(duplicataMention(issuedAt)).toBe("DUPLICATA — édité le 8 oct. 2026");
     expect(supersededMention("RAP-2026-00001-A1")).toBe("Version remplacée par RAP-2026-00001-A1");
     expect(amendedReportSubject("RAP-2026-00001-A1")).toBe("Rapport amendé RAP-2026-00001-A1");
+  });
+});
+
+describe("unsentReopenWarning — reopening a report the client never received (16/10, D2 × D1)", () => {
+  it("says the amended version will cancel a report the client never had", () => {
+    expect(unsentReopenWarning("RAP-2026-00001", false)).toBe(
+      "Le client n'a jamais reçu RAP-2026-00001 : il recevra directement le rapport amendé, imprimé « Rapport amendé — Annule et remplace le rapport RAP-2026-00001 » et envoyé sous l'objet « Rapport amendé »."
+    );
+    // The amended header it announces is the one printed.
+    expect(amendmentHeader({ previousNumber: "RAP-2026-00001", previousIssuedAt: "2026-10-19T10:00:00.000Z" }).replaces).toContain(
+      "Annule et remplace le rapport RAP-2026-00001"
+    );
+  });
+
+  it("says nothing once this version has left", () => {
+    expect(unsentReopenWarning("RAP-2026-00001-A1", true)).toBeNull();
   });
 });

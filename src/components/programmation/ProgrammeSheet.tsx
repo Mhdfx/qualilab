@@ -131,6 +131,13 @@ type ProgrammeSheetProps = {
   role: Role;
   /** The line as « Corriger la fiche » / « Annuler » edit it; null when the role has none of these verbs. */
   verbSample: VerbSample | null;
+  /**
+   * The invoice holding the line (`heldInvoices`; number null = a draft), or
+   * null: a confirmed programme is billable, and a change of its analyses
+   * never reaches that invoice by itself — the sheet says so before and
+   * after the save.
+   */
+  invoiced?: { number: string | null } | null;
 };
 
 type SavedState = Pick<ProgrammeSampleData, "status" | "analysisBlocked"> &
@@ -180,6 +187,7 @@ export function ProgrammeSheet({
   thresholds,
   role,
   verbSample,
+  invoiced = null,
 }: ProgrammeSheetProps) {
   const router = useRouter();
   const [referential, setReferential] = useState<ProgrammeReferentialData>(initialReferential);
@@ -205,6 +213,8 @@ export function ProgrammeSheet({
   const [busy, setBusy] = useState<"draft" | "confirm" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Saved on a line an invoice holds, with other analyses: what to tell the accountant.
+  const [billingNotice, setBillingNotice] = useState<string | null>(null);
   // What a change of family did (F6), said in section 1 where it was made;
   // `tookAway` = analyses removed or n lowered (amber). Cleared by the next
   // change of family or a save.
@@ -343,7 +353,7 @@ export function ProgrammeSheet({
       setReferential(next);
       setDraft(result.draft);
       const label = next.natures.find((nature) => nature.id === next.natureId)?.label ?? "choisie";
-      setNotice(natureChangeNotice(label, result.dropped, next.natureId === savedNatureId));
+      setNotice(natureChangeNotice(label, result.dropped, next.natureId === savedNatureId, result.reset));
     } catch {
       if (ticket === natureRequest.current) setError("Une erreur réseau est survenue. Réessayez.");
     } finally {
@@ -355,6 +365,7 @@ export function ProgrammeSheet({
     if (busy || readOnly || pendingNature) return;
     setError("");
     setNotice("");
+    setBillingNotice(null);
     setFamilyNotice(null);
     if ((confirm || confirmed) && draft.parameterIds.length === 0) {
       setError("Choisissez au moins une analyse avant de confirmer le programme.");
@@ -385,12 +396,16 @@ export function ProgrammeSheet({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(toRequestBody(draft, confirm)),
       });
-      const data = (await response.json().catch(() => ({}))) as Partial<ProgrammeResponse> & { error?: string };
+      const data = (await response.json().catch(() => ({}))) as Partial<ProgrammeResponse> & {
+        error?: string;
+        billing?: { notice?: unknown };
+      };
       if (!response.ok || !data.sample || !data.programme) {
         setError(data.error ?? "Impossible d'enregistrer le programme.");
         return;
       }
       adopt(data as ProgrammeResponse);
+      if (typeof data.billing?.notice === "string") setBillingNotice(data.billing.notice);
       const natureNote =
         data.programme.natureId && data.programme.natureId !== savedNatureId
           ? ` Nature d'analyse : ${data.sample.nature.label}.`
@@ -1118,6 +1133,19 @@ export function ProgrammeSheet({
         )}
         {notice && (
           <p role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p>
+        )}
+        {billingNotice ? (
+          <p role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{billingNotice}</p>
+        ) : (
+          invoiced &&
+          confirmed &&
+          !readOnly && (
+            <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {invoiced.number === null
+                ? "Échantillon sur un brouillon de facture : un changement d'analyses est à signaler à la comptabilité."
+                : `Échantillon déjà facturé (${invoiced.number}) : un changement d'analyses est à signaler à la comptabilité (avoir ou facture complémentaire).`}
+            </p>
+          )
         )}
         {readOnly ? (
           <p className="mt-3 flex items-center gap-2 text-sm text-slate-500">

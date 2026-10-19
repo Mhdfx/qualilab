@@ -211,3 +211,64 @@ export function validateCriterion(raw: unknown, row = 0): Ok<CleanCriterion> | F
     },
   };
 }
+
+/**
+ * The most rows one family's grid takes in a save. The old software's import
+ * writes whole families without this bound — its largest, « AUTRES », holds
+ * 346 rows on the local copy (19/10) — and a grid shown on screen must save
+ * back as it is (RETOUR-LABO-16-10.md F2): the bound stays far above it.
+ */
+export const CRITERIA_GRID_MAX_ROWS = 1000;
+
+/**
+ * The whole grid `PUT /api/product-types/[id]/criteria` receives: at most
+ * `CRITERIA_GRID_MAX_ROWS` rows, each one valid (`validateCriterion`, the
+ * row number in the message), one criterion per germ and per norm version —
+ * a duplicate pair would make the bench's choice of criterion arbitrary.
+ */
+export function validateCriteriaGrid(raw: unknown): Ok<CleanCriterion[]> | Fail {
+  if (!Array.isArray(raw)) return { ok: false, error: "Aucun critère reçu." };
+  if (raw.length > CRITERIA_GRID_MAX_ROWS) return { ok: false, error: `Trop de lignes (${CRITERIA_GRID_MAX_ROWS} maximum).` };
+  const rows: CleanCriterion[] = [];
+  for (const [i, entry] of raw.entries()) {
+    const checked = validateCriterion(entry, i + 1);
+    if (!checked.ok) return checked;
+    rows.push(checked.value);
+  }
+  const pairs = new Set<string>();
+  for (const [i, row] of rows.entries()) {
+    const key = `${row.parameterId}|${row.normVersionId ?? ""}`;
+    if (pairs.has(key)) return { ok: false, error: `Ligne ${i + 1} : ce germe a déjà un critère pour cette version de norme.`, row: i + 1 };
+    pairs.add(key);
+  }
+  return { ok: true, value: rows };
+}
+
+/** A criterion row as the database holds it. */
+export type StoredCriterion = Omit<CleanCriterion, "id"> & { id: string };
+
+/**
+ * What saving a grid row does to the row stored under its id:
+ *   - "none": nothing to write;
+ *   - "tidy": only the tolerance c the old software's import left on an
+ *     absence test or a limitless row is cleared — a c that means nothing
+ *     (`toleranceApplies`), that the grid never shows and saves empty: no
+ *     verdict changes, so the journal does not list it as a change and the
+ *     grid does not count as changed by hand (`criteriaEditedByHand`);
+ *   - "change": anything else.
+ */
+export function criterionChange(previous: StoredCriterion, row: CleanCriterion): "none" | "tidy" | "change" {
+  const same =
+    previous.parameterId === row.parameterId &&
+    previous.normVersionId === row.normVersionId &&
+    previous.n === row.n &&
+    previous.mKind === row.mKind &&
+    previous.m === row.m &&
+    previous.bigM === row.bigM &&
+    previous.unit === row.unit &&
+    previous.active === row.active;
+  if (!same) return "change";
+  if (previous.c === row.c) return "none";
+  const meaningless = !toleranceApplies(previous.mKind, previous.m !== null, previous.bigM !== null);
+  return row.c === null && meaningless ? "tidy" : "change";
+}

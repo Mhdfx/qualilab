@@ -69,6 +69,7 @@ type Summary = {
     handEdited: { id: string; name: string; criteria: number; regulation: boolean }[];
     orphanedSources: { name: string; category: SampleType }[];
     inFlight: InFlightImpact;
+    tolerances: { rows: number; families: number };
   };
   created?: {
     regulations: number;
@@ -83,6 +84,7 @@ type Summary = {
     families: number;
     copies: number;
     deactivated: number;
+    tolerancesCleared: number;
   };
 };
 
@@ -101,7 +103,8 @@ function writtenSentence(c: NonNullable<Summary["created"]>): string {
     `Écrit : ${c.regulations} réglementations (${c.regulationsMatched} reconnues par leur titre), ${c.productTypes} familles, ${c.criteria} critères, ` +
     `${c.norms} normes / ${c.versions} versions, ${c.parameters} paramètres, ` +
     `${c.linked} familles reliées à leur réglementation, ${c.natures} types d'analyse, ` +
-    `${c.copies} critères rattachés (${c.deactivated} anciens désactivés), ${c.families} familles vides remplies.`
+    `${c.copies} critères rattachés (${c.deactivated} anciens désactivés), ${c.families} familles vides remplies` +
+    `${c.tolerancesCleared ? `, ${c.tolerancesCleared} tolérances c sans objet effacées` : ""}.`
   );
 }
 
@@ -300,6 +303,11 @@ export function ImportLegacy() {
             <Stat label="Familles remplies" value={reprise.fill.families} hint={`${reprise.fill.criteria} critères de l'ancien logiciel`} />
             <Stat label="Familles encore vides" value={reprise.stillEmpty.active.length} hint={`actives · ${reprise.stillEmpty.inactive} inactives`} />
           </dl>
+          {reprise.tolerances.rows > 0 && (
+            <p className="mt-3 text-xs text-slate-500">
+              {`Tolérance c sans objet (critère d'absence, ou sans limite) laissée par un import précédent : ${plural(reprise.tolerances.rows, "ligne", "lignes")} dans ${plural(reprise.tolerances.families, "famille", "familles")}, ${done ? "c effacé" : "c sera effacé"} — aucun verdict ne change, la grille s'enregistre telle qu'elle s'affiche.`}
+            </p>
+          )}
 
           {summary.criteria.skipped.length > 0 && (
             <p className="mt-3 text-xs text-slate-500">

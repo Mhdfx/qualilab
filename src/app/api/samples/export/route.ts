@@ -66,7 +66,8 @@ export async function GET(request: Request) {
       bc: row.serialNumber,
       n: row.controlCode ?? row.code,
       // The lab's calendar day, as text: an Excel date is UTC and would slip a day at night.
-      received: row.receivedAt ? formatDayShort(row.receivedAt) : "",
+      // The arrival, like the report and the portal (lot 1b).
+      received: row.receptionAt ? formatDayShort(row.receptionAt) : "",
       produit: row.produit ?? "",
       analyse: `${row.nature}${row.parameters.length ? ` — ${row.parameters.join(", ")}` : ""}`,
       lot: row.numeroLot ?? "",

@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { bigMChange, kindChange, toleranceApplies, validateCriterion, validateProductType, wideToleranceNote } from "./criteria-input";
+import {
+  CRITERIA_GRID_MAX_ROWS,
+  bigMChange,
+  criterionChange,
+  kindChange,
+  toleranceApplies,
+  validateCriteriaGrid,
+  validateCriterion,
+  validateProductType,
+  wideToleranceNote,
+  type CleanCriterion,
+} from "./criteria-input";
 import { hasLimit, judgeUnits, parseUnitReading, planLabel } from "./interpretation";
 import { derivePlan } from "./legacy-catalogue";
 
@@ -125,11 +136,48 @@ describe("validateCriterion", () => {
     ];
     for (const plan of plans) {
       expect(plan).not.toBeNull();
-      // What the grid sends back: c only where it means something.
-      const c = toleranceApplies(plan!.mKind, plan!.m !== null, plan!.bigM !== null) ? plan!.c : null;
-      expect(validateCriterion({ parameterId: "p1", ...plan!, c })).toMatchObject({ ok: true, value: { mKind: plan!.mKind, m: plan!.m, bigM: plan!.bigM, c } });
+      // Saved back exactly as imported: c only where it means something (F2).
+      expect(validateCriterion({ parameterId: "p1", ...plan! })).toMatchObject({ ok: true, value: { mKind: plan!.mKind, m: plan!.m, bigM: plan!.bigM, c: plan!.c } });
     }
-    expect(plans.map((p) => p!.c)).toEqual([2, 1, 1, 2, 2]);
+    expect(plans.map((p) => p!.c)).toEqual([2, 1, 1, null, null]);
+  });
+});
+
+describe("validateCriteriaGrid — the whole grid of a family", () => {
+  const rowOf = (i: number) => ({ id: `k${i}`, parameterId: `p${i}`, n: 1, mKind: "ABSENCE" });
+
+  it("takes back a family the old software's import filled past 200 rows (« AUTRES », 346)", () => {
+    const grid = validateCriteriaGrid(Array.from({ length: 346 }, (_, i) => rowOf(i)));
+    expect(grid.ok && grid.value).toHaveLength(346);
+    expect(CRITERIA_GRID_MAX_ROWS).toBeGreaterThanOrEqual(346);
+  });
+
+  it("refuses past its bound, a missing list, a bad row with its number, and a germ twice for one norm version", () => {
+    expect(validateCriteriaGrid(Array.from({ length: CRITERIA_GRID_MAX_ROWS + 1 }, (_, i) => rowOf(i)))).toMatchObject({ ok: false, error: `Trop de lignes (${CRITERIA_GRID_MAX_ROWS} maximum).` });
+    expect(validateCriteriaGrid(undefined)).toMatchObject({ ok: false, error: "Aucun critère reçu." });
+    expect(validateCriteriaGrid([rowOf(1), { parameterId: "p2", mKind: "ABSENCE", c: 1 }])).toMatchObject({ ok: false, error: "Ligne 2 : un critère d'absence ne porte pas de tolérance c." });
+    expect(validateCriteriaGrid([rowOf(1), { ...rowOf(1), id: "k9" }])).toMatchObject({ ok: false, error: "Ligne 2 : ce germe a déjà un critère pour cette version de norme." });
+    expect(validateCriteriaGrid([rowOf(1), { ...rowOf(1), id: "k9", normVersionId: "v1" }]).ok).toBe(true);
+  });
+});
+
+describe("criterionChange — what a save writes, and what the journal calls a change", () => {
+  const stored = { id: "k1", parameterId: "p1", normVersionId: null, unit: "ufc/g", n: 1, c: 2, mKind: "ABSENCE" as const, m: null, bigM: null, active: true };
+  const sent = (over: Partial<CleanCriterion> = {}): CleanCriterion => ({ ...stored, c: null, ...over });
+
+  it("calls the import's meaningless c, cleared, a tidy-up — never a change by hand", () => {
+    expect(criterionChange(stored, sent())).toBe("tidy");
+    expect(criterionChange({ ...stored, mKind: "UNSPECIFIED" }, sent({ mKind: "UNSPECIFIED" }))).toBe("tidy");
+  });
+
+  it("writes nothing for a row sent back as stored; anything else is a change", () => {
+    expect(criterionChange({ ...stored, c: null }, sent())).toBe("none");
+    expect(criterionChange(stored, sent({ n: 5 }))).toBe("change");
+    expect(criterionChange(stored, sent({ active: false }))).toBe("change");
+    // A c that means something, changed or cleared.
+    const limited = { ...stored, mKind: "VALUE" as const, m: 10, bigM: 100 };
+    expect(criterionChange(limited, sent({ mKind: "VALUE", m: 10, bigM: 100 }))).toBe("change");
+    expect(criterionChange(limited, sent({ mKind: "VALUE", m: 10, bigM: 100, c: 2 }))).toBe("none");
   });
 });
 

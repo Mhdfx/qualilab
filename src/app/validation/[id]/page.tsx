@@ -38,6 +38,7 @@ import { amendedNumber } from "@/lib/report-amendment";
 import { canResendReport, reportVersionSent } from "@/lib/report-actions";
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { sampleTimelineFor } from "@/lib/sample-timeline-server";
+import { heldInvoices } from "@/lib/billing-hold";
 import { SampleTimelineCard } from "@/components/validation/SampleTimelineCard";
 import { EmailSendsCard } from "@/components/validation/EmailSendsCard";
 
@@ -112,6 +113,8 @@ export default async function ValidationDetailPage({
       validatedById: true,
       validatedAt: true,
       approvedById: true,
+      // « Annuler » says whether an alert already reached the client (D1).
+      alertsSentAt: true,
       client: { select: { name: true } },
       serieId: true,
       serie: { select: { serialNumber: true } },
@@ -167,7 +170,7 @@ export default async function ValidationDetailPage({
 
   // « Réglementation en vigueur » (slice I): proposed from what is known,
   // confirmed or changed by the validator.
-  const [regulations, settings, signedProtocols, timeline, sends] = await Promise.all([
+  const [regulations, settings, signedProtocols, timeline, sends, held] = await Promise.all([
     prisma.regulation.findMany({ where: { active: true }, select: { id: true, title: true }, orderBy: [{ sortOrder: "asc" }, { title: "asc" }] }),
     getLabSettings(),
     // Whether the visit's signed protocol was photographed — counted, never
@@ -184,7 +187,11 @@ export default async function ValidationDetailPage({
           select: { id: true, createdAt: true, type: true, to: true, status: true, error: true },
         })
       : Promise.resolve(null),
+    // The invoice holding the sample, if one does: « Annuler » and « Corriger
+    // les analyses » say what happens to it (billable from the programme).
+    heldInvoices([sample.id]),
   ]);
+  const heldInvoice = held.get(sample.id) ?? null;
   const protocolPhotoHref = signedProtocols > 0 ? `/api/series/${sample.serieId}/protocol-photo` : null;
   const proposedRegulationId = proposeRegulation(
     {
@@ -372,6 +379,8 @@ export default async function ValidationDetailPage({
                   productTypeId: sample.productTypeId,
                   productTypeName: sample.productType?.name ?? null,
                   clientId: sample.clientId,
+                  invoiced: heldInvoice ? { number: heldInvoice.number } : null,
+                  alertsSentAt: sample.alertsSentAt?.toISOString() ?? null,
                 }}
               />
             </div>

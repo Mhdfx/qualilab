@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   analysesNotice,
+  billedCorrectionWarning,
+  cancelConsequences,
   cancelReasonsFor,
   correctionBody,
   correctionFields,
@@ -100,6 +102,7 @@ describe("correctionBody against validateIntake", () => {
       "ambientTemperature",
       "lieu",
       "productTemperature",
+      "productTypeId",
       "reason",
       "remarks",
       "surfaceAreaCm2",
@@ -357,12 +360,21 @@ describe("correctionBody — only the halves this person may change (16/10, Q128
     );
   });
 
-  it("a non-food line sends its units, never a product type it does not show", () => {
-    const water: VerbSample = { ...atBench, lineKind: "EAU", type: "EAU", productTypeId: null };
-    expect(correctionBody("EAU", correctionValues(water), null, "unités", correctionRights("PROGRAMMATEUR", "EN_ANALYSE"))).toEqual({
-      unitCount: 5,
-      reason: "unités",
-    });
+  it("a water or surface line corrects its family at the bench too (F3 / F5), accepted by the route's rules", () => {
+    const scope = correctionRights("PROGRAMMATEUR", "EN_ANALYSE");
+    const water: VerbSample = { ...atBench, lineKind: "EAU", type: "EAU", productTypeId: "eau-1" };
+    const waterBody = correctionBody("EAU", { ...correctionValues(water), productTypeId: "eau-2" }, null, "famille", scope);
+    expect(waterBody).toEqual({ unitCount: 5, productTypeId: "eau-2", reason: "famille" });
+    expect(validateIntake(waterBody, currentOf(water))).toMatchObject({ ok: true, value: { changes: { productTypeId: "eau-2" } } });
+    const surface: VerbSample = { ...atBench, lineKind: "SURFACE", type: "AMBIANCE", produit: null, surfaceLabel: "Planche test", productTypeId: null };
+    const surfaceBody = correctionBody("SURFACE", { ...correctionValues(surface), productTypeId: "surf-1" }, null, "famille", scope);
+    expect(surfaceBody).toEqual({ unitCount: 5, productTypeId: "surf-1", reason: "famille" });
+    const checked = validateIntake(surfaceBody, currentOf(surface));
+    expect(checked).toMatchObject({ ok: true, value: { changes: { productTypeId: "surf-1" } } });
+    if (checked.ok) expect(correctionRefusal("PROGRAMMATEUR", "EN_ANALYSE", correctionTouches(surfaceBody, checked.value))).toBeNull();
+    // A line without a family, left so: the empty select is no change.
+    const bare = { ...water, productTypeId: null };
+    expect(validateIntake(correctionBody("EAU", correctionValues(bare), null, "famille", scope), currentOf(bare))).toEqual({ ok: false, error: "Aucune modification à enregistrer." });
   });
 });
 
@@ -420,5 +432,40 @@ describe("analysesNotice — what the analyses on screen do to the results (16/1
 
   it("a line still without any analysis (the programme decides them) is corrected without a warning", () => {
     expect(analysesNotice({ ...sample, status: "RECU", parameterIds: [] }, [], same)).toBeNull();
+  });
+});
+
+describe("cancelConsequences — what « Annuler » says (16/10, D1: the validation desks cancel billable work)", () => {
+  it("before the programme: out of the billing too, nothing billed yet", () => {
+    expect(cancelConsequences({ status: "RECU" })).toEqual({ text: "L'échantillon sort de toutes les files, du rapport et de la facturation.", warnings: [] });
+  });
+
+  it("billable, on no invoice: out of the billing", () => {
+    expect(cancelConsequences({ status: "EN_ANALYSE", invoiced: null, alertsSentAt: null }).text).toContain("et de la facturation");
+  });
+
+  it("invoiced or on a draft: the line stays, the accountant settles it", () => {
+    const issued = cancelConsequences({ status: "RESULTATS_SAISIS", invoiced: { number: "FAC-2026-00012" }, alertsSentAt: null });
+    expect(issued.text).toBe("L'échantillon sort de toutes les files et du rapport.");
+    expect(issued.warnings).toEqual(["Déjà facturé (FAC-2026-00012) : sa ligne reste sur la facture, la comptabilité établira un avoir."]);
+    expect(cancelConsequences({ status: "PROGRAMME", invoiced: { number: null } }).warnings[0]).toContain("brouillon de facture");
+  });
+
+  it("an alert already sent stays with the client", () => {
+    const { warnings } = cancelConsequences({ status: "RESULTATS_SAISIS", invoiced: null, alertsSentAt: "2026-10-19T08:00:00.000Z" });
+    expect(warnings).toEqual(["Une alerte de contamination est déjà partie chez le client : il ne recevra pas de rapport pour cet échantillon."]);
+  });
+
+  it("a page that did not read the invoice says what happens if one holds it", () => {
+    expect(cancelConsequences({ status: "EN_ANALYSE" }).text).toContain("s'il est déjà facturé");
+  });
+});
+
+describe("billedCorrectionWarning — « Corriger les analyses » on an invoiced sample", () => {
+  it("warns once the list on screen differs from the billed one", () => {
+    const sample = { parameterIds: ["p1", "p2"], invoiced: { number: "FAC-2026-00012" } };
+    expect(billedCorrectionWarning(sample, ["p2", "p1"])).toBeNull();
+    expect(billedCorrectionWarning(sample, ["p1"])).toContain("FAC-2026-00012");
+    expect(billedCorrectionWarning({ ...sample, invoiced: null }, ["p1"])).toBeNull();
   });
 });

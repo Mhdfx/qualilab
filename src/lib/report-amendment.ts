@@ -124,6 +124,23 @@ export function amendmentHeaderText(input: {
   return `${header.title} — ${header.replaces.charAt(0).toLowerCase()}${header.replaces.slice(1)}`;
 }
 
+/**
+ * « Rouvrir pour amendement » on a version the client never received —
+ * validated without being sent since 16/10 (Q92, D2): the only way back from
+ * VALIDE is the amendment, and the amended version prints « Rapport amendé —
+ * Annule et remplace » the version before it, so the client's first copy
+ * cancels a report they never had. Said in the dialog before the reopening
+ * (`sent` = `reportVersionSent`); whether a report never sent may instead be
+ * reissued without an amendment is the laboratory's call (NEEDEDINFO Q132).
+ */
+export function unsentReopenWarning(printedNumber: string, sent: boolean): string | null {
+  if (sent) return null;
+  return (
+    `Le client n'a jamais reçu ${printedNumber} : il recevra directement le rapport amendé, ` +
+    `imprimé « Rapport amendé — Annule et remplace le rapport ${printedNumber} » et envoyé sous l'objet « Rapport amendé ».`
+  );
+}
+
 /** The email subject of an amended report sent to the client. */
 export function amendedReportSubject(printedNumber: string): string {
   return `Rapport amendé ${printedNumber}`;

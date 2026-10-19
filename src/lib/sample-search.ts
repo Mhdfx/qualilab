@@ -1,6 +1,7 @@
 import type { Interpretation, SampleStatus, SampleType } from "@/generated/prisma/enums";
 import { INTERPRETATION_LABELS, indicativeVerdict, nothingJudged, sampleVerdict } from "./interpretation";
 import { SAMPLE_STATUS_LABELS, SAMPLE_TYPE_LABELS, formatIsoDay } from "./labels";
+import { receptionInstant } from "./report-template";
 
 /**
  * Finding the analyses (RETOUR-LABO-29-09.md, slice F) — pure: the filters
@@ -270,4 +271,15 @@ export function sampleConclusion(sample: ConclusionInput): Conclusion {
   return sample.results.some((r) => r.conform === false)
     ? { label: "Non conforme", tone: "no" }
     : { label: "Conforme", tone: "ok" };
+}
+
+/**
+ * « Reçu » of the search and « Date de réception » of the client's Excel
+ * summary: the arrival at the laboratory (`Serie.arrivedAt`) like every
+ * document the client reads since lot 1b (report, e-mail, alert, portal —
+ * `receptionInstant`), else the reception's instant; nothing before the
+ * sample is received. Filters and sorts still read `Sample.receivedAt`.
+ */
+export function searchReceptionAt(receivedAt: Date | null, arrivedAt: Date | null | undefined): Date | null {
+  return receivedAt ? receptionInstant({ arrivedAt, receivedAt }) : null;
 }

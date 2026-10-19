@@ -10,6 +10,8 @@ import {
   type IntakeCurrent,
   type ResultsReset,
 } from "@/lib/intake-input";
+import { billedAnalysesChanged, billedAnalysesNotice, heldInvoiceLabel } from "@/lib/billing";
+import { heldInvoices } from "@/lib/billing-hold";
 import { CORRECTABLE_STATUSES } from "@/lib/sample-status";
 import { correctionRefusal, correctionRights } from "@/lib/sample-verbs";
 
@@ -79,6 +81,13 @@ const INTAKE_SELECT = {
  * §3, A1 and A6–A8) the same goes for the hands state, the two
  * temperatures, the surface's « Autre » text (`surfaceAreaNote`) and the
  * exposed plate's duration (`airExposureMin`) — decided by `validateIntake`.
+ *
+ * An invoice may already hold the sample (billable from its programme):
+ * the analyses changed on it never reach that invoice by themselves. The
+ * journal line then names it (`billedOn`) — the invoice sheet reads it,
+ * « Analyses modifiées après facturation » — and the answer carries
+ * `billing.notice`, for the screen to tell the person to warn the
+ * accountant.
  *
  * A correction never changes who holds the sample at the bench (« prise
  * en charge libre », 13/10): `Sample.technicianId` / `assignedAt` are not
@@ -271,6 +280,12 @@ export async function PATCH(
     );
   }
 
+  // Already billed? Only a change of the list reaches the invoice lines.
+  const held =
+    parameterIds && billedAnalysesChanged({ parameterIds: current.parameterIds, type: sample.type }, { parameterIds, type: sample.type })
+      ? (await heldInvoices([id])).get(id) ?? null
+      : null;
+
   await logAudit({
     actorId: session.id,
     action: "SAMPLE_INTAKE_CORRECTED",
@@ -288,9 +303,15 @@ export async function PATCH(
       resultsRemoved: outcome.reset.kind === "removed" ? outcome.reset.parameterIds : undefined,
       technicalValidationCleared: outcome.clearValidation || undefined,
       backToBench: outcome.backToBench,
+      // The invoice that bills the former list (« Analyses modifiées après facturation »).
+      billedOn: held ? { invoiceId: held.invoiceId, number: heldInvoiceLabel(held) } : undefined,
     },
   });
 
   const { updated } = outcome;
-  return NextResponse.json({ ...updated, parameterIds: updated.parameters.map((p) => p.parameterId) });
+  return NextResponse.json({
+    ...updated,
+    parameterIds: updated.parameters.map((p) => p.parameterId),
+    ...(held ? { billing: { invoice: heldInvoiceLabel(held), notice: billedAnalysesNotice(held) } } : {}),
+  });
 }

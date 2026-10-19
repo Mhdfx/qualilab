@@ -53,7 +53,8 @@ import {
   clientFicheHref,
 } from "@/lib/management-views";
 import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
-import { INVOICE_NOTICE_LABELS, sampleBillingNotice } from "@/lib/invoice-notices";
+import { INVOICE_NOTICE_LABELS, sampleBillingNotices } from "@/lib/invoice-notices";
+import { analysesChangedWhileHeld } from "@/lib/billing-hold";
 import { amendedNumber } from "@/lib/report-amendment";
 import { resolveRecipients } from "@/lib/email-recipients";
 import { canResendReport, reportVersionSent } from "@/lib/report-actions";
@@ -183,6 +184,12 @@ export default async function ClientDetailPage({
   ]);
 
   if (!client) notFound();
+
+  // « Analyses modifiées après facturation »: of the recent samples an
+  // invoice holds, those whose analyses changed while it did.
+  const analysesChanged = await analysesChangedWhileHeld(
+    samples.flatMap((sample) => (sample.invoiceItems[0] ? [{ sampleId: sample.id, invoiceId: sample.invoiceItems[0].invoiceId }] : []))
+  );
 
   // A client archived by the import of the sites before `mergedIntoId`
   // existed (07/10): its journal entry names the parent it became a site of.
@@ -432,11 +439,16 @@ export default async function ClientDetailPage({
               <ul className="divide-y divide-slate-100">
                 {samples.map((sample) => {
                   // « Facturé avant résultat » / « annulé après facturation »
-                  // (PROGRAMME.md §6) — only once an invoice line names it.
-                  const notice =
+                  // (PROGRAMME.md §6), « Analyses modifiées après facturation »
+                  // (16/10) — only once an invoice line names it.
+                  const notices =
                     sample.invoiceItems.length > 0
-                      ? sampleBillingNotice(sample.status, sample.report?.amendmentPending === true)
-                      : null;
+                      ? sampleBillingNotices({
+                          status: sample.status,
+                          amendmentPending: sample.report?.amendmentPending === true,
+                          analysesChanged: analysesChanged.has(sample.id),
+                        })
+                      : [];
                   const sampledAt = declaredSampledAt(sample.sampledAt, sample.serie.samplingTimeDeclared);
                   return (
                   <li key={sample.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
@@ -447,18 +459,19 @@ export default async function ClientDetailPage({
                         </span>
                         <TypeBadge type={sample.type} />
                         <StatusBadge status={sample.status} />
-                        {notice && (
+                        {notices.map((notice) => (
                           <span
+                            key={notice}
                             title={INVOICE_NOTICE_LABELS[notice].hint}
                             className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${
-                              notice === "CANCELLED"
+                              notice === "CANCELLED" || notice === "ANALYSES_CHANGED"
                                 ? "bg-rose-50 text-rose-700 ring-rose-200"
                                 : "bg-amber-50 text-amber-700 ring-amber-200"
                             }`}
                           >
                             {INVOICE_NOTICE_LABELS[notice].title}
                           </span>
-                        )}
+                        ))}
                       </p>
                       <p className="mt-0.5 text-xs text-slate-500">
                         {sample.produit ? `${sample.produit} · ` : ""}

@@ -6,7 +6,7 @@ import { Copy, FileDown, FilePen, History, PencilLine } from "lucide-react";
 import type { SampleStatus } from "@/generated/prisma/enums";
 import type { Role } from "@/lib/roles";
 import { formatDate } from "@/lib/labels";
-import { canReopen } from "@/lib/report-amendment";
+import { canReopen, unsentReopenWarning } from "@/lib/report-amendment";
 import { canEditConclusion, canResendReport } from "@/lib/report-actions";
 import { ConclusionEditDialog } from "./ConclusionEditDialog";
 import { ReportDialog as Dialog } from "./ReportDialog";
@@ -97,7 +97,7 @@ export function ReportActions({
       )}
 
       {open === "versions" && <VersionsDialog sampleId={sampleId} onClose={() => setOpen(null)} />}
-      {open === "reopen" && <ReopenDialog sampleId={sampleId} number={number} onClose={() => setOpen(null)} />}
+      {open === "reopen" && <ReopenDialog sampleId={sampleId} number={number} sent={sent} onClose={() => setOpen(null)} />}
       {open === "conclusion" && reportId && <ConclusionEditDialog reportId={reportId} onClose={() => setOpen(null)} />}
     </div>
   );
@@ -198,9 +198,14 @@ function VersionsDialog({ sampleId, onClose }: { sampleId: string; onClose: () =
   );
 }
 
-/** « Rouvrir pour amendement »: the reason is mandatory — it is printed on the amended report. */
-function ReopenDialog({ sampleId, number, onClose }: { sampleId: string; number: string; onClose: () => void }) {
+/**
+ * « Rouvrir pour amendement »: the reason is mandatory — it is printed on the
+ * amended report. On a version never sent, the dialog says the client will
+ * receive the amended version straight away (`unsentReopenWarning`).
+ */
+function ReopenDialog({ sampleId, number, sent, onClose }: { sampleId: string; number: string; sent: boolean; onClose: () => void }) {
   const router = useRouter();
+  const unsent = unsentReopenWarning(number, sent);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -244,6 +249,11 @@ function ReopenDialog({ sampleId, number, onClose }: { sampleId: string; number:
           sont effacées, les résultats et la fiche peuvent être corrigés. Le rapport {number}{" "}reste en vigueur jusqu&apos;à
           la nouvelle validation administrative, qui émettra le rapport amendé ; il sera ensuite à envoyer au client.
         </p>
+        {unsent && (
+          <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
+            {unsent}
+          </p>
+        )}
         <label htmlFor="amendmentReason" className="mt-3 block text-sm font-medium text-slate-700">
           Motif de l&apos;amendement <span className="text-rose-600">*</span>
         </label>

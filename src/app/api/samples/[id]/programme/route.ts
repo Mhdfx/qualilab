@@ -3,7 +3,8 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { SAMPLE_STATUS_LABELS } from "@/lib/labels";
-import { isLockConflict } from "@/lib/billing";
+import { billedAnalysesChanged, billedAnalysesNotice, heldInvoiceLabel, isLockConflict } from "@/lib/billing";
+import { heldInvoices } from "@/lib/billing-hold";
 import { TYPED_RESULT_WHERE } from "@/lib/bench-access";
 import { canTransition, PROGRAMMABLE_STATUSES } from "@/lib/sample-status";
 import {
@@ -94,6 +95,11 @@ function namedParameters(input: unknown): string[] {
  * the analyses are checked against the new category. `code` and
  * `controlCode` never change. The journal line carries the nature before
  * and after.
+ *
+ * A confirmed programme is billable: an invoice may already hold the line.
+ * A change of its analyses (or of its category) never reaches that invoice
+ * by itself — the journal names it (`billedOn`, read by the invoice sheet)
+ * and the answer carries `billing.notice` for the sheet to say so.
  */
 export async function PUT(
   request: Request,
@@ -251,6 +257,16 @@ export async function PUT(
 
   const updated = await loadProgrammeSample(id);
   if (!updated) return NextResponse.json({ error: "Échantillon introuvable." }, { status: 404 });
+  // Already billed? Only an edit of a confirmed programme can be.
+  const held =
+    !confirming &&
+    sample.status === "PROGRAMME" &&
+    billedAnalysesChanged(
+      { parameterIds: before.parameterIds, type: sample.type },
+      { parameterIds: updated.parameters.map((p) => p.parameterId), type: updated.type }
+    )
+      ? (await heldInvoices([id])).get(id) ?? null
+      : null;
 
   await logAudit({
     actorId: session.id,
@@ -276,8 +292,13 @@ export async function PUT(
       heldBy: updated.technician ? { id: updated.technician.id, name: updated.technician.name } : null,
       before,
       after: programmeOf(updated),
+      // The invoice that bills the former list (« Analyses modifiées après facturation »).
+      billedOn: held ? { invoiceId: held.invoiceId, number: heldInvoiceLabel(held) } : undefined,
     },
   });
 
-  return NextResponse.json(serializeProgramme(updated));
+  return NextResponse.json({
+    ...serializeProgramme(updated),
+    ...(held ? { billing: { invoice: heldInvoiceLabel(held), notice: billedAnalysesNotice(held) } } : {}),
+  });
 }

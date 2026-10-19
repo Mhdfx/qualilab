@@ -187,6 +187,7 @@ function planHash(plan: CataloguePlan, regulations: { toCreate: LegacyRegulation
     natureUpdates: plan.natureUpdates.map((u) => [u.typeId, u.natureId, u.family]),
     links: plan.links.map((l) => [l.typeId, l.regulationLegacyId]),
     copies: plan.copies.map((c) => [c.criterionId, c.parameterRef]),
+    tolerances: plan.tolerances.map((t) => t.criterionId),
     rows: plan.rows.map((r) => [r.productTypeRef, r.parameterRef, r.norm?.key ?? null, r.unit, r.n, r.c, r.mKind, r.m, r.bigM]),
     regulations: [regulations.toCreate.map((r) => r.legacyId), regulations.matched.map((r) => [r.id, r.legacyId])],
   };
@@ -229,6 +230,7 @@ function auditCounts(plan: CataloguePlan) {
       handEdited: reprise.handEdited.map((f) => f.id),
       orphanedSources: reprise.orphanedSources.length,
       inFlight: { startJudged: reprise.inFlight.startJudged, loseCriteria: reprise.inFlight.loseCriteria },
+      tolerances: reprise.tolerances,
     },
   };
 }
@@ -279,7 +281,7 @@ export async function importLegacyCatalogue({
   // ---- commit: read, plan, check and write in one transaction -----------------
   const created = {
     regulations: 0, regulationsMatched: 0, productTypes: 0, parameters: 0, norms: 0, versions: 0, criteria: 0, linked: 0,
-    natures: 0, families: 0, copies: 0, deactivated: 0,
+    natures: 0, families: 0, copies: 0, deactivated: 0, tolerancesCleared: 0,
   };
   let outcome: { plan: CataloguePlan; regs: Awaited<ReturnType<typeof planRegulations>> } | Refusal;
   try {
@@ -441,6 +443,14 @@ export async function importLegacyCatalogue({
           created.copies += chunk.length;
           const { count } = await tx.criterion.updateMany({ where: { id: { in: chunk.map((c) => c.criterionId) }, active: true }, data: { active: false } });
           created.deactivated += count;
+        }
+
+        // F2: the tolerance c an earlier import left where it means nothing
+        // (absence tests, limitless rows) — cleared, no verdict read it.
+        for (let i = 0; i < plan.tolerances.length; i += 200) {
+          const chunk = plan.tolerances.slice(i, i + 200);
+          const { count } = await tx.criterion.updateMany({ where: { id: { in: chunk.map((t) => t.criterionId) } }, data: { c: null } });
+          created.tolerancesCleared += count;
         }
 
         // Slice J and (c): the old software's criteria.

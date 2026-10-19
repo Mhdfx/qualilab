@@ -1,7 +1,7 @@
 import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "./prisma";
-import { declaredSampledAt, sampleConclusion, sampleSearchWhere, type Conclusion, type SampleSearch } from "./sample-search";
+import { declaredSampledAt, sampleConclusion, sampleSearchWhere, searchReceptionAt, type Conclusion, type SampleSearch } from "./sample-search";
 
 /**
  * The rows the search screen, the client summary and the Excel export print
@@ -28,6 +28,8 @@ export type SearchRow = {
    *  declared — never the instant it was entered (`declaredSampledAt`). */
   sampledAt: Date | null;
   receivedAt: Date | null;
+  /** What the client reads as the reception: the arrival, else `receivedAt` (`searchReceptionAt`). */
+  receptionAt: Date | null;
   hasReport: boolean;
   conclusion: Conclusion;
 };
@@ -72,7 +74,8 @@ export async function searchSamples(
         receivedAt: true,
         client: { select: { id: true, name: true } },
         // Whether a deposit's « Prélevé le » was declared (R6 / C5).
-        serie: { select: { serialNumber: true, site: { select: { name: true } }, samplingTimeDeclared: true } },
+        // `arrivedAt`: the reception the client reads (lot 1b, `searchReceptionAt`).
+        serie: { select: { serialNumber: true, site: { select: { name: true } }, samplingTimeDeclared: true, arrivedAt: true } },
         nature: { select: { label: true } },
         parameters: { select: { parameter: { select: { name: true } } } },
         report: { select: { interpretation: true } },
@@ -99,6 +102,7 @@ export async function searchSamples(
       parameters: s.parameters.map((p) => p.parameter.name),
       sampledAt: declaredSampledAt(s.sampledAt, s.serie.samplingTimeDeclared),
       receivedAt: s.receivedAt,
+      receptionAt: searchReceptionAt(s.receivedAt, s.serie.arrivedAt),
       hasReport: s.report !== null,
       conclusion: sampleConclusion(s),
     })),

@@ -3,6 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toMoney } from "@/lib/money";
 import { creditedByItem } from "@/lib/billing";
+import { analysesChangedWhileHeld } from "@/lib/billing-hold";
 import { invoiceClientIdentity } from "@/lib/invoice-client-identity";
 import {
   invoiceFigures,
@@ -65,6 +66,11 @@ export async function loadInvoiceDetail(id: string): Promise<InvoiceDetailView |
   });
   if (!invoice) return null;
 
+  // « Analyses modifiées après facturation »: the samples whose analyses
+  // changed while this invoice held them (the journal's `billedOn`).
+  const billedSampleIds = [...new Set(invoice.items.flatMap((item) => (item.sampleId ? [item.sampleId] : [])))];
+  const analysesChanged = await analysesChangedWhileHeld(billedSampleIds.map((sampleId) => ({ sampleId, invoiceId: invoice.id })));
+
   const credited = creditedByItem(
     invoice.items.flatMap((item) =>
       item.creditLines.map((line) => ({ creditedItemId: line.creditedItemId, amount: line.lineTotal }))
@@ -110,6 +116,7 @@ export async function loadInvoiceDetail(id: string): Promise<InvoiceDetailView |
             controlCode: item.sample.controlCode,
             status: item.sample.status,
             amendmentPending: item.sample.report?.amendmentPending === true,
+            analysesChanged: analysesChanged.has(item.sample.id),
           }
         : null,
     })),

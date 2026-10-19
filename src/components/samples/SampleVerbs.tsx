@@ -25,6 +25,8 @@ import { surfaceAreaChoice } from "@/components/preleveur/visit-types";
 import { notReceivedNoticeText } from "@/lib/not-received";
 import {
   analysesNotice,
+  billedCorrectionWarning,
+  cancelConsequences,
   cancelReasonsFor,
   correctionBody,
   correctionFields,
@@ -225,12 +227,16 @@ function CorrectDialog({
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Saved on a sample an invoice holds: what to tell the accountant, before the dialog closes.
+  const [billingNotice, setBillingNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    if (kind !== "ALIMENT" || !scope.analyses) return;
+    if (!scope.analyses) return;
     let cancelled = false;
-    // Food families only (RETOUR-LABO-16-10.md F5): this select shows on food lines alone.
-    fetch(`/api/product-types?${new URLSearchParams({ category: "ALIMENTAIRE", clientId: sample.clientId })}`)
+    // The families of the sample's category, plus those still « à préciser »
+    // (RETOUR-LABO-16-10.md F1 / F5): a water, surface, hands or air line
+    // corrects its family here too once the bench has started.
+    fetch(`/api/product-types?${new URLSearchParams({ category: sample.type, clientId: sample.clientId })}`)
       .then((r) => r.json())
       .then((data: { id: string; name: string; clientId: string | null; unitCount: number }[]) => {
         if (!cancelled) setProductTypes(Array.isArray(data) ? data : []);
@@ -239,7 +245,7 @@ function CorrectDialog({
     return () => {
       cancelled = true;
     };
-  }, [kind, sample.clientId, scope.analyses]);
+  }, [sample.type, sample.clientId, scope.analyses]);
 
   useEffect(() => {
     if (!scope.analyses) return;
@@ -266,6 +272,8 @@ function CorrectDialog({
   const shown = correctionFields(kind);
   // What the analyses on screen will do to the results already typed (Q91).
   const notice = scope.analyses ? analysesNotice(sample, parameterIds, values) : null;
+  // And to the invoice that holds the sample, if one does.
+  const billedWarning = scope.analyses ? billedCorrectionWarning(sample, parameterIds) : null;
   // The quick choice the typed area equals, if any — its chip is pressed.
   const pickedArea = surfaceAreaChoice(values.surfaceAreaCm2);
   // « Autre » (16/10): open on a value that is not a chip, or once tapped.
@@ -308,17 +316,40 @@ function CorrectDialog({
     setError("");
     try {
       const sameParameters = parameterIds.length === sample.parameterIds.length && parameterIds.every((id) => sample.parameterIds.includes(id));
-      await send(
+      const data = await send(
         `/api/samples/${sample.id}/intake`,
         "PATCH",
         correctionBody(kind, values, sameParameters ? null : parameterIds, reason, scope)
       );
-      onDone();
+      if (data && typeof data.billing?.notice === "string") setBillingNotice(data.billing.notice);
+      else onDone();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
     }
+  }
+
+  if (billingNotice) {
+    // Saved: whatever closes the dialog refreshes the page.
+    return (
+      <Dialog title={`Correction enregistrée — ${sample.controlCode ?? sample.code}`} onClose={onDone} describedBy="correct-billing-notice">
+        <p id="correct-billing-notice" role="status" className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {billingNotice}
+        </p>
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={onDone}
+            aria-describedby="correct-billing-notice"
+            autoFocus
+            className="inline-flex min-h-[42px] items-center rounded-xl bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+          >
+            Fermer
+          </button>
+        </div>
+      </Dialog>
+    );
   }
 
   return (
@@ -532,7 +563,7 @@ function CorrectDialog({
 
         {scope.analyses ? (
           <div className={scope.identification ? "mt-3 border-t border-slate-100 pt-3" : ""}>
-            {shown.food && (
+            {shown.family && (
               <div>
                 <label htmlFor="correct-product-type" className="block text-xs font-medium text-slate-600">Famille de produits (critères)</label>
                 <select
@@ -572,7 +603,7 @@ function CorrectDialog({
               </div>
             )}
 
-            <div className={shown.food ? "mt-3" : ""}>
+            <div className={shown.family ? "mt-3" : ""}>
               <p className="text-xs font-medium text-slate-600">Nombre d&apos;unités (n)</p>
               <div className="mt-1 flex gap-2">
                 {UNIT_CHOICES.map((n) => (
@@ -624,6 +655,7 @@ function CorrectDialog({
               {notice && (
                 <p className={`mt-1 text-xs ${notice.tone === "warning" ? "text-amber-700" : "text-slate-500"}`}>{notice.text}</p>
               )}
+              {billedWarning && <p className="mt-1 text-xs font-medium text-amber-700">{billedWarning}</p>}
             </div>
           </div>
         ) : (
@@ -653,6 +685,7 @@ function CorrectDialog({
 }
 
 function CancelDialog({ sample, onClose, onDone }: { sample: VerbSample; onClose: () => void; onDone: () => void }) {
+  const consequences = cancelConsequences(sample);
   const [reason, setReason] = useState<CancelReason | "">("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -711,8 +744,13 @@ function CancelDialog({ sample, onClose, onDone }: { sample: VerbSample; onClose
     <Dialog title={`Annuler — ${sample.controlCode ?? sample.code}`} onClose={onClose}>
       <form onSubmit={submit} noValidate>
         <p className="text-sm text-slate-600">
-          L&apos;échantillon sort de toutes les files, du rapport et de la facturation. Seul un administrateur peut le réactiver.
+          {consequences.text} Seul un administrateur peut le réactiver.
         </p>
+        {consequences.warnings.map((warning) => (
+          <p key={warning} className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {warning}
+          </p>
+        ))}
         <label className="mt-3 block text-xs font-medium text-slate-600">Motif *</label>
         <select value={reason} onChange={(e) => setReason(e.target.value as CancelReason | "")} className="input-field mt-1 px-3">
           <option value="">Choisir un motif</option>
