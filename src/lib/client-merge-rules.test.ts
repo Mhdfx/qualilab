@@ -4,10 +4,13 @@ import {
   checkBilledFor,
   checkMerge,
   checkSiteBilling,
+  filledFieldsInvoicesWarning,
   invoiceSampleRefusal,
   mergedClientInvoiceRefusal,
   mergeFill,
+  portalAccountsWarning,
   sampleBillingClientId,
+  unfrozenInvoicesWarning,
   type ClientFacts,
 } from "./client-merge-rules";
 
@@ -266,5 +269,51 @@ describe("mergedClientInvoiceRefusal", () => {
     expect(mergedClientInvoiceRefusal({ name: "Client Demo", mergedInto: { name: "Client Démo SARL" } })).toBe(
       "« Client Demo » a été regroupée avec « Client Démo SARL » (fusion ou rattachement comme site) : établissez la facture au nom de « Client Démo SARL »."
     );
+  });
+});
+
+describe("unfrozenInvoicesWarning — invoices issued before 10/10 (E4)", () => {
+  it("warns that they will carry the kept fiche's name", () => {
+    expect(unfrozenInvoicesWarning(1, "Client Demo", "Client Démo SARL")).toEqual([
+      "1 facture émise avant le 10/10 changera de nom : sans instantané du client, elle imprimera « Client Démo SARL » au lieu de « Client Demo ».",
+    ]);
+    expect(unfrozenInvoicesWarning(3, "Client Demo", "Client Démo SARL")).toEqual([
+      "3 factures émises avant le 10/10 changeront de nom : sans instantané du client, elles imprimeront « Client Démo SARL » au lieu de « Client Demo ».",
+    ]);
+  });
+
+  it("says nothing when every issued invoice is frozen", () => {
+    expect(unfrozenInvoicesWarning(0, "B", "A")).toEqual([]);
+    expect(unfrozenInvoicesWarning(Number.NaN, "B", "A")).toEqual([]);
+  });
+});
+
+describe("filledFieldsInvoicesWarning — A's own invoices issued before 10/10 print the fields B fills", () => {
+  it("names the fields completed from B", () => {
+    expect(filledFieldsInvoicesWarning(1, ["address", "ice"], "Client Demo", "Client Démo SARL")).toEqual([
+      "1 facture émise de « Client Démo SARL » avant le 10/10 imprimera aussi les champs repris de « Client Demo » (adresse, ICE) : sans instantané du client, elle imprime la fiche telle qu'elle est.",
+    ]);
+    expect(filledFieldsInvoicesWarning(4, ["contact"], "Client Demo", "Client Démo SARL")).toEqual([
+      "4 factures émises de « Client Démo SARL » avant le 10/10 imprimeront aussi les champs repris de « Client Demo » (contact) : sans instantané du client, elles impriment la fiche telle qu'elle est.",
+    ]);
+  });
+
+  it("says nothing when nothing is filled, or every one is frozen", () => {
+    expect(filledFieldsInvoicesWarning(3, [], "B", "A")).toEqual([]);
+    expect(filledFieldsInvoicesWarning(0, ["ice"], "B", "A")).toEqual([]);
+    expect(filledFieldsInvoicesWarning(Number.NaN, ["ice"], "B", "A")).toEqual([]);
+  });
+});
+
+describe("portalAccountsWarning — B's portal accounts are left to the administrator", () => {
+  it("says they no longer open the portal and who reattaches them", () => {
+    expect(portalAccountsWarning(1, "Client Demo", "Client Démo SARL")).toEqual([
+      "1 compte du portail client de « Client Demo » n'ouvrira plus le portail : l'administrateur le rattache à « Client Démo SARL » s'il y a lieu (Administration › Utilisateurs).",
+    ]);
+    expect(portalAccountsWarning(2, "Client Demo", "Client Démo SARL")[0]).toMatch(/^2 comptes du portail client de « Client Demo » n'ouvriront plus le portail : l'administrateur les rattache/);
+  });
+
+  it("says nothing when B has none", () => {
+    expect(portalAccountsWarning(0, "B", "A")).toEqual([]);
   });
 });

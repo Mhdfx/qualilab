@@ -1,8 +1,12 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import {
+  NOT_DONE_MESSAGE,
   applyCalcFactor,
   benchConformity,
   factoredText,
+  isNotDoneText,
   isUncountableText,
   parseLabValue,
   singleValueEntry,
@@ -305,5 +309,50 @@ describe("singleValueEntry — what a line read as one value stores", () => {
 
   it("stores nothing for an empty line", () => {
     expect(singleValueEntry("   ", 10)).toEqual({ parsed: { numeric: null, kind: "unreadable" }, value: null, rawValue: null });
+  });
+});
+
+describe("isNotDoneText — « NE » is not a result (16/10, Q91)", () => {
+  it("recognises « NE », « N.E. », « non effectué », « non fait » whatever the case, accents and dots", () => {
+    for (const typed of [
+      "NE",
+      "ne",
+      "N.E.",
+      "n.e",
+      "N E",
+      "Non effectué",
+      "NON EFFECTUE",
+      "non effectuée",
+      "non-effectué",
+      "Non fait",
+      "non faite",
+      "Non réalisé",
+      "pas fait",
+      "  NE  ",
+    ]) {
+      expect(isNotDoneText(typed), typed).toBe(true);
+    }
+  });
+
+  it("never mistakes a reading for it", () => {
+    for (const typed of ["", "Absence", "ND", "Non détecté", "< 10", "3(-2)", "Néant", "Présence", "Indénombrable", "1,2.10²", "Nef", "Effectué"]) {
+      expect(isNotDoneText(typed), typed).toBe(false);
+    }
+    expect(isNotDoneText(null)).toBe(false);
+    expect(isNotDoneText(undefined)).toBe(false);
+  });
+
+  it("says who withdraws the analysis instead", () => {
+    expect(NOT_DONE_MESSAGE).toBe("Une analyse non faite se retire du programme (responsable des paramètres).");
+  });
+
+  it("is refused by the results route as a single value and as a unit reading, and never submitted", () => {
+    const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
+    const save = read("../app/api/samples/[id]/results/route.ts");
+    expect(save).toContain("if (isNotDoneText(value)) return notDone(parameter.name, value);");
+    expect(save).toContain("if (isNotDoneText(text)) return notDone(parameter.name, text);");
+    expect(save).toMatch(/NOT_DONE_MESSAGE[^]*status: 400/);
+    // A value saved before the refusal existed stays on the bench.
+    expect(read("../app/api/samples/[id]/results/submit/route.ts")).toContain("isNotDoneText(result.rawValue ?? result.value)");
   });
 });

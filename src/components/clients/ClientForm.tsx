@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Archive, ArchiveRestore, ExternalLink, MapPin, Users } from "lucide-react";
+import { Plus, Trash2, Archive, ArchiveRestore, ClipboardList, ExternalLink, MapPin, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import type { SimilarClient } from "@/lib/client-identity";
@@ -48,6 +48,12 @@ type ClientFormProps = {
    * back, so the button is not offered.
    */
   mergedInto?: { id: string; name: string } | null;
+  /**
+   * « À compléter » (RETOUR-LABO-16-10.md E3): the client was created at the
+   * counter or in the field; `hint` says what it lacks. Saving the form
+   * clears the flag (PATCH /api/clients/[id]).
+   */
+  toComplete?: { hint: string } | null;
 };
 
 const EMPTY_EMAIL: EmailRow = {
@@ -57,7 +63,7 @@ const EMPTY_EMAIL: EmailRow = {
   forAlerts: true,
 };
 
-export function ClientForm({ clientId, initial, archived, mergedInto }: ClientFormProps) {
+export function ClientForm({ clientId, initial, archived, mergedInto, toComplete }: ClientFormProps) {
   const router = useRouter();
   const [values, setValues] = useState<ClientFormValues>(initial);
   const [busy, setBusy] = useState<string | null>(null);
@@ -189,6 +195,16 @@ export function ClientForm({ clientId, initial, archived, mergedInto }: ClientFo
 
   return (
     <form onSubmit={submit} noValidate className="space-y-5">
+      {toComplete && (
+        <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+          <ClipboardList className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>
+            <span className="font-semibold">À compléter</span> — client créé au comptoir ou sur le
+            terrain. {toComplete.hint} En enregistrant la fiche, il ne sera plus signalé.
+          </span>
+        </p>
+      )}
+
       <Card className="p-5">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Identité

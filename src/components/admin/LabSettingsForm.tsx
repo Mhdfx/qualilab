@@ -48,7 +48,8 @@ const SWITCHES: { key: SwitchKey; title: string; on: string; off: string }[] = [
     key: "alertAfterTechnicalValidation",
     title: "Moment d'envoi des alertes de contamination",
     on: "Dès la validation technique : le client est prévenu sans attendre la validation administrative — le choix du laboratoire (29/09).",
-    off: "Après la validation administrative (avec le rapport).",
+    // The report no longer leaves at the approval (16/10, Q92); the alerts still do.
+    off: "À la validation administrative, que le rapport soit envoyé alors ou plus tard.",
   },
   {
     key: "consultationRequired",

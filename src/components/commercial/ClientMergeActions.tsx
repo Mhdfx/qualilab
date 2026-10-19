@@ -21,12 +21,23 @@ type Preview = {
 };
 
 /**
- * « Actions sur la fiche » (CLIENTS-FUSION.md §2–3, ADMIN): merge this client
- * into another one, or attach it as a site of another one. Always in two
+ * « Actions sur la fiche » (CLIENTS-FUSION.md §2–3): merge this client into
+ * another one (GESTIONNAIRE and ADMIN since 16/10, Q117), or attach it as a
+ * site of another one (ADMIN, `canAttach`: the page decides with
+ * `canAttachAsSite`, the route's guard decides for good). Always in two
  * steps — « Voir l'aperçu » writes nothing and says, in plain French, what
  * will move; only then the confirmation, which archives this fiche.
  */
-export function ClientMergeActions({ clientId, clientName }: { clientId: string; clientName: string }) {
+export function ClientMergeActions({
+  clientId,
+  clientName,
+  canAttach,
+}: {
+  clientId: string;
+  clientName: string;
+  /** « Rattacher comme site de… » is offered (the administrator). */
+  canAttach: boolean;
+}) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode | null>(null);
   const [target, setTarget] = useState<PickedClient | null>(null);
@@ -117,8 +128,10 @@ export function ClientMergeActions({ clientId, clientName }: { clientId: string;
     <Card className="p-5">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Actions sur la fiche</h2>
       <p className="mt-1 text-sm text-slate-500">
-        Fiche en double, ou point de vente enregistré comme client : regroupez-la
-        avec la bonne fiche. Rien n&apos;est supprimé, cette fiche est archivée.
+        {canAttach
+          ? "Fiche en double, ou point de vente enregistré comme client : regroupez-la avec la bonne fiche."
+          : "Fiche en double : fusionnez-la avec la bonne fiche. Rattacher un point de vente comme site d'un autre client reste à l'administrateur."}{" "}
+        Rien n&apos;est supprimé, cette fiche est archivée.
       </p>
 
       <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Opération">
@@ -131,15 +144,17 @@ export function ClientMergeActions({ clientId, clientName }: { clientId: string;
           <GitMerge className="h-4 w-4" aria-hidden="true" />
           Fusionner avec…
         </button>
-        <button
-          type="button"
-          aria-pressed={mode === "attach"}
-          onClick={() => reset(mode === "attach" ? null : "attach")}
-          className={tabClass(mode === "attach")}
-        >
-          <MapPin className="h-4 w-4" aria-hidden="true" />
-          Rattacher comme site de…
-        </button>
+        {canAttach && (
+          <button
+            type="button"
+            aria-pressed={mode === "attach"}
+            onClick={() => reset(mode === "attach" ? null : "attach")}
+            className={tabClass(mode === "attach")}
+          >
+            <MapPin className="h-4 w-4" aria-hidden="true" />
+            Rattacher comme site de…
+          </button>
+        )}
       </div>
 
       {mode && (

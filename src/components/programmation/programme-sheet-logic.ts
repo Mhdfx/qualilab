@@ -1,7 +1,7 @@
-import type { Family, ProgrammePriority, SampleStatus } from "@/generated/prisma/enums";
+import type { CancelReason, Family, ProgrammePriority, SampleStatus } from "@/generated/prisma/enums";
 import { BENCH_STATUSES, isUnclaimed } from "@/lib/bench-access";
 import { pickCriterion } from "@/lib/interpretation";
-import { ANALYSIS_FAMILY_LABELS, formatDateTime } from "@/lib/labels";
+import { ANALYSIS_FAMILY_LABELS, CANCEL_REASON_LABELS, formatDateTime } from "@/lib/labels";
 import { roundMoney } from "@/lib/invoice-math";
 import {
   parameterSpellings,
@@ -11,6 +11,9 @@ import {
 } from "@/lib/reception-rules";
 import { complementaryChecklist, type ComplementarySerie } from "@/lib/reception-complementary";
 import { reportTechnicianNames } from "@/lib/report-programme";
+import type { Role } from "@/lib/roles";
+import { CORRECTABLE_STATUSES } from "@/lib/sample-status";
+import { cancellersLabel, correctionLabel, correctionRights } from "@/lib/sample-verbs";
 import { MAX_UNITS } from "@/lib/series";
 import { fromLocalInput, toLocalInput } from "@/components/preleveur/visit-types";
 import type {
@@ -587,4 +590,80 @@ export function toRequestBody(draft: ProgrammeDraft, confirm: boolean) {
       };
     }),
   };
+}
+
+/**
+ * Why the programme sheet is read-only, or null while it may be edited
+ * (PROGRAMME.md §5). Once the bench has started (16/10, Q128 — RP3b (a)),
+ * the analyses — their list, the product type, the number of units — are
+ * changed by the responsable des paramètres or the administrator through
+ * the correction verb below the sheet, with a reason; the identification by
+ * the reception, the validation or the administrator. The text names the
+ * verb this person has, or who to ask.
+ */
+export function programmeReadOnlyReason(
+  state: { editable: boolean; status: SampleStatus; analysisBlocked: boolean; cancelReason: CancelReason | null },
+  role: Role
+): string | null {
+  if (state.editable) return null;
+  if (state.status === "PRELEVE") {
+    return "Cet échantillon n'est pas encore réceptionné : le programme se décide après la réception.";
+  }
+  if (state.status === "ANNULE") {
+    const reason = state.cancelReason ? ` (${CANCEL_REASON_LABELS[state.cancelReason]})` : "";
+    return `Échantillon annulé${reason} : seul un administrateur peut le réactiver.`;
+  }
+  if (state.analysisBlocked) {
+    return "Échantillon bloqué en réception : il doit être libéré depuis « Bloqués » de la réception avant la programmation.";
+  }
+  if (!CORRECTABLE_STATUSES.includes(state.status)) {
+    return "Fiche en lecture seule : l'échantillon est validé. Un changement passe par la réouverture du rapport pour amendement.";
+  }
+  const rights = correctionRights(role, state.status);
+  const how = rights.analyses
+    ? `par « ${correctionLabel(rights)} » ci-dessous, avec un motif`
+    : "par le responsable des paramètres ou l'administrateur, avec un motif";
+  return `Fiche en lecture seule : la paillasse a commencé. Les analyses, le type de produit et le nombre d'unités se changent désormais ${how} ; l'identification de l'échantillon, par la réception, la validation ou l'administrateur.`;
+}
+
+/**
+ * What the sheet says under the correction verbs about what is not this
+ * person's (16/10, Q128), or null: nothing to add for whoever corrects the
+ * identification, nor once the sample is approved, sent or cancelled. The
+ * identification is `FICHE_CORRECTION_ROLES`' at every step; who cancels
+ * depends on the step (16/10, Q13 — the state machine, `cancellersLabel`):
+ * the réception and the administrator before the programme, the validation,
+ * the Direction and the administrator from it.
+ */
+export function programmeVerbsNote(role: Role, status: SampleStatus): string | null {
+  if (!CORRECTABLE_STATUSES.includes(status)) return null;
+  const rights = correctionRights(role, status);
+  if (rights.identification) return null;
+  const cancellers = cancellersLabel(status, true);
+  const elsewhere = `l'identification de l'échantillon (désignation, quantité, lot…) relève de la réception, de la validation ou de l'administrateur${
+    cancellers ? ` ; son annulation, ${cancellers}` : ""
+  }.`;
+  if (rights.analyses) return `Les analyses se changent par « ${correctionLabel(rights)} » ; ${elsewhere}`;
+  return `Les analyses se changent sur cette fiche tant que la paillasse n'a pas commencé ; ${elsewhere}`;
+}
+
+/**
+ * The lead-in to the verbs under the sheet's « Vérification d'entrée »:
+ * names only what the verbs offered to this person do — the responsable des
+ * paramètres at the bench has « Corriger les analyses », never « Annuler ».
+ */
+export function programmeVerbsLead(verbs: { correct: boolean; correctAnalyses: boolean; cancel: boolean; reactivate: boolean }): string {
+  const correcting = verbs.correct || verbs.correctAnalyses;
+  const count = [correcting, verbs.cancel, verbs.reactivate].filter(Boolean).length;
+  const what =
+    correcting && verbs.cancel
+      ? "Une correction ou une annulation"
+      : correcting
+        ? "Une correction"
+        : verbs.cancel
+          ? "Une annulation"
+          : verbs.reactivate
+            ? "Une réactivation"
+            : null;
+  return what ? `${what} passe par ${count > 1 ? "les verbes" : "le verbe"} ci-dessous.` : "";
 }

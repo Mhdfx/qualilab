@@ -1,6 +1,6 @@
 "use client";
 
-import { verbsFor } from "@/lib/sample-verbs";
+import { CORRECTION_MESSAGES, correctionLabel, verbsFor, type CorrectionRights } from "@/lib/sample-verbs";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -24,6 +24,7 @@ import {
 import { surfaceAreaChoice } from "@/components/preleveur/visit-types";
 import { notReceivedNoticeText } from "@/lib/not-received";
 import {
+  analysesNotice,
   cancelReasonsFor,
   correctionBody,
   correctionFields,
@@ -48,6 +49,15 @@ export type { CorrectionValues, VerbSample };
  * temperatures on every kind — the air its ambient one only (P9, 16/10). A
  * field the dialog does not show is not sent, so an old value of another
  * kind is never emptied.
+ *
+ * Who changes what (16/10, Q128 — `correctionRights`): the dialog shows the
+ * halves this person may change and sends nothing else. The reception, the
+ * validateur and the Direction correct the identification, and the
+ * analyses — their list, the product type, the number of units — only
+ * before the programme; once the bench has started, the responsable des
+ * paramètres changes the analyses only (« Corriger les analyses »); the
+ * administrator both, until the approval. A withdrawal keeps the other
+ * results (Q91 — `analysesNotice` says what the change will do).
  */
 
 const UNITS = Object.keys(QUANTITY_UNIT_LABELS) as QuantityUnit[];
@@ -77,7 +87,9 @@ export function SampleVerbs({
   const router = useRouter();
   const [open, setOpen] = useState<"correct" | "cancel" | "reactivate" | null>(null);
   const verbs = verbsFor(sample, role);
-  if (!verbs.correct && !verbs.cancel && !verbs.reactivate) return null;
+  const scope: CorrectionRights = { identification: verbs.correct, analyses: verbs.correctAnalyses };
+  const correctLabel = correctionLabel(scope);
+  if (!verbs.correct && !verbs.correctAnalyses && !verbs.cancel && !verbs.reactivate) return null;
 
   function done() {
     setOpen(null);
@@ -101,11 +113,14 @@ export function SampleVerbs({
 
   return (
     <div className="flex flex-wrap items-center gap-1">
-      {verbs.correct && button("Corriger la fiche", <Pencil className="h-3.5 w-3.5" aria-hidden="true" />, () => setOpen("correct"))}
+      {(verbs.correct || verbs.correctAnalyses) &&
+        button(correctLabel, <Pencil className="h-3.5 w-3.5" aria-hidden="true" />, () => setOpen("correct"))}
       {verbs.cancel && button("Annuler", <Ban className="h-3.5 w-3.5" aria-hidden="true" />, () => setOpen("cancel"), "danger")}
       {verbs.reactivate && button("Réactiver", <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />, () => setOpen("reactivate"))}
 
-      {open === "correct" && <CorrectDialog sample={sample} onClose={() => setOpen(null)} onDone={done} />}
+      {open === "correct" && (
+        <CorrectDialog sample={sample} scope={scope} title={correctLabel} onClose={() => setOpen(null)} onDone={done} />
+      )}
       {open === "cancel" && <CancelDialog sample={sample} onClose={() => setOpen(null)} onDone={done} />}
       {open === "reactivate" && <ReactivateDialog sample={sample} onClose={() => setOpen(null)} onDone={done} />}
     </div>
@@ -187,18 +202,32 @@ async function send(url: string, method: string, body: unknown) {
   return data;
 }
 
-function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClose: () => void; onDone: () => void }) {
+function CorrectDialog({
+  sample,
+  scope,
+  title,
+  onClose,
+  onDone,
+}: {
+  sample: VerbSample;
+  /** The halves of the fiche this person may change (`correctionRights`). */
+  scope: CorrectionRights;
+  title: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const kind = sample.lineKind;
   const [values, setValues] = useState<CorrectionValues>(() => correctionValues(sample));
   const [parameterIds, setParameterIds] = useState<string[]>(sample.parameterIds);
   const [productTypes, setProductTypes] = useState<{ id: string; name: string; clientId: string | null; unitCount: number }[]>([]);
   const [options, setOptions] = useState<ParameterOption[] | null>(null);
+  const [optionsFailed, setOptionsFailed] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (kind !== "ALIMENT") return;
+    if (kind !== "ALIMENT" || !scope.analyses) return;
     let cancelled = false;
     fetch(`/api/product-types?clientId=${sample.clientId}`)
       .then((r) => r.json())
@@ -209,22 +238,33 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
     return () => {
       cancelled = true;
     };
-  }, [kind, sample.clientId]);
+  }, [kind, sample.clientId, scope.analyses]);
 
   useEffect(() => {
+    if (!scope.analyses) return;
     let cancelled = false;
     fetch(`/api/parameters?category=${sample.type}`)
-      .then((r) => r.json())
-      .then((data: ParameterOption[]) => {
-        if (!cancelled) setOptions(Array.isArray(data) ? data : []);
+      .then((r) => {
+        // A refusal or a server error is said, never shown as an empty list.
+        if (!r.ok) throw new Error(`parameters ${r.status}`);
+        return r.json();
       })
-      .catch(() => {});
+      .then((data: unknown) => {
+        if (cancelled) return;
+        if (!Array.isArray(data)) throw new Error("parameters");
+        setOptions(data as ParameterOption[]);
+      })
+      .catch(() => {
+        if (!cancelled) setOptionsFailed(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, [sample.type]);
+  }, [sample.type, scope.analyses]);
 
   const shown = correctionFields(kind);
+  // What the analyses on screen will do to the results already typed (Q91).
+  const notice = scope.analyses ? analysesNotice(sample, parameterIds, values) : null;
   // The quick choice the typed area equals, if any — its chip is pressed.
   const pickedArea = surfaceAreaChoice(values.surfaceAreaCm2);
   // « Autre » (16/10): open on a value that is not a chip, or once tapped.
@@ -267,7 +307,11 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
     setError("");
     try {
       const sameParameters = parameterIds.length === sample.parameterIds.length && parameterIds.every((id) => sample.parameterIds.includes(id));
-      await send(`/api/samples/${sample.id}/intake`, "PATCH", correctionBody(kind, values, sameParameters ? null : parameterIds, reason));
+      await send(
+        `/api/samples/${sample.id}/intake`,
+        "PATCH",
+        correctionBody(kind, values, sameParameters ? null : parameterIds, reason, scope)
+      );
       onDone();
     } catch (e) {
       setError((e as Error).message);
@@ -277,296 +321,320 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
   }
 
   return (
-    <Dialog title={`Corriger la fiche — ${sample.controlCode ?? sample.code}`} onClose={onClose}>
+    <Dialog title={`${title} — ${sample.controlCode ?? sample.code}`} onClose={onClose}>
       <form onSubmit={submit} noValidate>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {shown.produit && input("produit", "Désignation")}
-          {shown.food && (
-            <div>
-              <label htmlFor="correct-product-type" className="block text-xs font-medium text-slate-600">Type de produit (critères)</label>
-              <select
-                id="correct-product-type"
-                value={values.productTypeId}
-                onChange={(e) => {
-                  const type = productTypes.find((t) => t.id === e.target.value);
-                  set("productTypeId", e.target.value);
-                  // The criteria of this type need their units: never judge a
-                  // 5-unit plan on the single unit the line carried before.
-                  if (type && type.unitCount > values.unitCount) set("unitCount", type.unitCount);
-                }}
-                className="input-field mt-1 px-3"
-              >
-                <option value="">— aucun —</option>
-                {productTypes.some((t) => t.clientId) && (
-                  <optgroup label="Types du client">
-                    {productTypes.filter((t) => t.clientId).map((t) => (
+        {scope.identification && (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {shown.produit && input("produit", "Désignation")}
+            {shown.surface && input("surfaceLabel", "Désignation", "text", "Ce qui est prélevé (ex. : planche verte)")}
+            {shown.surface && (
+              // The two usual areas in one tap (« 100 cm² », « 1000 cm² » —
+              // 14/10), then « Autre » (16/10): another area, or a text.
+              <div>
+                <p id="correct-surface-area" className="block text-xs font-medium text-slate-600">
+                  Surface prélevée (cm²)
+                </p>
+                <div role="group" aria-labelledby="correct-surface-area" className="mt-1 flex flex-wrap gap-2">
+                  {SURFACE_AREA_CHOICES.map((area) => (
+                    <button
+                      key={area}
+                      type="button"
+                      onClick={() => {
+                        setAreaOther(false);
+                        set("surfaceAreaCm2", String(area));
+                      }}
+                      aria-pressed={!areaOther && pickedArea === area}
+                      className={choice(!areaOther && pickedArea === area)}
+                    >
+                      {`${area} cm²`}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (areaOther) return;
+                      setAreaOther(true);
+                      if (pickedArea !== null) set("surfaceAreaCm2", "");
+                    }}
+                    aria-pressed={areaOther}
+                    className={choice(areaOther)}
+                  >
+                    Autre
+                  </button>
+                </div>
+                {areaOther && (
+                  <>
+                    <label htmlFor="correct-surfaceAreaCm2" className="mt-2 block text-xs font-medium text-slate-600">
+                      Préciser
+                    </label>
+                    <input
+                      id="correct-surfaceAreaCm2"
+                      type="text"
+                      maxLength={191}
+                      value={values.surfaceAreaCm2}
+                      onChange={(e) => set("surfaceAreaCm2", e.target.value)}
+                      placeholder="Ex. : 250, couteau entier"
+                      aria-describedby="correct-surface-area-hint"
+                      className="input-field mt-1 px-3"
+                    />
+                    <p id="correct-surface-area-hint" className="mt-0.5 text-[11px] text-slate-500">
+                      Un nombre entier de cm², ou ce qui est prélevé ; vide = 100 cm².
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+            {shown.surface && (
+              <div className="sm:col-span-2" role="group" aria-labelledby="correct-surface-state">
+                <p id="correct-surface-state" className="text-xs font-medium text-slate-600">
+                  État de la surface {sample.surfaceState ? "*" : ""}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {SURFACE_STATE_CHOICES.map((state) => (
+                    <button
+                      key={state}
+                      type="button"
+                      onClick={() => set("surfaceState", state)}
+                      aria-pressed={values.surfaceState === state}
+                      className={choice(values.surfaceState === state)}
+                    >
+                      {SURFACE_STATE_LABELS[state]}
+                    </button>
+                  ))}
+                </div>
+                {!sample.surfaceState && !values.surfaceState && (
+                  <p className="mt-0.5 text-[11px] text-slate-500">Non renseigné sur cet échantillon ancien : facultatif ici.</p>
+                )}
+              </div>
+            )}
+            {shown.air && (
+              <div className="sm:col-span-2" role="group" aria-labelledby="correct-air-method">
+                <p id="correct-air-method" className="text-xs font-medium text-slate-600">
+                  Méthode de prélèvement {sample.airMethod ? "*" : ""}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {AIR_METHOD_CHOICES.map((method) => (
+                    <button
+                      key={method}
+                      type="button"
+                      onClick={() =>
+                        setValues((v) => ({
+                          ...v,
+                          airMethod: method,
+                          // A plate just chosen proposes its 30 minutes (16/10, Q50).
+                          airExposureMin:
+                            isExposedPlate(method) && !isExposedPlate(sample.airMethod) && !v.airExposureMin.trim()
+                              ? String(AIR_EXPOSURE_MINUTES.default)
+                              : v.airExposureMin,
+                        }))
+                      }
+                      aria-pressed={values.airMethod === method}
+                      className={choice(values.airMethod === method)}
+                    >
+                      {AIR_METHOD_LABELS[method]}
+                    </button>
+                  ))}
+                </div>
+                {!sample.airMethod && !values.airMethod && (
+                  <p className="mt-0.5 text-[11px] text-slate-500">Non renseignée sur cet échantillon ancien : facultative ici.</p>
+                )}
+                {isExposedPlate(values.airMethod) && (
+                  <div className="mt-2">
+                    <label htmlFor="correct-airExposureMin" className="block text-xs font-medium text-slate-600">
+                      Durée d&apos;exposition (min){" "}
+                      {sample.airExposureMin !== null || !isExposedPlate(sample.airMethod) ? <RequiredMark /> : null}
+                    </label>
+                    <input
+                      id="correct-airExposureMin"
+                      type="text"
+                      inputMode="numeric"
+                      value={values.airExposureMin}
+                      onChange={(e) => set("airExposureMin", e.target.value)}
+                      placeholder={String(AIR_EXPOSURE_MINUTES.default)}
+                      aria-required={sample.airExposureMin !== null || !isExposedPlate(sample.airMethod) ? "true" : undefined}
+                      aria-describedby="correct-air-exposure-hint"
+                      className="input-field mt-1 w-28 px-3"
+                    />
+                    <p id="correct-air-exposure-hint" className="mt-0.5 text-[11px] text-slate-500">
+                      {sample.airExposureMin === null && isExposedPlate(sample.airMethod)
+                        ? "Non renseignée sur cet échantillon ancien : lue 30 min."
+                        : `De ${AIR_EXPOSURE_MINUTES.min} à ${AIR_EXPOSURE_MINUTES.max} minutes.`}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* La fonction n'est plus demandée (Q111, 16/10) : celle d'une
+                fiche ancienne est renvoyée telle quelle, donc gardée. */}
+            {shown.hands && input("personName", "Personne")}
+            {shown.food && input("numeroLot", "N° du lot")}
+            {shown.food && input("productionDate", "DLC — production", "date")}
+            {shown.food && input("expiryDate", "DLC — expiration", "date")}
+            {shown.quantity && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600">Quantité</label>
+                <div className="mt-1 flex gap-2">
+                  <input type="text" inputMode="decimal" value={values.quantity} onChange={(e) => set("quantity", e.target.value)} className="input-field px-3" />
+                  <select value={values.quantityUnit} onChange={(e) => set("quantityUnit", e.target.value)} className="input-field w-28 px-2">
+                    {UNITS.map((u) => (
+                      <option key={u} value={u}>{QUANTITY_UNIT_LABELS[u]}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+            {input("lieu", "Lieu / section")}
+            {shown.hands && (
+              // The one list of labels.ts (16/10, Q109): a state set is changed,
+              // never emptied; an older sample may stay without one.
+              <div className="sm:col-span-2" role="group" aria-labelledby="correct-hands-state">
+                <p id="correct-hands-state" className="text-xs font-medium text-slate-600">
+                  État des mains {sample.handsState ? <RequiredMark /> : null}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {HANDS_STATE_CHOICES.map((state) => (
+                    <button
+                      key={state}
+                      type="button"
+                      onClick={() => set("handsState", state)}
+                      aria-pressed={values.handsState === state}
+                      className={choice(values.handsState === state)}
+                    >
+                      {HANDS_STATE_LABELS[state]}
+                    </button>
+                  ))}
+                </div>
+                {!sample.handsState && !values.handsState && (
+                  <p className="mt-0.5 text-[11px] text-slate-500">Non renseigné sur cet échantillon ancien : facultatif ici.</p>
+                )}
+              </div>
+            )}
+            {/* P9 (16/10): the temperatures of the protocole, decimal comma
+                accepted; one recorded is corrected, never emptied. */}
+            {shown.productTemperature &&
+              input(
+                "productTemperature",
+                "Température au prélèvement (°C)",
+                "text",
+                sample.productTemperature !== null ? "Relevée : peut être corrigée, pas effacée." : "De −80 à 300 °C.",
+                "decimal"
+              )}
+            {input(
+              "ambientTemperature",
+              "T° ambiante (°C)",
+              "text",
+              sample.ambientTemperature !== null ? "Relevée : peut être corrigée, pas effacée." : "De −80 à 300 °C.",
+              "decimal"
+            )}
+          </div>
+        )}
+
+        {scope.analyses ? (
+          <div className={scope.identification ? "mt-3 border-t border-slate-100 pt-3" : ""}>
+            {shown.food && (
+              <div>
+                <label htmlFor="correct-product-type" className="block text-xs font-medium text-slate-600">Type de produit (critères)</label>
+                <select
+                  id="correct-product-type"
+                  value={values.productTypeId}
+                  onChange={(e) => {
+                    const type = productTypes.find((t) => t.id === e.target.value);
+                    set("productTypeId", e.target.value);
+                    // The criteria of this type need their units: never judge a
+                    // 5-unit plan on the single unit the line carried before.
+                    if (type && type.unitCount > values.unitCount) set("unitCount", type.unitCount);
+                  }}
+                  className="input-field mt-1 px-3"
+                >
+                  <option value="">— aucun —</option>
+                  {productTypes.some((t) => t.clientId) && (
+                    <optgroup label="Types du client">
+                      {productTypes.filter((t) => t.clientId).map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label="Catalogue">
+                    {productTypes.filter((t) => !t.clientId).map((t) => (
                       <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
                   </optgroup>
-                )}
-                <optgroup label="Catalogue">
-                  {productTypes.filter((t) => !t.clientId).map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </optgroup>
-              </select>
-            </div>
-          )}
-          {shown.surface && input("surfaceLabel", "Désignation", "text", "Ce qui est prélevé (ex. : planche verte)")}
-          {shown.surface && (
-            // The two usual areas in one tap (« 100 cm² », « 1000 cm² » —
-            // 14/10), then « Autre » (16/10): another area, or a text.
-            <div>
-              <p id="correct-surface-area" className="block text-xs font-medium text-slate-600">
-                Surface prélevée (cm²)
-              </p>
-              <div role="group" aria-labelledby="correct-surface-area" className="mt-1 flex flex-wrap gap-2">
-                {SURFACE_AREA_CHOICES.map((area) => (
-                  <button
-                    key={area}
-                    type="button"
-                    onClick={() => {
-                      setAreaOther(false);
-                      set("surfaceAreaCm2", String(area));
-                    }}
-                    aria-pressed={!areaOther && pickedArea === area}
-                    className={choice(!areaOther && pickedArea === area)}
-                  >
-                    {`${area} cm²`}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (areaOther) return;
-                    setAreaOther(true);
-                    if (pickedArea !== null) set("surfaceAreaCm2", "");
-                  }}
-                  aria-pressed={areaOther}
-                  className={choice(areaOther)}
-                >
-                  Autre
-                </button>
-              </div>
-              {areaOther && (
-                <>
-                  <label htmlFor="correct-surfaceAreaCm2" className="mt-2 block text-xs font-medium text-slate-600">
-                    Préciser
-                  </label>
-                  <input
-                    id="correct-surfaceAreaCm2"
-                    type="text"
-                    maxLength={191}
-                    value={values.surfaceAreaCm2}
-                    onChange={(e) => set("surfaceAreaCm2", e.target.value)}
-                    placeholder="Ex. : 250, couteau entier"
-                    aria-describedby="correct-surface-area-hint"
-                    className="input-field mt-1 px-3"
-                  />
-                  <p id="correct-surface-area-hint" className="mt-0.5 text-[11px] text-slate-500">
-                    Un nombre entier de cm², ou ce qui est prélevé ; vide = 100 cm².
-                  </p>
-                </>
-              )}
-            </div>
-          )}
-          {shown.surface && (
-            <div className="sm:col-span-2" role="group" aria-labelledby="correct-surface-state">
-              <p id="correct-surface-state" className="text-xs font-medium text-slate-600">
-                État de la surface {sample.surfaceState ? "*" : ""}
-              </p>
-              <div className="mt-1 flex flex-wrap gap-2">
-                {SURFACE_STATE_CHOICES.map((state) => (
-                  <button
-                    key={state}
-                    type="button"
-                    onClick={() => set("surfaceState", state)}
-                    aria-pressed={values.surfaceState === state}
-                    className={choice(values.surfaceState === state)}
-                  >
-                    {SURFACE_STATE_LABELS[state]}
-                  </button>
-                ))}
-              </div>
-              {!sample.surfaceState && !values.surfaceState && (
-                <p className="mt-0.5 text-[11px] text-slate-500">Non renseigné sur cet échantillon ancien : facultatif ici.</p>
-              )}
-            </div>
-          )}
-          {shown.air && (
-            <div className="sm:col-span-2" role="group" aria-labelledby="correct-air-method">
-              <p id="correct-air-method" className="text-xs font-medium text-slate-600">
-                Méthode de prélèvement {sample.airMethod ? "*" : ""}
-              </p>
-              <div className="mt-1 flex flex-wrap gap-2">
-                {AIR_METHOD_CHOICES.map((method) => (
-                  <button
-                    key={method}
-                    type="button"
-                    onClick={() =>
-                      setValues((v) => ({
-                        ...v,
-                        airMethod: method,
-                        // A plate just chosen proposes its 30 minutes (16/10, Q50).
-                        airExposureMin:
-                          isExposedPlate(method) && !isExposedPlate(sample.airMethod) && !v.airExposureMin.trim()
-                            ? String(AIR_EXPOSURE_MINUTES.default)
-                            : v.airExposureMin,
-                      }))
-                    }
-                    aria-pressed={values.airMethod === method}
-                    className={choice(values.airMethod === method)}
-                  >
-                    {AIR_METHOD_LABELS[method]}
-                  </button>
-                ))}
-              </div>
-              {!sample.airMethod && !values.airMethod && (
-                <p className="mt-0.5 text-[11px] text-slate-500">Non renseignée sur cet échantillon ancien : facultative ici.</p>
-              )}
-              {isExposedPlate(values.airMethod) && (
-                <div className="mt-2">
-                  <label htmlFor="correct-airExposureMin" className="block text-xs font-medium text-slate-600">
-                    Durée d&apos;exposition (min){" "}
-                    {sample.airExposureMin !== null || !isExposedPlate(sample.airMethod) ? <RequiredMark /> : null}
-                  </label>
-                  <input
-                    id="correct-airExposureMin"
-                    type="text"
-                    inputMode="numeric"
-                    value={values.airExposureMin}
-                    onChange={(e) => set("airExposureMin", e.target.value)}
-                    placeholder={String(AIR_EXPOSURE_MINUTES.default)}
-                    aria-required={sample.airExposureMin !== null || !isExposedPlate(sample.airMethod) ? "true" : undefined}
-                    aria-describedby="correct-air-exposure-hint"
-                    className="input-field mt-1 w-28 px-3"
-                  />
-                  <p id="correct-air-exposure-hint" className="mt-0.5 text-[11px] text-slate-500">
-                    {sample.airExposureMin === null && isExposedPlate(sample.airMethod)
-                      ? "Non renseignée sur cet échantillon ancien : lue 30 min."
-                      : `De ${AIR_EXPOSURE_MINUTES.min} à ${AIR_EXPOSURE_MINUTES.max} minutes.`}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-          {/* La fonction n'est plus demandée (Q111, 16/10) : celle d'une
-              fiche ancienne est renvoyée telle quelle, donc gardée. */}
-          {shown.hands && input("personName", "Personne")}
-          {shown.food && input("numeroLot", "N° du lot")}
-          {shown.food && input("productionDate", "DLC — production", "date")}
-          {shown.food && input("expiryDate", "DLC — expiration", "date")}
-          {shown.quantity && (
-            <div>
-              <label className="block text-xs font-medium text-slate-600">Quantité</label>
-              <div className="mt-1 flex gap-2">
-                <input type="text" inputMode="decimal" value={values.quantity} onChange={(e) => set("quantity", e.target.value)} className="input-field px-3" />
-                <select value={values.quantityUnit} onChange={(e) => set("quantityUnit", e.target.value)} className="input-field w-28 px-2">
-                  {UNITS.map((u) => (
-                    <option key={u} value={u}>{QUANTITY_UNIT_LABELS[u]}</option>
-                  ))}
                 </select>
               </div>
-            </div>
-          )}
-          {input("lieu", "Lieu / section")}
-          {shown.hands && (
-            // The one list of labels.ts (16/10, Q109): a state set is changed,
-            // never emptied; an older sample may stay without one.
-            <div className="sm:col-span-2" role="group" aria-labelledby="correct-hands-state">
-              <p id="correct-hands-state" className="text-xs font-medium text-slate-600">
-                État des mains {sample.handsState ? <RequiredMark /> : null}
-              </p>
-              <div className="mt-1 flex flex-wrap gap-2">
-                {HANDS_STATE_CHOICES.map((state) => (
+            )}
+
+            <div className={shown.food ? "mt-3" : ""}>
+              <p className="text-xs font-medium text-slate-600">Nombre d&apos;unités (n)</p>
+              <div className="mt-1 flex gap-2">
+                {UNIT_CHOICES.map((n) => (
                   <button
-                    key={state}
+                    key={n}
                     type="button"
-                    onClick={() => set("handsState", state)}
-                    aria-pressed={values.handsState === state}
-                    className={choice(values.handsState === state)}
+                    onClick={() => set("unitCount", n)}
+                    aria-pressed={values.unitCount === n}
+                    className={`min-h-[36px] min-w-[44px] rounded-lg border px-3 text-sm font-semibold ${values.unitCount === n ? "border-brand bg-brand-light/60 text-brand" : "border-slate-200 text-slate-600"}`}
                   >
-                    {HANDS_STATE_LABELS[state]}
+                    {n}
                   </button>
                 ))}
               </div>
-              {!sample.handsState && !values.handsState && (
-                <p className="mt-0.5 text-[11px] text-slate-500">Non renseigné sur cet échantillon ancien : facultatif ici.</p>
+            </div>
+
+            <div className="mt-3">
+              <p className="text-xs font-medium text-slate-600">Analyses demandées</p>
+              {optionsFailed ? (
+                <p role="alert" className="mt-1 text-xs font-medium text-rose-700">
+                  Impossible de charger les analyses. Fermez la fenêtre et réessayez.
+                </p>
+              ) : options === null ? (
+                <p className="mt-1 text-xs text-slate-500">Chargement…</p>
+              ) : (
+                <div className="mt-1 space-y-2">
+                  {groups.map((group) => (
+                    <div key={group.family} role="group" aria-label={ANALYSIS_FAMILY_LABELS[group.family]}>
+                      {groups.length > 1 && (
+                        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{ANALYSIS_FAMILY_LABELS[group.family]}</p>
+                      )}
+                      <div className="grid gap-1.5 sm:grid-cols-2">
+                        {group.parameters.map((p) => (
+                          <label key={p.id} className="flex min-h-[36px] cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={parameterIds.includes(p.id)}
+                              onChange={() => setParameterIds((c) => (c.includes(p.id) ? c.filter((x) => x !== p.id) : [...c, p.id]))}
+                              className="h-4 w-4 accent-brand"
+                            />
+                            {p.name}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {notice && (
+                <p className={`mt-1 text-xs ${notice.tone === "warning" ? "text-amber-700" : "text-slate-500"}`}>{notice.text}</p>
               )}
             </div>
-          )}
-          {/* P9 (16/10): the temperatures of the protocole, decimal comma
-              accepted; one recorded is corrected, never emptied. */}
-          {shown.productTemperature &&
-            input(
-              "productTemperature",
-              "Température au prélèvement (°C)",
-              "text",
-              sample.productTemperature !== null ? "Relevée : peut être corrigée, pas effacée." : "De −80 à 300 °C.",
-              "decimal"
-            )}
-          {input(
-            "ambientTemperature",
-            "T° ambiante (°C)",
-            "text",
-            sample.ambientTemperature !== null ? "Relevée : peut être corrigée, pas effacée." : "De −80 à 300 °C.",
-            "decimal"
-          )}
-        </div>
-
-        <div className="mt-3">
-          <p className="text-xs font-medium text-slate-600">Nombre d&apos;unités (n)</p>
-          <div className="mt-1 flex gap-2">
-            {UNIT_CHOICES.map((n) => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => set("unitCount", n)}
-                aria-pressed={values.unitCount === n}
-                className={`min-h-[36px] min-w-[44px] rounded-lg border px-3 text-sm font-semibold ${values.unitCount === n ? "border-brand bg-brand-light/60 text-brand" : "border-slate-200 text-slate-600"}`}
-              >
-                {n}
-              </button>
-            ))}
           </div>
-        </div>
-
-        <div className="mt-3">
-          <p className="text-xs font-medium text-slate-600">Analyses demandées</p>
-          {options === null ? (
-            <p className="mt-1 text-xs text-slate-500">Chargement…</p>
-          ) : (
-            <div className="mt-1 space-y-2">
-              {groups.map((group) => (
-                <div key={group.family} role="group" aria-label={ANALYSIS_FAMILY_LABELS[group.family]}>
-                  {groups.length > 1 && (
-                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{ANALYSIS_FAMILY_LABELS[group.family]}</p>
-                  )}
-                  <div className="grid gap-1.5 sm:grid-cols-2">
-                    {group.parameters.map((p) => (
-                      <label key={p.id} className="flex min-h-[36px] cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={parameterIds.includes(p.id)}
-                          onChange={() => setParameterIds((c) => (c.includes(p.id) ? c.filter((x) => x !== p.id) : [...c, p.id]))}
-                          className="h-4 w-4 accent-brand"
-                        />
-                        {p.name}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          <p className="mt-1 text-xs text-amber-700">Changer les analyses efface les résultats déjà saisis et renvoie l&apos;échantillon à la paillasse.</p>
-        </div>
+        ) : (
+          // After the programme the analyses are the responsable des
+          // paramètres' (16/10, Q128): said here, refused by the route.
+          <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">{CORRECTION_MESSAGES.analysesReserved}</p>
+        )}
 
         <div className="mt-3">
           <label htmlFor="correct-reason" className="block text-xs font-medium text-slate-600">Motif de la correction *</label>
-          <textarea id="correct-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={2} className="input-field mt-1 resize-none px-3" placeholder="Ex. : lot mal lu sur le protocole" />
+          <textarea
+            id="correct-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            className="input-field mt-1 resize-none px-3"
+            placeholder={scope.identification ? "Ex. : lot mal lu sur le protocole" : "Ex. : analyse non faite, échantillon épuisé"}
+          />
         </div>
-        {input("remarks", "Remarques")}
+        {scope.identification && input("remarks", "Remarques")}
 
         {error && <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
         <Actions busy={busy} label="Enregistrer la correction" onClose={onClose} />

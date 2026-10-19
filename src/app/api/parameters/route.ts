@@ -20,9 +20,12 @@ import type { Family, SampleType } from "@/generated/prisma/client";
  */
 export async function GET(request: Request) {
   // The lab's own norms (limits, alert flags, factors): circuit roles only.
+  // The responsable des paramètres reads them in « Corriger les analyses »
+  // once the bench has started (16/10, Q128).
   const session = await requireApiRole(
     "PRELEVEUR",
     "RECEPTIONNISTE",
+    "PROGRAMMATEUR",
     "TECHNICIEN",
     "VALIDATEUR",
     "DIRECTION",

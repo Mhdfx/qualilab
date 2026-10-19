@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { validateIntake, type IntakeCurrent } from "./intake-input";
+import {
+  ANALYSES_FIELDS,
+  analysesChangesOnly,
+  correctionTouches,
+  resultsToReset,
+  validateIntake,
+  type IntakeCurrent,
+} from "./intake-input";
 import { SERIE_MESSAGES } from "./serie-input";
 
 const current: IntakeCurrent = {
@@ -447,5 +454,84 @@ describe("validateIntake — old data stays as it was", () => {
       ok: true,
       value: { changes: { numeroLot: "L-2411" } },
     });
+  });
+});
+
+/** What a checked correction changes, for `correctionTouches`. */
+function checkedOf(body: Record<string, unknown>, row: IntakeCurrent = current) {
+  const result = validateIntake(body, row);
+  if (!result.ok) throw new Error(result.error);
+  return result.value;
+}
+
+describe("correctionTouches — which half of the fiche a correction changes (16/10, Q128)", () => {
+  it("names the analyses' fields: the product type and the number of units, with the list", () => {
+    expect([...ANALYSES_FIELDS]).toEqual(["productTypeId", "unitCount"]);
+  });
+
+  it("the list of analyses, the product type or the units: the analyses", () => {
+    for (const body of [
+      { parameterIds: ["p1"], reason: "analyse non faite" },
+      { parameterIds: ["p1", "p2", "p3"], reason: "analyse oubliée" },
+      { unitCount: 3, reason: "unités" },
+      { productTypeId: "type-1", reason: "famille" },
+    ]) {
+      expect(correctionTouches(body, checkedOf(body)), JSON.stringify(body)).toEqual({ analyses: true, identification: false });
+    }
+  });
+
+  it("an identification field: the identification", () => {
+    const body = { numeroLot: "L-2410", reason: "lot" };
+    expect(correctionTouches(body, checkedOf(body))).toEqual({ analyses: false, identification: true });
+    const both = { numeroLot: "L-2410", parameterIds: ["p1"], reason: "lot et analyse" };
+    expect(correctionTouches(both, checkedOf(both))).toEqual({ analyses: true, identification: true });
+  });
+
+  it("what the screen sends back unchanged touches nothing", () => {
+    const body = { lieu: "Poste salades", unitCount: 5, productTypeId: null, parameterIds: ["p2", "p1"], numeroLot: "L-2410", reason: "lot" };
+    expect(correctionTouches(body, checkedOf(body))).toEqual({ analyses: false, identification: true });
+  });
+
+  it("a stored value the line rules tidy on the way, unsent, is nobody's change — and is not written for the analyses' half", () => {
+    // An old row whose place carries stray spaces: the protocol's rules trim it.
+    const untidy: IntakeCurrent = { ...current, lieu: "  Poste salades  " };
+    const body = { unitCount: 3, reason: "unités" };
+    const checked = checkedOf(body, untidy);
+    expect(checked.changes).toEqual({ unitCount: 3, lieu: "Poste salades" });
+    expect(correctionTouches(body, checked)).toEqual({ analyses: true, identification: false });
+    expect(analysesChangesOnly(checked.changes)).toEqual({ unitCount: 3 });
+  });
+
+  it("a field decided by another one counts with it: the unit with its quantity", () => {
+    const body = { quantity: "300", reason: "quantité" };
+    expect(correctionTouches(body, checkedOf(body))).toEqual({ analyses: false, identification: true });
+  });
+});
+
+describe("resultsToReset — what a correction does to the results (16/10, Q91)", () => {
+  it("a withdrawal, and nothing else, deletes the withdrawn analyses' results only", () => {
+    expect(resultsToReset(["p1", "p2", "p3"], ["p1", "p3"], false)).toEqual({ kind: "removed", parameterIds: ["p2"] });
+    expect(resultsToReset(["p1", "p2", "p3"], ["p3"], false)).toEqual({ kind: "removed", parameterIds: ["p1", "p2"] });
+  });
+
+  it("an added analysis empties every result, a withdrawal with it too", () => {
+    expect(resultsToReset(["p1", "p2"], ["p1", "p2", "p3"], false)).toEqual({ kind: "all" });
+    expect(resultsToReset(["p1", "p2"], ["p1", "p3"], false)).toEqual({ kind: "all" });
+  });
+
+  it("another product type or number of units empties every result, whatever the list", () => {
+    expect(resultsToReset(["p1", "p2"], null, true)).toEqual({ kind: "all" });
+    expect(resultsToReset(["p1", "p2"], ["p1"], true)).toEqual({ kind: "all" });
+  });
+
+  it("an untouched list, or the same list in another order, keeps every result", () => {
+    expect(resultsToReset(["p1", "p2"], null, false)).toEqual({ kind: "none" });
+    expect(resultsToReset(["p1", "p2"], ["p2", "p1"], false)).toEqual({ kind: "none" });
+  });
+
+  it("decides on the list as it stands under the lock: an analysis the programme added meanwhile is not « removed »", () => {
+    // The page read [p1, p2]; the programme now holds [p1, p2, p4]; the
+    // correction keeps [p1]: p2 and p4 go, the others' readings stay.
+    expect(resultsToReset(["p1", "p2", "p4"], ["p1"], false)).toEqual({ kind: "removed", parameterIds: ["p2", "p4"] });
   });
 });

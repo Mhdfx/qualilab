@@ -48,12 +48,20 @@ PRELEVE ──réception──▶ RECU ──programme confirmé──▶ PROGRA
   programme d'analyse. Seule une ligne PROGRAMME peut être ouverte à la
   paillasse ; elle attend dans « À prendre » jusqu'à sa prise en charge
   (§10). Le programme reste modifiable tant que la ligne est PROGRAMME, même
-  prise en charge ; ensuite, « Corriger la fiche » (motif, journal) comme
-  aujourd'hui.
+  prise en charge. Ensuite (16/10, Q128 — `RETOUR-LABO-16-10.md` F8), les
+  analyses — leur liste, le type de produit, le nombre d'unités — se
+  changent par « Corriger les analyses » (motif, journal) : le responsable
+  des paramètres à EN_ANALYSE et RESULTATS_SAISIS, l'administrateur
+  toujours ; l'identification de l'échantillon, par « Corriger la fiche »
+  (réception, validation, Direction, administrateur —
+  `FICHE_CORRECTION_ROLES`).
 - Transitions (`src/lib/sample-status.ts`) : `RECU → PROGRAMME`
   (PROGRAMMATEUR, ADMIN) ; `PROGRAMME → EN_ANALYSE` (TECHNICIEN, ADMIN — à
   la première saisie avec contenu, jamais à la prise en charge, §10) ;
-  `RECU → EN_ANALYSE` **supprimée** ; `PROGRAMME → ANNULE` (ADMIN) ;
+  `RECU → EN_ANALYSE` **supprimée** ; `PROGRAMME / EN_ANALYSE /
+  RESULTATS_SAISIS → ANNULE` (VALIDATEUR, DIRECTION, ADMIN depuis le 16/10,
+  Q13 — `ANALYSIS_CANCEL_ROLES` ; la réception n'annule plus une ligne
+  programmée, elle annule à PRELEVE et RECU avec l'administrateur) ;
   `ANNULE → PROGRAMME` (ADMIN, motif) quand la ligne avait été programmée
   (`programmedAt` non nul), sinon `ANNULE → RECU` comme aujourd'hui.
 - Une ligne détruite à la réception (`DETRUIT_A_RECEPTION`) ne passe jamais
@@ -148,8 +156,14 @@ Sections, dans l'ordre :
 6. **Vérification d'entrée** — rappel des règles de recevabilité
    (`reception-rules.ts`) recalculées avec les analyses programmées
    (quantité suffisante pour n, histamine → 9 unités, eau → 1 L / 2 L…) :
-   avertissements, jamais bloquants ici (la réception a déjà accepté) ; lien
-   « Corriger la fiche » / « Annuler » (verbes existants, selon le rôle).
+   avertissements, jamais bloquants ici (la réception a déjà accepté) ; les
+   verbes de cette personne dessous (« Corriger les analyses » du
+   responsable des paramètres à la paillasse, « Corriger la fiche » /
+   « Annuler » selon le rôle), la phrase qui les annonce ne nommant que
+   ceux-là (`programmeVerbsLead`) ; une note dit à qui revient le reste :
+   l'identification, et l'annulation selon l'étape (`programmeVerbsNote`,
+   `cancellersLabel` — la réception et l'administrateur avant le programme,
+   la validation, la Direction et l'administrateur ensuite).
 7. **Facturation** — lignes qui seront proposées au comptable : chaque
    analyse programmée avec son prix du catalogue (`LabService` apparié par
    nom de paramètre comme le fait `/api/clients/[id]/billable`), « prix à
@@ -160,7 +174,13 @@ Pied : « Enregistrer le brouillon » (sans changer de statut) et
 journal `SAMPLE_PROGRAMMED` avec avant/après). Une ligne déjà PROGRAMME
 affiche « Programme confirmé le … par … » et le bouton « Enregistrer les
 modifications » (journal `SAMPLE_PROGRAMME_UPDATED`). Une ligne EN_ANALYSE
-ou au-delà : fiche en lecture seule avec le lien « Corriger la fiche ».
+ou au-delà : fiche en lecture seule ; la raison affichée nomme le verbe de
+cette personne (« Corriger les analyses » pour le responsable des
+paramètres, « Corriger la fiche » pour l'administrateur), ou à qui
+s'adresser (`programmeReadOnlyReason`). /recherche ouvre la fiche de
+programme d'un échantillon depuis son N° pour le responsable des
+paramètres (`sampleLinkFor`) : le chemin vers un échantillon programmé un
+autre jour et déjà à la paillasse.
 
 ## 5. API
 
@@ -433,6 +453,18 @@ libre »). Recette : TESTPLAN V14.
 - La fiche ouverte à la paillasse peut alors être périmée : une saisie sur
   une analyse retirée reçoit 409 « Le programme d'analyse de cet
   échantillon a changé : rechargez la fiche. »
+- Une fois la paillasse commencée (EN_ANALYSE, RESULTATS_SAISIS), une
+  analyse qui ne peut pas être faite se **retire** par « Corriger les
+  analyses » (16/10, Q91 / Q128) : seuls les résultats des analyses
+  retirées sont effacés, les autres restent et l'échantillon garde son
+  étape — une validation technique déjà donnée est effacée à
+  RESULTATS_SAISIS (`resultsToReset`, `src/lib/intake-input.ts`). Ajouter
+  une analyse, changer le type de produit ou le nombre d'unités efface tous
+  les résultats (et renvoie à la paillasse depuis la validation).
+- « NE », « non effectué » et leurs variantes ne sont **pas** des
+  résultats : la saisie les refuse (400 « … n'est pas un résultat. Une
+  analyse non faite se retire du programme (responsable des paramètres). »,
+  `isNotDoneText`, `src/lib/result-value.ts`).
 
 ### 10.7 Validation, parcours, journal
 

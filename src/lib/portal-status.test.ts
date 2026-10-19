@@ -87,6 +87,14 @@ describe("portalReportRefusal", () => {
     expect(portalReportRefusal("RAPPORT_ENVOYE", { amendmentPending: true })).toBe(PORTAL_REPORT_NOT_YET);
   });
 
+  it("keeps a validated report not yet sent at the laboratory: « En analyse », nothing to download (16/10, Q92)", () => {
+    // « Valider » no longer sends: the sample stays VALIDE until « Envoyer au client ».
+    expect(portalStage("VALIDE")).toBe("EN_ANALYSE");
+    expect(PORTAL_STAGE_LABELS[portalStage("VALIDE")]).toBe("En analyse");
+    expect(reportAvailableOnPortal("VALIDE")).toBe(false);
+    expect(portalReportRefusal("VALIDE", { amendmentPending: false })).toBe(PORTAL_REPORT_NOT_YET);
+  });
+
   it("never promises a report to a cancelled sample", () => {
     const refusal = portalReportRefusal("ANNULE", null);
     expect(refusal).toMatch(/annulé/);

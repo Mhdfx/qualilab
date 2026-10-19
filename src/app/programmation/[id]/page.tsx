@@ -107,8 +107,11 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
   const { sample, programme } = data;
   // Who took it at the bench — the holder, else a legacy per-analysis technician (before 13/10).
   const holder = benchHolder(sample);
+  // The responsable des paramètres changes the analyses here once the bench
+  // has started (16/10, Q128 — « Corriger les analyses »); the admin
+  // corrects the whole fiche.
   const verbs = verbsFor(sample, session.role);
-  const hasVerbs = verbs.correct || verbs.cancel || verbs.reactivate;
+  const hasVerbs = verbs.correct || verbs.correctAnalyses || verbs.cancel || verbs.reactivate;
 
   const quantity =
     sample.quantity !== null && sample.quantityUnit

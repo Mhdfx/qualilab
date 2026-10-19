@@ -15,11 +15,12 @@ import { ResendReportButton } from "./ResendReportButton";
 /**
  * The actions on an issued report (AMENDEMENT.md §4), on the validation page
  * and in the search: « Duplicata (PDF) », « Versions du rapport »,
- * « Renvoyer au client » (gestionnaire, validator, direction, administrator —
- * finalversion.md:116, `RESEND_REPORT_ROLES`) and, for the administrator, « Modifier la
- * conclusion » (the silent correction, HANDOFF §8 18/08) and « Rouvrir pour
- * amendement » with its mandatory reason. The API decides again; this only
- * hides what a role cannot do.
+ * « Envoyer / Renvoyer au client » (gestionnaire, validator, direction,
+ * administrator — finalversion.md:116, `RESEND_REPORT_ROLES`), for the
+ * administrator « Modifier la conclusion » (the silent correction, HANDOFF §8
+ * 18/08), and « Rouvrir pour amendement » with its mandatory reason (the
+ * administrator, the Direction and the validateur since 16/10, Q13 —
+ * `canReopen`). The API decides again; this only hides what a role cannot do.
  */
 export function ReportActions({
   sampleId,
@@ -29,6 +30,7 @@ export function ReportActions({
   number,
   amendmentPending,
   sent = true,
+  sendHere = true,
   compact = false,
 }: {
   sampleId: string;
@@ -39,14 +41,16 @@ export function ReportActions({
   /** The printed number of the version in force (« RAP-2026-00001-A1 »). */
   number: string;
   amendmentPending: boolean;
-  /** Whether the report has already left (« Renvoyer » rather than « Envoyer »). */
+  /** Whether this version has already left (« Renvoyer » rather than « Envoyer »): `reportVersionSent`. */
   sent?: boolean;
+  /** False where the page offers the send elsewhere (the validation panel's « Envoyer / Renvoyer au client »). */
+  sendHere?: boolean;
   /** One line of small links, for a table row. */
   compact?: boolean;
 }) {
   const [open, setOpen] = useState<"versions" | "reopen" | "conclusion" | null>(null);
   const reopenable = !amendmentPending && canReopen(status, role);
-  const resendable = canResendReport(role, status, amendmentPending);
+  const resendable = sendHere && canResendReport(role, status, amendmentPending);
   // Hidden while an amendment is pending: its approval recomputes the
   // conclusion and would drop the correction (the route refuses it too).
   const conclusionEditable = reportId !== undefined && canEditConclusion(role, amendmentPending);
@@ -238,7 +242,7 @@ function ReopenDialog({ sampleId, number, onClose }: { sampleId: string; number:
         <p className="text-sm text-slate-600">
           L&apos;échantillon revient à « Résultats saisis » : la validation technique et la validation administrative
           sont effacées, les résultats et la fiche peuvent être corrigés. Le rapport {number}{" "}reste en vigueur jusqu&apos;à
-          la nouvelle validation administrative, qui émettra le rapport amendé et l&apos;enverra au client.
+          la nouvelle validation administrative, qui émettra le rapport amendé ; il sera ensuite à envoyer au client.
         </p>
         <label htmlFor="amendmentReason" className="mt-3 block text-sm font-medium text-slate-700">
           Motif de l&apos;amendement <span className="text-rose-600">*</span>

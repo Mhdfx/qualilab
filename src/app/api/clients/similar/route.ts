@@ -11,9 +11,13 @@ import { findSimilarClients } from "@/lib/client-identity";
  * `GET /api/clients/similar?name=&ice=&excludeId=` → `{ similar: [{ id, name, reason }] }`.
  * `excludeId`: the client being renamed. Only active clients are proposed;
  * the exact same name is not (it is refused outright on save).
+ *
+ * The reception and the préleveur read it too: they create clients at the
+ * deposit and the visit (RETOUR-LABO-16-10.md E1), where the « Nouveau
+ * client » dialog offers « Utiliser ce client » on each near-duplicate.
  */
 export async function GET(request: Request) {
-  const session = await requireApiRole("GESTIONNAIRE", "ADMIN");
+  const session = await requireApiRole("GESTIONNAIRE", "ADMIN", "RECEPTIONNISTE", "PRELEVEUR");
   if (session instanceof NextResponse) return session;
 
   const params = new URL(request.url).searchParams;

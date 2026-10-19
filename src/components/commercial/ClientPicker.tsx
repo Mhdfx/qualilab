@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { Building2, RefreshCw, Search, X } from "lucide-react";
+import { Building2, Plus, RefreshCw, Search, X } from "lucide-react";
 import { pickerRows, type PickerRow } from "@/lib/client-search";
+import type { CreationOrigin } from "@/lib/quick-client";
+import { QuickClientDialog } from "@/components/clients/QuickClientDialog";
 
 /** A client as the picker returns it (from `GET /api/clients?q=`). */
 export type PickedClient = {
@@ -39,6 +41,12 @@ const DEFAULT_LABEL_CLASS = "block text-sm font-medium text-slate-700";
  * merge, attach, invoice) one row per client, and the choice is the client
  * alone, as before.
  *
+ * `allowCreate` (the deposit and the visit only — never the merge, attach,
+ * billing or invoice pickers): « + Nouveau client » under the search and in
+ * « Aucun client actif ne correspond » opens `QuickClientDialog`, prefilled
+ * with the text typed; the client created (or the existing one chosen in
+ * the dialog) is selected at once, with its site (RETOUR-LABO-16-10.md E1).
+ *
  * Optional look: `labelClassName` / `labelIcon` (a form's « section-title »
  * heading), `placeholder`.
  *
@@ -55,6 +63,7 @@ export function ClientPicker({
   placeholder = siteRows ? SITE_ROWS_PLACEHOLDER : DEFAULT_PLACEHOLDER,
   labelClassName = DEFAULT_LABEL_CLASS,
   labelIcon,
+  allowCreate,
 }: {
   label: string;
   excludeIds: string[];
@@ -67,6 +76,12 @@ export function ClientPicker({
   labelClassName?: string;
   /** Shown before the label (decorative). */
   labelIcon?: React.ReactNode;
+  /**
+   * « + Nouveau client »: the dialog creates the client for this origin (the
+   * deposit or the visit). Absent: no creation (merge, attach, billing,
+   * invoice pickers).
+   */
+  allowCreate?: { origin: CreationOrigin };
 }) {
   const inputId = useId();
   const listId = useId();
@@ -76,6 +91,10 @@ export function ClientPicker({
   const [failed, setFailed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const createRef = useRef<HTMLButtonElement>(null);
+  const changeRef = useRef<HTMLButtonElement>(null);
+  // The name the dialog opens with; null: closed.
+  const [creating, setCreating] = useState<string | null>(null);
   const excludeKey = excludeIds.join("|");
 
   useEffect(() => {
@@ -130,6 +149,40 @@ export function ClientPicker({
     setResults([]);
   }
 
+  /** Created, or an existing client chosen in the dialog: selected at once. */
+  function created(client: PickedClient) {
+    const { siteId, ...rest } = client;
+    onSelect({ ...rest, ...(siteRows && siteId ? { siteId } : {}) });
+    setCreating(null);
+    setQuery("");
+    setResults([]);
+    // The dialog is gone: the focus lands on the client chosen (its « Changer »), not on the page.
+    setTimeout(() => (changeRef.current ?? inputRef.current)?.focus(), 0);
+  }
+
+  /** The dialog closed without a client: back where it was opened from. */
+  function cancelCreate() {
+    setCreating(null);
+    setTimeout(() => (createRef.current ?? inputRef.current)?.focus(), 0);
+  }
+
+  const createButton = allowCreate && (
+    <button
+      ref={createRef}
+      type="button"
+      disabled={disabled}
+      onClick={() => setCreating(query.trim())}
+      className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border border-dashed border-slate-300 px-3 text-sm font-medium text-slate-700 transition hover:border-brand hover:text-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
+    >
+      <Plus className="h-4 w-4" aria-hidden="true" />
+      Nouveau client
+    </button>
+  );
+  const dialog =
+    allowCreate && creating !== null ? (
+      <QuickClientDialog initialName={creating} origin={allowCreate.origin} onClose={cancelCreate} onPicked={created} />
+    ) : null;
+
   if (selected) {
     return (
       <div>
@@ -144,6 +197,7 @@ export function ClientPicker({
             {selected.ice && <span className="font-mono text-xs font-normal text-slate-500">ICE {selected.ice}</span>}
           </span>
           <button
+            ref={changeRef}
             type="button"
             disabled={disabled}
             onClick={() => {
@@ -212,9 +266,22 @@ export function ClientPicker({
               La recherche a échoué. Réessayez.
             </p>
           ) : results.length === 0 ? (
-            <p className="px-1 py-2 text-sm text-slate-500">
-              {siteRows ? "Aucun client ni site actif ne correspond." : "Aucun client actif ne correspond."}
-            </p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 py-1">
+              <p className="py-1 text-sm text-slate-500">
+                {siteRows ? "Aucun client ni site actif ne correspond." : "Aucun client actif ne correspond."}
+              </p>
+              {allowCreate && (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setCreating(query.trim())}
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-brand transition hover:bg-brand-light/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  Créer « {query.trim()} »
+                </button>
+              )}
+            </div>
           ) : (
             <ul
               ref={listRef}
@@ -268,6 +335,9 @@ export function ClientPicker({
           )}
         </div>
       )}
+
+      {createButton && <div className="mt-2">{createButton}</div>}
+      {dialog}
     </div>
   );
 }

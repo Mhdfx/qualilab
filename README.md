@@ -2,8 +2,9 @@
 
 Fullstack web app for a Moroccan analysis laboratory (agri-food, water,
 workplace hygiene). It digitizes the full sample lifecycle — field collection →
-lab reception → analysis → quality validation → official PDF report → automatic
-email to client → invoicing — with 7 role-based user profiles.
+lab reception → analysis → quality validation → official PDF report → sent to
+the client on « Valider et envoyer » or « Envoyer au client » (never automatic
+since 16/10) → invoicing — with 7 role-based user profiles.
 
 **Status:** client-approved prototype live (field intake + invoicing); building
 the full production LIMS.

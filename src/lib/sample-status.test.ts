@@ -14,10 +14,13 @@ import {
   amendmentIssueRefusal,
   ADMINISTRATIVE_SIGNATORY_LABEL,
   ADMINISTRATIVE_VALIDATION_ROLES,
+  ANALYSIS_CANCEL_ROLES,
+  REPORT_REOPEN_ROLES,
   TECHNICAL_VALIDATION_ROLES,
   signsAdministratively,
   signsTechnically,
   validationControls,
+  validationPhase,
 } from "./sample-status";
 import { REOPENABLE_STATUSES, REOPENED_STATUS } from "./report-amendment";
 import { ROLES, type Role } from "./roles";
@@ -113,8 +116,10 @@ describe("the programme step", () => {
     ).toBe(false);
   });
 
-  it("only the admin cancels a programmed line, and only the admin brings it back — with a reason", () => {
+  it("the validation desks and the admin cancel a programmed line (16/10, Q13); only the admin brings it back — with a reason", () => {
     expect(canTransition("PROGRAMME", "ANNULE", "ADMIN").ok).toBe(true);
+    expect(canTransition("PROGRAMME", "ANNULE", "DIRECTION").ok).toBe(true);
+    expect(canTransition("PROGRAMME", "ANNULE", "VALIDATEUR").ok).toBe(true);
     expect(canTransition("PROGRAMME", "ANNULE", "RECEPTIONNISTE").ok).toBe(false);
     expect(canTransition("PROGRAMME", "ANNULE", "PROGRAMMATEUR").ok).toBe(false);
     expect(canTransition("ANNULE", "PROGRAMME", "ADMIN", "erreur de saisie").ok).toBe(true);
@@ -286,7 +291,9 @@ describe("who signs which step — every role (12/10)", () => {
     expect(canTransition("VALIDE", "RAPPORT_ENVOYE", "VALIDATEUR").ok).toBe(true);
   });
 
-  it("gives the Direction no other move: no reception, programme, bench, cancel, reactivation or amendment", () => {
+  it("gives the Direction no other move: no reception, programme, bench, cancel before the programme or reactivation", () => {
+    // Cancelling in analysis and reopening a report are the Direction's
+    // since 16/10 (Q13) — decided in the block below.
     const moves: [SampleStatus, SampleStatus][] = [
       ["PRELEVE", "RECU"],
       ["RECU", "PROGRAMME"],
@@ -294,17 +301,83 @@ describe("who signs which step — every role (12/10)", () => {
       ["EN_ANALYSE", "RESULTATS_SAISIS"],
       ["PRELEVE", "ANNULE"],
       ["RECU", "ANNULE"],
-      ["PROGRAMME", "ANNULE"],
-      ["EN_ANALYSE", "ANNULE"],
-      ["RESULTATS_SAISIS", "ANNULE"],
       ["ANNULE", "PRELEVE"],
       ["ANNULE", "RECU"],
       ["ANNULE", "PROGRAMME"],
-      ["VALIDE", "RESULTATS_SAISIS"],
-      ["RAPPORT_ENVOYE", "RESULTATS_SAISIS"],
     ];
     for (const [from, to] of moves) {
       expect(canTransition(from, to, "DIRECTION", "motif").ok, `${from} → ${to}`).toBe(false);
+    }
+  });
+});
+
+/**
+ * 16/10, Q13: « l'administrateur, la Direction ou le validateur technique »
+ * reopen a sent report for amendment, and « ces personnes » cancel a sample
+ * already in analysis. The réception keeps cancelling before the programme;
+ * reactivating stays the administrator's (our decision). Every role is
+ * decided, so a role added later is decided on purpose.
+ */
+describe("reopening a report and cancelling in analysis — every role (16/10, Q13)", () => {
+  const DESKS: Record<Role, boolean> = {
+    PRELEVEUR: false,
+    RECEPTIONNISTE: false,
+    PROGRAMMATEUR: false,
+    TECHNICIEN: false,
+    VALIDATEUR: true,
+    DIRECTION: true,
+    GESTIONNAIRE: false,
+    COMPTABLE: false,
+    ADMIN: true,
+    CLIENT: false,
+    MAGASINIER: false,
+  };
+  const IN_ANALYSIS: SampleStatus[] = ["PROGRAMME", "EN_ANALYSE", "RESULTATS_SAISIS"];
+
+  it("decides every role of the application", () => {
+    expect(Object.keys(DESKS).sort()).toEqual([...ROLES].sort());
+    expect([...REPORT_REOPEN_ROLES]).toEqual(["VALIDATEUR", "DIRECTION", "ADMIN"]);
+    expect([...ANALYSIS_CANCEL_ROLES]).toEqual(["VALIDATEUR", "DIRECTION", "ADMIN"]);
+  });
+
+  it("lets the administrator, the Direction and the validateur reopen an approved report, with a reason", () => {
+    for (const role of ROLES) {
+      for (const from of REOPENABLE_STATUSES) {
+        expect(canTransition(from, REOPENED_STATUS, role, "erreur de lot").ok, `${role} ${from}`).toBe(DESKS[role]);
+        expect(canTransition(from, REOPENED_STATUS, role).ok, `${role} ${from} sans motif`).toBe(false);
+      }
+    }
+  });
+
+  it("lets the same three cancel a sample programmed, at the bench or with its results entered", () => {
+    for (const role of ROLES) {
+      for (const from of IN_ANALYSIS) {
+        expect(canTransition(from, "ANNULE", role).ok, `${role} ${from}`).toBe(DESKS[role]);
+      }
+    }
+  });
+
+  it("keeps the cancellation before the programme to the réception and the admin", () => {
+    for (const from of ["PRELEVE", "RECU"] as const) {
+      for (const role of ROLES) {
+        expect(canTransition(from, "ANNULE", role).ok, `${role} ${from}`).toBe(role === "RECEPTIONNISTE" || role === "ADMIN");
+      }
+    }
+  });
+
+  it("never lets the validateur or the Direction bring a cancelled sample back", () => {
+    for (const role of ["VALIDATEUR", "DIRECTION"] as const) {
+      for (const to of ["PRELEVE", "RECU", "PROGRAMME"] as const) {
+        expect(canTransition("ANNULE", to, role, "erreur").ok, `${role} → ${to}`).toBe(false);
+      }
+    }
+    expect(canTransition("ANNULE", "PROGRAMME", "ADMIN", "erreur").ok).toBe(true);
+  });
+
+  it("opens no cancellation of an approved or sent sample, for anyone", () => {
+    for (const role of ROLES) {
+      expect(canTransition("VALIDE", "ANNULE", role, "motif").ok, role).toBe(false);
+      expect(canTransition("RAPPORT_ENVOYE", "ANNULE", role, "motif").ok, role).toBe(false);
     }
   });
 });
@@ -411,6 +484,30 @@ describe("validationControls — what the validation panel offers", () => {
   });
 });
 
+describe("validationPhase — a sample opened from /recherche (16/10, Q13)", () => {
+  it("signs only from RESULTATS_SAISIS, and shows the approved samples as such", () => {
+    expect(validationPhase("RESULTATS_SAISIS")).toBe("AT_VALIDATION");
+    expect(validationPhase("VALIDE")).toBe("APPROVED");
+    expect(validationPhase("RAPPORT_ENVOYE")).toBe("APPROVED");
+  });
+
+  it("has nothing to sign before the results, nor on a cancelled sample", () => {
+    for (const status of ["PRELEVE", "RECU", "PROGRAMME", "EN_ANALYSE"] as const) {
+      expect(validationPhase(status), status).toBe("BEFORE_RESULTS");
+    }
+    expect(validationPhase("ANNULE")).toBe("CANCELLED");
+  });
+
+  it("agrees with the technical validation's own guard", () => {
+    const statuses: SampleStatus[] = [...SAMPLE_STATUS_ORDER, "ANNULE"];
+    for (const status of statuses) {
+      expect(validationPhase(status) === "AT_VALIDATION", status).toBe(
+        canValidateTechnically({ status, validatedById: null }, "VALIDATEUR").ok
+      );
+    }
+  });
+});
+
 describe("the lifecycle itself", () => {
   it("keeps the six statuses the client's specification promises, plus the programme step", () => {
     expect(SAMPLE_STATUS_ORDER).toEqual([
@@ -450,12 +547,14 @@ describe("canApprove — two different signatories", () => {
 });
 
 describe("« Rouvrir pour amendement » (AMENDEMENT.md §2.1)", () => {
-  it("sends an approved report back to the double validation, ADMIN only, with a reason", () => {
+  it("sends an approved report back to the double validation — the admin, the Direction and the validateur (16/10), with a reason", () => {
     for (const from of REOPENABLE_STATUSES) {
-      expect(canTransition(from, REOPENED_STATUS, "ADMIN", "erreur de lot").ok).toBe(true);
-      expect(canTransition(from, REOPENED_STATUS, "ADMIN").ok).toBe(false);
-      expect(canTransition(from, REOPENED_STATUS, "ADMIN", "  ").ok).toBe(false);
-      for (const role of ["VALIDATEUR", "GESTIONNAIRE", "TECHNICIEN", "COMPTABLE"] as const) {
+      for (const role of ["ADMIN", "DIRECTION", "VALIDATEUR"] as const) {
+        expect(canTransition(from, REOPENED_STATUS, role, "erreur de lot").ok, role).toBe(true);
+        expect(canTransition(from, REOPENED_STATUS, role).ok, role).toBe(false);
+        expect(canTransition(from, REOPENED_STATUS, role, "  ").ok, role).toBe(false);
+      }
+      for (const role of ["GESTIONNAIRE", "TECHNICIEN", "COMPTABLE"] as const) {
         expect(canTransition(from, REOPENED_STATUS, role, "motif").ok).toBe(false);
       }
     }

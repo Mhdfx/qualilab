@@ -12,6 +12,7 @@ import {
   Archive,
   Pencil,
   GitMerge,
+  ClipboardList,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -35,7 +36,14 @@ import { SitesManager } from "@/components/commercial/SitesManager";
 import { ClientSummary } from "@/components/commercial/ClientSummary";
 import { ClientMergeActions } from "@/components/commercial/ClientMergeActions";
 import { BillingClientsCard } from "@/components/commercial/BillingClientsCard";
-import { archivedBanner, archivedKind, importedParentId } from "@/components/commercial/client-actions-logic";
+import {
+  archivedBanner,
+  archivedKind,
+  canAttachAsSite,
+  canMergeClients,
+  importedParentId,
+} from "@/components/commercial/client-actions-logic";
+import { clientCompletionGaps, completionHint } from "@/lib/client-completion";
 import { declaredSampledAt, parseSampleSearch, rechercheHref } from "@/lib/sample-search";
 import { parseView } from "@/lib/dashboard-view";
 import {
@@ -48,7 +56,7 @@ import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
 import { INVOICE_NOTICE_LABELS, sampleBillingNotice } from "@/lib/invoice-notices";
 import { amendedNumber } from "@/lib/report-amendment";
 import { resolveRecipients } from "@/lib/email-recipients";
-import { canResendReport } from "@/lib/report-actions";
+import { canResendReport, reportVersionSent } from "@/lib/report-actions";
 import { ResendReportButton } from "@/components/validation/ResendReportButton";
 import { searchSamples } from "@/lib/sample-search-server";
 import { billingFigures } from "@/components/invoices/invoice-queries";
@@ -129,7 +137,8 @@ export default async function ClientDetailPage({
         // A deposit without a declared sampling time: its `sampledAt` is the
         // instant it was entered, never printed as a sampling (R6 / C5).
         serie: { select: { samplingTimeDeclared: true } },
-        report: { select: { number: true, version: true, sentAt: true, amendmentPending: true } },
+        // `amendedAt`: whether THIS version has left (`reportVersionSent`).
+        report: { select: { number: true, version: true, sentAt: true, amendedAt: true, amendmentPending: true } },
         // Billed already? The programme lets the invoice precede the result.
         // Only a line that holds its sample counts (a draft or an issued
         // invoice): a cancelled invoice gave it back, a credit note never
@@ -199,6 +208,9 @@ export default async function ClientDetailPage({
   // Addresses on the fiche, yet a report without a site (the siège) would
   // reach nobody: every one of them belongs to a site (D-04).
   const onlySiteAddresses = resolveRecipients(client, "reports", null).otherSitesOnly;
+  // « À compléter » (E3): created at the counter or in the field — what the
+  // gestionnaire still owes it, until the whole fiche is saved.
+  const completionGaps = client.toComplete ? clientCompletionGaps(client) : [];
 
   // What each invoice reads as (Émise, Partiellement payée, Annulée…); a
   // view keeps the documents of its group.
@@ -256,6 +268,25 @@ export default async function ClientDetailPage({
             — cette fiche est archivée ; son historique reste consultable ici.
           </span>
         </p>
+      )}
+
+      {client.toComplete && !client.archived && (
+        <div className="mb-6 flex flex-wrap items-start gap-x-3 gap-y-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 ring-1 ring-amber-300">
+            <ClipboardList className="h-3.5 w-3.5" aria-hidden="true" />
+            À compléter
+          </span>
+          <p className="min-w-0 flex-1">
+            Client créé au comptoir ou sur le terrain. {completionHint(completionGaps)}{" "}
+            <Link
+              href={`/commercial/${client.id}/modifier`}
+              className="rounded font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+            >
+              Compléter la fiche
+            </Link>{" "}
+            — l&apos;enregistrer retire ce signal.
+          </p>
+        </div>
       )}
 
       {client.archived && !keptRecord && (
@@ -456,7 +487,7 @@ export default async function ClientDetailPage({
                               compact
                               sampleId={sample.id}
                               number={amendedNumber(sample.report.number, sample.report.version)}
-                              sent={sample.report.sentAt !== null}
+                              sent={reportVersionSent(sample.report)}
                             />
                           </span>
                         )}
@@ -546,8 +577,12 @@ export default async function ClientDetailPage({
             </Card>
           </section>
 
-          {session.role === "ADMIN" && !client.archived && (
-            <ClientMergeActions clientId={client.id} clientName={client.name} />
+          {canMergeClients(session.role) && !client.archived && (
+            <ClientMergeActions
+              clientId={client.id}
+              clientName={client.name}
+              canAttach={canAttachAsSite(session.role)}
+            />
           )}
         </div>
       </div>

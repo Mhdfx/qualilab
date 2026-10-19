@@ -12,7 +12,8 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ClientSiteFilter } from "@/components/recherche/ClientSiteFilter";
 import { ReportActions } from "@/components/validation/ReportActions";
 import { amendedNumber } from "@/lib/report-amendment";
-import { canReadReports } from "@/lib/report-actions";
+import { canReadReports, reportVersionSent } from "@/lib/report-actions";
+import { sampleLinkFor } from "@/lib/sample-verbs";
 
 export const metadata = { title: "Recherche des analyses" };
 
@@ -75,14 +76,21 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
   const canExport = session.role !== "TECHNICIEN";
   // The roles the report route admits (`REPORT_READ_ROLES`).
   const canReport = canReadReports(session.role);
+  // The N° opens the sample where this person works on it (`sampleLinkFor`):
+  // the validation desks on its validation page, where it is cancelled at the
+  // bench or its report reopened (16/10, Q13); the responsable des
+  // paramètres on its programme sheet, where « Corriger les analyses » is
+  // once the bench has started (16/10, Q128).
+  const linkOf = (id: string) => sampleLinkFor(session.role, id);
   // AMENDEMENT.md §4: the number of the version in force and any amendment
-  // in progress, for the report actions of each row — and whether it has
-  // left yet, for « Envoyer / Renvoyer au client » (gestionnaire, validator,
-  // Direction, administrator; finalversion.md:116).
+  // in progress, for the report actions of each row — and whether this
+  // version has left yet (`reportVersionSent`), for « Envoyer / Renvoyer au
+  // client » (gestionnaire, validator, Direction, administrator;
+  // finalversion.md:116).
   const reports = canReport
     ? await prisma.report.findMany({
         where: { sampleId: { in: result.rows.filter((r) => r.hasReport).map((r) => r.id) } },
-        select: { id: true, sampleId: true, number: true, version: true, amendmentPending: true, sentAt: true },
+        select: { id: true, sampleId: true, number: true, version: true, amendmentPending: true, sentAt: true, amendedAt: true },
       })
     : [];
   const reportBySample = new Map(reports.map((r) => [r.sampleId, r]));
@@ -225,64 +233,79 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
                 </tr>
               </thead>
               <tbody>
-                {result.rows.map((row) => (
-                  <tr key={row.id} className="border-b border-slate-100 align-top">
-                    <td className="py-2.5 pr-3 font-mono font-semibold text-slate-900">{row.controlCode ?? row.code}</td>
-                    <td className="py-2.5 pr-3 font-mono text-slate-600">{row.serialNumber}</td>
-                    <td className="py-2.5 pr-3 text-slate-800">
-                      {row.clientName}
-                      {row.siteName && <span className="block text-xs text-slate-500">{row.siteName}</span>}
-                    </td>
-                    <td className="py-2.5 pr-3 text-slate-800">
-                      {row.produit ?? "—"}
-                      {row.numeroLot && <span className="block text-xs text-slate-500">Lot {row.numeroLot}</span>}
-                    </td>
-                    <td className="py-2.5 pr-3 text-slate-600">{row.nature}</td>
-                    {/* A deposit without a declared sampling time: its entry
-                        instant is no sampling date (R6 / C5). */}
-                    <td className="py-2.5 pr-3 text-slate-600">
-                      {row.sampledAt ? formatDate(row.sampledAt) : <span className="text-slate-400">{UNDECLARED_SAMPLING}</span>}
-                    </td>
-                    <td className="py-2.5 pr-3 text-slate-600">{row.receivedAt ? formatDate(row.receivedAt) : "—"}</td>
-                    <td className="py-2.5 pr-3"><StatusBadge status={row.status} /></td>
-                    <td className="py-2.5">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ${TONES[row.conclusion.tone]}`}>
-                        {row.conclusion.label}
-                      </span>
-                      {row.hasReport && canReport && (
-                        <a href={`/api/samples/${row.id}/report`} className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline">
-                          <FileText className="h-3.5 w-3.5" aria-hidden="true" />
-                          Rapport
-                        </a>
-                      )}
-                      {(() => {
-                        const report = row.hasReport && canReport ? reportBySample.get(row.id) : undefined;
-                        if (!report) return null;
-                        const number = amendedNumber(report.number, report.version);
-                        return (
-                          <>
-                            {report.version > 0 && <span className="mt-1 block font-mono text-[11px] text-slate-500">{number}</span>}
-                            {report.amendmentPending && (
-                              <span className="mt-1 inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
-                                Amendement en cours
-                              </span>
-                            )}
-                            <ReportActions
-                              compact
-                              sampleId={row.id}
-                              reportId={report.id}
-                              role={session.role}
-                              status={row.status}
-                              number={number}
-                              amendmentPending={report.amendmentPending}
-                              sent={report.sentAt !== null}
-                            />
-                          </>
-                        );
-                      })()}
-                    </td>
-                  </tr>
-                ))}
+                {result.rows.map((row) => {
+                  const open = linkOf(row.id);
+                  return (
+                    <tr key={row.id} className="border-b border-slate-100 align-top">
+                      <td className="py-2.5 pr-3 font-mono font-semibold text-slate-900">
+                        {open ? (
+                          <Link
+                            href={open.href}
+                            className="rounded text-brand underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                          >
+                            {row.controlCode ?? row.code}
+                            <span className="sr-only"> — {open.label}</span>
+                          </Link>
+                        ) : (
+                          (row.controlCode ?? row.code)
+                        )}
+                      </td>
+                      <td className="py-2.5 pr-3 font-mono text-slate-600">{row.serialNumber}</td>
+                      <td className="py-2.5 pr-3 text-slate-800">
+                        {row.clientName}
+                        {row.siteName && <span className="block text-xs text-slate-500">{row.siteName}</span>}
+                      </td>
+                      <td className="py-2.5 pr-3 text-slate-800">
+                        {row.produit ?? "—"}
+                        {row.numeroLot && <span className="block text-xs text-slate-500">Lot {row.numeroLot}</span>}
+                      </td>
+                      <td className="py-2.5 pr-3 text-slate-600">{row.nature}</td>
+                      {/* A deposit without a declared sampling time: its entry
+                          instant is no sampling date (R6 / C5). */}
+                      <td className="py-2.5 pr-3 text-slate-600">
+                        {row.sampledAt ? formatDate(row.sampledAt) : <span className="text-slate-400">{UNDECLARED_SAMPLING}</span>}
+                      </td>
+                      <td className="py-2.5 pr-3 text-slate-600">{row.receivedAt ? formatDate(row.receivedAt) : "—"}</td>
+                      <td className="py-2.5 pr-3"><StatusBadge status={row.status} /></td>
+                      <td className="py-2.5">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ${TONES[row.conclusion.tone]}`}>
+                          {row.conclusion.label}
+                        </span>
+                        {row.hasReport && canReport && (
+                          <a href={`/api/samples/${row.id}/report`} className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline">
+                            <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+                            Rapport
+                          </a>
+                        )}
+                        {(() => {
+                          const report = row.hasReport && canReport ? reportBySample.get(row.id) : undefined;
+                          if (!report) return null;
+                          const number = amendedNumber(report.number, report.version);
+                          return (
+                            <>
+                              {report.version > 0 && <span className="mt-1 block font-mono text-[11px] text-slate-500">{number}</span>}
+                              {report.amendmentPending && (
+                                <span className="mt-1 inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
+                                  Amendement en cours
+                                </span>
+                              )}
+                              <ReportActions
+                                compact
+                                sampleId={row.id}
+                                reportId={report.id}
+                                role={session.role}
+                                status={row.status}
+                                number={number}
+                                amendmentPending={report.amendmentPending}
+                                sent={reportVersionSent(report)}
+                              />
+                            </>
+                          );
+                        })()}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

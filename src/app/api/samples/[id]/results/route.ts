@@ -18,7 +18,7 @@ import {
   verdictToConform,
   type UnitReading,
 } from "@/lib/interpretation";
-import { benchConformity, singleValueEntry, suggestConformity } from "@/lib/result-value";
+import { NOT_DONE_MESSAGE, benchConformity, isNotDoneText, singleValueEntry, suggestConformity } from "@/lib/result-value";
 import type { Interpretation, ResultWorkStatus } from "@/generated/prisma/enums";
 import { Prisma } from "@/generated/prisma/client";
 
@@ -28,6 +28,19 @@ const MAX_LINES = 500;
 /** The sheet on screen is older than the programme: the form reloads on 409. */
 const PROGRAMME_CHANGED = "Le programme d'analyse de cet échantillon a changé : rechargez la fiche.";
 const MAX_UNIT_TEXT = 40;
+
+/**
+ * « NE », « non effectué »… typed as a result (16/10, Q91): the report
+ * never says an analysis was not done — it is withdrawn from the programme
+ * by the responsable des paramètres (« Corriger les analyses »), and the
+ * other readings stay.
+ */
+function notDone(parameterName: string, typed: string) {
+  return NextResponse.json(
+    { error: `${parameterName} : « ${typed} » n'est pas un résultat. ${NOT_DONE_MESSAGE}` },
+    { status: 400 }
+  );
+}
 
 type IncomingResult = {
   parameterId?: unknown;
@@ -215,6 +228,7 @@ export async function PUT(
             { status: 400 }
           );
         }
+        if (isNotDoneText(text)) return notDone(parameter.name, text);
         units.push(text);
       }
       // A dilution factor applies to a unit exactly as to a single value.
@@ -283,6 +297,7 @@ export async function PUT(
         { status: 400 }
       );
     }
+    if (isNotDoneText(value)) return notDone(parameter.name, value);
     const stored = singleValueEntry(value, factor);
     const parsed = stored.parsed;
 

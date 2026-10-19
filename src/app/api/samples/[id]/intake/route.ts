@@ -2,8 +2,16 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { validateIntake, type IntakeCurrent } from "@/lib/intake-input";
+import {
+  analysesChangesOnly,
+  correctionTouches,
+  resultsToReset,
+  validateIntake,
+  type IntakeCurrent,
+  type ResultsReset,
+} from "@/lib/intake-input";
 import { CORRECTABLE_STATUSES } from "@/lib/sample-status";
+import { correctionRefusal, correctionRights } from "@/lib/sample-verbs";
 
 const INTAKE_SELECT = {
   id: true,
@@ -46,8 +54,23 @@ const INTAKE_SELECT = {
 /**
  * « Corriger la fiche » (WORKFLOW.md §8): the identification fields of a
  * sample may be fixed until its approval, with a reason and a before/after
- * audit line. Changing the analyses empties the results and sends the
- * sample back to the bench.
+ * audit line.
+ *
+ * Who changes what (16/10, Q128 — RP3b (a), `correctionRights`): the
+ * identification belongs to the reception, the validation desks and the
+ * administrator; once the programme is confirmed, the analyses — their
+ * list, the product type, the number of units — to the responsable des
+ * paramètres (from the bench's start; before, his programme sheet) and the
+ * administrator. Decided field by field on what the correction actually
+ * changes: 403 with the person to ask.
+ *
+ * What it does to the results (16/10, Q91 — `resultsToReset`): withdrawing
+ * analyses, and nothing else, deletes their readings only — the others and
+ * the sample's step stay (an analysis not done is withdrawn, never printed
+ * « non effectué »); at RESULTATS_SAISIS the technical validation, given on
+ * the former list, is cleared. Adding an analysis, or changing the product
+ * type or the number of units, empties every result and sends the sample
+ * back to the bench, as before.
  *
  * RETOUR-LABO-06-10.md §5: a SURFACE line also corrects its « État de la
  * surface » (`surfaceState`) and an AIR line its « Méthode de prélèvement »
@@ -66,7 +89,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireApiRole("RECEPTIONNISTE", "VALIDATEUR", "DIRECTION", "ADMIN");
+  const session = await requireApiRole("RECEPTIONNISTE", "VALIDATEUR", "DIRECTION", "PROGRAMMATEUR", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;
@@ -77,6 +100,13 @@ export async function PATCH(
       { error: "La fiche est figée : l'échantillon est validé, envoyé ou annulé." },
       { status: 409 }
     );
+  }
+  // Nothing of this fiche is this person's at this step (the responsable des
+  // paramètres before the bench: his programme sheet is open).
+  const rights = correctionRights(session.role, sample.status);
+  if (!rights.identification && !rights.analyses) {
+    const refusal = correctionRefusal(session.role, sample.status, { identification: true, analyses: true });
+    return NextResponse.json({ error: refusal }, { status: 403 });
   }
 
   let body: unknown;
@@ -114,7 +144,17 @@ export async function PATCH(
 
   const checked = validateIntake(body, current);
   if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: 400 });
-  const { changes, parameterIds, reason } = checked.value;
+  const { parameterIds, reason } = checked.value;
+  // Field by field: the analyses' half and the identification's half each
+  // belong to their own people at this step.
+  const refusal = correctionRefusal(session.role, sample.status, correctionTouches(body, checked.value));
+  if (refusal) return NextResponse.json({ error: refusal }, { status: 403 });
+  // The responsable des paramètres writes the analyses only — an old row's
+  // field the line rules would tidy on the way stays as it was.
+  const changes = rights.identification ? checked.value.changes : analysesChangesOnly(checked.value.changes);
+  if (Object.keys(changes).length === 0 && parameterIds === null) {
+    return NextResponse.json({ error: "Aucune modification à enregistrer." }, { status: 400 });
+  }
 
   if (parameterIds) {
     const known = await prisma.analysisParameter.findMany({
@@ -144,16 +184,16 @@ export async function PATCH(
     if (!type) return NextResponse.json({ error: "Type de produit inconnu pour ce client." }, { status: 400 });
   }
 
-  // A new parameter list means the bench starts again: results go, the
-  // technical validation too, and the sample returns to EN_ANALYSE if it
-  // had left it. Changing the product type or the number of units changes
-  // the criteria the readings were judged against, so those results go too
-  // — a stale verdict must never reach the report (CRITERES.md §6).
+  // Changing the product type or the number of units changes the criteria
+  // the readings were judged against: every result goes — a stale verdict
+  // must never reach the report (CRITERES.md §6) — the technical validation
+  // too, and the sample returns to EN_ANALYSE if it had left it. So does an
+  // added analysis (the bench starts again). Analyses withdrawn, and nothing
+  // else, take only their own readings with them (16/10, Q91). Decided
+  // under the lock, on the list as it stands then.
   const criteriaChanged = changes.productTypeId !== undefined || changes.unitCount !== undefined;
-  const resetResults = parameterIds !== null || criteriaChanged;
-  const backToBench = resetResults && sample.status === "RESULTATS_SAISIS";
 
-  const updated = await prisma.$transaction(async (tx) => {
+  const outcome = await prisma.$transaction(async (tx) => {
     // The Sample row first, as the programme, the take, « Libérer » and the
     // results save do: the lock order is always Sample, then SampleParameter
     // (no deadlock), and a « Libérer » committed meanwhile is seen below.
@@ -164,20 +204,34 @@ export async function PATCH(
     const locked = await tx.$queryRaw<{ status: string }[]>`
       SELECT \`status\` FROM \`Sample\` WHERE \`id\` = ${id} FOR UPDATE`;
     if (locked[0]?.status !== sample.status) return null;
-    if (resetResults) {
+    // An analysis the programme already decided keeps its norm version,
+    // dilution, note and its legacy per-analysis technician, if any (before
+    // 13/10); an analysis added here starts bare and belongs to whoever took
+    // the sample — the responsable des paramètres completes it on a
+    // programmed line. Read now, under the lock: the snapshot loaded before
+    // the transaction would undo a « Libérer » meanwhile.
+    const lines = parameterIds
+      ? await tx.sampleParameter.findMany({
+          where: { sampleId: id },
+          select: { parameterId: true, technicianId: true, normVersionId: true, dilutionFactor: true, note: true },
+        })
+      : [];
+    const reset: ResultsReset = resultsToReset(
+      lines.map((line) => line.parameterId),
+      parameterIds,
+      criteriaChanged
+    );
+    const resetAll = reset.kind === "all";
+    const backToBench = resetAll && sample.status === "RESULTATS_SAISIS";
+    // The technical signature was given on the former list: a withdrawal at
+    // validation keeps the step, not the signature.
+    const clearValidation = reset.kind === "removed" && sample.status === "RESULTATS_SAISIS";
+    if (resetAll) {
       await tx.result.deleteMany({ where: { sampleId: id } });
+    } else if (reset.kind === "removed") {
+      await tx.result.deleteMany({ where: { sampleId: id, parameterId: { in: reset.parameterIds } } });
     }
     if (parameterIds) {
-      // An analysis the programme already decided keeps its norm version,
-      // dilution, note and its legacy per-analysis technician, if any
-      // (before 13/10); an analysis added here starts bare and belongs to
-      // whoever took the sample — the responsable des paramètres completes
-      // it on a programmed line. Read now, under the lock: the snapshot
-      // loaded before the transaction would undo a « Libérer » meanwhile.
-      const lines = await tx.sampleParameter.findMany({
-        where: { sampleId: id },
-        select: { parameterId: true, technicianId: true, normVersionId: true, dilutionFactor: true, note: true },
-      });
       const programmed = new Map(lines.map((line) => [line.parameterId, line]));
       await tx.sampleParameter.deleteMany({ where: { sampleId: id } });
       await tx.sampleParameter.createMany({
@@ -194,20 +248,23 @@ export async function PATCH(
         }),
       });
     }
-    return tx.sample.update({
+    const updated = await tx.sample.update({
       where: { id },
       data: {
         ...changes,
         // The readings are gone: the contamination alert of the previous
-        // ones must not silence the alert of the new ones.
-        ...(resetResults ? { alertsSentAt: null } : {}),
+        // ones must not silence the alert of the new ones. A withdrawal
+        // keeps the readings left, and the alerts already sent for them.
+        ...(resetAll ? { alertsSentAt: null } : {}),
         ...(backToBench ? { status: "EN_ANALYSE", validatedById: null, validatedAt: null } : {}),
+        ...(clearValidation ? { validatedById: null, validatedAt: null } : {}),
       },
       select: INTAKE_SELECT,
     });
+    return { updated, reset, backToBench, clearValidation };
   });
 
-  if (!updated) {
+  if (!outcome) {
     return NextResponse.json(
       { error: "Cet échantillon vient de changer d'état : rechargez la fiche avant de la corriger." },
       { status: 409 }
@@ -226,10 +283,14 @@ export async function PATCH(
       before: Object.fromEntries(Object.keys(changes).map((k) => [k, current[k as keyof typeof current]])),
       after: changes,
       parameterIds: parameterIds ? { before: current.parameterIds, after: parameterIds } : undefined,
-      resetResults,
-      backToBench,
+      resetResults: outcome.reset.kind === "all",
+      // A withdrawal (16/10, Q91): the analyses whose readings were deleted.
+      resultsRemoved: outcome.reset.kind === "removed" ? outcome.reset.parameterIds : undefined,
+      technicalValidationCleared: outcome.clearValidation || undefined,
+      backToBench: outcome.backToBench,
     },
   });
 
+  const { updated } = outcome;
   return NextResponse.json({ ...updated, parameterIds: updated.parameters.map((p) => p.parameterId) });
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { formatDateTime } from "@/lib/labels";
 import { DEFAULT_THRESHOLDS } from "@/lib/reception-rules";
+import { verbsFor } from "@/lib/sample-verbs";
 import {
   adoptReferential,
   applyProductType,
@@ -18,6 +19,9 @@ import {
   natureChoices,
   parameterFamilies,
   profileApplied,
+  programmeReadOnlyReason,
+  programmeVerbsLead,
+  programmeVerbsNote,
   toRequestBody,
   toggleParameter,
   typeUnitCount,
@@ -702,5 +706,80 @@ describe("toRequestBody", () => {
   it("a draft may be empty and carry no due date", () => {
     const body = toRequestBody({ ...initialDraft(received, referential), parameterIds: [], dueAt: "" }, false);
     expect(body).toMatchObject({ confirm: false, parameterIds: [], dueAt: null, productTypeId: null, parameters: [] });
+  });
+});
+
+describe("programmeReadOnlyReason — why the sheet is closed, and who to ask (16/10, Q128)", () => {
+  const closed = { editable: false, analysisBlocked: false, cancelReason: null } as const;
+
+  it("says nothing while the sheet may be edited", () => {
+    expect(programmeReadOnlyReason({ ...closed, editable: true, status: "RECU" }, "PROGRAMMATEUR")).toBeNull();
+    expect(programmeReadOnlyReason({ ...closed, editable: true, status: "PROGRAMME" }, "ADMIN")).toBeNull();
+  });
+
+  it("at the bench, points the responsable des paramètres to « Corriger les analyses », and the admin to « Corriger la fiche »", () => {
+    for (const status of ["EN_ANALYSE", "RESULTATS_SAISIS"] as const) {
+      expect(programmeReadOnlyReason({ ...closed, status }, "PROGRAMMATEUR"), status).toBe(
+        "Fiche en lecture seule : la paillasse a commencé. Les analyses, le type de produit et le nombre d'unités se changent désormais par « Corriger les analyses » ci-dessous, avec un motif ; l'identification de l'échantillon, par la réception, la validation ou l'administrateur."
+      );
+      expect(programmeReadOnlyReason({ ...closed, status }, "ADMIN"), status).toContain("par « Corriger la fiche » ci-dessous");
+    }
+  });
+
+  it("keeps the reasons of a sample not received, cancelled, blocked — and says an approved one goes through the amendment", () => {
+    expect(programmeReadOnlyReason({ ...closed, status: "PRELEVE" }, "PROGRAMMATEUR")).toBe(
+      "Cet échantillon n'est pas encore réceptionné : le programme se décide après la réception."
+    );
+    expect(programmeReadOnlyReason({ ...closed, status: "ANNULE", cancelReason: "DOUBLON" }, "PROGRAMMATEUR")).toMatch(
+      /^Échantillon annulé \(.+\) : seul un administrateur peut le réactiver\.$/
+    );
+    expect(programmeReadOnlyReason({ ...closed, status: "RECU", analysisBlocked: true }, "PROGRAMMATEUR")).toContain("bloqué en réception");
+    for (const status of ["VALIDE", "RAPPORT_ENVOYE"] as const) {
+      expect(programmeReadOnlyReason({ ...closed, status }, "PROGRAMMATEUR"), status).toContain("réouverture du rapport pour amendement");
+    }
+  });
+});
+
+describe("programmeVerbsNote — what is not this person's among the corrections (16/10, Q128)", () => {
+  it("the responsable des paramètres: the analyses on the sheet before the bench, by « Corriger les analyses » after; never the identification", () => {
+    for (const status of ["PRELEVE", "RECU", "PROGRAMME"] as const) {
+      expect(programmeVerbsNote("PROGRAMMATEUR", status), status).toMatch(/^Les analyses se changent sur cette fiche/);
+    }
+    for (const status of ["EN_ANALYSE", "RESULTATS_SAISIS"] as const) {
+      expect(programmeVerbsNote("PROGRAMMATEUR", status), status).toBe(
+        "Les analyses se changent par « Corriger les analyses » ; l'identification de l'échantillon (désignation, quantité, lot…) relève de la réception, de la validation ou de l'administrateur ; son annulation, de la validation, de la Direction ou de l'administrateur."
+      );
+    }
+  });
+
+  it("names who cancels at this step, as the state machine says (16/10, Q13): the réception before the programme, the validation desks from it", () => {
+    for (const status of ["PRELEVE", "RECU"] as const) {
+      expect(programmeVerbsNote("PROGRAMMATEUR", status), status).toBe(
+        "Les analyses se changent sur cette fiche tant que la paillasse n'a pas commencé ; l'identification de l'échantillon (désignation, quantité, lot…) relève de la réception, de la validation ou de l'administrateur ; son annulation, de la réception ou de l'administrateur."
+      );
+    }
+    expect(programmeVerbsNote("PROGRAMMATEUR", "PROGRAMME")).toMatch(/son annulation, de la validation, de la Direction ou de l'administrateur\.$/);
+  });
+
+  it("nothing to add for the administrator, nor once the sample is approved, sent or cancelled", () => {
+    expect(programmeVerbsNote("ADMIN", "EN_ANALYSE")).toBeNull();
+    for (const status of ["VALIDE", "RAPPORT_ENVOYE", "ANNULE"] as const) {
+      expect(programmeVerbsNote("PROGRAMMATEUR", status), status).toBeNull();
+    }
+  });
+});
+
+describe("programmeVerbsLead — the sentence before the verbs names only what they do", () => {
+  it("the responsable des paramètres at the bench corrects, never cancels", () => {
+    for (const status of ["EN_ANALYSE", "RESULTATS_SAISIS"] as const) {
+      expect(programmeVerbsLead(verbsFor({ status }, "PROGRAMMATEUR")), status).toBe("Une correction passe par le verbe ci-dessous.");
+    }
+  });
+
+  it("the administrator corrects and cancels; a cancelled sample is reactivated", () => {
+    expect(programmeVerbsLead(verbsFor({ status: "EN_ANALYSE" }, "ADMIN"))).toBe("Une correction ou une annulation passe par les verbes ci-dessous.");
+    expect(programmeVerbsLead(verbsFor({ status: "ANNULE" }, "ADMIN"))).toBe("Une réactivation passe par le verbe ci-dessous.");
+    expect(programmeVerbsLead({ correct: false, correctAnalyses: false, cancel: true, reactivate: false })).toBe("Une annulation passe par le verbe ci-dessous.");
+    expect(programmeVerbsLead(verbsFor({ status: "VALIDE" }, "PROGRAMMATEUR"))).toBe("");
   });
 });

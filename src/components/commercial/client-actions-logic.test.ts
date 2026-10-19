@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  ATTACH_ROLES,
+  MERGE_ROLES,
   archivedBanner,
+  canAttachAsSite,
+  canMergeClients,
   archivedKind,
   importedParentId,
   attachSummary,
@@ -207,5 +211,23 @@ describe("near-duplicate check while typing", () => {
   it("builds the query", () => {
     expect(similarQuery(" Client Démo ", "", null)).toBe("name=Client+D%C3%A9mo");
     expect(similarQuery("Client", "001", "c1")).toBe("name=Client&ice=001&excludeId=c1");
+  });
+});
+
+describe("who merges and who attaches (16/10, Q117 — E4)", () => {
+  it("the gestionnaire commercial and the administrator merge; nobody else", () => {
+    expect(MERGE_ROLES).toEqual(["GESTIONNAIRE", "ADMIN"]);
+    expect(canMergeClients("GESTIONNAIRE")).toBe(true);
+    expect(canMergeClients("ADMIN")).toBe(true);
+    for (const role of ["RECEPTIONNISTE", "PRELEVEUR", "COMPTABLE", "DIRECTION", "VALIDATEUR", "TECHNICIEN", "PROGRAMMATEUR"] as const) {
+      expect(canMergeClients(role), role).toBe(false);
+    }
+  });
+
+  it("the attachment as a site stays the administrator's until the re-ask 2.5", () => {
+    expect(ATTACH_ROLES).toEqual(["ADMIN"]);
+    expect(canAttachAsSite("ADMIN")).toBe(true);
+    expect(canAttachAsSite("GESTIONNAIRE")).toBe(false);
+    expect(canAttachAsSite("RECEPTIONNISTE")).toBe(false);
   });
 });

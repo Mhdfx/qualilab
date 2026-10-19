@@ -15,6 +15,7 @@ import {
 } from "@/lib/report-dispatch";
 import { getLabSettings } from "@/lib/lab-settings";
 import { needsRegulation } from "@/lib/regulation";
+import { approvalDispatch } from "@/lib/report-actions";
 import { reportTechnicianNames } from "@/lib/report-programme";
 
 /**
@@ -25,7 +26,11 @@ import { reportTechnicianNames } from "@/lib/report-programme";
  *                       does not move yet.
  * `action: "approve"`   DIRECTION or ADMIN gives the final approval (12/10),
  *                       which is what sets the status to VALIDE — never the
- *                       person who signed step 1.
+ *                       person who signed step 1. It issues the report; the
+ *                       report leaves only with `send: true` (« Valider et
+ *                       envoyer ») — nothing is sent automatically any more
+ *                       (16/10, Q92; `approvalDispatch`). The contamination
+ *                       alerts still run here whatever `send` says.
  * `action: "reject"`    Either desk sends it back to the technician who took
  *                       it (prise en charge libre, PROGRAMME.md §10 — the
  *                       holder stays, so it comes back to their bench) with a
@@ -177,6 +182,10 @@ export async function POST(
   }
 
   if (action === "approve") {
+    // « Valider » or « Valider et envoyer »: read before anything is written.
+    const plan = approvalDispatch(body);
+    if (!plan.ok) return NextResponse.json({ error: plan.error }, { status: 400 });
+
     const check = canApprove(sample, session.role, session.id);
     if (!check.ok) {
       // A role that may never approve is refused (403, HANDOFF §3); the
@@ -212,17 +221,22 @@ export async function POST(
     await recordRegulation();
     const report = await issueReportFor(sample.id, session.id);
 
-    // The client is served straight away: the report, then an alert if a
-    // sensitive parameter is over its limit. Neither may break the approval,
-    // which is already recorded — a failed send is visible in the journal and
-    // can be retried from the interface.
+    // The report leaves only on « Valider et envoyer »; otherwise the sample
+    // stays VALIDE, « à envoyer », until « Envoyer au client ». The alerts
+    // run either way: a no-op when they left at the technical validation,
+    // the retry of a failed one, or their only send when the laboratory has
+    // them wait for this approval. Neither may break the approval, which is
+    // already recorded — a failed send is visible in the journal and can be
+    // retried from the interface.
     let dispatch: { report?: string; alerts?: number; error?: string } = {};
     if (report) {
-      const sent = await sendReport(sample.id, session.id).catch((error) => {
-        console.error("[validation] report send failed", { error });
-        return { ok: false as const, error: "Envoi du rapport impossible." };
-      });
-      dispatch = sent.ok ? { report: sent.status } : { error: sent.error };
+      if (plan.sendReport) {
+        const sent = await sendReport(sample.id, session.id).catch((error) => {
+          console.error("[validation] report send failed", { error });
+          return { ok: false as const, error: "Envoi du rapport impossible." };
+        });
+        dispatch = sent.ok ? { report: sent.status } : { error: sent.error };
+      }
 
       const alerts = await sendContaminationAlerts(sample.id, session.id).catch(
         (error) => {
@@ -248,6 +262,8 @@ export async function POST(
         code: sample.code,
         step: "2/2",
         reportNumber: report?.number ?? null,
+        // « Valider » or « Valider et envoyer » (16/10, Q92).
+        send: plan.sendReport,
         ...(report?.amended ? { amendment: true } : {}),
       },
     });

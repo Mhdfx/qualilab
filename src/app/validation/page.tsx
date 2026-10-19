@@ -1,8 +1,17 @@
+import Link from "next/link";
 import { requireRole } from "@/lib/auth";
 import { ShieldCheck, ClipboardList, FileCheck2, Send } from "lucide-react";
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { VIEW_PARAM, parseView, viewHref } from "@/lib/dashboard-view";
-import { VALIDATION_VIEWS, inValidationView, type ValidationView } from "@/lib/circuit-views";
+import {
+  TO_SEND_PAGE_SIZE,
+  TO_SEND_STATUS,
+  VALIDATION_VIEWS,
+  inValidationView,
+  validationViewWhere,
+  type ValidationView,
+} from "@/lib/circuit-views";
 import { rechercheHref } from "@/lib/sample-search";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
@@ -24,7 +33,47 @@ const EMPTY: Record<ValidationView, { title: string; text: string }> = {
     title: "Aucun échantillon en attente de validation administrative",
     text: "Les échantillons validés techniquement attendent ici leur validation administrative.",
   },
+  a_envoyer: {
+    title: "Aucun rapport à envoyer",
+    text: "Les échantillons validés dont le rapport n'est pas encore parti attendent ici l'envoi au client.",
+  },
 };
+
+/** What a line of the queue, or of « Validés — à envoyer », shows. */
+const ITEM_SELECT = {
+  id: true,
+  code: true,
+  controlCode: true,
+  type: true,
+  status: true,
+  // What was analysed: « Planche verte — surface nettoyée » (RETOUR-LABO-06-10.md §5).
+  lineNumber: true,
+  lineKind: true,
+  produit: true,
+  surfaceLabel: true,
+  surfaceState: true,
+  personName: true,
+  airMethod: true,
+  airExposureMin: true,
+  validatedById: true,
+  approvedById: true,
+  // « validé le … » on a line waiting to be sent, and « En retard » past the promised date.
+  approvedAt: true,
+  dueAt: true,
+  receivedAt: true,
+  client: { select: { name: true } },
+  serie: { select: { serialNumber: true } },
+  // « Analysé par »: who took it at the bench, then the technicians a
+  // legacy programme handed parameters to (only those rows are read).
+  technician: { select: { name: true } },
+  parameters: {
+    where: { technicianId: { not: null } },
+    select: { technician: { select: { name: true } } },
+  },
+  results: { select: { conform: true, workStatus: true } },
+  // AMENDEMENT.md §2: a reopened report shows the badge « Amendement ».
+  report: { select: { amendmentPending: true } },
+} satisfies Prisma.SampleSelect;
 
 export default async function ValidationPage({
   searchParams,
@@ -36,51 +85,35 @@ export default async function ValidationPage({
   // A tile is a sort (« comme un tri »): `?vue=` narrows the queue below to
   // exactly what that tile counts (`inValidationView`, one rule for both).
   const view = parseView((await searchParams)[VIEW_PARAM], VALIDATION_VIEWS);
-  const [items, valides, rapports, envoyes] = await Promise.all([
+  const [items, toSendCount, rapports, envoyes, toSend] = await Promise.all([
     prisma.sample.findMany({
-      where: { status: "RESULTATS_SAISIS" },
-      select: {
-        id: true,
-        code: true,
-        controlCode: true,
-        type: true,
-        // What was analysed: « Planche verte — surface nettoyée » (RETOUR-LABO-06-10.md §5).
-        lineNumber: true,
-        lineKind: true,
-        produit: true,
-        surfaceLabel: true,
-        surfaceState: true,
-        personName: true,
-        airMethod: true,
-        airExposureMin: true,
-        validatedById: true,
-        approvedById: true,
-        receivedAt: true,
-        client: { select: { name: true } },
-        serie: { select: { serialNumber: true } },
-        // « Analysé par »: who took it at the bench, then the technicians a
-        // legacy programme handed parameters to (only those rows are read).
-        technician: { select: { name: true } },
-        parameters: {
-          where: { technicianId: { not: null } },
-          select: { technician: { select: { name: true } } },
-        },
-        results: { select: { conform: true, workStatus: true } },
-        // AMENDEMENT.md §2: a reopened report shows the badge « Amendement ».
-        report: { select: { amendmentPending: true } },
-      },
+      where: validationViewWhere(null),
+      select: ITEM_SELECT,
       orderBy: { receivedAt: "asc" },
     }),
-    prisma.sample.count({ where: { status: "VALIDE" } }),
+    prisma.sample.count({ where: validationViewWhere("a_envoyer") }),
     prisma.report.count(),
     prisma.sample.count({ where: { status: "RAPPORT_ENVOYE" } }),
+    // « Validés — à envoyer » (16/10, Q92), read only when shown: the longest
+    // waiting first, a page of them (they accumulate now that nothing leaves
+    // on its own), grouped by série below; the rest opens in /recherche.
+    view === "a_envoyer"
+      ? prisma.sample.findMany({
+          where: validationViewWhere("a_envoyer"),
+          select: ITEM_SELECT,
+          orderBy: [{ approvedAt: "asc" }, { id: "asc" }],
+          take: TO_SEND_PAGE_SIZE,
+        })
+      : Promise.resolve(null),
   ]);
+  // One clock for the « En retard » of every line (`isSendLate`).
+  const now = new Date();
 
   // The whole queue is loaded (it is the current work, never the history):
   // the tiles count it, the view only narrows what is shown.
   const toValidate = items.filter((item) => inValidationView("a_valider", item)).length;
   const awaitingAdmin = items.filter((item) => inValidationView("attente_admin", item)).length;
-  const shown = view ? items.filter((item) => inValidationView(view, item)) : items;
+  const shown = view === "a_envoyer" ? (toSend ?? []) : view ? items.filter((item) => inValidationView(view, item)) : items;
 
   return (
     <div>
@@ -92,7 +125,7 @@ export default async function ValidationPage({
 
       <section aria-label="Indicateurs" className="mb-8">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {/* The queue's two steps filter it in place; the steps after it open /recherche. */}
+          {/* The queue's two steps and « à envoyer » filter in place; the sent reports open /recherche. */}
           <StatCard
             label={VALIDATION_VIEWS.a_valider}
             value={toValidate}
@@ -109,7 +142,16 @@ export default async function ValidationPage({
             href={viewHref(PATH, "attente_admin", ANCHOR)}
             active={view === "attente_admin"}
           />
-          <StatCard label="Validés" value={valides} icon={FileCheck2} accent="emerald" href={rechercheHref({ status: "VALIDE" })} />
+          {/* Nothing leaves automatically (16/10, Q92): the approved samples
+              wait here for « Envoyer au client ». */}
+          <StatCard
+            label={VALIDATION_VIEWS.a_envoyer}
+            value={toSendCount}
+            icon={FileCheck2}
+            accent="emerald"
+            href={viewHref(PATH, "a_envoyer", ANCHOR)}
+            active={view === "a_envoyer"}
+          />
           <StatCard
             label="Rapports envoyés"
             value={envoyes}
@@ -126,14 +168,27 @@ export default async function ValidationPage({
             {view ? VALIDATION_VIEWS[view] : "En attente de validation"}
           </h2>
           <span className="text-sm text-slate-500">
-            {shown.length} échantillon{shown.length > 1 ? "s" : ""}
+            {view === "a_envoyer" && toSendCount > shown.length
+              ? `${shown.length} sur ${toSendCount} échantillons`
+              : `${shown.length} échantillon${shown.length > 1 ? "s" : ""}`}
             {!view && rapports > 0 && ` · ${rapports} rapport${rapports > 1 ? "s" : ""}`}
           </span>
         </div>
         {view && (
           <ViewFilterNotice label={VALIDATION_VIEWS[view]} resetHref={viewHref(PATH, null, ANCHOR)} className="mb-3" />
         )}
-        <ValidationQueue items={shown} empty={view ? EMPTY[view] : undefined} />
+        <ValidationQueue items={shown} empty={view ? EMPTY[view] : undefined} now={now} />
+        {view === "a_envoyer" && toSendCount > shown.length && (
+          <p className="mt-4 text-sm text-slate-600">
+            Les {TO_SEND_PAGE_SIZE} qui attendent depuis le plus longtemps sont affichés.{" "}
+            <Link
+              href={rechercheHref({ status: TO_SEND_STATUS })}
+              className="font-medium text-brand underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
+              Voir les {toSendCount} dans la recherche
+            </Link>
+          </p>
+        )}
       </section>
     </div>
   );

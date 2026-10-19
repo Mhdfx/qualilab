@@ -21,8 +21,12 @@ export default async function CommercialPage() {
         email: true,
         phone: true,
         ice: true,
+        address: true,
         archived: true,
-        emails: { select: { id: true } },
+        // « À compléter » (E3) and what is missing: the ICE, the postal
+        // address and an address that receives the reports.
+        toComplete: true,
+        emails: { select: { id: true, email: true, siteId: true, forReports: true, forAlerts: true } },
         _count: { select: { samples: true, invoices: true } },
       },
       orderBy: { name: "asc" },

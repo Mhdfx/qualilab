@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { validateClient, validateClientEmails } from "@/lib/client-validation";
 import { findSimilarClients, sameClientName } from "@/lib/client-identity";
 import { LOCK_RETRIES, isLockConflict, lockRetryPause } from "@/lib/billing";
+import { toCompleteAfterSave } from "@/lib/client-completion";
 
 const LINK = { select: { id: true, name: true } } as const;
 
@@ -14,7 +15,8 @@ class NameTaken extends Error {}
 /**
  * A client record: read, update, archive.
  *
- * Managing clients belongs to the gestionnaire commercial and the admin. A
+ * Managing clients belongs to the gestionnaire commercial and the admin
+ * (the reception and the préleveur only create one, POST /api/clients). A
  * client is never deleted — samples, reports and invoices refer to it, and the
  * laboratory's history must stay readable — so "removing" one archives it.
  */
@@ -72,7 +74,7 @@ export async function PATCH(
 
   const existing = await prisma.client.findUnique({
     where: { id },
-    select: { id: true, name: true, mergedInto: LINK },
+    select: { id: true, name: true, toComplete: true, mergedInto: LINK },
   });
   if (!existing) {
     return NextResponse.json({ error: "Client introuvable." }, { status: 404 });
@@ -169,6 +171,11 @@ export async function PATCH(
     }
   }
 
+  // « À compléter » (RETOUR-LABO-16-10.md E3): the whole fiche saved by the
+  // gestionnaire or the admin is the completion — an archiving alone (above)
+  // never clears it.
+  const completion = toCompleteAfterSave(existing.toComplete, true);
+
   const saveOnce = () => prisma.$transaction(async (tx) => {
     if (renamed) {
       // The check above, again under a locking read on the name (index
@@ -184,6 +191,7 @@ export async function PATCH(
       where: { id },
       data: {
         ...validated.value,
+        toComplete: completion.toComplete,
         ...(typeof archived === "boolean" ? { archived } : {}),
       },
     });
@@ -241,6 +249,7 @@ export async function PATCH(
       emails: list.value.length,
       ...(renamed ? { renamedFrom: existing.name } : {}),
       ...(renamed && confirmDuplicate === true ? { confirmedNotDuplicate: true } : {}),
+      ...(completion.completed ? { completed: true } : {}),
     },
   });
 

@@ -21,7 +21,11 @@ outils se construisent sans attendre le laboratoire ; ils ne seront
   les échantillons de ce site sont facturés à ce client facturé (vide = au
   client du site).
 
-## 2. Fusionner B dans A (« Fusionner avec… », ADMIN)
+## 2. Fusionner B dans A (« Fusionner avec… », GESTIONNAIRE et ADMIN)
+
+Le gestionnaire commercial fusionne depuis la réponse du 16/10 (Q117,
+`RETOUR-LABO-16-10.md` E4 — `MERGE_ROLES`) ; la réception et le préleveur,
+qui créent des clients depuis le même jour (§5), ne fusionnent jamais.
 
 `POST /api/clients/[id]/merge` — `[id]` = B (la fiche qui disparaît),
 corps `{ targetId: A, mode: "preview" | "commit" }`.
@@ -48,11 +52,25 @@ Ce qui passe de B à A, dans une seule transaction :
   complétés par ceux de B ; rien n'est écrasé.
 
 B est archivé avec `mergedIntoId = A` — jamais supprimé. Journal :
-`CLIENT_MERGED` sur A et sur B, avec les compteurs. L'aperçu renvoie les
-mêmes compteurs sans rien écrire, et les avertissements (champs de B
-ignorés parce que A les a déjà, ICE de B vide…).
+`CLIENT_MERGED` sur A et sur B, avec les compteurs et le rôle de qui a
+fusionné (`role`, depuis le 16/10). L'aperçu renvoie les mêmes compteurs
+sans rien écrire, et les avertissements (champs de B ignorés parce que A
+les a déjà, ICE de B vide…), dont :
+- les factures de B émises avant le 10/10 sans client figé
+  (`Invoice.clientSnapshot` vide) imprimeront le nom de A
+  (`unfrozenInvoicesWarning`, compteur `invoicesUnfrozen`) ;
+- celles de A émises avant le 10/10 sans client figé imprimeront aussi
+  les champs que B complète sur A (`filledFieldsInvoicesWarning`,
+  compteur `invoicesUnfrozenKept`) ;
+- les comptes du portail de B ne sont **pas** déplacés (les comptes
+  portail sont à l'administrateur, `PORTAIL.md` §1 — les rattacher à A
+  leur ouvrirait les rapports de A) : ils n'ouvrent plus le portail, et
+  l'aperçu le dit (`portalAccountsWarning`, compteur `portalAccounts`).
 
 ## 3. Rattacher B comme site de A (« Rattacher comme site de… », ADMIN)
+
+Reste à l'administrateur seul (`ATTACH_ROLES`) jusqu'à la réponse au point
+2.5 de la relance du 18/10.
 
 `POST /api/clients/[id]/attach-as-site` — `[id]` = B, corps
 `{ parentId: A, siteName?: string, existingSiteId?: string, mode }`.
@@ -94,15 +112,30 @@ sites du 07/10 (mêmes règles de fusion).
   « Lier un client facturé »). Fiche de F : « Client facturé de P », ses
   sites, « Retirer le lien ». Gestion des sites : « Facturé à » par site.
 
-## 5. Quasi-doublon à la création (GESTIONNAIRE, ADMIN)
+## 5. Quasi-doublon à la création (GESTIONNAIRE, ADMIN ; RECEPTIONNISTE et PRELEVEUR depuis le 16/10)
+
+Depuis le 16/10 (Q116, `RETOUR-LABO-16-10.md` E1–E3), la réception et le
+préleveur créent un client (« Nouveau client » au dépôt et à la visite,
+`QuickClientDialog`) — **création seule** : jamais la fiche (`PATCH`), la
+fusion ni le rattachement. Seul le nom est obligatoire ; les champs
+e-mail (`email`, `emails`) sont ignorés pour eux, et le client est marqué
+« À compléter » (`Client.toComplete`) pour le gestionnaire commercial.
 
 `POST /api/clients` (et le renommage par `PATCH`) : le nom exact déjà pris
-reste refusé ; un client **proche** (même nom sans forme juridique,
+reste refusé — 409 `{ error, exactName: true }` avec, selon le cas,
+`existing` (le client vivant de ce nom) ou `mergedInto` (le client vivant
+dans lequel une fiche archivée de ce nom a été fusionnée ou rattachée) et
+`siteId` (son site, quand il se reconnaît) — N1, `exactNameRefusal` dans
+`src/lib/quick-client.ts` ; un client **proche** (même nom sans forme juridique,
 accents ni ponctuation ; même ICE ; une à trois fautes de frappe selon la
 longueur, `src/lib/similar.ts`) renvoie 409
 `{ error, similar: [{ id, name, reason }] }` tant que le corps n'a pas
-`confirmDuplicate: true`. Le formulaire liste les fiches proches avec un
-lien et une case « Ce n'est pas le même client ». `GET
+`confirmDuplicate: true`. Le formulaire du gestionnaire liste les fiches
+proches avec un lien et une case « Ce n'est pas le même client ». Le
+dialogue de la réception et du préleveur offre « Utiliser ce client »
+(jamais de lien vers la base clients, qui leur est fermée), la même case,
+et leur message ajoute la sortie des homonymes (`nearDuplicateMessage`,
+`NAMESAKE_HINT` : ajouter la ville ou le téléphone au nom). `GET
 /api/clients/similar?name=&ice=` donne la même liste pendant la saisie.
 
 ## 6. Fiche d'un client archivé

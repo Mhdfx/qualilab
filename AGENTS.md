@@ -11,7 +11,8 @@
 **Qualilab International — LIMS.** A fullstack web app for a Moroccan analysis
 laboratory (agri-food 🥘, water 💧, workplace hygiene 🧫). It digitizes the full
 sample lifecycle: field collection → lab reception → analysis → quality
-validation → official PDF report → automatic email to client → invoicing.
+validation → official PDF report → sent to the client on « Valider et
+envoyer » or « Envoyer au client » (never automatic since 16/10) → invoicing.
 
 - **Scale:** 1–10 concurrent users. Priorities: **reliability, traceability,
   simplicity** — not scale.
@@ -108,6 +109,9 @@ blind grepping.
    Prisma `$transaction`, counters locked inside it (`src/lib/counters.ts`).
 5. **Four verbs only** after reception: Corriger la fiche, Renvoyer au
    technicien, Annuler, Amender — each with a reason and `logAudit()`.
+   « Corriger la fiche » has an analyses-only form, « Corriger les
+   analyses », for the responsable des paramètres once the bench has
+   started (16/10, Q128 — `correctionRights` in `src/lib/sample-verbs.ts`).
    « Prendre en charge » / « Libérer » at the bench are not correction
    verbs: journalled (`SAMPLE_TAKEN` / `SAMPLE_UNTAKEN`), no reason
    (`PROGRAMME.md` §10).

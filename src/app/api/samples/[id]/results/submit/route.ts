@@ -9,6 +9,7 @@ import { TAKE_MESSAGES, canEnterParameter } from "@/lib/bench-access";
 import { lockTakeState } from "@/lib/bench-take-server";
 import { awaitsManualConformity } from "@/lib/bench-reading";
 import { effectiveFactor } from "@/lib/dilution";
+import { isNotDoneText } from "@/lib/result-value";
 
 /**
  * Submits the completed sheet to quality validation:
@@ -24,6 +25,8 @@ import { effectiveFactor } from "@/lib/dilution";
  * conforme » (« Présence », a « > x » below the limit…) stays too until the
  * choice is stored: the screen keeps « Soumettre » closed, and this route
  * checks it again with the screen's own rule (`awaitsManualConformity`).
+ * A « NE » / « non effectué » saved before the save refused it (16/10, Q91)
+ * is no result either: the analysis is withdrawn from the programme.
  *
  * Only a sample somebody took leaves the bench (PROGRAMME.md §10): its
  * holder submits it — the sheet saves first, and a first typed result takes
@@ -115,6 +118,7 @@ export async function POST(
       const result = byParameter.get(parameter.id);
       if (
         !result?.value ||
+        isNotDoneText(result.rawValue ?? result.value) ||
         result.workStatus === "EN_COURS" ||
         result.interpretation === "INCOMPLET" ||
         (perUnit && result.units.length < locked.unitCount) ||

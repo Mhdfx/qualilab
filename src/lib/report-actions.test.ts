@@ -6,11 +6,14 @@ import {
   CONCLUSION_MAX_LENGTH,
   REPORT_READ_ROLES,
   RESEND_REPORT_ROLES,
+  approvalDispatch,
   canEditConclusion,
   canReadReports,
   canResendReport,
   readConclusionEdit,
+  reportVersionSent,
   resendOutcome,
+  validationBody,
 } from "./report-actions";
 
 /**
@@ -67,6 +70,120 @@ describe("« Renvoyer au client »", () => {
     expect(calls).toHaveLength(1);
     expect([...calls[0]].sort()).toEqual([...RESEND_REPORT_ROLES].sort());
     expect(calls[0]).not.toContain("COMPTABLE");
+  });
+});
+
+describe("approvalDispatch — no automatic send (16/10, Q92)", () => {
+  it("« Valider »: without `send`, or `send: false`, the report stays at the laboratory", () => {
+    for (const body of [{ action: "approve" }, { action: "approve", send: false }, {}, null, undefined]) {
+      expect(approvalDispatch(body), JSON.stringify(body)).toEqual({ ok: true, sendReport: false, sendAlerts: true });
+    }
+  });
+
+  it("« Valider et envoyer »: `send: true` sends the report", () => {
+    expect(approvalDispatch({ action: "approve", send: true })).toEqual({ ok: true, sendReport: true, sendAlerts: true });
+  });
+
+  it("runs the contamination alerts whatever `send` says (they never wait for the report)", () => {
+    for (const send of [true, false, undefined]) {
+      const plan = approvalDispatch({ send });
+      expect(plan.ok && plan.sendAlerts, String(send)).toBe(true);
+    }
+  });
+
+  it("refuses anything but a boolean rather than guessing (400)", () => {
+    for (const send of ["true", "false", 1, 0, null, {}, []]) {
+      const plan = approvalDispatch({ action: "approve", send });
+      expect(plan.ok, JSON.stringify(send)).toBe(false);
+      if (!plan.ok) expect(plan.error).toMatch(/send/);
+    }
+  });
+
+  describe("POST /api/samples/[id]/validation, action « approve »", () => {
+    const route = source("../app/api/samples/[id]/validation/route.ts");
+    const approve = route.slice(route.indexOf('if (action === "approve")'), route.indexOf('if (action === "reject")'));
+
+    it("reads `send` through approvalDispatch, before the approval is written", () => {
+      expect(approve).toMatch(/const plan = approvalDispatch\(body\)/);
+      expect(approve.indexOf("approvalDispatch(body)")).toBeLessThan(approve.indexOf("prisma.sample.updateMany"));
+    });
+
+    it("sends the report only inside `if (plan.sendReport)`, the alerts outside it", () => {
+      const gate = approve.indexOf("if (plan.sendReport) {");
+      expect(gate).toBeGreaterThan(0);
+      // The gated block: up to its closing brace.
+      let depth = 0;
+      let end = approve.indexOf("{", gate);
+      for (; end < approve.length; end += 1) {
+        if (approve[end] === "{") depth += 1;
+        if (approve[end] === "}" && --depth === 0) break;
+      }
+      const gated = approve.slice(gate, end + 1);
+      expect(gated).toMatch(/sendReport\(sample\.id, session\.id\)/);
+      expect(gated).not.toMatch(/sendContaminationAlerts/);
+      expect([...approve.matchAll(/\bsendReport\(/g)]).toHaveLength(1);
+      expect(approve.slice(end)).toMatch(/sendContaminationAlerts\(sample\.id, session\.id\)/);
+    });
+
+    it("journals which of the two buttons was used", () => {
+      expect(approve).toMatch(/send: plan\.sendReport/);
+    });
+  });
+});
+
+describe("validationBody — what the validation panel posts (16/10, Q92)", () => {
+  it("« Valider et envoyer » carries send: true, « Valider » send: false — read by approvalDispatch as such", () => {
+    const withSend = validationBody("approve", "  ", "reg-1", true);
+    expect(withSend).toEqual({ action: "approve", reason: "", regulationId: "reg-1", send: true });
+    expect(approvalDispatch(withSend)).toEqual({ ok: true, sendReport: true, sendAlerts: true });
+    const without = validationBody("approve", "", "", false);
+    expect(without).toEqual({ action: "approve", reason: "", regulationId: undefined, send: false });
+    expect(approvalDispatch(without)).toEqual({ ok: true, sendReport: false, sendAlerts: true });
+  });
+
+  it("never carries `send` on a technical validation or a send-back", () => {
+    expect(validationBody("validate", "", "", true)).not.toHaveProperty("send");
+    expect(validationBody("reject", "  refaire  ", "", true)).toEqual({ action: "reject", reason: "refaire", regulationId: undefined });
+  });
+
+  it("is what the panel posts, and « Valider et envoyer » asks for the send", () => {
+    const panel = source("../components/validation/ValidationPanel.tsx");
+    expect(panel).toMatch(/body: JSON\.stringify\(validationBody\(action, reason, regulationId, withSend\)\)/);
+    const button = panel.slice(panel.indexOf('send("approve", true)'));
+    expect(panel.indexOf('send("approve", true)')).toBeGreaterThan(0);
+    expect(button.slice(0, button.indexOf("</SecondaryButton>"))).toMatch(/Valider et envoyer/);
+  });
+});
+
+describe("reportVersionSent — « Envoyer » or « Renvoyer au client »", () => {
+  const issued = new Date("2026-10-19T09:00:00.000Z");
+  const before = new Date("2026-10-12T15:00:00.000Z");
+  const after = new Date("2026-10-19T09:05:00.000Z");
+
+  it("an original report: sent once it has a send date", () => {
+    expect(reportVersionSent({ sentAt: null, amendedAt: null })).toBe(false);
+    expect(reportVersionSent({ sentAt: after, amendedAt: null })).toBe(true);
+  });
+
+  it("an amended « -A1 » never sent reads « Envoyer », even though the original was sent", () => {
+    expect(reportVersionSent({ sentAt: before, amendedAt: issued })).toBe(false);
+  });
+
+  it("an amended version sent after its issue reads « Renvoyer »", () => {
+    expect(reportVersionSent({ sentAt: after, amendedAt: issued })).toBe(true);
+  });
+
+  it("an amended version with no send at all reads « Envoyer »", () => {
+    expect(reportVersionSent({ sentAt: null, amendedAt: issued })).toBe(false);
+  });
+
+  it("is what every page offering the send reads", () => {
+    for (const page of ["../app/validation/[id]/page.tsx", "../app/recherche/page.tsx", "../app/commercial/[id]/page.tsx"]) {
+      const text = source(page);
+      expect(text, page).toMatch(/reportVersionSent\(/);
+      expect(text, page).toMatch(/amendedAt: true/);
+      expect(text, page).not.toMatch(/sent=\{[^}]*sentAt !== null\}/);
+    }
   });
 });
 

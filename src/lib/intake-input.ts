@@ -296,8 +296,28 @@ function decideKindChoice<T extends string>(
   return { ok: true, value: raw as T };
 }
 
+/** The request's body as a record: anything else reads as an empty one. */
+function asInput(raw: unknown): Record<string, unknown> {
+  return (typeof raw === "object" && raw !== null && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+}
+
+/**
+ * Whether the correction names a field — itself, or what decides it: the
+ * unit follows the quantity it qualifies, the area and its « Autre » text
+ * replace each other, the plate's duration follows the method.
+ */
+function mentionedIn(input: Record<string, unknown>, key: keyof IntakeFields): boolean {
+  return (
+    input[key] !== undefined ||
+    (key === "quantityUnit" && input.quantity !== undefined) ||
+    ((key === "surfaceAreaCm2" || key === "surfaceAreaNote") &&
+      (input.surfaceAreaCm2 !== undefined || input.surfaceAreaNote !== undefined)) ||
+    (key === "airExposureMin" && input.airMethod !== undefined)
+  );
+}
+
 export function validateIntake(raw: unknown, current: IntakeCurrent): IntakeValidation {
-  const input = (typeof raw === "object" && raw !== null && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+  const input = asInput(raw);
   const reason = typeof input.reason === "string" ? input.reason.trim() : "";
   if (!reason) return { ok: false, error: "Indiquez le motif de la correction." };
   if (reason.length > 2000) return { ok: false, error: "Le motif est trop long (2000 caractères maximum)." };
@@ -413,20 +433,11 @@ export function validateIntake(raw: unknown, current: IntakeCurrent): IntakeVali
     productTypeId,
   };
 
-  // The unit follows the quantity it qualifies; the area and its « Autre »
-  // text replace each other; the plate's duration follows the method.
-  const mentioned = (key: keyof IntakeFields) =>
-    input[key] !== undefined ||
-    (key === "quantityUnit" && input.quantity !== undefined) ||
-    ((key === "surfaceAreaCm2" || key === "surfaceAreaNote") &&
-      (input.surfaceAreaCm2 !== undefined || input.surfaceAreaNote !== undefined)) ||
-    (key === "airExposureMin" && input.airMethod !== undefined);
-
   const changes: Partial<IntakeFields> = {};
   for (const key of FIELDS) {
     if (same(current[key], next[key])) continue;
     // A rule of the line kind never empties a stored value nobody touched.
-    if (next[key] === null && !mentioned(key)) continue;
+    if (next[key] === null && !mentionedIn(input, key)) continue;
     (changes as Record<string, unknown>)[key] = next[key];
   }
 
@@ -435,4 +446,85 @@ export function validateIntake(raw: unknown, current: IntakeCurrent): IntakeVali
   }
 
   return { ok: true, value: { changes, parameterIds, reason } };
+}
+
+// ---- Who changes what (16/10, Q128 — F8) -----------------------------------
+
+/**
+ * The fields of the fiche that decide its analyses, with the list itself
+ * (`parameterIds`): the product type, whose criteria judge the readings, and
+ * the number of units read. Everything else is the identification.
+ */
+export const ANALYSES_FIELDS = ["productTypeId", "unitCount"] as const satisfies readonly (keyof IntakeFields)[];
+
+function isAnalysesField(key: keyof IntakeFields): boolean {
+  return (ANALYSES_FIELDS as readonly string[]).includes(key);
+}
+
+export type CorrectionTouches = {
+  /** The list of analyses, the product type or the number of units changes. */
+  analyses: boolean;
+  /** An identification field the request names changes. */
+  identification: boolean;
+};
+
+/**
+ * Which halves of the fiche a checked correction changes, for
+ * `correctionRefusal` (sample-verbs.ts). An identification field counts
+ * only when the request names it: a stored value the protocol's rules merely
+ * tidy on the way (a field nobody sent) is not this person's change.
+ */
+export function correctionTouches(
+  raw: unknown,
+  value: { changes: Partial<IntakeFields>; parameterIds: string[] | null }
+): CorrectionTouches {
+  const input = asInput(raw);
+  const keys = Object.keys(value.changes) as (keyof IntakeFields)[];
+  return {
+    analyses: value.parameterIds !== null || keys.some(isAnalysesField),
+    identification: keys.some((key) => !isAnalysesField(key) && mentionedIn(input, key)),
+  };
+}
+
+/**
+ * The changes a person without the identification right may write — the
+ * responsable des paramètres: the analyses' fields only. Whatever else
+ * `validateIntake` would tidy on an old row (a field nobody sent, since
+ * `correctionRefusal` refused any field sent) stays as it was.
+ */
+export function analysesChangesOnly(changes: Partial<IntakeFields>): Partial<IntakeFields> {
+  return Object.fromEntries(
+    Object.entries(changes).filter(([key]) => isAnalysesField(key as keyof IntakeFields))
+  ) as Partial<IntakeFields>;
+}
+
+// ---- What a correction does to the results (16/10, Q91 — C5) ---------------
+
+/**
+ * Which results a correction deletes.
+ * - `none`: the analyses and their criteria are unchanged — every reading stays;
+ * - `removed`: analyses withdrawn and nothing else — only their readings go,
+ *   the others stay and so does the sample's step (no return to the bench);
+ * - `all`: an analysis added, or the product type or the number of units
+ *   changed — the criteria the readings were judged against change, so they
+ *   all go and the bench starts again (CRITERES.md §6).
+ */
+export type ResultsReset =
+  | { kind: "none" }
+  | { kind: "removed"; parameterIds: string[] }
+  | { kind: "all" };
+
+/**
+ * « Une analyse non faite se retire du programme » (16/10, Q91): a
+ * correction that only withdraws analyses deletes their results, never a
+ * colleague's readings of the analyses kept. `before` is the sample's list
+ * as it stands (read under the row lock), `after` the corrected list, or
+ * null when the correction leaves it alone.
+ */
+export function resultsToReset(before: readonly string[], after: readonly string[] | null, criteriaChanged: boolean): ResultsReset {
+  if (criteriaChanged) return { kind: "all" };
+  if (after === null) return { kind: "none" };
+  if (after.some((id) => !before.includes(id))) return { kind: "all" };
+  const removed = before.filter((id) => !after.includes(id));
+  return removed.length > 0 ? { kind: "removed", parameterIds: removed } : { kind: "none" };
 }

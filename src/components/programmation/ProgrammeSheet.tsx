@@ -23,7 +23,6 @@ import {
 import type { ProgrammePriority } from "@/generated/prisma/enums";
 import {
   ANALYSIS_FAMILY_LABELS,
-  CANCEL_REASON_LABELS,
   PROGRAMME_PRIORITY_LABELS,
   formatCurrency,
   formatDateTime,
@@ -39,6 +38,7 @@ import {
 } from "@/lib/programme-input";
 import type { ReceptionThresholds } from "@/lib/reception-rules";
 import type { Role } from "@/lib/roles";
+import { verbsFor } from "@/lib/sample-verbs";
 import { MAX_UNITS } from "@/lib/series";
 import { matchesQuery } from "@/lib/similar";
 import { Card } from "@/components/ui/Card";
@@ -64,6 +64,9 @@ import {
   natureChangeNotice,
   natureChoices,
   profileApplied,
+  programmeReadOnlyReason,
+  programmeVerbsLead,
+  programmeVerbsNote,
   settingOf,
   toRequestBody,
   toggleParameter,
@@ -86,7 +89,9 @@ import type {
  * The programme sheet (PROGRAMME.md §4): the seven sections the responsable
  * des paramètres fills before the bench, a draft that keeps the sample
  * received, and the confirmation that moves it to PROGRAMME. Once the bench
- * started the sheet is read-only — « Corriger la fiche » takes over.
+ * started the sheet is read-only — the responsable des paramètres changes
+ * the analyses through « Corriger les analyses », with a reason (16/10,
+ * Q128), and the identification is the reception's or the validation's.
  *
  * RETOUR-LABO-06-10.md §5 (V3, Q49 by default): the fine « Nature
  * d'analyse » is chosen here, within the sample's family. Choosing one
@@ -354,19 +359,14 @@ export function ProgrammeSheet({
     }
   }
 
-  const readOnlyReason = (() => {
-    if (!readOnly) return null;
-    if (saved.status === "PRELEVE") {
-      return "Cet échantillon n'est pas encore réceptionné : le programme se décide après la réception.";
-    }
-    if (saved.status === "ANNULE") {
-      return `Échantillon annulé${sample.cancelReason ? ` (${CANCEL_REASON_LABELS[sample.cancelReason]})` : ""} : seul un administrateur peut le réactiver.`;
-    }
-    if (saved.analysisBlocked) {
-      return "Échantillon bloqué en réception : il doit être libéré depuis « Bloqués » de la réception avant la programmation.";
-    }
-    return "Fiche en lecture seule : la paillasse a commencé. Les changements passent désormais par « Corriger la fiche », avec un motif.";
-  })();
+  const readOnlyReason = programmeReadOnlyReason(
+    { editable: saved.editable, status: saved.status, analysisBlocked: saved.analysisBlocked, cancelReason: sample.cancelReason },
+    role
+  );
+  // What is not this person's among the corrections (16/10, Q128).
+  const verbsNote = programmeVerbsNote(role, saved.status);
+  // The verbs `SampleVerbs` renders below, from the same rule.
+  const verbsLead = verbSample ? programmeVerbsLead(verbsFor(verbSample, role)) : "";
 
   return (
     <div className="space-y-5">
@@ -883,17 +883,15 @@ export function ProgrammeSheet({
         />
         <Checklist rows={checks} />
         <p className="mt-3 text-xs text-slate-500">
-          La réception a déjà accepté cet échantillon : ces rappels n&apos;empêchent pas la confirmation. Une identification à corriger ou un échantillon à annuler passe par les verbes ci-dessous.
+          La réception a déjà accepté cet échantillon : ces rappels n&apos;empêchent pas la confirmation.
+          {verbsLead ? ` ${verbsLead}` : ""}
         </p>
-        <div className="mt-3">
-          {verbSample ? (
-            <SampleVerbs role={role} sample={verbSample} onChanged={reload} />
-          ) : (
-            <p className="text-xs text-slate-500">
-              La correction de la fiche (désignation, quantité, lot…) et l&apos;annulation relèvent de la réception ou de l&apos;administrateur.
-            </p>
-          )}
-        </div>
+        {(verbSample || verbsNote) && (
+          <div className="mt-3 space-y-2">
+            {verbSample && <SampleVerbs role={role} sample={verbSample} onChanged={reload} />}
+            {verbsNote && <p className="text-xs text-slate-500">{verbsNote}</p>}
+          </div>
+        )}
       </Card>
 
       {/* 7 — Facturation */}

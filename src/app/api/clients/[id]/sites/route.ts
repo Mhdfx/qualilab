@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { validateSite } from "@/lib/site-input";
+import { siegeSiteRefusal, validateSite } from "@/lib/site-input";
 import { createdSiteActive } from "@/lib/site-creation";
 
 const SITE_SELECT = {
@@ -58,6 +58,10 @@ export async function POST(
 
   const checked = validateSite(body);
   if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: 400 });
+  // The pickers' « Siège (adresse du client) » is no site — the rule of
+  // POST /api/clients too (`siegeSiteRefusal`).
+  const siege = siegeSiteRefusal(checked.value.name);
+  if (siege) return NextResponse.json({ error: siege }, { status: 400 });
   // The préleveur and the reception create the site they need: always
   // active, an `active: false` from them is ignored (src/lib/site-creation.ts).
   const value = { ...checked.value, active: createdSiteActive(session.role, checked.value.active) };

@@ -5,10 +5,14 @@ import {
   PRELEVEUR_VIEWS,
   PROGRAMMATION_QUEUE_STATUSES,
   PROGRAMMATION_VIEWS,
+  TO_SEND_PAGE_SIZE,
+  TO_SEND_STATUS,
   VALIDATION_VIEWS,
   benchViewWhere,
   inValidationView,
+  validationViewWhere,
   isLate,
+  isSendLate,
   programmationWhere,
   visitViewStart,
   visitsInView,
@@ -170,8 +174,10 @@ describe("benchViewWhere", () => {
 });
 
 describe("inValidationView", () => {
-  const toValidate = { validatedById: null };
-  const signed = { validatedById: "valid1" };
+  const toValidate = { status: "RESULTATS_SAISIS" as const, validatedById: null };
+  const signed = { status: "RESULTATS_SAISIS" as const, validatedById: "valid1" };
+  const approved = { status: "VALIDE" as const, validatedById: "valid1" };
+  const sent = { status: "RAPPORT_ENVOYE" as const, validatedById: "valid1" };
 
   it("splits the submitted samples on the technical signature", () => {
     expect(inValidationView("a_valider", toValidate)).toBe(true);
@@ -180,11 +186,52 @@ describe("inValidationView", () => {
     expect(inValidationView("attente_admin", toValidate)).toBe(false);
   });
 
-  it("keeps everything without a view, and the two views cover the queue exactly once", () => {
+  it("keeps the whole queue without a view, and the two views cover the queue exactly once", () => {
     for (const item of [toValidate, signed]) {
       expect(inValidationView(null, item)).toBe(true);
-      const hits = (["a_valider", "attente_admin"] as const).filter((view) => inValidationView(view, item));
+      const hits = (["a_valider", "attente_admin", "a_envoyer"] as const).filter((view) => inValidationView(view, item));
       expect(hits).toHaveLength(1);
+    }
+  });
+
+  it("« Validés — à envoyer » holds the approved samples whose report has not left (16/10, Q92)", () => {
+    expect(VALIDATION_VIEWS.a_envoyer).toBe("Validés — à envoyer");
+    expect(TO_SEND_STATUS).toBe("VALIDE");
+    expect(inValidationView("a_envoyer", approved)).toBe(true);
+    expect(inValidationView("a_envoyer", sent)).toBe(false);
+    expect(inValidationView("a_envoyer", signed)).toBe(false);
+    // Never counted twice: an approved sample is not in the queue.
+    expect(inValidationView(null, approved)).toBe(false);
+    expect(inValidationView("attente_admin", approved)).toBe(false);
+  });
+
+  it("flags a report validated, not sent, past its promised date — the validation desk's « En retard », never the programme's", () => {
+    const past = new Date(2026, 9, 8, 14, 29);
+    const future = new Date(2026, 9, 8, 14, 31);
+    expect(isSendLate({ dueAt: past, status: "VALIDE" }, clock.now)).toBe(true);
+    expect(isSendLate({ dueAt: future, status: "VALIDE" }, clock.now)).toBe(false);
+    expect(isSendLate({ dueAt: clock.now, status: "VALIDE" }, clock.now)).toBe(false);
+    expect(isSendLate({ dueAt: null, status: "VALIDE" }, clock.now)).toBe(false);
+    // Sent: nothing owed any more; before the approval, `isLate` decides.
+    expect(isSendLate({ dueAt: past, status: "RAPPORT_ENVOYE" }, clock.now)).toBe(false);
+    expect(isSendLate({ dueAt: past, status: "RESULTATS_SAISIS" }, clock.now)).toBe(false);
+    expect(isLate({ dueAt: past, status: "VALIDE" }, clock.now)).toBe(false);
+  });
+
+  it("shows « à envoyer » a page at a time; the rest opens in /recherche (statut VALIDE)", () => {
+    expect(TO_SEND_PAGE_SIZE).toBe(200);
+    expect(rechercheHref({ status: TO_SEND_STATUS })).toBe("/recherche?statut=VALIDE");
+  });
+
+  it("lists exactly what each view counts (`validationViewWhere`)", () => {
+    expect(validationViewWhere(null)).toEqual({ status: "RESULTATS_SAISIS" });
+    expect(validationViewWhere("a_valider")).toEqual({ status: "RESULTATS_SAISIS" });
+    expect(validationViewWhere("attente_admin")).toEqual({ status: "RESULTATS_SAISIS" });
+    expect(validationViewWhere("a_envoyer")).toEqual({ status: "VALIDE" });
+    for (const item of [toValidate, signed, approved, sent]) {
+      for (const view of [null, "a_valider", "attente_admin", "a_envoyer"] as const) {
+        if (inValidationView(view, item)) expect(validationViewWhere(view), `${view}`).toEqual({ status: item.status });
+      }
     }
   });
 });

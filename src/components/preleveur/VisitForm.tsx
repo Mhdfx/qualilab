@@ -105,6 +105,8 @@ const sampleAnchor = (lineNumber: number) => `visit-sample-${lineNumber}`;
 
 /** Every active client may be picked for a visit. */
 const NO_EXCLUDED_CLIENTS: string[] = [];
+/** « + Nouveau client » in the field (RETOUR-LABO-16-10.md E1): the dialog, full screen on a phone. */
+const CREATE_IN_THE_FIELD = { origin: "VISITE" } as const;
 
 /** Scrolls a field the préleveur must fix into view (after the next paint,
  * so that a card shown again by « Modifier » exists). */
@@ -516,6 +518,7 @@ export function VisitForm({ me }: { me: Preleveur }) {
                   excludeIds={NO_EXCLUDED_CLIENTS}
                   selected={client}
                   siteRows
+                  allowCreate={CREATE_IN_THE_FIELD}
                   onSelect={(next) => {
                     setClient(next);
                     // « Client — Site » chosen: that site; otherwise the siège.

@@ -35,6 +35,7 @@ import { ReceptionObservation } from "@/components/samples/ReceptionObservation"
 import { ValidationPanel } from "@/components/validation/ValidationPanel";
 import { ReportActions } from "@/components/validation/ReportActions";
 import { amendedNumber } from "@/lib/report-amendment";
+import { canResendReport, reportVersionSent } from "@/lib/report-actions";
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { sampleTimelineFor } from "@/lib/sample-timeline-server";
 import { SampleTimelineCard } from "@/components/validation/SampleTimelineCard";
@@ -118,7 +119,10 @@ export default async function ValidationDetailPage({
       technician: { select: { name: true } },
       assignedAt: true,
       validatedBy: { select: { name: true } },
-      report: { select: { id: true, number: true, version: true, sentTo: true, sentAt: true, amendmentPending: true, amendmentNote: true } },
+      // `amendedAt`: whether THIS version has left (`reportVersionSent`).
+      report: {
+        select: { id: true, number: true, version: true, sentTo: true, sentAt: true, amendedAt: true, amendmentPending: true, amendmentNote: true },
+      },
       results: {
         select: {
           id: true,
@@ -156,6 +160,10 @@ export default async function ValidationDetailPage({
           note: report.amendmentNote,
         }
       : null;
+  // Validated, not sent (16/10, Q92): the panel offers « Envoyer au client »;
+  // once this version has left, « Renvoyer » is on the report card.
+  const sent = report ? reportVersionSent(report) : false;
+  const sendable = report !== null && canResendReport(session.role, sample.status, report.amendmentPending);
 
   // « Réglementation en vigueur » (slice I): proposed from what is known,
   // confirmed or changed by the validator.
@@ -442,6 +450,7 @@ export default async function ValidationDetailPage({
           <ValidationPanel
             sampleId={sample.id}
             role={session.role}
+            status={sample.status}
             state={state}
             validatedBy={sample.validatedBy?.name ?? null}
             validatedAt={sample.validatedAt ? formatDateTime(sample.validatedAt) : null}
@@ -450,6 +459,8 @@ export default async function ValidationDetailPage({
             alertsAtTechnical={settings.alertAfterTechnicalValidation}
             reportNumber={printedNumber}
             sentTo={sample.report?.sentTo ?? null}
+            sent={sent}
+            sendable={sendable}
             emailLive={!!process.env.RESEND_API_KEY}
             validatedById={sample.validatedById}
             userId={session.id}
@@ -471,7 +482,8 @@ export default async function ValidationDetailPage({
                 status={sample.status}
                 number={printedNumber}
                 amendmentPending={report.amendmentPending}
-                sent={report.sentAt !== null}
+                sent={sent}
+                sendHere={false}
               />
             </Card>
           )}

@@ -7,10 +7,11 @@ import { resendOutcome, type ResendOutcome } from "@/lib/report-actions";
 import { ReportDialog } from "./ReportDialog";
 
 /**
- * « Renvoyer au client » (finalversion.md:116): asks first, then shows what
- * actually happened — the recipients, a send only simulated while no mail
- * provider is configured, and any contamination alert that rode along or
- * failed. The route decides again (role, status, amendment); this button is
+ * « Envoyer au client » — the first send of a validated report, never
+ * automatic since 16/10 (Q92) — and « Renvoyer au client »
+ * (finalversion.md:116): asks first, then shows what actually happened —
+ * the recipients, a send only simulated while no mail provider is
+ * configured, and any contamination alert that rode along or failed. The route decides again (role, status, amendment); this button is
  * only offered where `canResendReport` allows it.
  */
 export function ResendReportButton({
@@ -22,7 +23,7 @@ export function ResendReportButton({
   sampleId: string;
   /** The printed number of the version in force (« RAP-2026-00001-A1 »). */
   number: string;
-  /** False while the report has never left: the action reads « Envoyer ». */
+  /** False while this version has never left (`reportVersionSent`): the action reads « Envoyer ». */
   sent?: boolean;
   /** One small link, for a table row or a list line. */
   compact?: boolean;

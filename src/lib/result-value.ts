@@ -36,6 +36,32 @@ export function isUncountableText(raw: string | null | undefined): boolean {
   return UNCOUNTABLE.test(word);
 }
 
+/**
+ * « Non effectué » typed in place of a result, once folded by
+ * `isNotDoneText`: « NE », « N.E. », « non effectué(e) », « non fait(e) »,
+ * « non réalisé(e) », « pas fait(e) ».
+ */
+const NOT_DONE = /^(ne|non(effectue|fait|realise)e?s?|pasfaite?s?)$/;
+
+/**
+ * An analysis not done typed as its value (16/10, Q91: « nous ne faisons pas
+ * de rapport si l'analyse n'est pas faite »). Such a text would print on the
+ * report: the results route refuses it, and the analysis is withdrawn from
+ * the programme instead (`resultsToReset`). Case, accents, dots, hyphens and
+ * spaces do not matter.
+ */
+export function isNotDoneText(raw: string | null | undefined): boolean {
+  const word = (raw ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[.\s'’-]/g, "");
+  return NOT_DONE.test(word);
+}
+
+/** Why a « non effectué » is refused, and who withdraws the analysis instead. */
+export const NOT_DONE_MESSAGE = "Une analyse non faite se retire du programme (responsable des paramètres).";
+
 export type ParsedValue = {
   /**
    * Numeric reading, or null when the entry cannot be read as a number.

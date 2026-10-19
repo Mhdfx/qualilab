@@ -13,8 +13,11 @@ const REASONS: CancelReason[] = ["NON_EXPLOITABLE", "QUANTITE_INSUFFISANTE", "DO
 /**
  * « Annuler » — the terminal verb (WORKFLOW.md §8): the sample leaves every
  * queue, report and billable list, with a coded motif. The state machine
- * says who may cancel at which step; the sample keeps everything it had
- * (numbers, results) so an admin can bring it back.
+ * says who may cancel at which step — the réception before the programme,
+ * the validateur, the Direction and the administrator up to the results
+ * (16/10, Q13: `ANALYSIS_CANCEL_ROLES`); this guard only admits every role
+ * that cancels somewhere. The sample keeps everything it had (numbers,
+ * results) so an admin can bring it back.
  *
  * « Non reçu au laboratoire » (NON_RECU) only concerns a sample of a visit
  * still waiting for its reception (PRELEVE): once received, it was received.
@@ -28,7 +31,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireApiRole("RECEPTIONNISTE", "ADMIN");
+  const session = await requireApiRole("RECEPTIONNISTE", "VALIDATEUR", "DIRECTION", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;
@@ -46,7 +49,7 @@ export async function POST(
   if (!sample) return NextResponse.json({ error: "Échantillon introuvable." }, { status: 404 });
 
   // A sample reopened for amendment is back to RESULTATS_SAISIS, which the
-  // state machine lets an admin cancel — but its report was issued
+  // state machine lets the validation desks cancel — but its report was issued
   // (AMENDEMENT.md): it is corrected by amendment, never cancelled. The
   // status guard of the write below covers a concurrent reopen.
   const reportRefusal = cancelRefusalForReport(sample.report);
@@ -105,6 +108,8 @@ export async function POST(
         serialNumber: sample.serie.serialNumber,
         reason,
         note: note || null,
+        // Who cancels is no longer the admin alone (16/10, Q13).
+        role: session.role,
       },
     });
 

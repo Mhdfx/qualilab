@@ -1,5 +1,6 @@
 import type { SampleStatus } from "@/generated/prisma/enums";
 import { formatDate } from "./labels";
+import { REPORT_REOPEN_ROLES } from "./sample-status";
 
 /**
  * Amending an approved report (AMENDEMENT.md).
@@ -33,10 +34,23 @@ export function amendedNumber(base: string, version: number): string {
   return version === 0 ? root : `${root}-A${version}`;
 }
 
-/** Only the administrator reopens, and only an approved report. */
-export function canReopen(status: SampleStatus, role: string): boolean {
-  return role === "ADMIN" && REOPENABLE_STATUSES.includes(status);
+/**
+ * Whether this role reopens reports at all: the administrator, the Direction
+ * and the technical validator (16/10, Q13 — `REPORT_REOPEN_ROLES`, the roles
+ * of the state machine's way back and of `POST /api/samples/[id]/reopen`).
+ */
+export function reopensReports(role: string): boolean {
+  return (REPORT_REOPEN_ROLES as readonly string[]).includes(role);
 }
+
+/** Those roles only, and only on an approved report. */
+export function canReopen(status: SampleStatus, role: string): boolean {
+  return reopensReports(role) && REOPENABLE_STATUSES.includes(status);
+}
+
+/** Said to any other role (403). */
+export const REOPEN_ROLE_REFUSAL =
+  "Seuls l'administrateur, la Direction et le validateur technique peuvent rouvrir un rapport pour amendement.";
 
 /**
  * Why a report may not be reopened, in French for the 403/409 — or null when
@@ -48,7 +62,7 @@ export function reopenRefusal(input: {
   reason: unknown;
   amendmentPending?: boolean;
 }): string | null {
-  if (input.role !== "ADMIN") return "Seul l'administrateur peut rouvrir un rapport pour amendement.";
+  if (!reopensReports(input.role)) return REOPEN_ROLE_REFUSAL;
   if (input.amendmentPending) return "Un amendement de ce rapport est déjà en cours.";
   if (!REOPENABLE_STATUSES.includes(input.status)) {
     return "Seul un rapport validé peut être rouvert pour amendement.";
@@ -62,8 +76,9 @@ export function reopenRefusal(input: {
 /**
  * Why a sample may not be cancelled because of its report, or null. A sample
  * reopened for amendment is back to RESULTATS_SAISIS, where the state machine
- * lets an administrator cancel; but its report was issued (and often sent and
- * invoiced): cancelling would orphan it with an amendment pending forever.
+ * lets the validation desks and the administrator cancel; but its report was
+ * issued (and often sent and invoiced): cancelling would orphan it with an
+ * amendment pending forever.
  * An issued report is corrected by amendment, never by cancelling the sample.
  */
 export function cancelRefusalForReport(report: { amendmentPending: boolean } | null | undefined): string | null {

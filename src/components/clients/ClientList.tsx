@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, Building2, ArrowRight, Archive, Plus, Mail } from "lucide-react";
+import { Search, Building2, ArrowRight, Archive, Plus, Mail, ClipboardList } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { awaitsCompletion, clientCompletionGaps, completionHint } from "@/lib/client-completion";
 
 export type ClientRow = {
   id: string;
@@ -12,9 +13,12 @@ export type ClientRow = {
   email: string | null;
   phone: string | null;
   ice: string | null;
+  address: string | null;
   archived: boolean;
+  /** « À compléter » (RETOUR-LABO-16-10.md E3): created at the counter or in the field. */
+  toComplete: boolean;
   _count: { samples: number; invoices: number };
-  emails: { id: string }[];
+  emails: { id: string; email: string; siteId: string | null; forReports: boolean; forAlerts: boolean }[];
 };
 
 /**
@@ -23,15 +27,21 @@ export type ClientRow = {
  * Filtering happens in the browser because the list is small (a laboratory has
  * clients, not users) and instant feedback beats a round-trip. If it ever grows
  * past a few hundred, move the search to the API — it already accepts `?q=`.
+ *
+ * « À compléter (N) » keeps the active clients created at the counter or in
+ * the field that the gestionnaire has not completed yet; each says what it
+ * lacks (`clientCompletionGaps`).
  */
 export function ClientList({ clients }: { clients: ClientRow[] }) {
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  const [onlyToComplete, setOnlyToComplete] = useState(false);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return clients.filter((client) => {
       if (client.archived && !showArchived) return false;
+      if (onlyToComplete && !awaitsCompletion(client)) return false;
       if (!needle) return true;
       return (
         client.name.toLowerCase().includes(needle) ||
@@ -40,9 +50,11 @@ export function ClientList({ clients }: { clients: ClientRow[] }) {
         client.email?.toLowerCase().includes(needle)
       );
     });
-  }, [clients, query, showArchived]);
+  }, [clients, query, showArchived, onlyToComplete]);
 
   const archivedCount = clients.filter((client) => client.archived).length;
+  // An archived client is no longer anyone's to complete: the count, the filter and the badge agree.
+  const toCompleteCount = clients.filter(awaitsCompletion).length;
 
   return (
     <div>
@@ -61,6 +73,18 @@ export function ClientList({ clients }: { clients: ClientRow[] }) {
             className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
         </div>
+
+        {(toCompleteCount > 0 || onlyToComplete) && (
+          <label className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 text-sm font-medium text-amber-900">
+            <input
+              type="checkbox"
+              checked={onlyToComplete}
+              onChange={(event) => setOnlyToComplete(event.target.checked)}
+              className="h-4 w-4 rounded border-amber-400 text-brand focus:ring-brand"
+            />
+            À compléter ({toCompleteCount})
+          </label>
+        )}
 
         {archivedCount > 0 && (
           <label className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-600">
@@ -89,17 +113,21 @@ export function ClientList({ clients }: { clients: ClientRow[] }) {
             <Building2 className="h-6 w-6 text-slate-400" aria-hidden="true" />
           </div>
           <p className="mt-3 font-semibold text-slate-700">
-            {query ? "Aucun client ne correspond" : "Aucun client"}
+            {query || onlyToComplete ? "Aucun client ne correspond" : "Aucun client"}
           </p>
           <p className="mt-1 text-sm text-slate-500">
             {query
               ? "Essayez une autre recherche."
-              : "Créez votre premier client pour commencer."}
+              : onlyToComplete
+                ? "Tous les clients créés au comptoir ou sur le terrain ont été complétés."
+                : "Créez votre premier client pour commencer."}
           </p>
         </Card>
       ) : (
         <ul className="space-y-2.5">
-          {visible.map((client) => (
+          {visible.map((client) => {
+            const hint = awaitsCompletion(client) ? completionHint(clientCompletionGaps(client)) : null;
+            return (
             <li key={client.id}>
               <Link
                 href={`/commercial/${client.id}`}
@@ -115,7 +143,17 @@ export function ClientList({ clients }: { clients: ClientRow[] }) {
                           Archivé
                         </span>
                       )}
+                      {hint && (
+                        <span
+                          title={hint}
+                          className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200"
+                        >
+                          <ClipboardList className="h-3 w-3" aria-hidden="true" />
+                          À compléter
+                        </span>
+                      )}
                     </p>
+                    {hint && <p className="mt-0.5 text-xs text-amber-800">{hint}</p>}
 
                     <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
                       {client.contact && <span>{client.contact}</span>}
@@ -146,7 +184,8 @@ export function ClientList({ clients }: { clients: ClientRow[] }) {
                 </div>
               </Link>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </div>

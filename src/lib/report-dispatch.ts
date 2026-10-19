@@ -31,13 +31,16 @@ import type { Interpretation } from "@/generated/prisma/enums";
 import { retryOnDuplicate } from "./retry-unique";
 import { sampleDesignation } from "./document-html";
 import { REOPENED_SAMPLE_FIELDS, amendmentIssueRefusal, canTransition } from "./sample-status";
-import { REOPENED_STATUS, amendedNumber, reopenRefusal } from "./report-amendment";
+import { REOPENED_STATUS, amendedNumber, reopenRefusal, reopensReports } from "./report-amendment";
 import type { Role } from "./roles";
 import { SingleFlight } from "./single-flight";
 
 /**
- * What happens once a sample is approved: the client receives the report, and
- * — if a sensitive parameter is over its limit — a contamination alert.
+ * What follows an approval: the report is issued; it is sent to the client on
+ * « Valider et envoyer », or later on « Envoyer au client » — never
+ * automatically (16/10, Q92) — and, if a sensitive parameter is over its
+ * limit, the contamination alerts run at the approval either way (or at the
+ * technical validation, per the lab settings).
  *
  * Alerts are grouped by germ, as in the model the client sent: one message per
  * germ listing every product concerned, not one message per result.
@@ -581,7 +584,9 @@ export type ReopenOutcome =
  * RESULTATS_SAISIS with both signatures cleared, the current version is
  * frozen if it is not yet (version 0 of a report issued before versions
  * existed: « reconstituée »), and the report notes the amendment in progress
- * with its reason. One transaction, then the journal (REPORT_REOPENED).
+ * with its reason. One transaction, then the journal (REPORT_REOPENED, with
+ * the actor's role: the administrator, the Direction or the validateur
+ * reopen since 16/10, Q13).
  *
  * `alertsSentAt` is kept: the alerts already sent are not repeated for the
  * same results (`sendContaminationAlerts`).
@@ -614,7 +619,9 @@ export async function reopenForAmendment(
     reason,
     amendmentPending: report.amendmentPending,
   });
-  if (refusal) return { ok: false, status: actor.role === "ADMIN" ? 409 : 403, error: refusal };
+  // A role that never reopens is refused (403); one that does, meeting a
+  // state that forbids it now, gets the 409.
+  if (refusal) return { ok: false, status: reopensReports(actor.role) ? 409 : 403, error: refusal };
   const motif = (reason as string).trim();
   // Printed under « Rapport amendé », on a report that holds on one page.
   if (motif.length > AMENDMENT_NOTE_MAX) {
@@ -696,6 +703,7 @@ export async function reopenForAmendment(
       from: sample.status,
       to: REOPENED_STATUS,
       reconstructed: freeze !== null,
+      role: actor.role,
     },
   });
 
@@ -711,8 +719,10 @@ const reportSends = (globalForSends.reportSends ??= new SingleFlight());
 
 /**
  * Sends the report to the client and marks the sample `RAPPORT_ENVOYE`.
- * Also used for a manual resend, which is why it is idempotent-friendly.
- * An amended version is sent like a new report, subject « Rapport amendé … ».
+ * Never automatic since 16/10 (Q92): the approval's « Valider et envoyer »,
+ * then « Envoyer au client » / « Renvoyer au client » — which is why it is
+ * idempotent-friendly. An amended version is sent like a new report,
+ * subject « Rapport amendé … ».
  *
  * One send per sample at a time: a second « Renvoyer au client » clicked
  * while the first is under way (two people, two tabs) is refused instead of
@@ -760,7 +770,7 @@ async function sendReportNow(sampleId: string, actorId: string | null) {
     if (!approved) {
       return {
         ok: false as const,
-        error: "Un amendement de ce rapport est en cours : le rapport amendé partira à la validation administrative.",
+        error: "Un amendement de ce rapport est en cours : le rapport amendé sera à envoyer après la validation administrative.",
       };
     }
     // Self-healing: the approval went through but the amended version was

@@ -1,15 +1,26 @@
 import { NextResponse } from "next/server";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { checkMerge, mergeFill, type ClientFacts, type FillableField } from "@/lib/client-merge-rules";
+import {
+  checkMerge,
+  filledFieldsInvoicesWarning,
+  mergeFill,
+  portalAccountsWarning,
+  unfrozenInvoicesWarning,
+  type ClientFacts,
+  type FillableField,
+} from "@/lib/client-merge-rules";
 import { moveEmails, movePlaces, moveProducts, moveTypesAndProfiles } from "@/lib/client-transfer";
 import { normalizeSiteName } from "@/lib/sites-import";
+import { PORTAL_ROLE } from "@/lib/roles";
 
 /**
- * « Fusionner avec… » (CLIENTS-FUSION.md §2, ADMIN) — `[id]` = B, the
- * duplicate fiche that disappears into A (`targetId`), the fiche kept.
+ * « Fusionner avec… » (CLIENTS-FUSION.md §2; GESTIONNAIRE and ADMIN since the
+ * answer of 16/10, Q117 « Admin ou commercial » — RETOUR-LABO-16-10.md E4;
+ * the attachment as a site stays the admin's) — `[id]` = B, the duplicate
+ * fiche that disappears into A (`targetId`), the fiche kept.
  *
  *   POST { targetId, mode: "preview" } → what would move, nothing kept;
  *   POST { targetId, mode: "commit" }  → written in one transaction.
@@ -26,6 +37,14 @@ import { normalizeSiteName } from "@/lib/sites-import";
  * types and profiles; the links that targeted B (`Client.billedForId`,
  * `Site.billingClientId`); A's empty fields completed by B's. B is archived
  * with `mergedIntoId = A` — never deleted.
+ *
+ * B's invoices issued before 10/10 have no frozen client
+ * (`Invoice.clientSnapshot`, HANDOFF §9): they print the live client, so
+ * they will carry A's name — the preview warns (`unfrozenInvoicesWarning`);
+ * A's own ones print the fields B completes on A
+ * (`filledFieldsInvoicesWarning`). B's portal accounts are not moved (the
+ * administrator's decision, PORTAIL.md §1): they no longer open the portal,
+ * and the preview says so (`portalAccountsWarning`).
  */
 
 type Mode = "preview" | "commit";
@@ -60,6 +79,12 @@ type MergeCounts = {
   series: number;
   samples: number;
   invoices: number;
+  /** Of those, the issued ones without a frozen client (before 10/10): they will print A's name. */
+  invoicesUnfrozen: number;
+  /** A's own issued invoices without a frozen client, counted when B completes A's fields: they print them. */
+  invoicesUnfrozenKept: number;
+  /** B's portal accounts, left on B: they no longer open the portal. */
+  portalAccounts: number;
   /** B's sites moved to A as they are. */
   sites: number;
   /** B's sites merged into A's site of the same name (then deleted). */
@@ -143,6 +168,9 @@ async function merge(tx: Prisma.TransactionClient, sourceId: string, targetId: s
     series: 0,
     samples: 0,
     invoices: 0,
+    invoicesUnfrozen: 0,
+    invoicesUnfrozenKept: 0,
+    portalAccounts: 0,
     sites: 0,
     sitesMerged: 0,
     emails: 0,
@@ -207,6 +235,21 @@ async function merge(tx: Prisma.TransactionClient, sourceId: string, targetId: s
   // ---- the documents: séries, samples, invoices ---------------------------------------------
   counts.series = (await tx.serie.updateMany({ where: { clientId: sourceId }, data: { clientId: targetId } })).count;
   counts.samples = (await tx.sample.updateMany({ where: { clientId: sourceId }, data: { clientId: targetId } })).count;
+  // Counted before they move: the issued documents that print the live client.
+  counts.invoicesUnfrozen = await tx.invoice.count({
+    where: { clientId: sourceId, number: { not: null }, clientSnapshot: { equals: Prisma.AnyNull } },
+  });
+  // A's own ones print the fields B completes on A (the same decision as below).
+  const { fill } = mergeFill(source, target);
+  if (Object.keys(fill).length > 0) {
+    counts.invoicesUnfrozenKept = await tx.invoice.count({
+      where: { clientId: targetId, number: { not: null }, clientSnapshot: { equals: Prisma.AnyNull } },
+    });
+  }
+  // B's portal accounts stay on B (the administrator moves them): counted for the warning.
+  counts.portalAccounts = await tx.user.count({
+    where: { clientId: sourceId, role: PORTAL_ROLE, OR: [{ banned: false }, { banned: null }] },
+  });
   counts.invoices = (await tx.invoice.updateMany({ where: { clientId: sourceId }, data: { clientId: targetId } })).count;
 
   // ---- the memory (src/lib/client-transfer.ts) ------------------------------------------------
@@ -231,7 +274,6 @@ async function merge(tx: Prisma.TransactionClient, sourceId: string, targetId: s
   await tx.client.updateMany({ where: { mergedIntoId: sourceId, id: { not: targetId } }, data: { mergedIntoId: targetId } });
 
   // ---- A completed, B archived ------------------------------------------------------------------
-  const { fill } = mergeFill(source, target);
   const data: Prisma.ClientUncheckedUpdateInput = { ...fill };
   if (rule.adoptBilledForId) data.billedForId = rule.adoptBilledForId;
   if (Object.keys(data).length > 0) await tx.client.update({ where: { id: targetId }, data });
@@ -241,7 +283,12 @@ async function merge(tx: Prisma.TransactionClient, sourceId: string, targetId: s
   return {
     source: { id: source.id, name: source.name },
     target: { id: target.id, name: target.name },
-    warnings: rule.warnings,
+    warnings: [
+      ...rule.warnings,
+      ...unfrozenInvoicesWarning(counts.invoicesUnfrozen, source.name, target.name),
+      ...filledFieldsInvoicesWarning(counts.invoicesUnfrozenKept, Object.keys(fill) as FillableField[], source.name, target.name),
+      ...portalAccountsWarning(counts.portalAccounts, source.name, target.name),
+    ],
     counts,
     filled: Object.keys(fill) as FillableField[],
     adoptedBilledForId: rule.adoptBilledForId,
@@ -249,7 +296,7 @@ async function merge(tx: Prisma.TransactionClient, sourceId: string, targetId: s
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireApiRole("ADMIN");
+  const session = await requireApiRole("GESTIONNAIRE", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;
@@ -294,7 +341,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "La fusion a échoué : rien n'a été modifié." }, { status: 500 });
   }
 
-  const shared = { counts: outcome.counts, filled: outcome.filled, adoptedBilledForId: outcome.adoptedBilledForId };
+  // Who merged: the journal names the person (actorId) and, since 16/10, the role.
+  const shared = {
+    role: session.role,
+    counts: outcome.counts,
+    filled: outcome.filled,
+    adoptedBilledForId: outcome.adoptedBilledForId,
+  };
   await logAudit({
     actorId: session.id,
     action: "CLIENT_MERGED",

@@ -5,6 +5,7 @@ import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ClientForm } from "@/components/clients/ClientForm";
+import { clientCompletionGaps, completionHint } from "@/lib/client-completion";
 
 
 export const metadata = { title: "Modifier le client" };
@@ -48,6 +49,7 @@ export default async function ModifierClientPage({
           clientId={client.id}
           archived={client.archived}
           mergedInto={client.mergedInto}
+          toComplete={client.toComplete && !client.archived ? { hint: completionHint(clientCompletionGaps(client)) } : null}
           initial={{
             name: client.name,
             contact: client.contact ?? "",

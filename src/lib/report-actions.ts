@@ -3,10 +3,10 @@ import type { Role } from "./roles";
 
 /**
  * The actions on an issued report that are not part of the double
- * validation: the manual (re)send to the client (finalversion.md:116) and the
- * administrator's silent correction of the conclusion (HANDOFF §8, 18/08).
- * Pure rules — the screens hide what a role cannot do, the routes decide
- * again with the same constants.
+ * validation: the send to the client — never automatic since 16/10 (Q92) —
+ * and its resend (finalversion.md:116), and the administrator's silent
+ * correction of the conclusion (HANDOFF §8, 18/08). Pure rules — the screens
+ * hide what a role cannot do, the routes decide again with the same constants.
  */
 
 /**
@@ -33,12 +33,72 @@ export function canReadReports(role: string): boolean {
 export const SENDABLE_STATUSES: readonly SampleStatus[] = ["VALIDE", "RAPPORT_ENVOYE"];
 
 /**
- * Whether « Renvoyer au client » is offered. Never while an amendment is
- * pending: the version in force is being replaced, and the amended report
- * leaves on its own at the new administrative validation.
+ * Whether « Envoyer / Renvoyer au client » is offered. Never while an
+ * amendment is pending: the version in force is being replaced, and the
+ * amended report is issued at the new administrative validation — to be
+ * sent then.
  */
 export function canResendReport(role: string, status: SampleStatus, amendmentPending: boolean): boolean {
   return (RESEND_REPORT_ROLES as readonly string[]).includes(role) && SENDABLE_STATUSES.includes(status) && !amendmentPending;
+}
+
+/**
+ * Whether the version in force has reached the client — « Renvoyer » rather
+ * than « Envoyer au client »: a send recorded since this version was issued.
+ * An amended version keeps the record's `sentAt` of the version it replaced
+ * (`amendReportFor` does not clear it), so the date alone would read
+ * « Renvoyer » on a « -A1 » never sent. The original (`amendedAt` null) can
+ * only have been sent after it was issued.
+ */
+export function reportVersionSent(report: { sentAt: Date | null; amendedAt: Date | null }): boolean {
+  if (report.sentAt === null) return false;
+  return report.amendedAt === null || report.sentAt.getTime() > report.amendedAt.getTime();
+}
+
+/**
+ * What the administrative validation sends (16/10, Q92: « le rapport ne
+ * devra pas être envoyé automatiquement au client »). « Valider » issues the
+ * report and leaves the sample VALIDE — listed « Validés — à envoyer » —
+ * until someone clicks « Envoyer au client »; « Valider et envoyer » sends it
+ * at once. The contamination alerts do not follow the report: the approval
+ * always runs them. With `LabSettings.alertAfterTechnicalValidation` (the
+ * laboratory's choice of 29/09) they left at the technical validation and
+ * the call is a no-op — or the retry of a failed one; otherwise this is
+ * where they leave.
+ */
+export type ApprovalDispatch =
+  | { ok: true; sendReport: boolean; sendAlerts: true }
+  | { ok: false; error: string };
+
+/**
+ * Reads `send` of the approval body (`POST /api/samples/[id]/validation`,
+ * `action: "approve"`): absent is « Valider » (nothing leaves), `true` is
+ * « Valider et envoyer »; anything but a boolean is refused (400) rather
+ * than guessed.
+ */
+export function approvalDispatch(body: unknown): ApprovalDispatch {
+  const send = body && typeof body === "object" ? (body as { send?: unknown }).send : undefined;
+  if (send !== undefined && typeof send !== "boolean") {
+    return { ok: false, error: "Requête invalide : « send » vaut true ou false." };
+  }
+  return { ok: true, sendReport: send === true, sendAlerts: true };
+}
+
+/** The validation panel's four decisions, as `POST /api/samples/[id]/validation` reads them. */
+export type ValidationAction = "validate" | "approve" | "reject";
+
+/**
+ * The body the validation panel posts. `send` rides only on an approval —
+ * true for « Valider et envoyer », false for « Valider » — so that
+ * `approvalDispatch` sends the report exactly when that button was used.
+ */
+export function validationBody(action: ValidationAction, reason: string, regulationId: string, withSend: boolean) {
+  return {
+    action,
+    reason: reason.trim(),
+    regulationId: regulationId || undefined,
+    ...(action === "approve" ? { send: withSend } : {}),
+  };
 }
 
 /** The longest conclusion the administrator may type (printed on a one-page report). */

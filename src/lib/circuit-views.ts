@@ -115,19 +115,63 @@ export function benchViewWhere(view: BenchView | null, session: { id: string; ro
 
 // ─── /validation ────────────────────────────────────────────────────────────
 
-/** The views of the validation queue (samples whose results are submitted). */
+/**
+ * The views of /validation: the queue's two steps (samples whose results are
+ * submitted), and the approved samples whose report has not left yet —
+ * nothing is sent automatically since 16/10 (Q92), so someone sends them.
+ */
 export const VALIDATION_VIEWS = {
   a_valider: "À valider",
   attente_admin: "Validation administrative",
+  a_envoyer: "Validés — à envoyer",
 } as const;
 export type ValidationView = keyof typeof VALIDATION_VIEWS;
 
 /**
- * Is this submitted sample in the view? « Validation administrative » once
- * the technical validation is signed, « À valider » before; no view keeps
- * them all.
+ * « Validés — à envoyer »: approved (both signatures), the report not sent —
+ * a sent report moves the sample to RAPPORT_ENVOYE. An approved amendment
+ * comes back here until the amended report is sent.
  */
-export function inValidationView(view: ValidationView | null, item: { validatedById: string | null }): boolean {
+export const TO_SEND_STATUS = "VALIDE" as const satisfies SampleStatus;
+
+/**
+ * At most this many lines of « Validés — à envoyer » on the page (AGENTS
+ * rule 9): the longest waiting first; the tile counts them all and the rest
+ * open in /recherche (statut VALIDE).
+ */
+export const TO_SEND_PAGE_SIZE = 200;
+
+/**
+ * « En retard » on a line of « Validés — à envoyer »: the report validated,
+ * not sent, past the date promised to the client. Since 16/10 (Q92) nothing
+ * leaves on its own, so the circuit still owes it; it is the validation
+ * desk's to send, not the programme's or the bench's — `LATE_STATUSES`
+ * (their « En retard », the technicians' load) stays without VALIDE.
+ */
+export function isSendLate(line: { dueAt: Date | null; status: SampleStatus }, now: Date): boolean {
+  return line.status === TO_SEND_STATUS && line.dueAt !== null && line.dueAt.getTime() < now.getTime();
+}
+
+/**
+ * The samples a view lists: the queue (results submitted) for no view and
+ * its two steps, the approved samples for « à envoyer ».
+ */
+export function validationViewWhere(view: ValidationView | null): Prisma.SampleWhereInput {
+  return view === "a_envoyer" ? { status: TO_SEND_STATUS } : { status: "RESULTATS_SAISIS" };
+}
+
+/**
+ * Is this sample in the view — the same rule as `validationViewWhere`, for
+ * the loaded list? « Validation administrative » once the technical
+ * validation is signed, « À valider » before; no view keeps the whole queue;
+ * « à envoyer » holds the approved samples only.
+ */
+export function inValidationView(
+  view: ValidationView | null,
+  item: { status: SampleStatus; validatedById: string | null }
+): boolean {
+  if (view === "a_envoyer") return item.status === TO_SEND_STATUS;
+  if (item.status !== "RESULTATS_SAISIS") return false;
   if (view === null) return true;
   return view === "attente_admin" ? item.validatedById !== null : item.validatedById === null;
 }

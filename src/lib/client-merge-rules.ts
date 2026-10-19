@@ -7,6 +7,9 @@ import { normalIce } from "./client-identity";
  * warn about, then write.
  *
  *   checkMerge          « Fusionner avec… »: B (source) disappears into A;
+ *   unfrozenInvoicesWarning  B's invoices issued before 10/10 take A's name;
+ *   filledFieldsInvoicesWarning  A's own ones print the fields B fills;
+ *   portalAccountsWarning    B's portal accounts no longer open the portal;
  *   checkAttachAsSite   « Rattacher comme site de… »: B becomes a site of A;
  *   checkBilledFor      « client facturé de »: F receives the invoices of P;
  *   checkSiteBilling    « Facturé à » of one site.
@@ -169,6 +172,56 @@ export function checkMerge(source: ClientFacts, target: ClientFacts): MergeResul
     warnings.push(`${q(target.name)} devient client facturé du même client que ${q(source.name)}.`);
   }
   return { ok: true, warnings, adoptBilledForId };
+}
+
+/**
+ * The merge preview's warning about B's invoices issued before 10/10
+ * (RETOUR-LABO-16-10.md E4): they have no frozen client
+ * (`Invoice.clientSnapshot`, HANDOFF §9) and print the live one, so once
+ * moved to A they carry A's name. Empty when there is none — the owner's
+ * one-time backfill makes it so.
+ */
+export function unfrozenInvoicesWarning(count: number, sourceName: string, targetName: string): string[] {
+  if (!Number.isFinite(count) || count <= 0) return [];
+  const many = count > 1;
+  return [
+    `${plural(count, "facture émise", "factures émises")} avant le 10/10 ${many ? "changeront" : "changera"} de nom : sans instantané du client, ${many ? "elles imprimeront" : "elle imprimera"} ${q(targetName)} au lieu de ${q(sourceName)}.`,
+  ];
+}
+
+/**
+ * The merge preview's warning about A's own invoices issued before 10/10:
+ * without a frozen client they print the live one, so the fields B fills
+ * on A (`mergeFill`: contact, e-mail, phone, address, ICE) appear on them
+ * too. Empty when nothing is filled, or when every one is frozen.
+ */
+export function filledFieldsInvoicesWarning(
+  count: number,
+  filled: readonly FillableField[],
+  sourceName: string,
+  targetName: string
+): string[] {
+  if (!Number.isFinite(count) || count <= 0 || filled.length === 0) return [];
+  const many = count > 1;
+  return [
+    `${plural(count, "facture émise", "factures émises")} de ${q(targetName)} avant le 10/10 ${many ? "imprimeront" : "imprimera"} aussi les champs repris de ${q(sourceName)} (${fieldWords(filled)}) : sans instantané du client, ${many ? "elles impriment" : "elle imprime"} la fiche telle qu'elle est.`,
+  ];
+}
+
+/**
+ * The merge preview's warning about B's portal accounts (`User.clientId`,
+ * PORTAIL.md §1). The merge leaves them on B, archived: they no longer open
+ * the portal (`isClientClosed`), not even for their own reports, now on A.
+ * Moving them is the administrator's decision — portal accounts are his,
+ * and A's reports would open to them — so the gestionnaire is told, not
+ * the accounts moved. Empty when B has none.
+ */
+export function portalAccountsWarning(count: number, sourceName: string, targetName: string): string[] {
+  if (!Number.isFinite(count) || count <= 0) return [];
+  const many = count > 1;
+  return [
+    `${plural(count, "compte du portail client", "comptes du portail client")} de ${q(sourceName)} ${many ? "n'ouvriront" : "n'ouvrira"} plus le portail : l'administrateur ${many ? "les rattache" : "le rattache"} à ${q(targetName)} s'il y a lieu (Administration › Utilisateurs).`,
+  ];
 }
 
 /**

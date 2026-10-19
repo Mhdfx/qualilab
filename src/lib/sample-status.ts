@@ -39,6 +39,22 @@ export const ADMINISTRATIVE_VALIDATION_ROLES = ["DIRECTION", "ADMIN"] as const s
 /** How the validation screens name the signatory of step 2. */
 export const ADMINISTRATIVE_SIGNATORY_LABEL = "Direction";
 
+/**
+ * Who reopens an approved report for amendment (16/10, Q13): the
+ * administrator, the Direction and the technical validator. The motif, the
+ * double validation by two different people, the frozen versions and
+ * « annule et remplace » are unchanged (AMENDEMENT.md §2).
+ */
+export const REPORT_REOPEN_ROLES = ["VALIDATEUR", "DIRECTION", "ADMIN"] as const satisfies readonly Role[];
+
+/**
+ * Who cancels a sample already in the laboratory's work — programmed, at the
+ * bench or with its results entered (16/10, Q13: « ces personnes »). The
+ * réception keeps cancelling before the programme; only the administrator
+ * brings a cancelled sample back.
+ */
+export const ANALYSIS_CANCEL_ROLES = ["VALIDATEUR", "DIRECTION", "ADMIN"] as const satisfies readonly Role[];
+
 export function signsTechnically(role: Role): boolean {
   return (TECHNICAL_VALIDATION_ROLES as readonly Role[]).includes(role);
 }
@@ -81,25 +97,29 @@ const TRANSITIONS: Transition[] = [
     requiresReason: true,
   },
   // Phase 9 — « Annuler »: terminal, with a coded motif (the route checks
-  // it). The réception cancels before analysis, the admin at any point
-  // before approval; only an admin brings a cancelled sample back, to the
-  // step it had reached (received or not), with a written reason.
+  // it). The réception and the admin cancel before the programme, the
+  // validation desks (validateur, Direction) and the admin from the
+  // programme to the results (16/10, Q13); only an admin brings a cancelled
+  // sample back, to the step it had reached, with a written reason.
   { from: "PRELEVE", to: "ANNULE", roles: ["RECEPTIONNISTE", "ADMIN"] },
   { from: "RECU", to: "ANNULE", roles: ["RECEPTIONNISTE", "ADMIN"] },
-  // A programmed line is already the laboratory's work: only the admin
-  // cancels it (PROGRAMME.md §1), and brings it back to PROGRAMME.
-  { from: "PROGRAMME", to: "ANNULE", roles: ["ADMIN"] },
-  { from: "EN_ANALYSE", to: "ANNULE", roles: ["ADMIN"] },
-  { from: "RESULTATS_SAISIS", to: "ANNULE", roles: ["ADMIN"] },
+  // A programmed line is already the laboratory's work: the réception no
+  // longer cancels it (PROGRAMME.md §1); the administrator, the Direction
+  // and the validateur do, up to its results (16/10, Q13). Only the admin
+  // brings it back to PROGRAMME.
+  { from: "PROGRAMME", to: "ANNULE", roles: ANALYSIS_CANCEL_ROLES },
+  { from: "EN_ANALYSE", to: "ANNULE", roles: ANALYSIS_CANCEL_ROLES },
+  { from: "RESULTATS_SAISIS", to: "ANNULE", roles: ANALYSIS_CANCEL_ROLES },
   { from: "ANNULE", to: "PRELEVE", roles: ["ADMIN"], requiresReason: true },
   { from: "ANNULE", to: "RECU", roles: ["ADMIN"], requiresReason: true },
   { from: "ANNULE", to: "PROGRAMME", roles: ["ADMIN"], requiresReason: true },
   // AMENDEMENT.md §2.1 — « Rouvrir pour amendement »: an approved report
-  // goes back to the double validation. The administrator only, with the
-  // reason printed on the amended report; `/api/samples/[id]/reopen` clears
-  // both signatures (`REOPENED_SAMPLE_FIELDS`) and freezes the version.
-  { from: "VALIDE", to: "RESULTATS_SAISIS", roles: ["ADMIN"], requiresReason: true },
-  { from: "RAPPORT_ENVOYE", to: "RESULTATS_SAISIS", roles: ["ADMIN"], requiresReason: true },
+  // goes back to the double validation. The administrator, the Direction
+  // and the validateur (16/10, Q13), with the reason printed on the amended
+  // report; `/api/samples/[id]/reopen` clears both signatures
+  // (`REOPENED_SAMPLE_FIELDS`) and freezes the version.
+  { from: "VALIDE", to: "RESULTATS_SAISIS", roles: REPORT_REOPEN_ROLES, requiresReason: true },
+  { from: "RAPPORT_ENVOYE", to: "RESULTATS_SAISIS", roles: REPORT_REOPEN_ROLES, requiresReason: true },
 ];
 
 /**
@@ -300,11 +320,27 @@ export function canApprove(
   return canTransition(sample.status, "VALIDE", role);
 }
 
+/**
+ * Where a sample stands for the validation page. /recherche opens any sample
+ * there for the validation desks (16/10, Q13 — a sample at the bench is
+ * opened to be cancelled), so the panel signs nothing before the results are
+ * submitted, nor on a cancelled sample: « à valider » only from
+ * RESULTATS_SAISIS, « validé » once VALIDE or sent.
+ */
+export type ValidationPhase = "BEFORE_RESULTS" | "AT_VALIDATION" | "APPROVED" | "CANCELLED";
+
+export function validationPhase(status: SampleStatus): ValidationPhase {
+  if (status === "ANNULE") return "CANCELLED";
+  if (status === "RESULTATS_SAISIS") return "AT_VALIDATION";
+  if (status === "VALIDE" || status === "RAPPORT_ENVOYE") return "APPROVED";
+  return "BEFORE_RESULTS";
+}
+
 /** What the validation panel offers one signed-in person on one sample. */
 export type ValidationControls = {
   /** « Valider techniquement ». */
   validate: boolean;
-  /** « Valider administrativement ». */
+  /** « Valider » / « Valider et envoyer » (16/10, Q92). */
   approve: boolean;
   /** « Renvoyer au technicien ». */
   reject: boolean;

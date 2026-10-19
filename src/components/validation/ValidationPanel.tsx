@@ -12,19 +12,36 @@ import {
   FileDown,
   Send,
   PencilLine,
+  Info,
 } from "lucide-react";
+import type { SampleStatus } from "@/generated/prisma/enums";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import {
   ADMINISTRATIVE_SIGNATORY_LABEL,
   validationControls,
+  validationPhase,
   type ApprovalState,
+  type ValidationControls,
 } from "@/lib/sample-status";
 import { ROLE_LABELS, type Role } from "@/lib/roles";
+import { validationBody, type ValidationAction } from "@/lib/report-actions";
+import { ResendReportButton } from "./ResendReportButton";
+
+/** Nothing to sign: before the results are submitted, or on a cancelled sample. */
+const NO_CONTROLS: ValidationControls = {
+  validate: false,
+  approve: false,
+  reject: false,
+  approvalLockedToOther: false,
+  approvalNotMine: false,
+};
 
 type ValidationPanelProps = {
   sampleId: string;
   role: Role;
+  /** The sample's step: /recherche opens any sample here (16/10, Q13). */
+  status: SampleStatus;
   state: ApprovalState;
   validatedBy: string | null;
   validatedAt: string | null;
@@ -35,6 +52,10 @@ type ValidationPanelProps = {
   alertsAtTechnical: boolean;
   reportNumber: string | null;
   sentTo: string | null;
+  /** The version in force has reached the client (`reportVersionSent`). */
+  sent: boolean;
+  /** This person may send it (`canResendReport`): « Envoyer au client » here. */
+  sendable: boolean;
   /** False when no mail provider is configured yet — sends are recorded, not delivered. */
   emailLive: boolean;
   /** Who signed step 1 — the same person may not sign step 2. */
@@ -60,10 +81,15 @@ type ValidationPanelProps = {
  * Direction still has to approve, and the Direction can see who validated
  * technically. What is offered comes from `validationControls`, the rules
  * the route applies.
+ *
+ * Nothing leaves automatically (16/10, Q92): step 2 offers « Valider » —
+ * the report is issued, nothing is sent — and « Valider et envoyer »; a
+ * report validated but not sent is then sent from here, « Envoyer au client ».
  */
 export function ValidationPanel({
   sampleId,
   role,
+  status,
   state,
   validatedBy,
   validatedAt,
@@ -72,6 +98,8 @@ export function ValidationPanel({
   alertsAtTechnical,
   reportNumber,
   sentTo,
+  sent,
+  sendable,
   emailLive,
   validatedById,
   userId,
@@ -89,7 +117,8 @@ export function ValidationPanel({
   const [reason, setReason] = useState("");
   const [regulationId, setRegulationId] = useState(proposedRegulationId ?? "");
 
-  async function send(action: "validate" | "approve" | "reject") {
+  /** `withSend`: « Valider et envoyer » — the approval sends the report too. */
+  async function send(action: ValidationAction, withSend = false) {
     if (busy) return;
     if (action === "reject" && !reason.trim()) {
       setError("Un motif est obligatoire pour renvoyer l'échantillon.");
@@ -100,14 +129,14 @@ export function ValidationPanel({
       return;
     }
 
-    setBusy(action);
+    setBusy(withSend ? "approve-send" : action);
     setError("");
     setWarning("");
     try {
       const response = await fetch(`/api/samples/${sampleId}/validation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, reason: reason.trim(), regulationId: regulationId || undefined }),
+        body: JSON.stringify(validationBody(action, reason, regulationId, withSend)),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -154,7 +183,10 @@ export function ValidationPanel({
     }
   }
 
-  const controls = validationControls(state, role, { validatedById, userId });
+  // Opened from /recherche before its results, or cancelled: nothing to sign.
+  const phase = validationPhase(status);
+  const signable = phase === "AT_VALIDATION" || phase === "APPROVED";
+  const controls = signable ? validationControls(state, role, { validatedById, userId }) : NO_CONTROLS;
   const canValidate = controls.validate;
   const canApprove = controls.approve;
   const canReject = controls.reject;
@@ -174,7 +206,7 @@ export function ValidationPanel({
           {amendment.note && <p className="mt-1">Motif : {amendment.note}</p>}
           <p className="mt-1 text-xs text-rose-800">
             À la validation administrative, le rapport {amendment.nextNumber} annulera et remplacera le rapport{" "}
-            {amendment.currentNumber}, et sera envoyé au client.
+            {amendment.currentNumber} ; il sera à envoyer au client.
           </p>
         </div>
       )}
@@ -185,7 +217,7 @@ export function ValidationPanel({
           title="Validation technique"
           who={ROLE_LABELS.VALIDATEUR}
           done={state !== "AWAITING_TECHNICAL"}
-          current={state === "AWAITING_TECHNICAL"}
+          current={signable && state === "AWAITING_TECHNICAL"}
           detail={
             validatedBy && validatedAt
               ? `${validatedBy} · ${validatedAt}`
@@ -197,14 +229,23 @@ export function ValidationPanel({
           title="Validation administrative"
           who={ADMINISTRATIVE_SIGNATORY_LABEL}
           done={state === "APPROVED"}
-          current={state === "AWAITING_ADMIN"}
+          current={signable && state === "AWAITING_ADMIN"}
           detail={
             amendment && state !== "APPROVED"
-              ? `Émet le rapport amendé ${amendment.nextNumber} et l'envoie au client`
-              : "Déclenche le rapport et l'envoi au client"
+              ? `Émet le rapport amendé ${amendment.nextNumber} ; l'envoi au client se fait ensuite`
+              : "Émet le rapport ; l'envoi au client se fait ensuite"
           }
         />
       </ol>
+
+      {!signable && (
+        <p className="mt-4 flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+          {phase === "CANCELLED"
+            ? "Échantillon annulé : il n'y a rien à valider."
+            : "Les résultats ne sont pas encore soumis : la validation viendra après la paillasse."}
+        </p>
+      )}
 
       {(canValidate || canApprove) && (
         <div className="mt-4">
@@ -233,13 +274,13 @@ export function ValidationPanel({
         </div>
       )}
 
-      {!(canValidate || canApprove) && chosenRegulation && (
+      {signable && !(canValidate || canApprove) && chosenRegulation && (
         <p className="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
           Réglementation : <b className="font-medium text-slate-800">{chosenRegulation}</b>
         </p>
       )}
 
-      {nonConformes > 0 && state !== "APPROVED" && (
+      {signable && nonConformes > 0 && state !== "APPROVED" && (
         <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
           <b>{nonConformes} résultat{nonConformes > 1 ? "s" : ""} non conforme
           {nonConformes > 1 ? "s" : ""}.</b>{" "}
@@ -309,11 +350,18 @@ export function ValidationPanel({
             </span>
           </p>
 
-          {sentTo && (
-            <p className="mt-2 text-xs text-slate-500">
-              Dernier envoi à : {sentTo}
+          {reportNumber && !amendment && (sent ? (
+            sentTo && (
+              <p className="mt-2 text-xs text-slate-500">
+                Dernier envoi à : {sentTo}
+              </p>
+            )
+          ) : (
+            <p className="mt-2 flex items-start gap-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800 ring-1 ring-sky-200">
+              <Send className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>Rapport émis, pas encore envoyé au client.</span>
             </p>
-          )}
+          ))}
 
           {!emailLive && (
             <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
@@ -334,6 +382,14 @@ export function ValidationPanel({
                 <FileDown className="h-4 w-4" aria-hidden="true" />
                 Télécharger le rapport
               </a>
+            )}
+            {/* « Envoyer au client » (validated, not sent yet — 16/10, Q92),
+                then « Renvoyer au client »: one button, kept mounted across
+                the refresh that follows the first send, so its outcome
+                (recipients, simulated send, alerts) stays on screen. The
+                report card below does not offer it again (`sendHere={false}`). */}
+            {reportNumber && !amendment && sendable && (
+              <ResendReportButton sampleId={sampleId} number={reportNumber} sent={sent} />
             )}
             {/* The self-healing sends only: without a report the send
                 creates it, with an amendment still pending after the
@@ -372,15 +428,31 @@ export function ValidationPanel({
           )}
 
           {canApprove && (
-            <PrimaryButton
-              type="button"
-              onClick={() => send("approve")}
-              disabled={!!busy || rejecting}
-              className="w-full"
-            >
-              <Stamp className="h-4 w-4" aria-hidden="true" />
-              {busy === "approve" ? "Validation…" : "Valider administrativement"}
-            </PrimaryButton>
+            <div className="space-y-2">
+              {/* « Valider »: the report is issued, nothing leaves (16/10, Q92). */}
+              <PrimaryButton
+                type="button"
+                onClick={() => send("approve")}
+                disabled={!!busy || rejecting}
+                className="w-full"
+              >
+                <Stamp className="h-4 w-4" aria-hidden="true" />
+                {busy === "approve" ? "Validation…" : "Valider"}
+              </PrimaryButton>
+              <SecondaryButton
+                type="button"
+                onClick={() => send("approve", true)}
+                disabled={!!busy || rejecting}
+                className="w-full"
+              >
+                <Send className="h-4 w-4" aria-hidden="true" />
+                {busy === "approve-send" ? "Validation et envoi…" : "Valider et envoyer"}
+              </SecondaryButton>
+              <p className="text-xs text-slate-500">
+                « Valider » émet le rapport sans l&apos;envoyer : il attend dans « Validés — à envoyer ». « Valider et
+                envoyer » l&apos;envoie aussitôt au client.
+              </p>
+            </div>
           )}
 
           {controls.approvalLockedToOther && (

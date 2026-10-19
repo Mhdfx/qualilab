@@ -19,8 +19,9 @@ du premier amendement (noté « reconstituée »). `Report` gagne `version`
 
 ## 2. Amender un rapport
 
-1. **Rouvrir pour amendement** (ADMIN ; échantillon `VALIDE` ou
-   `RAPPORT_ENVOYE`) : motif obligatoire → l'échantillon revient à
+1. **Rouvrir pour amendement** (VALIDATEUR, DIRECTION, ADMIN depuis le
+   16/10, Q13 — `REPORT_REOPEN_ROLES`, le rôle inscrit au journal
+   `REPORT_REOPENED` ; échantillon `VALIDE` ou `RAPPORT_ENVOYE`) : motif obligatoire → l'échantillon revient à
    `RESULTATS_SAISIS` (transition ajoutée à la machine d'états), la
    validation technique et l'approbation sont effacées, la version courante
    est figée si elle ne l'est pas, le rapport garde son numéro et note
@@ -31,8 +32,13 @@ du premier amendement (noté « reconstituée »). `Report` gagne `version`
 3. À l'approbation, le rapport n'est pas recréé : `version` + 1, numéro
    imprimé `RAP-AAAA-NNNNN-A1` (A2…), mention en tête « Rapport amendé —
    annule et remplace le rapport RAP-… du … » et la note d'amendement ;
-   nouvelle `ReportVersion` ; envoi au client comme un rapport neuf (objet
-   « Rapport amendé … »). Journal : `REPORT_REOPENED`, `REPORT_AMENDED`.
+   nouvelle `ReportVersion`. La version amendée est émise à l'approbation ;
+   elle ne part au client que par « Valider et envoyer », ou plus tard par
+   « Envoyer au client » (jamais automatiquement depuis le 16/10, Q92 — objet
+   « Rapport amendé … »). En attendant, l'échantillon est dans « Validés — à
+   envoyer », et « Envoyer » ou « Renvoyer au client » se décide par version
+   (`reportVersionSent` : un « -A1 » jamais envoyé lit « Envoyer », même si
+   l'original était parti). Journal : `REPORT_REOPENED`, `REPORT_AMENDED`.
 
 Les échantillons en cours d'amendement apparaissent dans la file de
 validation avec le badge « Amendement ».
@@ -48,5 +54,5 @@ version figée (historique), lecture seule, marquée « Version remplacée par
 ## 4. Écrans
 
 Page de validation et fiche de recherche d'un échantillon approuvé :
-« Rouvrir pour amendement » (ADMIN, avec motif), « Duplicata (PDF) »,
+« Rouvrir pour amendement » (VALIDATEUR, DIRECTION, ADMIN, avec motif), « Duplicata (PDF) »,
 « Versions du rapport » (liste : numéro, date, motif, lien PDF).

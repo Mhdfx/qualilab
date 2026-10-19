@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { navFor } from "@/components/layout/nav-for-role";
 import { ROLE_HOME, roleAllowed, type Role } from "./roles";
-import { FICHE_CORRECTION_ROLES, verbsFor } from "./sample-verbs";
+import { FICHE_CORRECTION_ROLES, correctionRights, verbsFor } from "./sample-verbs";
 import { canTransition } from "./sample-status";
 import { SAMPLE_STATUS_LABELS } from "./labels";
 import type { SampleStatus } from "@/generated/prisma/enums";
@@ -298,7 +298,9 @@ describe("the decisions behind the screens, for the technician", () => {
     expect(FICHE_CORRECTION_ROLES).not.toContain("TECHNICIEN");
     for (const status of STATUSES) {
       const verbs = verbsFor({ status }, "TECHNICIEN");
-      expect(verbs, status).toEqual({ correct: false, cancel: false, reactivate: false });
+      // Neither half of the fiche (16/10, Q128): the identification nor the analyses.
+      expect(verbs, status).toEqual({ correct: false, correctAnalyses: false, cancel: false, reactivate: false });
+      expect(correctionRights("TECHNICIEN", status), status).toEqual({ identification: false, analyses: false });
     }
   });
 

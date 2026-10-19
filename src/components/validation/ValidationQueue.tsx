@@ -1,6 +1,8 @@
 import Link from "next/link";
-import { ArrowRight, ShieldCheck, AlertTriangle, Clock, PencilLine } from "lucide-react";
+import { ArrowRight, ShieldCheck, AlertTriangle, Clock, PencilLine, Send } from "lucide-react";
 import type { AirMethod, LineKind, SampleType, SurfaceState } from "@/generated/prisma/client";
+import type { SampleStatus } from "@/generated/prisma/enums";
+import { isSendLate } from "@/lib/circuit-views";
 import { formatDate } from "@/lib/labels";
 import { labReference } from "@/lib/sample-select";
 import { approvalState, APPROVAL_LABELS } from "@/lib/sample-status";
@@ -28,6 +30,11 @@ export type ValidationItem = {
   airExposureMin?: number | null;
   validatedById: string | null;
   approvedById: string | null;
+  /** « validé le … » on a line of « Validés — à envoyer »; optional on an older caller. */
+  approvedAt?: Date | null;
+  /** The sample's step and the date promised to the client: « En retard » on a report not sent past it (`isSendLate`). */
+  status?: SampleStatus;
+  dueAt?: Date | null;
   client: { name: string };
   serie: { serialNumber: string };
   /** Who took the sample at the bench (prise en charge libre, PROGRAMME.md §10). */
@@ -47,15 +54,20 @@ const DEFAULT_EMPTY = {
 };
 
 /**
- * Samples whose results are submitted and awaiting one of the two approvals,
- * grouped by série. `empty` says what an empty dashboard view (`?vue=`) means.
+ * Samples whose results are submitted and awaiting one of the two approvals —
+ * or, in the view « Validés — à envoyer » (16/10, Q92), approved and waiting
+ * for « Envoyer au client » — grouped by série. `empty` says what an empty
+ * dashboard view (`?vue=`) means.
  */
 export function ValidationQueue({
   items,
   empty = DEFAULT_EMPTY,
+  now,
 }: {
   items: ValidationItem[];
   empty?: { title: string; text: string };
+  /** The page's clock, for « En retard » on a report not sent past its promised date. */
+  now?: Date;
 }) {
   if (items.length === 0) {
     return (
@@ -83,10 +95,13 @@ export function ValidationQueue({
           <ul className="space-y-3">
             {group.items.map((item) => {
               const state = approvalState(item);
+              const approved = state === "APPROVED";
               const nonConformes = item.results.filter((r) => r.conform === false).length;
               const anomalies = item.results.filter((r) => r.workStatus === "ANOMALIE").length;
               // « Analysé par »: the taker, then any legacy parameter technician.
               const analysedBy = reportTechnicianNames({ technician: item.technician, parameters: item.parameters ?? [] });
+              // Validated, not sent, past the promised date (16/10, Q92: nothing leaves on its own).
+              const late = now !== undefined && item.status !== undefined && isSendLate({ dueAt: item.dueAt ?? null, status: item.status }, now);
 
               return (
                 <li key={item.id}>
@@ -103,16 +118,30 @@ export function ValidationQueue({
                           <TypeBadge type={item.type} />
                           <span
                             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${
-                              state === "AWAITING_ADMIN"
-                                ? "bg-violet-50 text-violet-700 ring-violet-200"
-                                : "bg-amber-50 text-amber-700 ring-amber-200"
+                              approved
+                                ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                                : state === "AWAITING_ADMIN"
+                                  ? "bg-violet-50 text-violet-700 ring-violet-200"
+                                  : "bg-amber-50 text-amber-700 ring-amber-200"
                             }`}
                           >
-                            <Clock className="h-3 w-3" aria-hidden="true" />
-                            {state === "AWAITING_ADMIN"
-                              ? "Validé techniquement — attente de la validation administrative"
-                              : "À valider"}
+                            {approved ? (
+                              <Send className="h-3 w-3" aria-hidden="true" />
+                            ) : (
+                              <Clock className="h-3 w-3" aria-hidden="true" />
+                            )}
+                            {approved
+                              ? "Validé — rapport à envoyer"
+                              : state === "AWAITING_ADMIN"
+                                ? "Validé techniquement — attente de la validation administrative"
+                                : "À valider"}
                           </span>
+                          {late && item.dueAt && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
+                              <Clock className="h-3 w-3" aria-hidden="true" />
+                              En retard — promis le {formatDate(item.dueAt)}
+                            </span>
+                          )}
                           {item.report?.amendmentPending && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
                               <PencilLine className="h-3 w-3" aria-hidden="true" />
@@ -142,11 +171,12 @@ export function ValidationQueue({
                           {item.results.length} résultat{item.results.length > 1 ? "s" : ""}
                           {analysedBy ? ` · analysé par ${analysedBy}` : ""} · reçu le{" "}
                           {item.receivedAt ? formatDate(item.receivedAt) : "—"}
+                          {approved && item.approvedAt ? ` · validé le ${formatDate(item.approvedAt)}` : ""}
                         </p>
                       </div>
 
                       <span className="inline-flex shrink-0 items-center gap-1.5 self-center rounded-xl bg-brand-light px-3 py-2 text-sm font-semibold text-brand transition-colors group-hover:bg-brand group-hover:text-white">
-                        Contrôler
+                        {approved ? "Ouvrir" : "Contrôler"}
                         <ArrowRight className="h-4 w-4" aria-hidden="true" />
                       </span>
                     </div>

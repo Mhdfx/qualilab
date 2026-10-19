@@ -9,6 +9,8 @@ import type {
   SurfaceState,
 } from "@/generated/prisma/enums";
 import { CANCEL_REASON_LABELS, isExposedPlate } from "@/lib/labels";
+import { resultsToReset } from "@/lib/intake-input";
+import { cancellersLabel, type CorrectionRights } from "@/lib/sample-verbs";
 import { surfaceAreaPayload } from "@/components/preleveur/visit-types";
 
 /**
@@ -142,9 +144,15 @@ export function correctionValues(sample: VerbSample): CorrectionValues {
   };
 }
 
+/** Both halves of the fiche — the administrator's, or the reception's before the programme. */
+export const FULL_CORRECTION: CorrectionRights = { identification: true, analyses: true };
+
 /**
  * The body of `PATCH /api/samples/[id]/intake`: the fields the dialog shows
- * for this kind, nothing else — a value of another kind stays as it was. An
+ * for this kind, nothing else — a value of another kind stays as it was.
+ * Only the halves this person may change are sent (16/10, Q128 —
+ * `correctionRights`): the identification fields, and/or the analyses' —
+ * the list, the product type, the number of units. An
  * empty state, method or hands state is left out: an older sample stays
  * without one, and the API refuses to empty one that is set. The
  * temperatures are always sent (an empty one stays empty on an older
@@ -156,17 +164,25 @@ export function correctionBody(
   kind: LineKind,
   values: CorrectionValues,
   parameterIds: string[] | null,
-  reason: string
+  reason: string,
+  scope: CorrectionRights = FULL_CORRECTION
 ): Record<string, unknown> {
   const shown = correctionFields(kind);
+  const analyses = scope.analyses
+    ? {
+        unitCount: values.unitCount,
+        ...(shown.food ? { productTypeId: values.productTypeId } : {}),
+        ...(parameterIds ? { parameterIds } : {}),
+      }
+    : {};
+  if (!scope.identification) return { ...analyses, reason };
   return {
     lieu: values.lieu,
     remarks: values.remarks,
-    unitCount: values.unitCount,
+    ...analyses,
     ...(shown.produit ? { produit: values.produit } : {}),
     ...(shown.food
       ? {
-          productTypeId: values.productTypeId,
           numeroLot: values.numeroLot,
           productionDate: values.productionDate,
           expiryDate: values.expiryDate,
@@ -191,7 +207,61 @@ export function correctionBody(
       : {}),
     ...(shown.air && values.airMethod ? { airMethod: values.airMethod } : {}),
     ...(shown.air && isExposedPlate(values.airMethod) ? { airExposureMin: values.airExposureMin } : {}),
-    ...(parameterIds ? { parameterIds } : {}),
     reason,
+  };
+}
+
+/** What the dialog says under the analyses: an information, or a warning. */
+export type AnalysesNotice = { tone: "info" | "warning"; text: string };
+
+/**
+ * What the analyses on screen will do to the results already typed (16/10,
+ * Q91 — `resultsToReset`, the rule the intake route applies): nothing before
+ * the bench (no result yet); at the bench, a withdrawal deletes the
+ * withdrawn analyses' readings only, while an added analysis or another
+ * product type or number of units empties every result. Every analysis
+ * unticked is refused: an analysis nobody can do is withdrawn, a sample
+ * nobody can analyse is cancelled. (A line still without any — the
+ * programme decides them — stays correctable without one.)
+ */
+export function analysesNotice(
+  sample: Pick<VerbSample, "status" | "parameterIds" | "productTypeId" | "unitCount">,
+  parameterIds: readonly string[],
+  values: Pick<CorrectionValues, "productTypeId" | "unitCount">
+): AnalysesNotice | null {
+  if (parameterIds.length === 0 && sample.parameterIds.length > 0) {
+    // Who cancels depends on the step (16/10, Q13): the réception before the
+    // programme, the validation desks from it — the state machine's answer.
+    const cancellers = cancellersLabel(sample.status);
+    return {
+      tone: "warning",
+      text: `Gardez au moins une analyse. Si aucune ne peut être faite, l'échantillon s'annule${cancellers ? ` (par ${cancellers})` : ""}.`,
+    };
+  }
+  const validating = sample.status === "RESULTATS_SAISIS";
+  if (sample.status !== "EN_ANALYSE" && !validating) return null;
+  const unchanged =
+    parameterIds.length === sample.parameterIds.length && parameterIds.every((id) => sample.parameterIds.includes(id));
+  const criteriaChanged = (values.productTypeId || null) !== sample.productTypeId || values.unitCount !== sample.unitCount;
+  const reset = resultsToReset(sample.parameterIds, unchanged ? null : [...parameterIds], criteriaChanged);
+  if (reset.kind === "all") {
+    return {
+      tone: "warning",
+      text: `Ajouter une analyse, changer le type de produit ou le nombre d'unités efface tous les résultats déjà saisis${
+        validating ? " et renvoie l'échantillon à la paillasse" : ""
+      }.`,
+    };
+  }
+  if (reset.kind === "removed") {
+    return {
+      tone: "info",
+      text: `Seuls les résultats ${reset.parameterIds.length > 1 ? "des analyses retirées" : "de l'analyse retirée"} sont effacés ; les autres sont gardés et l'échantillon reste à son étape${
+        validating ? " (une validation technique déjà donnée est à refaire)" : ""
+      }.`,
+    };
+  }
+  return {
+    tone: "info",
+    text: "Retirer une analyse n'efface que ses résultats. Ajouter une analyse, changer le type de produit ou le nombre d'unités efface tous les résultats déjà saisis.",
   };
 }

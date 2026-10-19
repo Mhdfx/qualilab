@@ -7,9 +7,13 @@ import {
   canReopen,
   cancelRefusalForReport,
   duplicataMention,
+  REOPEN_ROLE_REFUSAL,
   reopenRefusal,
+  reopensReports,
   supersededMention,
 } from "./report-amendment";
+import { REPORT_REOPEN_ROLES } from "./sample-status";
+import { ROLES } from "./roles";
 
 /** AMENDEMENT.md — a report keeps its number for life; each amendment is a new, printed version. */
 
@@ -36,12 +40,28 @@ describe("amendedNumber", () => {
 });
 
 describe("reopening for amendment", () => {
-  it("is the administrator's, on an approved report only", () => {
-    expect(canReopen("VALIDE", "ADMIN")).toBe(true);
-    expect(canReopen("RAPPORT_ENVOYE", "ADMIN")).toBe(true);
-    expect(canReopen("RAPPORT_ENVOYE", "VALIDATEUR")).toBe(false);
-    expect(canReopen("RESULTATS_SAISIS", "ADMIN")).toBe(false);
-    expect(canReopen("ANNULE", "ADMIN")).toBe(false);
+  it("is the administrator's, the Direction's and the validateur's (16/10, Q13), on an approved report only", () => {
+    for (const role of ["ADMIN", "DIRECTION", "VALIDATEUR"]) {
+      expect(canReopen("VALIDE", role), role).toBe(true);
+      expect(canReopen("RAPPORT_ENVOYE", role), role).toBe(true);
+      expect(canReopen("RESULTATS_SAISIS", role), role).toBe(false);
+      expect(canReopen("ANNULE", role), role).toBe(false);
+    }
+    expect(canReopen("RAPPORT_ENVOYE", "GESTIONNAIRE")).toBe(false);
+    expect(canReopen("RAPPORT_ENVOYE", "TECHNICIEN")).toBe(false);
+  });
+
+  it("reads the state machine's list for every role", () => {
+    for (const role of ROLES) {
+      expect(reopensReports(role), role).toBe((REPORT_REOPEN_ROLES as readonly string[]).includes(role));
+    }
+  });
+
+  it("lets the validateur and the Direction through the refusal, with a reason", () => {
+    for (const role of ["VALIDATEUR", "DIRECTION"]) {
+      expect(reopenRefusal({ status: "RAPPORT_ENVOYE", role, reason: "Erreur de lot" }), role).toBeNull();
+      expect(reopenRefusal({ status: "VALIDE", role, reason: " " }), role).toMatch(/motif/);
+    }
   });
 
   it("requires a reason, printed on the amended report", () => {
@@ -51,7 +71,11 @@ describe("reopening for amendment", () => {
   });
 
   it("explains every refusal in French", () => {
-    expect(reopenRefusal({ status: "VALIDE", role: "TECHNICIEN", reason: "x".repeat(10) })).toMatch(/administrateur/);
+    expect(reopenRefusal({ status: "VALIDE", role: "TECHNICIEN", reason: "x".repeat(10) })).toBe(REOPEN_ROLE_REFUSAL);
+    expect(REOPEN_ROLE_REFUSAL).toBe(
+      "Seuls l'administrateur, la Direction et le validateur technique peuvent rouvrir un rapport pour amendement."
+    );
+    expect(reopenRefusal({ status: "VALIDE", role: "GESTIONNAIRE", reason: "x".repeat(10) })).toBe(REOPEN_ROLE_REFUSAL);
     expect(reopenRefusal({ status: "EN_ANALYSE", role: "ADMIN", reason: "x".repeat(10) })).toMatch(/rapport validé/);
     expect(
       reopenRefusal({ status: "VALIDE", role: "ADMIN", reason: "x".repeat(10), amendmentPending: true })

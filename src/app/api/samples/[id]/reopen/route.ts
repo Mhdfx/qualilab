@@ -3,9 +3,11 @@ import { requireApiRole } from "@/lib/auth";
 import { reopenForAmendment } from "@/lib/report-dispatch";
 
 /**
- * « Rouvrir pour amendement » (AMENDEMENT.md §2.1) — ADMIN only, on an
- * approved report (`VALIDE` or `RAPPORT_ENVOYE`), with a mandatory reason
- * printed on the amended report.
+ * « Rouvrir pour amendement » (AMENDEMENT.md §2.1) — the administrator, the
+ * Direction and the technical validator (16/10, Q13: `REPORT_REOPEN_ROLES`),
+ * on an approved report (`VALIDE` or `RAPPORT_ENVOYE`), with a mandatory
+ * reason printed on the amended report. The double validation that follows
+ * still needs two different people.
  *
  * The sample returns to `RESULTATS_SAISIS`, both signatures are cleared, the
  * version in force is frozen (« reconstituée » for a report issued before
@@ -19,7 +21,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireApiRole("ADMIN");
+  const session = await requireApiRole("VALIDATEUR", "DIRECTION", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;

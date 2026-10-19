@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { cancelReasonsFor, correctionBody, correctionFields, correctionValues, type VerbSample } from "./sample-verbs-logic";
-import { validateIntake, type IntakeCurrent } from "@/lib/intake-input";
+import {
+  analysesNotice,
+  cancelReasonsFor,
+  correctionBody,
+  correctionFields,
+  correctionValues,
+  type VerbSample,
+} from "./sample-verbs-logic";
+import { correctionTouches, validateIntake, type IntakeCurrent } from "@/lib/intake-input";
+import { correctionRefusal, correctionRights } from "@/lib/sample-verbs";
 import { HANDS_STATE_CHOICES, SURFACE_AREA_CHOICES } from "@/lib/labels";
 
 /**
@@ -314,5 +322,103 @@ describe("cancelReasonsFor — the motifs « Annuler » offers", () => {
   it("never offers « Détruit à réception », the reception's own verb", () => {
     expect(cancelReasonsFor("PRELEVE")).not.toContain("DETRUIT_A_RECEPTION");
     expect(cancelReasonsFor("RECU")).toEqual(["NON_EXPLOITABLE", "QUANTITE_INSUFFISANTE", "DOUBLON", "ANNULATION_CLIENT", "AUTRE"]);
+  });
+});
+
+describe("correctionBody — only the halves this person may change (16/10, Q128)", () => {
+  const atBench: VerbSample = { ...base, status: "EN_ANALYSE", parameterIds: ["p1", "p2"], unitCount: 5, productTypeId: "type-1" };
+
+  it("the responsable des paramètres at the bench: the analyses only, accepted by the route's rules", () => {
+    const scope = correctionRights("PROGRAMMATEUR", "EN_ANALYSE");
+    const body = correctionBody("ALIMENT", { ...correctionValues(atBench), lieu: "ignoré" }, ["p1"], "analyse non faite", scope);
+    expect(body).toEqual({ unitCount: 5, productTypeId: "type-1", parameterIds: ["p1"], reason: "analyse non faite" });
+    const checked = validateIntake(body, currentOf(atBench));
+    expect(checked).toEqual({ ok: true, value: { changes: {}, parameterIds: ["p1"], reason: "analyse non faite" } });
+    if (checked.ok) expect(correctionRefusal("PROGRAMMATEUR", "EN_ANALYSE", correctionTouches(body, checked.value))).toBeNull();
+  });
+
+  it("the reception after the programme: the identification only — never the units, the product type nor the list", () => {
+    const scope = correctionRights("RECEPTIONNISTE", "EN_ANALYSE");
+    const body = correctionBody("ALIMENT", { ...correctionValues(atBench), numeroLot: "L2", unitCount: 9 }, ["p1"], "lot", scope);
+    expect(body).not.toHaveProperty("unitCount");
+    expect(body).not.toHaveProperty("productTypeId");
+    expect(body).not.toHaveProperty("parameterIds");
+    const checked = validateIntake(body, currentOf(atBench));
+    expect(checked).toMatchObject({ ok: true, value: { changes: { numeroLot: "L2" }, parameterIds: null } });
+    if (checked.ok) expect(correctionRefusal("RECEPTIONNISTE", "EN_ANALYSE", correctionTouches(body, checked.value))).toBeNull();
+  });
+
+  it("the reception before the programme, and the administrator: both halves, as before", () => {
+    const body = correctionBody("ALIMENT", correctionValues(base), ["p1", "p2"], "analyse", correctionRights("RECEPTIONNISTE", "RECU"));
+    expect(body).toEqual(correctionBody("ALIMENT", correctionValues(base), ["p1", "p2"], "analyse"));
+    expect(body).toMatchObject({ unitCount: 1, productTypeId: "", parameterIds: ["p1", "p2"], numeroLot: "L1", lieu: "Cuisine" });
+    expect(correctionBody("ALIMENT", correctionValues(atBench), null, "x", correctionRights("ADMIN", "RESULTATS_SAISIS"))).toEqual(
+      correctionBody("ALIMENT", correctionValues(atBench), null, "x")
+    );
+  });
+
+  it("a non-food line sends its units, never a product type it does not show", () => {
+    const water: VerbSample = { ...atBench, lineKind: "EAU", type: "EAU", productTypeId: null };
+    expect(correctionBody("EAU", correctionValues(water), null, "unités", correctionRights("PROGRAMMATEUR", "EN_ANALYSE"))).toEqual({
+      unitCount: 5,
+      reason: "unités",
+    });
+  });
+});
+
+describe("analysesNotice — what the analyses on screen do to the results (16/10, Q91)", () => {
+  const sample = { status: "EN_ANALYSE" as const, parameterIds: ["p1", "p2", "p3"], productTypeId: "type-1", unitCount: 5 };
+  const same = { productTypeId: "type-1", unitCount: 5 };
+
+  it("says nothing before the bench: no result is typed yet", () => {
+    for (const status of ["PRELEVE", "RECU", "PROGRAMME"] as const) {
+      expect(analysesNotice({ ...sample, status }, ["p1"], same), status).toBeNull();
+    }
+  });
+
+  it("a withdrawal: only the withdrawn analyses' results go, the sample keeps its step", () => {
+    expect(analysesNotice(sample, ["p1", "p3"], same)).toEqual({
+      tone: "info",
+      text: "Seuls les résultats de l'analyse retirée sont effacés ; les autres sont gardés et l'échantillon reste à son étape.",
+    });
+    expect(analysesNotice({ ...sample, status: "RESULTATS_SAISIS" }, ["p1"], same)).toEqual({
+      tone: "info",
+      text: "Seuls les résultats des analyses retirées sont effacés ; les autres sont gardés et l'échantillon reste à son étape (une validation technique déjà donnée est à refaire).",
+    });
+  });
+
+  it("an addition, another product type or other units: every result goes, back to the bench from the validation", () => {
+    expect(analysesNotice(sample, ["p1", "p2", "p3", "p4"], same)?.tone).toBe("warning");
+    expect(analysesNotice(sample, ["p1", "p2", "p3"], { ...same, unitCount: 9 })?.text).toBe(
+      "Ajouter une analyse, changer le type de produit ou le nombre d'unités efface tous les résultats déjà saisis."
+    );
+    expect(analysesNotice({ ...sample, status: "RESULTATS_SAISIS" }, ["p1"], { ...same, productTypeId: "" })?.text).toBe(
+      "Ajouter une analyse, changer le type de produit ou le nombre d'unités efface tous les résultats déjà saisis et renvoie l'échantillon à la paillasse."
+    );
+  });
+
+  it("nothing changed yet: the rule, in one sentence", () => {
+    expect(analysesNotice(sample, ["p3", "p2", "p1"], same)).toEqual({
+      tone: "info",
+      text: "Retirer une analyse n'efface que ses résultats. Ajouter une analyse, changer le type de produit ou le nombre d'unités efface tous les résultats déjà saisis.",
+    });
+  });
+
+  it("every analysis unticked: keep one — a sample nobody can analyse is cancelled, by whoever cancels at this step", () => {
+    expect(analysesNotice(sample, [], same)).toEqual({
+      tone: "warning",
+      text: "Gardez au moins une analyse. Si aucune ne peut être faite, l'échantillon s'annule (par la validation, la Direction ou l'administrateur).",
+    });
+    // Before the programme (the reception's own dialog): the réception and the administrator cancel.
+    for (const status of ["PRELEVE", "RECU"] as const) {
+      expect(analysesNotice({ ...sample, status }, [], same), status).toEqual({
+        tone: "warning",
+        text: "Gardez au moins une analyse. Si aucune ne peut être faite, l'échantillon s'annule (par la réception ou l'administrateur).",
+      });
+    }
+  });
+
+  it("a line still without any analysis (the programme decides them) is corrected without a warning", () => {
+    expect(analysesNotice({ ...sample, status: "RECU", parameterIds: [] }, [], same)).toBeNull();
   });
 });

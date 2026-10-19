@@ -2,9 +2,16 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { LAB_ROLES, ROLE_HOME, roleAllowed } from "./roles";
-import { FICHE_CORRECTION_ROLES, verbsFor } from "./sample-verbs";
-import { CORRECTABLE_STATUSES } from "./sample-status";
+import { LAB_ROLES, ROLES, ROLE_HOME, roleAllowed } from "./roles";
+import {
+  FICHE_CORRECTION_ROLES,
+  VALIDATION_PAGE_ROLES,
+  correctionRights,
+  opensValidationPage,
+  sampleLinkFor,
+  verbsFor,
+} from "./sample-verbs";
+import { CORRECTABLE_STATUSES, REPORT_REOPEN_ROLES, SAMPLE_STATUS_ORDER, canTransition } from "./sample-status";
 import { PROTOCOL_PHOTO_ROLES, canSeeProtocolPhoto } from "./protocol-photo-access";
 import { canEditConclusion, canReadReports, canResendReport } from "./report-actions";
 import { canReopen, reopenRefusal } from "./report-amendment";
@@ -92,6 +99,9 @@ const DIRECTION_ADMITTED = [
   "api/samples/[id]/report/route.ts GET",
   "api/samples/[id]/report/versions/route.ts GET",
   "api/samples/[id]/report/send/route.ts POST",
+  // Reopen a sent report, cancel a sample in analysis (16/10, Q13).
+  "api/samples/[id]/reopen/route.ts POST",
+  "api/samples/[id]/cancel/route.ts POST",
   // « Corriger la fiche » on the validation page, and what its dialog reads.
   "api/samples/[id]/intake/route.ts PATCH",
   "api/clients/route.ts GET",
@@ -160,12 +170,13 @@ const ADMIN_ONLY = [
   "api/profiles/route.ts POST",
   "api/norms/route.ts POST",
   "api/regulations/route.ts POST",
-  // Merges, the silent conclusion edit, reopening for amendment, reactivation.
-  "api/clients/[id]/merge/route.ts POST",
+  // The attachment of a client as a site, the silent conclusion edit,
+  // reactivation (reopening for amendment is the Direction's and the
+  // validateur's too since 16/10, Q13; merging two fiches the gestionnaire
+  // commercial's too since 16/10, Q117 — client-merge-guards.test.ts).
   "api/clients/[id]/attach-as-site/route.ts POST",
   "api/reports/[id]/admin-edit/route.ts GET",
   "api/reports/[id]/admin-edit/route.ts PATCH",
-  "api/samples/[id]/reopen/route.ts POST",
   "api/samples/[id]/reactivate/route.ts POST",
 ];
 
@@ -223,11 +234,10 @@ describe("the Direction's guards (12/10) — read from every page and route", ()
     expect(leaks).toEqual([]);
   });
 
-  it("refuses the hold release, the cancellation, the programme, the bench take and the results to the Direction", () => {
+  it("refuses the hold release, the programme, the bench take and the results to the Direction", () => {
     for (const route of [
       "api/samples/[id]/release/route.ts",
       "api/samples/[id]/take/route.ts",
-      "api/samples/[id]/cancel/route.ts",
       "api/samples/[id]/programme/route.ts",
       "api/samples/[id]/results/route.ts",
       "api/samples/[id]/results/submit/route.ts",
@@ -267,34 +277,108 @@ describe("Better Auth never makes the Direction an administrator (auth-server.ts
 describe("the decisions behind the screens, for the Direction", () => {
   const guardOf = (rel: string) => guards.filter((guard) => guard.at.startsWith(`${rel} `));
 
-  it("« Corriger la fiche »: offered until the approval, like the validateur — the intake guard agrees", () => {
+  it("« Corriger la fiche »: the identification until the approval, like the validateur", () => {
     for (const status of CORRECTABLE_STATUSES) expect(verbsFor({ status }, "DIRECTION").correct, status).toBe(true);
     for (const status of ["VALIDE", "RAPPORT_ENVOYE", "ANNULE"] as SampleStatus[]) {
       expect(verbsFor({ status }, "DIRECTION").correct, status).toBe(false);
     }
-    const [intake] = guardOf("api/samples/[id]/intake/route.ts");
-    expect([...intake.roles].sort()).toEqual([...FICHE_CORRECTION_ROLES].sort());
   });
 
-  it("never cancels nor reactivates a sample", () => {
-    for (const status of ["PRELEVE", "RECU", "PROGRAMME", "EN_ANALYSE", "RESULTATS_SAISIS", "ANNULE"] as SampleStatus[]) {
-      const verbs = verbsFor({ status }, "DIRECTION");
-      expect(verbs.cancel, status).toBe(false);
-      expect(verbs.reactivate, status).toBe(false);
+  it("changes the analyses only before the programme (16/10, Q128 — RP3b (a))", () => {
+    for (const status of ["PRELEVE", "RECU"] as SampleStatus[]) {
+      expect(verbsFor({ status }, "DIRECTION").correctAnalyses, status).toBe(true);
+    }
+    for (const status of ["PROGRAMME", "EN_ANALYSE", "RESULTATS_SAISIS", "VALIDE", "RAPPORT_ENVOYE", "ANNULE"] as SampleStatus[]) {
+      expect(verbsFor({ status }, "DIRECTION").correctAnalyses, status).toBe(false);
     }
   });
 
-  it("reads, duplicates and resends reports, but neither edits a conclusion nor reopens one", () => {
+  it("the intake guard admits exactly the roles that correct something at some step: FICHE_CORRECTION_ROLES and the responsable des paramètres", () => {
+    const correctors = ROLES.filter((role) =>
+      CORRECTABLE_STATUSES.some((status) => {
+        const rights = correctionRights(role, status);
+        return rights.identification || rights.analyses;
+      })
+    );
+    expect([...correctors].sort()).toEqual([...FICHE_CORRECTION_ROLES, "PROGRAMMATEUR"].sort());
+    const found = guardOf("api/samples/[id]/intake/route.ts");
+    expect(found.length).toBeGreaterThan(0);
+    for (const guard of found) expect([...guard.roles].sort()).toEqual([...correctors].sort());
+  });
+
+  it("cancels from PROGRAMME to RESULTATS_SAISIS (16/10, Q13), never reactivates", () => {
+    for (const status of ["PROGRAMME", "EN_ANALYSE", "RESULTATS_SAISIS"] as SampleStatus[]) {
+      expect(verbsFor({ status }, "DIRECTION").cancel, status).toBe(true);
+      // An issued report (reopened for amendment) is corrected, never cancelled.
+      expect(verbsFor({ status, hasReport: true }, "DIRECTION").cancel, status).toBe(false);
+    }
+    for (const status of ["PRELEVE", "RECU", "VALIDE", "RAPPORT_ENVOYE", "ANNULE"] as SampleStatus[]) {
+      expect(verbsFor({ status }, "DIRECTION").cancel, status).toBe(false);
+    }
+    for (const status of [...SAMPLE_STATUS_ORDER, "ANNULE"] as SampleStatus[]) {
+      expect(verbsFor({ status }, "DIRECTION").reactivate, status).toBe(false);
+    }
+  });
+
+  it("reads, duplicates, resends and reopens reports (16/10, Q13), never edits a conclusion", () => {
     expect(canReadReports("DIRECTION")).toBe(true);
     expect(canResendReport("DIRECTION", "VALIDE", false)).toBe(true);
     expect(canResendReport("DIRECTION", "RAPPORT_ENVOYE", false)).toBe(true);
     expect(canResendReport("DIRECTION", "RAPPORT_ENVOYE", true)).toBe(false);
     expect(canEditConclusion("DIRECTION", false)).toBe(false);
-    expect(canReopen("VALIDE", "DIRECTION")).toBe(false);
-    expect(canReopen("RAPPORT_ENVOYE", "DIRECTION")).toBe(false);
-    expect(reopenRefusal({ status: "VALIDE", role: "DIRECTION", reason: "erreur de lot" })).toBe(
-      "Seul l'administrateur peut rouvrir un rapport pour amendement."
+    expect(canReopen("VALIDE", "DIRECTION")).toBe(true);
+    expect(canReopen("RAPPORT_ENVOYE", "DIRECTION")).toBe(true);
+    expect(reopenRefusal({ status: "VALIDE", role: "DIRECTION", reason: "erreur de lot" })).toBeNull();
+  });
+
+  it("the reopen route admits exactly the roles that reopen (`REPORT_REOPEN_ROLES`)", () => {
+    const found = guardOf("api/samples/[id]/reopen/route.ts");
+    expect(found.length).toBeGreaterThan(0);
+    for (const guard of found) expect([...guard.roles].sort()).toEqual([...REPORT_REOPEN_ROLES].sort());
+  });
+
+  it("the cancel route admits exactly the roles the state machine lets cancel at some step — the step is decided there", () => {
+    const cancellers = ROLES.filter((role) =>
+      SAMPLE_STATUS_ORDER.some((status) => canTransition(status, "ANNULE", role).ok)
     );
+    expect([...cancellers].sort()).toEqual(["ADMIN", "DIRECTION", "RECEPTIONNISTE", "VALIDATEUR"]);
+    const found = guardOf("api/samples/[id]/cancel/route.ts");
+    expect(found.length).toBeGreaterThan(0);
+    for (const guard of found) expect([...guard.roles].sort()).toEqual([...cancellers].sort());
+  });
+
+  it("/recherche links a sample to its validation page for exactly the roles that page admits", () => {
+    for (const at of ["validation/[id]/page.tsx page", "validation/[id]/page.tsx metadata"]) {
+      const found = guards.filter((guard) => guard.at === at);
+      expect(found.length, at).toBeGreaterThan(0);
+      for (const guard of found) expect([...guard.roles].sort(), at).toEqual([...VALIDATION_PAGE_ROLES].sort());
+    }
+    for (const role of ROLES) {
+      expect(opensValidationPage(role), role).toBe((VALIDATION_PAGE_ROLES as readonly string[]).includes(role));
+    }
+    for (const role of VALIDATION_PAGE_ROLES) expect(sampleLinkFor(role, "s1")?.href, role).toBe("/validation/s1");
+    const recherche = files.find((file) => file.rel === "recherche/page.tsx");
+    expect(recherche?.source).toMatch(/const linkOf = \(id: string\) => sampleLinkFor\(session\.role, id\)/);
+    expect(recherche?.source).toMatch(/const open = linkOf\(row\.id\);/);
+    expect(recherche?.source).toMatch(/href=\{open\.href\}/);
+  });
+
+  it("/recherche links a sample to its programme sheet for the responsable des paramètres — his way to « Corriger les analyses » at the bench (F8)", () => {
+    for (const at of ["programmation/[id]/page.tsx page", "programmation/layout.tsx layout"]) {
+      const found = guards.filter((guard) => guard.at === at);
+      expect(found.length, at).toBeGreaterThan(0);
+      for (const guard of found) expect(guard.roles, at).toContain("PROGRAMMATEUR");
+    }
+    expect(sampleLinkFor("PROGRAMMATEUR", "s1")).toEqual({ href: "/programmation/s1", label: "ouvrir la fiche de programme" });
+    // Where he has « Corriger les analyses », the sheet he is sent to offers it.
+    for (const status of ["EN_ANALYSE", "RESULTATS_SAISIS"] as const) {
+      expect(correctionRights("PROGRAMMATEUR", status).analyses, status).toBe(true);
+    }
+    // Every other role without the validation page: plain text.
+    for (const role of ROLES) {
+      if (opensValidationPage(role) || role === "PROGRAMMATEUR") continue;
+      expect(sampleLinkFor(role, "s1"), role).toBeNull();
+    }
   });
 
   it("sees the signed protocol, like the validateur — the photo route's guard agrees", () => {

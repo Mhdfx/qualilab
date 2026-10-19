@@ -391,6 +391,12 @@ model Client {
   /// to them and the laboratory's history must stay readable.
   archived       Boolean           @default(false)
   createdAt      DateTime          @default(now())
+  /// RETOUR-LABO-16-10.md E3: « À compléter » — created at the counter or in
+  /// the field (RECEPTIONNISTE, PRELEVEUR) with the name alone, so the
+  /// gestionnaire commercial still owes its ICE, address and report
+  /// recipients. Cleared when the gestionnaire or the admin saves the whole
+  /// fiche (PATCH /api/clients/[id], never an archiving alone).
+  toComplete     Boolean           @default(false)
   /// CLIENTS-FUSION.md §2–3: the record kept when this client was merged into
   /// another one or attached as one of its sites. Set on the archived record
   /// only; « Fusionnée dans X » / « Rattachée comme site de X » on its fiche.

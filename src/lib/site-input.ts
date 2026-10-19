@@ -1,6 +1,8 @@
+import { normalizeSiteName } from "./sites-import";
+
 /**
- * Validating a client's sampling site — « Siège », « Cuisine centrale »,
- * « Usine de Berrechid ». Pure, shared by the API and the client fiche.
+ * Validating a client's sampling site — « Cuisine centrale », « Usine de
+ * Berrechid ». Pure, shared by the API and the client fiche.
  */
 
 export type CleanSite = {
@@ -49,4 +51,19 @@ export function validateSite(raw: unknown): SiteValidation {
       active: input.active === undefined ? true : input.active === true,
     },
   };
+}
+
+/** Why a new site may not be named « Siège ». */
+export const SIEGE_SITE_REFUSAL = "Le siège n'est pas un site : laissez le site vide pour prélever au siège.";
+
+/**
+ * The siège is no site: every picker offers « Siège (adresse du client) »
+ * (no site, the client's own address), so a site of that name would show
+ * twice and take séries meant for the client's address. Refused at the
+ * creation of a site — with the client (`POST /api/clients`) and on its own
+ * (`POST /api/clients/[id]/sites`) — case, accents and punctuation aside
+ * (`normalizeSiteName`). Null when the name is not the siège.
+ */
+export function siegeSiteRefusal(name: string): string | null {
+  return normalizeSiteName(name) === "SIEGE" ? SIEGE_SITE_REFUSAL : null;
 }

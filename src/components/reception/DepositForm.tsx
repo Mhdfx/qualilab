@@ -191,6 +191,8 @@ const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
 ];
 const REASONS = Object.keys(NON_CONFORMITY_REASON_LABELS) as NonConformityReason[];
 const CADRE_NOTE_MAX = 191;
+/** « + Nouveau client » at the counter (RETOUR-LABO-16-10.md E1). */
+const CREATE_AT_THE_COUNTER = { origin: "DEPOT" } as const;
 
 /** An analysis as `GET /api/parameters` sends it — with its aliases, which
  * the checklist reads to recognise histamine and Salmonella. */
@@ -918,6 +920,7 @@ export function DepositForm({
                     excludeIds={[]}
                     selected={client}
                     siteRows
+                    allowCreate={CREATE_AT_THE_COUNTER}
                     onSelect={(picked) => {
                       setClient(picked);
                       // « Client — Site » chosen: that site; otherwise the siège.

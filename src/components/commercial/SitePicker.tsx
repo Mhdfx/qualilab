@@ -15,12 +15,32 @@ export function withNewSite(client: PickedClient | null, clientId: string, site:
   return client && client.id === clientId ? { ...client, sites: [...client.sites, site] } : client;
 }
 
-/** A new site's name being typed, for the client it was typed for. */
-export type SiteDraft = { clientId: string; name: string };
+/**
+ * A new site being typed, for the client it was typed for — its name (the
+ * only required field) and, since 16/10 (RETOUR-LABO-16-10.md E2, R3), its
+ * address, city, contact and phone, which `POST /api/clients/[id]/sites`
+ * already accepts.
+ */
+export type SiteDraft = {
+  clientId: string;
+  name: string;
+  address?: string;
+  city?: string;
+  contact?: string;
+  phone?: string;
+};
+
+/** The optional fields of the sub-form. */
+const SITE_DETAIL_FIELDS = ["address", "city", "phone", "contact"] as const;
+
+/** The draft typed for the client on screen; null: the select shows (nothing typed, or typed for another client). */
+export function siteDraftFor(draft: SiteDraft | null, clientId: string): SiteDraft | null {
+  return clientId !== "" && draft !== null && draft.clientId === clientId ? draft : null;
+}
 
 /** The name being typed for the client on screen; null: the select shows (nothing typed, or typed for another client). */
 export function siteDraftName(draft: SiteDraft | null, clientId: string): string | null {
-  return clientId !== "" && draft !== null && draft.clientId === clientId ? draft.name : null;
+  return siteDraftFor(draft, clientId)?.name ?? null;
 }
 
 /** A new site's name typed and not created yet: the form must not move on without it (relecture du lot 1). */
@@ -29,19 +49,41 @@ export function siteDraftPending(draftName: string | null): boolean {
 }
 
 /**
+ * Anything typed in the sub-form and not created yet — a name, or an
+ * address waiting for its name: the form must not move on and lose it.
+ */
+export function siteDraftTyped(draft: SiteDraft | null): boolean {
+  if (!draft) return false;
+  return siteDraftPending(draft.name) || SITE_DETAIL_FIELDS.some((field) => (draft[field] ?? "").trim() !== "");
+}
+
+/** The body of `POST /api/clients/[id]/sites`: every field trimmed (the server stores "" as none). */
+export function siteDraftBody(draft: SiteDraft): { name: string; address: string; city: string; contact: string; phone: string } {
+  return {
+    name: draft.name.trim(),
+    address: (draft.address ?? "").trim(),
+    city: (draft.city ?? "").trim(),
+    contact: (draft.contact ?? "").trim(),
+    phone: (draft.phone ?? "").trim(),
+  };
+}
+
+/**
  * « Site de prélèvement » — the site of the picked client a série is
  * recorded on, shared by the préleveur's visit and the reception's deposit
  * (retour du 14/10, R1: « Ajouter les sites au client (Afficher) »). Always
  * shown, disabled until a client is picked: « Siège (adresse du client) »,
- * the client's active sites, then « + Nouveau site… », which creates the
- * site under the client (`POST /api/clients/[id]/sites`, open to both
- * roles) and selects it. The message of a refused creation stays under the
+ * the client's active sites, then « + Nouveau site… », which opens the
+ * site's sub-form — name (required), address, city, phone, contact
+ * (RETOUR-LABO-16-10.md E2) — creates the site under the client
+ * (`POST /api/clients/[id]/sites`, open to both roles; always active for
+ * them) and selects it. The message of a refused creation stays under the
  * field.
  *
  * A name already in the list (case, accents and punctuation aside, the rule
  * of the sites import) selects that site instead of creating a second one.
  *
- * The name being typed stays here; `onDraftChange` tells the form whether
+ * The site being typed stays here; `onDraftChange` tells the form whether
  * one is waiting to be created, so its « Continuer » refuses rather than
  * moving on with the siège (relecture du lot 1).
  */
@@ -63,9 +105,9 @@ export function SitePicker({
   /** A site was created for `clientId`: it joins the client's list and is selected (`withNewSite`). */
   onCreated: (site: { id: string; name: string }, clientId: string) => void;
   /**
-   * True while a new site's name is typed for the client on screen and not
-   * created yet; false once it is created, cancelled, emptied, the client
-   * changed, or the picker removed.
+   * True while a new site is typed for the client on screen (its name, or
+   * any of its other fields) and not created yet; false once it is created,
+   * cancelled, emptied, the client changed, or the picker removed.
    */
   onDraftChange?: (pending: boolean) => void;
   labelClassName?: string;
@@ -84,9 +126,10 @@ export function SitePicker({
     currentClient.current = clientId;
   }, [clientId]);
 
-  /** The name being typed for the client on screen; null: the select shows. */
-  const draftName = siteDraftName(draft, clientId);
-  const pending = siteDraftPending(draftName);
+  /** The site being typed for the client on screen; null: the select shows. */
+  const shownDraft = siteDraftFor(draft, clientId);
+  const draftName = shownDraft?.name ?? null;
+  const pending = siteDraftTyped(shownDraft);
   useEffect(() => {
     if (!onDraftChange) return;
     onDraftChange(pending);
@@ -103,10 +146,17 @@ export function SitePicker({
     setTimeout(() => selectRef.current?.focus(), 0);
   }
 
+  /** One field of the sub-form typed; a refusal shown goes once the user types again. */
+  function setField(field: "name" | (typeof SITE_DETAIL_FIELDS)[number], value: string) {
+    setDraft((current) => ({ ...(current && current.clientId === clientId ? current : { name: "" }), clientId, [field]: value }));
+    if (shown?.tone === "error") setMessage(null);
+  }
+
   async function create() {
-    if (draftName === null || creating) return;
+    if (shownDraft === null || creating) return;
     const forClient = clientId;
-    const name = draftName.trim();
+    const body = siteDraftBody(shownDraft);
+    const name = body.name;
     if (!name) {
       setMessage({ clientId: forClient, tone: "error", text: "Indiquez le nom du site." });
       inputRef.current?.focus();
@@ -127,7 +177,7 @@ export function SitePicker({
       const response = await fetch(`/api/clients/${forClient}/sites`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify(body),
       });
       const data = (await response.json().catch(() => ({}))) as { id?: unknown; name?: unknown; error?: unknown };
       if (currentClient.current !== forClient) return;
@@ -160,58 +210,95 @@ export function SitePicker({
 
   return (
     <div>
-      <label htmlFor={id} className={labelClassName}>
-        <MapPin className="h-4 w-4" aria-hidden="true" />
-        Site de prélèvement
-      </label>
+      {/* While the « Nouveau site » sub-form is open its name field has its
+          own label: the heading is no label then, so that field is not named
+          twice. */}
       {draftName !== null ? (
-        <div className="flex gap-2">
-          <input
-            ref={inputRef}
-            id={id}
-            type="text"
-            value={draftName}
-            maxLength={SITE_NAME_MAX}
-            onChange={(event) => {
-              setDraft({ clientId, name: event.target.value });
-              if (shown?.tone === "error") setMessage(null);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void create();
-              } else if (event.key === "Escape") {
-                event.preventDefault();
-                setMessage(null);
-                closeDraft();
-              }
-            }}
-            placeholder="Nom du site (ex. : Cuisine centrale)"
-            aria-invalid={shown?.tone === "error" ? true : undefined}
-            aria-describedby={describedBy}
-            className="input-field min-w-0 flex-1 px-4"
-            autoFocus
-          />
-          <button
-            type="button"
-            onClick={() => void create()}
-            disabled={creating}
-            aria-busy={creating || undefined}
-            className="inline-flex min-h-[44px] shrink-0 items-center rounded-xl bg-brand px-3 text-sm font-semibold text-white transition hover:bg-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50"
-          >
-            {creating ? "Création…" : "Créer"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
+        <p className={labelClassName}>
+          <MapPin className="h-4 w-4" aria-hidden="true" />
+          Site de prélèvement
+        </p>
+      ) : (
+        <label htmlFor={id} className={labelClassName}>
+          <MapPin className="h-4 w-4" aria-hidden="true" />
+          Site de prélèvement
+        </label>
+      )}
+      {draftName !== null ? (
+        <div
+          role="group"
+          aria-label="Nouveau site"
+          className="space-y-2 rounded-xl border border-slate-200 p-3"
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
+              event.preventDefault();
+              void create();
+            } else if (event.key === "Escape") {
+              event.preventDefault();
               setMessage(null);
               closeDraft();
-            }}
-            disabled={creating}
-            className="inline-flex min-h-[44px] shrink-0 items-center rounded-xl border border-slate-300 px-3 text-sm text-slate-600 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
-          >
-            Annuler
-          </button>
+            }
+          }}
+        >
+          <div>
+            <label htmlFor={id} className="block text-xs font-medium text-slate-600">
+              Nom du nouveau site <span aria-hidden="true" className="text-rose-600">*</span>
+              <span className="sr-only">(obligatoire)</span>
+            </label>
+            <input
+              ref={inputRef}
+              id={id}
+              type="text"
+              aria-required="true"
+              value={draftName}
+              maxLength={SITE_NAME_MAX}
+              onChange={(event) => setField("name", event.target.value)}
+              placeholder="Ex. : Cuisine centrale"
+              aria-invalid={shown?.tone === "error" ? true : undefined}
+              aria-describedby={describedBy}
+              className="input-field mt-1 px-3"
+              autoFocus
+            />
+          </div>
+          <SiteDetail id={`${id}-address`} label="Adresse" value={shownDraft?.address ?? ""} onChange={(v) => setField("address", v)} />
+          <div className="grid grid-cols-2 gap-2">
+            <SiteDetail id={`${id}-city`} label="Ville" value={shownDraft?.city ?? ""} onChange={(v) => setField("city", v)} />
+            <SiteDetail
+              id={`${id}-phone`}
+              label="Téléphone"
+              type="tel"
+              value={shownDraft?.phone ?? ""}
+              onChange={(v) => setField("phone", v)}
+            />
+          </div>
+          <SiteDetail
+            id={`${id}-contact`}
+            label="Contact sur place"
+            value={shownDraft?.contact ?? ""}
+            onChange={(v) => setField("contact", v)}
+          />
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => void create()}
+              disabled={creating}
+              aria-busy={creating || undefined}
+              className="inline-flex min-h-[44px] shrink-0 items-center rounded-xl bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50"
+            >
+              {creating ? "Création…" : "Créer le site"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMessage(null);
+                closeDraft();
+              }}
+              disabled={creating}
+              className="inline-flex min-h-[44px] shrink-0 items-center rounded-xl border border-slate-300 px-3 text-sm text-slate-600 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
+            >
+              Annuler
+            </button>
+          </div>
         </div>
       ) : (
         <select
@@ -253,6 +340,38 @@ export function SitePicker({
           {shown.text}
         </p>
       )}
+    </div>
+  );
+}
+
+/** One optional field of the site's sub-form. */
+function SiteDetail({
+  id,
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: "text" | "tel";
+}) {
+  return (
+    <div className="min-w-0">
+      <label htmlFor={id} className="block text-xs font-medium text-slate-600">
+        {label}
+      </label>
+      <input
+        id={id}
+        type={type}
+        inputMode={type === "tel" ? "tel" : undefined}
+        value={value}
+        maxLength={SITE_NAME_MAX}
+        onChange={(event) => onChange(event.target.value)}
+        className="input-field mt-1 px-3"
+      />
     </div>
   );
 }

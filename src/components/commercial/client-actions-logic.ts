@@ -1,3 +1,5 @@
+import type { Role } from "@/lib/roles";
+
 /**
  * What the client fiche says about merging, attaching as a site and billing
  * clients (CLIENTS-FUSION.md §2–6) — pure, so the sentences the laboratory
@@ -5,11 +7,38 @@
  * (allowed or not) belong to `src/lib/client-merge-rules.ts` on the server.
  */
 
+/**
+ * Who merges two fiches of the same client: the gestionnaire commercial and
+ * the administrator (answer of 16/10, Q117 « Admin ou commercial » —
+ * RETOUR-LABO-16-10.md E4). The same list as the guard of
+ * `POST /api/clients/[id]/merge` (client-merge-guards.test.ts).
+ */
+export const MERGE_ROLES = ["GESTIONNAIRE", "ADMIN"] as const satisfies readonly Role[];
+
+/**
+ * Who attaches a fiche as a site of another client: still the administrator
+ * alone, until the laboratory confirms it for the gestionnaire too (re-ask
+ * 2.5 of 18/10). The guard of `POST /api/clients/[id]/attach-as-site`.
+ */
+export const ATTACH_ROLES = ["ADMIN"] as const satisfies readonly Role[];
+
+/** « Fusionner avec… » on the client fiche. */
+export function canMergeClients(role: Role): boolean {
+  return (MERGE_ROLES as readonly Role[]).includes(role);
+}
+
+/** « Rattacher comme site de… » on the client fiche. */
+export function canAttachAsSite(role: Role): boolean {
+  return (ATTACH_ROLES as readonly Role[]).includes(role);
+}
+
 /** The counts `POST /api/clients/[id]/merge` returns (preview and commit). */
 export type MergeCounts = {
   series: number;
   samples: number;
   invoices: number;
+  /** Of those, issued before 10/10 without a frozen client (the server warns). */
+  invoicesUnfrozen?: number;
   sites: number;
   sitesMerged: number;
   emails: number;
