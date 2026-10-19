@@ -11,6 +11,7 @@ import {
 } from "./portal-status";
 import { amendedNumber } from "./report-amendment";
 import { declaredSampledAt } from "./sample-search";
+import { receptionInstant } from "./report-template";
 
 /**
  * The portal's queries (PORTAIL.md §2) — pure: filters read from the URL,
@@ -165,12 +166,14 @@ export const PORTAL_SAMPLE_SELECT = {
   surfaceState: true,
   personName: true,
   airMethod: true,
+  airExposureMin: true,
   numeroLot: true,
   sampledAt: true,
   receivedAt: true,
   // Whether a deposit's « Prélevé le » was declared (R6): otherwise
   // `sampledAt` is the counter's entry instant and never leaves as a sampling.
-  serie: { select: { serialNumber: true, site: { select: { name: true } }, samplingTimeDeclared: true } },
+  // `arrivedAt`: « Reçu le » is the report's « Date de réception » (lot 1b), the arrival.
+  serie: { select: { serialNumber: true, site: { select: { name: true } }, samplingTimeDeclared: true, arrivedAt: true } },
   report: { select: { number: true, version: true, sentAt: true, amendedAt: true, amendmentPending: true } },
 } as const;
 
@@ -184,6 +187,8 @@ export type PortalSampleRecord = {
   surfaceState: SurfaceState | null;
   personName: string | null;
   airMethod: AirMethod | null;
+  /** The exposed plate's duration (16/10): « Boîte exposée 45 min ». */
+  airExposureMin?: number | null;
   numeroLot: string | null;
   sampledAt: Date;
   receivedAt: Date | null;
@@ -192,6 +197,8 @@ export type PortalSampleRecord = {
     site: { name: string } | null;
     /** False on a deposit whose sampling time was not declared; null on a visit. */
     samplingTimeDeclared: boolean | null;
+    /** The arrival at the laboratory: what « Reçu le » prints once the sample is received. */
+    arrivedAt?: Date | null;
   };
   report: {
     number: string;
@@ -239,7 +246,9 @@ export function toPortalRow(sample: PortalSampleRecord): PortalRow {
     designation: sampleDesignation(sample),
     numeroLot: sample.numeroLot,
     sampledAt: declaredSampledAt(sample.sampledAt, sample.serie.samplingTimeDeclared),
-    receivedAt: sample.receivedAt,
+    // As the report and its e-mail print « Date de réception » since lot 1b
+    // (`printedReceptionAt`): the arrival — never before the reception.
+    receivedAt: sample.receivedAt ? receptionInstant({ arrivedAt: sample.serie.arrivedAt, receivedAt: sample.receivedAt }) : null,
     stage: portalStage(sample.status),
     report:
       available && sample.report

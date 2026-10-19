@@ -39,6 +39,7 @@ import { ClientPicker, type PickedClient } from "@/components/commercial/ClientP
 import { SitePicker, withNewSite } from "@/components/commercial/SitePicker";
 import { LineEditor } from "./LineEditor";
 import {
+  draftLineDetails,
   duplicateDraft,
   emptyLine,
   fromLocalInput,
@@ -79,6 +80,8 @@ type CreatedSerie = {
     /** Absent from a payload that predates V2 / V4: the designation reads as before. */
     surfaceState?: SurfaceState | null;
     airMethod?: AirMethod | null;
+    /** The exposed plate's duration (16/10); absent from an older payload. */
+    airExposureMin?: number | null;
     nature?: { family?: Family | null } | null;
   }[];
 };
@@ -323,6 +326,10 @@ export function VisitForm({ me }: { me: Preleveur }) {
         return setStepError(pending);
       }
     }
+    // « Prélevé le » is pre-filled and required (16/10, Q118): an emptied
+    // field is refused here and by the API — never replaced by the instant
+    // of the save.
+    if (!startedAt) return setFieldError("visit-started", SERIE_MESSAGES.startedMissing);
     // « Dans le futur » first, next to the field, as the server would refuse
     // it (§8.1): the commonest slip on a device whose clock is off.
     const now = new Date();
@@ -348,9 +355,11 @@ export function VisitForm({ me }: { me: Preleveur }) {
     if (samplerKind !== "QUALILAB" && !samplerName.trim()) return setStepError("Indiquez qui a effectué le prélèvement.");
     if (endedAt && startedAt && localInputDate(endedAt)! < localInputDate(startedAt)!) return setFieldError("visit-ended", "L'heure de fin précède le début du prélèvement.");
     for (const [i, line] of lines.entries()) {
-      // Families, place, designation, surface state, air method — no analysis
-      // is required any more: the programme sheet fixes them (V6).
-      const problem = lineDraftError(line, natures);
+      // Families, place, designation, surface state, hands state, air method
+      // and plate duration, the T° ambiante (required on the visit, 16/10 —
+      // Q113) — no analysis is required any more: the programme sheet fixes
+      // them (V6).
+      const problem = lineDraftError(line, natures, { requireAmbient: true });
       if (problem) return setStepError(sampleLineMessage(i + 1, problem), i + 1);
     }
     setError("");
@@ -444,6 +453,7 @@ export function VisitForm({ me }: { me: Preleveur }) {
                         ...s,
                         surfaceState: s.surfaceState ?? lines[s.lineNumber - 1]?.surfaceState,
                         airMethod: s.airMethod ?? lines[s.lineNumber - 1]?.airMethod,
+                        airExposureMin: s.airExposureMin ?? lines[s.lineNumber - 1]?.airExposureMin,
                       })}
                     </span>
                   </span>
@@ -601,11 +611,14 @@ export function VisitForm({ me }: { me: Preleveur }) {
                   <label htmlFor="visit-started" className="section-title mb-2">
                     <Clock className="h-4 w-4" />
                     Prélevé le … à …
+                    <span className="-ml-1 text-rose-600" aria-hidden="true">*</span>
+                    <span className="sr-only">(obligatoire)</span>
                   </label>
                   {isMounted ? (
                     <LabDateTimeInput
                       id="visit-started"
                       value={startedAt}
+                      required
                       onChange={(v) => {
                         setStartedAt(v);
                         clearFieldError("visit-started");
@@ -742,6 +755,7 @@ export function VisitForm({ me }: { me: Preleveur }) {
                   knownProducts={memory.products}
                   profiles={profiles}
                   showProfiles={false}
+                  ambientRequired
                 />
               </div>
             );
@@ -819,16 +833,9 @@ export function VisitForm({ me }: { me: Preleveur }) {
                           Échantillon {i + 1} · {familiesLabel(families)}
                         </p>
                         <p className="font-medium text-slate-900">{lineDesignation(line)}</p>
-                        <p className="text-xs text-slate-500">
-                          {line.lieu}
-                          {line.numeroLot ? ` · lot ${line.numeroLot}` : ""}
-                          {line.lineKind === "SURFACE" && line.surfaceAreaCm2 ? ` · ${line.surfaceAreaCm2} cm²` : ""}
-                          {/* Named, never a bare figure (Q112, 16/10); an air line sends none. */}
-                          {line.lineKind !== "AIR" && line.productTemperature.trim()
-                            ? ` · T° au prélèvement ${line.productTemperature.trim()} °C`
-                            : ""}
-                          {line.unitCount > 1 ? ` · n = ${line.unitCount}` : ""}
-                        </p>
+                        {/* Place, hands' state, lot, area (« 100 cm² » when left empty),
+                            T° au prélèvement, T° ambiante, n (16/10). */}
+                        <p className="text-xs text-slate-500">{draftLineDetails(line)}</p>
                         {families.length > 1 && (
                           <p className="mt-0.5 text-xs text-slate-500">
                             Deux échantillons au laboratoire : un par famille d&apos;analyses.

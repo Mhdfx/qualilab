@@ -8,7 +8,15 @@ import type {
   SurfaceState,
 } from "@/generated/prisma/enums";
 import { fromLabWallTime, toLabWallTime } from "@/lib/lab-time";
-import { AIR_METHOD_LABELS, LINE_KIND_LABELS, SURFACE_AREA_CHOICES, withSurfaceState } from "@/lib/labels";
+import {
+  AIR_EXPOSURE_MINUTES,
+  HANDS_STATE_PHRASES,
+  LINE_KIND_LABELS,
+  SURFACE_AREA_CHOICES,
+  airMethodText,
+  isExposedPlate,
+  withSurfaceState,
+} from "@/lib/labels";
 import {
   LINE_FAMILIES,
   defaultFamiliesFor,
@@ -17,7 +25,7 @@ import {
   type LineFamily,
   type NatureRef,
 } from "@/lib/nature-family";
-import { SERIE_MESSAGES } from "@/lib/serie-input";
+import { SERIE_MESSAGES, SURFACE_AREA_DEFAULT_CM2 } from "@/lib/serie-input";
 
 /** Shapes shared by the visit screens (client side). No Prisma client here:
  * a server page imports `lineDesignation` from this module too. */
@@ -115,10 +123,18 @@ export type LineDraft = {
   surfaceLabel: string;
   /** « État de la surface » of a Surface line; "" = not chosen yet. */
   surfaceState: SurfaceState | "";
-  /** « Surface prélevée (cm²) » of a Surface line (ex-« Aire prélevée »). */
+  /**
+   * « Surface prélevée (cm²) » of a Surface line (ex-« Aire prélevée »), as
+   * chosen or typed: « 100 » / « 1000 » (the chips), or what « Autre » was
+   * given — another whole number of cm², or a text (« couteau entier »,
+   * 16/10) that `surfaceAreaPayload` sends as `surfaceAreaNote`.
+   */
   surfaceAreaCm2: string;
   /** « Méthode de prélèvement » of an Air line; "" = not chosen yet. */
   airMethod: AirMethod | "";
+  /** « Durée d'exposition (min) » of an exposed plate (16/10): « 30 » proposed
+   * when the plate is picked (`airMethodPatch`); sent with the plate only. */
+  airExposureMin: string;
   personName: string;
   /** « État des mains » of a Mains line; "" = not chosen yet. The
    *  « Fonction » the form asked before 16/10 (Q111) is no longer entered:
@@ -385,23 +401,93 @@ function sameFamilies(a: readonly LineFamily[], b: readonly LineFamily[]) {
 /**
  * The quick choice (« 100 cm² », « 1000 cm² » — `SURFACE_AREA_CHOICES`) a
  * typed « Surface prélevée (cm²) » equals, read the way the server reads it
- * (trimmed, a comma as the decimal mark); null for any other value and for
- * an empty field. The préleveur's card and « Corriger la fiche » press the
- * chip it names.
+ * (trimmed, a comma as the decimal mark — `surfaceAreaPayload`); null for
+ * any other value (« Autre ») and for an empty field. The préleveur's card
+ * and « Corriger la fiche » press the chip it names.
  */
 export function surfaceAreaChoice(value: string): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const area = Number(trimmed.replace(",", "."));
+  const { surfaceAreaCm2 } = surfaceAreaPayload(value);
+  if (!surfaceAreaCm2) return null;
+  const area = Number(surfaceAreaCm2.replace(",", "."));
   return SURFACE_AREA_CHOICES.find((choice) => choice === area) ?? null;
+}
+
+/**
+ * What « Autre » of the surface sampled holds, as the API reads it (16/10,
+ * Q114): a number — « 50 », « 1 000 cm² », « 1.000 », « 250 cm » — is an
+ * area in cm² (the server then checks it is a whole number), anything else
+ * is the text that replaces the area (« couteau entier »). Empty: neither,
+ * the server's 100 cm² applies.
+ */
+export function surfaceAreaPayload(value: string): { surfaceAreaCm2: string; surfaceAreaNote: string } {
+  const trimmed = value.trim();
+  // « 1 000 cm² » is the number 1000: the unit (« cm² », « cm2 », « cm ») and
+  // the spaces (narrow or not — `\s` matches them all) go.
+  const figure = trimmed.replace(/\s*cm(?:²|2)?$/i, "").replace(/\s/g, "");
+  // A point or a comma before groups of three digits separates thousands
+  // (« 1.000 », « 12,500 »), never decimals: an area is a whole number of
+  // cm², and « 1.000 » read as 1 would store 1 cm² without a word.
+  if (/^[1-9]\d{0,2}(?:[.,]\d{3})+$/.test(figure)) return { surfaceAreaCm2: figure.replace(/[.,]/g, ""), surfaceAreaNote: "" };
+  if (/^[+-]?\d+(?:[.,]\d+)?$/.test(figure)) return { surfaceAreaCm2: figure, surfaceAreaNote: "" };
+  return { surfaceAreaCm2: "", surfaceAreaNote: trimmed };
+}
+
+/** The area of a draft as the recap prints it: « 100 cm² », « couteau entier »; null when empty. */
+export function draftSurfaceAreaText(value: string): string | null {
+  const { surfaceAreaCm2, surfaceAreaNote } = surfaceAreaPayload(value);
+  return surfaceAreaNote || (surfaceAreaCm2 ? `${surfaceAreaCm2} cm²` : null);
+}
+
+/**
+ * The detail line of a draft on the visit's « Vérifier » step: the place,
+ * the hands' state, the lot, the area — « 100 cm² » when « Préciser » is
+ * left empty, as the server stores it —, the two temperatures, the units.
+ * The two values the visit requires since 16/10 (the T° ambiante, every
+ * kind — Q113 —, and the hands' state — Q109) are checked here before the
+ * save. Named, never a bare figure (Q112).
+ */
+export function draftLineDetails(
+  line: Pick<
+    LineDraft,
+    "lineKind" | "lieu" | "numeroLot" | "surfaceAreaCm2" | "productTemperature" | "ambientTemperature" | "handsState" | "unitCount"
+  >
+): string {
+  const productTemperature = line.productTemperature.trim();
+  const ambientTemperature = line.ambientTemperature.trim();
+  return [
+    line.lieu.trim(),
+    line.lineKind === "MAINS" && line.handsState ? HANDS_STATE_PHRASES[line.handsState] : "",
+    line.numeroLot.trim() ? `lot ${line.numeroLot.trim()}` : "",
+    line.lineKind === "SURFACE" ? (draftSurfaceAreaText(line.surfaceAreaCm2) ?? `${SURFACE_AREA_DEFAULT_CM2} cm²`) : "",
+    // An air line sends no « Température au prélèvement » (§8.5).
+    line.lineKind !== "AIR" && productTemperature ? `T° au prélèvement ${productTemperature} °C` : "",
+    ambientTemperature ? `T° ambiante ${ambientTemperature} °C` : "",
+    line.unitCount > 1 ? `n = ${line.unitCount}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/**
+ * Picking the air method: the exposed plate proposes its 30 minutes when
+ * no duration was typed yet (16/10, Q50); a duration typed is kept when the
+ * method changes (`linePayload` sends it with the plate only).
+ */
+export function airMethodPatch(line: Pick<LineDraft, "airExposureMin">, method: AirMethod | ""): Partial<LineDraft> {
+  return {
+    airMethod: method,
+    airExposureMin:
+      isExposedPlate(method) && !line.airExposureMin.trim() ? String(AIR_EXPOSURE_MINUTES.default) : line.airExposureMin,
+  };
 }
 
 /**
  * A new sample. With the catalogue's natures and the previous sample, it
  * continues the previous one: same type, same boxes, same analyses, same
- * place and ambient temperature (and the air method of an air sample) —
- * a visit usually swabs several surfaces in a row. Without a previous
- * sample: a food sample with the type's default box (micro).
+ * place and ambient temperature (and the air method and the plate's
+ * duration of an air sample) — a visit usually swabs several surfaces in a
+ * row. Without a previous sample: a food sample with the type's default box
+ * (micro).
  */
 export function emptyLine(natures: readonly NatureOption[], previous?: LineDraft): LineDraft {
   const kind: LineKind = previous?.lineKind ?? "ALIMENT";
@@ -429,6 +515,7 @@ export function emptyLine(natures: readonly NatureOption[], previous?: LineDraft
     // L'aire n'a de valeur par défaut que sur une ligne Surface.
     surfaceAreaCm2: kind === "SURFACE" ? "100" : "",
     airMethod: kind === "AIR" && previous?.lineKind === "AIR" ? previous.airMethod : "",
+    airExposureMin: kind === "AIR" && previous?.lineKind === "AIR" ? previous.airExposureMin : "",
     personName: "",
     handsState: "",
     remarks: "",
@@ -469,16 +556,31 @@ const FAMILY_ADJECTIVES: Record<LineFamily, string> = {
   CHIMIE: "physico-chimiques",
 };
 
+/** « Durée d'exposition » as the server reads it: a whole number of minutes, 1 to 480. */
+function exposureError(value: string): string | null {
+  const typed = value.trim();
+  if (!typed) return SERIE_MESSAGES.airExposureMissing;
+  const minutes = Number(typed.replace(",", "."));
+  return Number.isInteger(minutes) && minutes >= AIR_EXPOSURE_MINUTES.min && minutes <= AIR_EXPOSURE_MINUTES.max
+    ? null
+    : SERIE_MESSAGES.airExposureInvalid;
+}
+
+/** `Sample.surfaceAreaNote` VARCHAR(191). */
+const SURFACE_AREA_NOTE_MAX = 191;
+
 /**
  * What stops a sample from being saved, in the form's words — the form
  * prefixes « Échantillon N — ». Analyses are not required any more
  * (RETOUR-LABO-06-10.md §5, V6). `requirePlace: false` at the counter, where
- * the place defaults to « Dépôt au laboratoire ».
+ * the place defaults to « Dépôt au laboratoire ». `requireAmbient: true` on
+ * the préleveur's visit only (16/10, Q113): the T° ambiante, every type, the
+ * air included — the counter keeps it optional.
  */
 export function lineDraftError(
   line: LineDraft,
   natures: readonly NatureRef[],
-  options: { requirePlace?: boolean } = {}
+  options: { requirePlace?: boolean; requireAmbient?: boolean } = {}
 ): string | null {
   const families = lineFamilies(line);
   if (families.length === 0) return "Cochez au moins une famille d'analyses (microbiologiques ou physico-chimiques).";
@@ -495,40 +597,57 @@ export function lineDraftError(
     case "SURFACE":
       if (!line.surfaceLabel.trim()) return SERIE_MESSAGES.surfaceLabelMissing;
       if (!line.surfaceState) return SERIE_MESSAGES.surfaceStateMissing;
+      if (surfaceAreaPayload(line.surfaceAreaCm2).surfaceAreaNote.length > SURFACE_AREA_NOTE_MAX) {
+        return SERIE_MESSAGES.surfaceAreaNoteTooLong;
+      }
       break;
     case "MAINS":
       if (!line.personName.trim()) return "Indiquez la personne prélevée.";
+      if (!line.handsState) return SERIE_MESSAGES.handsStateMissing;
       break;
-    case "AIR":
+    case "AIR": {
       if (!line.airMethod) return SERIE_MESSAGES.airMethodMissing;
+      const exposure = isExposedPlate(line.airMethod) ? exposureError(line.airExposureMin) : null;
+      if (exposure) return exposure;
       break;
+    }
   }
+  if (options.requireAmbient && !line.ambientTemperature.trim()) return SERIE_MESSAGES.ambientMissing;
   return null;
 }
 
 /** A line as `POST /api/series` reads it. */
-export type LinePayload = Omit<LineDraft, "key" | "surfaceState" | "airMethod" | "handsState"> & {
+export type LinePayload = Omit<LineDraft, "key" | "surfaceState" | "airMethod" | "handsState" | "airExposureMin"> & {
   surfaceState?: SurfaceState;
   airMethod?: AirMethod;
   handsState?: HandsState;
+  /** « Autre » of the area given as a text (16/10); "" otherwise. */
+  surfaceAreaNote: string;
+  /** Sent with the exposed plate only — even empty, so the server says it is missing. */
+  airExposureMin?: string;
 };
 
 /**
  * The line sent to the API: without its key, without what its type does
  * not show (a surface designation left on a food line, a method left on a
- * water line…), and with "" choices sent as absent.
+ * water line…), and with "" choices sent as absent. The area's « Autre »
+ * goes as an area or as a text (`surfaceAreaPayload`).
  */
 export function linePayload(line: LineDraft): LinePayload {
-  const { key: _key, surfaceState, airMethod, handsState, ...rest } = line;
+  const { key: _key, surfaceState, airMethod, handsState, airExposureMin, ...rest } = line;
   void _key;
   const surface = line.lineKind === "SURFACE";
   const hands = line.lineKind === "MAINS";
+  const area = surface ? surfaceAreaPayload(rest.surfaceAreaCm2) : { surfaceAreaCm2: "", surfaceAreaNote: "" };
+  const air = line.lineKind === "AIR" && airMethod ? airMethod : undefined;
   return {
     ...rest,
     surfaceLabel: surface ? rest.surfaceLabel : "",
-    surfaceAreaCm2: surface ? rest.surfaceAreaCm2 : "",
+    surfaceAreaCm2: area.surfaceAreaCm2,
+    surfaceAreaNote: area.surfaceAreaNote,
     surfaceState: surface && surfaceState ? surfaceState : undefined,
-    airMethod: line.lineKind === "AIR" && airMethod ? airMethod : undefined,
+    airMethod: air,
+    airExposureMin: isExposedPlate(air) ? airExposureMin : undefined,
     personName: hands ? rest.personName : "",
     handsState: hands && handsState ? handsState : undefined,
     productTypeId: line.lineKind === "ALIMENT" ? rest.productTypeId : "",
@@ -540,10 +659,21 @@ export function linePayload(line: LineDraft): LinePayload {
 
 // ---- display -------------------------------------------------------------------
 
+/** A duration as a draft (« 45 ») or a row (45) holds it; null when not a whole number. */
+function exposureMinutes(value: number | string | null | undefined): number | null {
+  if (typeof value === "number") return Number.isInteger(value) ? value : null;
+  const typed = value?.trim();
+  if (!typed) return null;
+  // « 45,0 » is 45, as `lineDraftError` and the server read it.
+  const minutes = Number(typed.replace(",", "."));
+  return Number.isInteger(minutes) ? minutes : null;
+}
+
 /**
  * What the sample is about, for lists and recaps: « Planche verte — surface
  * nettoyée », « Mains — Prénom Nom », « Salle blanche — Boîte exposée
- * 30 min ». Samples saved before the state and the method existed print
+ * 45 min » (`airMethodText`; a plate saved before its duration reads
+ * 30 min). Samples saved before the state and the method existed print
  * their designation alone.
  */
 export function lineDesignation(line: {
@@ -553,11 +683,12 @@ export function lineDesignation(line: {
   personName?: string | null;
   surfaceState?: SurfaceState | "" | null;
   airMethod?: AirMethod | "" | null;
+  airExposureMin?: number | string | null;
 }) {
   if (line.lineKind === "SURFACE") return withSurfaceState(line.surfaceLabel || "Surface", line.surfaceState || null);
   if (line.lineKind === "MAINS") return line.personName ? `Mains — ${line.personName}` : "Mains du personnel";
   if (line.lineKind === "AIR" && line.airMethod) {
-    return `${line.produit || LINE_KIND_LABELS.AIR} — ${AIR_METHOD_LABELS[line.airMethod]}`;
+    return `${line.produit || LINE_KIND_LABELS.AIR} — ${airMethodText(line.airMethod, exposureMinutes(line.airExposureMin))}`;
   }
   return line.produit || "—";
 }

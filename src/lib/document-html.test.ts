@@ -8,7 +8,9 @@ import {
   buildProtocolHtml,
   designationHeading,
   documentFooter,
+  documentSamplerName,
   protocolFooterLines,
+  protocolHandsDesignation,
   protocolRows,
   sampleDesignation,
   surfaceText,
@@ -29,8 +31,8 @@ const base: SerieDocumentData = {
   cadreNote: null,
   interlocutor: "Karim",
   samplerKind: "QUALILAB",
-  samplerName: "Préleveur Test",
-  samplerFunction: "Préleveur",
+  // What the route passes on a Qualilab visit: the denomination (D6).
+  samplerName: "Technicien de QUALILAB 'P.TEST'",
   analysesMicro: true,
   analysesChimie: false,
   receivedByName: "Salma Idrissi",
@@ -106,7 +108,7 @@ describe("buildProtocolHtml — PG04/EN01", () => {
     expect(html).toContain("Référence client : <b>F-1021</b>");
     expect(html).not.toContain("N° de factures");
     expect(html).toContain("Cuisine centrale");
-    expect(html).toContain("Préleveur Test");
+    expect(html).toContain(escapeHtml("Technicien de QUALILAB 'P.TEST'"));
     expect(html).toContain("1 °C");
   });
 
@@ -125,9 +127,50 @@ describe("buildProtocolHtml — PG04/EN01", () => {
     expect(html).not.toContain("N° de contrôle");
     expect(html).toContain('<span class="case checked"></span>Analyses microbiologiques');
     expect(html).toContain('<span class="case"></span>Analyses physico-chimiques');
-    expect(html).toContain("Fonction : Préleveur");
     expect(html).toContain("Coliformes totaux, E. coli");
     expect(html).toContain("Signature et cachet de l'interlocuteur");
+  });
+});
+
+describe("« Prélèvement effectué par » — the préleveur's denomination (D6, Q22 of 16/10)", () => {
+  const denomination = escapeHtml("Technicien de QUALILAB 'P.TEST'");
+
+  it("names the préleveur by the denomination on the protocol's header and signature box, with no « Fonction : »", () => {
+    const html = buildProtocolHtml(base);
+    expect(html).toContain(`<span class="k">Prélèvement effectué par :</span> <b>${denomination}</b></div>`);
+    expect(html).toContain(`<div class="role">Signature Qualilab</div><p class="small">${denomination}</p>`);
+    expect(html).not.toContain("Fonction");
+  });
+
+  it("prints the same text in the bon's « Déposé par »", () => {
+    const html = buildBonHtml({ ...base, interlocutor: null });
+    expect(html).toContain(`<span class="k">Déposé par :</span><span class="v">${denomination}</span>`);
+  });
+
+  it("reads « Qualilab » when no préleveur is known, and the client or a third party as before", () => {
+    expect(buildProtocolHtml({ ...base, samplerName: null })).toContain("Prélèvement effectué par :</span> <b>Qualilab</b>");
+    expect(buildProtocolHtml({ ...base, samplerKind: "CLIENT", samplerName: null })).toContain(
+      "Prélèvement effectué par :</span> <b>Le client</b>"
+    );
+    expect(buildProtocolHtml({ ...base, samplerKind: "AUTRE", samplerName: "Service Démo" })).toContain(
+      "Prélèvement effectué par :</span> <b>Autre — Service Démo</b>"
+    );
+  });
+
+  it("maps the série's préleveur to the documents' name: the denomination of the account, else as typed", () => {
+    const user = { name: "Personne Test", documentName: null };
+    expect(documentSamplerName({ samplerKind: "QUALILAB", samplerName: null, samplerUser: user })).toBe(
+      "Technicien de QUALILAB 'P.TEST'"
+    );
+    expect(
+      documentSamplerName({ samplerKind: "QUALILAB", samplerName: null, samplerUser: { ...user, documentName: "Préleveur 'X.NOM'" } })
+    ).toBe("Préleveur 'X.NOM'");
+    // No account: a name typed on the série stays as typed; nothing = « Qualilab » at print.
+    expect(documentSamplerName({ samplerKind: "QUALILAB", samplerName: " Préleveur Externe ", samplerUser: null })).toBe("Préleveur Externe");
+    expect(documentSamplerName({ samplerKind: "QUALILAB", samplerName: null, samplerUser: null })).toBeNull();
+    // The client and a third party: the name typed on the série, never an account's.
+    expect(documentSamplerName({ samplerKind: "CLIENT", samplerName: null, samplerUser: user })).toBeNull();
+    expect(documentSamplerName({ samplerKind: "SERVICE_VETERINAIRE", samplerName: "Dr Test", samplerUser: null })).toBe("Dr Test");
   });
 });
 
@@ -464,7 +507,52 @@ describe("surfaceText — the air method (V4)", () => {
   });
 });
 
+describe("surfaceText — the surface's « Autre » and the plate's duration (16/10)", () => {
+  it("prints the « Autre » text in place of « N cm² »", () => {
+    expect(surfaceText({ lineKind: "SURFACE", surfaceAreaCm2: null, surfaceAreaNote: "couteau entier" })).toBe("couteau entier");
+    expect(surfaceText({ lineKind: "SURFACE", surfaceAreaCm2: 100, surfaceAreaNote: null })).toBe("100 cm²");
+    expect(surfaceText({ lineKind: "SURFACE", surfaceAreaCm2: null })).toBe("Surface");
+  });
+
+  it("prints the plate's duration, 30 min on an older plate", () => {
+    expect(surfaceText({ lineKind: "AIR", surfaceAreaCm2: null, airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: 45 })).toBe(
+      "Boîte exposée 45 min"
+    );
+    expect(surfaceText({ lineKind: "AIR", surfaceAreaCm2: null, airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: null })).toBe(
+      "Boîte exposée 30 min"
+    );
+  });
+});
+
+describe("protocolHandsDesignation — the hands on the protocole and the bon (16/10, Q109)", () => {
+  it("prints the hands' own phrases: an old « non lavées » reads « mains en cours de travail »", () => {
+    expect(protocolHandsDesignation({ personName: "Personne Test", handsState: "NON_LAVEES" })).toBe(
+      "Personne Test (mains en cours de travail)"
+    );
+    expect(protocolHandsDesignation({ personName: "Personne Test", handsState: "LAVEES" })).toBe("Personne Test (mains lavées)");
+    expect(protocolHandsDesignation({ personName: "Personne Test", handsState: "ASEPTISEES" })).toBe(
+      "Personne Test (mains aseptisées ou désinfectées)"
+    );
+  });
+
+  it("keeps an old « Fonction » after the name, and the name alone without a state", () => {
+    expect(protocolHandsDesignation({ personName: "Personne Test", personRole: "Cuisine", handsState: "LAVEES" })).toBe(
+      "Personne Test — Cuisine (mains lavées)"
+    );
+    expect(protocolHandsDesignation({ personName: "Personne Test", personRole: null, handsState: null })).toBe("Personne Test");
+  });
+});
+
 describe("sampleDesignation — the rapport, the étiquette, the paillasse", () => {
+  it("prints the plate's duration (16/10, Q50)", () => {
+    expect(sampleDesignation({ lineKind: "AIR", produit: "Salle", airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: 45 })).toBe(
+      "Salle — Boîte exposée 45 min"
+    );
+    expect(sampleDesignation({ lineKind: "AIR", produit: "Salle", airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: null })).toBe(
+      "Salle — Boîte exposée 30 min"
+    );
+  });
+
   it("adds the state to a surface and the method to an air sample", () => {
     expect(
       sampleDesignation({ lineKind: "SURFACE", produit: "Planche verte", surfaceLabel: "Planche verte", surfaceState: "NETTOYE" })

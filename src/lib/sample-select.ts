@@ -29,6 +29,8 @@ const COMMON = {
   ambientTemperature: true,
   surfaceLabel: true,
   surfaceAreaCm2: true,
+  // « Autre » of the area (16/10): printed in its place.
+  surfaceAreaNote: true,
   personName: true,
   personRole: true,
   handsState: true,
@@ -52,8 +54,9 @@ const COMMON = {
       serialNumber: true,
       site: { select: { id: true, name: true } },
       startedAt: true,
-      // False on a deposit whose « Prélevé le » was left empty: `sampledAt`
-      // is then the instant it was entered, which the lists print as
+      // False on a deposit whose « Prélevé le » was left empty (before 16/10)
+      // or ticked « Heure de prélèvement inconnue du client »: `sampledAt` is
+      // then the save instant / the arrival, which the lists print as
       // « Non déclarée » (`declaredSampledAt`, R6 / C5).
       samplingTimeDeclared: true,
     },

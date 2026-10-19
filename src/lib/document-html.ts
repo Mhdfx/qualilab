@@ -2,6 +2,7 @@ import type {
   AirMethod,
   Cadre,
   Family,
+  HandsState,
   LineKind,
   NonConformityReason,
   PaymentMode,
@@ -12,21 +13,24 @@ import type {
 import type { CompanyInfo } from "./company";
 import { CARTOUCHE_INK, cartoucheMargin, pageCss } from "./cartouche-html";
 import { formatDateOnly } from "./date-only";
+import { userDocumentName } from "./document-name";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
 import { PAYMENT_MODE_LABELS } from "./invoice-lifecycle";
 import { toLabWallTime } from "./lab-time";
 import {
-  AIR_METHOD_LABELS,
   ANALYSIS_FAMILY_LABELS,
   LINE_KIND_LABELS,
   NON_CONFORMITY_REASON_LABELS,
   QUANTITY_UNIT_LABELS,
   SAMPLER_KIND_LABELS,
   SURFACE_STATE_LABELS,
+  HANDS_STATE_PHRASES,
+  airMethodText,
   formatCadre,
   formatCurrency,
   formatDayTime,
   formatDecimal,
+  surfaceAreaText,
   withSurfaceState,
 } from "./labels";
 import { DEFAULT_THRESHOLDS, RECEPTION_RULES, receptionRuleLine, type ReceptionThresholds } from "./reception-rules";
@@ -109,9 +113,11 @@ export type SerieDocumentData = {
   cadreNote: string | null;
   interlocutor: string | null;
   samplerKind: SamplerKind;
+  /** Who sampled, as `documentSamplerName` names them: on a Qualilab
+   *  sampling the préleveur's denomination (« Technicien de QUALILAB
+   *  'I.NOM' », D6), which already carries the function; otherwise the
+   *  third party named on the série. */
   samplerName: string | null;
-  /** « Fonction » next to « effectué par » — the account's role on a Qualilab visit. */
-  samplerFunction: string | null;
   /** The série's stored boxes. A box is also ticked when one of its samples
    *  is of that family: the boxes are a summary of the samples (V3), and an
    *  older série keeps whatever was ticked by hand. */
@@ -303,6 +309,25 @@ function filled(value: string | null | undefined) {
   return value ? show(value) : "";
 }
 
+/**
+ * « Prélèvement effectué par » (D6 — the laboratory's answer Q22 of 16/10)
+ * for the protocol's header, its « Signature Qualilab » box and the bon's
+ * « Déposé par »: on a Qualilab sampling, the préleveur's denomination on
+ * the documents (their own, else « Technicien de QUALILAB 'I.NOM' » —
+ * `userDocumentName`) in place of the full name and its « Fonction »; a name
+ * typed on the série without an account stays as typed. The client and a
+ * third party are unchanged: the name typed on the série.
+ */
+export function documentSamplerName(serie: {
+  samplerKind: SamplerKind;
+  samplerName: string | null;
+  samplerUser: { name: string; documentName?: string | null } | null;
+}): string | null {
+  if (serie.samplerKind !== "QUALILAB") return serie.samplerName;
+  if (serie.samplerUser) return userDocumentName(serie.samplerUser);
+  return serie.samplerName?.trim() || null;
+}
+
 function samplerText(data: SerieDocumentData) {
   if (data.samplerKind === "QUALILAB") return data.samplerName ?? "Qualilab";
   if (data.samplerKind === "CLIENT") return "Le client";
@@ -447,9 +472,7 @@ export function buildProtocolHtml(data: SerieDocumentData, thresholds: Reception
   <div class="f"><span class="k">Prélevé le :</span> <b>${formatDayTime(data.startedAt)}</b>${
     data.endedAt ? ` <span class="small">— fin ${formatDayTime(data.endedAt)}</span>` : ""
   }</div>
-  <div class="f"><span class="k">Prélèvement effectué par :</span> <b>${escapeHtml(samplerText(data))}</b>${
-    data.samplerFunction ? ` <span class="small">— Fonction : ${escapeHtml(data.samplerFunction)}</span>` : ""
-  }</div>
+  <div class="f"><span class="k">Prélèvement effectué par :</span> <b>${escapeHtml(samplerText(data))}</b></div>
   <div class="f"><span class="k">Arrivé au laboratoire :</span> <b>${data.arrivedAt ? formatDayTime(data.arrivedAt) : "……/……/…… à ……h……"}</b></div>
   <div class="f"><span class="k">T° à l'arrivée :</span> <b>${data.coolerTemperature !== null ? temperatureText(data.coolerTemperature) : "…… °C"}</b></div>
 </div>
@@ -606,21 +629,24 @@ ${data.notes ? `<p class="notes">${escapeHtml(data.notes)}</p>` : ""}
 }
 
 /**
- * The « Surface prélevée » column of the paper: the area of a surface,
- * « MAIN » for hands, the method of an air sample (RETOUR-LABO-06-10.md §5,
- * V4 — the column was empty for the air).
+ * The « Surface prélevée » column of the paper: the area of a surface — or
+ * the « Autre » text that replaces it (« couteau entier », 16/10) —, « MAIN »
+ * for hands, the method of an air sample with the plate's duration
+ * (RETOUR-LABO-06-10.md §5, V4 — the column was empty for the air; 16/10).
  */
 export function surfaceText(line: {
   lineKind: LineKind;
   surfaceLabel?: string | null;
   surfaceAreaCm2: number | null;
+  surfaceAreaNote?: string | null;
   airMethod?: AirMethod | null;
+  airExposureMin?: number | null;
 }) {
   // Un échantillon Surface porte déjà sa désignation : la colonne montre
-  // l'aire.
-  if (line.lineKind === "SURFACE") return line.surfaceAreaCm2 ? `${line.surfaceAreaCm2} cm²` : "Surface";
+  // l'aire, ou le texte « Autre » qui la remplace.
+  if (line.lineKind === "SURFACE") return surfaceAreaText(line.surfaceAreaCm2, line.surfaceAreaNote) ?? "Surface";
   if (line.lineKind === "MAINS") return "MAIN";
-  if (line.lineKind === "AIR" && line.airMethod) return AIR_METHOD_LABELS[line.airMethod];
+  if (line.lineKind === "AIR" && line.airMethod) return airMethodText(line.airMethod, line.airExposureMin);
   // Les échantillons saisis avant le 07/10 pouvaient porter une surface sur
   // n'importe quel type : ils s'impriment comme avant.
   const label = line.surfaceLabel?.trim() || null;
@@ -634,8 +660,9 @@ export function surfaceText(line: {
  * it — the rapport and its e-mail, the étiquette, the feuille de paillasse:
  * what was sampled, followed by the state of a surface (« Planche verte —
  * surface nettoyée ») or the method of an air sample (« Salle — Boîte
- * exposée 30 min »). A sample entered before either existed prints as
- * before; null when nothing was recorded.
+ * exposée 45 min », `airMethodText`: a plate without a duration reads
+ * 30 min). A sample entered before either existed prints as before; null
+ * when nothing was recorded.
  */
 export function sampleDesignation(sample: {
   lineKind: LineKind;
@@ -644,6 +671,7 @@ export function sampleDesignation(sample: {
   personName?: string | null;
   surfaceState?: SurfaceState | null;
   airMethod?: AirMethod | null;
+  airExposureMin?: number | null;
 }): string | null {
   const first = (...values: (string | null | undefined)[]) => values.map((v) => v?.trim()).find(Boolean) ?? null;
   // The surface and the person are corrected on their own fields (« Corriger
@@ -654,11 +682,30 @@ export function sampleDesignation(sample: {
   }
   if (sample.lineKind === "MAINS") return first(sample.personName, sample.produit);
   if (sample.lineKind === "AIR" && sample.airMethod) {
-    return `${first(sample.produit) ?? LINE_KIND_LABELS.AIR} — ${AIR_METHOD_LABELS[sample.airMethod]}`;
+    return `${first(sample.produit) ?? LINE_KIND_LABELS.AIR} — ${airMethodText(sample.airMethod, sample.airExposureMin)}`;
   }
   // An older row without a product name may still carry a surface or a
   // person typed on any kind of line.
   return first(sample.produit, sample.surfaceLabel, sample.personName);
+}
+
+/**
+ * The « Désignation » cell of a hands line on the protocole and the bon:
+ * « Personne Test (mains en cours de travail) » — the hands' own phrases
+ * (16/10, Q109: an old « non lavées » reprints « mains en cours de
+ * travail »), never the surface's. A « Fonction » entered before 16/10
+ * (Q111) still prints after the name; a line without a state prints the
+ * name alone.
+ */
+export function protocolHandsDesignation(sample: {
+  personName: string | null;
+  personRole?: string | null;
+  handsState?: HandsState | null;
+}): string {
+  const role = sample.personRole?.trim();
+  return `${sample.personName ?? ""}${role ? ` — ${role}` : ""}${
+    sample.handsState ? ` (${HANDS_STATE_PHRASES[sample.handsState]})` : ""
+  }`;
 }
 
 /** The heading of that designation: « Produit » for food and water (and an

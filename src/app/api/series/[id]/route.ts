@@ -5,7 +5,7 @@ import { logAudit } from "@/lib/audit";
 import { CADRE_CHOICES, formatCadre, futureMessage } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 import { serieSelectFor, serializeSerie } from "@/lib/serie-select";
-import { arrivalRefusal } from "@/lib/serie-input";
+import { arrivalChangeRefusal, arrivalRefusal } from "@/lib/serie-input";
 import { serieStatus } from "@/lib/series";
 import { IMAGE_DATA_URI, MAX_IMAGE_CHARS, canSeeProtocolPhoto } from "@/lib/protocol-photo-access";
 
@@ -122,8 +122,22 @@ export async function PATCH(
   // Never before the end of the sampling — nor before its start when no end was typed.
   const arrivalProblem = finalArrived ? arrivalRefusal(finalArrived, serie.startedAt, finalEnded) : null;
   if (arrivalProblem) return fail(arrivalProblem);
+  // The arrival is the report's « Date et heure de réception » (lot 1b) and
+  // C1's end: a change of it is checked (`arrivalChangeRefusal`) — once the
+  // série is received, the laboratory's only, never emptied, never after the
+  // reception; 30 days back at most. Sent unchanged, it is not written.
+  const arrivalChanged =
+    (arrivedAt as unknown) !== "skip" && (finalArrived?.getTime() ?? null) !== (serie.arrivedAt?.getTime() ?? null);
+  if (arrivalChanged) {
+    const refusal = arrivalChangeRefusal({
+      next: finalArrived,
+      receivedAt: serie.receivedAt,
+      byPreleveur: session.role === "PRELEVEUR",
+    });
+    if (refusal) return fail(refusal);
+  }
   if ((endedAt as unknown) !== "skip") data.endedAt = endedAt;
-  if ((arrivedAt as unknown) !== "skip") data.arrivedAt = arrivedAt;
+  if (arrivalChanged) data.arrivedAt = finalArrived;
 
   if (input.coolerTemperature !== undefined) {
     if (input.coolerTemperature === null || input.coolerTemperature === "") data.coolerTemperature = null;
@@ -201,6 +215,10 @@ export async function PATCH(
         cadreChanged || noteChanged
           ? { avant: formatCadre(serie.cadre, serie.cadreNote), apres: formatCadre(nextCadre, nextNote) }
           : undefined,
+      // The arrival is printed on the report (lot 1b): before / after too.
+      arrivedAt: arrivalChanged
+        ? { avant: serie.arrivedAt?.toISOString() ?? null, apres: finalArrived?.toISOString() ?? null }
+        : undefined,
       photo: "signedProtocolData" in data ? (data.signedProtocolData ? "ajoutée" : "retirée") : undefined,
     },
   });

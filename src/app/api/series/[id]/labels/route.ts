@@ -36,6 +36,7 @@ export async function GET(
           surfaceState: true,
           personName: true,
           airMethod: true,
+          airExposureMin: true,
           receivedAt: true,
           nature: { select: { label: true } },
         },

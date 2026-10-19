@@ -28,6 +28,8 @@ export async function GET() {
       role: true,
       banned: true,
       createdAt: true,
+      // « Dénomination sur les documents » (lot 1b): null = the default.
+      documentName: true,
       clientId: true,
       client: { select: { id: true, name: true, archived: true, mergedIntoId: true } },
     },

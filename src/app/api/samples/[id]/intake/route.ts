@@ -23,11 +23,13 @@ const INTAKE_SELECT = {
   ambientTemperature: true,
   surfaceLabel: true,
   surfaceAreaCm2: true,
+  surfaceAreaNote: true,
   surfaceState: true,
   personName: true,
   personRole: true,
   handsState: true,
   airMethod: true,
+  airExposureMin: true,
   remarks: true,
   unitCount: true,
   productTypeId: true,
@@ -50,7 +52,10 @@ const INTAKE_SELECT = {
  * RETOUR-LABO-06-10.md §5: a SURFACE line also corrects its « État de la
  * surface » (`surfaceState`) and an AIR line its « Méthode de prélèvement »
  * (`airMethod`); both come back in the answer and in the journal's
- * before/after like the other fields.
+ * before/after like the other fields. Since 16/10 (RETOUR-LABO-16-10.md
+ * §3, A1 and A6–A8) the same goes for the hands state, the two
+ * temperatures, the surface's « Autre » text (`surfaceAreaNote`) and the
+ * exposed plate's duration (`airExposureMin`) — decided by `validateIntake`.
  *
  * A correction never changes who holds the sample at the bench (« prise
  * en charge libre », 13/10): `Sample.technicianId` / `assignedAt` are not
@@ -94,11 +99,13 @@ export async function PATCH(
     ambientTemperature: sample.ambientTemperature,
     surfaceLabel: sample.surfaceLabel,
     surfaceAreaCm2: sample.surfaceAreaCm2,
+    surfaceAreaNote: sample.surfaceAreaNote,
     surfaceState: sample.surfaceState,
     personName: sample.personName,
     personRole: sample.personRole,
     handsState: sample.handsState,
     airMethod: sample.airMethod,
+    airExposureMin: sample.airExposureMin,
     remarks: sample.remarks,
     unitCount: sample.unitCount,
     productTypeId: sample.productTypeId,

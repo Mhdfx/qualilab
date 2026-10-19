@@ -1,9 +1,12 @@
 import { prisma } from "./prisma";
 import { AUDIT_ACTIONS, logAudit } from "./audit";
 import {
+  REPORT_LAYOUT_ALIGNED,
   buildConclusion,
+  frozenVersionInForce,
   germFingerprints,
   germsToRealert,
+  printedReceptionAt,
   reportDataFromJson,
   reportDataToJson,
   withSilentCorrection,
@@ -12,7 +15,7 @@ import {
   type ReportData,
 } from "./report-html";
 import { renderReportPdf } from "./report-pdf";
-import { reportSampler } from "./report-template";
+import { analysisStart, receptionInstant, reportSampler } from "./report-template";
 import { INTERPRETATION_LABELS, indicativeVerdict, legacyFailures, nothingJudged, sampleVerdict, storedPlan, unitStoredDisplay } from "./interpretation";
 import { getLabSettings } from "./lab-settings";
 import { ALERT_RESULT_WHERE } from "./contamination-alert";
@@ -53,7 +56,8 @@ export const NO_OFFICIAL_VERDICT =
 /** …and when no germ has any criterion to be judged against. */
 export const NO_CRITERION = "Les résultats sont communiqués sans interprétation : aucun critère n'est spécifié pour ces paramètres.";
 
-/** The fields `sampleDesignation` reads: « Planche verte — surface nettoyée ». */
+/** The fields `sampleDesignation` reads: « Planche verte — surface nettoyée »,
+ *  « Salle — Boîte exposée 45 min » (the plate's duration, 16/10). */
 const DESIGNATION_SELECT = {
   lineKind: true,
   produit: true,
@@ -61,6 +65,7 @@ const DESIGNATION_SELECT = {
   surfaceState: true,
   personName: true,
   airMethod: true,
+  airExposureMin: true,
 } as const;
 
 /** What the report prints of the sample itself — everything but the report's own fields. */
@@ -73,13 +78,16 @@ const REPORT_SAMPLE_SELECT = {
       // client — RETOUR-LABO-06-10.md §5, V5.
       site: { select: { name: true } },
       // « Préleveur », and whether the laboratory's sampling procedures apply.
+      // The aligned layout prints the préleveur's denomination (lot 1b).
       samplerKind: true,
       samplerName: true,
-      samplerUser: { select: { name: true } },
+      samplerUser: { select: { name: true, documentName: true } },
       // A deposit whose sampling time was not declared (C1).
       samplingTimeDeclared: true,
       // « Température glacière à la réception ».
       coolerTemperature: true,
+      // « Date et heure de réception » of the aligned layout: the arrival.
+      arrivedAt: true,
     },
   },
   ...DESIGNATION_SELECT,
@@ -96,8 +104,10 @@ const REPORT_SAMPLE_SELECT = {
   receptionTemperature: true,
   receptionTemperatureSource: true,
   programmedAt: true,
+  // The aligned layout's single « Date d'analyse » starts at the bench's take.
+  assignedAt: true,
   approvedAt: true,
-  user: { select: { name: true } },
+  user: { select: { name: true, documentName: true } },
   approvedBy: { select: { name: true } },
   client: { select: { name: true, address: true, ice: true } },
   unitCount: true,
@@ -168,12 +178,25 @@ function latest(dates: (Date | null)[]): Date | null {
   return dates.reduce<Date | null>((last, date) => (date && (!last || date > last) ? date : last), null);
 }
 
-/** The `ReportData` of a sample with the given report fields and printed number. */
+/**
+ * The `ReportData` of a sample with the given report fields and printed
+ * number. `layout` is passed only when a version is issued (`createReportFor`,
+ * `amendReportFor`): the version then prints with the aligned layout (lot 1b)
+ * — the préleveur's denomination, the arrival, one analysis date — and keeps
+ * it. Without it (a report issued before, rendered from the live data) the
+ * data are those of 13/10, key for key.
+ */
 function toReportData(
   sample: ReportSample,
-  fields: ReportFields & { number: string; amendment?: ReportAmendment | null; issuedAt?: Date | null }
+  fields: ReportFields & {
+    number: string;
+    amendment?: ReportAmendment | null;
+    issuedAt?: Date | null;
+    layout?: typeof REPORT_LAYOUT_ALIGNED;
+  }
 ): ReportData {
   const programmedNorm = new Map(sample.parameters.map((p) => [p.parameterId, p.normVersion?.label ?? null]));
+  const aligned = fields.layout === REPORT_LAYOUT_ALIGNED;
 
   return {
     number: fields.number,
@@ -193,6 +216,9 @@ function toReportData(
       samplerUserName: sample.serie.samplerUser?.name,
       samplerName: sample.serie.samplerName,
       recordedBy: sample.user.name,
+      denomination: aligned,
+      samplerUserDocumentName: sample.serie.samplerUser?.documentName,
+      recordedByDocumentName: sample.user.documentName,
     }),
     technicianName: fields.technicianName,
     validatorName: fields.validatorName,
@@ -224,16 +250,19 @@ function toReportData(
     sampledByLab: sample.serie.samplerKind === "QUALILAB",
     samplingTimeDeclared: sample.serie.samplingTimeDeclared,
     airMethod: sample.airMethod,
+    airExposureMin: sample.airExposureMin,
     productionDate: sample.productionDate,
     expiryDate: sample.expiryDate,
     productTemperature: sample.productTemperature,
     receptionTemperature: sample.receptionTemperature,
     receptionTemperatureSource: sample.receptionTemperatureSource,
     coolerTemperature: sample.serie.coolerTemperature,
-    analysisFrom: sample.programmedAt ?? sample.receivedAt,
+    // The start of the analyses: since lot 1b the bench's take first.
+    analysisFrom: aligned ? analysisStart(sample) : sample.programmedAt ?? sample.receivedAt,
     analysisTo: latest(sample.results.map((r) => r.enteredAt)),
     // The approval that issued this version (the frozen version keeps its own).
     issuedAt: fields.issuedAt ?? sample.approvedAt,
+    ...(aligned ? { layout: REPORT_LAYOUT_ALIGNED, arrivedAt: sample.serie.arrivedAt } : {}),
   };
 }
 
@@ -269,7 +298,7 @@ async function amendmentOf(report: Pick<ReportRow, "id" | "number" | "version" |
   };
 }
 
-/** The current version from the live data (`admin-edit` included). */
+/** The current version from the live data (`admin-edit` included), with the 13/10 layout. */
 async function liveReportData(sampleId: string, report: ReportRow): Promise<ReportData | null> {
   const sample = await prisma.sample.findUnique({ where: { id: sampleId }, select: REPORT_SAMPLE_SELECT });
   if (!sample) return null;
@@ -282,23 +311,23 @@ async function liveReportData(sampleId: string, report: ReportRow): Promise<Repo
 
 /**
  * Assembles the data of the report's current version. Shared with the
- * download route and the send.
+ * download route (plain, duplicata, current version), the portal and the
+ * send.
  *
- * Rendered from the live data — so the administrator's correction
- * (`/api/reports/[id]/admin-edit`) shows — except while an amendment is in
- * progress: the results and signatures are then being redone, and the
- * current version is the one frozen at « Rouvrir pour amendement ».
+ * Rendered first from the version frozen at its issue (lot 1b, D-03): a
+ * report already sent prints as it was issued, whatever the template or the
+ * live data became since — with the administrator's silent correction
+ * (`/api/reports/[id]/admin-edit`, the conclusion only) applied on top
+ * (`frozenVersionInForce` → `withSilentCorrection`). While an amendment is in
+ * progress that is the version frozen at « Rouvrir pour amendement ». A
+ * report never frozen (issued before 09/10), or frozen before the template
+ * of 13/10, renders from the live data with the 13/10 layout, as before.
  */
 export async function loadReportData(sampleId: string): Promise<ReportData | null> {
   const report = await prisma.report.findUnique({ where: { sampleId }, select: REPORT_SELECT });
   if (!report) return null;
-  if (report.amendmentPending) {
-    const frozen = await loadReportVersion(report.id, report.version);
-    // The administrator's silent correction still shows on the version in
-    // force, frozen or not (the conclusion is all it writes).
-    if (frozen) return withSilentCorrection(frozen.data, report.conclusion);
-  }
-  return liveReportData(sampleId, report);
+  const frozen = await loadReportVersion(report.id, report.version);
+  return frozenVersionInForce(frozen?.data ?? null, report) ?? liveReportData(sampleId, report);
 }
 
 /**
@@ -414,7 +443,8 @@ export async function createReportFor(sampleId: string): Promise<IssuedReport | 
   try {
     return await retryOnDuplicate(async () => {
       const number = await generateReportNumber();
-      const data = toReportData(sample, { ...fields, number, issuedAt });
+      // Issued now: the aligned layout (lot 1b), frozen with the version.
+      const data = toReportData(sample, { ...fields, number, issuedAt, layout: REPORT_LAYOUT_ALIGNED });
       return prisma.$transaction(async (tx) => {
         const report = await tx.report.create({
           data: { sampleId, number, ...fields },
@@ -484,7 +514,14 @@ export async function amendReportFor(sampleId: string, actorId: string | null): 
   const number = amendedNumber(report.number, version);
   const note = report.amendmentNote?.trim() || null;
   const issuedAt = sample.approvedAt ?? new Date();
-  const data = toReportData(sample, { ...fields, number, issuedAt, amendment: { previousNumber, previousIssuedAt, note } });
+  // Issued now: the aligned layout (lot 1b), whatever the version replaced printed.
+  const data = toReportData(sample, {
+    ...fields,
+    number,
+    issuedAt,
+    amendment: { previousNumber, previousIssuedAt, note },
+    layout: REPORT_LAYOUT_ALIGNED,
+  });
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -701,7 +738,7 @@ async function sendReportNow(sampleId: string, actorId: string | null) {
       lieu: true,
       controlCode: true,
       sampledAt: true,
-      receivedAt: true,
+      // « Date de réception » is the report's own (`printedReceptionAt`).
       clientId: true,
       client: { select: { name: true } },
       // `samplingTimeDeclared`: a deposit without a declared sampling time
@@ -788,7 +825,8 @@ async function sendReportNow(sampleId: string, actorId: string | null) {
     controlCode: sample.controlCode,
     sampledAt: sample.sampledAt,
     samplingTimeDeclared: sample.serie.samplingTimeDeclared,
-    receivedAt: sample.receivedAt,
+    // What the attached report prints: the arrival on the aligned layout.
+    receivedAt: printedReceptionAt(data),
     analyse: sample.nature.label,
     produit: sampleDesignation(sample),
     lineKind: sample.lineKind,
@@ -911,7 +949,8 @@ export async function sendContaminationAlerts(
       receivedAt: true,
       clientId: true,
       alertsSentAt: true,
-      serie: { select: { siteId: true, site: { select: { name: true } } } },
+      // « Date de réception » as the report issued now prints it (lot 1b): the arrival.
+      serie: { select: { siteId: true, site: { select: { name: true } }, arrivedAt: true } },
       report: { select: { id: true, version: true, amendmentPending: true } },
       results: {
         // A sensitive germ over its limit — including one judged only
@@ -1028,7 +1067,8 @@ export async function sendContaminationAlerts(
     const row: AlertRow = {
       produit: designation,
       site,
-      receivedAt: sample.receivedAt,
+      // The report and its e-mail print the arrival since lot 1b (`printedReceptionAt`): the same day here.
+      receivedAt: receptionInstant({ arrivedAt: sample.serie.arrivedAt, receivedAt: sample.receivedAt }),
       numeroLot: sample.numeroLot,
       germe: germ,
       resultat: result.value ?? "—",

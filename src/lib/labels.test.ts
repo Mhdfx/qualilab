@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  AIR_METHOD_LABELS,
+  HANDS_STATE_CHOICES,
+  HANDS_STATE_LABELS,
+  HANDS_STATE_PHRASES,
   LAB_TIME_ZONE,
+  SURFACE_STATE_PHRASES,
+  airMethodText,
   formatDate,
   formatDateTime,
   formatIsoDay,
+  isExposedPlate,
+  surfaceAreaText,
 } from "./labels";
 
 /**
@@ -42,6 +50,52 @@ describe("lab time zone", () => {
   it("prints the local date for an instant that is the day before in UTC", () => {
     expect(formatDate("2026-09-08T23:30:00.000Z")).toContain("sept.");
     expect(formatDate("2026-09-08T23:30:00.000Z")).toContain("9");
+  });
+});
+
+describe("the hands' states (16/10, Q109, Q110)", () => {
+  it("offers the laboratory's three choices, in its order", () => {
+    expect(HANDS_STATE_CHOICES).toEqual(["ASEPTISEES", "NON_LAVEES", "LAVEES"]);
+    expect(HANDS_STATE_CHOICES.map((s) => HANDS_STATE_LABELS[s])).toEqual([
+      "Aseptisées ou désinfectées",
+      "En cours de travail",
+      "Lavées",
+    ]);
+  });
+
+  it("prints its own phrases — an old « non lavées » reads « mains en cours de travail »", () => {
+    expect(HANDS_STATE_PHRASES.NON_LAVEES).toBe("mains en cours de travail");
+    expect(HANDS_STATE_PHRASES.LAVEES).toBe("mains lavées");
+    expect(HANDS_STATE_PHRASES.ASEPTISEES).toBe("mains aseptisées ou désinfectées");
+    // Never the surface's words.
+    expect(Object.values(HANDS_STATE_PHRASES)).not.toContain(SURFACE_STATE_PHRASES.EN_COURS_DE_TRAVAIL);
+  });
+});
+
+describe("the air method and the plate's duration (16/10, Q50)", () => {
+  it("no longer carries the duration in its label", () => {
+    expect(AIR_METHOD_LABELS.BOITE_EXPOSEE_30MIN).toBe("Boîte exposée");
+    expect(isExposedPlate("BOITE_EXPOSEE_30MIN")).toBe(true);
+    expect(isExposedPlate("BIOCOLLECTEUR")).toBe(false);
+    expect(isExposedPlate("")).toBe(false);
+  });
+
+  it("composes « Boîte exposée N min »; an older plate without a duration reads 30 min", () => {
+    expect(airMethodText("BOITE_EXPOSEE_30MIN", 30)).toBe("Boîte exposée 30 min");
+    expect(airMethodText("BOITE_EXPOSEE_30MIN", 45)).toBe("Boîte exposée 45 min");
+    expect(airMethodText("BOITE_EXPOSEE_30MIN", null)).toBe("Boîte exposée 30 min");
+    expect(airMethodText("BOITE_EXPOSEE_30MIN")).toBe("Boîte exposée 30 min");
+    expect(airMethodText("BIOCOLLECTEUR", 45)).toBe("Biocollecteur");
+  });
+});
+
+describe("surfaceAreaText — the area, or the « Autre » text in its place (16/10, Q114)", () => {
+  it("prints the text instead of « N cm² »", () => {
+    expect(surfaceAreaText(null, "couteau entier")).toBe("couteau entier");
+    expect(surfaceAreaText(100, null)).toBe("100 cm²");
+    expect(surfaceAreaText(1000)).toBe("1000 cm²");
+    expect(surfaceAreaText(null, "  ")).toBeNull();
+    expect(surfaceAreaText(null, null)).toBeNull();
   });
 });
 

@@ -8,17 +8,21 @@ import { Ban, Check, Pencil, RotateCcw, X } from "lucide-react";
 import type { CancelReason, Family, QuantityUnit } from "@/generated/prisma/enums";
 import type { Role } from "@/lib/roles";
 import {
+  AIR_EXPOSURE_MINUTES,
   AIR_METHOD_CHOICES,
   AIR_METHOD_LABELS,
   ANALYSIS_FAMILY_LABELS,
   CANCEL_REASON_LABELS,
+  HANDS_STATE_CHOICES,
   HANDS_STATE_LABELS,
   QUANTITY_UNIT_LABELS,
   SURFACE_AREA_CHOICES,
   SURFACE_STATE_CHOICES,
   SURFACE_STATE_LABELS,
+  isExposedPlate,
 } from "@/lib/labels";
 import { surfaceAreaChoice } from "@/components/preleveur/visit-types";
+import { notReceivedNoticeText } from "@/lib/not-received";
 import {
   cancelReasonsFor,
   correctionBody,
@@ -38,9 +42,12 @@ export type { CorrectionValues, VerbSample };
  *
  * « Corriger la fiche » shows the fields of the sample's kind only
  * (RETOUR-LABO-06-10.md §5, V2 and V4): a surface sample its
- * « Désignation », « État de la surface » and « Surface prélevée (cm²) »,
- * an air sample its « Méthode de prélèvement ». A field the dialog does not
- * show is not sent, so an old value of another kind is never emptied.
+ * « Désignation », « État de la surface » and « Surface prélevée (cm²) »
+ * (with « Autre », 16/10), an air sample its « Méthode de prélèvement » and
+ * the plate's duration, a hands sample its state (16/10). The two
+ * temperatures on every kind — the air its ambient one only (P9, 16/10). A
+ * field the dialog does not show is not sent, so an old value of another
+ * kind is never emptied.
  */
 
 const UNITS = Object.keys(QUANTITY_UNIT_LABELS) as QuantityUnit[];
@@ -105,14 +112,41 @@ export function SampleVerbs({
   );
 }
 
-function Dialog({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+/** The star for the eye, « (obligatoire) » for a screen reader. */
+function RequiredMark() {
+  return (
+    <>
+      <span aria-hidden="true">*</span>
+      <span className="sr-only">(obligatoire)</span>
+    </>
+  );
+}
+
+function Dialog({
+  title,
+  children,
+  onClose,
+  describedBy,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  /** The id of the text that says what the dialog is about, read with its title. */
+  describedBy?: string;
+}) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" role="dialog" aria-modal="true" aria-label={title}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      aria-describedby={describedBy}
+    >
       <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-semibold text-slate-900">{title}</h2>
@@ -193,8 +227,16 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
   const shown = correctionFields(kind);
   // The quick choice the typed area equals, if any — its chip is pressed.
   const pickedArea = surfaceAreaChoice(values.surfaceAreaCm2);
+  // « Autre » (16/10): open on a value that is not a chip, or once tapped.
+  const [areaOther, setAreaOther] = useState(() => values.surfaceAreaCm2.trim() !== "" && pickedArea === null);
   const set = (key: keyof CorrectionValues, value: string | number) => setValues((v) => ({ ...v, [key]: value }));
-  const input = (key: keyof CorrectionValues, label: string, type = "text", hint?: string) => (
+  const input = (
+    key: keyof CorrectionValues,
+    label: string,
+    type = "text",
+    hint?: string,
+    inputMode?: "decimal"
+  ) => (
     <div>
       <label htmlFor={`correct-${key}`} className="block text-xs font-medium text-slate-600">{label}</label>
       <input
@@ -202,10 +244,12 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
         type={type}
         value={String(values[key])}
         onChange={(e) => set(key, e.target.value)}
+        aria-describedby={hint ? `correct-${key}-hint` : undefined}
         className="input-field mt-1 px-3"
         {...(type === "number" ? { inputMode: "numeric" as const, min: 1 } : {})}
+        {...(inputMode ? { inputMode } : {})}
       />
-      {hint && <p className="mt-0.5 text-[11px] text-slate-500">{hint}</p>}
+      {hint && <p id={`correct-${key}-hint`} className="mt-0.5 text-[11px] text-slate-500">{hint}</p>}
     </div>
   );
 
@@ -271,37 +315,59 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
           {shown.surface && input("surfaceLabel", "Désignation", "text", "Ce qui est prélevé (ex. : planche verte)")}
           {shown.surface && (
             // The two usual areas in one tap (« 100 cm² », « 1000 cm² » —
-            // 14/10), the field for any other.
+            // 14/10), then « Autre » (16/10): another area, or a text.
             <div>
-              <label id="correct-surface-area" htmlFor="correct-surfaceAreaCm2" className="block text-xs font-medium text-slate-600">
+              <p id="correct-surface-area" className="block text-xs font-medium text-slate-600">
                 Surface prélevée (cm²)
-              </label>
+              </p>
               <div role="group" aria-labelledby="correct-surface-area" className="mt-1 flex flex-wrap gap-2">
                 {SURFACE_AREA_CHOICES.map((area) => (
                   <button
                     key={area}
                     type="button"
-                    onClick={() => set("surfaceAreaCm2", String(area))}
-                    aria-pressed={pickedArea === area}
-                    className={choice(pickedArea === area)}
+                    onClick={() => {
+                      setAreaOther(false);
+                      set("surfaceAreaCm2", String(area));
+                    }}
+                    aria-pressed={!areaOther && pickedArea === area}
+                    className={choice(!areaOther && pickedArea === area)}
                   >
                     {`${area} cm²`}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (areaOther) return;
+                    setAreaOther(true);
+                    if (pickedArea !== null) set("surfaceAreaCm2", "");
+                  }}
+                  aria-pressed={areaOther}
+                  className={choice(areaOther)}
+                >
+                  Autre
+                </button>
               </div>
-              <input
-                id="correct-surfaceAreaCm2"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                value={values.surfaceAreaCm2}
-                onChange={(e) => set("surfaceAreaCm2", e.target.value)}
-                aria-describedby="correct-surface-area-hint"
-                className="input-field mt-2 px-3"
-              />
-              <p id="correct-surface-area-hint" className="mt-0.5 text-[11px] text-slate-500">
-                Ou saisissez une autre valeur ; vide = 100 cm².
-              </p>
+              {areaOther && (
+                <>
+                  <label htmlFor="correct-surfaceAreaCm2" className="mt-2 block text-xs font-medium text-slate-600">
+                    Préciser
+                  </label>
+                  <input
+                    id="correct-surfaceAreaCm2"
+                    type="text"
+                    maxLength={191}
+                    value={values.surfaceAreaCm2}
+                    onChange={(e) => set("surfaceAreaCm2", e.target.value)}
+                    placeholder="Ex. : 250, couteau entier"
+                    aria-describedby="correct-surface-area-hint"
+                    className="input-field mt-1 px-3"
+                  />
+                  <p id="correct-surface-area-hint" className="mt-0.5 text-[11px] text-slate-500">
+                    Un nombre entier de cm², ou ce qui est prélevé ; vide = 100 cm².
+                  </p>
+                </>
+              )}
             </div>
           )}
           {shown.surface && (
@@ -337,7 +403,17 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
                   <button
                     key={method}
                     type="button"
-                    onClick={() => set("airMethod", method)}
+                    onClick={() =>
+                      setValues((v) => ({
+                        ...v,
+                        airMethod: method,
+                        // A plate just chosen proposes its 30 minutes (16/10, Q50).
+                        airExposureMin:
+                          isExposedPlate(method) && !isExposedPlate(sample.airMethod) && !v.airExposureMin.trim()
+                            ? String(AIR_EXPOSURE_MINUTES.default)
+                            : v.airExposureMin,
+                      }))
+                    }
                     aria-pressed={values.airMethod === method}
                     className={choice(values.airMethod === method)}
                   >
@@ -347,6 +423,30 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
               </div>
               {!sample.airMethod && !values.airMethod && (
                 <p className="mt-0.5 text-[11px] text-slate-500">Non renseignée sur cet échantillon ancien : facultative ici.</p>
+              )}
+              {isExposedPlate(values.airMethod) && (
+                <div className="mt-2">
+                  <label htmlFor="correct-airExposureMin" className="block text-xs font-medium text-slate-600">
+                    Durée d&apos;exposition (min){" "}
+                    {sample.airExposureMin !== null || !isExposedPlate(sample.airMethod) ? <RequiredMark /> : null}
+                  </label>
+                  <input
+                    id="correct-airExposureMin"
+                    type="text"
+                    inputMode="numeric"
+                    value={values.airExposureMin}
+                    onChange={(e) => set("airExposureMin", e.target.value)}
+                    placeholder={String(AIR_EXPOSURE_MINUTES.default)}
+                    aria-required={sample.airExposureMin !== null || !isExposedPlate(sample.airMethod) ? "true" : undefined}
+                    aria-describedby="correct-air-exposure-hint"
+                    className="input-field mt-1 w-28 px-3"
+                  />
+                  <p id="correct-air-exposure-hint" className="mt-0.5 text-[11px] text-slate-500">
+                    {sample.airExposureMin === null && isExposedPlate(sample.airMethod)
+                      ? "Non renseignée sur cet échantillon ancien : lue 30 min."
+                      : `De ${AIR_EXPOSURE_MINUTES.min} à ${AIR_EXPOSURE_MINUTES.max} minutes.`}
+                  </p>
+                </div>
               )}
             </div>
           )}
@@ -371,22 +471,46 @@ function CorrectDialog({ sample, onClose, onDone }: { sample: VerbSample; onClos
           )}
           {input("lieu", "Lieu / section")}
           {shown.hands && (
-            <div role="group" aria-labelledby="correct-hands-state">
-              <p id="correct-hands-state" className="text-xs font-medium text-slate-600">État des mains</p>
-              <div className="mt-1 flex gap-2">
-                {(["LAVEES", "NON_LAVEES"] as const).map((s) => (
+            // The one list of labels.ts (16/10, Q109): a state set is changed,
+            // never emptied; an older sample may stay without one.
+            <div className="sm:col-span-2" role="group" aria-labelledby="correct-hands-state">
+              <p id="correct-hands-state" className="text-xs font-medium text-slate-600">
+                État des mains {sample.handsState ? <RequiredMark /> : null}
+              </p>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {HANDS_STATE_CHOICES.map((state) => (
                   <button
-                    key={s}
+                    key={state}
                     type="button"
-                    onClick={() => set("handsState", values.handsState === s ? "" : s)}
-                    aria-pressed={values.handsState === s}
-                    className={choice(values.handsState === s)}
+                    onClick={() => set("handsState", state)}
+                    aria-pressed={values.handsState === state}
+                    className={choice(values.handsState === state)}
                   >
-                    {HANDS_STATE_LABELS[s]}
+                    {HANDS_STATE_LABELS[state]}
                   </button>
                 ))}
               </div>
+              {!sample.handsState && !values.handsState && (
+                <p className="mt-0.5 text-[11px] text-slate-500">Non renseigné sur cet échantillon ancien : facultatif ici.</p>
+              )}
             </div>
+          )}
+          {/* P9 (16/10): the temperatures of the protocole, decimal comma
+              accepted; one recorded is corrected, never emptied. */}
+          {shown.productTemperature &&
+            input(
+              "productTemperature",
+              "Température au prélèvement (°C)",
+              "text",
+              sample.productTemperature !== null ? "Relevée : peut être corrigée, pas effacée." : "De −80 à 300 °C.",
+              "decimal"
+            )}
+          {input(
+            "ambientTemperature",
+            "T° ambiante (°C)",
+            "text",
+            sample.ambientTemperature !== null ? "Relevée : peut être corrigée, pas effacée." : "De −80 à 300 °C.",
+            "decimal"
           )}
         </div>
 
@@ -456,6 +580,8 @@ function CancelDialog({ sample, onClose, onDone }: { sample: VerbSample; onClose
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // « Non reçu »: whether the client was told (16/10, Q74), shown before the dialog closes.
+  const [notice, setNotice] = useState<{ status: string; error?: string | null } | null>(null);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -463,13 +589,45 @@ function CancelDialog({ sample, onClose, onDone }: { sample: VerbSample; onClose
     setBusy(true);
     setError("");
     try {
-      await send(`/api/samples/${sample.id}/cancel`, "POST", { reason, note });
-      onDone();
+      const data = await send(`/api/samples/${sample.id}/cancel`, "POST", { reason, note });
+      if (data && typeof data.notice?.status === "string") setNotice(data.notice);
+      else onDone();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
     }
+  }
+
+  if (notice) {
+    // The sample is cancelled: whatever closes the dialog refreshes the page.
+    const { ok, text } = notReceivedNoticeText(notice);
+    return (
+      // The notice is on screen when the dialog mounts (a role="status" is not
+      // read then) and the focus goes to « Fermer »: the dialog and the button
+      // are described by it, so a screen reader says whether the client was told.
+      <Dialog title={`Annulé — ${sample.controlCode ?? sample.code}`} onClose={onDone} describedBy="cancel-notice-done cancel-notice-text">
+        <p id="cancel-notice-done" className="text-sm text-slate-700">Échantillon annulé : non reçu au laboratoire.</p>
+        <p
+          id="cancel-notice-text"
+          role="status"
+          className={`mt-3 rounded-xl px-3 py-2 text-sm ${ok ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}
+        >
+          {text}
+        </p>
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={onDone}
+            aria-describedby="cancel-notice-text"
+            autoFocus
+            className="inline-flex min-h-[42px] items-center rounded-xl bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+          >
+            Fermer
+          </button>
+        </div>
+      </Dialog>
+    );
   }
 
   return (
@@ -485,6 +643,12 @@ function CancelDialog({ sample, onClose, onDone }: { sample: VerbSample; onClose
             <option key={r} value={r}>{CANCEL_REASON_LABELS[r]}</option>
           ))}
         </select>
+        {reason === "NON_RECU" && (
+          <p className="mt-2 text-xs text-slate-600">
+            Un e-mail est adressé au client, aux adresses qui reçoivent les rapports : aucune analyse, rien n&apos;est
+            facturé pour cet échantillon. L&apos;écran suivant dit s&apos;il est parti.
+          </p>
+        )}
         <label className="mt-3 block text-xs font-medium text-slate-600">Précision {reason === "AUTRE" && "*"}</label>
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="input-field mt-1 resize-none px-3" placeholder="Facultatif" />
         {error && <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}

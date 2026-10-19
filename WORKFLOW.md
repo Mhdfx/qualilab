@@ -571,10 +571,11 @@ bon's 7 rules (which stay exactly the paper's):
     Ambiant, Chaud on demand) and the source of the reading (glacière,
     échantillon, flacon témoin on water). Never a refusal. Rule (6) only
     requires a temperature where `temperatureRequiredKinds` says so.
-  - **C3 Emballage** (with C4, the sterile thiosulfate bottle of a treated
-    water) and **C5 Identification** — answered Oui / Non per sample, required
-    by both APIs; « Non » forces non conforme with motif EMBALLAGE /
-    IDENTIFICATION.
+  - **C5 Identification** — answered Oui / Non per sample, required by both
+    APIs; « Non » forces non conforme with motif IDENTIFICATION. **C3
+    Emballage** (with C4, the sterile thiosulfate bottle of a treated water)
+    is no longer asked since 16/10 (Q70): a `packagingOk` sent by an older
+    page is ignored; the motif EMBALLAGE stays.
   - **C6 Protocole signé** — one row for a visit, above the samples: the
     préleveur's photo answers it, else an optional « Protocole papier signé
     reçu ? ». Never a sample's motif.
@@ -602,8 +603,9 @@ bon's 7 rules (which stay exactly the paper's):
 - **History**: `/reception/historique` lists every received série (period,
   client), 50 per page.
 
-Old tabs: a reception or deposit sent without the C3 / C5 answers is refused
-with « … (rechargez la page si elle date d'avant la mise à jour) ». The
+Old tabs: a reception or deposit sent without the C5 answer is refused
+with « … (rechargez la page si elle date d'avant la mise à jour) »; a C3
+answer is no longer asked nor read (16/10, Q70). The
 lab's answers (NEEDEDINFO Q67–Q77) set the limits and the severity; until
 then the defaults above apply.
 

@@ -1,5 +1,5 @@
 import { COMPANY, type CompanyInfo } from "./company";
-import { AIR_METHOD_LABELS } from "./labels";
+import { airMethodText } from "./labels";
 import type { AirMethod, Interpretation, LineKind, SampleType, TemperatureSource } from "@/generated/prisma/client";
 import { fmt, singleLimit, type Plan } from "./interpretation";
 import { repetitionLabel } from "./series";
@@ -19,7 +19,9 @@ import {
   SAMPLING_PROCEDURES,
   analysisPeriodText,
   legalFooterExtraLines,
+  receptionInstant,
   reportDateTime,
+  reportDateTimeAligned,
   reportDay,
   reportLegalFooter,
   reportTemperatures,
@@ -120,6 +122,9 @@ export type ReportData = {
   samplingTimeDeclared?: boolean | null;
   /** « Moyen de prélèvement » of an air sample. */
   airMethod?: AirMethod | null;
+  /** The exposed plate's duration (16/10): « Boîte exposée 45 min ». Absent
+   *  on the versions frozen before, and null on an older plate: 30 min. */
+  airExposureMin?: number | null;
   /** « Dates Prod » / « Dates Exp » — calendar dates (`@db.Date`). */
   productionDate?: Date | null;
   expiryDate?: Date | null;
@@ -128,12 +133,51 @@ export type ReportData = {
   receptionTemperature?: number | null;
   receptionTemperatureSource?: TemperatureSource | null;
   coolerTemperature?: number | null;
-  /** « Date d'analyse »: the programme confirmed (else the reception) → the last result entered. */
+  /** « Date d'analyse »: the start of the analyses → the last result entered.
+   *  The start is the programme confirmed (else the reception); on the
+   *  aligned layout, the bench's take first (`analysisStart`), printed alone. */
   analysisFrom?: Date | null;
   analysisTo?: Date | null;
   /** « Date d'édition de rapport »: the approval that issued this version. */
   issuedAt?: Date | null;
+
+  /* --- The aligned layout (lot 1b, RETOUR-LABO-16-10.md D5): written only
+   *     when a version is issued. --- */
+
+  /** `REPORT_LAYOUT_ALIGNED` on a version issued since lot 1b; absent on the
+   *  versions issued before and on a report rendered from the live data,
+   *  which keep the 13/10 rendering word for word. */
+  layout?: typeof REPORT_LAYOUT_ALIGNED;
+  /** The arrival at the laboratory typed on the série (`Serie.arrivedAt`):
+   *  « Date et heure de réception » on the aligned layout (`receptionInstant`). */
+  arrivedAt?: Date | null;
 };
+
+/**
+ * The layout marker of the report aligned on the laboratory's own (excerpt of
+ * 15/10, RETOUR-LABO-14-10.md §8 — « lot 1b »): « N/A » for every empty field
+ * of the « Produit (IC) » table and of the annex's sampling table, the labels
+ * « Lieu de prélèvement », « Date Prod », « Date Exp », the dates « JJ/MM/AAAA
+ * HH:MM », one « Date d'analyse », the arrival as « Date et heure de
+ * réception », the préleveur's denomination. Frozen with each version issued
+ * since, so that a version issued before keeps its rendering when it is
+ * downloaded again.
+ */
+export const REPORT_LAYOUT_ALIGNED = 2 as const;
+
+/** Whether a version prints with the aligned layout. */
+export function isAlignedLayout(data: Pick<ReportData, "layout">): boolean {
+  return data.layout === REPORT_LAYOUT_ALIGNED;
+}
+
+/**
+ * The instant « Date et heure de réception » prints — the arrival on the
+ * aligned layout, the reception screen's instant before it. The report
+ * e-mail reads it too, so the summary and the attached report agree.
+ */
+export function printedReceptionAt(data: Pick<ReportData, "layout" | "arrivedAt" | "receivedAt">): Date | null {
+  return isAlignedLayout(data) ? receptionInstant(data) : data.receivedAt;
+}
 
 export type ReportAmendment = {
   /** The printed number of the version replaced (« RAP-2026-00001 », then « -A1 »…). */
@@ -370,9 +414,30 @@ function amendmentHtml(data: ReportData): string {
   }</div>`;
 }
 
-/** « Label : value » — the value escaped, « — » when nothing was recorded. */
-function field(label: string, value: string | null | undefined, { bold = false } = {}): string {
-  return bold ? `<b>${label} :</b> <b>${show(value)}</b>` : `${label} : ${show(value)}`;
+/**
+ * « N/A » (the template's legend: « N/A Non applicable ») for an empty field
+ * of the aligned layout's sampling block — the laboratory's own report prints
+ * it there (excerpt of 15/10). The report's own: the shared `show()` keeps
+ * « — » for every other document.
+ */
+const NOT_APPLICABLE = "N/A";
+
+function na(value: string | null | undefined): string {
+  return value ? show(value) : NOT_APPLICABLE;
+}
+
+/** How the sampling block prints a value: « N/A » when empty on the aligned layout, « — » before. */
+function blockValue(data: ReportData): (value: string | null | undefined) => string {
+  return isAlignedLayout(data) ? na : show;
+}
+
+/**
+ * « Label : value » of the sampling block — the value escaped; when nothing
+ * was recorded, « N/A » on the aligned layout, « — » before.
+ */
+function blockField(data: ReportData, label: string, value: string | null | undefined, { bold = false } = {}): string {
+  const print = blockValue(data);
+  return bold ? `<b>${label} :</b> <b>${print(value)}</b>` : `${label} : ${print(value)}`;
 }
 
 /** « N° de série » and the framed « Client », side by side as the template draws them. */
@@ -396,15 +461,32 @@ function samplingSite(data: ReportData): string {
   return data.siteName ? `${data.client.name} — ${data.siteName}` : data.client.name;
 }
 
+/** A date and time of the sampling block: « JJ/MM/AAAA HH:MM » on the aligned layout, « … à HHhMM » before. */
+function blockDateTime(data: ReportData, date: Date | null | undefined): string | null {
+  return isAlignedLayout(data) ? reportDateTimeAligned(date) : reportDateTime(date);
+}
+
 /** « Date et heure du Prélèvement »: an undeclared deposit time is said, never invented. */
 function sampledAtText(data: ReportData): string {
-  return data.samplingTimeDeclared === false ? "Non déclarée" : (reportDateTime(data.sampledAt) ?? "—");
+  const printed = blockDateTime(data, data.sampledAt) ?? (isAlignedLayout(data) ? NOT_APPLICABLE : "—");
+  return data.samplingTimeDeclared === false ? "Non déclarée" : printed;
+}
+
+/** « Date et heure de réception »: the arrival on the aligned layout (`printedReceptionAt`). */
+function receptionText(data: ReportData): string {
+  return blockValue(data)(blockDateTime(data, printedReceptionAt(data)));
 }
 
 /** The reference lines of the sampling: the procedures, the air instruction, the means. */
 function samplingReferenceHtml(data: ReportData): string {
   const air = data.lineKind === "AIR";
-  const means = `Moyen de prélèvement : ${air && data.airMethod ? escapeHtml(AIR_METHOD_LABELS[data.airMethod]) : "—"}`;
+  const means = `Moyen de prélèvement : ${
+    air && data.airMethod
+      ? escapeHtml(airMethodText(data.airMethod, data.airExposureMin))
+      : isAlignedLayout(data)
+        ? NOT_APPLICABLE
+        : "—"
+  }`;
   if (data.sampledByLab === false) {
     return `Référence prélèvement : N/A (prélèvement non effectué par le laboratoire)<br>${means}`;
   }
@@ -420,25 +502,40 @@ function samplingReferenceHtml(data: ReportData): string {
     .join("<br>");
 }
 
+/** The labels of the « Produit (IC) » table, as the laboratory's own report writes them on the aligned layout. */
+function blockLabels(data: ReportData) {
+  return isAlignedLayout(data)
+    ? { place: "Lieu de prélèvement", production: "Date Prod", expiry: "Date Exp" }
+    : { place: "Lieu du prélèvement", production: "Dates Prod", expiry: "Dates Exp" };
+}
+
+/** « Date d'analyse »: one date on the aligned layout (the start), « du … au … » before. */
+function analysisText(data: ReportData): string | null {
+  return isAlignedLayout(data) ? reportDay(data.analysisFrom) : analysisPeriodText(data.analysisFrom, data.analysisTo);
+}
+
 /** Page 1's table « Produit (IC) »: the sampling on the left, the client's data and the sample on the right. */
 function infoTable(data: ReportData): string {
   const t = reportTemperatures(data);
   const day = (date: Date | null | undefined) => (date ? formatDateOnly(date) : null);
+  const value = blockValue(data);
+  const label = blockLabels(data);
   return `<div class="frame"><table class="info">
 <colgroup><col class="half"><col class="half"></colgroup>
-<tr><th colspan="2" class="produit">${designationHeading(data.lineKind)} ${IC} : ${show(data.produit)}</th></tr>
+<tr><th colspan="2" class="produit">${designationHeading(data.lineKind)} ${IC} : ${value(data.produit)}</th></tr>
 <tr><th class="sub">Prélèvement et réception</th><th class="sub"><b>Données fournies par le client ${IC}</b></th></tr>
-<tr><td>Date et heure du Prélèvement : ${escapeHtml(sampledAtText(data))}</td><td rowspan="2">${field("Lot", data.numeroLot, { bold: true })}</td></tr>
-<tr><td>Date et heure de réception : ${show(reportDateTime(data.receivedAt))}</td></tr>
-<tr><td>Préleveur : ${show(data.preleveur)}</td><td>${field("Dates Prod", day(data.productionDate), { bold: true })}</td></tr>
-<tr><td>${samplingReferenceHtml(data)}</td><td>${field("Dates Exp", day(data.expiryDate), { bold: true })}</td></tr>
-<tr><td>${field("Site de prélèvement", samplingSite(data))}</td><th class="sub">Information sur l'échantillon</th></tr>
-<tr><td>${field("Lieu du prélèvement", data.lieu)}</td><td>Température du produit :<br><span class="pair"><span>Au prélèvement : ${show(t.atSampling)}</span><span>à la réception : ${show(t.atReception)}</span></span></td></tr>
-<tr><td>Lieu d'exécution : ${escapeHtml(REPORT_EXECUTION_PLACE)}</td><td>${field("Température glacière à la réception", t.cooler)}</td></tr>
-<tr><td>${field("Date d'analyse", analysisPeriodText(data.analysisFrom, data.analysisTo))}<br>${field(
+<tr><td>Date et heure du Prélèvement : ${escapeHtml(sampledAtText(data))}</td><td rowspan="2">${blockField(data, "Lot", data.numeroLot, { bold: true })}</td></tr>
+<tr><td>Date et heure de réception : ${receptionText(data)}</td></tr>
+<tr><td>Préleveur : ${value(data.preleveur)}</td><td>${blockField(data, label.production, day(data.productionDate), { bold: true })}</td></tr>
+<tr><td>${samplingReferenceHtml(data)}</td><td>${blockField(data, label.expiry, day(data.expiryDate), { bold: true })}</td></tr>
+<tr><td>${blockField(data, "Site de prélèvement", samplingSite(data))}</td><th class="sub">Information sur l'échantillon</th></tr>
+<tr><td>${blockField(data, label.place, data.lieu)}</td><td>Température du produit :<br><span class="pair"><span>Au prélèvement : ${value(t.atSampling)}</span><span>à la réception : ${value(t.atReception)}</span></span></td></tr>
+<tr><td>Lieu d'exécution : ${escapeHtml(REPORT_EXECUTION_PLACE)}</td><td>${blockField(data, "Température glacière à la réception", t.cooler)}</td></tr>
+<tr><td>${blockField(data, "Date d'analyse", analysisText(data))}<br>${blockField(
+    data,
     "Date d'édition de rapport",
     reportDay(data.issuedAt)
-  )}</td><td>${field("N° de contrôle", data.controlCode)}</td></tr>
+  )}</td><td>${blockField(data, "N° de contrôle", data.controlCode)}</td></tr>
 </table></div>`;
 }
 
@@ -447,9 +544,9 @@ function annexSamplingTable(data: ReportData): string {
   return `<div class="frame"><table class="sampling">
 <tr><th class="sub plain">Prélèvement et réception</th></tr>
 <tr><td>Date et heure du Prélèvement : ${escapeHtml(sampledAtText(data))}</td></tr>
-<tr><td>Date et heure de réception : ${show(reportDateTime(data.receivedAt))}</td></tr>
-<tr><td>Préleveur : ${show(data.preleveur)}</td></tr>
-<tr><td>${field("Site de prélèvement", samplingSite(data))}</td></tr>
+<tr><td>Date et heure de réception : ${receptionText(data)}</td></tr>
+<tr><td>Préleveur : ${blockValue(data)(data.preleveur)}</td></tr>
+<tr><td>${blockField(data, "Site de prélèvement", samplingSite(data))}</td></tr>
 </table></div>`;
 }
 
@@ -529,7 +626,9 @@ export function reportDensity(data: ReportData, marks: ReportMarks = {}): Report
         wrappedLines((data.siteName ?? "").length, 60) +
         wrappedLines(samplingSite(data).length + 23, 60) +
         wrappedLines((data.produit ?? "").length + 16, 90) +
-        wrappedLines(data.lieu.length + 22, 60))
+        wrappedLines(data.lieu.length + 22, 60) +
+        // The denomination of the aligned layout may be typed long (191).
+        (isAlignedLayout(data) ? wrappedLines(data.preleveur.length + 12, 60) : 0))
   );
   const amendment = data.amendment ? 2 + Math.ceil((data.amendment.note?.length ?? 0) / 150) : 0;
   // Five repetitions and more: « Non détecté » and the methods wrap in their narrower columns.
@@ -864,7 +963,7 @@ function reviveDate(value: unknown): Date | null {
 }
 
 /** The template's dates of a frozen version, revived — only those it carries (older versions have none). */
-const TEMPLATE_DATES = ["productionDate", "expiryDate", "analysisFrom", "analysisTo", "issuedAt"] as const;
+const TEMPLATE_DATES = ["productionDate", "expiryDate", "analysisFrom", "analysisTo", "issuedAt", "arrivedAt"] as const;
 
 /**
  * The version in force with the administrator's silent correction
@@ -877,6 +976,31 @@ const TEMPLATE_DATES = ["productionDate", "expiryDate", "analysisFrom", "analysi
 export function withSilentCorrection(data: ReportData, conclusion: string | null | undefined): ReportData {
   if (typeof conclusion !== "string" || conclusion === data.conclusion) return data;
   return { ...data, conclusion };
+}
+
+/**
+ * Rendered first from its frozen version (lot 1b, RETOUR-LABO-16-10.md D5,
+ * D-03): the current version of a report, its duplicata, the portal's copy
+ * and the e-mail's attachment print the `ReportVersion` frozen at its issue,
+ * so a report already sent does not change when the template or the live
+ * data do — always through `withSilentCorrection`: the administrator's
+ * « Modifier la conclusion » (`admin-edit`) writes the report's conclusion
+ * only, and must keep showing.
+ *
+ * Null = render from the live data, with the 13/10 layout, as before: a
+ * report issued before versions were frozen (09/10), and — outside an
+ * amendment in progress — a version frozen before the template PG06/EN03 of
+ * 13/10, which lacks the template's fields (no `sampledByLab`) and has
+ * always printed from the live data since. While an amendment is in
+ * progress the frozen version always stands: the results are being redone.
+ */
+export function frozenVersionInForce(
+  frozen: ReportData | null,
+  report: { conclusion: string | null; amendmentPending: boolean }
+): ReportData | null {
+  if (!frozen) return null;
+  if (!report.amendmentPending && frozen.sampledByLab === undefined) return null;
+  return withSilentCorrection(frozen, report.conclusion);
 }
 
 /** The frozen data back as a `ReportData`; null when it is not one (a damaged row). */

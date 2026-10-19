@@ -39,9 +39,10 @@ class StaleReception extends Error {}
  * laboratory's thresholds, goes to the SAMPLE_RECEIVED audit. Histamine and
  * Salmonella are recognised on the analyses' names and aliases.
  *
- * The contrôles complémentaires (hors bon) ride along: C3 (emballage) and C5
- * (identification) are ticked for every sample and stored on it; the coded
- * rows go to the same audit entry, beside the checklist. C6, the signed
+ * The contrôles complémentaires (hors bon) ride along: C5 (identification)
+ * is ticked for every sample and stored on it, and the coded rows go to the
+ * same audit entry, beside the checklist. C3 (emballage) is no longer asked
+ * (16/10, Q70): `receptionPackagingOk` stays empty. C6, the signed
  * protocol of a visit, is answered once for the série (`Serie.
  * signedProtocolReceived`, null when a photo is attached) and journalled in
  * SERIE_RECEIVED.
@@ -201,7 +202,8 @@ export async function POST(
                 ? { quantity: line.quantity, quantityUnit: line.quantityUnit }
                 : {}),
               receptionExploitable: line.exploitable,
-              receptionPackagingOk: line.packagingOk,
+              // C3 is no longer asked (16/10, Q70): the column stays, empty.
+              receptionPackagingOk: null,
               receptionIdentificationOk: line.identificationOk,
               conformity: line.conformity,
               conformityReason: line.conformityReason,
@@ -242,6 +244,7 @@ export async function POST(
                 surfaceLabel: true,
                 surfaceState: true,
                 airMethod: true,
+                airExposureMin: true,
                 personName: true,
                 nature: { select: { label: true } },
                 status: true,
@@ -379,7 +382,8 @@ export async function POST(
           controlCodes: rows.map((r) => r.controlCode),
           destroyed: input.lines.filter((l) => l.destroy).map((l) => l.ref),
           awaitingClient: input.lines.filter((l) => l.awaitClient).map((l) => l.ref),
-          arrivedAt: input.arrivedAt,
+          // The arrival as stored: typed, else the série's, else the reception instant.
+          arrivedAt: input.arrivedAt ?? serie.arrivedAt ?? receivedAt,
           coolerTemperature: input.coolerTemperature,
           // C6 — the signed protocol of a visit: a photo, or the paper answer.
           signedProtocol:

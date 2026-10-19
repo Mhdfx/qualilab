@@ -63,7 +63,7 @@ export const PROGRAMME_SAMPLE_SELECT = {
   conformityReason: true,
   conformityNote: true,
   receptionExploitable: true,
-  receptionPackagingOk: true,
+  // C5 only: C3 (emballage) is no longer shown, nor asked (16/10, Q70).
   receptionIdentificationOk: true,
   storageClass: true,
   receptionTemperatureSource: true,

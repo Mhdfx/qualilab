@@ -17,13 +17,16 @@ import type {
 import { MAX_UNITS } from "./series";
 import { parseIsoDay } from "./date-only";
 import {
+  AIR_EXPOSURE_MINUTES,
   AIR_METHOD_CHOICES,
   ANALYSIS_FAMILY_LABELS,
   CADRE_CHOICES,
+  HANDS_STATE_CHOICES,
   LINE_KIND_LABELS,
   NON_CONFORMITY_REASON_LABELS,
   SURFACE_STATE_CHOICES,
   futureMessage,
+  isExposedPlate,
 } from "./labels";
 import { LINE_FAMILIES, familiesFor, familyOfNature, natureFor, type LineFamily } from "./nature-family";
 import { EXPLOITABLE_MESSAGES, RECEPTION_NOTE_MAX, RECEPTION_NOTE_MESSAGES } from "./reception-rules";
@@ -44,9 +47,11 @@ import {
  *
  * The rules mirror the paper protocole de prélèvement: an aliment line
  * carries a lot, dates and a quantity; a surface line its désignation, its
- * state and its area; a mains line a person; an air line its sampling method;
- * temperatures and remarks are allowed on every kind. Anything the kind does
- * not use is dropped, never silently stored.
+ * state and its area (or the « Autre » text that replaces it); a mains line
+ * a person and the state of the hands; an air line its sampling method (and
+ * the exposed plate's duration); temperatures and remarks are allowed on
+ * every kind — the ambient one required on a visit (16/10, Q113). Anything
+ * the kind does not use is dropped, never silently stored.
  *
  * A line ticks « Analyses microbiologiques » and / or « Analyses
  * physico-chimiques » (RETOUR-LABO-06-10.md §5, V3): the nature of each
@@ -57,8 +62,10 @@ import {
  *
  * A dépôt (bon de réception) is received on the spot, so its lines also
  * carry what the reception of a visit records later: rule (1) of the bon
- * (exploitable or not, answered for every line — retour du 08/10),
- * temperature at arrival, conformity with a coded motif, decision. Never a technician
+ * (exploitable or not, answered for every line — retour du 08/10), C5
+ * (identification; C3 « emballage » is no longer asked since 16/10, Q70 — a
+ * `packagingOk` still sent is not read), temperature at arrival,
+ * conformity with a coded motif, decision. Never a technician
  * (RETOUR-LABO-06-10.md §9.3): once programmed, the sample waits in
  * « À prendre » until a technician takes it (PROGRAMME.md §10); a
  * `technicianId` still sent is ignored.
@@ -70,6 +77,12 @@ import {
  * caller that does not send them (a page opened before) keeps the old rule:
  * the « P » sample takes the line's quantity (`sampleQuantity`).
  *
+ * The times (16/10, Q118): « Prélevé le » is required on a visit and on a
+ * deposit — the deposit's one exception, the client who truly does not know
+ * (proposal of the re-ask 2.6, `SAMPLING_TIME_UNKNOWN`), is said by a box,
+ * never by an empty field. The deposit's « Arrivé le » is read first: the
+ * unknown sampling time falls back on it.
+ *
  * Messages: `validateLine` returns the bare sentence (« Choisissez l'état de
  * la surface. ») with the line number aside — « Corriger la fiche » shows it
  * as is; `validateSerie` and `planLineSamples` name the sample in the
@@ -78,7 +91,8 @@ import {
 
 export const LINE_KINDS: LineKind[] = ["ALIMENT", "SURFACE", "MAINS", "EAU", "AIR", "AUTRE"];
 export const QUANTITY_UNITS: QuantityUnit[] = ["UNITE", "G", "ML", "L"];
-export const HANDS_STATES: HandsState[] = ["LAVEES", "NON_LAVEES"];
+/** The one list of `labels.ts` (16/10, Q109): ASEPTISEES, NON_LAVEES, LAVEES. */
+export const HANDS_STATES: readonly HandsState[] = HANDS_STATE_CHOICES;
 /** « Prélèvement effectué par » on a new série. SERVICE_VETERINAIRE stays in
  * the enum for the old séries but is refused at creation (RETOUR-LABO-06-10.md
  * §5, V1): a veterinary sampling is entered « Autre » + name. */
@@ -93,7 +107,24 @@ export const PAYMENT_MODES: PaymentMode[] = ["ESPECES", "CHEQUE", "VIREMENT", "C
 export const NON_CONFORMITY_REASONS = Object.keys(NON_CONFORMITY_REASON_LABELS) as NonConformityReason[];
 
 export const MAX_LINES = 200;
+/** The surface sampled when nothing was given: 100 cm² (the recap of the visit prints it too). */
+export const SURFACE_AREA_DEFAULT_CM2 = 100;
 const TEXT = 191;
+
+/**
+ * The deposit whose client truly does not know the sampling time (16/10,
+ * Q118) — the PROPOSAL of the re-ask 2.6, pending the laboratory's answer:
+ * a box « Heure de prélèvement inconnue du client », ticked on purpose. The
+ * série is then « Non déclarée » (`samplingTimeDeclared` false), its
+ * sampling instant the arrival, and C1 « à vérifier » with the observation
+ * required. Should the laboratory answer « refusé tant que l'heure n'est
+ * pas donnée », `allowed: false` takes the box off the counter and the API
+ * refuses the flag — nothing else changes.
+ */
+export const SAMPLING_TIME_UNKNOWN = {
+  allowed: true,
+  label: "Heure de prélèvement inconnue du client",
+} as const;
 
 /** The messages the forms repeat word for word in their own checks. */
 export const SERIE_MESSAGES = {
@@ -101,10 +132,36 @@ export const SERIE_MESSAGES = {
   veterinaryRefused: "« Service vétérinaire » n'est plus proposé : choisissez « Autre » et indiquez le nom.",
   surfaceLabelMissing: "Indiquez la désignation de la surface.",
   surfaceStateMissing: "Choisissez l'état de la surface.",
+  surfaceAreaBoth: "Indiquez soit la surface prélevée en cm², soit une précision « Autre » — pas les deux.",
+  surfaceAreaNoteTooLong: "La précision « Autre » de la surface est trop longue (191 caractères maximum).",
+  handsStateMissing: "Choisissez l'état des mains.",
   airMethodMissing: "Choisissez la méthode de prélèvement de l'air.",
+  airExposureMissing: "Indiquez la durée d'exposition de la boîte, en minutes.",
+  airExposureInvalid: `La durée d'exposition doit être un nombre entier de minutes, de ${AIR_EXPOSURE_MINUTES.min} à ${AIR_EXPOSURE_MINUTES.max}.`,
+  ambientMissing: "Indiquez la T° ambiante : elle est obligatoire sur la visite.",
   arrivalBeforeEnd: "L'arrivée au laboratoire précède la fin du prélèvement.",
   arrivalBeforeStart: "L'arrivée au laboratoire précède le prélèvement.",
+  /** « Prélevé le » emptied on a visit (16/10, Q118): the screen pre-fills it, the API refuses it empty. */
+  startedMissing: "Indiquez la date et l'heure du prélèvement.",
+  /** The counter's screen: the field and its box are both on it (the box only while it is offered). */
+  depositStartedMissing: SAMPLING_TIME_UNKNOWN.allowed
+    ? `Indiquez la date et l'heure du prélèvement, ou cochez « ${SAMPLING_TIME_UNKNOWN.label} ».`
+    : "Indiquez la date et l'heure du prélèvement.",
+  /** The deposit API: a page opened before 16/10 has no box — told to reload. */
+  depositStartedMissingApi: SAMPLING_TIME_UNKNOWN.allowed
+    ? `Indiquez la date et l'heure du prélèvement, ou cochez « ${SAMPLING_TIME_UNKNOWN.label} » (rechargez la page si cette case n'apparaît pas).`
+    : "Indiquez la date et l'heure du prélèvement.",
+  /** `SAMPLING_TIME_UNKNOWN.allowed` false: the box is refused. */
+  samplingUnknownRefused: "L'heure du prélèvement est obligatoire : le dépôt ne peut pas être enregistré sans elle.",
+  /** The deposit's « Arrivé le » emptied on the screen (16/10, Q118). */
+  arrivalMissing: "Indiquez la date et l'heure d'arrivée au laboratoire.",
+  arrivalTooOld: "L'heure d'arrivée remonte à plus de 30 jours.",
 } as const;
+
+/** The oldest sampling or arrival a new série may carry (30 days). */
+const MAX_PAST_MS = 30 * 24 * 3600 * 1000;
+/** The clock tolerance of « dans le futur » (5 min), the screens' too (`futureFieldError`). */
+const FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
 
 /**
  * The arrival at the laboratory against the sampling: never before its end,
@@ -114,6 +171,34 @@ export const SERIE_MESSAGES = {
 export function arrivalRefusal(arrivedAt: Date, startedAt: Date, endedAt: Date | null): string | null {
   if (endedAt && arrivedAt < endedAt) return SERIE_MESSAGES.arrivalBeforeEnd;
   if (arrivedAt < startedAt) return SERIE_MESSAGES.arrivalBeforeStart;
+  return null;
+}
+
+/**
+ * A CHANGE of the série's arrival through its header (PATCH
+ * /api/series/[id]), beyond `arrivalRefusal`. Since lot 1b the arrival is
+ * the report's « Date et heure de réception » and C1's end: once the série
+ * is received it belongs to the laboratory — never the préleveur's (as the
+ * cadre), never emptied, never after the reception (its 5 min of clock
+ * tolerance). Never more than 30 days back, as at creation: from the
+ * reception once there is one, else from now.
+ */
+export function arrivalChangeRefusal(change: {
+  next: Date | null;
+  receivedAt: Date | null;
+  byPreleveur: boolean;
+  now?: number;
+}): string | null {
+  const { next, receivedAt, byPreleveur } = change;
+  if (receivedAt) {
+    if (byPreleveur) return "La série est réceptionnée : le laboratoire seul peut corriger l'heure d'arrivée.";
+    if (!next) return SERIE_MESSAGES.arrivalMissing;
+    if (next.getTime() > receivedAt.getTime() + FUTURE_TOLERANCE_MS) return "L'heure d'arrivée suit la réception de la série.";
+  }
+  const reference = receivedAt?.getTime() ?? change.now ?? Date.now();
+  if (next && next.getTime() < reference - MAX_PAST_MS) {
+    return receivedAt ? "L'heure d'arrivée précède la réception de plus de 30 jours." : SERIE_MESSAGES.arrivalTooOld;
+  }
   return null;
 }
 
@@ -186,8 +271,12 @@ export type CleanLine = {
   storageClass: StorageClass | null;
   /** « Désignation » of a SURFACE line; null on every other kind. */
   surfaceLabel: string | null;
-  /** « Surface prélevée (cm²) » of a SURFACE line (100 by default); null elsewhere. */
+  /** « Surface prélevée (cm²) » of a SURFACE line (100 by default); null
+   * elsewhere, and when the line carries a `surfaceAreaNote` instead. */
   surfaceAreaCm2: number | null;
+  /** « Autre » of a SURFACE line given as a text (« couteau entier », 16/10):
+   * printed in place of the area; null elsewhere and with an area. */
+  surfaceAreaNote: string | null;
   /** « État de la surface » — SURFACE only. */
   surfaceState: SurfaceState | null;
   personName: string | null;
@@ -195,6 +284,8 @@ export type CleanLine = {
   handsState: HandsState | null;
   /** « Méthode de prélèvement » — AIR only. */
   airMethod: AirMethod | null;
+  /** « Durée d'exposition » (minutes) of an exposed plate; null on every other method and kind. */
+  airExposureMin: number | null;
   remarks: string | null;
   unitCount: number;
   /** Optional (V6): the programme sheet fixes the analyses when none is ticked. */
@@ -204,8 +295,7 @@ export type CleanLine = {
   // Reception data — meaningful for a dépôt only; defaults for a visit.
   /** Rule (1) of the bon de réception, answered at the counter; null on a visit. */
   exploitable: boolean | null;
-  /** C3 (emballage) and C5 (identification), ticked at the counter; null on a visit. */
-  packagingOk: boolean | null;
+  /** C5 (identification), ticked at the counter; null on a visit. */
   identificationOk: boolean | null;
   conformity: boolean;
   conformityReason: NonConformityReason | null;
@@ -238,10 +328,14 @@ export type CleanSerie = {
   startedAt: Date;
   endedAt: Date | null;
   /**
-   * C1: false on a deposit whose « Prélevé le » was left empty (`startedAt`
-   * is then now), true when typed; null on a visit.
+   * C1: true when the deposit's « Prélevé le » was typed; false when the
+   * client did not know it (`SAMPLING_TIME_UNKNOWN`, 16/10 — `startedAt` is
+   * then the arrival), as on the deposits saved before 16/10 with the field
+   * left empty; null on a visit.
    */
   samplingTimeDeclared: boolean | null;
+  /** The arrival typed (the deposit's « Arrivé le »); null = not sent — a
+   * deposit then arrives at its save (`createSerie`), an old page included. */
   arrivedAt: Date | null;
   coolerTemperature: number | null;
   advanceAmount: number | null;
@@ -255,12 +349,14 @@ export type SerieValidation =
   | { ok: false; error: string; line?: number };
 
 export type LineOptions = {
+  /** VISITE: the ambient temperature is required (16/10, Q113). Absent in
+   * « Corriger la fiche », which never blocks an old row on it. */
   kind?: SerieKind;
   /** LabSettings.consultationRequired — the deposit's non-conform analysis needs the agreement (A9). */
   consultationRequired?: boolean;
   /**
-   * « Corriger la fiche » of a row entered before the state and the method
-   * existed (07/10): `surfaceState` / `airMethod` may stay empty.
+   * A row entered before the states and the method were required (07/10,
+   * 16/10): `surfaceState` / `airMethod` / `handsState` may stay empty.
    */
   allowMissingState?: boolean;
 };
@@ -283,7 +379,9 @@ export function chimieQuantityMessage(lineNumber: number): string {
 }
 
 function numberOrNull(value: unknown): number | null | "invalid" {
-  if (value === undefined || value === null || value === "") return null;
+  // A blank string is nothing typed — not 0 (`Number("  ")` is 0): a
+  // required T° ambiante made of spaces is missing, not « 0 °C ».
+  if (value === undefined || value === null || (typeof value === "string" && value.trim() === "")) return null;
   const parsed =
     typeof value === "number" ? value : Number(String(value).replace(",", "."));
   return Number.isFinite(parsed) ? parsed : "invalid";
@@ -409,13 +507,39 @@ export function validateLine(
   const personName = text(input.personName) || null;
   const surfaceState = surface ? oneOf(input.surfaceState, SURFACE_STATES) : null;
   const airMethod = lineKind === "AIR" ? oneOf(input.airMethod, AIR_METHODS) : null;
+  const handsState = lineKind === "MAINS" ? oneOf(input.handsState, HANDS_STATES) : null;
   const strictStates = !options.allowMissingState;
 
   if (lineKind === "ALIMENT" && !produit) return fail("Indiquez la désignation du produit.");
   if (surface && !surfaceLabel) return fail(SERIE_MESSAGES.surfaceLabelMissing);
   if (surface && !surfaceState && strictStates) return fail(SERIE_MESSAGES.surfaceStateMissing);
   if (lineKind === "MAINS" && !personName) return fail("Indiquez la personne prélevée.");
+  // Required on a new line, visit and deposit alike (16/10, Q109).
+  if (lineKind === "MAINS" && !handsState && strictStates) return fail(SERIE_MESSAGES.handsStateMissing);
   if (lineKind === "AIR" && !airMethod && strictStates) return fail(SERIE_MESSAGES.airMethodMissing);
+
+  // « Durée d'exposition » of an exposed plate (16/10, Q50): required with
+  // that method, a whole number of minutes. A page opened before the field
+  // existed does not send it (`undefined`): its plate is the 30 min the
+  // method's name carried. Any other method has no duration.
+  let airExposureMin: number | null = null;
+  if (isExposedPlate(airMethod)) {
+    if (input.airExposureMin === undefined) {
+      airExposureMin = AIR_EXPOSURE_MINUTES.default;
+    } else {
+      const minutes = numberOrNull(input.airExposureMin);
+      if (minutes === null) return fail(SERIE_MESSAGES.airExposureMissing);
+      if (
+        minutes === "invalid" ||
+        !Number.isInteger(minutes) ||
+        minutes < AIR_EXPOSURE_MINUTES.min ||
+        minutes > AIR_EXPOSURE_MINUTES.max
+      ) {
+        return fail(SERIE_MESSAGES.airExposureInvalid);
+      }
+      airExposureMin = minutes;
+    }
+  }
 
   const productionDate = dayOrNull(input.productionDate);
   const expiryDate = dayOrNull(input.expiryDate);
@@ -459,19 +583,29 @@ export function validateLine(
       return fail(`${label} doit être un nombre plausible (−80 à 300 °C).`);
     }
   }
+  // The ambient temperature is required on the visit, every kind — the air
+  // included; « 0 » is a value (16/10, Q113). Never at the counter, never in
+  // « Corriger la fiche » (no `kind`): an old line stays correctable.
+  if (options.kind === "VISITE" && ambientTemperature === null) return fail(SERIE_MESSAGES.ambientMissing);
 
   // « Surface prélevée (cm²) » (ex-« Aire prélevée »): 100 cm² by default on
-  // a surface line, nowhere else.
+  // a surface line, nowhere else. « Autre » (16/10, Q114) is another whole
+  // number of cm², or a text (`surfaceAreaNote`) that replaces the area: the
+  // area then stays empty — never the 100 cm² default — and both together
+  // are refused.
   let surfaceAreaCm2: number | null = null;
+  let surfaceAreaNote: string | null = null;
   if (surface) {
+    if (tooLong(input.surfaceAreaNote)) return fail(SERIE_MESSAGES.surfaceAreaNoteTooLong);
+    surfaceAreaNote = text(input.surfaceAreaNote) || null;
     const area = numberOrNull(input.surfaceAreaCm2);
     if (area === "invalid" || (area !== null && (!Number.isInteger(area) || area <= 0 || area > 100000))) {
       return fail("La surface prélevée doit être un nombre entier de cm².");
     }
-    surfaceAreaCm2 = area ?? 100;
+    if (surfaceAreaNote && area !== null) return fail(SERIE_MESSAGES.surfaceAreaBoth);
+    surfaceAreaCm2 = surfaceAreaNote ? null : (area ?? SURFACE_AREA_DEFAULT_CM2);
   }
 
-  const handsState = lineKind === "MAINS" ? oneOf(input.handsState, HANDS_STATES) : null;
   const weighed = weighedKind;
 
   const unitCountRaw = numberOrNull(input.unitCount);
@@ -487,7 +621,6 @@ export function validateLine(
 
   // ---- Reception data of a deposit line ------------------------------------
   let exploitable: boolean | null = null;
-  let packagingOk: boolean | null = null;
   let identificationOk: boolean | null = null;
   let receptionTemperatureSource: TemperatureSource | null = null;
   let storageClass: StorageClass | null = null;
@@ -503,10 +636,10 @@ export function validateLine(
     // a form opened before the checklist sends none and is told so.
     if (typeof input.exploitable !== "boolean") return fail(EXPLOITABLE_MESSAGES.missing);
     exploitable = input.exploitable;
-    // The contrôles complémentaires C3 and C5, one answer for the line too.
-    if (typeof input.packagingOk !== "boolean") return fail(COMPLEMENTARY_MESSAGES.packagingMissing);
+    // The contrôle complémentaire C5, one answer for the line too. C3
+    // (emballage) is no longer asked (16/10, Q70): an old page's answer is
+    // not read, never refused.
     if (typeof input.identificationOk !== "boolean") return fail(COMPLEMENTARY_MESSAGES.identificationMissing);
-    packagingOk = input.packagingOk;
     identificationOk = input.identificationOk;
     // C2: the class and where the temperature was read — both optional.
     const source = parseChoice(input.receptionTemperatureSource, TEMPERATURE_SOURCES);
@@ -577,11 +710,13 @@ export function validateLine(
       storageClass,
       surfaceLabel,
       surfaceAreaCm2,
+      surfaceAreaNote,
       surfaceState,
       personName: lineKind === "MAINS" ? personName : null,
       personRole: lineKind === "MAINS" ? text(input.personRole) || null : null,
       handsState,
       airMethod,
+      airExposureMin,
       remarks: text(input.remarks, 2000) || null,
       unitCount: unitCount as number,
       parameterIds,
@@ -589,7 +724,6 @@ export function validateLine(
       // hands never carries one.
       productTypeId: lineKind === "ALIMENT" ? text(input.productTypeId) || null : null,
       exploitable,
-      packagingOk,
       identificationOk,
       conformity,
       conformityReason,
@@ -635,19 +769,35 @@ export function validateSerie(
   }
   const cadreNote = cadre === "AUTRE" ? text(input.cadreNote) || null : null;
 
+  const now = Date.now();
+
+  // The arrival first (16/10, Q118): a deposit whose sampling time the
+  // client does not know takes it as its sampling instant. Bounded like the
+  // sampling — never in the future, never more than 30 days back.
+  const arrivedAt = dateOrNull(input.arrivedAt);
+  if (arrivedAt === "invalid") return fail("L'heure d'arrivée n'est pas valide.");
+  if (arrivedAt && arrivedAt.getTime() > now + FUTURE_TOLERANCE_MS) return fail(futureMessage("L'heure d'arrivée"));
+  if (arrivedAt && arrivedAt.getTime() < now - MAX_PAST_MS) return fail(SERIE_MESSAGES.arrivalTooOld);
+
+  // « Prélevé le » is required (16/10, Q118): the screens pre-fill or ask
+  // it, and an empty one is never replaced by the save instant any more.
+  // The deposit's one exception is the box « Heure de prélèvement inconnue
+  // du client » (re-ask 2.6), never an empty field — a page opened before
+  // the box is told to reload. The box wins over a time sent with it.
   const startedAtRaw = dateOrNull(input.startedAt);
   if (startedAtRaw === "invalid") return fail("La date et l'heure du prélèvement ne sont pas valides.");
-  const startedAt = startedAtRaw ?? new Date();
-  const now = Date.now();
-  if (startedAt.getTime() > now + 5 * 60 * 1000) return fail(futureMessage("L'heure du prélèvement"));
-  if (startedAt.getTime() < now - 30 * 24 * 3600 * 1000) return fail("L'heure du prélèvement remonte à plus de 30 jours.");
+  const samplingTimeUnknown = deposit && input.samplingTimeUnknown === true;
+  if (samplingTimeUnknown && !SAMPLING_TIME_UNKNOWN.allowed) return fail(SERIE_MESSAGES.samplingUnknownRefused);
+  if (startedAtRaw === null && !samplingTimeUnknown) {
+    return fail(deposit ? SERIE_MESSAGES.depositStartedMissingApi : SERIE_MESSAGES.startedMissing);
+  }
+  const startedAt = samplingTimeUnknown || startedAtRaw === null ? (arrivedAt ?? new Date(now)) : startedAtRaw;
+  if (startedAt.getTime() > now + FUTURE_TOLERANCE_MS) return fail(futureMessage("L'heure du prélèvement"));
+  if (startedAt.getTime() < now - MAX_PAST_MS) return fail("L'heure du prélèvement remonte à plus de 30 jours.");
 
   const endedAt = dateOrNull(input.endedAt);
-  const arrivedAt = dateOrNull(input.arrivedAt);
   if (endedAt === "invalid") return fail("L'heure de fin n'est pas valide.");
-  if (arrivedAt === "invalid") return fail("L'heure d'arrivée n'est pas valide.");
-  if (endedAt && endedAt.getTime() > now + 5 * 60 * 1000) return fail(futureMessage("L'heure de fin"));
-  if (arrivedAt && arrivedAt.getTime() > now + 5 * 60 * 1000) return fail(futureMessage("L'heure d'arrivée"));
+  if (endedAt && endedAt.getTime() > now + FUTURE_TOLERANCE_MS) return fail(futureMessage("L'heure de fin"));
   if (endedAt && endedAt < startedAt) return fail("L'heure de fin précède le début du prélèvement.");
   const arrivalProblem = arrivedAt ? arrivalRefusal(arrivedAt, startedAt, endedAt) : null;
   if (arrivalProblem) return fail(arrivalProblem);
@@ -710,7 +860,8 @@ export function validateSerie(
       clientReference: text(input.clientReference) || null,
       startedAt,
       endedAt,
-      samplingTimeDeclared: deposit ? startedAtRaw !== null : null,
+      // C1: « Non déclarée » only when the client did not know (16/10).
+      samplingTimeDeclared: deposit ? !samplingTimeUnknown : null,
       arrivedAt,
       coolerTemperature: coolerTemperature as number | null,
       advanceAmount,

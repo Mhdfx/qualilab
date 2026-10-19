@@ -1,6 +1,14 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { REPORT_DENSITIES, pdfPageCount, printReport, reportDensity, type ReportData, type ReportMarks } from "./report-html";
+import {
+  REPORT_DENSITIES,
+  REPORT_LAYOUT_ALIGNED,
+  pdfPageCount,
+  printReport,
+  reportDensity,
+  type ReportData,
+  type ReportMarks,
+} from "./report-html";
 import { COMPANY, type CompanyInfo } from "./company";
 import type { DocumentRef } from "./document-types";
 
@@ -201,6 +209,33 @@ describe.skipIf(!hasBrowser)("page 1 and the annex each print on one page", () =
     expect(reportDensity(data)).toBe(REPORT_DENSITIES[0]);
     expect(pages(await print(data))).toBe(2);
     expect(printedDensity).toBe("");
+  }, 60_000);
+
+  // The aligned layout (lot 1b): « N/A », the denomination, the arrival, one date.
+  it("the aligned layout: 37 germs × 9 repetitions, a denomination of the longest length", async () => {
+    const data: ReportData = {
+      ...heaviest(),
+      layout: REPORT_LAYOUT_ALIGNED,
+      // `User.documentName` holds 191 characters — test words only.
+      preleveur: "Technicien de QUALILAB 'J.-P.NOMDETEST' — préleveur du laboratoire de démonstration ".repeat(3).slice(0, 191),
+      arrivedAt: new Date("2026-10-12T10:40:00Z"),
+    };
+    expect(pages(await print(data))).toBe(2);
+  }, 60_000);
+
+  it("the aligned layout, every field of the block empty (« N/A »), amended, as a duplicata", async () => {
+    const data: ReportData = {
+      ...heaviest(),
+      layout: REPORT_LAYOUT_ALIGNED,
+      preleveur: "Technicien de QUALILAB 'P.TEST'",
+      unitCount: 5,
+      results: results(11, 5),
+      numeroLot: null, productionDate: null, expiryDate: null, productTemperature: null, receptionTemperature: null,
+      coolerTemperature: null, arrivedAt: null, receivedAt: null, controlCode: null,
+      number: "RAP-2026-99999-A1",
+      amendment: { previousNumber: "RAP-2026-99999", previousIssuedAt: new Date("2026-10-13T10:00:00Z"), note: "Motif." },
+    };
+    expect(pages(await print(data, { duplicataAt: new Date("2026-10-15T09:00:00Z") }))).toBe(2);
   }, 60_000);
 
   it("an air sample sampled by the client, nothing to interpret", async () => {

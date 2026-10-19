@@ -4,6 +4,7 @@ import type {
   CancelReason,
   ConsultationChannel,
   Family,
+  HandsState,
   InvoiceStatus,
   NonConformityReason,
   ProgrammePriority,
@@ -98,18 +99,59 @@ export function withSurfaceState(designation: string, state?: SurfaceState | nul
 /**
  * The areas a surface is usually swabbed on, offered as one-tap choices
  * beside « Surface prélevée (cm²) » (the laboratory's remark of 14/10:
- * « 100 cm² » and « 1000 cm² »). Any other whole number stays typeable; a
- * new surface line still starts on 100 cm² (`emptyLine`, `kindPatch`).
+ * « 100 cm² » and « 1000 cm² »), then « Autre » (16/10, Q114): another
+ * whole number of cm², or a text when the item has no measured area
+ * (`Sample.surfaceAreaNote`). A new surface line still starts on 100 cm²
+ * (`emptyLine`, `kindPatch`).
  */
 export const SURFACE_AREA_CHOICES: readonly number[] = [100, 1000];
 
-/** « Méthode de prélèvement » of an AIR line (RETOUR-LABO-06-10.md §5, V4). */
+/**
+ * What a surface line says of its area, wherever it prints (the protocole's
+ * « Surface prélevée » column, the reception card, the programme, the bench,
+ * the validation, the visit recap): the « Autre » text (« couteau entier »)
+ * in place of « N cm² »; null when neither was recorded.
+ */
+export function surfaceAreaText(area: number | null | undefined, note?: string | null): string | null {
+  const text = note?.trim();
+  if (text) return text;
+  return area ? `${area} cm²` : null;
+}
+
+/**
+ * « Méthode de prélèvement » of an AIR line (RETOUR-LABO-06-10.md §5, V4).
+ * The exposed plate's duration is no longer in its name (16/10, Q50): it is
+ * `Sample.airExposureMin`, printed by `airMethodText`. The stored value
+ * `BOITE_EXPOSEE_30MIN` keeps its name.
+ */
 export const AIR_METHOD_LABELS = {
-  BOITE_EXPOSEE_30MIN: "Boîte exposée 30 min",
+  BOITE_EXPOSEE_30MIN: "Boîte exposée",
   BIOCOLLECTEUR: "Biocollecteur",
 } as const satisfies Record<AirMethod, string>;
 
 export const AIR_METHOD_CHOICES: readonly AirMethod[] = ["BOITE_EXPOSEE_30MIN", "BIOCOLLECTEUR"];
+
+/**
+ * « Durée d'exposition » of an exposed plate, in minutes (16/10, Q50 :
+ * « toujours 30, mais avoir la possibilité de changer »): proposed at 30,
+ * bounded — a whole number from 1 to 480 (eight hours).
+ */
+export const AIR_EXPOSURE_MINUTES = { default: 30, min: 1, max: 480 } as const;
+
+/** The air method that carries a duration: the exposed plate. */
+export function isExposedPlate(method: AirMethod | "" | null | undefined): method is "BOITE_EXPOSEE_30MIN" {
+  return method === "BOITE_EXPOSEE_30MIN";
+}
+
+/**
+ * The method as every document and screen prints it: « Boîte exposée
+ * 45 min », « Biocollecteur ». A plate entered before the duration existed
+ * (null) reads 30 min — the duration its method's name carried.
+ */
+export function airMethodText(method: AirMethod, minutes?: number | null): string {
+  if (!isExposedPlate(method)) return AIR_METHOD_LABELS[method];
+  return `${AIR_METHOD_LABELS[method]} ${minutes ?? AIR_EXPOSURE_MINUTES.default} min`;
+}
 
 /** The two boxes of each sample, and the groups of the analyses proposed
  * (`AnalysisParameter.family` — RETOUR-LABO-06-10.md §5, V3). */
@@ -143,10 +185,33 @@ export const QUANTITY_UNIT_LABELS = {
   L: "L",
 } as const;
 
+/**
+ * « État des mains » of a MAINS line — the laboratory's words of 16/10
+ * (Q109, Q110; RETOUR-LABO-16-10.md §3, A1). « Mains non lavées » is no
+ * longer offered: the stored NON_LAVEES reads « En cours de travail », the
+ * equivalence the laboratory wrote itself, so no row is rewritten. The ONE
+ * list of choices, in the laboratory's order — the visit, the counter and
+ * « Corriger la fiche » all read it (pending the confirmation asked in the
+ * re-ask of 18/10, point 2.1: change it here only).
+ */
 export const HANDS_STATE_LABELS = {
-  LAVEES: "Mains lavées",
-  NON_LAVEES: "Mains non lavées",
-} as const;
+  ASEPTISEES: "Aseptisées ou désinfectées",
+  NON_LAVEES: "En cours de travail",
+  LAVEES: "Lavées",
+} as const satisfies Record<HandsState, string>;
+
+export const HANDS_STATE_CHOICES: readonly HandsState[] = ["ASEPTISEES", "NON_LAVEES", "LAVEES"];
+
+/**
+ * The state as the protocole, the bon and the reception card print it
+ * after the person: « Personne Test (mains en cours de travail) ». Proper to
+ * the hands — never the surface's phrases, never `Sample.surfaceState`.
+ */
+export const HANDS_STATE_PHRASES = {
+  ASEPTISEES: "mains aseptisées ou désinfectées",
+  NON_LAVEES: "mains en cours de travail",
+  LAVEES: "mains lavées",
+} as const satisfies Record<HandsState, string>;
 
 /**
  * The coded motifs of a non-conformity at reception, in the order the screens

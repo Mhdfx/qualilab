@@ -65,11 +65,13 @@ import {
  * never refused: the reception goes through, without a technician.
  *
  * The contrôles complémentaires (hors bon, `reception-complementary.ts`)
- * follow the same pattern: every line ticks C3 (emballage) and C5
- * (identification) — a page opened before them is told to reload — and a
- * line whose complementary control is NON_CONFORME cannot be declared
- * conform, exactly like a blocking rule of the paper. The coded rows travel
- * beside the checklist (`complementary`), for the audit.
+ * follow the same pattern: every line ticks C5 (identification) — a page
+ * opened before it is told to reload — and a line whose complementary
+ * control is NON_CONFORME cannot be declared conform, exactly like a
+ * blocking rule of the paper. The coded rows travel beside the checklist
+ * (`complementary`), for the audit. C3 (emballage) is no longer asked
+ * (16/10, Q70): a `packagingOk` still sent by a page opened before is
+ * ignored, never refused, and `Sample.receptionPackagingOk` stays empty.
  *
  * The arrival typed at reception is checked against the série's sampling
  * times: never before the end of the sampling, nor before its start when no
@@ -134,8 +136,7 @@ export type CleanReceptionLine = {
   quantityUnit: QuantityUnit | null;
   /** Rule (1): the réceptionniste's answer, written to `Sample.receptionExploitable`. */
   exploitable: boolean;
-  /** C3 and C5, the réceptionniste's ticks — `Sample.receptionPackagingOk` / `receptionIdentificationOk`. */
-  packagingOk: boolean;
+  /** C5, the réceptionniste's tick — `Sample.receptionIdentificationOk`. */
   identificationOk: boolean;
   conformity: boolean;
   conformityReason: NonConformityReason | null;
@@ -316,14 +317,11 @@ export function validateReception(
     // Rule (1) first: a page opened before the checklist sends none.
     if (typeof rawLine.exploitable !== "boolean") return fail(receptionLineMessage(ref, EXPLOITABLE_MESSAGES.missing), n, ref);
     const exploitable = rawLine.exploitable;
-    // The two ticked controls, C3 then C5 — the same refusal for an old page.
-    if (typeof rawLine.packagingOk !== "boolean") {
-      return fail(receptionLineMessage(ref, COMPLEMENTARY_MESSAGES.packagingMissing), n, ref);
-    }
+    // The ticked control C5 — an old page is told to reload. Its C3 answer
+    // (`packagingOk`, no longer asked since 16/10) is not read.
     if (typeof rawLine.identificationOk !== "boolean") {
       return fail(receptionLineMessage(ref, COMPLEMENTARY_MESSAGES.identificationMissing), n, ref);
     }
-    const packagingOk = rawLine.packagingOk;
     const identificationOk = rawLine.identificationOk;
     const receptionNote = text(rawLine.receptionNote);
     if (receptionNote.length > RECEPTION_NOTE_MAX) {
@@ -356,7 +354,7 @@ export function validateReception(
       },
       timing,
       thresholds,
-      { packagingOk, identificationOk }
+      { identificationOk }
     );
 
     if (typeof rawLine.conformity !== "boolean") {
@@ -423,7 +421,6 @@ export function validateReception(
       quantity,
       quantityUnit,
       exploitable,
-      packagingOk,
       identificationOk,
       conformity,
       conformityReason,

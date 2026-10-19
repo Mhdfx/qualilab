@@ -7,8 +7,11 @@ import {
   REPORT_NB,
   SAMPLING_PROCEDURES,
   analysisPeriodText,
+  analysisStart,
   legalFooterExtraLines,
+  receptionInstant,
   reportDateTime,
+  reportDateTimeAligned,
   reportDay,
   reportLegalFooter,
   reportSampler,
@@ -131,6 +134,74 @@ describe("the fields of the template", () => {
     expect(reportSampler({ samplerKind: "SERVICE_VETERINAIRE", samplerUserName: null, samplerName: "Dr Test", recordedBy: null })).toBe(
       "Prélèvement effectué par le service vétérinaire — Dr Test"
     );
+  });
+
+  it("prints a date and time « JJ/MM/AAAA HH:MM » on the aligned layout (lot 1b, excerpt of 15/10)", () => {
+    expect(reportDateTimeAligned(new Date("2026-10-12T08:30:00Z"))).toBe("12/10/2026 08:30");
+    // 24-hour clock, on the laboratory's clock (UTC+1 before 20/09/2026).
+    expect(reportDateTimeAligned(new Date("2026-08-25T15:05:00Z"))).toBe("25/08/2026 16:05");
+    expect(reportDateTimeAligned(new Date("2026-09-10T23:30:00Z"))).toBe("11/09/2026 00:30");
+    expect(reportDateTimeAligned(null)).toBeNull();
+    expect(reportDateTimeAligned(undefined)).toBeNull();
+  });
+
+  it("starts the single « Date d'analyse » of the aligned layout at the bench's take", () => {
+    const assignedAt = new Date("2026-10-13T09:00:00Z");
+    const programmedAt = new Date("2026-10-12T15:00:00Z");
+    const receivedAt = new Date("2026-10-12T10:00:00Z");
+    expect(analysisStart({ assignedAt, programmedAt, receivedAt })).toBe(assignedAt);
+    // Not taken yet (or released): the programme confirmed, else the reception.
+    expect(analysisStart({ assignedAt: null, programmedAt, receivedAt })).toBe(programmedAt);
+    expect(analysisStart({ assignedAt: null, programmedAt: null, receivedAt })).toBe(receivedAt);
+    expect(analysisStart({})).toBeNull();
+    // One date, never a period: printed as the day of the start.
+    expect(reportDay(analysisStart({ assignedAt, programmedAt, receivedAt }))).toBe("13/10/2026");
+  });
+
+  it("reads « Date et heure de réception » of the aligned layout as the arrival, else the reception", () => {
+    const arrivedAt = new Date("2026-08-25T15:05:00Z");
+    const receivedAt = new Date("2026-08-25T17:40:00Z");
+    expect(receptionInstant({ arrivedAt, receivedAt })).toBe(arrivedAt);
+    expect(receptionInstant({ arrivedAt: null, receivedAt })).toBe(receivedAt);
+    expect(receptionInstant({ receivedAt: null })).toBeNull();
+  });
+
+  it("names a Qualilab préleveur by their denomination on the aligned layout (lot 1b, Q22)", () => {
+    const aligned = { samplerKind: "QUALILAB" as const, denomination: true };
+    // The default from the name: « Technicien de QUALILAB 'I.NOM' ».
+    expect(reportSampler({ ...aligned, samplerUserName: "Personne Test", samplerName: null, recordedBy: "Autre" })).toBe(
+      "Technicien de QUALILAB 'P.TEST'"
+    );
+    // The denomination typed in /admin/utilisateurs.
+    expect(
+      reportSampler({ ...aligned, samplerUserName: "Personne Test", samplerUserDocumentName: "Préleveur QUALILAB 'X.NOM'", samplerName: null, recordedBy: null })
+    ).toBe("Préleveur QUALILAB 'X.NOM'");
+    // A name typed on the série without an account stays as typed.
+    expect(reportSampler({ ...aligned, samplerUserName: null, samplerName: "Préleveur Externe", recordedBy: "Réception" })).toBe("Préleveur Externe");
+    // An older visit: the account that recorded it, by its denomination.
+    expect(reportSampler({ ...aligned, samplerUserName: null, samplerName: null, recordedBy: "Personne Deux" })).toBe(
+      "Technicien de QUALILAB 'P.DEUX'"
+    );
+    expect(
+      reportSampler({ ...aligned, samplerUserName: null, samplerName: null, recordedBy: "Personne Deux", recordedByDocumentName: "I.NOM" })
+    ).toBe("I.NOM");
+    expect(reportSampler({ ...aligned, samplerUserName: " ", samplerName: null, recordedBy: null })).toBe("Qualilab");
+  });
+
+  it("leaves the client and a third party as they were, and the 13/10 layout on the full name", () => {
+    expect(reportSampler({ samplerKind: "CLIENT", samplerUserName: null, samplerName: null, recordedBy: "Réception", denomination: true })).toBe(
+      "Le client"
+    );
+    expect(
+      reportSampler({ samplerKind: "SERVICE_VETERINAIRE", samplerUserName: null, samplerName: "Dr Test", recordedBy: null, denomination: true })
+    ).toBe("Prélèvement effectué par le service vétérinaire — Dr Test");
+    expect(reportSampler({ samplerKind: "AUTRE", samplerUserName: null, samplerName: "Service Démo", recordedBy: null, denomination: true })).toBe(
+      "Service Démo"
+    );
+    // Without the marker: the full name, whatever denomination is stored.
+    expect(
+      reportSampler({ samplerKind: "QUALILAB", samplerUserName: "Personne Test", samplerUserDocumentName: "I.NOM", samplerName: null, recordedBy: null })
+    ).toBe("Personne Test");
   });
 
   it("splits the temperatures between the product and the cooler by where they were read", () => {

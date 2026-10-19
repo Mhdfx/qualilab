@@ -23,6 +23,8 @@ export type QueueLine = {
   /** « Planche verte — surface nettoyée », « Salle — Boîte exposée 30 min » (RETOUR-LABO-06-10.md §5); null on older samples. */
   surfaceState?: SurfaceState | null;
   airMethod?: AirMethod | null;
+  /** The exposed plate's duration (16/10): « Boîte exposée 45 min ». */
+  airExposureMin?: number | null;
   lieu: string;
   status: SampleStatus;
   unitCount: number;

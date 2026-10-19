@@ -77,8 +77,7 @@ export type ProgrammeSampleData = {
   conformityNote: string | null;
   /** Rule (1) of the bon de réception as answered at reception; null = received before the checklist. */
   receptionExploitable?: boolean | null;
-  /** C3 / C5, the contrôles complémentaires ticked at reception; null = received before them. */
-  receptionPackagingOk?: boolean | null;
+  /** C5, the contrôle complémentaire ticked at reception; null = received before it. */
   receptionIdentificationOk?: boolean | null;
   /** C2: the class chosen at reception (null = the kind's default) and where the temperature was read. */
   storageClass?: StorageClass | null;

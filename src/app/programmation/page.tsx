@@ -81,6 +81,7 @@ export default async function ProgrammationPage({
         // « Planche verte — surface nettoyée » / « Air — Biocollecteur ».
         surfaceState: true,
         airMethod: true,
+        airExposureMin: true,
         lieu: true,
         status: true,
         unitCount: true,

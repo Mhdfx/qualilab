@@ -129,10 +129,16 @@ export async function GET(request: Request) {
  * two-family line on « Quantité 2P » when the counter weighed it apart (one
  * container per family, 12/10), and a food received « Ambiant » (a stable
  * food) needs no temperature. The contrôles
- * complémentaires (hors bon) follow: C3 and C5 ticked for every line, a
+ * complémentaires (hors bon) follow: C5 ticked for every line (C3 is no
+ * longer asked since 16/10, Q70 — an old page's answer is not read), a
  * failing one refuses « conforme », the coded rows audited beside. A row
  * « à vérifier » accepted conforme needs the line's « Observation de
  * réception » (A7), refused otherwise.
+ *
+ * C1 reads the deposit's « Arrivé le » (16/10, Q118) — the save instant for
+ * a page opened before the field. « Prélevé le » is required: a deposit
+ * whose client does not know it says so with its box (`samplingTimeUnknown`),
+ * and C1 is then « à vérifier », the observation required.
  */
 export async function POST(request: Request) {
   const session = await requireApiRole("PRELEVEUR", "RECEPTIONNISTE", "ADMIN");
@@ -202,8 +208,8 @@ export async function POST(request: Request) {
           : await prisma.productType.findMany({ where: { id: { in: productTypeIds } }, select: { id: true, name: true } });
       const typeNameOf = new Map(productTypes.map((t) => [t.id, t.name]));
       const natureLabelOf = new Map(natures.map((n) => [n.id, n.label]));
-      // C1: the deposit arrives now (unless an arrival was typed); an empty
-      // « Prélevé le » is « heure de prélèvement non déclarée ».
+      // C1: the arrival typed at the counter (now for an old page); a
+      // sampling time unknown to the client is « non déclarée ».
       const receivedAt = new Date();
       const timing = {
         startedAt: checked.value.startedAt,
@@ -247,7 +253,7 @@ export async function POST(request: Request) {
             },
             timing,
             settings,
-            { packagingOk: line.packagingOk, identificationOk: line.identificationOk }
+            { identificationOk: line.identificationOk }
           );
           complementaries.set(`${index}:${planned.family}`, complementary);
           if (!line.conformity) continue;
@@ -322,7 +328,6 @@ export async function POST(request: Request) {
               // The sample's own weight — « Quantité 2P » on the « P » one (12/10).
               ...sampleQuantity(line, sample.twin),
               checklist: checklists.get(`${sample.lineIndex}:${sample.family}`) ?? null,
-              packagingOk: line.packagingOk,
               identificationOk: line.identificationOk,
               complementary: complementaries.get(`${sample.lineIndex}:${sample.family}`) ?? null,
             },

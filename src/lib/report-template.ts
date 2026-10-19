@@ -2,6 +2,7 @@ import type { SamplerKind, TemperatureSource } from "@/generated/prisma/enums";
 import type { CompanyInfo } from "./company";
 import { formatDecimal, SAMPLER_KIND_LABELS } from "./labels";
 import { labDayOf, toLabWallTime } from "./lab-time";
+import { userDocumentName } from "./document-name";
 
 /**
  * The laboratory's report template, « Rapport d'essai » PG06/EN03 version M
@@ -121,11 +122,22 @@ export function legalFooterExtraLines(company: CompanyInfo): number {
 
 /* -------------------------------- the fields -------------------------------- */
 
-/** « 12/10/2026 à 09h30 », on the laboratory's clock. */
+/** « 12/10/2026 à 09h30 », on the laboratory's clock — the 13/10 layout. */
 export function reportDateTime(date: Date | null | undefined): string | null {
   if (!date) return null;
   const wall = toLabWallTime(date); // « 2026-10-12T09:30 »
   return `${wall.slice(8, 10)}/${wall.slice(5, 7)}/${wall.slice(0, 4)} à ${wall.slice(11, 13)}h${wall.slice(14, 16)}`;
+}
+
+/**
+ * « 12/10/2026 09:30 », on the laboratory's clock — the form of the
+ * laboratory's own report (excerpt of 15/10, RETOUR-LABO-14-10.md §8),
+ * printed by a report issued with the aligned layout (lot 1b).
+ */
+export function reportDateTimeAligned(date: Date | null | undefined): string | null {
+  if (!date) return null;
+  const wall = toLabWallTime(date); // « 2026-10-12T09:30 »
+  return `${wall.slice(8, 10)}/${wall.slice(5, 7)}/${wall.slice(0, 4)} ${wall.slice(11, 16)}`;
 }
 
 /** « 12/10/2026 », the laboratory's calendar day of an instant. */
@@ -136,9 +148,10 @@ export function reportDay(date: Date | null | undefined): string | null {
 }
 
 /**
- * « Date d'analyse »: from the start of the analyses (the programme
- * confirmed, else the reception) to the last result entered — one day when
- * both fall on the same day of the laboratory, « du … au … » otherwise.
+ * « Date d'analyse » of the 13/10 layout: from the start of the analyses
+ * (the programme confirmed, else the reception) to the last result entered
+ * — one day when both fall on the same day of the laboratory, « du … au … »
+ * otherwise. The aligned layout prints one date, `analysisStart`.
  */
 export function analysisPeriodText(from: Date | null | undefined, to: Date | null | undefined): string | null {
   const start = reportDay(from);
@@ -151,9 +164,40 @@ export function analysisPeriodText(from: Date | null | undefined, to: Date | nul
 }
 
 /**
+ * The single « Date d'analyse » of the aligned layout (lot 1b): the start of
+ * the analyses — the bench's « Prendre en charge » (`Sample.assignedAt`,
+ * the real start since the free take-over of 13/10), else the programme
+ * confirmed, else the reception. Never a period: the laboratory's report
+ * prints one date (excerpt of 15/10).
+ */
+export function analysisStart(input: {
+  assignedAt?: Date | null;
+  programmedAt?: Date | null;
+  receivedAt?: Date | null;
+}): Date | null {
+  return input.assignedAt ?? input.programmedAt ?? input.receivedAt ?? null;
+}
+
+/**
+ * « Date et heure de réception » of the aligned layout (lot 1b): the arrival
+ * at the laboratory typed on the série (`Serie.arrivedAt` — « Arrivé le » at
+ * the counter, « Arrivée au laboratoire » at a visit's reception), else the
+ * reception screen's instant. The 13/10 layout prints the latter.
+ */
+export function receptionInstant(input: { arrivedAt?: Date | null; receivedAt: Date | null }): Date | null {
+  return input.arrivedAt ?? input.receivedAt;
+}
+
+/**
  * Who sampled, as « Préleveur » prints it: the Qualilab technician who went,
  * « Le client » for a deposit sampled by the client, else the third party
  * named on the série.
+ *
+ * With `denomination` (a report issued with the aligned layout, lot 1b) a
+ * Qualilab technician prints as the documents name them — their own
+ * « Dénomination sur les documents », else « Technicien de QUALILAB
+ * 'I.NOM' » (`userDocumentName`); a name typed on the série stays as typed.
+ * Without it, the full name, as the reports of 13/10 printed it.
  */
 export function reportSampler(input: {
   samplerKind: SamplerKind;
@@ -161,11 +205,25 @@ export function reportSampler(input: {
   samplerName: string | null | undefined;
   /** The account that recorded the sample — the préleveur of an older visit. */
   recordedBy: string | null | undefined;
+  /** The aligned layout: the denominations below instead of the full names. */
+  denomination?: boolean;
+  /** `User.documentName` of the série's préleveur, and of the recording account. */
+  samplerUserDocumentName?: string | null;
+  recordedByDocumentName?: string | null;
 }): string {
   const named = (value: string | null | undefined) => value?.trim() || null;
   switch (input.samplerKind) {
-    case "QUALILAB":
-      return named(input.samplerUserName) ?? named(input.samplerName) ?? named(input.recordedBy) ?? "Qualilab";
+    case "QUALILAB": {
+      if (!input.denomination) {
+        return named(input.samplerUserName) ?? named(input.samplerName) ?? named(input.recordedBy) ?? "Qualilab";
+      }
+      const user = named(input.samplerUserName);
+      if (user) return userDocumentName({ name: user, documentName: input.samplerUserDocumentName });
+      const typed = named(input.samplerName);
+      if (typed) return typed;
+      const recorder = named(input.recordedBy);
+      return recorder ? userDocumentName({ name: recorder, documentName: input.recordedByDocumentName }) : "Qualilab";
+    }
     case "CLIENT":
       return "Le client";
     default: {

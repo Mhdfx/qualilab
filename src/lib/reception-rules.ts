@@ -524,11 +524,11 @@ export const CHECKLIST_STATUS_LABELS: Record<ChecklistStatus, string> = {
 };
 
 export type ChecklistRow = {
-  /** The paper's number, (1) … (8) — or the number of a complementary code (C3 → 3). */
+  /** The paper's number, (1) … (8) — or the number of a complementary code (C5 → 5). */
   n: number;
   key: ReceptionRuleKey | ComplementaryKey;
   /**
-   * « C3 » on a contrôle complémentaire (hors bon, `reception-complementary.ts`);
+   * « C5 » on a contrôle complémentaire (hors bon, `reception-complementary.ts`);
    * absent on the paper's eight rules. The screens list the coded rows in a
    * group of their own, after the paper's.
    */
@@ -718,7 +718,7 @@ export function receptionChecklist(
 
 /**
  * « (2) Poids minimal est de 100 g … » — a row as the screens print it; a
- * contrôle complémentaire by its code: « C3 Emballage / contenant … ».
+ * contrôle complémentaire by its code: « C5 Identification lisible et conforme … ».
  */
 export function checklistRowLabel(row: Pick<ChecklistRow, "n" | "text" | "code">): string {
   return row.code ? `${row.code} ${upperFirst(row.text)}` : `(${row.n}) ${upperFirst(row.text)}`;
@@ -751,7 +751,7 @@ export type ChecklistProposal = {
   forced: boolean;
   /** The paper number of the row that forces it; null when none does, or when a complementary control does. */
   rule: number | null;
-  /** The code of the contrôle complémentaire that forces it (« C3 »); null otherwise. */
+  /** The code of the contrôle complémentaire that forces it (« C5 »); null otherwise. */
   code: string | null;
   /** A row still waits for the réceptionniste (rule 1, a ticked control): nothing can be sent. */
   pending: boolean;

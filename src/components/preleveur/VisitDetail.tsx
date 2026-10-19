@@ -8,6 +8,7 @@ import type {
   AirMethod,
   Cadre,
   Family,
+  HandsState,
   LineKind,
   SampleStatus,
   SurfaceState,
@@ -15,10 +16,12 @@ import type {
 import {
   CADRE_CHOICES,
   CADRE_LABELS,
+  HANDS_STATE_PHRASES,
   LINE_KIND_LABELS,
   SAMPLER_KIND_LABELS,
   formatCadre,
   formatDateTime,
+  surfaceAreaText,
 } from "@/lib/labels";
 import { SERIE_STATUS_LABELS, type SerieProgress, type SerieStatus } from "@/lib/series";
 import type { LineFamily } from "@/lib/nature-family";
@@ -45,11 +48,19 @@ type VisitSample = {
   numeroLot: string | null;
   unitCount: number;
   productTemperature: number | null;
+  /** Required on the visit since 16/10 (Q113), air included; null on older lines. */
+  ambientTemperature?: number | null;
+  /** The hands' state (16/10, Q109), required on a MAINS line; null on older lines. */
+  handsState?: HandsState | null;
   /** The V2 / V4 fields: optional so that a payload not selecting them
    *  still reads, null on the samples entered before. */
   surfaceAreaCm2?: number | null;
+  /** « Autre » of the area given as a text (16/10), printed in its place. */
+  surfaceAreaNote?: string | null;
   surfaceState?: SurfaceState | null;
   airMethod?: AirMethod | null;
+  /** The exposed plate's duration (16/10): « Boîte exposée 45 min ». */
+  airExposureMin?: number | null;
   nature: { label: string; family?: Family | null };
   parameters: { parameter: { id: string; name: string } }[];
 };
@@ -105,16 +116,19 @@ function analysesText(sample: VisitSample) {
   return names.length > 0 ? names.join(", ") : "Aucune analyse demandée : le laboratoire les fixera.";
 }
 
-/** Type, place, lot, area, temperature — what the line's samples share. */
+/** Type, place, hands' state, lot, area, temperatures — what the line's samples share. */
 function lineDetails(sample: VisitSample, withUnits: boolean) {
   return [
     LINE_KIND_LABELS[sample.lineKind],
     sample.lieu,
+    // The two values the visit now requires (16/10): checked here as saved.
+    sample.lineKind === "MAINS" && sample.handsState ? HANDS_STATE_PHRASES[sample.handsState] : "",
     sample.numeroLot ? `lot ${sample.numeroLot}` : "",
-    sample.lineKind === "SURFACE" && sample.surfaceAreaCm2 ? `${sample.surfaceAreaCm2} cm²` : "",
+    sample.lineKind === "SURFACE" ? (surfaceAreaText(sample.surfaceAreaCm2, sample.surfaceAreaNote) ?? "") : "",
     withUnits && sample.unitCount > 1 ? `n = ${sample.unitCount}` : "",
     // Named, never a bare figure: « T° au prélèvement » (Q112, 16/10).
     sample.productTemperature !== null ? `T° au prélèvement ${decimal(sample.productTemperature)} °C` : "",
+    sample.ambientTemperature != null ? `T° ambiante ${decimal(sample.ambientTemperature)} °C` : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -125,6 +139,19 @@ function storedNote(visit: Pick<VisitData, "cadre" | "cadreNote">) {
   return visit.cadre === "AUTRE" ? (visit.cadreNote ?? "").trim() : "";
 }
 
+/** A stored instant as its field shows it (LEGAL wall time), "" when none. */
+function storedInput(iso: string | null) {
+  return iso ? toLocalInput(new Date(iso)) : "";
+}
+
+/** Whether the cooler temperature typed differs from the stored one (« 1,5 » is 1.5); a typing the server would refuse is sent, for its message. */
+function coolerChanged(typed: string, stored: number | null) {
+  const text = typed.trim();
+  if (!text) return stored !== null;
+  const value = Number(text.replace(",", "."));
+  return !Number.isFinite(value) || value !== stored;
+}
+
 export function VisitDetail({ visit: initial }: { visit: VisitData }) {
   const router = useRouter();
   const [visit, setVisit] = useState(initial);
@@ -133,8 +160,10 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
   const [cooler, setCooler] = useState(initial.coolerTemperature === null ? "" : String(initial.coolerTemperature));
   const [cadre, setCadre] = useState<Cadre>(initial.cadre);
   const [cadreNote, setCadreNote] = useState(storedNote(initial));
-  // Une fois la série réceptionnée, le cadre appartient au laboratoire.
+  // Une fois la série réceptionnée, le cadre et l'heure d'arrivée (la
+  // « Date et heure de réception » du rapport, lot 1b) appartiennent au laboratoire.
   const cadreLocked = Boolean(visit.receivedAt);
+  const arrivalLocked = Boolean(visit.receivedAt);
   const [photo, setPhoto] = useState<string | null>(null);
   // A photo chosen while one is already attached waits for « Remplacer ».
   const [pendingPhoto, setPendingPhoto] = useState<string | null>(null);
@@ -160,22 +189,28 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
       setError(future);
       return;
     }
-    setBusy(true);
-    setError("");
     const note = cadre === "AUTRE" ? cadreNote.trim() : "";
     const cadreChanged = cadre !== visit.cadre;
     const noteChanged = note !== storedNote(visit);
+    // Every field is sent only when it differs from the visit as loaded
+    // (as the cadre): a save made for the photo alone never rewrites the
+    // arrival — since lot 1b the report's « Date et heure de réception » —
+    // nor the times and the cooler the reception may have recorded meanwhile.
+    const body: Record<string, unknown> = {
+      ...(endedAt !== storedInput(visit.endedAt) ? { endedAt: fromLocalInput(endedAt) } : {}),
+      ...(!arrivalLocked && arrivedAt !== storedInput(visit.arrivedAt) ? { arrivedAt: fromLocalInput(arrivedAt) } : {}),
+      ...(coolerChanged(cooler, visit.coolerTemperature) ? { coolerTemperature: cooler } : {}),
+      ...(cadreChanged ? { cadre } : {}),
+      ...(cadreChanged || noteChanged ? { cadreNote: note || null } : {}),
+      ...(photo ? { signedProtocolData: photo } : {}),
+    };
+    if (Object.keys(body).length === 0) {
+      setError("Rien à modifier.");
+      return;
+    }
+    setBusy(true);
+    setError("");
     try {
-      const body: Record<string, unknown> = {
-        endedAt: fromLocalInput(endedAt),
-        arrivedAt: fromLocalInput(arrivedAt),
-        coolerTemperature: cooler,
-        // Envoyés seulement s'ils changent : une série réceptionnée refuserait
-        // l'écriture et le reste du panneau serait perdu avec elle.
-        ...(cadreChanged ? { cadre } : {}),
-        ...(cadreChanged || noteChanged ? { cadreNote: note || null } : {}),
-      };
-      if (photo) body.signedProtocolData = photo;
       const res = await fetch(`/api/series/${visit.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -350,8 +385,15 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
                   value={arrivedAt}
                   onChange={setArrivedAt}
                   nowButton
+                  disabled={arrivalLocked}
+                  describedBy={arrivalLocked ? "arrivedAt-locked" : undefined}
                   inputClassName="input-field px-3"
                 />
+                {arrivalLocked && (
+                  <p id="arrivedAt-locked" className="mt-1 text-xs text-slate-500">
+                    La série est réceptionnée : le laboratoire seul peut encore corriger l&apos;heure d&apos;arrivée.
+                  </p>
+                )}
               </div>
               <div>
                 <p id="visit-cadre" className="mb-1.5 block text-sm font-semibold text-slate-700">Cadre</p>

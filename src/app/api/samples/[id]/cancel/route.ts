@@ -5,6 +5,8 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { canTransition } from "@/lib/sample-status";
 import { cancelRefusalForReport } from "@/lib/report-amendment";
+import { cancelNotifiesClient } from "@/lib/not-received";
+import { notifyNotReceived } from "@/lib/not-received-notice";
 
 const REASONS: CancelReason[] = ["NON_EXPLOITABLE", "QUANTITE_INSUFFISANTE", "DOUBLON", "ANNULATION_CLIENT", "AUTRE", "NON_RECU"];
 
@@ -16,7 +18,11 @@ const REASONS: CancelReason[] = ["NON_EXPLOITABLE", "QUANTITE_INSUFFISANTE", "DO
  *
  * « Non reçu au laboratoire » (NON_RECU) only concerns a sample of a visit
  * still waiting for its reception (PRELEVE): once received, it was received.
- * No e-mail to the client yet (lab question).
+ * The client is told by e-mail, one per sample (16/10, Q74 —
+ * `notifyNotReceived`), once the cancellation is written: a failed send
+ * never undoes it. The answer carries `notice.status` so the dialog says
+ * whether the e-mail left — a simulated one (no provider configured) never
+ * does: the réceptionniste is asked to call (`notReceivedNoticeText`).
  */
 export async function POST(
   request: Request,
@@ -102,7 +108,17 @@ export async function POST(
       },
     });
 
-    return NextResponse.json(updated);
+    // « Non reçu »: the client is told (Q74), never at the cost of the
+    // cancellation — a failure is answered, journalled, and the sample stays
+    // cancelled.
+    const notice = cancelNotifiesClient(reason)
+      ? await notifyNotReceived(id, session.id).catch((error) => {
+          console.error("[cancel] not-received notice failed", { sampleId: id, error });
+          return { to: [], status: "ECHEC" as const, error: "Échec de l'avis au client." };
+        })
+      : null;
+
+    return NextResponse.json(notice ? { ...updated, notice: { status: notice.status, error: notice.error } } : updated);
   } catch (error) {
     if ((error as { code?: string }).code === "P2025") {
       return NextResponse.json({ error: "L'échantillon vient de changer d'état — rechargez la page." }, { status: 409 });

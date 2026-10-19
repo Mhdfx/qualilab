@@ -78,7 +78,7 @@ export type ExploitableControl = {
   invalid?: boolean;
 };
 
-/** A contrôle complémentaire ticked on the card (C3, C5): Oui / Non. */
+/** A contrôle complémentaire ticked on the card (C5 — no C3 since 16/10): Oui / Non. */
 export type TickControl = {
   value: boolean | null;
   onChange: (ok: boolean) => void;
@@ -156,6 +156,42 @@ export function Checklist({
           </ul>
         </section>
       )}
+    </div>
+  );
+}
+
+/**
+ * « Tous exploitables (N) » above the samples (16/10, Q64): one deliberate
+ * click answers rule (1) « Exploitable » on every sample still unanswered
+ * (`answerAllExploitable`) — never over a « Non exploitable », never a
+ * pre-answer —, and each card keeps its own buttons. Disabled once nothing
+ * is left to answer; the confirmation is read out (`role="status"`, polite).
+ */
+export function AllExploitableBar({
+  count,
+  notice,
+  onAnswer,
+}: {
+  /** The samples still unanswered: the button's N. */
+  count: number;
+  /** The confirmation of the last click; "" before any. */
+  notice: string;
+  onAnswer: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+      <button
+        type="button"
+        onClick={onAnswer}
+        disabled={count === 0}
+        className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-500"
+      >
+        <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+        Tous exploitables ({count})
+      </button>
+      <p role="status" aria-live="polite" className="text-xs text-slate-600">
+        {notice || "Règle (1) : « Exploitable » pour les échantillons sans réponse ; chacun reste modifiable sur sa carte."}
+      </p>
     </div>
   );
 }

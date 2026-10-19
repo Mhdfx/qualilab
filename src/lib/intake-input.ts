@@ -1,6 +1,12 @@
 import type { AirMethod, HandsState, LineKind, QuantityUnit, SurfaceState } from "@/generated/prisma/enums";
-import { AIR_METHOD_CHOICES, SURFACE_STATE_CHOICES } from "./labels";
-import { validateLine, type CleanLine, type NatureRef } from "./serie-input";
+import {
+  AIR_EXPOSURE_MINUTES,
+  AIR_METHOD_CHOICES,
+  HANDS_STATE_CHOICES,
+  SURFACE_STATE_CHOICES,
+  isExposedPlate,
+} from "./labels";
+import { SERIE_MESSAGES, validateLine, type CleanLine, type NatureRef } from "./serie-input";
 
 /**
  * « Corriger la fiche » — editing the identification fields of a sample
@@ -12,10 +18,19 @@ import { validateLine, type CleanLine, type NatureRef } from "./serie-input";
  * because a correction must keep old rows readable and correctable
  * (RETOUR-LABO-06-10.md §5, V2 and V4):
  * - a SURFACE line's « Désignation » (`surfaceLabel`), « Surface prélevée
- *   (cm²) » (`surfaceAreaCm2`) and « État de la surface » (`surfaceState`) —
- *   the state is required on a new line, but a line entered before it
- *   existed may be corrected without one; once set it cannot be emptied;
- * - an AIR line's « Méthode de prélèvement » (`airMethod`), same rule;
+ *   (cm²) » (`surfaceAreaCm2`) or the « Autre » text that replaces it
+ *   (`surfaceAreaNote`, 16/10 — the one typed replaces the other), and
+ *   « État de la surface » (`surfaceState`) — the state is required on a
+ *   new line, but a line entered before it existed may be corrected without
+ *   one; once set it cannot be emptied;
+ * - an AIR line's « Méthode de prélèvement » (`airMethod`), same rule, and
+ *   the exposed plate's « Durée d'exposition » (`airExposureMin`, 16/10): a
+ *   plate entered before it stays without one (it reads 30 min);
+ * - a MAINS line's « État des mains » (`handsState`), same rule (16/10);
+ * - the two temperatures go through the protocol's rules (range, decimal
+ *   comma), but one that was recorded can no longer be emptied — an old
+ *   line without them stays correctable, and the visit's required ambient
+ *   temperature is never asked here;
  * - the product type, which the programme may give any line (not only a
  *   food one) — the protocol's rule would silently drop it;
  * - the analyses: at least one when the correction names them.
@@ -35,11 +50,13 @@ export type IntakeFields = {
   ambientTemperature: number | null;
   surfaceLabel: string | null;
   surfaceAreaCm2: number | null;
+  surfaceAreaNote: string | null;
   surfaceState: SurfaceState | null;
   personName: string | null;
   personRole: string | null;
   handsState: HandsState | null;
   airMethod: AirMethod | null;
+  airExposureMin: number | null;
   remarks: string | null;
   unitCount: number;
   productTypeId: string | null;
@@ -77,11 +94,13 @@ const FIELDS: (keyof IntakeFields)[] = [
   "ambientTemperature",
   "surfaceLabel",
   "surfaceAreaCm2",
+  "surfaceAreaNote",
   "surfaceState",
   "personName",
   "personRole",
   "handsState",
   "airMethod",
+  "airExposureMin",
   "remarks",
   "unitCount",
   "productTypeId",
@@ -100,10 +119,15 @@ const LINE_RULE_FIELDS: (keyof IntakeFields)[] = [
   "ambientTemperature",
   "personName",
   "personRole",
-  "handsState",
   "remarks",
   "unitCount",
 ];
+
+/** The temperatures a correction may fix but never empty once recorded (P9, 16/10). */
+const TEMPERATURES = [
+  ["productTemperature", "La température au prélèvement"],
+  ["ambientTemperature", "La T° ambiante"],
+] as const;
 
 /** « AAAA-MM-JJ » in local time — a DLC is a day, never an instant. */
 function iso(date: Date | null) {
@@ -133,7 +157,6 @@ function currentAsRaw(current: IntakeCurrent): Record<string, unknown> {
     ambientTemperature: current.ambientTemperature ?? "",
     personName: current.personName ?? "",
     personRole: current.personRole ?? "",
-    handsState: current.handsState ?? "",
     remarks: current.remarks ?? "",
     unitCount: current.unitCount,
   };
@@ -160,24 +183,101 @@ function decideDesignation(input: Record<string, unknown>, current: IntakeCurren
   return { ok: true, value };
 }
 
-/** « Surface prélevée (cm²) »: a whole number of cm²; 100 when a surface line's area is emptied. */
-function decideArea(input: Record<string, unknown>, current: IntakeCurrent): Decided<number | null> {
-  if (input.surfaceAreaCm2 === undefined) return { ok: true, value: current.surfaceAreaCm2 };
-  const raw = input.surfaceAreaCm2;
-  if (raw === null || raw === "") {
-    return { ok: true, value: current.lineKind === "SURFACE" ? DEFAULT_SURFACE_AREA_CM2 : null };
+/** Nothing typed: `undefined`, null, or an empty / blank string. */
+function blank(raw: unknown) {
+  return raw === null || raw === undefined || (typeof raw === "string" && raw.trim() === "");
+}
+
+/**
+ * « Surface prélevée (cm²) » and its « Autre » text (16/10, Q114): a whole
+ * number of cm², or a text that replaces it — never both. The one the
+ * correction types replaces the stored other; both typed are refused; a
+ * surface line left with neither takes 100 cm². The text belongs to a
+ * surface line only; an old row of another kind keeps its area as it was.
+ */
+function decideSurfaceArea(
+  input: Record<string, unknown>,
+  current: IntakeCurrent
+): Decided<{ area: number | null; note: string | null }> {
+  const surface = current.lineKind === "SURFACE";
+  const noteMentioned = input.surfaceAreaNote !== undefined;
+  const areaMentioned = input.surfaceAreaCm2 !== undefined;
+
+  let note = current.surfaceAreaNote;
+  if (noteMentioned) {
+    const raw = input.surfaceAreaNote;
+    if (raw !== null && typeof raw !== "string") return { ok: false, error: "La précision « Autre » de la surface est invalide." };
+    const typed = (raw ?? "").trim();
+    if (typed.length > MAX_DESIGNATION) return { ok: false, error: SERIE_MESSAGES.surfaceAreaNoteTooLong };
+    if (typed && !surface) {
+      return { ok: false, error: "La précision « Autre » ne concerne qu'un échantillon de surface." };
+    }
+    note = typed || null;
+  }
+
+  let area = current.surfaceAreaCm2;
+  if (areaMentioned) {
+    const raw = input.surfaceAreaCm2;
+    if (blank(raw)) {
+      area = null;
+    } else {
+      const parsed =
+        typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw.trim().replace(",", ".")) : Number.NaN;
+      if (!Number.isInteger(parsed) || parsed <= 0 || parsed > MAX_SURFACE_AREA_CM2) {
+        return { ok: false, error: "La surface prélevée (cm²) doit être un nombre entier positif, 100 000 au plus." };
+      }
+      area = parsed;
+    }
+  }
+
+  if (noteMentioned && areaMentioned && note && area !== null) return { ok: false, error: SERIE_MESSAGES.surfaceAreaBoth };
+  // The one just typed replaces the stored other: never both on the row.
+  if (note && area !== null) {
+    if (noteMentioned) area = null;
+    else note = null;
+  }
+  if (surface && note === null && area === null && (areaMentioned || noteMentioned)) area = DEFAULT_SURFACE_AREA_CM2;
+  return { ok: true, value: { area, note } };
+}
+
+/**
+ * « Durée d'exposition » of an exposed plate (16/10, Q50): a whole number
+ * of minutes, 1 to 480. A plate entered before the duration existed stays
+ * without one (it reads 30 min); one that was recorded cannot be emptied,
+ * nor can a line just switched to the exposed plate be sent with an empty
+ * one (a page that does not know the field keeps the stored value, like at
+ * creation). Any other method carries none.
+ */
+function decideExposure(
+  input: Record<string, unknown>,
+  current: IntakeCurrent,
+  airMethod: AirMethod | null
+): Decided<number | null> {
+  const raw = input.airExposureMin;
+  if (current.lineKind !== "AIR") {
+    if (!blank(raw)) return { ok: false, error: "La durée d'exposition ne concerne qu'un échantillon d'air." };
+    return { ok: true, value: current.airExposureMin };
+  }
+  if (!isExposedPlate(airMethod)) return { ok: true, value: null };
+  if (raw === undefined) return { ok: true, value: current.airExposureMin };
+  if (blank(raw)) {
+    if (current.airExposureMin !== null || !isExposedPlate(current.airMethod)) {
+      return { ok: false, error: SERIE_MESSAGES.airExposureMissing };
+    }
+    return { ok: true, value: null };
   }
   const parsed = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw.trim().replace(",", ".")) : Number.NaN;
-  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > MAX_SURFACE_AREA_CM2) {
-    return { ok: false, error: "La surface prélevée (cm²) doit être un nombre entier positif, 100 000 au plus." };
+  if (!Number.isInteger(parsed) || parsed < AIR_EXPOSURE_MINUTES.min || parsed > AIR_EXPOSURE_MINUTES.max) {
+    return { ok: false, error: SERIE_MESSAGES.airExposureInvalid };
   }
   return { ok: true, value: parsed };
 }
 
 /**
  * A choice that belongs to one line kind (the surface state, the air
- * method): refused on another kind, required once set on its own kind — a
- * line entered before the choice existed may stay without one.
+ * method, the hands state): refused on another kind, required once set on
+ * its own kind — a line entered before the choice existed may stay without
+ * one.
  */
 function decideKindChoice<T extends string>(
   raw: unknown,
@@ -205,8 +305,8 @@ export function validateIntake(raw: unknown, current: IntakeCurrent): IntakeVali
   // ---- What the correction decides itself --------------------------------
   const surfaceLabel = decideDesignation(input, current);
   if (!surfaceLabel.ok) return surfaceLabel;
-  const surfaceAreaCm2 = decideArea(input, current);
-  if (!surfaceAreaCm2.ok) return surfaceAreaCm2;
+  const surfaceArea = decideSurfaceArea(input, current);
+  if (!surfaceArea.ok) return surfaceArea;
   const surfaceState = decideKindChoice(input.surfaceState, current.surfaceState, {
     applies: current.lineKind === "SURFACE",
     choices: SURFACE_STATE_CHOICES,
@@ -223,6 +323,24 @@ export function validateIntake(raw: unknown, current: IntakeCurrent): IntakeVali
     required: "Choisissez la méthode de prélèvement.",
   });
   if (!airMethod.ok) return airMethod;
+  const airExposureMin = decideExposure(input, current, airMethod.value);
+  if (!airExposureMin.ok) return airExposureMin;
+  const handsState = decideKindChoice(input.handsState, current.handsState, {
+    applies: current.lineKind === "MAINS",
+    choices: HANDS_STATE_CHOICES,
+    unknown: "État des mains inconnu.",
+    wrongKind: "L'état des mains ne concerne qu'un échantillon de mains.",
+    required: SERIE_MESSAGES.handsStateMissing,
+  });
+  if (!handsState.ok) return handsState;
+
+  // A temperature recorded is corrected, never emptied (P9): the protocol's
+  // rules below check the range of the one typed.
+  for (const [key, label] of TEMPERATURES) {
+    if (input[key] !== undefined && blank(input[key]) && current[key] !== null) {
+      return { ok: false, error: `${label} a été relevée : corrigez sa valeur, elle ne peut pas être effacée.` };
+    }
+  }
 
   let productTypeId = current.productTypeId;
   if (input.productTypeId !== undefined) {
@@ -254,9 +372,12 @@ export function validateIntake(raw: unknown, current: IntakeCurrent): IntakeVali
     if (input[key] !== undefined) merged[key] = input[key];
   }
   merged.surfaceLabel = surfaceLabel.value ?? "";
-  merged.surfaceAreaCm2 = surfaceAreaCm2.value ?? "";
+  merged.surfaceAreaCm2 = surfaceArea.value.area ?? "";
+  merged.surfaceAreaNote = surfaceArea.value.note ?? "";
   merged.surfaceState = surfaceState.value ?? (current.lineKind === "SURFACE" ? SURFACE_STATE_CHOICES[0] : "");
   merged.airMethod = airMethod.value ?? (current.lineKind === "AIR" ? AIR_METHOD_CHOICES[0] : "");
+  merged.airExposureMin = airExposureMin.value ?? AIR_EXPOSURE_MINUTES.default;
+  merged.handsState = handsState.value ?? (current.lineKind === "MAINS" ? HANDS_STATE_CHOICES[0] : "");
   merged.productTypeId = productTypeId ?? "";
   const listed = parameterIds ?? current.parameterIds;
   merged.parameterIds = listed.length > 0 ? listed : ["current"];
@@ -279,20 +400,27 @@ export function validateIntake(raw: unknown, current: IntakeCurrent): IntakeVali
     productTemperature: clean.productTemperature,
     ambientTemperature: clean.ambientTemperature,
     surfaceLabel: surfaceLabel.value,
-    surfaceAreaCm2: surfaceAreaCm2.value,
+    surfaceAreaCm2: surfaceArea.value.area,
+    surfaceAreaNote: surfaceArea.value.note,
     surfaceState: surfaceState.value,
     personName: clean.personName,
     personRole: clean.personRole,
-    handsState: clean.handsState,
+    handsState: handsState.value,
     airMethod: airMethod.value,
+    airExposureMin: airExposureMin.value,
     remarks: clean.remarks,
     unitCount: clean.unitCount,
     productTypeId,
   };
 
-  // The unit follows the quantity it qualifies.
+  // The unit follows the quantity it qualifies; the area and its « Autre »
+  // text replace each other; the plate's duration follows the method.
   const mentioned = (key: keyof IntakeFields) =>
-    input[key] !== undefined || (key === "quantityUnit" && input.quantity !== undefined);
+    input[key] !== undefined ||
+    (key === "quantityUnit" && input.quantity !== undefined) ||
+    ((key === "surfaceAreaCm2" || key === "surfaceAreaNote") &&
+      (input.surfaceAreaCm2 !== undefined || input.surfaceAreaNote !== undefined)) ||
+    (key === "airExposureMin" && input.airMethod !== undefined);
 
   const changes: Partial<IntakeFields> = {};
   for (const key of FIELDS) {

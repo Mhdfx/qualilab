@@ -246,6 +246,8 @@ export async function createSerie(
           endedAt: input.endedAt,
           // C1: a deposit says whether its sampling time was given (null on a visit).
           samplingTimeDeclared: isDeposit ? input.samplingTimeDeclared : null,
+          // The deposit's « Arrivé le » (16/10, Q118); a page opened before
+          // the field sends none: the deposit arrives at its save, as before.
           arrivedAt: isDeposit ? (input.arrivedAt ?? now) : input.arrivedAt,
           coolerTemperature: input.coolerTemperature,
           advanceAmount: isDeposit ? input.advanceAmount : null,
@@ -315,11 +317,13 @@ export async function createSerie(
               storageClass: isDeposit ? line.storageClass : null,
               surfaceLabel: line.surfaceLabel,
               surfaceAreaCm2: line.surfaceAreaCm2,
+              surfaceAreaNote: line.surfaceAreaNote,
               surfaceState: line.surfaceState,
               personName: line.personName,
               personRole: line.personRole,
               handsState: line.handsState,
               airMethod: line.airMethod,
+              airExposureMin: line.airExposureMin,
               remarks: line.remarks,
               unitCount: line.unitCount,
               productTypeId: line.productTypeId,
@@ -332,8 +336,9 @@ export async function createSerie(
               // Rule (1) of the bon, answered at the counter for the line —
               // both samples of a two-family line share it.
               receptionExploitable: isDeposit ? line.exploitable : null,
-              // C3 / C5, ticked at the counter for the line — shared like rule (1).
-              receptionPackagingOk: isDeposit ? line.packagingOk : null,
+              // C5, ticked at the counter for the line — shared like rule (1).
+              // C3 is no longer asked (16/10, Q70): the column stays, empty.
+              receptionPackagingOk: null,
               receptionIdentificationOk: isDeposit ? line.identificationOk : null,
               conformity: isDeposit ? line.conformity : null,
               conformityReason: isDeposit ? line.conformityReason : null,

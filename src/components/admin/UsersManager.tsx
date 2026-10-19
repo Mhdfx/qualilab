@@ -3,10 +3,24 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Ban, Building2, Check, ChevronRight, KeyRound, Plus, RotateCcw, Search, UserCog, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Ban,
+  Building2,
+  Check,
+  ChevronRight,
+  FilePenLine,
+  KeyRound,
+  Plus,
+  RotateCcw,
+  Search,
+  UserCog,
+  X,
+} from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { ASSIGNABLE_ROLES, PORTAL_ROLE, ROLE_LABELS, roleFunction, roleHint, type Role } from "@/lib/roles";
 import { viewHref } from "@/lib/dashboard-view";
+import { DOCUMENT_NAME_MAX, defaultDocumentName, userDocumentName } from "@/lib/document-name";
 
 /** The client of a « Client (portail) » account (PORTAIL.md §1). */
 export type UserClient = {
@@ -22,6 +36,8 @@ export type UserRow = {
   username: string | null;
   role: string | null;
   banned: boolean | null;
+  /** « Dénomination sur les documents » (lot 1b); null = the default from the name. */
+  documentName?: string | null;
   /** Optional: read from GET /api/admin/users when the page does not pass it. */
   clientId?: string | null;
   client?: UserClient | null;
@@ -68,6 +84,12 @@ function useAccountClients(users: UserRow[]): Record<string, UserClient | null> 
  * A technician leaving the bench (disabled, or another role) with samples
  * still taken is not refused: the answer's `warning` says how many, and is
  * shown until the next action (prise en charge libre, PROGRAMME.md §10).
+ *
+ * « Dénomination sur les documents » (lot 1b, RETOUR-LABO-16-10.md D5, D6):
+ * how the report and the protocol name a préleveur — « Technicien de
+ * QUALILAB 'I.NOM' » by default, computed from the name; typed here when
+ * the default does not fit. The one thing the administrator may change on
+ * their own account.
  */
 export function UsersManager({
   users,
@@ -86,6 +108,8 @@ export function UsersManager({
   // The account whose client is being chosen: on the way to « Client
   // (portail) », or to move a portal account to another client.
   const [clientFor, setClientFor] = useState<string | null>(null);
+  // The account whose denomination on the documents is being typed.
+  const [documentNameFor, setDocumentNameFor] = useState<string | null>(null);
   const accountClients = useAccountClients(users);
 
   async function patch(id: string, body: Record<string, unknown>, tag: string) {
@@ -191,6 +215,10 @@ export function UsersManager({
             const clientClosed = !!client && (client.archived || client.mergedIntoId !== null);
             // The lab's function of the role (08/10), under the name and read with the role picker.
             const duty = roleFunction(user.role);
+            // A portal account never samples: it has no denomination. A
+            // préleveur's — and any one typed — is read under the name.
+            const customDocumentName = user.documentName?.trim() || null;
+            const showDocumentName = !isPortal && (user.role === "PRELEVEUR" || customDocumentName !== null);
             return (
               <li key={user.id} className="px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -214,6 +242,14 @@ export function UsersManager({
                     {duty && (
                       <p id={`role-duty-${user.id}`} className="mt-0.5 text-xs text-slate-500">
                         {duty}
+                      </p>
+                    )}
+                    {showDocumentName && (
+                      <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                        <FilePenLine className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+                        Sur les documents :
+                        <span className="font-medium text-slate-700">{userDocumentName(user)}</span>
+                        {!customDocumentName && <span className="text-slate-400">(par défaut)</span>}
                       </p>
                     )}
                     {isPortal && (
@@ -274,6 +310,20 @@ export function UsersManager({
                       >
                         <Building2 className="h-3.5 w-3.5" aria-hidden="true" />
                         Client
+                      </button>
+                    )}
+
+                    {!isPortal && (
+                      // Allowed on one's own account: it changes no right.
+                      <button
+                        type="button"
+                        disabled={!!busy}
+                        aria-expanded={documentNameFor === user.id}
+                        onClick={() => setDocumentNameFor(documentNameFor === user.id ? null : user.id)}
+                        className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40"
+                      >
+                        <FilePenLine className="h-3.5 w-3.5" aria-hidden="true" />
+                        Dénomination
                       </button>
                     )}
 
@@ -343,6 +393,20 @@ export function UsersManager({
                       Annuler
                     </button>
                   </div>
+                )}
+
+                {documentNameFor === user.id && !isPortal && (
+                  <DocumentNameForm
+                    id={`document-name-${user.id}`}
+                    name={user.name}
+                    current={customDocumentName}
+                    saving={busy === `doc-${user.id}`}
+                    onSubmit={async (documentName) => {
+                      const ok = await patch(user.id, { documentName }, `doc-${user.id}`);
+                      if (ok) setDocumentNameFor(null);
+                    }}
+                    onCancel={() => setDocumentNameFor(null)}
+                  />
                 )}
 
                 {resetFor === user.id && (
@@ -489,6 +553,76 @@ function CreateUserForm({
         </button>
       </div>
     </Card>
+  );
+}
+
+/**
+ * « Dénomination sur les documents »: the default (« Technicien de QUALILAB
+ * 'I.NOM' », from the name) as the placeholder; empty = back to it.
+ */
+function DocumentNameForm({
+  id,
+  name,
+  current,
+  saving,
+  onSubmit,
+  onCancel,
+}: {
+  id: string;
+  name: string;
+  current: string | null;
+  saving: boolean;
+  onSubmit: (documentName: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(current ?? "");
+  const fallback = defaultDocumentName(name);
+
+  return (
+    <form
+      className="mt-3 flex flex-wrap items-end gap-2 rounded-xl bg-slate-50 p-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit(value);
+      }}
+    >
+      <div className="min-w-[260px] flex-1">
+        <label htmlFor={id} className="block text-xs font-medium text-slate-600">
+          Dénomination sur les documents
+        </label>
+        <input
+          id={id}
+          type="text"
+          value={value}
+          maxLength={DOCUMENT_NAME_MAX}
+          placeholder={fallback}
+          onChange={(event) => setValue(event.target.value)}
+          aria-describedby={`${id}-hint`}
+          autoComplete="off"
+          className="mt-1 min-h-[38px] w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        />
+        <p id={`${id}-hint`} className="mt-0.5 text-[11px] text-slate-500">
+          Imprimée sur le rapport (« Préleveur ») et le protocole de prélèvement. Laissez vide pour la
+          dénomination par défaut : {fallback}
+        </p>
+      </div>
+      <button
+        type="submit"
+        disabled={saving}
+        className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg bg-brand px-3.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50"
+      >
+        <Check className="h-4 w-4" aria-hidden="true" />
+        {saving ? "Enregistrement…" : "Enregistrer"}
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg px-3.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+      >
+        <X className="h-4 w-4" aria-hidden="true" />
+        Annuler
+      </button>
+    </form>
   );
 }
 

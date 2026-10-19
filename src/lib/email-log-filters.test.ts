@@ -71,7 +71,13 @@ describe("emailLogHref", () => {
 describe("labels", () => {
   it("names every status sendEmail records, and every e-mail type", () => {
     for (const status of EMAIL_LOG_STATUSES) expect(EMAIL_STATUS_LABELS[status]).toBeTruthy();
-    expect(Object.keys(EMAIL_TYPE_LABELS).sort()).toEqual(["ALERTE_CONTAMINATION", "DESTRUCTION", "RAPPORT"]);
+    expect(Object.keys(EMAIL_TYPE_LABELS).sort()).toEqual(["ALERTE_CONTAMINATION", "DESTRUCTION", "NON_RECU", "RAPPORT"]);
+  });
+
+  it("names the notice of a sample « Non reçu au laboratoire », and filters the journal on it (16/10, Q74)", () => {
+    expect(EMAIL_TYPE_LABELS.NON_RECU).toBe("Échantillon non reçu");
+    expect(parseEmailLogFilters(new URLSearchParams({ type: "NON_RECU" })).type).toBe("NON_RECU");
+    expect(emailLogWhere(parseEmailLogFilters(new URLSearchParams({ type: "NON_RECU" })))).toEqual({ type: "NON_RECU" });
   });
 
   it("shows a stored status outside the list as stored", () => {

@@ -17,7 +17,7 @@ import {
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { effectiveFactor } from "@/lib/dilution";
 import { benchUnit } from "@/lib/bench-reading";
-import { formatDate, formatDateTime, PROGRAMME_PRIORITY_LABELS } from "@/lib/labels";
+import { formatDate, formatDateTime, PROGRAMME_PRIORITY_LABELS, surfaceAreaText } from "@/lib/labels";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
 import { getDashboardPath } from "@/lib/roles";
@@ -68,8 +68,12 @@ export default async function AnalysePage({
       surfaceLabel: true,
       surfaceState: true,
       surfaceAreaCm2: true,
+      // « Autre » of the area (16/10): printed in its place.
+      surfaceAreaNote: true,
       personName: true,
       airMethod: true,
+      // « Boîte exposée 45 min » (16/10).
+      airExposureMin: true,
       // The nature of analysis, as the old bench header named it (14/10).
       nature: { select: { label: true } },
       notes: true,
@@ -296,8 +300,11 @@ export default async function AnalysePage({
               </Field>
               <Field icon={Package} label="Désignation">
                 {designation === "—" ? <span className="text-slate-400">Non renseignée</span> : designation}
-                {sample.lineKind === "SURFACE" && sample.surfaceAreaCm2 !== null && (
-                  <span className="ml-1.5 text-xs font-normal text-slate-500">{sample.surfaceAreaCm2} cm²</span>
+                {/* « 100 cm² », or the « Autre » text in its place (16/10). */}
+                {sample.lineKind === "SURFACE" && surfaceAreaText(sample.surfaceAreaCm2, sample.surfaceAreaNote) && (
+                  <span className="ml-1.5 text-xs font-normal text-slate-500">
+                    {surfaceAreaText(sample.surfaceAreaCm2, sample.surfaceAreaNote)}
+                  </span>
                 )}
               </Field>
               <Field icon={Package} label="Type de produit">

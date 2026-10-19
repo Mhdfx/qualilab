@@ -4,15 +4,18 @@ import { useState } from "react";
 import { Copy, FlaskConical, ListChecks, Search, Trash2 } from "lucide-react";
 import type { LineKind, QuantityUnit } from "@/generated/prisma/enums";
 import {
+  AIR_EXPOSURE_MINUTES,
   AIR_METHOD_CHOICES,
   AIR_METHOD_LABELS,
   ANALYSIS_FAMILY_LABELS,
+  HANDS_STATE_CHOICES,
   HANDS_STATE_LABELS,
   LINE_KIND_LABELS,
   QUANTITY_UNIT_LABELS,
   SURFACE_AREA_CHOICES,
   SURFACE_STATE_CHOICES,
   SURFACE_STATE_LABELS,
+  isExposedPlate,
 } from "@/lib/labels";
 import { LINE_FAMILIES } from "@/lib/nature-family";
 import { parameterCaption } from "@/lib/parameter-caption";
@@ -21,6 +24,7 @@ import { normalizeLabel } from "@/lib/serie-input";
 import { matchesQuery, similarLabels } from "@/lib/similar";
 import { MAX_UNITS } from "@/lib/series";
 import {
+  airMethodPatch,
   applyProfilePatch,
   familiesPatch,
   familyStatus,
@@ -94,11 +98,13 @@ type LineEditorProps = {
     unit: QuantityUnit;
     onChange: (patch: { value?: string; unit?: QuantityUnit }) => void;
   };
+  /** The T° ambiante carries the required star: the préleveur's visit
+   *  (16/10, Q113) — `lineDraftError(…, { requireAmbient: true })` checks it. */
+  ambientRequired?: boolean;
 };
 
 const UNIT_CHOICES = [1, 3, 5, 9];
 const KINDS: LineKind[] = ["ALIMENT", "SURFACE", "MAINS", "EAU", "AIR", "AUTRE"];
-const HANDS_STATE_CHOICES = ["LAVEES", "NON_LAVEES"] as const;
 
 /** The families as the card's subtitle says them. */
 const FAMILY_SHORT: Record<LineFamily, string> = {
@@ -117,6 +123,19 @@ function knownTwin(value: string, suggestions: string[]) {
   return twin && twin !== value.trim() ? twin : null;
 }
 
+/** The id of a Field's hint, for the `aria-describedby` of its input. */
+const fieldHintId = (htmlFor: string) => `${htmlFor}-hint`;
+
+/** The star for the eye, « (obligatoire) » for a screen reader — the header fields' pattern. */
+function RequiredMark() {
+  return (
+    <>
+      <span aria-hidden="true" className="ml-0.5 text-rose-600">*</span>
+      <span className="sr-only">(obligatoire)</span>
+    </>
+  );
+}
+
 function Field({
   label,
   htmlFor,
@@ -128,16 +147,21 @@ function Field({
   htmlFor?: string;
   required?: boolean;
   children: React.ReactNode;
+  /** Printed under the field, with the id `fieldHintId(htmlFor)` its input points at. */
   hint?: string;
 }) {
   return (
     <div>
       <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-semibold text-slate-700">
         {label}
-        {required && <span className="ml-0.5 text-rose-600">*</span>}
+        {required && <RequiredMark />}
       </label>
       {children}
-      {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
+      {hint && (
+        <p id={htmlFor ? fieldHintId(htmlFor) : undefined} className="mt-1 text-xs text-slate-500">
+          {hint}
+        </p>
+      )}
     </div>
   );
 }
@@ -212,7 +236,7 @@ function ChoiceChips<T extends string>({
     <div role="group" aria-labelledby={id}>
       <p id={id} className="mb-1.5 text-sm font-semibold text-slate-700">
         {label}
-        {required && <span className="ml-0.5 text-rose-600">*</span>}
+        {required && <RequiredMark />}
       </p>
       <div className="flex flex-wrap gap-2">
         {choices.map((choice) => (
@@ -260,6 +284,7 @@ export function LineEditor({
   productTypes = [],
   quantityUnitFallback = "UNITE",
   chimieQuantity,
+  ambientRequired = false,
 }: LineEditorProps) {
   const kind: LineKind = line.lineKind;
   const number = index + 1;
@@ -276,6 +301,9 @@ export function LineEditor({
 
   // The quick choice the typed area equals, if any — its chip is pressed.
   const pickedArea = surfaceAreaChoice(line.surfaceAreaCm2);
+  // « Autre » (16/10): open on a value that is not a chip, or once tapped —
+  // even before anything is typed in « Préciser ».
+  const [areaOther, setAreaOther] = useState(() => line.surfaceAreaCm2.trim() !== "" && pickedArea === null);
 
   const placeTwin = knownTwin(line.lieu, placeSuggestions);
   const productTwin = knownTwin(line.produit, productSuggestions);
@@ -412,41 +440,69 @@ export function LineEditor({
                 onPick={(surfaceState) => onChange({ surfaceState })}
               />
               {/* L'aire : les deux valeurs d'usage en un geste (« 100 cm² »,
-                  « 1000 cm² » — retour du 14/10), le champ pour toute autre. */}
+                  « 1000 cm² » — retour du 14/10), puis « Autre » (16/10) :
+                  une autre aire en cm², ou ce qui est prélevé quand il n'a
+                  pas d'aire mesurée (« couteau entier »). */}
               <div role="group" aria-labelledby={id("area")}>
                 <p id={id("area")} className="mb-1.5 text-sm font-semibold text-slate-700">
                   Surface prélevée (cm²)
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {SURFACE_AREA_CHOICES.map((area) => (
-                    <button
-                      key={area}
-                      type="button"
-                      onClick={() => onChange({ surfaceAreaCm2: String(area) })}
-                      aria-pressed={pickedArea === area}
-                      className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
-                        pickedArea === area ? CHIP_ON : CHIP_OFF
-                      }`}
-                    >
-                      {`${area} cm²`}
-                    </button>
-                  ))}
+                  {SURFACE_AREA_CHOICES.map((area) => {
+                    const pressed = !areaOther && pickedArea === area;
+                    return (
+                      <button
+                        key={area}
+                        type="button"
+                        onClick={() => {
+                          setAreaOther(false);
+                          onChange({ surfaceAreaCm2: String(area) });
+                        }}
+                        aria-pressed={pressed}
+                        className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                          pressed ? CHIP_ON : CHIP_OFF
+                        }`}
+                      >
+                        {`${area} cm²`}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (areaOther) return;
+                      setAreaOther(true);
+                      // « Préciser » starts empty rather than on the chip's value.
+                      if (pickedArea !== null) onChange({ surfaceAreaCm2: "" });
+                    }}
+                    aria-pressed={areaOther}
+                    className={`min-h-[40px] rounded-xl border px-4 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                      areaOther ? CHIP_ON : CHIP_OFF
+                    }`}
+                  >
+                    Autre
+                  </button>
                 </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <label htmlFor={id("area-other")} className="text-xs text-slate-500">
-                    ou saisir une autre valeur :
-                  </label>
-                  <input
-                    id={id("area-other")}
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    value={line.surfaceAreaCm2}
-                    onChange={(e) => onChange({ surfaceAreaCm2: e.target.value })}
-                    placeholder="100"
-                    className="input-field w-28 px-3"
-                  />
-                </div>
+                {areaOther && (
+                  <div className="mt-2">
+                    <label htmlFor={id("area-other")} className="mb-1 block text-xs font-medium text-slate-600">
+                      Préciser
+                    </label>
+                    <input
+                      id={id("area-other")}
+                      type="text"
+                      maxLength={191}
+                      value={line.surfaceAreaCm2}
+                      onChange={(e) => onChange({ surfaceAreaCm2: e.target.value })}
+                      placeholder="Ex. : 250, couteau entier, poignée de porte"
+                      aria-describedby={id("area-other-hint")}
+                      className="input-field px-4"
+                    />
+                    <p id={id("area-other-hint")} className="mt-1 text-xs text-slate-500">
+                      Un nombre entier de cm², ou ce qui est prélevé quand il n&apos;a pas d&apos;aire mesurée. Vide : 100 cm².
+                    </p>
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -465,9 +521,11 @@ export function LineEditor({
                   className="input-field px-4"
                 />
               </Field>
+              {/* Trois états, obligatoires (Q109, 16/10) — la liste unique de labels.ts. */}
               <ChoiceChips
                 id={id("hands")}
                 label="État des mains"
+                required
                 choices={HANDS_STATE_CHOICES}
                 labels={HANDS_STATE_LABELS}
                 value={line.handsState}
@@ -512,15 +570,39 @@ export function LineEditor({
           )}
 
           {kind === "AIR" && (
-            <ChoiceChips
-              id={id("air-method")}
-              label="Méthode de prélèvement"
-              required
-              choices={AIR_METHOD_CHOICES}
-              labels={AIR_METHOD_LABELS}
-              value={line.airMethod}
-              onPick={(airMethod) => onChange({ airMethod })}
-            />
+            <div className="space-y-3">
+              <ChoiceChips
+                id={id("air-method")}
+                label="Méthode de prélèvement"
+                required
+                choices={AIR_METHOD_CHOICES}
+                labels={AIR_METHOD_LABELS}
+                value={line.airMethod}
+                onPick={(airMethod) => onChange(airMethodPatch(line, airMethod))}
+              />
+              {/* La durée d'exposition de la boîte : 30 min proposées,
+                  modifiables (Q50, 16/10). */}
+              {isExposedPlate(line.airMethod) && (
+                <Field
+                  label="Durée d'exposition (min)"
+                  htmlFor={id("air-exposure")}
+                  required
+                  hint={`Un nombre entier de minutes, de ${AIR_EXPOSURE_MINUTES.min} à ${AIR_EXPOSURE_MINUTES.max}.`}
+                >
+                  <input
+                    id={id("air-exposure")}
+                    type="text"
+                    inputMode="numeric"
+                    aria-required="true"
+                    aria-describedby={fieldHintId(id("air-exposure"))}
+                    value={line.airExposureMin}
+                    onChange={(e) => onChange({ airExposureMin: e.target.value })}
+                    placeholder={String(AIR_EXPOSURE_MINUTES.default)}
+                    className="input-field w-28 px-3"
+                  />
+                </Field>
+              )}
+            </div>
           )}
 
           {kind === "ALIMENT" && productTypes.length > 0 && (
@@ -551,6 +633,7 @@ export function LineEditor({
               )}
               <select
                 id={id("product-type")}
+                aria-describedby={fieldHintId(id("product-type"))}
                 value={line.productTypeId}
                 onChange={(e) => applyProductType(e.target.value)}
                 className="input-field px-4"
@@ -691,11 +774,12 @@ export function LineEditor({
                 />
               </Field>
             )}
-            <Field label="T° ambiante (°C)" htmlFor={id("ambient-temperature")}>
+            <Field label="T° ambiante (°C)" htmlFor={id("ambient-temperature")} required={ambientRequired}>
               <input
                 id={id("ambient-temperature")}
                 type="text"
                 inputMode="decimal"
+                aria-required={ambientRequired ? "true" : undefined}
                 value={line.ambientTemperature}
                 onChange={(e) => onChange({ ambientTemperature: e.target.value })}
                 placeholder="Ex. : 18"

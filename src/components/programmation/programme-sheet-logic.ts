@@ -393,9 +393,11 @@ export function billingLines(
  * analyses, units, product type and nature (PROGRAMME.md §4, Vérification
  * d'entrée). Every row is informative here: the reception already accepted
  * the line, so a rule it would refuse on is only « à vérifier ». Rule (1)
- * and the ticked controls (C3, C5) show what the réceptionniste answered; a
- * line received before the checklist or before the controls has no answer,
- * and says so. Rule (6) follows the class chosen at reception (a stable
+ * and the ticked control (C5) show what the réceptionniste answered; a line
+ * received before the checklist or before the controls has no answer, and
+ * says so. C3 (emballage) is no longer asked (16/10, Q70): no row, for any
+ * sample — what an older reception answered stays in its « checklist
+ * décidée » (the journal). Rule (6) follows the class chosen at reception (a stable
  * food needs no temperature) and rule (8) reads the désignation, the type
  * and the nature on the sheet (12/10).
  */
@@ -404,7 +406,6 @@ export function entryChecks(
     /** The désignation — rule (8) reads it. */
     produit?: string | null;
     receptionExploitable?: boolean | null;
-    receptionPackagingOk?: boolean | null;
     receptionIdentificationOk?: boolean | null;
     storageClass?: ProgrammeSampleData["storageClass"];
     receptionTemperatureSource?: ProgrammeSampleData["receptionTemperatureSource"];
@@ -450,10 +451,7 @@ export function entryChecks(
     },
     receptionTiming(sample),
     thresholds,
-    {
-      packagingOk: sample.receptionPackagingOk ?? null,
-      identificationOk: sample.receptionIdentificationOk ?? null,
-    }
+    { identificationOk: sample.receptionIdentificationOk ?? null }
   );
   return [...paper, ...complementary].map((row): ChecklistRow => {
     if (row.key === "EXPLOITABLE" && exploitable === null) {

@@ -36,9 +36,9 @@ const good = {
   coolerTemperature: "3,5",
   // `technicianId`: what a page opened before 08/10 still sends — ignored (§9.3).
   lines: [
-    { sampleId: "s1", receptionTemperature: "4", quantity: "250", quantityUnit: "G", exploitable: true, packagingOk: true, identificationOk: true, conformity: true, technicianId: "t1" },
+    { sampleId: "s1", receptionTemperature: "4", quantity: "250", quantityUnit: "G", exploitable: true, identificationOk: true, conformity: true, technicianId: "t1" },
     // A surface needs its temperature at arrival too since the answer of 12/10.
-    { sampleId: "s2", receptionTemperature: "5", exploitable: true, packagingOk: true, identificationOk: true, conformity: true, technicianId: "t1" },
+    { sampleId: "s2", receptionTemperature: "5", exploitable: true, identificationOk: true, conformity: true, technicianId: "t1" },
   ],
 };
 
@@ -312,50 +312,62 @@ describe("validateReception — the arrival never precedes the sampling (A2)", (
   });
 });
 
-describe("validateReception — the contrôles complémentaires C3 and C5", () => {
-  it("refuses a line without the ticks — what a page opened before the controls sends", () => {
-    const { packagingOk: answered, ...noPackaging } = good.lines[1];
+describe("validateReception — the contrôle complémentaire C5 (C3 retired on 16/10, Q70)", () => {
+  it("refuses a line without the C5 tick — what a page opened before the controls sends", () => {
+    const { identificationOk: answered, ...noIdentification } = good.lines[1];
     expect(answered).toBe(true);
-    expect(validate({ ...good, lines: [good.lines[0], noPackaging] })).toEqual({
+    expect(validate({ ...good, lines: [good.lines[0], noIdentification] })).toEqual({
       ok: false,
-      error: "Échantillon 2 : indiquez si l'emballage est intact (rechargez la page si elle date d'avant la mise à jour).",
+      error: "Échantillon 2 : indiquez si l'identification est conforme à la fiche (rechargez la page si elle date d'avant la mise à jour).",
       lineNumber: 2,
       ref: "2",
     });
     expect(validate({ ...good, lines: [good.lines[0], { ...good.lines[1], identificationOk: "oui" }] })).toMatchObject({
       ok: false,
       lineNumber: 2,
-      error: "Échantillon 2 : indiquez si l'identification est conforme à la fiche (rechargez la page si elle date d'avant la mise à jour).",
     });
   });
 
-  it("never declares conform a sample whose control says « Non »", () => {
-    const refused = validate({ ...good, lines: [{ ...good.lines[0], packagingOk: false }, good.lines[1]] });
-    expect(refused).toMatchObject({ ok: false, lineNumber: 1, ref: "1" });
+  it("no longer asks the packaging: a line without it is received", () => {
+    const result = validate(good);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.lines[0]).not.toHaveProperty("packagingOk");
+  });
+
+  it("ignores — never refuses — the packaging answer of a page opened before 16/10, « Non » included", () => {
+    for (const packagingOk of [true, false, "oui", null]) {
+      const result = validate({ ...good, lines: [{ ...good.lines[0], packagingOk }, good.lines[1]] });
+      expect(result.ok, String(packagingOk)).toBe(true);
+      if (!result.ok) continue;
+      // « Non » no longer forces « non conforme »: the line stays conform.
+      expect(result.value.lines[0]).toMatchObject({ conformity: true, conformityReason: null });
+      expect(result.value.lines[0]).not.toHaveProperty("packagingOk");
+    }
+  });
+
+  it("never declares conform a sample whose C5 says « Non »", () => {
+    const refused = validate({ ...good, lines: [good.lines[0], { ...good.lines[1], identificationOk: false }] });
+    expect(refused).toMatchObject({ ok: false, lineNumber: 2, ref: "2" });
     if (!refused.ok) {
       expect(refused.error).toBe(
-        "Échantillon 1 : Contrôle C3 « Emballage / contenant intact, fermé et adapté » non conforme — emballage d'origine fermé ou sachet stérile. L'échantillon ne peut pas être déclaré conforme."
+        "Échantillon 2 : Contrôle C5 « Identification lisible et conforme à la fiche (désignation, lot, DLC) » non conforme — corriger la fiche avant de valider. L'échantillon ne peut pas être déclaré conforme."
       );
     }
-    expect(validate({ ...good, lines: [good.lines[0], { ...good.lines[1], identificationOk: false }] })).toMatchObject({
-      ok: false,
-      lineNumber: 2,
-    });
   });
 
-  it("receives the sample non conforme, and audits the coded rows beside the checklist", () => {
+  it("keeps the motif « Emballage ou contenant non conforme » for a container judged by hand, and audits the coded rows", () => {
     const result = validate({
       ...good,
-      lines: [{ ...good.lines[0], packagingOk: false, conformity: false, conformityReason: "EMBALLAGE" }, good.lines[1]],
+      lines: [{ ...good.lines[0], conformity: false, conformityReason: "EMBALLAGE", conformityNote: "Sachet percé" }, good.lines[1]],
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.lines[0]).toMatchObject({ packagingOk: false, identificationOk: true, conformityReason: "EMBALLAGE" });
+    expect(result.value.lines[0]).toMatchObject({ identificationOk: true, conformity: false, conformityReason: "EMBALLAGE" });
     expect(result.value.lines[0].checklist).toHaveLength(8);
     expect(result.value.lines[0].complementary.map((row) => [row.code, row.status])).toEqual([
       ["C1", "CONFORME"],
       ["C2", "CONFORME"],
-      ["C3", "NON_CONFORME"],
       ["C5", "CONFORME"],
       // Food without a DLC.
       ["C7", "SANS_OBJET"],
@@ -468,7 +480,7 @@ describe("validateReception — the two samples of a two-family line (RETOUR-LAB
     { ...candidates[0], id: "m", code: "1/26-1M", family: "MICRO" },
     { ...candidates[0], id: "p", code: "1/26-1P", family: "CHIMIE" },
   ];
-  const line = { receptionTemperature: "4", quantityUnit: "G", exploitable: true, packagingOk: true, identificationOk: true, conformity: true };
+  const line = { receptionTemperature: "4", quantityUnit: "G", exploitable: true, identificationOk: true, conformity: true };
 
   it("receives each one on its own, microbiology first, and names them by their letter", () => {
     const result = validateReception(
@@ -602,8 +614,8 @@ describe("validateReception — « Observation de réception », the justificati
 });
 
 describe("validateReception — analyse with the client's agreement, or wait for the client (A9)", () => {
-  /** Line 1 non conforme: its packaging. */
-  const nonConform = { ...good.lines[0], packagingOk: false, conformity: false, conformityReason: "EMBALLAGE" };
+  /** Line 1 non conforme: its container, the motif chosen by hand. */
+  const nonConform = { ...good.lines[0], conformity: false, conformityReason: "EMBALLAGE" };
   const agreement = { name: "M. Exemple", channel: "TELEPHONE", at: "2026-09-13T10:45:00.000Z", note: "Analyse demandée" };
 
   it("keeps the 29/09 behaviour when nobody uses the new options", () => {
@@ -685,7 +697,7 @@ describe("validateReception — analyse with the client's agreement, or wait for
 
 describe("validateReception — the laboratory's answers of 12/10", () => {
   const food = candidates[0];
-  const accepted = { sampleId: "s1", quantityUnit: "G", exploitable: true, packagingOk: true, identificationOk: true, conformity: true };
+  const accepted = { sampleId: "s1", quantityUnit: "G", exploitable: true, identificationOk: true, conformity: true };
   const surface = good.lines[1];
 
   it("a stable food (« Ambiant ») is received without a temperature; the default class still needs one", () => {

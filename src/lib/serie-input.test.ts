@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { NON_CONFORMITY_REASON_LABELS } from "./labels";
+import { HANDS_STATE_CHOICES, NON_CONFORMITY_REASON_LABELS } from "./labels";
 import {
   NON_CONFORMITY_REASONS,
+  SAMPLING_TIME_UNKNOWN,
   SERIE_MESSAGES,
+  arrivalChangeRefusal,
   chimieQuantityMessage,
   normalizeLabel,
   planLineSamples,
@@ -39,6 +41,9 @@ const NATURE_LIST: NatureRef[] = [
 ];
 const natures = new Map(NATURE_LIST.map((n) => [n.id, n]));
 
+/** An hour ago: « Prélevé le » is required on every new série (16/10, Q118). */
+const SAMPLED = new Date(Date.now() - 3600_000).toISOString();
+
 const aliment = {
   lineKind: "ALIMENT",
   analysesMicro: true,
@@ -53,12 +58,14 @@ const aliment = {
   parameterIds: ["p1", "p2"],
 };
 
+// Every fixture carries the T° ambiante: a visit requires it (16/10, Q113).
 const surface = {
   lineKind: "SURFACE",
   analysesMicro: true,
   surfaceLabel: "Planche verte",
   surfaceState: "NETTOYE",
   lieu: "Poste froid",
+  ambientTemperature: "20",
   parameterIds: ["p1"],
 };
 
@@ -69,12 +76,20 @@ const mains = {
   personRole: "Cuisinier",
   handsState: "LAVEES",
   lieu: "Cuisine",
+  ambientTemperature: "20",
   parameterIds: ["p1"],
 };
 
-const air = { lineKind: "AIR", analysesMicro: true, airMethod: "BIOCOLLECTEUR", lieu: "Salle blanche", parameterIds: [] };
+const air = {
+  lineKind: "AIR",
+  analysesMicro: true,
+  airMethod: "BIOCOLLECTEUR",
+  lieu: "Salle blanche",
+  ambientTemperature: "20",
+  parameterIds: [],
+};
 
-const eau = { lineKind: "EAU", analysesMicro: true, produit: "Eau du robinet", lieu: "Cuisine", parameterIds: ["p3"] };
+const eau = { lineKind: "EAU", analysesMicro: true, produit: "Eau du robinet", lieu: "Cuisine", ambientTemperature: "20", parameterIds: ["p3"] };
 
 describe("normalizeLabel — the key that catches near-duplicates", () => {
   it("ignores case, accents and punctuation", () => {
@@ -400,11 +415,153 @@ describe("« Corriger la fiche » d'un échantillon saisi avant l'état et la m�
   });
 });
 
+describe("l'état des mains (16/10, Q109)", () => {
+  it("accepte les trois états de la liste unique", () => {
+    expect(HANDS_STATE_CHOICES).toEqual(["ASEPTISEES", "NON_LAVEES", "LAVEES"]);
+    for (const handsState of HANDS_STATE_CHOICES) {
+      expect(validateLine({ ...mains, handsState }, 0, natures)).toMatchObject({ ok: true, value: { handsState } });
+    }
+  });
+
+  it("l'exige à la création, sur la visite comme au comptoir", () => {
+    const answered = { exploitable: true, identificationOk: true };
+    for (const handsState of [undefined, "", "PROPRES"]) {
+      for (const kind of ["VISITE", "DEPOT"] as const) {
+        expect(validateLine({ ...mains, ...answered, handsState }, 0, natures, { kind })).toMatchObject({
+          ok: false,
+          error: SERIE_MESSAGES.handsStateMissing,
+        });
+      }
+    }
+    expect(validateSerie({ clientId: "c1", cadre: "AUTRE", startedAt: SAMPLED, lines: [{ ...mains, handsState: "" }] }, natures, { kind: "VISITE" })).toMatchObject({
+      ok: false,
+      line: 1,
+      error: "Échantillon 1 — choisissez l'état des mains.",
+    });
+  });
+
+  it("le laisse vide pour une ligne saisie avant (« Corriger la fiche »)", () => {
+    expect(validateLine({ ...mains, handsState: undefined }, 0, natures, { allowMissingState: true })).toMatchObject({
+      ok: true,
+      value: { handsState: null },
+    });
+  });
+});
+
+describe("la T° ambiante, obligatoire sur la visite (16/10, Q113)", () => {
+  it("refuse une ligne de visite sans T° ambiante, l'air compris", () => {
+    for (const line of [aliment, surface, mains, eau, air]) {
+      for (const empty of [undefined, "", null]) {
+        expect(validateLine({ ...line, ambientTemperature: empty }, 0, natures, { kind: "VISITE" })).toMatchObject({
+          ok: false,
+          error: SERIE_MESSAGES.ambientMissing,
+        });
+      }
+    }
+    expect(validateSerie({ clientId: "c1", cadre: "AUTRE", startedAt: SAMPLED, lines: [aliment, { ...air, ambientTemperature: "" }] }, natures, { kind: "VISITE" })).toMatchObject({
+      ok: false,
+      line: 2,
+      error: "Échantillon 2 — indiquez la T° ambiante : elle est obligatoire sur la visite.",
+    });
+  });
+
+  it("« 0 » est une valeur ; la température au prélèvement reste facultative", () => {
+    expect(validateLine({ ...air, ambientTemperature: "0" }, 0, natures, { kind: "VISITE" })).toMatchObject({
+      ok: true,
+      value: { ambientTemperature: 0 },
+    });
+    expect(validateLine({ ...aliment, productTemperature: "" }, 0, natures, { kind: "VISITE" })).toMatchObject({
+      ok: true,
+      value: { productTemperature: null },
+    });
+  });
+
+  it("reste facultative au comptoir et dans « Corriger la fiche » (aucun type de série)", () => {
+    const answered = { exploitable: true, identificationOk: true };
+    expect(validateLine({ ...eau, ...answered, ambientTemperature: "" }, 0, natures, { kind: "DEPOT" })).toMatchObject({
+      ok: true,
+      value: { ambientTemperature: null },
+    });
+    expect(validateLine({ ...air, ambientTemperature: "" }, 0, natures)).toMatchObject({ ok: true, value: { ambientTemperature: null } });
+  });
+});
+
+describe("la surface « Autre » (16/10, Q114)", () => {
+  it("« couteau entier » : le texte, l'aire vide — jamais les 100 cm² par défaut", () => {
+    expect(validateLine({ ...surface, surfaceAreaCm2: "", surfaceAreaNote: " couteau entier " }, 0, natures)).toMatchObject({
+      ok: true,
+      value: { surfaceAreaCm2: null, surfaceAreaNote: "couteau entier" },
+    });
+  });
+
+  it("« 50 » : une aire ; rien : 100 cm²", () => {
+    expect(validateLine({ ...surface, surfaceAreaCm2: "50", surfaceAreaNote: "" }, 0, natures)).toMatchObject({
+      ok: true,
+      value: { surfaceAreaCm2: 50, surfaceAreaNote: null },
+    });
+    expect(validateLine({ ...surface, surfaceAreaCm2: "", surfaceAreaNote: "" }, 0, natures)).toMatchObject({
+      ok: true,
+      value: { surfaceAreaCm2: 100, surfaceAreaNote: null },
+    });
+  });
+
+  it("refuse l'aire et le texte ensemble, et un texte trop long", () => {
+    expect(validateLine({ ...surface, surfaceAreaCm2: "50", surfaceAreaNote: "couteau entier" }, 0, natures)).toMatchObject({
+      ok: false,
+      error: SERIE_MESSAGES.surfaceAreaBoth,
+    });
+    expect(validateLine({ ...surface, surfaceAreaNote: "x".repeat(192) }, 0, natures)).toMatchObject({
+      ok: false,
+      error: SERIE_MESSAGES.surfaceAreaNoteTooLong,
+    });
+  });
+
+  it("ignore le texte sur un autre type que la surface", () => {
+    expect(validateLine({ ...aliment, surfaceAreaNote: "couteau entier" }, 0, natures)).toMatchObject({
+      ok: true,
+      value: { surfaceAreaCm2: null, surfaceAreaNote: null },
+    });
+  });
+});
+
+describe("l'air : la durée d'exposition de la boîte (16/10, Q50)", () => {
+  const plate = { ...air, airMethod: "BOITE_EXPOSEE_30MIN" };
+
+  it("garde la durée saisie, de 1 à 480 minutes", () => {
+    expect(validateLine({ ...plate, airExposureMin: "45" }, 0, natures)).toMatchObject({ ok: true, value: { airExposureMin: 45 } });
+    expect(validateLine({ ...plate, airExposureMin: 480 }, 0, natures)).toMatchObject({ ok: true, value: { airExposureMin: 480 } });
+    for (const wrong of ["0", "481", "12,5", "abc", -5]) {
+      expect(validateLine({ ...plate, airExposureMin: wrong }, 0, natures)).toMatchObject({
+        ok: false,
+        error: SERIE_MESSAGES.airExposureInvalid,
+      });
+    }
+  });
+
+  it("l'exige avec la boîte ; une page ouverte avant le 16/10, qui ne l'envoie pas, a ses 30 minutes", () => {
+    for (const empty of ["", null, "  "]) {
+      expect(validateLine({ ...plate, airExposureMin: empty }, 0, natures)).toMatchObject({
+        ok: false,
+        error: SERIE_MESSAGES.airExposureMissing,
+      });
+    }
+    expect(validateLine(plate, 0, natures)).toMatchObject({ ok: true, value: { airExposureMin: 30 } });
+  });
+
+  it("n'en garde aucune sur le biocollecteur ni sur un autre type", () => {
+    expect(validateLine({ ...air, airExposureMin: "45" }, 0, natures)).toMatchObject({ ok: true, value: { airExposureMin: null } });
+    expect(validateLine({ ...eau, airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: "45" }, 0, natures)).toMatchObject({
+      ok: true,
+      value: { airMethod: null, airExposureMin: null },
+    });
+  });
+});
+
 describe("les analyses sont facultatives (V6)", () => {
   it("accepte une ligne sans analyse, sur une visite comme sur un dépôt", () => {
     expect(validateLine({ ...aliment, parameterIds: [] }, 0, natures)).toMatchObject({ ok: true, value: { parameterIds: [] } });
     expect(
-      validateLine({ ...aliment, parameterIds: undefined, exploitable: true, packagingOk: true, identificationOk: true }, 0, natures, { kind: "DEPOT" })
+      validateLine({ ...aliment, parameterIds: undefined, exploitable: true, identificationOk: true }, 0, natures, { kind: "DEPOT" })
     ).toMatchObject({ ok: true, value: { parameterIds: [] } });
   });
 
@@ -450,7 +607,7 @@ describe("validateSerie — the visit as a whole", () => {
       line: 2,
       error: "Échantillon 2 — choisissez l'état de la surface.",
     });
-    const answered = { exploitable: true, packagingOk: true, identificationOk: true };
+    const answered = { exploitable: true, identificationOk: true };
     expect(validateSerie({ ...visit, lines: [{ ...aliment, ...answered }, { ...eau, ...answered }, { ...air, airMethod: null }] }, natures, { kind: "DEPOT" })).toMatchObject({
       ok: false,
       line: 3,
@@ -483,7 +640,7 @@ describe("validateSerie — the visit as a whole", () => {
 
   it("accepte encore l'ancien appel qui nomme la nature", () => {
     const r = validateSerie(
-      { ...visit, lines: [{ natureId: "aliments", produit: "Produit test", lieu: "Cuisine", parameterIds: ["p1"] }] },
+      { ...visit, lines: [{ natureId: "aliments", produit: "Produit test", lieu: "Cuisine", ambientTemperature: "21", parameterIds: ["p1"] }] },
       natures,
       { kind: "VISITE" }
     );
@@ -492,8 +649,8 @@ describe("validateSerie — the visit as a whole", () => {
 });
 
 describe("le cadre de la série (RETOUR-LABO-06-10 §5, V1)", () => {
-  const base = { clientId: "c1", samplerKind: "QUALILAB", lines: [aliment] };
-  const deposit = { clientId: "c1", lines: [{ ...aliment, lieu: "" }] };
+  const base = { clientId: "c1", samplerKind: "QUALILAB", startedAt: SAMPLED, lines: [aliment] };
+  const deposit = { clientId: "c1", startedAt: SAMPLED, lines: [{ ...aliment, lieu: "" }] };
 
   it("est un choix obligatoire, sur la visite comme sur le dépôt", () => {
     for (const kind of ["VISITE", "DEPOT"] as const) {
@@ -541,7 +698,7 @@ describe("le cadre de la série (RETOUR-LABO-06-10 §5, V1)", () => {
         error: "« Service vétérinaire » n'est plus proposé : choisissez « Autre » et indiquez le nom.",
       });
     }
-    expect(validateSerie({ ...base, lines: [{ ...aliment, exploitable: true, packagingOk: true, identificationOk: true }], cadre: "AUTRE", samplerKind: "AUTRE", samplerName: "Service test" }, natures, { kind: "DEPOT" })).toMatchObject({
+    expect(validateSerie({ ...base, lines: [{ ...aliment, exploitable: true, identificationOk: true }], cadre: "AUTRE", samplerKind: "AUTRE", samplerName: "Service test" }, natures, { kind: "DEPOT" })).toMatchObject({
       ok: true,
       value: { samplerKind: "AUTRE", samplerName: "Service test" },
     });
@@ -555,7 +712,7 @@ describe("le cadre de la série (RETOUR-LABO-06-10 §5, V1)", () => {
 describe("validateSerie — the end of the visit typed on site", () => {
   it("refuses an end or an arrival in the future, like the reception does", () => {
     const soon = new Date(Date.now() + 2 * 3600 * 1000).toISOString();
-    const visit = { clientId: "c1", cadre: "DEVIS_VALIDE", lines: [{ ...aliment }] };
+    const visit = { clientId: "c1", cadre: "DEVIS_VALIDE", startedAt: SAMPLED, lines: [{ ...aliment }] };
     expect(validateSerie({ ...visit, endedAt: soon }, natures, { kind: "VISITE" })).toMatchObject({ ok: false, error: expect.stringContaining("L'heure de fin est dans le futur") });
     expect(validateSerie({ ...visit, arrivedAt: soon }, natures, { kind: "VISITE" })).toMatchObject({ ok: false, error: expect.stringContaining("L'heure d'arrivée est dans le futur") });
     const past = new Date(Date.now() - 3600 * 1000).toISOString();
@@ -570,10 +727,11 @@ describe("validateSerie — the deposit at the counter", () => {
     samplerKind: "CLIENT",
     cadre: "DEVIS_VALIDE",
     interlocutor: "Client Démo",
+    startedAt: SAMPLED,
     advanceAmount: "350",
     advanceMode: "ESPECES",
     lines: [
-      { ...aliment, lieu: "", quantity: "250", quantityUnit: "G", receptionTemperature: "4,04", exploitable: true, packagingOk: true, identificationOk: true, technicianId: "t1" },
+      { ...aliment, lieu: "", quantity: "250", quantityUnit: "G", receptionTemperature: "4,04", exploitable: true, identificationOk: true, technicianId: "t1" },
       {
         lineKind: "EAU",
         analysesMicro: true,
@@ -581,10 +739,11 @@ describe("validateSerie — the deposit at the counter", () => {
         produit: "Eau du réseau",
         quantity: "0,5",
         quantityUnit: "L",
+        // Optional at the counter; a visit made of these lines needs it (16/10, Q113).
+        ambientTemperature: "18",
         receptionTemperature: "12",
         parameterIds: ["p9"],
         exploitable: true,
-        packagingOk: true,
         identificationOk: false,
         conformity: false,
         conformityReason: "QUANTITE_INSUFFISANTE",
@@ -605,7 +764,6 @@ describe("validateSerie — the deposit at the counter", () => {
       lieu: "Dépôt au laboratoire",
       receptionTemperature: 4,
       exploitable: true,
-      packagingOk: true,
       identificationOk: true,
       conformity: true,
       conformityReason: null,
@@ -665,12 +823,10 @@ describe("validateSerie — the deposit at the counter", () => {
     });
   });
 
-  it("says whether the sampling time was given (C1): empty « Prélevé le » = now, not declared", () => {
-    const empty = validateSerie(deposit, natures, { kind: "DEPOT" });
-    expect(empty.ok && empty.value.samplingTimeDeclared).toBe(false);
-    if (empty.ok) expect(Math.abs(empty.value.startedAt.getTime() - Date.now())).toBeLessThan(60_000);
-    const typed = validateSerie({ ...deposit, startedAt: new Date(Date.now() - 3600_000).toISOString() }, natures, { kind: "DEPOT" });
+  it("says whether the sampling time was given (C1): typed = declared; null on a visit", () => {
+    const typed = validateSerie(deposit, natures, { kind: "DEPOT" });
     expect(typed.ok && typed.value.samplingTimeDeclared).toBe(true);
+    expect(typed.ok && typed.value.startedAt.toISOString()).toBe(SAMPLED);
     const visit = validateSerie({ ...deposit, lines: deposit.lines.map((l) => ({ ...l, lieu: "Comptoir" })) }, natures, { kind: "VISITE" });
     expect(visit.ok && visit.value.samplingTimeDeclared).toBeNull();
   });
@@ -690,21 +846,28 @@ describe("validateSerie — the deposit at the counter", () => {
     expect(visit.ok && visit.value.lines[0]).toMatchObject({ storageClass: null, receptionTemperatureSource: null });
   });
 
-  it("needs C3 and C5 ticked on every line — one answer for the line's samples", () => {
-    const { packagingOk: answered, ...noPackaging } = deposit.lines[0];
-    expect(answered).toBe(true);
-    expect(validateSerie({ ...deposit, lines: [noPackaging] }, natures, { kind: "DEPOT" })).toEqual({
-      ok: false,
-      line: 1,
-      error: "Échantillon 1 — indiquez si l'emballage est intact (rechargez la page si elle date d'avant la mise à jour).",
-    });
-    expect(validateSerie({ ...deposit, lines: [{ ...deposit.lines[0], identificationOk: null }] }, natures, { kind: "DEPOT" })).toMatchObject({
+  it("needs C5 ticked on every line — one answer for the line's samples", () => {
+    expect(validateSerie({ ...deposit, lines: [{ ...deposit.lines[0], identificationOk: null }] }, natures, { kind: "DEPOT" })).toEqual({
       ok: false,
       line: 1,
       error: "Échantillon 1 — indiquez si l'identification est conforme à la fiche (rechargez la page si elle date d'avant la mise à jour).",
     });
     const result = validateSerie(deposit, natures, { kind: "DEPOT" });
-    expect(result.ok && result.value.lines[1]).toMatchObject({ packagingOk: true, identificationOk: false });
+    expect(result.ok && result.value.lines[1]).toMatchObject({ identificationOk: false });
+  });
+
+  it("no longer asks the packaging (C3, 16/10 — Q70): an old page's answer is ignored, never refused", () => {
+    // Not sent: accepted (the fixture's lines carry none).
+    const fresh = validateSerie(deposit, natures, { kind: "DEPOT" });
+    expect(fresh.ok).toBe(true);
+    // Sent by a page opened before, « Non » included: ignored — it no longer forces « non conforme ».
+    for (const packagingOk of [true, false, "oui"]) {
+      const old = validateSerie({ ...deposit, lines: [{ ...deposit.lines[0], packagingOk }] }, natures, { kind: "DEPOT" });
+      expect(old.ok, String(packagingOk)).toBe(true);
+      if (!old.ok) continue;
+      expect(old.value.lines[0]).toMatchObject({ conformity: true, conformityReason: null });
+      expect(old.value.lines[0]).not.toHaveProperty("packagingOk");
+    }
   });
 
   it("never declares a non-exploitable line conform", () => {
@@ -761,13 +924,144 @@ describe("validateSerie — the deposit at the counter", () => {
       expect(visit.value.advanceAmount).toBeNull();
       expect(visit.value.lines[1]).toMatchObject({
         exploitable: null,
-        packagingOk: null,
         identificationOk: null,
         conformity: true,
         conformityReason: null,
       });
       expect(visit.value.lines[1]).not.toHaveProperty("technicianId");
     }
+  });
+});
+
+describe("arrivalChangeRefusal — the arrival changed through the série's header (lot 1b)", () => {
+  const now = new Date("2026-10-19T12:00:00Z").getTime();
+  const receivedAt = new Date("2026-10-19T09:00:00Z");
+  const day = 24 * 3600 * 1000;
+
+  it("before the reception: the préleveur may set or empty it, 30 days back at most", () => {
+    expect(arrivalChangeRefusal({ next: new Date(now - 3600_000), receivedAt: null, byPreleveur: true, now })).toBeNull();
+    expect(arrivalChangeRefusal({ next: null, receivedAt: null, byPreleveur: true, now })).toBeNull();
+    expect(arrivalChangeRefusal({ next: new Date(now - 31 * day), receivedAt: null, byPreleveur: true, now })).toBe(
+      SERIE_MESSAGES.arrivalTooOld
+    );
+  });
+
+  it("once received: never the préleveur's, as the cadre", () => {
+    expect(arrivalChangeRefusal({ next: new Date("2026-10-19T08:00:00Z"), receivedAt, byPreleveur: true, now })).toBe(
+      "La série est réceptionnée : le laboratoire seul peut corriger l'heure d'arrivée."
+    );
+    expect(arrivalChangeRefusal({ next: null, receivedAt, byPreleveur: true, now })).toMatch(/laboratoire seul/);
+  });
+
+  it("once received: the laboratory corrects it, never empties it, never after the reception", () => {
+    expect(arrivalChangeRefusal({ next: new Date("2026-10-18T19:30:00Z"), receivedAt, byPreleveur: false, now })).toBeNull();
+    expect(arrivalChangeRefusal({ next: null, receivedAt, byPreleveur: false, now })).toBe(SERIE_MESSAGES.arrivalMissing);
+    // The reception's own 5 min of clock tolerance, not one more.
+    expect(arrivalChangeRefusal({ next: new Date("2026-10-19T09:05:00Z"), receivedAt, byPreleveur: false, now })).toBeNull();
+    expect(arrivalChangeRefusal({ next: new Date("2026-10-19T09:06:00Z"), receivedAt, byPreleveur: false, now })).toBe(
+      "L'heure d'arrivée suit la réception de la série."
+    );
+  });
+
+  it("once received: 30 days back counted from the reception, not from now", () => {
+    const oldReception = new Date(now - 60 * day);
+    expect(
+      arrivalChangeRefusal({ next: new Date(oldReception.getTime() - 3600_000), receivedAt: oldReception, byPreleveur: false, now })
+    ).toBeNull();
+    expect(
+      arrivalChangeRefusal({ next: new Date(oldReception.getTime() - 31 * day), receivedAt: oldReception, byPreleveur: false, now })
+    ).toBe("L'heure d'arrivée précède la réception de plus de 30 jours.");
+  });
+});
+
+describe("« Prélevé le » et « Arrivé le » obligatoires (16/10, Q118)", () => {
+  const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
+  const line = { ...aliment, lieu: "", quantity: "250", quantityUnit: "G", receptionTemperature: "4", exploitable: true, identificationOk: true };
+  const deposit = { clientId: "c1", samplerKind: "CLIENT", cadre: "DEVIS_VALIDE", lines: [line] };
+  const visit = { clientId: "c1", cadre: "CONVENTION", lines: [aliment] };
+
+  it("refuses a deposit without « Prélevé le » nor the box — an old page is told to reload", () => {
+    for (const startedAt of [undefined, null, ""]) {
+      expect(validateSerie({ ...deposit, startedAt, arrivedAt: at(10) }, natures, { kind: "DEPOT" })).toEqual({
+        ok: false,
+        error: SERIE_MESSAGES.depositStartedMissingApi,
+      });
+    }
+    expect(SERIE_MESSAGES.depositStartedMissingApi).toBe(
+      "Indiquez la date et l'heure du prélèvement, ou cochez « Heure de prélèvement inconnue du client » (rechargez la page si cette case n'apparaît pas)."
+    );
+    // Only `true` is the box: a string or 1 is not.
+    for (const samplingTimeUnknown of ["true", 1, false]) {
+      expect(validateSerie({ ...deposit, samplingTimeUnknown }, natures, { kind: "DEPOT" })).toMatchObject({ ok: false });
+    }
+  });
+
+  it("« Heure de prélèvement inconnue du client »: not declared, the sampling instant is the arrival", () => {
+    const arrival = at(90);
+    const result = validateSerie({ ...deposit, samplingTimeUnknown: true, arrivedAt: arrival }, natures, { kind: "DEPOT" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.samplingTimeDeclared).toBe(false);
+    expect(result.value.startedAt.toISOString()).toBe(arrival);
+    expect(result.value.arrivedAt?.toISOString()).toBe(arrival);
+    // The box wins over a time sent with it.
+    const both = validateSerie({ ...deposit, samplingTimeUnknown: true, startedAt: at(300), arrivedAt: arrival }, natures, { kind: "DEPOT" });
+    expect(both.ok && both.value.startedAt.toISOString()).toBe(arrival);
+    // Without an arrival (an API caller): the save instant, as the arrival will be.
+    const bare = validateSerie({ ...deposit, samplingTimeUnknown: true }, natures, { kind: "DEPOT" });
+    expect(bare.ok && Math.abs(bare.value.startedAt.getTime() - Date.now())).toBeLessThan(60_000);
+    expect(bare.ok && bare.value.samplingTimeDeclared).toBe(false);
+    // The box is the proposal of the re-ask 2.6.
+    expect(SAMPLING_TIME_UNKNOWN).toEqual({ allowed: true, label: "Heure de prélèvement inconnue du client" });
+  });
+
+  it("accepts an arrival typed before the save, after the sampling (07:00 → 08:30, saved now)", () => {
+    const sampled = at(160);
+    const arrived = at(70);
+    const result = validateSerie({ ...deposit, startedAt: sampled, arrivedAt: arrived }, natures, { kind: "DEPOT" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.samplingTimeDeclared).toBe(true);
+    expect(result.value.startedAt.toISOString()).toBe(sampled);
+    expect(result.value.arrivedAt?.toISOString()).toBe(arrived);
+  });
+
+  it("refuses an arrival before the sampling, in the future, or more than 30 days back", () => {
+    expect(validateSerie({ ...deposit, startedAt: at(60), arrivedAt: at(120) }, natures, { kind: "DEPOT" })).toEqual({
+      ok: false,
+      error: SERIE_MESSAGES.arrivalBeforeStart,
+    });
+    expect(validateSerie({ ...deposit, startedAt: at(60), arrivedAt: at(-120) }, natures, { kind: "DEPOT" })).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("L'heure d'arrivée est dans le futur"),
+    });
+    const old = at(31 * 24 * 60);
+    expect(validateSerie({ ...deposit, samplingTimeUnknown: true, arrivedAt: old }, natures, { kind: "DEPOT" })).toEqual({
+      ok: false,
+      error: SERIE_MESSAGES.arrivalTooOld,
+    });
+    expect(SERIE_MESSAGES.arrivalTooOld).toBe("L'heure d'arrivée remonte à plus de 30 jours.");
+    expect(validateSerie({ ...deposit, startedAt: at(29 * 24 * 60), arrivedAt: at(29 * 24 * 60 - 30) }, natures, { kind: "DEPOT" }).ok).toBe(true);
+  });
+
+  it("an old page without « Arrivé le »: no arrival — the deposit arrives at its save (`createSerie`)", () => {
+    const result = validateSerie({ ...deposit, startedAt: at(60) }, natures, { kind: "DEPOT" });
+    expect(result.ok && result.value.arrivedAt).toBeNull();
+    expect(result.ok && result.value.samplingTimeDeclared).toBe(true);
+  });
+
+  it("refuses a visit without « Prélevé le » — never the save instant in its place — and ignores the box there", () => {
+    for (const startedAt of [undefined, ""]) {
+      expect(validateSerie({ ...visit, startedAt }, natures, { kind: "VISITE" })).toEqual({ ok: false, error: SERIE_MESSAGES.startedMissing });
+    }
+    expect(SERIE_MESSAGES.startedMissing).toBe("Indiquez la date et l'heure du prélèvement.");
+    // The box is the counter's: a visit sending it still needs its time.
+    expect(validateSerie({ ...visit, samplingTimeUnknown: true }, natures, { kind: "VISITE" })).toEqual({
+      ok: false,
+      error: SERIE_MESSAGES.startedMissing,
+    });
+    const typed = validateSerie({ ...visit, startedAt: at(60) }, natures, { kind: "VISITE" });
+    expect(typed.ok && typed.value.samplingTimeDeclared).toBeNull();
   });
 });
 
@@ -904,6 +1198,7 @@ describe("validateSerie — the deposit's decision and the client's agreement (A
     clientId: "c1",
     samplerKind: "CLIENT",
     cadre: "AUTRE",
+    startedAt: SAMPLED,
     lines: [
       {
         ...aliment,
@@ -911,8 +1206,8 @@ describe("validateSerie — the deposit's decision and the client's agreement (A
         quantityUnit: "G",
         receptionTemperature: "4",
         exploitable: true,
-        packagingOk: false,
         identificationOk: true,
+        // A container judged damaged by hand: the motif stays (16/10, Q70).
         conformity: false,
         conformityReason: "EMBALLAGE",
       },
@@ -930,7 +1225,7 @@ describe("validateSerie — the deposit's decision and the client's agreement (A
       value: { lines: [{ decision: "EN_ATTENTE_CLIENT", awaitClient: true, destroy: false }] },
     });
     expect(
-      validateSerie({ ...base, lines: [{ ...line, packagingOk: true, conformity: true, decision: "EN_ATTENTE_CLIENT" }] }, natures, { kind: "DEPOT" })
+      validateSerie({ ...base, lines: [{ ...line, conformity: true, decision: "EN_ATTENTE_CLIENT" }] }, natures, { kind: "DEPOT" })
     ).toEqual({ ok: false, line: 1, error: "Échantillon 1 — seul un échantillon non conforme peut attendre l'avis du client." });
   });
 
@@ -990,7 +1285,8 @@ describe("one container per family — « Quantité nP » (the laboratory's answ
         clientId: "c1",
         samplerKind: "CLIENT",
         cadre: "DEVIS_VALIDE",
-        lines: [{ ...both, quantityChimie: "-3", exploitable: true, packagingOk: true, identificationOk: true }],
+        startedAt: SAMPLED,
+        lines: [{ ...both, quantityChimie: "-3", exploitable: true, identificationOk: true }],
       },
       natures,
       { kind: "DEPOT" }

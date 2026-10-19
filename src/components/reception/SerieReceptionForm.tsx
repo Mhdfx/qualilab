@@ -68,12 +68,11 @@ import {
   complementaryChecklist,
   expiredDlcNote,
   signedProtocolRow,
-  type ComplementaryKey,
 } from "@/lib/reception-complementary";
 import { protocolPhotoHref } from "@/lib/protocol-photo-access";
 import { repetitionRange } from "@/lib/series";
 import { futureFieldError } from "@/lib/device-time";
-import { arrivalRefusal } from "@/lib/serie-input";
+import { SERIE_MESSAGES, arrivalRefusal } from "@/lib/serie-input";
 import { Card } from "@/components/ui/Card";
 import { LabDateTimeInput, dateTimePending } from "@/components/LabDateTimeInput";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -81,6 +80,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { fromLocalInput, localInputDate, toLocalInput } from "@/components/preleveur/visit-types";
 import {
+  AllExploitableBar,
   Checklist,
   ConformityChip,
   ConsultationFields,
@@ -95,6 +95,8 @@ import { receptionLineMessage, sampleRef } from "@/lib/reception-input";
 import { SampleVerbs, type VerbSample } from "@/components/samples/SampleVerbs";
 import type { Role } from "@/lib/roles";
 import {
+  allExploitableNotice,
+  answerAllExploitable,
   coolerOutOfRange,
   countLabel,
   errorConcernsSample,
@@ -103,6 +105,7 @@ import {
   receptionTemperatureSource,
   sampleHeading,
   storageDefaultLabel,
+  unansweredExploitableCount,
 } from "./reception-logic";
 
 /**
@@ -114,10 +117,12 @@ import {
  * checklist — the eight rules of the bon de réception, computed live with
  * the lab's thresholds — and the conformity with its coded motif. Rule (1),
  * « exploitable or not », is the réceptionniste's answer, one per sample,
- * required before the série can be received (retour du 08/10). Below the
- * eight rules, the contrôles complémentaires (hors bon): C3 (emballage) and
- * C5 (identification) are ticked Oui / Non for every sample — a « Non »
- * makes it non conforme with the matching motif. C6, the protocol signed by
+ * required before the série can be received (retour du 08/10) — one at a
+ * time, or « Tous exploitables » for every sample still unanswered, each
+ * card keeping its own buttons (16/10, Q64). Below the eight rules, the
+ * contrôles complémentaires (hors bon): C5 (identification) is ticked
+ * Oui / Non for every sample — a « Non » makes it non conforme with its
+ * motif; C3 (emballage) is no longer asked (16/10, Q70). C6, the protocol signed by
  * the interlocutor, is the série's own row on a visit, above the samples:
  * the préleveur's photo, or an optional « reçu » Oui / Non. The two
  * samples of a two-family line (« 2M », « 2P » — V3) are received one by
@@ -125,6 +130,11 @@ import {
  * own container (12/10): both cards start from the quantity the préleveur
  * wrote for the line, and say to weigh each family's part. One button
  * numbers everything.
+ *
+ * « Arrivée au laboratoire » is required (16/10, Q118): the préleveur's when
+ * recorded on the visit, else pre-filled with the instant the screen opened
+ * (« Maintenant » sets it again). The API keeps its fallback (the reception
+ * instant) for a page opened before.
  *
  * A non-conform sample is analysed anyway — the client's agreement noted
  * (« Accord du client », required when the laboratory says so) —, held
@@ -155,11 +165,15 @@ export type ReceptionLineData = {
   ambientTemperature: number | null;
   surfaceLabel: string | null;
   surfaceAreaCm2: number | null;
+  /** « Autre » of the area given as a text (16/10); null otherwise. */
+  surfaceAreaNote: string | null;
   /** « État de la surface » (V2) / « Méthode de prélèvement » of the air (V4):
    * null on a sample entered before 07/10; optional while the série's
    * select does not carry them everywhere. */
   surfaceState?: SurfaceState | null;
   airMethod?: AirMethod | null;
+  /** The exposed plate's duration (16/10); null on an older plate (read 30 min). */
+  airExposureMin: number | null;
   personName: string | null;
   personRole: string | null;
   handsState: HandsState | null;
@@ -258,10 +272,9 @@ type LineState = {
   storageClass: StorageClass | null;
   quantity: string;
   quantityUnit: QuantityUnit;
-  /** Rule (1) of the bon: null until the réceptionniste answers. */
+  /** Rule (1) of the bon: null until the réceptionniste answers (on the card, or « Tous exploitables »). */
   exploitable: boolean | null;
-  /** C3 (emballage) and C5 (identification): null until ticked. */
-  packagingOk: boolean | null;
+  /** C5 (identification): null until ticked. */
   identificationOk: boolean | null;
   /** The réceptionniste's own choice; null = follow the rules' proposal. */
   conformityChoice: boolean | null;
@@ -307,14 +320,18 @@ function verbSampleOf(line: ReceptionLineData, clientId: string, status: SampleS
     expiryDate: line.expiryDate,
     quantity: line.quantity,
     quantityUnit: line.quantityUnit,
+    productTemperature: line.productTemperature,
+    ambientTemperature: line.ambientTemperature,
     surfaceLabel: line.surfaceLabel,
     surfaceAreaCm2: line.surfaceAreaCm2,
+    surfaceAreaNote: line.surfaceAreaNote,
     personName: line.personName,
     personRole: line.personRole,
     handsState: line.handsState,
     // « État de la surface » / « Méthode de prélèvement » in « Corriger la fiche ».
     surfaceState: line.surfaceState ?? null,
     airMethod: line.airMethod ?? null,
+    airExposureMin: line.airExposureMin,
     remarks: line.remarks,
     unitCount: line.unitCount,
     parameterIds: line.parameters.map((p) => p.parameter.id),
@@ -354,10 +371,9 @@ function initialLineState(s: ReceptionLineData, cooler: string): LineState {
         : s.lineKind === "EAU"
           ? "L"
           : "G",
-    // Never pre-answered: each sample is looked at (no « tous exploitables »,
-    // no série-level « tout cocher » — Q64 pending).
+    // Never pre-answered: each sample is looked at — « Tous exploitables »
+    // is a deliberate click above the cards (16/10, Q64), not a default.
     exploitable: null,
-    packagingOk: null,
     identificationOk: null,
     conformityChoice: null,
     reason: "",
@@ -391,10 +407,21 @@ export function SerieReceptionForm({
   const cancelledEarlier = alreadyReceived.filter(cancelledBeforeReception);
   const receivedEarlier = alreadyReceived.filter((s) => !cancelledBeforeReception(s));
 
-  // LEGAL wall time ("YYYY-MM-DDTHH:mm"): LabDateTimeInput converts a drifting device's hour.
-  const [arrivedAt, setArrivedAt] = useState(
-    serie.arrivedAt ? toLocalInput(new Date(serie.arrivedAt)) : ""
-  );
+  // The reception instant while receiving: C1 counts up to it when no arrival is recorded.
+  const now = useMinuteClock();
+  // « Arrivée au laboratoire », required (16/10, Q118) — LEGAL wall time
+  // ("YYYY-MM-DDTHH:mm"): LabDateTimeInput converts a drifting device's
+  // hour. The série's own when the préleveur recorded it; else, while
+  // untouched, the current minute — never the instant the screen opened: a
+  // page left open would date the arrival too early and C1 would understate
+  // the delay. `now` is null on the server and during hydration, so the
+  // markup never disagrees. null = not edited yet; untouched, nothing is
+  // sent and the API takes the série's arrival, else the reception instant.
+  const [editedArrival, setEditedArrival] = useState<string | null>(null);
+  const arrivedAt =
+    editedArrival ?? (serie.arrivedAt ? toLocalInput(new Date(serie.arrivedAt)) : now ? toLocalInput(now) : "");
+  // The live minute shown while untouched (no arrival recorded): its hint says so.
+  const arrivalPrefilled = !serie.arrivedAt && editedArrival === null && arrivedAt !== "";
   // The « dans le futur » refusal, shown under « Arrivée au laboratoire » (§8.1).
   const [arrivedError, setArrivedError] = useState<string | null>(null);
   const [cooler, setCooler] = useState(
@@ -419,10 +446,10 @@ export function SerieReceptionForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; lineNumber: number | null; ref?: string | null } | null>(null);
   const [result, setResult] = useState<ReceivedLine[] | null>(null);
+  // « Tous exploitables »: the confirmation of the last click, read out.
+  const [bulkNotice, setBulkNotice] = useState("");
 
   const byId = useMemo(() => new Map(serie.samples.map((s) => [s.id, s])), [serie.samples]);
-  // The reception instant while receiving: C1 counts up to it when no arrival is recorded.
-  const now = useMinuteClock();
 
   // A box of the protocol that no sample still to analyse answers — only on
   // a série entered before the boxes were computed (07/10), or once the
@@ -478,15 +505,30 @@ export function SerieReceptionForm({
   }
 
   /**
-   * A ticked control answered (C3, C5). « Non » makes the sample non conform
-   * with the control's motif, unless a motif is already chosen; « Oui »
-   * afterwards drops that motif, the rules propose again.
+   * « Tous exploitables » (16/10, Q64): rule (1) « Exploitable » on every
+   * sample still unanswered — a « Non exploitable » already chosen stays.
+   * An unanswered sample carries no rule (1) motif, so nothing else moves.
    */
-  function answerTick(line: LineState, key: Extract<ComplementaryKey, "EMBALLAGE" | "IDENTIFICATION">, ok: boolean) {
-    const field = key === "EMBALLAGE" ? "packagingOk" : "identificationOk";
+  function answerAllLines() {
+    const { lines: answered, count } = answerAllExploitable(activeLines);
+    if (count === 0) return;
+    setLines((current) => [
+      ...current.filter((line) => !answered.some((a) => a.sampleId === line.sampleId)),
+      ...answered,
+    ]);
+    setBulkNotice(allExploitableNotice(count));
+    setError(null);
+  }
+
+  /**
+   * C5 answered. « Non » makes the sample non conform with the motif
+   * IDENTIFICATION, unless a motif is already chosen; « Oui » afterwards
+   * drops that motif, the rules propose again.
+   */
+  function answerIdentification(line: LineState, ok: boolean) {
     updateLine(line.sampleId, {
-      [field]: ok,
-      reason: ok ? (line.reason === key ? "" : line.reason) : line.reason || key,
+      identificationOk: ok,
+      reason: ok ? (line.reason === "IDENTIFICATION" ? "" : line.reason) : line.reason || "IDENTIFICATION",
     });
   }
 
@@ -529,7 +571,7 @@ export function SerieReceptionForm({
         receivedAt: now,
       },
       thresholds,
-      { packagingOk: line.packagingOk, identificationOk: line.identificationOk }
+      { identificationOk: line.identificationOk }
     );
     // The paper's rules first: one of them keeps the priority over a control.
     const rows = [...paper, ...complementary];
@@ -564,10 +606,12 @@ export function SerieReceptionForm({
       document.getElementById(atId)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
       return;
     }
-    // The server's own checks (5 min of tolerance; never before the
-    // sampling), told next to the field first (§8.1).
+    // Required (16/10, Q118), then the server's own checks (5 min of
+    // tolerance; never before the sampling), told next to the field first
+    // (§8.1).
     const arrival = localInputDate(arrivedAt);
     const arrivalProblem =
+      (arrivedAt ? null : SERIE_MESSAGES.arrivalMissing) ??
       futureFieldError("L'heure d'arrivée", arrivedAt) ??
       (arrival
         ? arrivalRefusal(arrival, new Date(serie.startedAt), serie.endedAt ? new Date(serie.endedAt) : null)
@@ -594,21 +638,17 @@ export function SerieReceptionForm({
       target?.focus({ preventScroll: true });
       return;
     }
-    // C3 and C5 are ticked for every sample too — the API refuses otherwise.
-    const unticked = activeLines.find((line) => line.packagingOk === null || line.identificationOk === null);
+    // C5 is ticked for every sample too — the API refuses otherwise.
+    const unticked = activeLines.find((line) => line.identificationOk === null);
     if (unticked) {
       const sample = byId.get(unticked.sampleId)!;
       const ref = sampleRef(sample.lineNumber, sample.code);
-      const packaging = unticked.packagingOk === null;
       setError({
-        message: receptionLineMessage(
-          ref,
-          packaging ? COMPLEMENTARY_MESSAGES.packagingMissing : COMPLEMENTARY_MESSAGES.identificationMissing
-        ),
+        message: receptionLineMessage(ref, COMPLEMENTARY_MESSAGES.identificationMissing),
         lineNumber: sample.lineNumber,
         ref,
       });
-      const target = document.getElementById(`${packaging ? "packaging" : "identification"}-${unticked.sampleId}`);
+      const target = document.getElementById(`identification-${unticked.sampleId}`);
       const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
       target?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
       target?.focus({ preventScroll: true });
@@ -647,7 +687,10 @@ export function SerieReceptionForm({
     setError(null);
     try {
       const payload = {
-        arrivedAt: fromLocalInput(arrivedAt),
+        // Untouched: null — the API keeps the série's arrival (one the
+        // préleveur recorded after this page opened included), else stamps
+        // the reception instant, the minute shown.
+        arrivedAt: editedArrival === null ? null : fromLocalInput(arrivedAt),
         coolerTemperature: cooler,
         // C6: a visit's answer when no photo is attached; nothing otherwise.
         signedProtocolReceived: visitWithoutPhoto ? protocolReceived : null,
@@ -661,7 +704,6 @@ export function SerieReceptionForm({
             quantity: line.quantity,
             quantityUnit: line.quantityUnit,
             exploitable: line.exploitable,
-            packagingOk: line.packagingOk,
             identificationOk: line.identificationOk,
             conformity,
             conformityReason: conformity ? undefined : reason,
@@ -786,6 +828,14 @@ export function SerieReceptionForm({
                 .join(", ")}
               ).
             </Card>
+          )}
+
+          {activeLines.length > 0 && (
+            <AllExploitableBar
+              count={unansweredExploitableCount(activeLines)}
+              notice={bulkNotice}
+              onAnswer={answerAllLines}
+            />
           )}
 
           {activeLines.map((line) => {
@@ -922,15 +972,9 @@ export function SerieReceptionForm({
                     invalid: highlighted && line.exploitable === null,
                   }}
                   ticks={{
-                    EMBALLAGE: {
-                      value: line.packagingOk,
-                      onChange: (ok) => answerTick(line, "EMBALLAGE", ok),
-                      id: `packaging-${line.sampleId}`,
-                      invalid: highlighted && line.packagingOk === null,
-                    },
                     IDENTIFICATION: {
                       value: line.identificationOk,
-                      onChange: (ok) => answerTick(line, "IDENTIFICATION", ok),
+                      onChange: (ok) => answerIdentification(line, ok),
                       id: `identification-${line.sampleId}`,
                       invalid: highlighted && line.identificationOk === null,
                     },
@@ -1111,12 +1155,15 @@ export function SerieReceptionForm({
             <div className="mt-4">
               <label htmlFor="arrivedAt" className="block text-sm font-medium text-slate-700">
                 Arrivée au laboratoire
+                <span className="ml-0.5 text-rose-600" aria-hidden="true">*</span>
+                <span className="sr-only">(obligatoire)</span>
               </label>
               <LabDateTimeInput
                 id="arrivedAt"
                 value={arrivedAt}
+                required
                 onChange={(legalWall) => {
-                  setArrivedAt(legalWall);
+                  setEditedArrival(legalWall);
                   if (arrivedError) {
                     setArrivedError(null);
                     setError(null);
@@ -1126,11 +1173,19 @@ export function SerieReceptionForm({
                 className="mt-1.5"
                 inputClassName="input-field px-3"
                 errorId={arrivedError ? "arrivedAt-error" : undefined}
+                describedBy={!arrivedError && arrivalPrefilled ? "arrivedAt-prefill" : undefined}
               />
-              {arrivedError && (
+              {arrivedError ? (
                 <p id="arrivedAt-error" className="mt-1 text-xs font-medium text-rose-700">
                   {arrivedError}
                 </p>
+              ) : (
+                arrivalPrefilled && (
+                  <p id="arrivedAt-prefill" className="mt-1 text-xs text-slate-500">
+                    L&apos;heure actuelle tant que vous ne la modifiez pas : corrigez-la si la glacière est arrivée plus
+                    tôt.
+                  </p>
+                )
               )}
             </div>
             <div className="mt-3">

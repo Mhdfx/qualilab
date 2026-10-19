@@ -65,6 +65,7 @@ export async function GET(request: Request) {
       surfaceState: true,
       personName: true,
       airMethod: true,
+      airExposureMin: true,
       numeroLot: true,
       technicianId: true,
       technician: { select: { name: true } },

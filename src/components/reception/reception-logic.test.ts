@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_THRESHOLDS, type ChecklistRow } from "@/lib/reception-rules";
 import {
+  allExploitableNotice,
+  answerAllExploitable,
   countLabel,
   depositLineChecklist,
   depositSampleQuantity,
@@ -15,6 +17,7 @@ import {
   receptionDesignation,
   sampleCount,
   sampleHeading,
+  unansweredExploitableCount,
 } from "./reception-logic";
 
 /**
@@ -76,6 +79,24 @@ describe("receptionDesignation", () => {
       "Air — Boîte exposée 30 min"
     );
     expect(receptionDesignation({ ...base, lineKind: "AIR", produit: "Salle test" })).toBe("Salle test");
+  });
+
+  it("prints the « Autre » text in place of the area, and the plate's duration (16/10)", () => {
+    expect(
+      receptionDesignation({ ...base, lineKind: "SURFACE", surfaceLabel: "Couteau", surfaceState: "NETTOYE", surfaceAreaNote: "couteau entier" })
+    ).toBe("Couteau — surface nettoyée · couteau entier");
+    expect(receptionDesignation({ ...base, lineKind: "AIR", produit: "Salle test", airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: 45 })).toBe(
+      "Salle test — Boîte exposée 45 min"
+    );
+  });
+
+  it("prints the hands' own phrases (16/10): an old « non lavées » reads « mains en cours de travail »", () => {
+    expect(receptionDesignation({ ...base, lineKind: "MAINS", personName: "Personne Test", handsState: "NON_LAVEES" })).toBe(
+      "Personne Test · mains en cours de travail"
+    );
+    expect(receptionDesignation({ ...base, lineKind: "MAINS", personName: "Personne Test", handsState: "ASEPTISEES" })).toBe(
+      "Personne Test · mains aseptisées ou désinfectées"
+    );
   });
 
   it("keeps hands and products as before", () => {
@@ -149,6 +170,43 @@ describe("missingFamilies", () => {
   });
 });
 
+describe("« Tous exploitables » (16/10, Q64)", () => {
+  const card = (id: string, exploitable: boolean | null) => ({ id, exploitable, reason: exploitable === false ? "NON_EXPLOITABLE" : "" });
+
+  it("answers « Exploitable » on the unanswered samples only, and counts them", () => {
+    const lines = [card("a", null), card("b", true), card("c", null), card("d", false)];
+    const { lines: answered, count } = answerAllExploitable(lines);
+    expect(count).toBe(2);
+    expect(answered.map((line) => [line.id, line.exploitable])).toEqual([
+      ["a", true],
+      ["b", true],
+      ["c", true],
+      ["d", false],
+    ]);
+    // An explicit « Non exploitable » keeps its answer and its motif.
+    expect(answered[3]).toBe(lines[3]);
+    expect(answered[3].reason).toBe("NON_EXPLOITABLE");
+    // The other fields travel unchanged; the input is not touched.
+    expect(answered[0]).toEqual({ id: "a", exploitable: true, reason: "" });
+    expect(lines[0].exploitable).toBeNull();
+  });
+
+  it("does nothing once every sample is answered", () => {
+    const lines = [card("a", true), card("b", false)];
+    const { lines: answered, count } = answerAllExploitable(lines);
+    expect(count).toBe(0);
+    expect(answered).toEqual(lines);
+    expect(unansweredExploitableCount(lines)).toBe(0);
+    expect(answerAllExploitable([]).count).toBe(0);
+  });
+
+  it("gives the button's N and the confirmation read out", () => {
+    expect(unansweredExploitableCount([card("a", null), card("b", true), card("c", null)])).toBe(2);
+    expect(allExploitableNotice(1)).toBe("1 échantillon marqué exploitable — modifiable sur chaque échantillon");
+    expect(allExploitableNotice(4)).toBe("4 échantillons marqués exploitables — modifiable sur chaque échantillon");
+  });
+});
+
 describe("depositLineChecklist — the eight rules of a deposit line", () => {
   const food = {
     lineKind: "ALIMENT" as const,
@@ -158,7 +216,6 @@ describe("depositLineChecklist — the eight rules of a deposit line", () => {
     receptionTemperature: 4,
     unitCount: 1,
     exploitable: true,
-    packagingOk: true,
     identificationOk: true,
     storageClass: null,
     temperatureSource: null,
@@ -274,13 +331,14 @@ describe("depositLineChecklist — the eight rules of a deposit line", () => {
 
   it("lists the contrôles complémentaires after the eight rules, one answer for both samples", () => {
     const { rows, proposal } = depositLineChecklist(
-      { ...food, families: ["MICRO", "CHIMIE"], quantity: 500, packagingOk: false },
+      { ...food, families: ["MICRO", "CHIMIE"], quantity: 500, identificationOk: false },
       DEFAULT_THRESHOLDS
     );
     // The merged row keeps its code: the widget lists it in its own group.
-    expect(coded(rows, "C3")).toMatchObject({ key: "EMBALLAGE", status: "NON_CONFORME", reason: "EMBALLAGE" });
-    expect(coded(rows, "C5")).toMatchObject({ key: "IDENTIFICATION", status: "CONFORME" });
-    expect(proposal).toMatchObject({ conformity: false, forced: true, rule: null, code: "C3", reason: "EMBALLAGE" });
+    expect(coded(rows, "C5")).toMatchObject({ key: "IDENTIFICATION", status: "NON_CONFORME", reason: "IDENTIFICATION" });
+    expect(proposal).toMatchObject({ conformity: false, forced: true, rule: null, code: "C5", reason: "IDENTIFICATION" });
+    // No C3 (emballage) since 16/10 (Q70): C1, C2, C5, C7 on a food line.
+    expect(rows.filter((r) => r.code).map((r) => r.code)).toEqual(["C1", "C2", "C5", "C7"]);
 
     // A paper rule keeps the priority over a control.
     const both = depositLineChecklist(
@@ -289,9 +347,33 @@ describe("depositLineChecklist — the eight rules of a deposit line", () => {
     );
     expect(both.proposal).toMatchObject({ forced: true, rule: 6, code: null, reason: "TEMPERATURE_MANQUANTE" });
 
-    const unticked = depositLineChecklist({ ...food, families: ["MICRO"], quantity: 500, packagingOk: null }, DEFAULT_THRESHOLDS);
-    expect(coded(unticked.rows, "C3").status).toBe("A_CONFIRMER");
+    const unticked = depositLineChecklist({ ...food, families: ["MICRO"], quantity: 500, identificationOk: null }, DEFAULT_THRESHOLDS);
+    expect(coded(unticked.rows, "C5").status).toBe("A_CONFIRMER");
     expect(unticked.proposal.pending).toBe(true);
+  });
+
+  it("reads the « Arrivé le » typed at the counter, not the save instant (16/10, Q118)", () => {
+    // Sampled 07:00, arrived 08:30, saved 09:40: the delay is 1 h 30.
+    const typed = {
+      startedAt: new Date("2026-10-10T07:00:00.000Z"),
+      endedAt: null,
+      arrivedAt: new Date("2026-10-10T08:30:00.000Z"),
+      samplingTimeDeclared: true,
+      receivedAt: new Date("2026-10-10T09:40:00.000Z"),
+    };
+    const { rows, proposal } = depositLineChecklist({ ...food, families: ["MICRO"], quantity: 500, serie: typed }, DEFAULT_THRESHOLDS);
+    expect(coded(rows, "C1")).toMatchObject({ status: "CONFORME", detail: "Délai 1 h 30" });
+    // Declared and within 24 h: nothing to justify.
+    expect(proposal).toMatchObject({ conformity: true, forced: false, pending: false });
+    // « Prélevé le » still empty (neither typed nor « inconnue »): the delay waits.
+    const waiting = depositLineChecklist({ ...food, families: ["MICRO"], quantity: 500, serie: { ...typed, startedAt: null } }, DEFAULT_THRESHOLDS);
+    expect(coded(waiting.rows, "C1")).toMatchObject({ status: "SANS_OBJET", detail: "Délai non calculé", rules: [] });
+    // « Heure de prélèvement inconnue du client »: the sampling is the arrival, « non déclarée ».
+    const unknown = depositLineChecklist(
+      { ...food, families: ["MICRO"], quantity: 500, serie: { ...typed, startedAt: typed.arrivedAt, samplingTimeDeclared: false } },
+      DEFAULT_THRESHOLDS
+    );
+    expect(coded(unknown.rows, "C1")).toMatchObject({ status: "A_VERIFIER", reason: "DELAI", detail: "Heure de prélèvement non déclarée" });
   });
 
   it("computes C1 per family: an undeclared sampling time is « à vérifier », chemistry without a limit is « sans objet »", () => {

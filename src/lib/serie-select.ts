@@ -26,11 +26,15 @@ const LINE_COMMON = {
   ambientTemperature: true,
   surfaceLabel: true,
   surfaceAreaCm2: true,
+  // « Autre » of the area (16/10): printed in its place.
+  surfaceAreaNote: true,
   personName: true,
   personRole: true,
   handsState: true,
   surfaceState: true,
   airMethod: true,
+  // The exposed plate's duration (16/10): « Boîte exposée 45 min ».
+  airExposureMin: true,
   remarks: true,
   unitCount: true,
   cancelReason: true,

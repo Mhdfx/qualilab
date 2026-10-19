@@ -3,7 +3,16 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { COMPANY, type CompanyInfo } from "@/lib/company";
 import { formatDate } from "@/lib/labels";
-import { alertEmail, destructionEmail, reportEmail, signature, type DestructionEmailInput, type ReportEmailInput } from "./templates";
+import {
+  alertEmail,
+  destructionEmail,
+  notReceivedEmail,
+  reportEmail,
+  signature,
+  type DestructionEmailInput,
+  type NotReceivedEmailInput,
+  type ReportEmailInput,
+} from "./templates";
 
 const base: ReportEmailInput = {
   clientName: "Client Démo",
@@ -92,6 +101,65 @@ describe("the sampling date of a deposit whose time was not declared (RETOUR-LAB
       const { html } = destructionEmail({ ...notice, samplingTimeDeclared });
       expect(html, String(samplingTimeDeclared)).toContain(cell("Date de prélèvement", formatDate(entered)));
     }
+  });
+});
+
+describe("notReceivedEmail — a visit's sample that never reached the laboratory (16/10, Q74)", () => {
+  const notice: NotReceivedEmailInput = {
+    serialNumber: "14/26",
+    sampledAt: new Date("2026-10-07T08:00:00Z"),
+    samplingTimeDeclared: null,
+    clientName: "TEST UI Client",
+    siteName: "Site Test",
+    sampleRef: "2M",
+    designation: "Planche verte — surface nettoyée",
+    lineKind: "SURFACE",
+    numeroLot: null,
+    lieu: "Cuisine",
+  };
+
+  it("names the dossier in the subject, signed with the saved identity", () => {
+    expect(notReceivedEmail(notice).subject).toBe(`Échantillon non reçu — dossier N° 14/26 — ${COMPANY.name}`);
+    expect(notReceivedEmail(notice, { ...COMPANY, name: " " }).subject).toBe("Échantillon non reçu — dossier N° 14/26");
+  });
+
+  it("gives the date of the visit, the site, the sample and its designation — nothing analysed, nothing billed", () => {
+    const { html } = notReceivedEmail(notice);
+    expect(html).toContain(cell("N° dossier", "14/26"));
+    expect(html).toContain(cell("Date de prélèvement", formatDate(notice.sampledAt)));
+    expect(html).toContain(cell("Site", "TEST UI Client — Site Test"));
+    expect(html).toContain(cell("Échantillon", "N° 2M du protocole de prélèvement"));
+    // A surface's designation is « Désignation », a food's « Produit ».
+    expect(html).toContain(cell("Désignation", "Planche verte — surface nettoyée"));
+    expect(notReceivedEmail({ ...notice, lineKind: "ALIMENT", designation: "Salade test" }).html).toContain(cell("Produit", "Salade test"));
+    expect(html).toContain(cell("Lieu de prélèvement", "Cuisine"));
+    expect(html).toContain("n'est pas parvenu au laboratoire : aucune analyse n'est effectuée et rien");
+    expect(html).toContain("n'est facturé pour cet échantillon.");
+    expect(html).toContain("Contactez-nous pour organiser un nouveau prélèvement.");
+    // No N° de lot row without a lot; with one, it is printed.
+    expect(html).not.toContain("N° de lot");
+    expect(notReceivedEmail({ ...notice, numeroLot: " L-12 " }).html).toContain(cell("N° de lot", "L-12"));
+  });
+
+  it("names the client alone without a site", () => {
+    for (const siteName of [null, undefined, "  "]) {
+      const { html } = notReceivedEmail({ ...notice, siteName });
+      expect(html).toContain(cell("Client", "TEST UI Client"));
+      expect(html).not.toContain(">Site</td>");
+    }
+  });
+
+  it("keeps the « Non déclarée » rule of every e-mail (R6)", () => {
+    const { html } = notReceivedEmail({ ...notice, samplingTimeDeclared: false });
+    expect(html).toContain(cell("Date de prélèvement", "Non déclarée"));
+    expect(html).not.toContain(formatDate(notice.sampledAt));
+  });
+
+  it("escapes what the database holds", () => {
+    const { html } = notReceivedEmail({ ...notice, clientName: "A & B", siteName: "<Site>", designation: "<b>x</b>", lieu: "\"Salle\"" });
+    expect(html).toContain("A &amp; B — &lt;Site&gt;");
+    expect(html).toContain("&lt;b&gt;x&lt;/b&gt;");
+    expect(html).not.toContain("<b>x</b>");
   });
 });
 
@@ -254,10 +322,12 @@ describe("the e-mails sign with the identity of /admin/entreprise", () => {
     };
     const dispatch = "../report-dispatch.ts";
     const destruction = "../destruction-notice.ts";
+    const notReceived = "../not-received-notice.ts";
     for (const [file, fn] of [
       [dispatch, "reportEmail"],
       [dispatch, "alertEmail"],
       [destruction, "destructionEmail"],
+      [notReceived, "notReceivedEmail"],
     ] as const) {
       const { text, found } = calls(file, fn);
       expect(found.length, `${file} ${fn}`).toBe(1);
@@ -267,5 +337,6 @@ describe("the e-mails sign with the identity of /admin/entreprise", () => {
     // R6: both senders read the série's flag from the database, never a constant.
     expect(calls(dispatch, "reportEmail").found[0]).toMatch(/samplingTimeDeclared:\s*sample\.serie\.samplingTimeDeclared\b/);
     expect(calls(destruction, "destructionEmail").found[0]).toMatch(/samplingTimeDeclared:\s*first\.serie\.samplingTimeDeclared\b/);
+    expect(calls(notReceived, "notReceivedEmail").found[0]).toMatch(/samplingTimeDeclared:\s*sample\.serie\.samplingTimeDeclared\b/);
   });
 });

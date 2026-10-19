@@ -12,11 +12,16 @@ import {
 import { ASSIGNABLE_ROLES, PORTAL_ROLE, type Role } from "@/lib/roles";
 import { benchQueueWhereFor } from "@/lib/bench-access";
 import { benchHoldWarning, leavesBench } from "@/lib/technician-load";
+import { onlyDocumentNameChange, readDocumentName } from "@/lib/document-name";
 
 /**
  * Managing one account: change its role (and, for a « Client (portail) »
  * account, its client — PORTAIL.md §1), disable or re-enable it, reset its
- * password. Disabling revokes the sessions too — a banned user must be out
+ * password, set its « Dénomination sur les documents » (`documentName`, lot
+ * 1b — RETOUR-LABO-16-10.md D5: trimmed, 191 characters at most, empty =
+ * back to the default « Technicien de QUALILAB 'I.NOM' »). The denomination
+ * is the one field the administrator may change on their own account.
+ * Disabling revokes the sessions too — a banned user must be out
  * now, not at their next login; so does any change of what a portal account
  * can see (role in or out of CLIENT, another client).
  *
@@ -41,19 +46,10 @@ export async function PATCH(
 
   const user = await prisma.user.findUnique({
     where: { id },
-    select: { id: true, username: true, role: true, banned: true, clientId: true },
+    select: { id: true, username: true, role: true, banned: true, clientId: true, documentName: true },
   });
   if (!user) {
     return NextResponse.json({ error: "Utilisateur introuvable." }, { status: 404 });
-  }
-
-  // The admin cannot disable or demote themselves — the laboratory would be
-  // left without an administrator.
-  if (user.id === session.id) {
-    return NextResponse.json(
-      { error: "Vous ne pouvez pas modifier votre propre compte ici." },
-      { status: 400 }
-    );
   }
 
   let body: unknown;
@@ -68,9 +64,22 @@ export async function PATCH(
     clientId?: unknown;
     banned?: unknown;
     password?: unknown;
+    documentName?: unknown;
   };
+
+  // The admin cannot disable or demote themselves — the laboratory would be
+  // left without an administrator. Their own denomination on the documents
+  // changes nothing of the kind: it is the one field allowed here.
+  if (user.id === session.id && !onlyDocumentNameChange(fields)) {
+    return NextResponse.json(
+      { error: "Vous ne pouvez pas modifier votre propre compte ici." },
+      { status: 400 }
+    );
+  }
+
   const { role, banned, password } = fields;
   const clientGiven = Object.prototype.hasOwnProperty.call(fields, "clientId");
+  const documentNameGiven = Object.prototype.hasOwnProperty.call(fields, "documentName");
 
   // ---- Checks -------------------------------------------------------------
   if (role !== undefined && (typeof role !== "string" || !ASSIGNABLE_ROLES.includes(role as Role))) {
@@ -87,6 +96,10 @@ export async function PATCH(
       { error: `Le mot de passe ne peut pas dépasser ${PASSWORD_MAX_LENGTH} caractères.` },
       { status: 400 }
     );
+  }
+  const documentName = documentNameGiven ? readDocumentName(fields.documentName) : null;
+  if (documentName && !documentName.ok) {
+    return NextResponse.json({ error: documentName.error }, { status: 400 });
   }
 
   const touchesRole = typeof role === "string" || clientGiven;
@@ -122,6 +135,8 @@ export async function PATCH(
   const clientChanged = touchesRole && nextClientId !== user.clientId;
   const scopeChanged = roleChanged || clientChanged;
   const banChanged = typeof banned === "boolean";
+  const nextDocumentName = documentName?.ok ? documentName.value : user.documentName;
+  const documentNameChanged = nextDocumentName !== user.documentName;
   const passwordHash =
     typeof password === "string" ? await (await auth.$context).password.hash(password) : null;
   // A portal account that sees something else (role in or out of CLIENT,
@@ -133,15 +148,16 @@ export async function PATCH(
     { banned: banChanged ? banned : undefined, passwordReset: passwordHash !== null }
   );
 
-  if (scopeChanged || banChanged || passwordHash !== null) {
+  if (scopeChanged || banChanged || documentNameChanged || passwordHash !== null) {
     await prisma.$transaction([
-      ...(scopeChanged || banChanged
+      ...(scopeChanged || banChanged || documentNameChanged
         ? [
             prisma.user.update({
               where: { id },
               data: {
                 ...(scopeChanged ? { role: nextRole, clientId: nextClientId } : {}),
                 ...(banChanged ? { banned } : {}),
+                ...(documentNameChanged ? { documentName: nextDocumentName } : {}),
               },
             }),
           ]
@@ -205,6 +221,17 @@ export async function PATCH(
     });
   }
 
+  if (documentNameChanged) {
+    // null = the default « Technicien de QUALILAB 'I.NOM' », computed at print.
+    await logAudit({
+      actorId: session.id,
+      action: "USER_DOCUMENT_NAME_CHANGED",
+      entity: "User",
+      entityId: id,
+      metadata: { username: user.username, from: user.documentName, to: nextDocumentName },
+    });
+  }
+
   const updated = await prisma.user.findUnique({
     where: { id },
     select: {
@@ -213,6 +240,7 @@ export async function PATCH(
       username: true,
       role: true,
       banned: true,
+      documentName: true,
       clientId: true,
       client: { select: { id: true, name: true, archived: true, mergedIntoId: true } },
     },

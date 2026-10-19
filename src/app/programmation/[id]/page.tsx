@@ -19,13 +19,14 @@ import { BENCH_STATUSES } from "@/lib/bench-access";
 import { prisma } from "@/lib/prisma";
 import { getLabSettings } from "@/lib/lab-settings";
 import {
-  AIR_METHOD_LABELS,
   LINE_KIND_LABELS,
   QUANTITY_UNIT_LABELS,
   SERIE_KIND_LABELS,
   SURFACE_STATE_LABELS,
+  airMethodText,
   formatDateTime,
   formatDecimal,
+  surfaceAreaText,
 } from "@/lib/labels";
 import { loadProgrammeReferential, loadProgrammeSample, serializeProgramme } from "@/lib/programme-referential";
 import { labReference } from "@/lib/sample-select";
@@ -55,19 +56,24 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 /**
  * The identification fields the programme select leaves out: what names a
  * surface, a hands or an air sample — the surface's state and the air's
- * method included (RETOUR-LABO-06-10.md §5, V2 and V4) — and what
- * « Corriger la fiche » edits.
+ * method included (RETOUR-LABO-06-10.md §5, V2 and V4; the area's « Autre »
+ * and the plate's duration, 16/10) — and what « Corriger la fiche » edits,
+ * the two temperatures included (P9, 16/10).
  */
 const IDENTITY_SELECT = {
   productionDate: true,
   expiryDate: true,
+  productTemperature: true,
+  ambientTemperature: true,
   surfaceLabel: true,
   surfaceAreaCm2: true,
+  surfaceAreaNote: true,
   surfaceState: true,
   personName: true,
   personRole: true,
   handsState: true,
   airMethod: true,
+  airExposureMin: true,
   remarks: true,
   // A7: what the reception observed — the justification of an accepted doubt.
   receptionNote: true,
@@ -161,6 +167,7 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
                   personName: identity.personName,
                   surfaceState: identity.surfaceState,
                   airMethod: identity.airMethod,
+                  airExposureMin: identity.airExposureMin,
                 })}
                 {sample.numeroLot && <span className="ml-1.5 text-xs font-normal text-slate-500">lot {sample.numeroLot}</span>}
               </Field>
@@ -171,15 +178,18 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
                   ) : (
                     <span className="text-slate-400">État non renseigné</span>
                   )}
-                  {identity.surfaceAreaCm2 !== null && (
-                    <span className="ml-1.5 text-xs font-normal text-slate-500">{identity.surfaceAreaCm2} cm²</span>
+                  {/* « 100 cm² », or the « Autre » text in its place (16/10). */}
+                  {surfaceAreaText(identity.surfaceAreaCm2, identity.surfaceAreaNote) && (
+                    <span className="ml-1.5 text-xs font-normal text-slate-500">
+                      {surfaceAreaText(identity.surfaceAreaCm2, identity.surfaceAreaNote)}
+                    </span>
                   )}
                 </Field>
               )}
               {sample.lineKind === "AIR" && (
                 <Field icon={Wind} label="Méthode de prélèvement">
                   {identity.airMethod ? (
-                    AIR_METHOD_LABELS[identity.airMethod]
+                    airMethodText(identity.airMethod, identity.airExposureMin)
                   ) : (
                     <span className="text-slate-400">Non renseignée</span>
                   )}
@@ -261,10 +271,14 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
                   expiryDate: identity.expiryDate?.toISOString() ?? null,
                   quantity: sample.quantity,
                   quantityUnit: sample.quantityUnit,
+                  productTemperature: identity.productTemperature,
+                  ambientTemperature: identity.ambientTemperature,
                   surfaceLabel: identity.surfaceLabel,
                   surfaceAreaCm2: identity.surfaceAreaCm2,
+                  surfaceAreaNote: identity.surfaceAreaNote,
                   surfaceState: identity.surfaceState,
                   airMethod: identity.airMethod,
+                  airExposureMin: identity.airExposureMin,
                   personName: identity.personName,
                   personRole: identity.personRole,
                   handsState: identity.handsState,

@@ -32,6 +32,9 @@ enum EmailType {
   ALERTE_CONTAMINATION
   /// A line destroyed at reception, told to the client (RETOUR-LABO-30-09.md H3).
   DESTRUCTION
+  /// A visit's sample « Non reçu au laboratoire », told to the client — one
+  /// e-mail per sample (RETOUR-LABO-16-10.md B4, Q74). Appended last: additive.
+  NON_RECU
 }
 
 enum ResultWorkStatus {
@@ -110,6 +113,8 @@ enum SurfaceState {
 
 /// « Méthode de prélèvement » of an AIR line (RETOUR-LABO-06-10.md §5, V4).
 enum AirMethod {
+  /// « Boîte exposée » + its duration (`Sample.airExposureMin`, 16/10): the
+  /// stored value keeps its name — a null duration reads 30 min.
   BOITE_EXPOSEE_30MIN
   BIOCOLLECTEUR
 }
@@ -157,9 +162,18 @@ enum QuantityUnit {
   L
 }
 
+/// « État des mains » of a MAINS line, required on a new line since the
+/// laboratory's answers of 16/10 (Q109, Q110 — RETOUR-LABO-16-10.md §3, A1).
+/// The screens offer ASEPTISEES / NON_LAVEES / LAVEES (`HANDS_STATE_CHOICES`).
 enum HandsState {
+  /// « Lavées ».
   LAVEES
+  /// Reads « En cours de travail » since 16/10 — the laboratory's own
+  /// equivalence for the old « Mains non lavées »: the identifier is kept so
+  /// that no stored row is rewritten.
   NON_LAVEES
+  /// « Aseptisées ou désinfectées » (16/10), appended last.
+  ASEPTISEES
 }
 
 enum Family {
@@ -273,6 +287,13 @@ model User {
   /// /admin/utilisateurs routes). Every portal query filters on it.
   clientId String?
   client   Client? @relation("PortalUserClient", fields: [clientId], references: [id], onDelete: SetNull)
+
+  /// « Dénomination sur les documents » (lot 1b — RETOUR-LABO-16-10.md D5,
+  /// D6): how the report's « Préleveur » and the protocol's « Prélèvement
+  /// effectué par » name this technician, typed in /admin/utilisateurs.
+  /// Null = the default « Technicien de QUALILAB 'I.NOM' », computed from
+  /// `name` at print time (`defaultDocumentName`), never written here.
+  documentName String?
 
   samples              Sample[]
   /// The invoices and credit notes this user created (drafts included).
@@ -505,8 +526,13 @@ model Sample {
   receptionTemperature Float?
   /// « Désignation » of a SURFACE line (ex-« Surface prélevée »).
   surfaceLabel         String?
-  /// « Surface prélevée (cm²) » (ex-« Aire prélevée »).
+  /// « Surface prélevée (cm²) » (ex-« Aire prélevée »). Null on a SURFACE
+  /// line whose « Autre » was a text (`surfaceAreaNote`).
   surfaceAreaCm2       Int?
+  /// « Autre » of the surface sampled, when it is not an area in cm²
+  /// (« couteau entier », Q114 — RETOUR-LABO-16-10.md §3, A7): printed in
+  /// place of « N cm² »; SURFACE only, never together with `surfaceAreaCm2`.
+  surfaceAreaNote      String?
   /// « État de la surface » (RETOUR-LABO-06-10.md §5, V2): required on a new
   /// SURFACE line, null on every other kind and on the lines entered before.
   surfaceState         SurfaceState?
@@ -516,6 +542,10 @@ model Sample {
   /// « Méthode de prélèvement » (RETOUR-LABO-06-10.md §5, V4): required on a
   /// new AIR line, null on every other kind and on the lines entered before.
   airMethod            AirMethod?
+  /// « Durée d'exposition » of a « Boîte exposée » (Q50 — RETOUR-LABO-16-10.md
+  /// §3, A8), 1–480 min, 30 proposed. Null on any other method and on the
+  /// lines entered before, which read 30 min (`airMethodText`).
+  airExposureMin       Int?           @db.SmallInt
   remarks              String?        @db.Text
   /// Number of units read separately (n = 5 foods, n = 9 histamine).
   unitCount            Int            @default(1)

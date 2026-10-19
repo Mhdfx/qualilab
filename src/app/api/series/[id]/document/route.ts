@@ -8,15 +8,15 @@ import { documentLogo } from "@/lib/document-logo";
 import { DOC_TYPE_LABELS } from "@/lib/document-types";
 import { cartoucheTemplate } from "@/lib/cartouche-html";
 import { getLabSettings } from "@/lib/lab-settings";
-import { HANDS_STATE_LABELS } from "@/lib/labels";
 import { sampleRef } from "@/lib/reception-input";
-import { ROLE_LABELS, type Role } from "@/lib/roles";
 import {
   BON_MARGIN,
   PROTOCOL_MARGIN,
   buildBonHtml,
   buildProtocolHtml,
   documentFooter,
+  documentSamplerName,
+  protocolHandsDesignation,
   surfaceText,
   type DocumentLine,
   type SerieDocumentData,
@@ -80,7 +80,8 @@ export async function GET(
       createdById: true,
       client: { select: { name: true, address: true, phone: true } },
       site: { select: { name: true } },
-      samplerUser: { select: { name: true, role: true } },
+      // « Prélèvement effectué par »: the préleveur's denomination (D6).
+      samplerUser: { select: { name: true, documentName: true } },
       receivedBy: { select: { name: true } },
       samples: {
         select: {
@@ -92,8 +93,12 @@ export async function GET(
           produit: true,
           surfaceLabel: true,
           surfaceAreaCm2: true,
+          // « Autre » of the area (16/10): printed in its place.
+          surfaceAreaNote: true,
           surfaceState: true,
           airMethod: true,
+          // « Boîte exposée 45 min » (16/10).
+          airExposureMin: true,
           personName: true,
           personRole: true,
           handsState: true,
@@ -140,11 +145,11 @@ export async function GET(
     lineNumber: s.lineNumber,
     ref: sampleRef(s.lineNumber, s.code),
     lineKind: s.lineKind,
+    // The hands' own phrases (16/10): an old « non lavées » reprints
+    // « mains en cours de travail » — never the surface's words.
     designation:
       s.lineKind === "MAINS"
-        ? `${s.personName ?? ""}${s.personRole ? ` — ${s.personRole}` : ""}${
-            s.handsState ? ` (${HANDS_STATE_LABELS[s.handsState].toLowerCase()})` : ""
-          }`
+        ? protocolHandsDesignation(s)
         : s.lineKind === "SURFACE"
           ? s.surfaceLabel ?? ""
           : s.produit ?? "",
@@ -196,11 +201,9 @@ export async function GET(
     cadreNote: serie.cadreNote,
     interlocutor: serie.interlocutor,
     samplerKind: serie.samplerKind,
-    samplerName: serie.samplerKind === "QUALILAB" ? serie.samplerUser?.name ?? null : serie.samplerName,
-    samplerFunction:
-      serie.samplerKind === "QUALILAB" && serie.samplerUser
-        ? ROLE_LABELS[serie.samplerUser.role as Role] ?? serie.samplerUser.role
-        : null,
+    // « Technicien de QUALILAB 'I.NOM' » on a Qualilab sampling (D6, Q22):
+    // the denomination carries the function, no « — Fonction : » after it.
+    samplerName: documentSamplerName(serie),
     analysesMicro: serie.analysesMicro,
     analysesChimie: serie.analysesChimie,
     receivedByName: serie.receivedBy?.name ?? null,

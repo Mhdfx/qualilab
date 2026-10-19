@@ -21,7 +21,7 @@ import { sampleVerdict } from "@/lib/interpretation";
 import { repetitionLabel } from "@/lib/series";
 import { VerdictBadge } from "@/components/samples/VerdictBadge";
 import { SampleVerbs } from "@/components/samples/SampleVerbs";
-import { formatDateTime } from "@/lib/labels";
+import { formatDateTime, surfaceAreaText } from "@/lib/labels";
 import { raisesContaminationAlert } from "@/lib/contamination-alert";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
@@ -78,14 +78,20 @@ export default async function ValidationDetailPage({
       expiryDate: true,
       quantity: true,
       quantityUnit: true,
+      // « Corriger la fiche » corrects the two temperatures (P9, 16/10).
+      productTemperature: true,
+      ambientTemperature: true,
       surfaceLabel: true,
       surfaceAreaCm2: true,
+      // « Autre » of the area (16/10): printed in its place.
+      surfaceAreaNote: true,
       // « État de la surface » / « Méthode de prélèvement » (RETOUR-LABO-06-10.md §5).
       surfaceState: true,
       personName: true,
       personRole: true,
       handsState: true,
       airMethod: true,
+      airExposureMin: true,
       remarks: true,
       unitCount: true,
       clientId: true,
@@ -341,10 +347,14 @@ export default async function ValidationDetailPage({
                   expiryDate: sample.expiryDate?.toISOString() ?? null,
                   quantity: sample.quantity === null ? null : Number(sample.quantity),
                   quantityUnit: sample.quantityUnit,
+                  productTemperature: sample.productTemperature,
+                  ambientTemperature: sample.ambientTemperature,
                   surfaceLabel: sample.surfaceLabel,
                   surfaceAreaCm2: sample.surfaceAreaCm2,
+                  surfaceAreaNote: sample.surfaceAreaNote,
                   surfaceState: sample.surfaceState,
                   airMethod: sample.airMethod,
+                  airExposureMin: sample.airExposureMin,
                   personName: sample.personName,
                   personRole: sample.personRole,
                   handsState: sample.handsState,
@@ -371,8 +381,11 @@ export default async function ValidationDetailPage({
               </Field>
               <Field icon={Package} label="Désignation">
                 {designation === "—" ? <span className="text-slate-400">Non renseignée</span> : designation}
-                {sample.lineKind === "SURFACE" && sample.surfaceAreaCm2 !== null && (
-                  <span className="ml-1.5 text-xs font-normal text-slate-500">{sample.surfaceAreaCm2} cm²</span>
+                {/* « 100 cm² », or the « Autre » text in its place (16/10). */}
+                {sample.lineKind === "SURFACE" && surfaceAreaText(sample.surfaceAreaCm2, sample.surfaceAreaNote) && (
+                  <span className="ml-1.5 text-xs font-normal text-slate-500">
+                    {surfaceAreaText(sample.surfaceAreaCm2, sample.surfaceAreaNote)}
+                  </span>
                 )}
               </Field>
               <Field icon={Hash} label="N° de lot">

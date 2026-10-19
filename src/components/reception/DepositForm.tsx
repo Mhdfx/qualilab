@@ -44,7 +44,7 @@ import {
   rowToJustify,
   type ReceptionThresholds,
 } from "@/lib/reception-rules";
-import { COMPLEMENTARY_MESSAGES, expiredDlcNote, type ComplementaryKey } from "@/lib/reception-complementary";
+import { COMPLEMENTARY_MESSAGES, expiredDlcNote } from "@/lib/reception-complementary";
 import { parseIsoDay } from "@/lib/date-only";
 import {
   CONSULTATION_TIME_LABEL,
@@ -55,7 +55,7 @@ import {
   type ReceptionDecision,
 } from "@/lib/client-consultation";
 import { sampleRef } from "@/lib/reception-input";
-import { SERIE_MESSAGES, sampleLineMessage } from "@/lib/serie-input";
+import { SAMPLING_TIME_UNKNOWN, SERIE_MESSAGES, arrivalRefusal, sampleLineMessage } from "@/lib/serie-input";
 import { repetitionRange } from "@/lib/series";
 import { futureFieldError } from "@/lib/device-time";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
@@ -77,6 +77,7 @@ import {
   linePayload,
   localInputDate,
   mergeSuggestions,
+  toLocalInput,
   parameterFamily,
   serieAnalyses,
   type ClientMemory,
@@ -87,6 +88,7 @@ import {
   type ProfileOption,
 } from "@/components/preleveur/visit-types";
 import {
+  AllExploitableBar,
   Checklist,
   ConformityChip,
   ConsultationFields,
@@ -97,12 +99,15 @@ import {
   useMinuteClock,
 } from "./reception-widgets";
 import {
+  allExploitableNotice,
+  answerAllExploitable,
   countLabel,
   depositLineChecklist,
   familiesSummary,
   lineSampleRefs,
   sampleCount,
   storageDefaultLabel,
+  unansweredExploitableCount,
 } from "./reception-logic";
 
 const subscribeNoop = () => () => {};
@@ -122,10 +127,9 @@ type LineIntake = {
   chimieQuantity: string;
   /** Its unit; null = the line's own unit until one is chosen. */
   chimieQuantityUnit: QuantityUnit | null;
-  /** Rule (1) of the bon: null until the counter answers — never pre-answered. */
+  /** Rule (1) of the bon: null until the counter answers (the card, or « Tous exploitables ») — never pre-answered. */
   exploitable: boolean | null;
-  /** C3 (emballage) and C5 (identification): null until ticked — never pre-answered. */
-  packagingOk: boolean | null;
+  /** C5 (identification): null until ticked — never pre-answered. No C3 since 16/10 (Q70). */
   identificationOk: boolean | null;
   temperature: string;
   /** « Conservation » (C2) for the line; null = each sample's default. */
@@ -160,6 +164,8 @@ type CreatedDeposit = {
     /** Optional: only once the série's select carries them. */
     surfaceState?: SurfaceState | null;
     airMethod?: AirMethod | null;
+    /** The exposed plate's duration (16/10): « Boîte exposée 45 min ». */
+    airExposureMin?: number | null;
     controlCode: string | null;
     unitCount: number;
     conformity: boolean | null;
@@ -192,8 +198,8 @@ type CatalogueParameter = ParameterOption & { aliases?: string | null };
 
 /** The id of « Exploitable » on the card of a line — focused when rule (1) is unanswered. */
 const exploitableAnchor = (key: string) => `exploitable-${key}`;
-/** The id of « Oui » of a ticked control — focused when it is unanswered. */
-const tickAnchor = (control: "packaging" | "identification", key: string) => `${control}-${key}`;
+/** The id of « Oui » of C5 — focused when it is unanswered. */
+const identificationAnchor = (key: string) => `identification-${key}`;
 /** The id of « Observation de réception » — focused when an accepted doubt is not justified. */
 const noteAnchor = (key: string) => `obs-${key}`;
 
@@ -244,6 +250,12 @@ function depositLine(natures: readonly NatureOption[], previous?: LineDraft): Li
  * deposit is numbered and received in the same transaction (WORKFLOW.md
  * §3.2). The client is searched on the server (`ClientPicker`), never the
  * whole base loaded up front; its sites come with the client picked.
+ *
+ * The times (16/10, Q118): « Prélevé le » is required — the client who
+ * truly does not know ticks « Heure de prélèvement inconnue du client »
+ * (proposal of the re-ask 2.6, `SAMPLING_TIME_UNKNOWN`) — and « Arrivé le »
+ * too, pre-filled with the instant the form opened: the live delay (C1),
+ * the recap and the bon read it.
  */
 export function DepositForm({
   thresholds,
@@ -281,13 +293,26 @@ export function DepositForm({
   const [interlocutor, setInterlocutor] = useState("");
   const [clientReference, setClientReference] = useState("");
   // LEGAL wall time ("YYYY-MM-DDTHH:mm"): LabDateTimeInput converts a drifting device's hour.
-  // Empty until typed (C1): an undeclared time is never « now » — the API
-  // stores the counter's instant and the delay reads « à vérifier ».
+  // « Prélevé le », required (16/10, Q118): empty until the client gives it —
+  // never « now » —, or « inconnue du client » ticked on purpose (re-ask 2.6).
   const [startedAt, setStartedAt] = useState("");
-  // The counter's « now »: the deposit's arrival, for the live delay (C1).
+  const [samplingUnknown, setSamplingUnknown] = useState(false);
+  // The counter's clock: the reception instant (C7) and the arrival of an
+  // emptied « Arrivé le » (C1); null on the server and during hydration.
   const now = useMinuteClock();
-  // The « dans le futur » refusal, shown under « Prélevé le » (§8.1).
+  // « Arrivé le », required: while untouched, the current minute — never the
+  // instant the form opened: a form left open would date the arrival too
+  // early and C1 would understate the delay. Untouched, nothing is sent and
+  // the API stamps the save instant (`createSerie`). null = not edited yet;
+  // "" = emptied on purpose. The field is drawn once mounted, so the
+  // server's markup never shows this value.
+  const [editedArrival, setEditedArrival] = useState<string | null>(null);
+  const arrivedAt = editedArrival ?? (now ? toLocalInput(now) : "");
+  // The refusals shown under « Prélevé le » and « Arrivé le » (§8.1).
   const [startedError, setStartedError] = useState<string | null>(null);
+  const [arrivedError, setArrivedError] = useState<string | null>(null);
+  // « Tous exploitables »: the confirmation of the last click, read out.
+  const [bulkNotice, setBulkNotice] = useState("");
   const [notes, setNotes] = useState("");
   const [advanceAmount, setAdvanceAmount] = useState("");
   const [advanceMode, setAdvanceMode] = useState<PaymentMode | "">("");
@@ -388,7 +413,6 @@ export function DepositForm({
         chimieQuantity: "",
         chimieQuantityUnit: null,
         exploitable: null,
-        packagingOk: null,
         identificationOk: null,
         temperature: "",
         storageClass: null,
@@ -417,15 +441,27 @@ export function DepositForm({
   }
 
   /**
-   * A ticked control answered for the line (C3, C5). « Non » makes it non
-   * conform with the control's motif unless one is chosen; « Oui » afterwards
-   * drops that motif.
+   * « Tous exploitables » (16/10, Q64): rule (1) « Exploitable » on every
+   * line still unanswered — a « Non exploitable » already chosen stays, and
+   * an unanswered line carries no rule (1) motif, so nothing else moves.
    */
-  function answerTick(key: string, control: Extract<ComplementaryKey, "EMBALLAGE" | "IDENTIFICATION">, ok: boolean) {
+  function answerAllLines() {
+    const { lines: answered, count } = answerAllExploitable(lines.map((line) => intakeOf(line.key)));
+    if (count === 0) return;
+    setIntake((prev) => ({ ...prev, ...Object.fromEntries(lines.map((line, i) => [line.key, answered[i]])) }));
+    setBulkNotice(allExploitableNotice(count));
+    clearError();
+  }
+
+  /**
+   * C5 answered for the line. « Non » makes it non conform with the motif
+   * IDENTIFICATION unless one is chosen; « Oui » afterwards drops that motif.
+   */
+  function answerIdentification(key: string, ok: boolean) {
     const current = intakeOf(key);
     updateIntake(key, {
-      [control === "EMBALLAGE" ? "packagingOk" : "identificationOk"]: ok,
-      reason: ok ? (current.reason === control ? "" : current.reason) : current.reason || control,
+      identificationOk: ok,
+      reason: ok ? (current.reason === "IDENTIFICATION" ? "" : current.reason) : current.reason || "IDENTIFICATION",
     });
   }
 
@@ -452,16 +488,15 @@ export function DepositForm({
     const index = lines.findIndex((l) => l.key === key);
     if (index < 0) return;
     const copy = duplicateDraft(lines[index], natures);
-    // The copy is another sample: rule (1) and the ticked controls are
+    // The copy is another sample: rule (1) and the ticked control are
     // answered for it again, and their motifs do not travel without them.
     const source = intakeOf(key);
-    const answered: NonConformityReason[] = ["NON_EXPLOITABLE", "EMBALLAGE", "IDENTIFICATION"];
+    const answered: NonConformityReason[] = ["NON_EXPLOITABLE", "IDENTIFICATION"];
     setIntake((current) => ({
       ...current,
       [copy.key]: {
         ...source,
         exploitable: null,
-        packagingOk: null,
         identificationOk: null,
         // What was observed on the original is not the copy's, nor the client's agreement.
         receptionNote: "",
@@ -495,7 +530,8 @@ export function DepositForm({
     const twins = samples.length > 1;
     const extra = intakeOf(line.key);
     const chimieUnit = extra.chimieQuantityUnit ?? line.quantityUnit;
-    const typedStart = localInputDate(startedAt);
+    const typedStart = samplingUnknown ? null : localInputDate(startedAt);
+    const typedArrival = localInputDate(arrivedAt);
     const productType = productTypes.find((t) => t.id === line.productTypeId);
     const { rows, proposal } = depositLineChecklist(
       {
@@ -512,19 +548,22 @@ export function DepositForm({
         receptionTemperature: numberOrNull(extra.temperature),
         unitCount: line.unitCount,
         exploitable: extra.exploitable,
-        packagingOk: extra.packagingOk,
         identificationOk: extra.identificationOk,
         storageClass: extra.storageClass,
         // C7: the DLC typed on a food line.
         expiryDate: line.lineKind === "ALIMENT" && line.expiryDate ? parseIsoDay(line.expiryDate) : null,
         // Typed at the counter: measured on the sample.
         temperatureSource: extra.temperature.trim() ? "ECHANTILLON" : null,
+        // C1, as POST /api/series computes it (16/10, Q118): the arrival
+        // typed; the sampling typed — or, unknown to the client, the arrival
+        // and « non déclarée ». An empty « Prélevé le » is not an answer yet:
+        // the delay waits (« non calculé »).
         serie: now
           ? {
-              startedAt: typedStart ?? now,
+              startedAt: samplingUnknown ? (typedArrival ?? now) : typedStart,
               endedAt: null,
-              arrivedAt: now,
-              samplingTimeDeclared: typedStart !== null,
+              arrivedAt: typedArrival ?? now,
+              samplingTimeDeclared: !samplingUnknown,
               receivedAt: now,
             }
           : null,
@@ -573,13 +612,19 @@ export function DepositForm({
     if (!cadre) return setStepError(SERIE_MESSAGES.cadreMissing);
     // An unfinished or invalid date-time before any check of the times: the
     // form still holds the value from before it (the field gets the focus,
-    // its own message stays under it). « Prélevé le », then the client's
-    // agreement of each line where it is shown.
-    const startedPending = dateTimePending("deposit-started");
-    if (startedPending) {
-      setStartedError(null);
-      reveal("deposit-started");
-      return setStepError(startedPending);
+    // its own message stays under it). « Prélevé le » (skipped while
+    // disabled), « Arrivé le », then the client's agreement of each line
+    // where it is shown.
+    for (const [field, clear] of [
+      ["deposit-started", () => setStartedError(null)],
+      ["deposit-arrived", () => setArrivedError(null)],
+    ] as const) {
+      const pending = dateTimePending(field);
+      if (pending) {
+        clear();
+        reveal(field);
+        return setStepError(pending);
+      }
     }
     for (const [i, line] of lines.entries()) {
       const atId = consultationAtId(`accord-${line.key}`);
@@ -590,12 +635,30 @@ export function DepositForm({
         return false;
       }
     }
-    // The server's own check (5 min of tolerance), told next to the field before « Continuer » (§8.1).
-    const future = futureFieldError("L'heure du prélèvement", startedAt);
-    setStartedError(future);
-    if (future) {
+    // Both times are required (16/10, Q118) — the sampling one unless the
+    // client does not know it —, then the server's own checks (5 min of
+    // tolerance; the arrival never before the sampling), told next to their
+    // field before « Continuer » (§8.1).
+    const startedProblem = samplingUnknown
+      ? null
+      : startedAt
+        ? futureFieldError("L'heure du prélèvement", startedAt)
+        : SERIE_MESSAGES.depositStartedMissing;
+    setStartedError(startedProblem);
+    if (startedProblem) {
       reveal("deposit-started");
-      return setStepError(future);
+      return setStepError(startedProblem);
+    }
+    const typedStart = samplingUnknown ? null : localInputDate(startedAt);
+    const arrival = localInputDate(arrivedAt);
+    const arrivedProblem = !arrivedAt
+      ? SERIE_MESSAGES.arrivalMissing
+      : (futureFieldError("L'heure d'arrivée", arrivedAt) ??
+        (arrival && typedStart ? arrivalRefusal(arrival, typedStart, null) : null));
+    setArrivedError(arrivedProblem);
+    if (arrivedProblem) {
+      reveal("deposit-arrived");
+      return setStepError(arrivedProblem);
     }
     if (advanceAmount.trim() && !advanceMode) return setStepError("Indiquez le mode de paiement de l'avance.");
     for (const [i, line] of lines.entries()) {
@@ -610,15 +673,10 @@ export function DepositForm({
         requestAnimationFrame(() => document.getElementById(exploitableAnchor(line.key))?.focus({ preventScroll: true }));
         return false;
       }
-      // C3 and C5 too.
-      if (extra.packagingOk === null || extra.identificationOk === null) {
-        const packaging = extra.packagingOk === null;
-        setStepError(
-          sampleLineMessage(n, packaging ? COMPLEMENTARY_MESSAGES.packagingMissing : COMPLEMENTARY_MESSAGES.identificationMissing),
-          n
-        );
-        const anchor = tickAnchor(packaging ? "packaging" : "identification", line.key);
-        requestAnimationFrame(() => document.getElementById(anchor)?.focus({ preventScroll: true }));
+      // C5 too.
+      if (extra.identificationOk === null) {
+        setStepError(sampleLineMessage(n, COMPLEMENTARY_MESSAGES.identificationMissing), n);
+        requestAnimationFrame(() => document.getElementById(identificationAnchor(line.key))?.focus({ preventScroll: true }));
         return false;
       }
       if (!conformity && !reason) return setStepError(sampleLineMessage(n, "Choisissez le motif de non-conformité."), n);
@@ -665,7 +723,11 @@ export function DepositForm({
           samplerName: samplerKind === "CLIENT" ? undefined : samplerName,
           interlocutor,
           clientReference,
-          startedAt: fromLocalInput(startedAt) ?? undefined,
+          // Unknown to the client: the box, never an empty time (16/10, Q118).
+          startedAt: samplingUnknown ? undefined : (fromLocalInput(startedAt) ?? undefined),
+          samplingTimeUnknown: samplingUnknown || undefined,
+          // Untouched: the API's own save instant, the minute shown.
+          arrivedAt: editedArrival === null ? undefined : (fromLocalInput(arrivedAt) ?? undefined),
           notes,
           advanceAmount: advanceAmount || undefined,
           advanceMode: advanceMode || undefined,
@@ -677,7 +739,6 @@ export function DepositForm({
               // « Quantité 2P », a two-family line only (one container per family, 12/10).
               ...(twins ? { quantityChimie: extra.chimieQuantity, quantityUnitChimie: chimieUnit } : {}),
               exploitable: extra.exploitable,
-              packagingOk: extra.packagingOk,
               identificationOk: extra.identificationOk,
               receptionTemperature: extra.temperature,
               receptionTemperatureSource: extra.temperature.trim() ? "ECHANTILLON" : undefined,
@@ -735,7 +796,7 @@ export function DepositForm({
                 {[
                   created.client.name,
                   created.site?.name,
-                  created.arrivedAt ? formatDateTime(created.arrivedAt) : null,
+                  created.arrivedAt ? `Arrivé le ${formatDateTime(created.arrivedAt)}` : null,
                   countLabel(samples.length, "échantillon numéroté", "échantillons numérotés"),
                   countLabel(units, "étiquette"),
                 ]
@@ -992,44 +1053,6 @@ export function DepositForm({
                   />
                 </div>
                 <div>
-                  <label htmlFor="deposit-started" className="section-title mb-2">
-                    <Clock className="h-4 w-4" />
-                    Prélevé le
-                  </label>
-                  {/* Rendered once mounted: the field reads the device's clock (drift hint). */}
-                  {isMounted ? (
-                    <LabDateTimeInput
-                      id="deposit-started"
-                      value={startedAt}
-                      onChange={(legalWall) => {
-                        setStartedAt(legalWall);
-                        if (startedError) {
-                          setStartedError(null);
-                          clearError();
-                        }
-                      }}
-                      errorId={startedError ? "deposit-started-error" : undefined}
-                    />
-                  ) : (
-                    <div className="input-field px-4" aria-hidden="true" />
-                  )}
-                  {startedError ? (
-                    <p id="deposit-started-error" className="mt-1 text-xs font-medium text-rose-700">
-                      {startedError}
-                    </p>
-                  ) : (
-                    !startedAt && (
-                      <p className="mt-1 text-xs text-slate-500">
-                        Demandez au client la date et l&apos;heure du prélèvement : laissé vide, le délai
-                        prélèvement → laboratoire (C1) sera « à vérifier ».
-                      </p>
-                    )
-                  )}
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
                   <label htmlFor="deposit-reference" className="section-title mb-2">
                     <ClipboardList className="h-4 w-4" />
                     Référence client
@@ -1043,6 +1066,111 @@ export function DepositForm({
                     className="input-field px-4"
                   />
                 </div>
+              </div>
+
+              {/* The two times of the série, both required (16/10, Q118). */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="deposit-started" className="section-title mb-2">
+                    <Clock className="h-4 w-4" />
+                    Prélevé le
+                    <span className="-ml-1 text-rose-600" aria-hidden="true">*</span>
+                    <span className="sr-only">(obligatoire)</span>
+                  </label>
+                  {/* Rendered once mounted: the field reads the device's clock (drift hint). */}
+                  {isMounted ? (
+                    <LabDateTimeInput
+                      id="deposit-started"
+                      value={startedAt}
+                      required={!samplingUnknown}
+                      disabled={samplingUnknown}
+                      onChange={(legalWall) => {
+                        setStartedAt(legalWall);
+                        if (startedError) {
+                          setStartedError(null);
+                          clearError();
+                        }
+                      }}
+                      errorId={startedError ? "deposit-started-error" : undefined}
+                    />
+                  ) : (
+                    <div className="input-field px-4" aria-hidden="true" />
+                  )}
+                  {SAMPLING_TIME_UNKNOWN.allowed && (
+                    <label className="mt-2 flex min-h-[44px] cursor-pointer items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={samplingUnknown}
+                        onChange={(e) => {
+                          const unknown = e.target.checked;
+                          setSamplingUnknown(unknown);
+                          // « Inconnue » and a time shown together would contradict each other.
+                          if (unknown) setStartedAt("");
+                          setStartedError(null);
+                          clearError();
+                        }}
+                        className="h-5 w-5 rounded border-slate-300 text-brand focus:ring-brand"
+                      />
+                      {SAMPLING_TIME_UNKNOWN.label}
+                    </label>
+                  )}
+                  {startedError ? (
+                    <p id="deposit-started-error" className="mt-1 text-xs font-medium text-rose-700">
+                      {startedError}
+                    </p>
+                  ) : samplingUnknown ? (
+                    <p className="mt-1 text-xs text-amber-800">
+                      Imprimé « Non déclarée » ; le délai prélèvement → laboratoire (C1) sera « à vérifier » et
+                      l&apos;observation de réception obligatoire pour accepter un échantillon conforme.
+                    </p>
+                  ) : (
+                    !startedAt && (
+                      <p className="mt-1 text-xs text-slate-500">Demandez au client la date et l&apos;heure du prélèvement.</p>
+                    )
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="deposit-arrived" className="section-title mb-2">
+                    <Clock className="h-4 w-4" />
+                    Arrivé le
+                    <span className="-ml-1 text-rose-600" aria-hidden="true">*</span>
+                    <span className="sr-only">(obligatoire)</span>
+                  </label>
+                  {isMounted ? (
+                    <LabDateTimeInput
+                      id="deposit-arrived"
+                      value={arrivedAt}
+                      required
+                      nowButton
+                      onChange={(legalWall) => {
+                        setEditedArrival(legalWall);
+                        if (arrivedError) {
+                          setArrivedError(null);
+                          clearError();
+                        }
+                      }}
+                      errorId={arrivedError ? "deposit-arrived-error" : undefined}
+                      describedBy={arrivedError ? undefined : "deposit-arrived-note"}
+                    />
+                  ) : (
+                    <div className="input-field px-4" aria-hidden="true" />
+                  )}
+                  {arrivedError ? (
+                    <p id="deposit-arrived-error" className="mt-1 text-xs font-medium text-rose-700">
+                      {arrivedError}
+                    </p>
+                  ) : (
+                    <p id="deposit-arrived-note" className="mt-1 text-xs text-slate-500">
+                      {editedArrival === null
+                        ? "Date et heure de réception au laboratoire : l'heure actuelle tant que vous ne la modifiez pas — corrigez-la si l'échantillon est arrivé plus tôt."
+                        : "Date et heure de réception au laboratoire."}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Alone on its row since « Référence client » moved beside « Déposé par »: a narrow block, no empty grid column. */}
+              <div className="sm:max-w-md">
                 <div>
                   <label htmlFor="deposit-advance" className="section-title mb-2">
                     <Wallet className="h-4 w-4" />
@@ -1074,6 +1202,14 @@ export function DepositForm({
               </div>
             </div>
           </Card>
+
+          {lines.length > 0 && (
+            <AllExploitableBar
+              count={unansweredExploitableCount(lines.map((line) => intakeOf(line.key)))}
+              notice={bulkNotice}
+              onAnswer={answerAllLines}
+            />
+          )}
 
           {lines.map((line, index) => {
             const number = index + 1;
@@ -1170,16 +1306,10 @@ export function DepositForm({
                       invalid: errorLine === number && extra.exploitable === null,
                     }}
                     ticks={{
-                      EMBALLAGE: {
-                        value: extra.packagingOk,
-                        onChange: (ok) => answerTick(line.key, "EMBALLAGE", ok),
-                        id: tickAnchor("packaging", line.key),
-                        invalid: errorLine === number && extra.packagingOk === null,
-                      },
                       IDENTIFICATION: {
                         value: extra.identificationOk,
-                        onChange: (ok) => answerTick(line.key, "IDENTIFICATION", ok),
-                        id: tickAnchor("identification", line.key),
+                        onChange: (ok) => answerIdentification(line.key, ok),
+                        id: identificationAnchor(line.key),
                         invalid: errorLine === number && extra.identificationOk === null,
                       },
                     }}
@@ -1345,11 +1475,14 @@ export function DepositForm({
               <Row
                 label="Prélevé le"
                 value={
-                  isMounted && startedAt
-                    ? formatDateTime(localInputDate(startedAt)!)
-                    : "Non déclaré — heure à demander au client"
+                  samplingUnknown
+                    ? "Heure inconnue du client — « Non déclarée »"
+                    : isMounted && startedAt
+                      ? formatDateTime(localInputDate(startedAt)!)
+                      : "—"
                 }
               />
+              <Row label="Arrivé le" value={isMounted && arrivedAt ? formatDateTime(localInputDate(arrivedAt)!) : "—"} />
               {clientReference && <Row label="Référence client" value={clientReference} />}
               <Row label="Analyses à effectuer" value={serieFamilies.length > 0 ? familiesSummary(serieFamilies) : "—"} />
               {advanceAmount && <Row label="Avance" value={`${advanceAmount} DH — ${PAYMENT_MODES.find((m) => m.value === advanceMode)?.label ?? ""}`} />}

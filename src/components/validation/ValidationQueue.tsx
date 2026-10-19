@@ -24,6 +24,8 @@ export type ValidationItem = {
   surfaceState: SurfaceState | null;
   personName: string | null;
   airMethod: AirMethod | null;
+  /** The exposed plate's duration (16/10): « Boîte exposée 45 min ». */
+  airExposureMin?: number | null;
   validatedById: string | null;
   approvedById: string | null;
   client: { name: string };

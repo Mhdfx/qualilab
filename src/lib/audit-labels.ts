@@ -42,6 +42,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   CLIENT_CONSULTED: "Accord du client enregistré",
   SAMPLES_EXPORTED: "Synthèse des analyses exportée (Excel)",
   DESTRUCTION_NOTIFIED: "Client informé d'une destruction",
+  // Whatever the outcome (sent, simulated, failed, nobody to write to): the metadata's `status` says it.
+  NOT_RECEIVED_NOTIFIED: "Avis « échantillon non reçu » au client",
   REGULATION_CREATED: "Réglementation créée",
   REGULATION_UPDATED: "Réglementation modifiée",
   SAMPLE_REGULATION_SET: "Réglementation choisie pour un échantillon",
@@ -107,6 +109,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   USER_PASSWORD_RESET: "Mot de passe réinitialisé",
   USER_PASSWORD_CHANGED: "Mot de passe modifié par l'utilisateur",
   USER_CLIENT_CHANGED: "Client d'un compte portail modifié",
+  // Lot 1b (RETOUR-LABO-16-10.md D5): « Technicien de QUALILAB 'I.NOM' ».
+  USER_DOCUMENT_NAME_CHANGED: "Dénomination sur les documents modifiée",
   USER_DISABLED: "Compte désactivé",
   USER_ENABLED: "Compte réactivé",
   EQUIPMENT_CREATED: "Équipement créé",

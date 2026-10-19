@@ -52,6 +52,7 @@ export default async function ValidationPage({
         surfaceState: true,
         personName: true,
         airMethod: true,
+        airExposureMin: true,
         validatedById: true,
         approvedById: true,
         receivedAt: true,

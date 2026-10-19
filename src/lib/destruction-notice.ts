@@ -7,6 +7,7 @@ import { getCompany } from "./company-server";
 import { destructionEmail } from "./emails/templates";
 import { NON_CONFORMITY_REASON_LABELS } from "./labels";
 import { sampleDesignation } from "./document-html";
+import { receptionInstant } from "./report-template";
 
 /**
  * Tells the client that samples of a série were destroyed at reception
@@ -30,6 +31,7 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
       surfaceLabel: true,
       surfaceState: true,
       airMethod: true,
+      airExposureMin: true,
       personName: true,
       numeroLot: true,
       lieu: true,
@@ -39,7 +41,8 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
       conformityNote: true,
       // `samplingTimeDeclared`: « Non déclarée » rather than the instant a
       // deposit was entered (R6).
-      serie: { select: { serialNumber: true, siteId: true, samplingTimeDeclared: true } },
+      // `arrivedAt`: « Date de réception » as the reports print it since lot 1b.
+      serie: { select: { serialNumber: true, siteId: true, samplingTimeDeclared: true, arrivedAt: true } },
     },
     // The two samples of a two-family line: « …M » before « …P ».
     orderBy: [{ lineNumber: "asc" }, { code: "asc" }],
@@ -53,7 +56,8 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
     serialNumber: first.serie.serialNumber,
     sampledAt: first.sampledAt,
     samplingTimeDeclared: first.serie.samplingTimeDeclared,
-    receivedAt: first.receivedAt,
+    // The arrival, as the report and its e-mail print it (`printedReceptionAt`): one reception day per sample.
+    receivedAt: receptionInstant({ arrivedAt: first.serie.arrivedAt, receivedAt: first.receivedAt }),
     lines: samples.map((s) => ({
       controlCode: s.controlCode,
       // « Planche verte — surface nettoyée », « Salle — Biocollecteur ».

@@ -166,6 +166,17 @@ describe("toPortalRow", () => {
     expect(PORTAL_SAMPLE_SELECT.report.select.amendmentPending).toBe(true);
   });
 
+  it("« Reçu le » is the report's « Date de réception » (lot 1b): the arrival, once received", () => {
+    const evening = new Date(2026, 8, 1, 19, 30);
+    const serie = { serialNumber: "2780/26", site: null, samplingTimeDeclared: null, arrivedAt: evening };
+    expect(toPortalRow(record({ serie, receivedAt: new Date(2026, 8, 2, 8, 0) })).receivedAt).toEqual(evening);
+    // Not received yet (or « Non reçu »): no date, even with an arrival recorded.
+    expect(toPortalRow(record({ serie, status: "PRELEVE", receivedAt: null })).receivedAt).toBeNull();
+    // A série without an arrival keeps the reception instant.
+    expect(toPortalRow(record()).receivedAt).toEqual(new Date(2026, 8, 2));
+    expect(PORTAL_SAMPLE_SELECT.serie.select.arrivedAt).toBe(true);
+  });
+
   it("names the site, or the « Siège » as null", () => {
     expect(toPortalRow(record()).siteName).toBe("Atelier Nord");
     expect(toPortalRow(record({ serie: { serialNumber: "2780/26", site: null, samplingTimeDeclared: null } })).siteName).toBeNull();

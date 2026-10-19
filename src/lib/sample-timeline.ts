@@ -38,8 +38,9 @@ export type TimelineSample = {
   sampledAt: Date;
   /**
    * The série's `samplingTimeDeclared`: false on a deposit whose « Prélevé
-   * le » was left empty — `sampledAt` is then the moment the deposit was
-   * entered, not a sampling, and no « Prélèvement » step is shown. Null or
+   * le » was left empty (before 16/10) or ticked « Heure de prélèvement
+   * inconnue du client » — `sampledAt` is then the save instant / the
+   * arrival, not a sampling, and no « Prélèvement » step is shown. Null or
    * absent (a visit, an older série): `sampledAt` is shown as recorded.
    */
   samplingTimeDeclared?: boolean | null;
@@ -189,6 +190,26 @@ export const TIMELINE_ACTIONS: Record<string, ActionSpec> = {
     note: (meta) => join(cancelReason(meta.reason), text(meta.note)),
   },
   SAMPLE_REACTIVATED: { label: "Échantillon réactivé", tone: "neutral", note: (meta) => text(meta.note) },
+  // « Non reçu au laboratoire » told to the client, one e-mail per sample
+  // (16/10, Q74). Told only when the e-mail left: a simulated one (no
+  // provider configured) never left the laboratory — a warning, as a failure.
+  NOT_RECEIVED_NOTIFIED: {
+    label: (meta) =>
+      meta.status === "ENVOYE"
+        ? "Client prévenu : échantillon non reçu"
+        : meta.status === "SIMULE"
+          ? "Avis de non-réception simulé (non remis)"
+          : "Client non prévenu de l'échantillon non reçu",
+    tone: (meta) => (meta.status === "ENVOYE" ? "neutral" : "warning"),
+    note: (meta) =>
+      meta.status === "NON_ENVOYE"
+        ? text(meta.error)
+        : meta.status === "ECHEC"
+          ? sendStatus(meta.status)
+          : Array.isArray(meta.to)
+            ? meta.to.filter((entry): entry is string => typeof entry === "string").join(", ") || null
+            : null,
+  },
 };
 
 /** The codes the loader asks the journal for. */
@@ -212,6 +233,7 @@ const CIRCUIT_ORDER = [
   "SAMPLE_INTAKE_CORRECTED",
   "SAMPLE_CANCELLED",
   "CANCELLED",
+  "NOT_RECEIVED_NOTIFIED",
   "SAMPLE_REACTIVATED",
   "SAMPLE_AWAITING_CLIENT",
   "CLIENT_CONSULTED",

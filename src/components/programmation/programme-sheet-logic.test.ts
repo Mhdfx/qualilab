@@ -403,7 +403,7 @@ describe("entry check and billing", () => {
   it("shows the contrôles complémentaires as ticked at reception, informative only", () => {
     const draft = initialDraft(received, referential);
     const answered = entryChecks(
-      { ...sample, receptionExploitable: true, receptionPackagingOk: false, receptionIdentificationOk: true },
+      { ...sample, receptionExploitable: true, receptionIdentificationOk: false },
       draft,
       referential,
       DEFAULT_THRESHOLDS
@@ -411,18 +411,18 @@ describe("entry check and billing", () => {
     // The paper's seven first, then the coded rows.
     expect(answered.slice(0, 7).every((r) => !r.code)).toBe(true);
     // A « Non » at reception is only « à vérifier » here, its motif kept.
-    expect(coded(answered, "C3")).toMatchObject({ key: "EMBALLAGE", status: "A_VERIFIER", reason: "EMBALLAGE" });
-    expect(coded(answered, "C5")).toMatchObject({ key: "IDENTIFICATION", status: "CONFORME" });
+    expect(coded(answered, "C5")).toMatchObject({ key: "IDENTIFICATION", status: "A_VERIFIER", reason: "IDENTIFICATION" });
+    // No C3 (emballage) since 16/10 (Q70) — not even a « Non renseigné » row on a new sample.
+    expect(answered.some((r) => r.code === "C3" || r.key === "EMBALLAGE")).toBe(false);
 
     // Received before the controls: no answer, said so.
-    for (const old of [sample, { ...sample, receptionPackagingOk: null, receptionIdentificationOk: null }]) {
+    for (const old of [sample, { ...sample, receptionIdentificationOk: null }]) {
       const rows = entryChecks(old, draft, referential, DEFAULT_THRESHOLDS);
-      for (const code of ["C3", "C5"]) {
-        expect(coded(rows, code)).toMatchObject({
-          status: "A_VERIFIER",
-          detail: "Non renseigné : échantillon réceptionné avant les contrôles complémentaires",
-        });
-      }
+      expect(coded(rows, "C5")).toMatchObject({
+        status: "A_VERIFIER",
+        detail: "Non renseigné : échantillon réceptionné avant les contrôles complémentaires",
+      });
+      expect(rows.some((r) => r.code === "C3")).toBe(false);
     }
   });
 

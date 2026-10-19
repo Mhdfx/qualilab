@@ -39,6 +39,7 @@ export async function GET() {
       // « Planche verte — surface nettoyée » / « Air — Biocollecteur ».
       surfaceState: true,
       airMethod: true,
+      airExposureMin: true,
       lieu: true,
       status: true,
       unitCount: true,

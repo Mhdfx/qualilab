@@ -64,7 +64,7 @@ export default async function EnvoisPage({
       <PageHeader
         badge="Système"
         title="Envois d'e-mails"
-        subtitle="Rapports, alertes de contamination et avis de destruction : date, destinataires, statut. 50 envois par page, les plus récents d'abord."
+        subtitle="Rapports, alertes de contamination, avis de destruction et avis d'échantillon non reçu : date, destinataires, statut. 50 envois par page, les plus récents d'abord."
       />
 
       {!process.env.RESEND_API_KEY && (

@@ -224,9 +224,10 @@ export function rechercheHref(link: RechercheLink = {}): string {
 /**
  * The sampling date a list, a fiche or an e-mail may print of a sample
  * (RETOUR-LABO-14-10, reception R6 and C5): null on a deposit whose « Prélevé
- * le » was left empty (`Serie.samplingTimeDeclared === false`) —
- * `Sample.sampledAt` then holds the instant the deposit was entered at the
- * counter, which is no sampling. A visit, or a série entered before the flag
+ * le » was left empty (before 16/10) or ticked « Heure de prélèvement
+ * inconnue du client » (`Serie.samplingTimeDeclared === false`) —
+ * `Sample.sampledAt` then holds the save instant, or the arrival, which is
+ * no sampling. A visit, or a série entered before the flag
  * existed (null or absent), keeps `sampledAt` as recorded. The report
  * (`report-html.ts`) and the timeline (`sample-timeline.ts`) apply the same
  * rule. Filters and sorts still read the column (`sampleSearchWhere`).

@@ -11,7 +11,6 @@ import {
   expiredDlcNote,
   formatDelay,
   labDayOf,
-  packagingHint,
   parseChoice,
   STABLE_FOOD_STORAGE_LABEL,
   STORAGE_CLASSES,
@@ -25,6 +24,7 @@ import {
   type ComplementarySerie,
 } from "./reception-complementary";
 import { DEFAULT_THRESHOLDS, checklistRowLabel, proposedConformity, receptionChecklist, type ChecklistRow } from "./reception-rules";
+import { parseReceptionAudit } from "./reception-audit";
 
 /**
  * The contrôles complémentaires of the reception (hors bon), C1 … C7 —
@@ -37,7 +37,7 @@ const line = (over: Partial<ComplementaryLine> = {}): ComplementaryLine => ({
   ...over,
 });
 
-const ticked: ComplementaryAnswers = { packagingOk: true, identificationOk: true };
+const ticked: ComplementaryAnswers = { identificationOk: true };
 
 /** Sampled 08:00 → 09:00, arrived 12:30 (UTC, after Morocco's return to GMT). */
 const timing: ComplementarySerie = {
@@ -58,10 +58,10 @@ const byCode = (list: ChecklistRow[], code: string) => list.find((row) => row.co
 
 describe("the registry", () => {
   it("codes each check, in code order, so it never reads as a rule of the paper", () => {
+    // No C3 since 16/10 (Q70): the other codes keep their numbers.
     expect(COMPLEMENTARY_CHECKS.map((check) => [check.code, check.key, check.mode])).toEqual([
       ["C1", "DELAI", "COMPUTED"],
       ["C2", "TRANSPORT_TEMP", "COMPUTED"],
-      ["C3", "EMBALLAGE", "TICK"],
       ["C5", "IDENTIFICATION", "TICK"],
       ["C7", "DLC", "COMPUTED"],
     ]);
@@ -278,34 +278,44 @@ describe("C7 — DLC (food only, a warning)", () => {
   });
 });
 
-describe("C3 — emballage / contenant (C4 on a water sample)", () => {
-  it("waits for the tick, then reads Oui / Non", () => {
-    expect(byCode(rows({}, { packagingOk: null }), "C3")).toMatchObject({
-      n: 3,
-      key: "EMBALLAGE",
-      status: "A_CONFIRMER",
-      detail: "Emballage d'origine fermé ou sachet stérile",
-      rules: ["EMBALLAGE"],
-    });
-    expect(byCode(rows(), "C3")).toMatchObject({ status: "CONFORME" });
-    expect(byCode(rows(), "C3")).not.toHaveProperty("reason");
-    expect(byCode(rows({}, { packagingOk: false }), "C3")).toMatchObject({ status: "NON_CONFORME", reason: "EMBALLAGE" });
+describe("C3 — emballage, no longer asked (16/10, Q70)", () => {
+  it("gives no C3 row (nor the C4 hint) on any kind of sample", () => {
+    const kinds: [LineKind, Family][] = [
+      ["ALIMENT", "MICRO"],
+      ["ALIMENT", "CHIMIE"],
+      ["SURFACE", "MICRO"],
+      ["MAINS", "MICRO"],
+      ["EAU", "MICRO"],
+      ["EAU", "CHIMIE"],
+      ["AIR", "MICRO"],
+      ["AUTRE", "MICRO"],
+    ];
+    for (const [lineKind, family] of kinds) {
+      const list = rows({ lineKind, family });
+      expect(list.some((row) => row.code === "C3" || row.key === "EMBALLAGE"), `${lineKind} ${family}`).toBe(false);
+      expect(list.some((row) => row.detail?.includes("C4")), `${lineKind} ${family}`).toBe(false);
+    }
   });
 
-  it("gives the hint of the kind of sample", () => {
-    const hints: [LineKind, Family, string][] = [
-      ["ALIMENT", "MICRO", "Emballage d'origine fermé ou sachet stérile"],
-      ["SURFACE", "MICRO", "Écouvillon dans son tube avec diluant, non desséché"],
-      ["MAINS", "MICRO", "Écouvillon dans son tube avec diluant, non desséché"],
-      ["AIR", "MICRO", "Boîte fermée, gélose intacte"],
-      ["EAU", "CHIMIE", "Flacon adapté"],
-      ["EAU", "MICRO", "C4 : flacon stérile ; au thiosulfate si eau traitée (chlorée)"],
-      ["AUTRE", "MICRO", "Contenant fermé et adapté à l'analyse"],
-    ];
-    for (const [kind, family, hint] of hints) {
-      expect(packagingHint(kind, family)).toBe(hint);
-      expect(byCode(rows({ lineKind: kind, family }), "C3").detail).toBe(hint);
-    }
+  it("still reads a C3 row journalled before (the « checklist décidée »)", () => {
+    const stored = JSON.stringify({
+      checklist: [{ n: 1, key: "EXPLOITABLE", text: "échantillon exploitable", status: "CONFORME", rules: ["EXPLOITABLE"] }],
+      complementary: [
+        {
+          n: 3,
+          key: "EMBALLAGE",
+          code: "C3",
+          text: "emballage / contenant intact, fermé et adapté",
+          status: "NON_CONFORME",
+          detail: "Emballage d'origine fermé ou sachet stérile",
+          reason: "EMBALLAGE",
+          rules: ["EMBALLAGE"],
+        },
+      ],
+    });
+    const [c3] = parseReceptionAudit(stored)!.complementary;
+    expect(c3).toMatchObject({ code: "C3", key: "EMBALLAGE", status: "NON_CONFORME", reason: "EMBALLAGE" });
+    expect(checklistRowLabel(c3)).toBe("C3 Emballage / contenant intact, fermé et adapté");
   });
 });
 
@@ -330,9 +340,9 @@ describe("C5 — identification", () => {
 
 describe("the rows and the proposal", () => {
   it("lists the rows in code order, each with its code", () => {
-    // C7 on food only.
-    expect(rows().map((row) => row.code)).toEqual(["C1", "C2", "C3", "C5", "C7"]);
-    expect(rows({ lineKind: "SURFACE" }).map((row) => row.code)).toEqual(["C1", "C2", "C3", "C5"]);
+    // C7 on food only; no C3 since 16/10.
+    expect(rows().map((row) => row.code)).toEqual(["C1", "C2", "C5", "C7"]);
+    expect(rows({ lineKind: "SURFACE" }).map((row) => row.code)).toEqual(["C1", "C2", "C5"]);
     expect(rows().every((row) => row.code && row.text)).toBe(true);
   });
 
@@ -352,28 +362,28 @@ describe("the rows and the proposal", () => {
       DEFAULT_THRESHOLDS,
       { exploitable: true }
     );
-    expect(proposedConformity([...paper, ...rows({}, { packagingOk: false })])).toMatchObject({
+    expect(proposedConformity([...paper, ...rows({}, { identificationOk: false })])).toMatchObject({
       conformity: false,
       forced: true,
       rule: null,
-      code: "C3",
-      reason: "EMBALLAGE",
+      code: "C5",
+      reason: "IDENTIFICATION",
     });
-    expect(proposedConformity([...paper, ...rows({}, { identificationOk: false })])).toMatchObject({ code: "C5", reason: "IDENTIFICATION" });
-    expect(proposedConformity([...paper, ...rows({}, { packagingOk: null })])).toMatchObject({ forced: false, pending: true });
+    expect(proposedConformity([...paper, ...rows({}, { identificationOk: null })])).toMatchObject({ forced: false, pending: true });
     expect(proposedConformity([...paper, ...rows()])).toMatchObject({ conformity: true, forced: false, pending: false });
   });
 
   it("words its refusals once", () => {
-    expect(COMPLEMENTARY_MESSAGES.packagingMissing).toBe(
-      "Indiquez si l'emballage est intact (rechargez la page si elle date d'avant la mise à jour)."
-    );
+    expect(COMPLEMENTARY_MESSAGES).toEqual({
+      identificationMissing:
+        "Indiquez si l'identification est conforme à la fiche (rechargez la page si elle date d'avant la mise à jour).",
+    });
     expect(complementaryRefusal(byCode(rows({}, { identificationOk: false }), "C5"))).toBe(
       "Contrôle C5 « Identification lisible et conforme à la fiche (désignation, lot, DLC) » non conforme — corriger la fiche avant de valider. L'échantillon ne peut pas être déclaré conforme."
     );
-    // A detail opening on a code keeps its capitals (recette locale 10/10: « c4 : flacon… »).
-    expect(complementaryRefusal(byCode(rows({ lineKind: "EAU", family: "MICRO" }, { packagingOk: false }), "C3"))).toBe(
-      "Contrôle C3 « Emballage / contenant intact, fermé et adapté » non conforme — C4 : flacon stérile ; au thiosulfate si eau traitée (chlorée). L'échantillon ne peut pas être déclaré conforme."
+    // A detail opening on an acronym keeps its capitals (recette locale 10/10: « c4 : flacon… »).
+    expect(complementaryRefusal({ code: "C7", text: "DLC", detail: "DLC dépassée le 09/10/2026" })).toBe(
+      "Contrôle C7 « DLC » non conforme — DLC dépassée le 09/10/2026. L'échantillon ne peut pas être déclaré conforme."
     );
   });
 });

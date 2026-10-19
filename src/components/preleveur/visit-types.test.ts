@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Family, LineKind, SampleType } from "@/generated/prisma/enums";
 import {
+  airMethodPatch,
   applyProfilePatch,
   availableFamilies,
+  draftLineDetails,
+  draftSurfaceAreaText,
   duplicateDraft,
   emptyLine,
   familiesPatch,
@@ -20,13 +23,14 @@ import {
   resolveFamilies,
   serieAnalyses,
   surfaceAreaChoice,
+  surfaceAreaPayload,
   visibleParameters,
   type LineDraft,
   type NatureOption,
   type ParameterOption,
 } from "./visit-types";
-import { SURFACE_AREA_CHOICES } from "@/lib/labels";
-import { validateLine } from "@/lib/serie-input";
+import { HANDS_STATE_CHOICES, SURFACE_AREA_CHOICES } from "@/lib/labels";
+import { SERIE_MESSAGES, validateLine } from "@/lib/serie-input";
 
 /**
  * RETOUR-LABO-06-10.md §5 — the sample card's rules: the nature follows the
@@ -181,6 +185,8 @@ describe("a new sample", () => {
       quantity: "1",
       surfaceState: "",
       airMethod: "",
+      airExposureMin: "",
+      handsState: "",
       parameterIds: [],
     });
   });
@@ -382,7 +388,7 @@ describe("before saving", () => {
     expect(lineDraftError(air, NATURES)).toBe("Choisissez la méthode de prélèvement de l'air.");
     expect(lineDraftError({ ...air, airMethod: "BIOCOLLECTEUR" }, NATURES)).toBeNull();
     expect(lineDraftError({ ...air, airMethod: "BIOCOLLECTEUR", analysesChimie: true }, NATURES)).toBeNull();
-    const hands = { ...base, lineKind: "MAINS" as const, personName: "Personne test" };
+    const hands = { ...base, lineKind: "MAINS" as const, personName: "Personne test", handsState: "LAVEES" as const };
     expect(lineDraftError(hands, NATURES)).toBeNull();
     // Physico-chimie on hands since 08/10 (§9.2).
     expect(lineDraftError({ ...hands, analysesChimie: true }, NATURES)).toBeNull();
@@ -439,7 +445,198 @@ describe("before saving", () => {
   });
 });
 
+describe("the state of the hands (16/10, Q109)", () => {
+  const hands = line({ lineKind: "MAINS", lieu: "Cuisine", personName: "Personne Test" });
+
+  it("is required at creation, on the visit and at the counter", () => {
+    expect(lineDraftError(hands, NATURES)).toBe(SERIE_MESSAGES.handsStateMissing);
+    expect(lineDraftError({ ...hands, lieu: "" }, NATURES, { requirePlace: false })).toBe(SERIE_MESSAGES.handsStateMissing);
+    for (const handsState of HANDS_STATE_CHOICES) {
+      expect(lineDraftError({ ...hands, handsState }, NATURES)).toBeNull();
+    }
+  });
+
+  it("each choice of the one list is sent and accepted by the server", () => {
+    const catalogue = new Map(NATURES.map((n) => [n.id, { ...n, active: true }]));
+    for (const handsState of HANDS_STATE_CHOICES) {
+      const draft = line({ ...kindPatch(NATURES, line(), "MAINS"), lieu: "Cuisine", personName: "Personne Test", handsState });
+      expect(validateLine(linePayload(draft), 0, catalogue)).toMatchObject({ ok: true, value: { handsState } });
+    }
+  });
+});
+
+describe("the T° ambiante on the visit (16/10, Q113)", () => {
+  const food = line({ lieu: "Cuisine", produit: "Plat test" });
+
+  it("is required on every type when the visit asks for it — the air included; « 0 » is a value", () => {
+    const air = { ...food, lineKind: "AIR" as const, airMethod: "BIOCOLLECTEUR" as const };
+    for (const draft of [food, air]) {
+      expect(lineDraftError({ ...draft, ambientTemperature: " " }, NATURES, { requireAmbient: true })).toBe(
+        SERIE_MESSAGES.ambientMissing
+      );
+      expect(lineDraftError({ ...draft, ambientTemperature: "0" }, NATURES, { requireAmbient: true })).toBeNull();
+    }
+  });
+
+  it("stays optional at the counter (no option)", () => {
+    expect(lineDraftError({ ...food, ambientTemperature: "" }, NATURES, { requirePlace: false })).toBeNull();
+  });
+});
+
+describe("the surface's « Autre » (16/10, Q114)", () => {
+  it("reads a number as an area, anything else as the text that replaces it", () => {
+    expect(surfaceAreaPayload("couteau entier")).toEqual({ surfaceAreaCm2: "", surfaceAreaNote: "couteau entier" });
+    expect(surfaceAreaPayload(" 50 ")).toEqual({ surfaceAreaCm2: "50", surfaceAreaNote: "" });
+    expect(surfaceAreaPayload("1 000 cm²")).toEqual({ surfaceAreaCm2: "1000", surfaceAreaNote: "" });
+    expect(surfaceAreaPayload("250 cm2")).toEqual({ surfaceAreaCm2: "250", surfaceAreaNote: "" });
+    // A decimal stays an area: the server says it must be a whole number.
+    expect(surfaceAreaPayload("12,5")).toEqual({ surfaceAreaCm2: "12,5", surfaceAreaNote: "" });
+    expect(surfaceAreaPayload("  ")).toEqual({ surfaceAreaCm2: "", surfaceAreaNote: "" });
+    expect(surfaceAreaPayload("2 poignées")).toEqual({ surfaceAreaCm2: "", surfaceAreaNote: "2 poignées" });
+  });
+
+  it("reads a thousands separator as one, never as a decimal mark: « 1.000 » is 1000 cm², not 1", () => {
+    for (const typed of ["1.000", "1,000", "1 000", "1.000 cm²", "1,000 cm2"]) {
+      expect(surfaceAreaPayload(typed), typed).toEqual({ surfaceAreaCm2: "1000", surfaceAreaNote: "" });
+    }
+    expect(surfaceAreaPayload("12.500")).toEqual({ surfaceAreaCm2: "12500", surfaceAreaNote: "" });
+    expect(surfaceAreaChoice("1.000")).toBe(1000);
+    // Not three digits after the mark: a decimal, refused by the server as not whole.
+    expect(surfaceAreaPayload("1,5")).toEqual({ surfaceAreaCm2: "1,5", surfaceAreaNote: "" });
+    expect(surfaceAreaPayload("0,100")).toEqual({ surfaceAreaCm2: "0,100", surfaceAreaNote: "" });
+    const catalogue = new Map(NATURES.map((n) => [n.id, { ...n, active: true }]));
+    const draft = line({
+      ...kindPatch(NATURES, line(), "SURFACE"),
+      lieu: "Cuisine",
+      surfaceLabel: "Plan de travail",
+      surfaceState: "NETTOYE",
+      surfaceAreaCm2: "1.000",
+    });
+    expect(validateLine(linePayload(draft), 0, catalogue)).toMatchObject({ ok: true, value: { surfaceAreaCm2: 1000, surfaceAreaNote: null } });
+  });
+
+  it("reads « cm » without its ² as the unit too: « 250 cm » is an area, not a text", () => {
+    expect(surfaceAreaPayload("250 cm")).toEqual({ surfaceAreaCm2: "250", surfaceAreaNote: "" });
+    expect(surfaceAreaPayload("250cm")).toEqual({ surfaceAreaCm2: "250", surfaceAreaNote: "" });
+    // A text ending on « cm » stays a text, whole.
+    expect(surfaceAreaPayload("planche 30 x 40 cm")).toEqual({ surfaceAreaCm2: "", surfaceAreaNote: "planche 30 x 40 cm" });
+  });
+
+  it("presses no chip for a text, and the recap prints it in place of « N cm² »", () => {
+    expect(surfaceAreaChoice("couteau entier")).toBeNull();
+    expect(surfaceAreaChoice("1000 cm²")).toBe(1000);
+    expect(draftSurfaceAreaText("couteau entier")).toBe("couteau entier");
+    expect(draftSurfaceAreaText("100")).toBe("100 cm²");
+    expect(draftSurfaceAreaText("")).toBeNull();
+  });
+
+  it("sends the text as `surfaceAreaNote` with no area — and the server keeps it so", () => {
+    const catalogue = new Map(NATURES.map((n) => [n.id, { ...n, active: true }]));
+    const draft = line({
+      ...kindPatch(NATURES, line(), "SURFACE"),
+      lieu: "Cuisine",
+      surfaceLabel: "Couteau",
+      surfaceState: "NETTOYE",
+      surfaceAreaCm2: "couteau entier",
+    });
+    expect(lineDraftError(draft, NATURES)).toBeNull();
+    const payload = linePayload(draft);
+    expect(payload).toMatchObject({ surfaceAreaCm2: "", surfaceAreaNote: "couteau entier" });
+    expect(validateLine(payload, 0, catalogue)).toMatchObject({
+      ok: true,
+      value: { surfaceAreaCm2: null, surfaceAreaNote: "couteau entier" },
+    });
+    expect(lineDraftError({ ...draft, surfaceAreaCm2: "x".repeat(192) }, NATURES)).toBe(SERIE_MESSAGES.surfaceAreaNoteTooLong);
+    // Never on another type.
+    expect(linePayload({ ...draft, lineKind: "ALIMENT" })).toMatchObject({ surfaceAreaCm2: "", surfaceAreaNote: "" });
+  });
+});
+
+describe("the exposed plate's duration (16/10, Q50)", () => {
+  const air = line({ lineKind: "AIR", lieu: "Salle blanche", natureId: byCode("MICRO_AIR").id });
+
+  it("proposes 30 minutes when the plate is picked, and keeps a duration typed", () => {
+    expect(airMethodPatch(air, "BOITE_EXPOSEE_30MIN")).toEqual({ airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: "30" });
+    expect(airMethodPatch({ ...air, airExposureMin: "45" }, "BOITE_EXPOSEE_30MIN")).toEqual({
+      airMethod: "BOITE_EXPOSEE_30MIN",
+      airExposureMin: "45",
+    });
+    expect(airMethodPatch({ ...air, airExposureMin: "45" }, "BIOCOLLECTEUR")).toEqual({
+      airMethod: "BIOCOLLECTEUR",
+      airExposureMin: "45",
+    });
+  });
+
+  it("is copied by the next air sample, with its method", () => {
+    const previous = { ...air, airMethod: "BOITE_EXPOSEE_30MIN" as const, airExposureMin: "45" };
+    expect(emptyLine(NATURES, previous)).toMatchObject({ airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: "45" });
+    expect(emptyLine(NATURES, line({ lieu: "Cuisine" }))).toMatchObject({ airMethod: "", airExposureMin: "" });
+  });
+
+  it("is required with the plate, a whole number of minutes from 1 to 480", () => {
+    const plate = { ...air, airMethod: "BOITE_EXPOSEE_30MIN" as const };
+    expect(lineDraftError({ ...plate, airExposureMin: "" }, NATURES)).toBe(SERIE_MESSAGES.airExposureMissing);
+    for (const wrong of ["0", "481", "12,5", "trente"]) {
+      expect(lineDraftError({ ...plate, airExposureMin: wrong }, NATURES)).toBe(SERIE_MESSAGES.airExposureInvalid);
+    }
+    expect(lineDraftError({ ...plate, airExposureMin: "45" }, NATURES)).toBeNull();
+    expect(lineDraftError({ ...air, airMethod: "BIOCOLLECTEUR", airExposureMin: "" }, NATURES)).toBeNull();
+  });
+
+  it("is sent with the plate only, and the server keeps it", () => {
+    const catalogue = new Map(NATURES.map((n) => [n.id, { ...n, active: true }]));
+    const plate = { ...air, airMethod: "BOITE_EXPOSEE_30MIN" as const, airExposureMin: "45" };
+    expect(linePayload(plate).airExposureMin).toBe("45");
+    expect(validateLine(linePayload(plate), 0, catalogue)).toMatchObject({ ok: true, value: { airExposureMin: 45 } });
+    expect(linePayload({ ...plate, airMethod: "BIOCOLLECTEUR" })).not.toHaveProperty("airExposureMin", "45");
+    expect(linePayload({ ...plate, airMethod: "BIOCOLLECTEUR" }).airExposureMin).toBeUndefined();
+    expect(linePayload({ ...plate, lineKind: "EAU" }).airExposureMin).toBeUndefined();
+  });
+});
+
+describe("draftLineDetails — the « Vérifier » step's detail line", () => {
+  const base = { lieu: "Cuisine", numeroLot: "", surfaceAreaCm2: "", productTemperature: "", ambientTemperature: "", handsState: "" as const, unitCount: 1 };
+
+  it("shows the T° ambiante on every kind, air included, and the T° au prélèvement except on air", () => {
+    expect(draftLineDetails({ ...base, lineKind: "ALIMENT", productTemperature: " 4 ", ambientTemperature: "21,5" })).toBe(
+      "Cuisine · T° au prélèvement 4 °C · T° ambiante 21,5 °C"
+    );
+    expect(draftLineDetails({ ...base, lineKind: "AIR", productTemperature: "4", ambientTemperature: "0" })).toBe("Cuisine · T° ambiante 0 °C");
+  });
+
+  it("shows the hands' state on a hands line", () => {
+    expect(draftLineDetails({ ...base, lineKind: "MAINS", handsState: "NON_LAVEES", ambientTemperature: "20" })).toBe(
+      "Cuisine · mains en cours de travail · T° ambiante 20 °C"
+    );
+    expect(draftLineDetails({ ...base, lineKind: "ALIMENT", handsState: "LAVEES" })).toBe("Cuisine");
+  });
+
+  it("prints the 100 cm² the server stores when « Préciser » is left empty, and the lot and n", () => {
+    expect(draftLineDetails({ ...base, lineKind: "SURFACE" })).toBe("Cuisine · 100 cm²");
+    expect(draftLineDetails({ ...base, lineKind: "SURFACE", surfaceAreaCm2: "couteau entier" })).toBe("Cuisine · couteau entier");
+    expect(draftLineDetails({ ...base, lineKind: "ALIMENT", numeroLot: "L12", unitCount: 5 })).toBe("Cuisine · lot L12 · n = 5");
+  });
+});
+
 describe("lineDesignation", () => {
+  it("reads a duration typed with a comma as the server does: « 45,0 » is 45 min", () => {
+    expect(lineDesignation({ lineKind: "AIR", produit: "Salle", airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: "45,0" })).toBe(
+      "Salle — Boîte exposée 45 min"
+    );
+  });
+
+  it("prints the plate's duration: « Boîte exposée 45 min », 30 min on an older plate", () => {
+    expect(lineDesignation({ lineKind: "AIR", produit: "Salle", airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: 45 })).toBe(
+      "Salle — Boîte exposée 45 min"
+    );
+    expect(lineDesignation({ lineKind: "AIR", produit: "Salle", airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: "20" })).toBe(
+      "Salle — Boîte exposée 20 min"
+    );
+    expect(lineDesignation({ lineKind: "AIR", produit: "Salle", airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: null })).toBe(
+      "Salle — Boîte exposée 30 min"
+    );
+  });
+
   it("appends the surface's state and the air's method", () => {
     expect(lineDesignation({ lineKind: "SURFACE", surfaceLabel: "Planche verte", surfaceState: "NETTOYE" })).toBe(
       "Planche verte — surface nettoyée"

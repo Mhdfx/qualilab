@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateIntake, type IntakeCurrent } from "./intake-input";
+import { SERIE_MESSAGES } from "./serie-input";
 
 const current: IntakeCurrent = {
   lineKind: "ALIMENT",
@@ -14,11 +15,13 @@ const current: IntakeCurrent = {
   ambientTemperature: 2,
   surfaceLabel: null,
   surfaceAreaCm2: null,
+  surfaceAreaNote: null,
   surfaceState: null,
   personName: null,
   personRole: null,
   handsState: null,
   airMethod: null,
+  airExposureMin: null,
   remarks: null,
   unitCount: 5,
   productTypeId: null,
@@ -46,7 +49,7 @@ const surface: IntakeCurrent = {
 /** The same line entered before the state existed: no state, no area. */
 const oldSurface: IntakeCurrent = { ...surface, surfaceState: null, surfaceAreaCm2: null };
 
-/** An air line (V4). */
+/** An air line (V4), an exposed plate entered before its duration existed (16/10). */
 const air: IntakeCurrent = {
   ...surface,
   lineKind: "AIR",
@@ -207,6 +210,208 @@ describe("validateIntake — an air line (« Méthode de prélèvement »)", () 
     expect(validateIntake({ lieu: "Salle blanche", reason: "lieu" }, { ...air, airMethod: null })).toMatchObject({
       ok: true,
       value: { changes: { lieu: "Salle blanche" } },
+    });
+  });
+});
+
+/** A hands line (16/10, Q109): its person and its state. */
+const hands: IntakeCurrent = {
+  ...surface,
+  lineKind: "MAINS",
+  surfaceLabel: null,
+  surfaceAreaCm2: null,
+  surfaceState: null,
+  personName: "Personne Test",
+  handsState: "NON_LAVEES",
+};
+
+describe("validateIntake — the state of the hands (16/10, Q109)", () => {
+  it("changes a state for another of the list — an old « non lavées » included", () => {
+    expect(validateIntake({ handsState: "ASEPTISEES", reason: "état" }, hands)).toEqual({
+      ok: true,
+      value: { changes: { handsState: "ASEPTISEES" }, parameterIds: null, reason: "état" },
+    });
+    expect(validateIntake({ handsState: "LAVEES", reason: "état" }, hands)).toMatchObject({
+      ok: true,
+      value: { changes: { handsState: "LAVEES" } },
+    });
+  });
+
+  it("never empties a state once set", () => {
+    for (const empty of ["", null]) {
+      expect(validateIntake({ handsState: empty, reason: "x" }, hands)).toMatchObject({
+        ok: false,
+        error: SERIE_MESSAGES.handsStateMissing,
+      });
+    }
+  });
+
+  it("lets an old hands line without a state be corrected without one, or be given one", () => {
+    const old: IntakeCurrent = { ...hands, handsState: null };
+    expect(validateIntake({ lieu: "Plonge", reason: "lieu" }, old)).toEqual({
+      ok: true,
+      value: { changes: { lieu: "Plonge" }, parameterIds: null, reason: "lieu" },
+    });
+    expect(validateIntake({ lieu: "Plonge", handsState: "", reason: "lieu" }, old)).toMatchObject({ ok: true });
+    expect(validateIntake({ handsState: "ASEPTISEES", reason: "état connu" }, old)).toMatchObject({
+      ok: true,
+      value: { changes: { handsState: "ASEPTISEES" } },
+    });
+  });
+
+  it("refuses an unknown state, or a state on another kind of line", () => {
+    expect(validateIntake({ handsState: "PROPRES", reason: "x" }, hands)).toMatchObject({ ok: false, error: "État des mains inconnu." });
+    expect(validateIntake({ handsState: "LAVEES", reason: "x" }, surface)).toMatchObject({
+      ok: false,
+      error: "L'état des mains ne concerne qu'un échantillon de mains.",
+    });
+  });
+});
+
+describe("validateIntake — the temperatures (P9, 16/10)", () => {
+  it("corrects them, decimal comma accepted, within −80…300 °C", () => {
+    expect(validateIntake({ productTemperature: "4,5", ambientTemperature: "2", reason: "T°" }, current)).toMatchObject({
+      ok: true,
+      value: { changes: { productTemperature: 4.5 } },
+    });
+    expect(validateIntake({ ambientTemperature: "301", reason: "x" }, current)).toMatchObject({
+      ok: false,
+      error: "La température ambiante doit être un nombre plausible (−80 à 300 °C).",
+    });
+  });
+
+  it("never empties a temperature that was recorded", () => {
+    for (const empty of ["", "  ", null]) {
+      expect(validateIntake({ productTemperature: empty, reason: "x" }, current)).toMatchObject({
+        ok: false,
+        error: "La température au prélèvement a été relevée : corrigez sa valeur, elle ne peut pas être effacée.",
+      });
+      expect(validateIntake({ ambientTemperature: empty, reason: "x" }, current)).toMatchObject({
+        ok: false,
+        error: "La T° ambiante a été relevée : corrigez sa valeur, elle ne peut pas être effacée.",
+      });
+    }
+  });
+
+  it("lets an old line without temperatures be corrected without them, or be given them", () => {
+    // `surface` carries none: the visit's required ambient temperature is never asked here.
+    expect(validateIntake({ lieu: "Plonge", productTemperature: "", ambientTemperature: "", reason: "lieu" }, surface)).toEqual({
+      ok: true,
+      value: { changes: { lieu: "Plonge" }, parameterIds: null, reason: "lieu" },
+    });
+    expect(validateIntake({ ambientTemperature: "0", reason: "T°" }, surface)).toMatchObject({
+      ok: true,
+      value: { changes: { ambientTemperature: 0 } },
+    });
+  });
+});
+
+describe("validateIntake — the surface's « Autre » (16/10, Q114)", () => {
+  it("a text replaces the area, which stays empty — never the 100 cm² default", () => {
+    expect(validateIntake({ surfaceAreaCm2: "", surfaceAreaNote: " couteau entier ", reason: "autre" }, surface)).toEqual({
+      ok: true,
+      value: { changes: { surfaceAreaCm2: null, surfaceAreaNote: "couteau entier" }, parameterIds: null, reason: "autre" },
+    });
+    // Only the text sent: it replaces the stored area all the same.
+    expect(validateIntake({ surfaceAreaNote: "poignée de porte", reason: "autre" }, surface)).toMatchObject({
+      ok: true,
+      value: { changes: { surfaceAreaCm2: null, surfaceAreaNote: "poignée de porte" } },
+    });
+  });
+
+  it("refuses an area and a text together", () => {
+    expect(validateIntake({ surfaceAreaCm2: "50", surfaceAreaNote: "couteau entier", reason: "x" }, surface)).toMatchObject({
+      ok: false,
+      error: SERIE_MESSAGES.surfaceAreaBoth,
+    });
+  });
+
+  it("an area typed replaces the text; neither gives 100 cm²; an untouched text stays", () => {
+    const noted: IntakeCurrent = { ...surface, surfaceAreaCm2: null, surfaceAreaNote: "couteau entier" };
+    expect(validateIntake({ surfaceAreaCm2: "50", surfaceAreaNote: "", reason: "aire" }, noted)).toMatchObject({
+      ok: true,
+      value: { changes: { surfaceAreaCm2: 50, surfaceAreaNote: null } },
+    });
+    // A page opened before 16/10 sends the area alone: it replaces the text too.
+    expect(validateIntake({ surfaceAreaCm2: "1000", reason: "aire" }, noted)).toMatchObject({
+      ok: true,
+      value: { changes: { surfaceAreaCm2: 1000, surfaceAreaNote: null } },
+    });
+    expect(validateIntake({ surfaceAreaCm2: "", surfaceAreaNote: "", reason: "aire" }, noted)).toMatchObject({
+      ok: true,
+      value: { changes: { surfaceAreaCm2: 100, surfaceAreaNote: null } },
+    });
+    expect(validateIntake({ lieu: "Plonge", reason: "lieu" }, noted)).toEqual({
+      ok: true,
+      value: { changes: { lieu: "Plonge" }, parameterIds: null, reason: "lieu" },
+    });
+  });
+
+  it("refuses a text too long, of the wrong type, or on a line that is not a surface", () => {
+    expect(validateIntake({ surfaceAreaNote: "x".repeat(192), reason: "x" }, surface)).toMatchObject({
+      ok: false,
+      error: SERIE_MESSAGES.surfaceAreaNoteTooLong,
+    });
+    expect(validateIntake({ surfaceAreaNote: 12, reason: "x" }, surface)).toMatchObject({ ok: false });
+    expect(validateIntake({ surfaceAreaNote: "couteau", reason: "x" }, current)).toMatchObject({
+      ok: false,
+      error: "La précision « Autre » ne concerne qu'un échantillon de surface.",
+    });
+  });
+});
+
+describe("validateIntake — the exposed plate's duration (16/10, Q50)", () => {
+  const plate: IntakeCurrent = { ...air, airExposureMin: 30 };
+
+  it("corrects the duration, a whole number of minutes from 1 to 480", () => {
+    expect(validateIntake({ airExposureMin: "45", reason: "durée" }, plate)).toEqual({
+      ok: true,
+      value: { changes: { airExposureMin: 45 }, parameterIds: null, reason: "durée" },
+    });
+    for (const wrong of ["0", "481", "12,5", "abc", true]) {
+      expect(validateIntake({ airExposureMin: wrong, reason: "x" }, plate)).toMatchObject({
+        ok: false,
+        error: SERIE_MESSAGES.airExposureInvalid,
+      });
+    }
+  });
+
+  it("never empties a recorded duration; an old plate stays correctable without one, or is given one", () => {
+    expect(validateIntake({ airExposureMin: "", reason: "x" }, plate)).toMatchObject({
+      ok: false,
+      error: SERIE_MESSAGES.airExposureMissing,
+    });
+    // `air` is a plate entered before the duration: it reads 30 min.
+    expect(validateIntake({ lieu: "Couloir", airExposureMin: "", reason: "lieu" }, air)).toEqual({
+      ok: true,
+      value: { changes: { lieu: "Couloir" }, parameterIds: null, reason: "lieu" },
+    });
+    expect(validateIntake({ airExposureMin: "60", reason: "durée" }, air)).toMatchObject({
+      ok: true,
+      value: { changes: { airExposureMin: 60 } },
+    });
+  });
+
+  it("follows the method: another method carries none, a plate just chosen needs one", () => {
+    expect(validateIntake({ airMethod: "BIOCOLLECTEUR", reason: "méthode" }, plate)).toMatchObject({
+      ok: true,
+      value: { changes: { airMethod: "BIOCOLLECTEUR", airExposureMin: null } },
+    });
+    const bio: IntakeCurrent = { ...air, airMethod: "BIOCOLLECTEUR" };
+    expect(validateIntake({ airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: "", reason: "x" }, bio)).toMatchObject({
+      ok: false,
+      error: SERIE_MESSAGES.airExposureMissing,
+    });
+    expect(validateIntake({ airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: "20", reason: "méthode" }, bio)).toMatchObject({
+      ok: true,
+      value: { changes: { airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: 20 } },
+    });
+  });
+
+  it("refuses a duration on a line that is not an air sample", () => {
+    expect(validateIntake({ airExposureMin: "30", reason: "x" }, surface)).toMatchObject({
+      ok: false,
+      error: "La durée d'exposition ne concerne qu'un échantillon d'air.",
     });
   });
 });

@@ -28,6 +28,8 @@ export type WorkItem = {
   surfaceState: SurfaceState | null;
   personName: string | null;
   airMethod: AirMethod | null;
+  /** The exposed plate's duration (16/10): « Boîte exposée 45 min ». */
+  airExposureMin?: number | null;
   /** The nature of analysis — « Microbiologie des aliments »… (the old bench header's « Nature échantillon », 14/10). */
   nature: { label: string };
   receivedAt: Date | null;

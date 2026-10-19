@@ -185,6 +185,9 @@ export type LabDateTimeInputProps = {
   /** The id of the error shown under the field by the parent, when there is
    *  one: the input is then marked invalid and described by it. */
   errorId?: string;
+  /** The id of a hint the parent prints under the field (never an error):
+   *  the field is described by it too. */
+  describedBy?: string;
 };
 
 export function LabDateTimeInput({
@@ -198,6 +201,7 @@ export function LabDateTimeInput({
   disabled,
   hint = true,
   errorId,
+  describedBy,
 }: LabDateTimeInputProps) {
   const { drift, legalNow } = useDeviceClock();
   const canPick = useSyncExternalStore(subscribeNothing, pickerSnapshot, pickerServer);
@@ -329,7 +333,7 @@ export function LabDateTimeInput({
     <div
       ref={groupRef}
       role="group"
-      aria-describedby={idList(errorId, hintRef)}
+      aria-describedby={idList(errorId, describedBy, hintRef)}
       onFocus={enter}
       onBlur={leave}
       className={className}
@@ -353,7 +357,7 @@ export function LabDateTimeInput({
             required={required}
             disabled={disabled}
             aria-invalid={errorId || dayMessage ? true : undefined}
-            aria-describedby={idList(dayMessage && dayErrorId, errorId, hintRef)}
+            aria-describedby={idList(dayMessage && dayErrorId, errorId, describedBy, hintRef)}
             className={partClass(dayMessage)}
             style={canPick ? { paddingRight: "2.75rem" } : undefined}
           />
@@ -408,7 +412,7 @@ export function LabDateTimeInput({
             required={required}
             disabled={disabled}
             aria-invalid={errorId || timeMessage ? true : undefined}
-            aria-describedby={idList(timeMessage && timeErrorId, errorId, hintRef)}
+            aria-describedby={idList(timeMessage && timeErrorId, errorId, describedBy, hintRef)}
             className={partClass(timeMessage)}
           />
         </div>

@@ -7,8 +7,9 @@ import { amendedReportSubject, amendmentHeader } from "@/lib/report-amendment";
 import { UNDECLARED_SAMPLING, declaredSampledAt } from "@/lib/sample-search";
 
 /**
- * The messages the laboratory sends: the report, the contamination alert and
- * the notice of a line destroyed at reception.
+ * The messages the laboratory sends: the report, the contamination alert,
+ * the notice of a line destroyed at reception and the notice of a visit's
+ * sample that never reached the laboratory.
  *
  * Written as plain HTML tables with inline styles, because mail clients ignore
  * stylesheets and modern layout. The alert reproduces the model the client sent
@@ -81,8 +82,13 @@ export type ReportEmailInput = {
   controlCode: string | null;
   sampledAt: Date;
   /** The série's `samplingTimeDeclared`: false on a deposit whose « Prélevé
-   *  le » was left empty, null on a visit. Required, so no sender forgets it. */
+   *  le » was left empty (before 16/10) or ticked « Heure de prélèvement
+   *  inconnue du client » — `sampledAt` is then the save instant / the
+   *  arrival —, null on a visit. Required, so no sender forgets it. */
   samplingTimeDeclared: boolean | null;
+  /** « Date de réception »: the one the attached report prints
+   *  (`printedReceptionAt`) — since lot 1b the arrival at the laboratory,
+   *  else the reception screen's instant. */
   receivedAt: Date | null;
   /** The analysis requested (the nature of the line). */
   analyse: string;
@@ -177,6 +183,7 @@ export function reportEmail(input: ReportEmailInput, company: CompanyInfo = COMP
 export type AlertRow = {
   produit: string | null;
   site: string;
+  /** « Date de réception »: the report's (`receptionInstant`) — since lot 1b the arrival at the laboratory. */
   receivedAt: Date | null;
   numeroLot: string | null;
   germe: string;
@@ -259,6 +266,7 @@ export type DestructionEmailInput = {
   sampledAt: Date;
   /** As in `ReportEmailInput`: false prints « Non déclarée ». */
   samplingTimeDeclared: boolean | null;
+  /** « Date de réception », as the reports print it since lot 1b: the arrival (`receptionInstant`). */
   receivedAt: Date | null;
   lines: DestructionLine[];
 };
@@ -314,6 +322,66 @@ export function destructionEmail(input: DestructionEmailInput, company: CompanyI
     </table>
     <p style="font-size:14px;line-height:1.6;margin:0">
       Aucune analyse n'est facturée pour ${many ? "ces échantillons" : "cet échantillon"}. N'hésitez pas à nous contacter pour organiser un nouveau prélèvement.
+    </p>
+    <p style="font-size:14px;margin:14px 0 0">Sincères salutations,</p>`, company);
+
+  return { subject, html };
+}
+
+/* ------------------------------- not received ------------------------------ */
+
+export type NotReceivedEmailInput = {
+  /** N° dossier: the visit. */
+  serialNumber: string;
+  sampledAt: Date;
+  /** As in `ReportEmailInput`: false prints « Non déclarée » (a visit carries null). */
+  samplingTimeDeclared: boolean | null;
+  clientName: string;
+  /** The série's site of the client; null or empty = the client as a whole. */
+  siteName?: string | null;
+  /** « 2 », or « 2M » / « 2P »: the line of the protocole de prélèvement. */
+  sampleRef: string;
+  /** « Planche verte — surface nettoyée », « Salle — Biocollecteur ». */
+  designation: string;
+  /** Names that row: « Produit » for food and water, « Désignation » otherwise. */
+  lineKind?: LineKind | null;
+  numeroLot?: string | null;
+  lieu: string;
+};
+
+/**
+ * The client is told when a sample of a visit never reached the laboratory
+ * (« Non reçu au laboratoire » — the laboratory's answer of 16/10 to Q74:
+ * « un mail par un échantillon pas reçu »). One e-mail per sample: never
+ * received, it has no N° de contrôle — the client finds it by the dossier
+ * and its line on the protocol. Nothing is analysed, nothing billed.
+ */
+export function notReceivedEmail(input: NotReceivedEmailInput, company: CompanyInfo = COMPANY) {
+  const site = input.siteName?.trim() || null;
+  const subject = `Échantillon non reçu — dossier N° ${input.serialNumber}${subjectSuffix(company)}`;
+  const rows: [string, string][] = [
+    ["N° dossier", input.serialNumber],
+    ["Date de prélèvement", samplingDateText(input.sampledAt, input.samplingTimeDeclared)],
+    site ? ["Site", `${input.clientName} — ${site}`] : ["Client", input.clientName],
+    ["Échantillon", `N° ${input.sampleRef} du protocole de prélèvement`],
+    [designationHeading(input.lineKind), input.designation],
+    ...(input.numeroLot?.trim() ? ([["N° de lot", input.numeroLot.trim()]] as [string, string][]) : []),
+    ["Lieu de prélèvement", input.lieu],
+  ];
+
+  const html = shell(`
+    <p style="font-size:15px;margin:0 0 14px">Bonjour,</p>
+    <p style="font-size:14px;line-height:1.6;margin:0 0 14px">
+      L'échantillon suivant n'est pas parvenu au laboratoire : aucune analyse n'est effectuée et rien
+      n'est facturé pour cet échantillon.
+    </p>
+    <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;margin:0 0 14px">
+      <tbody>
+        ${rows.map(([k, v]) => `<tr><td style="${TH}">${escape(k)}</td><td style="${TD}">${escape(v)}</td></tr>`).join("")}
+      </tbody>
+    </table>
+    <p style="font-size:14px;line-height:1.6;margin:0">
+      Contactez-nous pour organiser un nouveau prélèvement.
     </p>
     <p style="font-size:14px;margin:14px 0 0">Sincères salutations,</p>`, company);
 

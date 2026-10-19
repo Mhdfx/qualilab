@@ -90,6 +90,7 @@ const WORK_ITEM_SELECT = {
   surfaceState: true,
   personName: true,
   airMethod: true,
+  airExposureMin: true,
   // The nature of analysis — « Microbiologie des aliments »… (14/10).
   nature: { select: { label: true } },
   receivedAt: true,

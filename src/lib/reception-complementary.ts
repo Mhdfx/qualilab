@@ -17,18 +17,29 @@ import type { ChecklistRow, ChecklistStatus } from "./reception-rules";
  * group of their own, and `proposedConformity` reads them after the paper's,
  * so a paper rule keeps the priority.
  *
- * C4 (the water bottle) is the hint of C3 on a water sample; C6 (the signed
- * protocol) is a série-level check, not a sample row (`signedProtocolRow`):
- * it never enters a sample's `proposedConformity`.
+ * C3 (emballage / contenant) and its hint C4 (the water bottle) are no longer
+ * asked (the laboratory's answer of 16/10, Q70): a damaged container is
+ * still declared non conforme with the motif « Emballage ou contenant non
+ * conforme », chosen by the réceptionniste. The key and the code stay in
+ * the types, so the rows journalled before (SAMPLE_RECEIVED) still read in
+ * the « checklist décidée ». C6 (the signed protocol) is a série-level
+ * check, not a sample row (`signedProtocolRow`): it never enters a sample's
+ * `proposedConformity`.
  */
 
 export type ComplementaryKey = "DELAI" | "TRANSPORT_TEMP" | "EMBALLAGE" | "IDENTIFICATION" | "DLC";
 
+/** C3 « emballage », retired on 16/10 (Q70): only in the rows journalled before. */
+export type RetiredComplementaryKey = "EMBALLAGE";
+
+/** The checks the registry still runs. */
+export type ActiveComplementaryKey = Exclude<ComplementaryKey, RetiredComplementaryKey>;
+
 export type ComplementaryCode = "C1" | "C2" | "C3" | "C5" | "C7";
 
 export type ComplementaryCheck = {
-  key: ComplementaryKey;
-  code: ComplementaryCode;
+  key: ActiveComplementaryKey;
+  code: Exclude<ComplementaryCode, "C3">;
   /** The number of the code — the row's `n`. */
   n: number;
   /** The wording, lower case as the rows print it after the code. */
@@ -39,11 +50,13 @@ export type ComplementaryCheck = {
   kinds?: readonly LineKind[];
 };
 
-/** The registry, in code order — the order the rows are listed in. */
+/**
+ * The registry, in code order — the order the rows are listed in. No C3
+ * since 16/10 (Q70): the numbers of the others do not move (C5 stays C5).
+ */
 export const COMPLEMENTARY_CHECKS: readonly ComplementaryCheck[] = [
   { key: "DELAI", code: "C1", n: 1, text: "délai prélèvement → laboratoire", mode: "COMPUTED" },
   { key: "TRANSPORT_TEMP", code: "C2", n: 2, text: "température de transport", mode: "COMPUTED" },
-  { key: "EMBALLAGE", code: "C3", n: 3, text: "emballage / contenant intact, fermé et adapté", mode: "TICK" },
   {
     key: "IDENTIFICATION",
     code: "C5",
@@ -119,33 +132,13 @@ export type ComplementarySerie = {
   receivedAt: Date | null;
 };
 
-/** The réceptionniste's ticks; null = not answered yet. */
+/**
+ * The réceptionniste's tick (C5); null = not answered yet. A `packagingOk`
+ * still sent by a page opened before 16/10 is ignored by the APIs (Q70).
+ */
 export type ComplementaryAnswers = {
-  packagingOk: boolean | null;
   identificationOk: boolean | null;
 };
-
-/**
- * C3's hint — what « intact, fermé et adapté » means for this kind of
- * sample. On a water sample for microbiology it is C4, the sterile bottle.
- */
-export function packagingHint(lineKind: LineKind, family: Family): string {
-  switch (lineKind) {
-    case "ALIMENT":
-      return "Emballage d'origine fermé ou sachet stérile";
-    case "SURFACE":
-    case "MAINS":
-      return "Écouvillon dans son tube avec diluant, non desséché";
-    case "AIR":
-      return "Boîte fermée, gélose intacte";
-    case "EAU":
-      return family === "MICRO"
-        ? "C4 : flacon stérile ; au thiosulfate si eau traitée (chlorée)"
-        : "Flacon adapté";
-    default:
-      return "Contenant fermé et adapté à l'analyse";
-  }
-}
 
 /** C5's hint: what is compared with the fiche, and what to do when it does not match. */
 export function identificationHint(lineKind: LineKind, answer: boolean | null): string {
@@ -355,17 +348,13 @@ export function expiredDlcNote(rows: readonly ChecklistRow[]): string | null {
 
 // ---- the rows ------------------------------------------------------------------
 
-function base(key: ComplementaryKey): Pick<ChecklistRow, "n" | "key" | "code" | "text"> {
+function base(key: ActiveComplementaryKey): Pick<ChecklistRow, "n" | "key" | "code" | "text"> {
   const check = CHECK_OF.get(key)!;
   return { n: check.n, key: check.key, code: check.code, text: check.text };
 }
 
 /** A ticked row: unanswered → « à confirmer », Non → non conforme with its motif. */
-function tickedRow(
-  key: "EMBALLAGE" | "IDENTIFICATION",
-  answer: boolean | null,
-  detail: string
-): ChecklistRow {
+function tickedRow(key: Extract<ActiveComplementaryKey, "IDENTIFICATION">, answer: boolean | null, detail: string): ChecklistRow {
   const status = answer === null ? "A_CONFIRMER" : answer ? "CONFORME" : "NON_CONFORME";
   return {
     ...base(key),
@@ -389,10 +378,9 @@ export function complementaryChecklist(
   thresholds: ComplementaryThresholds,
   answers: ComplementaryAnswers
 ): ChecklistRow[] {
-  const build: Record<ComplementaryKey, () => ChecklistRow> = {
+  const build: Record<ActiveComplementaryKey, () => ChecklistRow> = {
     DELAI: () => delayRow(line, serie, thresholds),
     TRANSPORT_TEMP: () => transportRow(line, thresholds),
-    EMBALLAGE: () => tickedRow("EMBALLAGE", answers.packagingOk, packagingHint(line.lineKind, line.family)),
     IDENTIFICATION: () =>
       tickedRow("IDENTIFICATION", answers.identificationOk, identificationHint(line.lineKind, answers.identificationOk)),
     DLC: () => dlcRow(line, serie),
@@ -450,26 +438,25 @@ export function storedSignedProtocolAnswer(
 }
 
 /**
- * The refusals of the ticked controls, worded once for the screens and both
+ * The refusal of the ticked control, worded once for the screens and both
  * APIs (prefixed « Échantillon 2 : » at reception, « Échantillon 2 — » at the
- * counter).
+ * counter). C3 « emballage » is no longer asked (16/10, Q70): nothing to refuse.
  */
 export const COMPLEMENTARY_MESSAGES = {
-  // Only a page opened before the controls (A1) sends a line without the answers.
-  packagingMissing:
-    "Indiquez si l'emballage est intact (rechargez la page si elle date d'avant la mise à jour).",
+  // Only a page opened before the controls (A1) sends a line without the answer.
   identificationMissing:
     "Indiquez si l'identification est conforme à la fiche (rechargez la page si elle date d'avant la mise à jour).",
 } as const;
 
 /**
- * « Contrôle C3 « Emballage / contenant intact, fermé et adapté » non
- * conforme — … L'échantillon ne peut pas être déclaré conforme. »
+ * « Contrôle C5 « Identification lisible et conforme à la fiche (…) » non
+ * conforme — corriger la fiche avant de valider. L'échantillon ne peut pas
+ * être déclaré conforme. »
  */
 export function complementaryRefusal(row: Pick<ChecklistRow, "code" | "text" | "detail">): string {
   const text = row.text.charAt(0).toLocaleUpperCase("fr") + row.text.slice(1);
   // « Corriger la fiche » → « corriger la fiche », but a code or an acronym
-  // keeps its capitals: « C4 : flacon stérile … », « DLC … ».
+  // keeps its capitals: « DLC … ».
   const lowerFirst = (value: string) =>
     /^\p{Lu}\p{Ll}/u.test(value) ? `${value.charAt(0).toLocaleLowerCase("fr")}${value.slice(1)}` : value;
   const detail = row.detail ? ` — ${lowerFirst(row.detail)}` : "";

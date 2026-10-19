@@ -9,10 +9,11 @@ import type {
   TemperatureSource,
 } from "@/generated/prisma/enums";
 import {
-  AIR_METHOD_LABELS,
-  HANDS_STATE_LABELS,
+  HANDS_STATE_PHRASES,
   LINE_KIND_LABELS,
   STORAGE_CLASS_LABELS,
+  airMethodText,
+  surfaceAreaText,
   withSurfaceState,
 } from "@/lib/labels";
 import { LINE_FAMILIES, type LineFamily } from "@/lib/nature-family";
@@ -84,33 +85,39 @@ export function sampleCount(lines: readonly { analysesMicro: boolean; analysesCh
 
 /**
  * The sample's designation as the reception reads it: « Planche verte —
- * surface nettoyée · 100 cm² », « Prénom Nom — Chef · mains lavées », « Salle —
- * Boîte exposée 30 min ». A sample entered before the state and the method
- * existed prints as before.
+ * surface nettoyée · 100 cm² » (or the « Autre » text in place of the area,
+ * 16/10), « Prénom Nom · mains en cours de travail » (an old « Fonction »
+ * after the name), « Salle — Boîte exposée 45 min ». A sample entered before
+ * the state and the method existed prints as before.
  */
 export function receptionDesignation(sample: {
   lineKind: LineKind;
   produit: string | null;
   surfaceLabel: string | null;
   surfaceAreaCm2?: number | null;
+  surfaceAreaNote?: string | null;
   surfaceState?: SurfaceState | null;
   personName: string | null;
   personRole?: string | null;
   handsState?: HandsState | null;
   airMethod?: AirMethod | null;
+  airExposureMin?: number | null;
 }): string {
   switch (sample.lineKind) {
-    case "SURFACE":
+    case "SURFACE": {
+      const area = surfaceAreaText(sample.surfaceAreaCm2, sample.surfaceAreaNote);
       return `${withSurfaceState(sample.surfaceLabel || sample.produit || "Surface", sample.surfaceState ?? null)}${
-        sample.surfaceAreaCm2 ? ` · ${sample.surfaceAreaCm2} cm²` : ""
+        area ? ` · ${area}` : ""
       }`;
+    }
     case "MAINS":
+      // The hands' own phrases (16/10) — never the surface's.
       return `${sample.personName || sample.produit || "Mains"}${sample.personRole ? ` — ${sample.personRole}` : ""}${
-        sample.handsState ? ` · ${HANDS_STATE_LABELS[sample.handsState].toLowerCase()}` : ""
+        sample.handsState ? ` · ${HANDS_STATE_PHRASES[sample.handsState]}` : ""
       }`;
     case "AIR":
       return sample.airMethod
-        ? `${sample.produit || LINE_KIND_LABELS.AIR} — ${AIR_METHOD_LABELS[sample.airMethod]}`
+        ? `${sample.produit || LINE_KIND_LABELS.AIR} — ${airMethodText(sample.airMethod, sample.airExposureMin)}`
         : (sample.produit ?? "—");
     default:
       return sample.produit ?? "—";
@@ -143,6 +150,39 @@ export function receptionTemperatureSource(line: {
   if (!line.temperature.trim()) return null;
   if (line.sourceChoice) return line.sourceChoice;
   return line.temperatureTouched ? "ECHANTILLON" : "GLACIERE";
+}
+
+// ---- « Tous exploitables » (16/10, Q64) -----------------------------------------
+
+/**
+ * The série-level button of rule (1): « Exploitable » on every sample still
+ * unanswered, in one deliberate click (« un bouton général avec possibilité
+ * de cliquer sur chaque échantillon »). It fills the unanswered samples only
+ * and never touches a « Non exploitable » already chosen; each card keeps its
+ * own buttons, and the API still receives one answer per sample. `count` is
+ * the number of samples it answered — 0 when there was nothing left to answer
+ * (the lines are then returned as they were).
+ */
+export function answerAllExploitable<T extends { exploitable: boolean | null }>(
+  lines: readonly T[]
+): { lines: T[]; count: number } {
+  let count = 0;
+  const answered = lines.map((line) => {
+    if (line.exploitable !== null) return line;
+    count += 1;
+    return { ...line, exploitable: true };
+  });
+  return { lines: answered, count };
+}
+
+/** How many samples « Tous exploitables » would answer — the N of its label. */
+export function unansweredExploitableCount(lines: readonly { exploitable: boolean | null }[]): number {
+  return lines.filter((line) => line.exploitable === null).length;
+}
+
+/** The confirmation read out after the click: « 3 échantillons marqués exploitables — modifiable sur chaque échantillon ». */
+export function allExploitableNotice(count: number): string {
+  return `${countLabel(count, "échantillon marqué exploitable", "échantillons marqués exploitables")} — modifiable sur chaque échantillon`;
 }
 
 /** The cooler's reading outside the chilled range: the hint under « T° de la glacière » (screen only). */
@@ -276,10 +316,9 @@ export type DepositLineInput = {
   natureLabels?: Partial<Record<Family, string>>;
   /** Rule (1), one answer for the line — both samples share it. */
   exploitable: boolean | null;
-  /** C3 (emballage) and C5 (identification), one answer for the line too. */
-  packagingOk: boolean | null;
+  /** C5 (identification), one answer for the line too — no C3 since 16/10 (Q70). */
   identificationOk: boolean | null;
-  /** The deposit's times for C1 (the counter's now as arrival); null before the screen's clock. */
+  /** The deposit's times for C1 — the « Arrivé le » typed (16/10, Q118); null before the screen's clock. */
   serie: ComplementarySerie | null;
   /** C2: the class chosen for the line (null = each sample's default) and where the temperature was read. */
   storageClass: StorageClass | null;
@@ -343,7 +382,7 @@ export function depositLineChecklist(line: DepositLineInput, thresholds: Recepti
         },
         line.serie,
         thresholds,
-        { packagingOk: line.packagingOk, identificationOk: line.identificationOk }
+        { identificationOk: line.identificationOk }
       ),
     ],
   }));

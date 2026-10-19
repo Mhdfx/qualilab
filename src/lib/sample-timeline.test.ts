@@ -208,6 +208,36 @@ describe("sampleTimeline — merging timestamps and the journal", () => {
     ]);
   });
 
+  it("says whether the client was told of a sample « Non reçu au laboratoire » (16/10, Q74)", () => {
+    const told = sampleTimeline(bare, [
+      row("SAMPLE_CANCELLED", "08:00", "Réception Test", { reason: "NON_RECU" }),
+      row("NOT_RECEIVED_NOTIFIED", "08:00", "Réception Test", { status: "SIMULE", to: ["contact@client.test"] }),
+    ]);
+    expect(told.slice(1).map((e) => [e.label, e.tone, e.note])).toEqual([
+      ["Échantillon annulé", "danger", "Non reçu au laboratoire"],
+      // Simulated: written to EmailLog, never left the laboratory — the client was not told.
+      ["Avis de non-réception simulé (non remis)", "warning", "contact@client.test"],
+    ]);
+    const sent = sampleTimeline(bare, [
+      row("NOT_RECEIVED_NOTIFIED", "08:00", "Réception Test", { status: "ENVOYE", to: ["contact@client.test"] }),
+    ]);
+    expect(sent.slice(1).map((e) => [e.label, e.tone, e.note])).toEqual([
+      ["Client prévenu : échantillon non reçu", "neutral", "contact@client.test"],
+    ]);
+    const failed = sampleTimeline(bare, [
+      row("NOT_RECEIVED_NOTIFIED", "08:00", "Réception Test", { status: "ECHEC", to: ["contact@client.test"], error: "HTTP 500" }),
+    ]);
+    expect(failed.slice(1).map((e) => [e.label, e.tone, e.note])).toEqual([
+      ["Client non prévenu de l'échantillon non reçu", "warning", "échec de l'envoi"],
+    ]);
+    const untold = sampleTimeline(bare, [
+      row("NOT_RECEIVED_NOTIFIED", "08:00", "Réception Test", { status: "NON_ENVOYE", error: "Aucune adresse e-mail enregistrée pour ce client." }),
+    ]);
+    expect(untold.slice(1).map((e) => [e.label, e.tone, e.note])).toEqual([
+      ["Client non prévenu de l'échantillon non reçu", "warning", "Aucune adresse e-mail enregistrée pour ce client."],
+    ]);
+  });
+
   it("survives a journal row whose metadata is not JSON, and an author since removed", () => {
     const events = sampleTimeline(bare, [{ id: "x", action: "SAMPLE_REJECTED", createdAt: at("12:00"), actor: null, metadata: "{oops" }]);
     expect(events[1]).toMatchObject({ label: "Renvoyé au technicien", actor: null, note: null });

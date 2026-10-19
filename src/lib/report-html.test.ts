@@ -1,12 +1,16 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   REPORT_DENSITIES,
+  REPORT_LAYOUT_ALIGNED,
   REPORT_PDF_MARGIN,
   REPORT_PDF_MARGIN_MARKED,
   buildReportHtml,
+  frozenVersionInForce,
   germFingerprints,
   germsToRealert,
   pdfPageCount,
+  printedReceptionAt,
   printReport,
   reportCartouche,
   reportDataFromJson,
@@ -110,6 +114,16 @@ const full: ReportData = {
   issuedAt: new Date("2026-09-23T10:00:00Z"),
 };
 
+/** The same, issued with the aligned layout (lot 1b): the arrival and the denomination. */
+const aligned: ReportData = {
+  ...full,
+  layout: REPORT_LAYOUT_ALIGNED,
+  preleveur: "Technicien de QUALILAB 'P.TEST'",
+  arrivedAt: new Date("2026-09-20T09:15:00Z"),
+  // The single « Date d'analyse »: the bench's take (`analysisStart`).
+  analysisFrom: new Date("2026-09-21T07:30:00Z"),
+};
+
 const count = (html: string, needle: string) => html.split(needle).length - 1;
 
 /** The visible text, tags dropped, as a text extractor reads the printed page. */
@@ -198,6 +212,17 @@ describe("buildReportHtml — the template PG06/EN03 version M, page 1", () => {
     expect(textOf(html)).not.toContain("20/09/2026 à 08h00");
   });
 
+  it("prints the plate's duration in « Moyen de prélèvement » (16/10, Q50)", () => {
+    const air = { ...full, lineKind: "AIR" as const, type: "AMBIANCE" as const, produit: "Salle" };
+    expect(textOf(buildReportHtml({ ...air, airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: 45 }))).toContain(
+      "Moyen de prélèvement : Boîte exposée 45 min"
+    );
+    // A version frozen before the duration existed (no field) reads the 30 min its method carried.
+    expect(textOf(buildReportHtml({ ...air, airMethod: "BOITE_EXPOSEE_30MIN" }))).toContain(
+      "Moyen de prélèvement : Boîte exposée 30 min"
+    );
+  });
+
   it("prints the air instruction and its means for an air sample", () => {
     const text = textOf(buildReportHtml({ ...full, lineKind: "AIR", type: "AMBIANCE", airMethod: "BIOCOLLECTEUR", produit: "Salle" }));
     expect(text).toContain("Référence prélèvement PG04/EN01 & PG04/IT03 Prélèvement de l'air : PG06/IT55 Moyen de prélèvement : Biocollecteur");
@@ -236,6 +261,141 @@ describe("buildReportHtml — the template PG06/EN03 version M, page 1", () => {
     expect(html).not.toContain("<b>X</b>");
     expect(html).toContain("&lt;script&gt;");
     expect(html).toContain("a&amp;b");
+  });
+});
+
+describe("buildReportHtml — the aligned layout (lot 1b, RETOUR-LABO-16-10.md D5)", () => {
+  it("prints page 1's block as the laboratory's own report: labels, « JJ/MM/AAAA HH:MM », one analysis date, the arrival", () => {
+    const text = textOf(sheets(buildReportHtml(aligned)).page1);
+    const labels = [
+      "Produit (IC) : Thon",
+      "Date et heure du Prélèvement : 20/09/2026 08:00",
+      "Lot : L1",
+      // The arrival typed on the série, not the reception screen's 10:00.
+      "Date et heure de réception : 20/09/2026 09:15",
+      "Préleveur : Technicien de QUALILAB 'P.TEST'",
+      "Date Prod : 18/09/2026",
+      "Référence prélèvement PG04/EN01 & PG04/IT03",
+      "Moyen de prélèvement : N/A",
+      "Date Exp : 28/09/2026",
+      "Site de prélèvement : Client Démo — Restaurant Test",
+      "Lieu de prélèvement : Chambre froide",
+      "Température du produit : Au prélèvement : 3,5 °C à la réception : 4,2 °C",
+      "Température glacière à la réception : 2,8 °C",
+      "Date d'analyse : 21/09/2026",
+      "Date d'édition de rapport : 23/09/2026",
+      "N° de contrôle : 00012/26",
+    ];
+    let from = 0;
+    for (const label of labels) {
+      const at = text.indexOf(label, from);
+      expect(at, label).toBeGreaterThanOrEqual(from);
+      from = at + label.length;
+    }
+    for (const old of ["Dates Prod", "Dates Exp", "Lieu du prélèvement", " à 08h00", "du 21/09/2026", "20/09/2026 10:00"]) {
+      expect(text, old).not.toContain(old);
+    }
+  });
+
+  it("prints the annex's sampling table the same way", () => {
+    const text = textOf(sheets(buildReportHtml(aligned)).annex);
+    expect(text).toContain(
+      "Prélèvement et réception Date et heure du Prélèvement : 20/09/2026 08:00 Date et heure de réception : 20/09/2026 09:15 Préleveur : Technicien de QUALILAB 'P.TEST' Site de prélèvement : Client Démo — Restaurant Test"
+    );
+  });
+
+  it("prints « N/A » for every empty field of the block — never « — »", () => {
+    const empty: ReportData = {
+      ...aligned,
+      produit: null,
+      numeroLot: null,
+      lieu: "",
+      controlCode: null,
+      receivedAt: null,
+      arrivedAt: null,
+      productionDate: null,
+      expiryDate: null,
+      productTemperature: null,
+      receptionTemperature: null,
+      coolerTemperature: null,
+      analysisFrom: null,
+      issuedAt: null,
+    };
+    const { page1, annex } = sheets(buildReportHtml(empty));
+    const text = textOf(page1);
+    for (const label of [
+      "Produit (IC) : N/A",
+      "Date et heure de réception : N/A",
+      "Lot : N/A",
+      "Date Prod : N/A",
+      "Moyen de prélèvement : N/A",
+      "Date Exp : N/A",
+      "Lieu de prélèvement : N/A",
+      "Au prélèvement : N/A",
+      "à la réception : N/A",
+      "Température glacière à la réception : N/A",
+      "Date d'analyse : N/A",
+      "Date d'édition de rapport : N/A",
+      "N° de contrôle : N/A",
+    ]) {
+      expect(text, label).toContain(label);
+    }
+    // No empty value of the block prints « — » (the site's separator is not one).
+    const start = page1.indexOf('<table class="info">');
+    expect(page1.slice(start, page1.indexOf("</table>", start))).not.toMatch(/: (<b>)?—/);
+    expect(textOf(annex)).toContain("Date et heure de réception : N/A");
+    // A préleveur is never empty in practice: « N/A » all the same.
+    expect(textOf(buildReportHtml({ ...empty, preleveur: "" }))).toContain("Préleveur : N/A");
+  });
+
+  it("keeps the words that are not empty fields: an undeclared time, a sample the laboratory did not take, the air means", () => {
+    expect(textOf(buildReportHtml({ ...aligned, samplingTimeDeclared: false }))).toContain("Date et heure du Prélèvement : Non déclarée");
+    const client = textOf(buildReportHtml({ ...aligned, sampledByLab: false, preleveur: "Le client" }));
+    expect(client).toContain("Référence prélèvement : N/A (prélèvement non effectué par le laboratoire) Moyen de prélèvement : N/A");
+    expect(client).toContain("Préleveur : Le client");
+    const air = { ...aligned, lineKind: "AIR" as const, type: "AMBIANCE" as const, produit: "Salle" };
+    expect(textOf(buildReportHtml({ ...air, airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: 45 }))).toContain(
+      "Moyen de prélèvement : Boîte exposée 45 min"
+    );
+    expect(textOf(buildReportHtml({ ...air, airMethod: null }))).toContain("Moyen de prélèvement : N/A");
+  });
+
+  it("falls back to the reception screen's instant when no arrival was typed", () => {
+    expect(textOf(buildReportHtml({ ...aligned, arrivedAt: null }))).toContain("Date et heure de réception : 20/09/2026 10:00");
+  });
+
+  it("prints a version without the marker as on 13/10, word for word — an arrival stored or not", () => {
+    const old = { ...full, arrivedAt: new Date("2026-09-20T09:15:00Z") };
+    const text = textOf(buildReportHtml(old));
+    for (const label of [
+      "Date et heure du Prélèvement : 20/09/2026 à 08h00",
+      "Date et heure de réception : 20/09/2026 à 10h00",
+      "Dates Prod : 18/09/2026",
+      "Moyen de prélèvement : —",
+      "Dates Exp : 28/09/2026",
+      "Lieu du prélèvement : Chambre froide",
+      "Date d'analyse : du 20/09/2026 au 22/09/2026",
+    ]) {
+      expect(text, label).toContain(label);
+    }
+    expect(text).not.toContain("N/A");
+    expect(buildReportHtml(old)).toBe(buildReportHtml(full));
+  });
+
+  it("reads the reception the report prints, for the e-mail too", () => {
+    expect(printedReceptionAt(aligned)).toEqual(new Date("2026-09-20T09:15:00Z"));
+    expect(printedReceptionAt({ ...aligned, arrivedAt: null })).toEqual(full.receivedAt);
+    // Without the marker: the reception screen's instant, an arrival stored or not.
+    expect(printedReceptionAt({ ...full, arrivedAt: new Date("2026-09-20T09:15:00Z") })).toEqual(full.receivedAt);
+  });
+
+  it("weighs a long denomination in the density's guess, on the aligned layout only", () => {
+    const rows = Array.from({ length: 11 }, (_, i) => ({ ...base.results[0], parameter: `Germe ${i}`, units: [], criterion: null }));
+    const short = { ...aligned, results: rows, unitCount: 1 };
+    const long = { ...short, preleveur: "Technicien de QUALILAB ".repeat(8) };
+    expect(reportDensity(short)).toBe("");
+    expect(reportDensity(long)).not.toBe("");
+    expect(reportDensity({ ...long, layout: undefined })).toBe("");
   });
 });
 
@@ -678,6 +838,18 @@ describe("frozen versions — ReportData to JSON and back", () => {
     expect(buildReportHtml(back!, at)).toBe(buildReportHtml(amended, at));
   });
 
+  it("keeps the aligned layout's marker and arrival through the freeze", () => {
+    const back = reportDataFromJson(JSON.parse(JSON.stringify(reportDataToJson(aligned))));
+    expect(back).toEqual({ ...aligned, amendment: null });
+    expect(back?.layout).toBe(REPORT_LAYOUT_ALIGNED);
+    expect(back?.arrivedAt).toBeInstanceOf(Date);
+    expect(buildReportHtml(back!)).toBe(buildReportHtml(aligned));
+    // A version frozen before lot 1b carries neither.
+    const old = reportDataFromJson(reportDataToJson(full));
+    expect(old).not.toHaveProperty("layout");
+    expect(old).not.toHaveProperty("arrivedAt");
+  });
+
   it("keeps the missing dates and amendment empty", () => {
     const back = reportDataFromJson(reportDataToJson({ ...base, receivedAt: null, validatedAt: null }));
     expect(back?.receivedAt).toBeNull();
@@ -766,5 +938,56 @@ describe("the administrator's silent correction on a frozen version", () => {
   it("survives the freeze: a refreshed version reads back with the correction", () => {
     const corrected = withSilentCorrection(base, "Nouvelle conclusion.");
     expect(reportDataFromJson(JSON.parse(JSON.stringify(reportDataToJson(corrected))))?.conclusion).toBe("Nouvelle conclusion.");
+  });
+});
+
+describe("frozenVersionInForce — the current version rendered first from its frozen version (lot 1b, D-03)", () => {
+  const issued = { conclusion: aligned.conclusion, amendmentPending: false };
+
+  it("prints the version frozen at its issue, the aligned layout included", () => {
+    expect(frozenVersionInForce(aligned, issued)).toBe(aligned);
+    // A version frozen between 13/10 and lot 1b: as frozen, with the 13/10 layout.
+    expect(frozenVersionInForce(full, { conclusion: full.conclusion, amendmentPending: false })).toBe(full);
+  });
+
+  it("always applies the administrator's silent correction (« Modifier la conclusion »)", () => {
+    const printed = frozenVersionInForce(aligned, { conclusion: "Conclusion corrigée par l'administrateur.", amendmentPending: false });
+    expect(printed?.conclusion).toBe("Conclusion corrigée par l'administrateur.");
+    expect({ ...printed, conclusion: aligned.conclusion }).toEqual(aligned);
+    expect(textOf(buildReportHtml(printed!))).toContain("Conclusion : Conclusion corrigée par l'administrateur.");
+    // …also during an amendment, as before.
+    expect(frozenVersionInForce(full, { conclusion: "Corrigée.", amendmentPending: true })?.conclusion).toBe("Corrigée.");
+  });
+
+  it("renders live (null) a report never frozen, and a version frozen before the template of 13/10", () => {
+    expect(frozenVersionInForce(null, issued)).toBeNull();
+    // `base` carries none of the template's fields: it has printed live until now.
+    expect(frozenVersionInForce(base, { conclusion: base.conclusion, amendmentPending: false })).toBeNull();
+  });
+
+  it("keeps the frozen version in force while an amendment is in progress, whatever its age", () => {
+    expect(frozenVersionInForce(base, { conclusion: base.conclusion, amendmentPending: true })).toBe(base);
+    expect(frozenVersionInForce(null, { conclusion: null, amendmentPending: true })).toBeNull();
+  });
+
+  it("is the path of every print of the current version (`loadReportData`), the live data only after it", () => {
+    // Read from the source: report-dispatch.ts imports the database client.
+    const source = readFileSync(new URL("./report-dispatch.ts", import.meta.url), "utf8");
+    const fn = (name: string) => {
+      const start = source.indexOf(name);
+      expect(start, name).toBeGreaterThan(0);
+      return source.slice(start, source.indexOf("\n}\n", start));
+    };
+    const load = fn("export async function loadReportData(");
+    expect(load).toContain("loadReportVersion(report.id, report.version)");
+    expect(load).toContain("return frozenVersionInForce(frozen?.data ?? null, report) ?? liveReportData(sampleId, report);");
+    // The versions issued — and only they — carry the aligned layout.
+    expect(fn("export async function createReportFor(")).toContain("layout: REPORT_LAYOUT_ALIGNED");
+    expect(fn("export async function amendReportFor(")).toContain("layout: REPORT_LAYOUT_ALIGNED");
+    expect(fn("async function liveReportData(")).not.toContain("REPORT_LAYOUT_ALIGNED");
+    // The reconstruction at « Rouvrir pour amendement » freezes what printed: the live data.
+    expect(fn("export async function reopenForAmendment(")).not.toContain("REPORT_LAYOUT_ALIGNED");
+    // The e-mail's « Date de réception » is the attached report's (the arrival since lot 1b).
+    expect(fn("async function sendReportNow(")).toContain("receivedAt: printedReceptionAt(data),");
   });
 });
