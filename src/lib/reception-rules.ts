@@ -584,7 +584,7 @@ const KIND_NOUN: Record<LineKind, string> = {
 const FAMILY_NOUN: Record<Family, string> = {
   MICRO: "microbiologie",
   CHIMIE: "physico-chimie",
-  AUTRE: "autre famille d'analyses",
+  AUTRE: "autre domaine d'analyses",
 };
 
 /** Which (kind, family) each quantity rule concerns. */
@@ -646,7 +646,7 @@ function notApplicable(
     ]);
   }
   if (key === "MOLLUSQUES" && line.lineKind === "ALIMENT") {
-    return sentence(["sans objet : pas de mollusques bivalves dans la désignation, le type ou la nature"]);
+    return sentence(["sans objet : pas de mollusques bivalves dans la désignation, la famille de produits ou la nature"]);
   }
   return sentence([`sans objet : ${KIND_NOUN[line.lineKind]}`]);
 }

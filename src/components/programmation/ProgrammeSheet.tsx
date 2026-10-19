@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   BookOpen,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
   FlaskConical,
   Hash,
@@ -15,7 +16,6 @@ import {
   Package,
   ReceiptText,
   Save,
-  Search,
   User,
   Users,
   type LucideIcon,
@@ -38,15 +38,16 @@ import {
 } from "@/lib/programme-input";
 import type { ReceptionThresholds } from "@/lib/reception-rules";
 import type { Role } from "@/lib/roles";
+import { twinOfCode } from "@/lib/sample-code";
 import { verbsFor } from "@/lib/sample-verbs";
 import { MAX_UNITS } from "@/lib/series";
-import { matchesQuery } from "@/lib/similar";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { LabDateTimeInput, dateTimePending } from "@/components/LabDateTimeInput";
 import { Checklist } from "@/components/reception/reception-widgets";
 import { fromLocalInput } from "@/components/preleveur/visit-types";
 import { SampleVerbs, type VerbSample } from "@/components/samples/SampleVerbs";
+import { FamilyPickerDialog } from "./FamilyPickerDialog";
 import {
   UNIT_CHOICES,
   adoptReferential,
@@ -55,14 +56,22 @@ import {
   benchHolder,
   benchHolderNotice,
   billingLines,
+  checkAllOfType,
   clampUnits,
   confirmationNotice,
   criteriaOf,
   entryChecks,
+  familyChangeNotice,
+  familyChangeTookAway,
+  familyCheckCount,
+  familyCheckLabel,
+  familyParameterRows,
   groupParameters,
   initialDraft,
   natureChangeNotice,
   natureChoices,
+  natureHint,
+  otherParameterGroups,
   profileApplied,
   programmeReadOnlyReason,
   programmeVerbsLead,
@@ -71,9 +80,11 @@ import {
   toRequestBody,
   toggleParameter,
   typeOf,
+  uncheckAllOfType,
   unitWarning,
   updateSetting,
   type BenchHolder,
+  type ParameterGroup,
   type ProgrammeDraft,
 } from "./programme-sheet-logic";
 import type {
@@ -94,7 +105,10 @@ import type {
  * Q128), and the identification is the reception's or the validation's.
  *
  * RETOUR-LABO-06-10.md §5 (V3, Q49 by default): the fine « Nature
- * d'analyse » is chosen here, within the sample's family. Choosing one
+ * d'analyse » is chosen here, within the sample's family — or, since 16/10
+ * (Q129), among « Autres analyses » (« Analyse sensorielle » of a food) and
+ * back to the family of the code's letter; the code and the N° de contrôle
+ * never change (`natureChoices`). Choosing one
  * reloads the referential of that nature at once (`GET …/programme
  * ?natureId=` — its analyses, profiles and prices), drops the ticked
  * analyses it does not offer and says which; the sample takes the nature
@@ -129,6 +143,9 @@ const CHIP = "min-h-[40px] rounded-xl border px-4 text-sm font-medium transition
 const CHIP_ON = "border-brand bg-brand-light/60 text-brand ring-1 ring-brand/20";
 const CHIP_OFF = "border-slate-200 text-slate-600 hover:border-slate-300";
 const chip = (active: boolean, extra = "") => `${CHIP} ${active ? CHIP_ON : CHIP_OFF} ${extra}`;
+/** « Cocher tout » / « Décocher tout »: compact, still a 40 px target, with the sheet's focus ring. */
+const BULK_BUTTON =
+  "min-h-[40px] rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 transition hover:border-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50";
 
 function SectionTitle({ index, icon: Icon, title, hint }: { index: number; icon: LucideIcon; title: string; hint?: string }) {
   return (
@@ -188,14 +205,24 @@ export function ProgrammeSheet({
   const [busy, setBusy] = useState<"draft" | "confirm" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [typeQuery, setTypeQuery] = useState("");
+  // What a change of family did (F6), said in section 1 where it was made;
+  // `tookAway` = analyses removed or n lowered (amber). Cleared by the next
+  // change of family or a save.
+  const [familyNotice, setFamilyNotice] = useState<{ text: string; tookAway: boolean } | null>(null);
+  // « Choisir une famille de produits » (F5), and « Analyses hors famille »
+  // folded or not (F6: null = open while one of them is ticked, else folded;
+  // pinned open once one of its boxes is used, so it never closes under the cursor).
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [othersOpen, setOthersOpen] = useState<boolean | null>(null);
+  const closePicker = useCallback(() => setPickerOpen(false), []);
 
   const readOnly = !saved.editable;
   const confirmed = saved.status === "PROGRAMME";
   const type = typeOf(referential, draft.productTypeId);
   const criteria = useMemo(() => criteriaOf(type), [type]);
   const groups = useMemo(() => groupParameters(referential, sample.nature.family), [referential, sample.nature.family]);
-  const natures = natureChoices(referential, sample.nature.family);
+  const twin = twinOfCode(sample.code);
+  const natures = natureChoices(referential, sample.nature.family, twin);
   const draftNature = referential.natures.find((nature) => nature.id === draft.natureId) ?? null;
   const natureChanged = draft.natureId !== savedNatureId;
   const familyLabel = ANALYSIS_FAMILY_LABELS[sample.nature.family].toLowerCase();
@@ -208,14 +235,36 @@ export function ProgrammeSheet({
   const warning = unitWarning(draft, type);
   const holderNotice = benchHolderNotice(saved.holder, saved);
 
-  const visibleTypes = referential.productTypes.filter((candidate) => candidate.id === draft.productTypeId || matchesQuery(candidate.name, typeQuery));
-  const clientTypes = visibleTypes.filter((candidate) => candidate.clientId);
-  const catalogueTypes = visibleTypes.filter((candidate) => !candidate.clientId);
+  // The family as « Paramètres à rechercher » (F6), and the analyses outside it.
+  const familyRows = familyParameterRows(draft, referential);
+  const familyCount = familyCheckCount(draft, referential);
+  const others = otherParameterGroups(groups, draft, referential);
+  const othersTicked = others.reduce(
+    (sum, group) => sum + group.parameters.filter((parameter) => draft.parameterIds.includes(parameter.id)).length,
+    0
+  );
+  const othersTotal = others.reduce((sum, group) => sum + group.parameters.length, 0);
+  const othersShown = othersOpen ?? othersTicked > 0;
   // The type the line carries but the client may no longer use (retired, or another client's).
   const lostType = sample.productTypeId && !typeOf(referential, sample.productTypeId) ? sample.productType : null;
 
   function patch(changes: Partial<ProgrammeDraft>) {
     setDraft((current) => ({ ...current, ...changes }));
+  }
+
+  /**
+   * The picker's choice (F5): the family replaces the previous one's germs
+   * (F6, `applyProductType`) and the sheet says which analyses left. The
+   * current family chosen again changes nothing.
+   */
+  function chooseFamily(typeId: string) {
+    setPickerOpen(false);
+    if (readOnly || typeId === draft.productTypeId) return;
+    const next = applyProductType(draft, typeId, referential);
+    setDraft(next);
+    setError("");
+    setNotice("");
+    setFamilyNotice({ text: familyChangeNotice(draft, next, referential), tookAway: familyChangeTookAway(draft, next) });
   }
 
   /**
@@ -253,6 +302,7 @@ export function ProgrammeSheet({
     router.refresh();
     setError("");
     setNotice("");
+    setFamilyNotice(null);
     try {
       const response = await fetch(`/api/samples/${sample.id}/programme`);
       const data = (await response.json().catch(() => ({}))) as Partial<ProgrammeReadResponse>;
@@ -265,9 +315,10 @@ export function ProgrammeSheet({
   }
 
   /**
-   * Another nature of the same family (Q49): its referential replaces the one
-   * on screen, the analyses it does not offer leave the draft. The sample
-   * itself only changes when the programme is saved.
+   * Another nature of the same family (Q49), or of « Autres analyses » and
+   * back (Q129): its referential replaces the one on screen, the analyses it
+   * does not offer leave the draft. The sample itself only changes when the
+   * programme is saved.
    */
   async function changeNature(natureId: string) {
     if (readOnly || busy || !natureId || natureId === (pendingNature ?? draft.natureId)) return;
@@ -304,6 +355,7 @@ export function ProgrammeSheet({
     if (busy || readOnly || pendingNature) return;
     setError("");
     setNotice("");
+    setFamilyNotice(null);
     if ((confirm || confirmed) && draft.parameterIds.length === 0) {
       setError("Choisissez au moins une analyse avant de confirmer le programme.");
       return;
@@ -359,6 +411,74 @@ export function ProgrammeSheet({
     }
   }
 
+  /**
+   * The analyses grouped by domain, a box each — all of them, or those
+   * outside the family (F6). `onToggle` runs with each box used (the panel
+   * outside the family stays open once the programmer works in it).
+   */
+  function analysisGroups(list: ParameterGroup[], onToggle?: () => void) {
+    return (
+      <div className="space-y-4">
+        {list.map((group) => {
+          const ticked = group.parameters.filter((parameter) => draft.parameterIds.includes(parameter.id)).length;
+          return (
+            <div key={group.family} role="group" aria-label={group.label}>
+              <p className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {group.label}
+                <span className="font-normal normal-case tracking-normal text-slate-500">
+                  {ticked} sur {group.parameters.length}
+                </span>
+                {group.foreign && (
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold normal-case tracking-normal text-amber-700 ring-1 ring-amber-200">
+                    autre domaine que l&apos;échantillon
+                  </span>
+                )}
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {group.parameters.map((parameter) => {
+                  const checked = draft.parameterIds.includes(parameter.id);
+                  // « Norme en vigueur · unité » under the name, when known (14/10).
+                  const caption = parameterCaption({
+                    normLabel: normInForce(referential.normVersions[parameter.id] ?? []),
+                    unit: parameter.unit,
+                  });
+                  return (
+                    <label
+                      key={parameter.id}
+                      className={`flex min-h-[44px] items-center gap-3 rounded-xl border px-3.5 py-2.5 text-sm transition-all ${
+                        readOnly ? "cursor-default" : "cursor-pointer"
+                      } ${checked ? "border-brand/40 bg-brand-light/60 shadow-sm ring-1 ring-brand/10" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          onToggle?.();
+                          setDraft((current) => toggleParameter(current, parameter.id, referential));
+                        }}
+                        disabled={readOnly || !!pendingNature}
+                        className="accent-brand h-4 w-4"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block">{parameter.name}</span>
+                        {caption && <span className="block text-xs text-slate-600">{caption}</span>}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+        {list.some((group) => group.foreign) && (
+          <p className="text-xs text-slate-500">
+            Une analyse d&apos;un autre domaine se programme d&apos;ordinaire sur l&apos;autre échantillon du même numéro (« …M » / « …P »).
+          </p>
+        )}
+      </div>
+    );
+  }
+
   const readOnlyReason = programmeReadOnlyReason(
     { editable: saved.editable, status: saved.status, analysisBlocked: saved.analysisBlocked, cancelReason: sample.cancelReason },
     role
@@ -387,13 +507,13 @@ export function ProgrammeSheet({
         </p>
       )}
 
-      {/* 1 — Nature, type de produit et critères */}
+      {/* 1 — Nature, famille de produits et paramètres à rechercher */}
       <Card className="p-4 sm:p-6">
         <SectionTitle
           index={1}
           icon={Package}
-          title="Nature, type de produit et critères"
-          hint="Le type apporte les critères d'interprétation (n, c, m, M par germe) ; ses germes s'ajoutent aux analyses et son n est proposé. « — aucun — » laisse la lecture simple."
+          title="Nature, famille de produits et paramètres à rechercher"
+          hint="La famille apporte les critères d'interprétation (n, c, m, M par germe) : ses paramètres, cochés d'office, remplacent ceux de la famille précédente — les analyses cochées à la main et les demandes du préleveur restent — et son n est proposé. Sans famille, lecture en valeur simple."
         />
         <div className="mb-5">
           <label htmlFor="programme-nature" className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
@@ -422,10 +542,8 @@ export function ProgrammeSheet({
             {pendingNature
               ? "Chargement des analyses de cette nature…"
               : readOnly
-                ? `Famille : ${familyLabel}.`
-                : natures.length < 2
-                ? `Aucune autre nature active dans la même famille (${familyLabel}).`
-                : `Dans la même famille (${familyLabel}) : l'autre famille fait l'objet d'un autre échantillon. Changer de nature recharge les analyses, les profils et les prix ; la nature change à l'enregistrement du programme.`}
+                ? `Domaine : ${familyLabel}.`
+                : natureHint(sample.nature.family, twin, natures.length, referential.natureHome ?? null)}
           </p>
           {natureChanged && !readOnly && (
             <p className="mt-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">
@@ -436,98 +554,157 @@ export function ProgrammeSheet({
             </p>
           )}
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-            <input
-              type="search"
-              value={typeQuery}
-              onChange={(e) => setTypeQuery(e.target.value)}
-              placeholder="Rechercher un type (ex. : salade, charcuterie)"
-              aria-label="Rechercher un type de produit"
-              disabled={readOnly}
-              className="input-field pl-9 pr-4 disabled:bg-slate-50"
-            />
-          </div>
-          <div>
-            <label htmlFor="programme-type" className="sr-only">Type de produit</label>
-            <select
-              id="programme-type"
-              value={draft.productTypeId}
-              onChange={(e) => setDraft((current) => applyProductType(current, e.target.value, referential))}
-              disabled={readOnly}
-              className="input-field px-4 disabled:bg-slate-50"
-            >
-              <option value="">— aucun —</option>
-              {clientTypes.length > 0 && (
-                <optgroup label="Types du client">
-                  {clientTypes.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
-                  ))}
-                </optgroup>
+        <div>
+          <p id="programme-family-label" className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+            <Package className="h-4 w-4 text-brand" aria-hidden="true" />
+            Famille de produits
+          </p>
+          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p id="programme-family-current" className="min-w-0 text-sm">
+              {type ? (
+                <>
+                  <span className="block font-medium text-slate-800">{type.name}</span>
+                  <span className="block text-xs text-slate-500">
+                    {type.clientId ? "Famille du client" : "Catalogue commun"} ·{" "}
+                    {type.criteriaCount === 0 ? "aucun critère" : `${type.criteriaCount} critère${type.criteriaCount > 1 ? "s" : ""}`}
+                    {type.natureId === null ? " · type d'analyse à préciser" : ""}
+                  </span>
+                </>
+              ) : (
+                <span className="text-slate-600">Aucune famille — lecture en valeur simple.</span>
               )}
-              {catalogueTypes.length > 0 && (
-                <optgroup label="Catalogue">
-                  {catalogueTypes.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
+            </p>
+            {!readOnly && (
+              <SecondaryButton
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                disabled={!!busy || !!pendingNature}
+                aria-haspopup="dialog"
+                aria-describedby="programme-family-label programme-family-current"
+                className="shrink-0"
+              >
+                {type ? "Changer de famille…" : "Choisir une famille…"}
+              </SecondaryButton>
+            )}
           </div>
         </div>
-        {typeQuery && visibleTypes.length === 0 && (
-          <p className="mt-2 text-xs text-slate-500">Aucun type ne correspond à « {typeQuery} ».</p>
+        {/* Mounted from the start so the change is announced; empty until a family is chosen. */}
+        <p
+          id="programme-family-notice"
+          role="status"
+          aria-live="polite"
+          className={
+            familyNotice
+              ? `mt-3 flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${
+                  familyNotice.tookAway ? "border-amber-200 bg-amber-50 text-amber-800" : "border-teal-200 bg-teal-50 text-teal-800"
+                }`
+              : ""
+          }
+        >
+          {familyNotice && (
+            <>
+              {familyNotice.tookAway ? (
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              ) : (
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              )}
+              <span>{familyNotice.text}</span>
+            </>
+          )}
+        </p>
+        {pickerOpen && (
+          <FamilyPickerDialog referential={referential} draft={draft} onChoose={chooseFamily} onClose={closePicker} />
         )}
         {lostType && !draft.productTypeId && (
           <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <span>
-              Le type « {lostType.name}{" "}» enregistré sur l&apos;échantillon n&apos;est plus proposé à ce client : choisissez-en un autre, ou laissez « — aucun — ».
+              La famille « {lostType.name}{" "}» enregistrée sur l&apos;échantillon n&apos;est plus proposée à ce client : choisissez-en une autre, ou gardez « Aucune famille ».
             </span>
           </p>
         )}
 
-        {type && criteria.length > 0 && (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[520px] text-sm">
-              <caption className="mb-2 text-left text-xs text-slate-500">
-                Critères de « {type.name} » — {criteria.length} germe{criteria.length > 1 ? "s" : ""}
-              </caption>
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th className="pb-2 pr-3 font-medium">Germe</th>
-                  <th className="pb-2 pr-3 font-medium">Norme</th>
-                  <th className="pb-2 pr-3 text-right font-medium">n</th>
-                  <th className="pb-2 pr-3 text-right font-medium">c</th>
-                  <th className="pb-2 pr-3 text-right font-medium">m</th>
-                  <th className="pb-2 text-right font-medium">M</th>
-                </tr>
-              </thead>
-              <tbody>
-                {criteria.map((criterion) => {
-                  const limits = limitCells(criterion);
-                  const programmedGerm = draft.parameterIds.includes(criterion.parameterId);
-                  return (
-                    <tr key={criterion.parameterId} className="border-b border-slate-100">
-                      <td className="py-2 pr-3 font-medium text-slate-800">
-                        {criterion.parameterName}
-                        {!programmedGerm && <span className="ml-1.5 text-xs font-normal text-slate-400">non programmé</span>}
-                      </td>
-                      <td className="py-2 pr-3 text-xs text-slate-500">{criterion.normVersion?.label ?? "—"}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums text-slate-700">{criterion.n}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums text-slate-700">{criterion.c ?? "—"}</td>
-                      <td className="py-2 pr-3 text-right font-mono text-slate-700">{limits.m}{criterion.unit && limits.m !== "—" ? <span className="ml-1 text-xs text-slate-400">{criterion.unit}</span> : null}</td>
-                      <td className="py-2 text-right font-mono text-slate-700">{limits.bigM}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        {type && familyRows.length > 0 && (
+          <fieldset className="mt-5">
+            <legend className="text-sm font-semibold text-slate-700">Paramètres à rechercher</legend>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+              <p className="text-xs text-slate-500" aria-live="polite">
+                {familyCheckLabel(familyCount)}
+              </p>
+              {!readOnly && familyCount.total > 0 && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDraft((current) => checkAllOfType(current, referential))}
+                    disabled={!!pendingNature}
+                    className={BULK_BUTTON}
+                  >
+                    Cocher tout
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraft((current) => uncheckAllOfType(current, referential))}
+                    disabled={!!pendingNature}
+                    className={BULK_BUTTON}
+                  >
+                    Décocher tout
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[600px] text-sm">
+                <caption className="sr-only">Paramètres à rechercher de « {type.name} » : germe, norme, unité, n, c, m, M</caption>
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <th scope="col" className="w-10 pb-2 pr-2 font-medium"><span className="sr-only">Rechercher</span></th>
+                    <th scope="col" className="pb-2 pr-3 font-medium">Germe</th>
+                    <th scope="col" className="pb-2 pr-3 font-medium">Norme</th>
+                    <th scope="col" className="pb-2 pr-3 font-medium">Unité</th>
+                    <th scope="col" className="pb-2 pr-3 text-right font-medium">n</th>
+                    <th scope="col" className="pb-2 pr-3 text-right font-medium">c</th>
+                    <th scope="col" className="pb-2 pr-3 text-right font-medium">m</th>
+                    <th scope="col" className="pb-2 text-right font-medium">M</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {familyRows.map((row) => {
+                    const limits = limitCells(row.criterion);
+                    const boxId = `programme-germ-${row.parameterId}`;
+                    return (
+                      <tr key={row.parameterId} className={`border-b border-slate-100 ${row.checked ? "bg-brand-light/30" : ""}`}>
+                        <td className="py-2 pr-2 align-top">
+                          <input
+                            id={boxId}
+                            type="checkbox"
+                            checked={row.checked}
+                            onChange={() => setDraft((current) => toggleParameter(current, row.parameterId, referential))}
+                            disabled={readOnly || !row.available || !!pendingNature}
+                            className="accent-brand mt-0.5 h-4 w-4"
+                          />
+                        </td>
+                        <td className="py-2 pr-3 align-top">
+                          <label htmlFor={boxId} className={`font-medium text-slate-800 ${readOnly || !row.available ? "" : "cursor-pointer"}`}>
+                            {row.name}
+                          </label>
+                          {!row.available && <span className="block text-xs text-slate-500">pas proposé pour cette nature</span>}
+                        </td>
+                        <td className="py-2 pr-3 align-top text-xs text-slate-500">{row.normLabel ?? "—"}</td>
+                        <td className="py-2 pr-3 align-top text-xs text-slate-600">{row.unit ?? "—"}</td>
+                        <td className="py-2 pr-3 text-right align-top tabular-nums text-slate-700">{row.criterion.n}</td>
+                        <td className="py-2 pr-3 text-right align-top tabular-nums text-slate-700">{row.criterion.c ?? "—"}</td>
+                        <td className="py-2 pr-3 text-right align-top font-mono text-slate-700">{limits.m}</td>
+                        <td className="py-2 text-right align-top font-mono text-slate-700">{limits.bigM}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </fieldset>
         )}
-        {type && criteria.length === 0 && (
-          <p className="mt-3 text-sm text-slate-500">Aucun critère enregistré pour ce type : lecture en valeur simple.</p>
+        {type && familyRows.length === 0 && (
+          <p className="mt-3 text-sm text-slate-500">Aucun critère enregistré pour cette famille : lecture en valeur simple.</p>
         )}
       </Card>
 
@@ -537,7 +714,11 @@ export function ProgrammeSheet({
           index={2}
           icon={FlaskConical}
           title="Analyses"
-          hint="Les analyses cochées par le préleveur sont pré-cochées. Un profil remplace la sélection ; au moins une analyse pour confirmer."
+          hint={
+            familyCount.total > 0
+              ? "Les paramètres de la famille se cochent en section 1 ; les analyses hors famille, dont celles demandées par le préleveur, sont ici. Un profil remplace la sélection ; au moins une analyse pour confirmer."
+              : "Les analyses cochées par le préleveur sont pré-cochées. Un profil remplace la sélection ; au moins une analyse pour confirmer."
+          }
         />
         {referential.profiles.length > 0 && (
           <div className="mb-4">
@@ -573,62 +754,36 @@ export function ProgrammeSheet({
           </legend>
           {referential.parameters.length === 0 ? (
             <p className="text-sm text-slate-500">Aucun paramètre n&apos;est défini pour cette nature : l&apos;administrateur doit en créer avant la programmation.</p>
-          ) : (
-            <div className="space-y-4">
-              {groups.map((group) => {
-                const ticked = group.parameters.filter((parameter) => draft.parameterIds.includes(parameter.id)).length;
-                return (
-                  <div key={group.family} role="group" aria-label={group.label}>
-                    <p className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      {group.label}
-                      <span className="font-normal normal-case tracking-normal text-slate-400">
-                        {ticked} sur {group.parameters.length}
+          ) : type && familyCount.total > 0 ? (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500">
+                Les paramètres de « {type.name} » se cochent en section 1 : {familyCheckLabel(familyCount)}.
+              </p>
+              {others.length > 0 && (
+                <div className="rounded-xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setOthersOpen(!othersShown)}
+                    aria-expanded={othersShown}
+                    aria-controls="programme-other-analyses"
+                    className="flex min-h-[44px] w-full items-center justify-between gap-2 rounded-xl px-3.5 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                  >
+                    <span>
+                      Analyses hors famille
+                      <span className="ml-2 text-xs font-normal text-slate-500">
+                        {othersTicked} cochée{othersTicked > 1 ? "s" : ""} sur {othersTotal}
                       </span>
-                      {group.foreign && (
-                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold normal-case tracking-normal text-amber-700 ring-1 ring-amber-200">
-                          autre famille que l&apos;échantillon
-                        </span>
-                      )}
-                    </p>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {group.parameters.map((parameter) => {
-                        const checked = draft.parameterIds.includes(parameter.id);
-                        // « Norme en vigueur · unité » under the name, when known (14/10).
-                        const caption = parameterCaption({
-                          normLabel: normInForce(referential.normVersions[parameter.id] ?? []),
-                          unit: parameter.unit,
-                        });
-                        return (
-                          <label
-                            key={parameter.id}
-                            className={`flex min-h-[44px] items-center gap-3 rounded-xl border px-3.5 py-2.5 text-sm transition-all ${
-                              readOnly ? "cursor-default" : "cursor-pointer"
-                            } ${checked ? "border-brand/40 bg-brand-light/60 shadow-sm ring-1 ring-brand/10" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => setDraft((current) => toggleParameter(current, parameter.id, referential))}
-                              disabled={readOnly || !!pendingNature}
-                              className="accent-brand h-4 w-4"
-                            />
-                            <span className="min-w-0 flex-1">
-                              <span className="block">{parameter.name}</span>
-                              {caption && <span className="block text-xs text-slate-600">{caption}</span>}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
+                    </span>
+                    <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${othersShown ? "rotate-180" : ""}`} aria-hidden="true" />
+                  </button>
+                  <div id="programme-other-analyses" hidden={!othersShown} className="border-t border-slate-100 p-3.5">
+                    {analysisGroups(others, () => setOthersOpen((open) => open ?? true))}
                   </div>
-                );
-              })}
-              {groups.some((group) => group.foreign) && (
-                <p className="text-xs text-slate-500">
-                  Une analyse d&apos;une autre famille se programme d&apos;ordinaire sur l&apos;autre échantillon du même numéro (« …M » / « …P »).
-                </p>
+                </div>
               )}
             </div>
+          ) : (
+            analysisGroups(groups)
           )}
         </fieldset>
       </Card>
@@ -743,7 +898,7 @@ export function ProgrammeSheet({
           index={4}
           icon={BookOpen}
           title="Méthodes"
-          hint="La version de norme imprimée comme méthode sur le rapport : celle en vigueur par défaut, celle du critère si un type est choisi."
+          hint="La version de norme imprimée comme méthode sur le rapport : celle en vigueur par défaut, celle du critère si une famille est choisie."
         />
         {programmed.length === 0 ? (
           <p className="text-sm text-slate-500">Cochez d&apos;abord les analyses (section 2).</p>
@@ -780,7 +935,7 @@ export function ProgrammeSheet({
                       </select>
                     )}
                     {criterion?.normVersion && (
-                      <p className="mt-1 text-xs text-slate-500">Critère du type : {criterion.normVersion.label}.</p>
+                      <p className="mt-1 text-xs text-slate-500">Critère de la famille : {criterion.normVersion.label}.</p>
                     )}
                   </div>
                   <div>
@@ -953,7 +1108,7 @@ export function ProgrammeSheet({
       <Card className="p-4 sm:p-6">
         <p className="text-sm text-slate-600">
           <b className="font-semibold text-slate-800">{draft.parameterIds.length}</b> analyse{draft.parameterIds.length > 1 ? "s" : ""} · n = <b className="font-semibold text-slate-800">{draft.unitCount}</b>
-          {type ? ` · ${type.name}` : " · sans type"}
+          {type ? ` · ${type.name}` : " · sans famille"}
           {saved.holder ? ` · pris par ${saved.holder.names}` : confirmed ? " · à prendre" : ""}
           {draft.priority === "URGENTE" ? " · urgente" : ""}
           {natureChanged && draftNature ? ` · nature : ${draftNature.label} (à enregistrer)` : ""}

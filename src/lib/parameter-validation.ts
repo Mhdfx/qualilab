@@ -75,7 +75,7 @@ export function validateParameter(input: ParameterInput): ParameterResult {
 
   const category = text(input.category) as SampleType;
   if (!SAMPLE_TYPES.includes(category)) {
-    return { ok: false, error: "Domaine d'analyse invalide." };
+    return { ok: false, error: "Catégorie d'analyse invalide." };
   }
 
   // Absent or empty = microbiology; anything else must be one of the three.
@@ -84,7 +84,7 @@ export function validateParameter(input: ParameterInput): ParameterResult {
       ? DEFAULT_PARAMETER_FAMILY
       : (text(input.family) as Family);
   if (!PARAMETER_FAMILIES.includes(family)) {
-    return { ok: false, error: "Famille d'analyse invalide : microbiologie, physico-chimie ou autre." };
+    return { ok: false, error: "Domaine invalide : microbiologie, physico-chimie ou autre." };
   }
 
   const limit = parseLimit(input.limitValue);

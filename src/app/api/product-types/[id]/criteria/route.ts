@@ -8,9 +8,10 @@ import { validateCriterion, type CleanCriterion } from "@/lib/criteria-input";
  * The whole criteria grid of a product type, saved in one transaction:
  * rows with an id are updated, rows without are created, rows absent from
  * the payload are deleted. Every save is audited with the grid before/after.
+ * The administrator and the responsable des paramètres (16/10, Q125).
  */
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireApiRole("ADMIN");
+  const session = await requireApiRole("PROGRAMMATEUR", "ADMIN");
   if (session instanceof NextResponse) return session;
   const { id } = await params;
 
@@ -18,7 +19,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     where: { id },
     select: { id: true, name: true, criteria: { select: { id: true, parameterId: true, normVersionId: true, n: true, c: true, mKind: true, m: true, bigM: true, unit: true, active: true } } },
   });
-  if (!type) return NextResponse.json({ error: "Type de produit introuvable." }, { status: 404 });
+  if (!type) return NextResponse.json({ error: "Famille de produits introuvable." }, { status: 404 });
 
   let body: unknown;
   try {
@@ -62,7 +63,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
   const known = new Set(type.criteria.map((c) => c.id));
   for (const row of rows) {
-    if (row.id && !known.has(row.id)) return NextResponse.json({ error: "Un critère ne fait pas partie de ce type." }, { status: 400 });
+    if (row.id && !known.has(row.id)) return NextResponse.json({ error: "Un critère ne fait pas partie de cette famille." }, { status: 400 });
   }
   const keep = new Set(rows.map((r) => r.id).filter((v): v is string => v !== null));
 

@@ -67,7 +67,7 @@ export function familiesSummary(families: readonly Family[]): string {
   if (micro && chimie) return "Analyses microbiologiques et physico-chimiques";
   if (micro) return "Analyses microbiologiques";
   if (chimie) return "Analyses physico-chimiques";
-  return "Aucune famille d'analyses cochée";
+  return "Aucun domaine d'analyses coché";
 }
 
 /** The refs of the samples a line becomes: « 2 », or « 2M » and « 2P ». */
@@ -126,12 +126,12 @@ export function receptionDesignation(sample: {
 
 /**
  * The first option of « Conservation »: the default class of the kind —
- * one for the line's families, or « selon la famille » when its two
+ * one for the line's families, or « selon le domaine » when its two
  * samples differ (water: chilled for microbiology, none for chemistry).
  */
 export function storageDefaultLabel(lineKind: LineKind, families: readonly Family[]): string {
   const defaults = [...new Set((families.length > 0 ? families : (["AUTRE"] as const)).map((f) => defaultStorageClass(lineKind, f)))];
-  if (defaults.length > 1) return "Selon la famille (par défaut)";
+  if (defaults.length > 1) return "Selon le domaine (par défaut)";
   const only = defaults[0];
   return only ? `${STORAGE_CLASS_LABELS[only]} (par défaut)` : "Sans objet (par défaut)";
 }

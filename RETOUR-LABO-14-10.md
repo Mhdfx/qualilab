@@ -500,6 +500,15 @@ d'abord, puis les filtres (champ caché ISO). Effort : M. Migration : non.
 > **16/10 — catégories abandonnées** (Q121) : `ProductType.natureId` seul,
 > RP2c abandonné, RP1 fondu dans RP2d, reprise étendue à Q43 et Q56
 > (`RETOUR-LABO-16-10.md` F1–F7, ≈ 40 h).
+>
+> **19/10 — construit** (vague 4, F1–F7, F9 ; en local, non déployé) :
+> `ProductType.natureId`, la reprise de l'ancien logiciel, « Familles &
+> critères » sous /programmation, le sélecteur « Choisir une famille de
+> produits », le remplacement de la liste au changement de famille ; voir
+> `RETOUR-LABO-16-10.md` §3.F et `HANDOFF.md` §8 (2026-10-19, vague 4).
+> La consigne plus bas « Tant que N2 n'est pas fait : ne proposer que les
+> familles applicables à la catégorie de l'échantillon » est dépassée : N2
+> est fait par la reprise (F3), et le sélecteur filtre par type d'analyse.
 
 **Défaut recommandé** : catégorie = « Group famille » de l'ancien logiciel
 (8 groupes) ; famille = famille de produits (`ProductType`) ; une catégorie

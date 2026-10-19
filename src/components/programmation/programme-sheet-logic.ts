@@ -3,6 +3,8 @@ import { BENCH_STATUSES, isUnclaimed } from "@/lib/bench-access";
 import { pickCriterion } from "@/lib/interpretation";
 import { ANALYSIS_FAMILY_LABELS, CANCEL_REASON_LABELS, formatDateTime } from "@/lib/labels";
 import { roundMoney } from "@/lib/invoice-math";
+import { normInForce } from "@/lib/parameter-caption";
+import { programmeNatureFamilies } from "@/lib/programme-input";
 import {
   parameterSpellings,
   receptionChecklist,
@@ -12,9 +14,11 @@ import {
 import { complementaryChecklist, type ComplementarySerie } from "@/lib/reception-complementary";
 import { reportTechnicianNames } from "@/lib/report-programme";
 import type { Role } from "@/lib/roles";
+import type { SampleTwin } from "@/lib/sample-code";
 import { CORRECTABLE_STATUSES } from "@/lib/sample-status";
 import { cancellersLabel, correctionLabel, correctionRights } from "@/lib/sample-verbs";
 import { MAX_UNITS } from "@/lib/series";
+import { matchesQuery } from "@/lib/similar";
 import { fromLocalInput, toLocalInput } from "@/components/preleveur/visit-types";
 import type {
   CriterionRef,
@@ -51,7 +55,7 @@ export type ParameterSetting = {
 export type ProgrammeDraft = {
   /**
    * The nature the programme is written for (RETOUR-LABO-06-10.md §5, V3 —
-   * Q49): the line's own until the sheet picks another of the same family.
+   * Q49, Q129): the line's own until the sheet picks another one.
    * It is always the nature of the referential on screen.
    */
   natureId: string;
@@ -68,6 +72,16 @@ export type ProgrammeDraft = {
   programmeNote: string;
   /** Kept for every parameter, ticked or not: unticking then re-ticking loses nothing. */
   settings: Record<string, ParameterSetting>;
+  /**
+   * The analyses a change of family never removes (16/10, Q123 —
+   * RETOUR-LABO-16-10.md F6): those ticked or unticked by hand on this
+   * sheet (a profile counts), and those the line carried at opening that
+   * were not germs of its stored family — the préleveur's requests. Never
+   * sent: the sheet's memory only.
+   */
+  manualIds: string[];
+  /** The n of the profile chosen on this sheet, 0 = none: a family's n never goes below it. Never sent. */
+  profileUnitCount: number;
 };
 
 export const UNIT_CHOICES = [1, 3, 5, 9] as const;
@@ -105,6 +119,16 @@ export function criteriaOf(type: ProductTypeRef | undefined): CriterionRef[] {
 /** The units the type's plans read: the largest n of its criteria, 0 without criteria. */
 export function typeUnitCount(type: ProductTypeRef | undefined): number {
   return criteriaOf(type).reduce((max, criterion) => Math.max(max, criterion.n), 0);
+}
+
+/**
+ * The germs of a family the nature on screen may programme, in the
+ * family's order — the « Paramètres à rechercher » (F6). A criterion on a
+ * parameter of another category is shown, never ticked.
+ */
+export function familyGermIds(type: ProductTypeRef | undefined, referential: ProgrammeReferentialData): string[] {
+  const known = new Set(referential.parameters.map((parameter) => parameter.id));
+  return criteriaOf(type).flatMap((criterion) => (known.has(criterion.parameterId) ? [criterion.parameterId] : []));
 }
 
 /** The version a type's criterion names for a parameter, when the parameter may use it. */
@@ -145,7 +169,12 @@ function withDefaults(
 
 const dilutionText = (value: number | null) => (value === null ? "" : String(value).replace(".", ","));
 
-/** The sheet as it opens: the stored programme, or what the préleveur ticked before any programme. */
+/**
+ * The sheet as it opens: the stored programme, or what the préleveur ticked
+ * before any programme. What the line carries beyond its stored family's
+ * germs — the préleveur's requests, an analysis added by hand — is
+ * remembered as asked for (`manualIds`): changing the family keeps it.
+ */
 export function initialDraft(
   programme: ProgrammeState,
   referential: ProgrammeReferentialData
@@ -153,6 +182,8 @@ export function initialDraft(
   const known = new Set(referential.parameters.map((parameter) => parameter.id));
   const type = typeOf(referential, programme.productTypeId);
   const parameterIds = programme.parameterIds.filter((id) => known.has(id));
+  // A family the client may no longer use brought nothing the sheet can tell apart: all asked for.
+  const familyGerms = new Set(familyGermIds(type, referential));
   const settings: Record<string, ParameterSetting> = {};
   for (const entry of programme.parameters) {
     if (!known.has(entry.parameterId)) continue;
@@ -173,38 +204,151 @@ export function initialDraft(
     dueAt: programme.dueAt ? toLocalInput(new Date(programme.dueAt)) : "",
     programmeNote: programme.programmeNote ?? "",
     settings,
+    manualIds: parameterIds.filter((id) => !familyGerms.has(id)),
+    profileUnitCount: 0,
   };
 }
 
+/** The family's germs ticked, each with the criterion's norm version when it names one the parameter may use. */
+function tickFamilyGerms(
+  draft: ProgrammeDraft,
+  germs: readonly string[],
+  type: ProductTypeRef | undefined,
+  referential: ProgrammeReferentialData,
+  options: { criterionVersion: boolean }
+): Pick<ProgrammeDraft, "parameterIds" | "settings"> {
+  const settings = { ...draft.settings };
+  for (const id of germs) {
+    const current = withDefaults(settings, id, type, referential);
+    const fromCriterion = options.criterionVersion ? criterionVersion(id, type, referential) : "";
+    settings[id] = fromCriterion ? { ...current, normVersionId: fromCriterion } : current;
+  }
+  return { parameterIds: [...new Set([...draft.parameterIds, ...germs])], settings };
+}
+
 /**
- * Choosing a type ADDS its germs to the analyses, raises n to what its plans
- * read and proposes the criterion's norm version — never removes an analysis
- * the préleveur asked for. « — aucun — » only detaches the type.
+ * Choosing a family REPLACES its list (16/10, Q123 — RETOUR-LABO-16-10.md
+ * F6, as the old software did): the germs that came only from the previous
+ * family leave the analyses, the new family's are ticked — each with its
+ * criterion's norm version — and its n is proposed, never below the n of a
+ * profile chosen on this sheet. What was asked for stays (`manualIds`):
+ * the analyses ticked by hand, the préleveur's requests. « Aucune
+ * famille » (typeId "") removes the previous family's germs the same way and
+ * leaves n as it is (nothing to read it from) — likewise a family without
+ * criteria.
+ * `LineEditor` and `DepositForm` keep their additive choice.
  */
 export function applyProductType(
   draft: ProgrammeDraft,
   typeId: string,
   referential: ProgrammeReferentialData
 ): ProgrammeDraft {
-  const type = typeOf(referential, typeId);
-  if (!type) return { ...draft, productTypeId: "" };
-  const known = new Set(referential.parameters.map((parameter) => parameter.id));
-  const criteria = criteriaOf(type).filter((criterion) => known.has(criterion.parameterId));
-  const parameterIds = [...new Set([...draft.parameterIds, ...criteria.map((criterion) => criterion.parameterId)])];
-  const settings = { ...draft.settings };
-  for (const criterion of criteria) {
-    const current = withDefaults(settings, criterion.parameterId, type, referential);
-    const fromCriterion = criterionVersion(criterion.parameterId, type, referential);
-    settings[criterion.parameterId] = fromCriterion ? { ...current, normVersionId: fromCriterion } : current;
-  }
+  const previous = new Set(familyGermIds(typeOf(referential, draft.productTypeId || null), referential));
+  const type = typeOf(referential, typeId || null);
+  const germs = familyGermIds(type, referential);
+  const next = new Set(germs);
+  const asked = new Set(draft.manualIds);
+  const kept = draft.parameterIds.filter((id) => !previous.has(id) || next.has(id) || asked.has(id));
+  const ticked = tickFamilyGerms({ ...draft, parameterIds: kept }, germs, type, referential, { criterionVersion: true });
   const needed = typeUnitCount(type);
   return {
     ...draft,
-    productTypeId: type.id,
-    parameterIds,
-    settings,
-    unitCount: needed > 0 ? clampUnits(Math.max(draft.unitCount, needed)) : draft.unitCount,
+    ...ticked,
+    productTypeId: type?.id ?? "",
+    unitCount: needed > 0 ? clampUnits(Math.max(needed, draft.profileUnitCount)) : draft.unitCount,
   };
+}
+
+/**
+ * What the sheet says after a change of family: the family chosen (or none),
+ * the analyses that left with the previous one and the n it changed — a
+ * replacement removes analyses and may lower n, never silently.
+ */
+export function familyChangeNotice(
+  before: ProgrammeDraft,
+  after: ProgrammeDraft,
+  referential: ProgrammeReferentialData
+): string {
+  const type = typeOf(referential, after.productTypeId || null);
+  const removed = before.parameterIds
+    .filter((id) => !after.parameterIds.includes(id))
+    .map((id) => referential.parameters.find((parameter) => parameter.id === id)?.name ?? id);
+  const head = type ? `Famille « ${type.name} » choisie` : "Aucune famille : lecture en valeur simple";
+  const tail =
+    removed.length === 0
+      ? ""
+      : removed.length === 1
+        ? ` ; l'analyse « ${removed[0]} », venue de la famille précédente, a été retirée`
+        : ` ; ${removed.length} analyses venues de la famille précédente ont été retirées (${removed.map((name) => `« ${name} »`).join(", ")})`;
+  const units = before.unitCount !== after.unitCount ? ` ; n : ${before.unitCount} → ${after.unitCount}` : "";
+  return `${head}${tail}${units}. Enregistrez le programme pour l'appliquer.`;
+}
+
+/** Whether a change of family took something away the programmer may want back (amber, not a mere acknowledgement). */
+export function familyChangeTookAway(before: ProgrammeDraft, after: ProgrammeDraft): boolean {
+  return before.unitCount > after.unitCount || before.parameterIds.some((id) => !after.parameterIds.includes(id));
+}
+
+/** « Cocher tout »: every germ of the chosen family ticked — the other analyses untouched, nothing marked as asked for. */
+export function checkAllOfType(draft: ProgrammeDraft, referential: ProgrammeReferentialData): ProgrammeDraft {
+  const type = typeOf(referential, draft.productTypeId || null);
+  return { ...draft, ...tickFamilyGerms(draft, familyGermIds(type, referential), type, referential, { criterionVersion: false }) };
+}
+
+/** « Décocher tout »: every germ of the chosen family unticked — the other analyses untouched, settings kept. */
+export function uncheckAllOfType(draft: ProgrammeDraft, referential: ProgrammeReferentialData): ProgrammeDraft {
+  const germs = new Set(familyGermIds(typeOf(referential, draft.productTypeId || null), referential));
+  return { ...draft, parameterIds: draft.parameterIds.filter((id) => !germs.has(id)) };
+}
+
+/** How many of the chosen family's germs are ticked, of how many the nature on screen may programme. */
+export function familyCheckCount(draft: ProgrammeDraft, referential: ProgrammeReferentialData): { checked: number; total: number } {
+  const germs = familyGermIds(typeOf(referential, draft.productTypeId || null), referential);
+  return { checked: germs.filter((id) => draft.parameterIds.includes(id)).length, total: germs.length };
+}
+
+/** « 3 paramètres cochés sur 5 » — « 0 paramètre coché sur 5 », as French counts. */
+export function familyCheckLabel(count: { checked: number; total: number }): string {
+  const plural = count.checked > 1 ? "s" : "";
+  return `${count.checked} paramètre${plural} coché${plural} sur ${count.total}`;
+}
+
+/** One line of « Paramètres à rechercher »: the family's criterion as the bench will read it. */
+export type FamilyParameterRow = {
+  parameterId: string;
+  name: string;
+  criterion: CriterionRef;
+  /** The criterion's norm version, else the parameter's version in force; null = none known. */
+  normLabel: string | null;
+  /** The criterion's unit — it wins at the bench and on the report (Q40: « /1g ») — else the parameter's. */
+  unit: string | null;
+  checked: boolean;
+  /** False for a germ the nature on screen does not offer (another category): shown, never ticked. */
+  available: boolean;
+};
+
+/** The unit an analysis is read in: the family's criterion's when it gives one (Q40), else the parameter's. */
+export function criterionUnit(criterion: Pick<CriterionRef, "unit"> | undefined, parameter: Pick<ParameterRef, "unit"> | undefined): string | null {
+  const fromCriterion = criterion?.unit?.trim();
+  if (fromCriterion) return fromCriterion;
+  const fromParameter = parameter?.unit?.trim();
+  return fromParameter ? fromParameter : null;
+}
+
+/** The chosen family as « Paramètres à rechercher »: germ · norme · unité du critère · n / c / m / M (F6). */
+export function familyParameterRows(draft: ProgrammeDraft, referential: ProgrammeReferentialData): FamilyParameterRow[] {
+  return criteriaOf(typeOf(referential, draft.productTypeId || null)).map((criterion) => {
+    const parameter = referential.parameters.find((candidate) => candidate.id === criterion.parameterId);
+    return {
+      parameterId: criterion.parameterId,
+      name: parameter?.name ?? criterion.parameterName,
+      criterion,
+      normLabel: criterion.normVersion?.label ?? normInForce(referential.normVersions[criterion.parameterId] ?? []),
+      unit: criterionUnit(criterion, parameter),
+      checked: draft.parameterIds.includes(criterion.parameterId),
+      available: parameter !== undefined,
+    };
+  });
 }
 
 /** A profile replaces the analyses and proposes its n — raised to the chosen type's when that reads more. */
@@ -222,8 +366,61 @@ export function applyProfile(
     ...draft,
     parameterIds,
     settings,
+    // Chosen by hand: a later change of family keeps the profile's analyses and its n.
+    manualIds: [...new Set([...draft.manualIds, ...parameterIds])],
+    profileUnitCount: profile.unitCount,
     unitCount: clampUnits(Math.max(profile.unitCount, typeUnitCount(type))),
   };
+}
+
+/** What « Choisir une famille de produits » shows (16/10, Q124 — RETOUR-LABO-16-10.md F5). */
+export type FamilyFilter = {
+  /** The type d'analyse kept; null = « Tous ». */
+  natureId: string | null;
+  /** With a type d'analyse: the families still « à préciser » (no type yet) too — so no food family disappears. */
+  includeUnclassified: boolean;
+  /** Matched on the family's name, accents and one typo forgiven (`matchesQuery`). */
+  query: string;
+};
+
+/**
+ * The filter for one « Type d'analyse » choice: a food type also lists the
+ * families still « à préciser » — one of them may be a food family, and
+ * hiding it would leave it unpickable on a food line (F5); « Tous » (null)
+ * lists everything anyway. The picker opens on the nature on screen
+ * (`familyFilterFor(draft.natureId, referential)`), changeable.
+ */
+export function familyFilterFor(
+  natureId: string | null,
+  referential: Pick<ProgrammeReferentialData, "natureId" | "category" | "familyNatures">,
+  query = ""
+): FamilyFilter {
+  const category =
+    natureId === null
+      ? null
+      : (referential.familyNatures.find((nature) => nature.id === natureId)?.category ??
+        (natureId === referential.natureId ? referential.category : null));
+  return { natureId, includeUnclassified: category === "ALIMENTAIRE", query };
+}
+
+/**
+ * The families the picker lists: of the type d'analyse chosen (plus the
+ * unclassified ones when asked), matching the search, the client's own
+ * first, then the catalogue, by name in each.
+ */
+export function filterFamilies<T extends Pick<ProductTypeRef, "name" | "natureId" | "clientId">>(
+  types: readonly T[],
+  filter: FamilyFilter
+): T[] {
+  return types
+    .filter(
+      (type) =>
+        (filter.natureId === null ||
+          type.natureId === filter.natureId ||
+          (filter.includeUnclassified && type.natureId === null)) &&
+        matchesQuery(type.name, filter.query)
+    )
+    .sort((a, b) => Number(a.clientId === null) - Number(b.clientId === null) || a.name.localeCompare(b.name, "fr"));
 }
 
 /** True when the ticked analyses are exactly the profile's. */
@@ -237,17 +434,20 @@ export function profileApplied(
   return ids.length > 0 && ids.length === draft.parameterIds.length && ids.every((id) => draft.parameterIds.includes(id));
 }
 
+/** A tick by hand: remembered as asked for (`manualIds`), so a change of family keeps it. */
 export function toggleParameter(
   draft: ProgrammeDraft,
   parameterId: string,
   referential: ProgrammeReferentialData
 ): ProgrammeDraft {
+  const manualIds = draft.manualIds.includes(parameterId) ? draft.manualIds : [...draft.manualIds, parameterId];
   if (draft.parameterIds.includes(parameterId)) {
-    return { ...draft, parameterIds: draft.parameterIds.filter((id) => id !== parameterId) };
+    return { ...draft, manualIds, parameterIds: draft.parameterIds.filter((id) => id !== parameterId) };
   }
   const type = typeOf(referential, draft.productTypeId);
   return {
     ...draft,
+    manualIds,
     parameterIds: [...draft.parameterIds, parameterId],
     settings: { ...draft.settings, [parameterId]: withDefaults(draft.settings, parameterId, type, referential) },
   };
@@ -322,12 +522,64 @@ export function groupParameters(
 }
 
 /**
- * The natures the sheet offers (Q49 by default): the line's current one —
- * even archived, it stays readable — and the active natures of its family.
- * The other family is another sample, never a choice here.
+ * « Analyses hors famille » (F6): the groups without the chosen family's
+ * germs — those are ticked in « Paramètres à rechercher » — empty groups
+ * left out. (« Autres analyses » is the AUTRE domain's name, never this panel's.)
  */
-export function natureChoices(referential: ProgrammeReferentialData, family: Family): ProgrammeNatureData[] {
-  return referential.natures.filter((nature) => nature.current || (nature.active && nature.family === family));
+export function otherParameterGroups(
+  groups: readonly ParameterGroup[],
+  draft: ProgrammeDraft,
+  referential: ProgrammeReferentialData
+): ParameterGroup[] {
+  const germs = new Set(familyGermIds(typeOf(referential, draft.productTypeId || null), referential));
+  return groups.flatMap((group) => {
+    const parameters = group.parameters.filter((parameter) => !germs.has(parameter.id));
+    return parameters.length > 0 ? [{ ...group, parameters }] : [];
+  });
+}
+
+/**
+ * The natures the sheet offers (Q49 by default, Q129): the line's current
+ * one — even archived, it stays readable — and the active natures of the
+ * families it may take (`programmeNatureFamilies`): its own and « Autres
+ * analyses » (« Analyse sensorielle » of a food), or from « Autres
+ * analyses » back to the family of its code's letter (« …M » / « …P »; for
+ * a single sample, the domain it came from — `referential.natureHome` —
+ * both only when unknown). The other family of a split line is another
+ * sample, never a choice here. The server already bounds the list by the
+ * kind of sample (`selectableNatures`).
+ */
+export function natureChoices(
+  referential: ProgrammeReferentialData,
+  family: Family,
+  twin: SampleTwin | null
+): ProgrammeNatureData[] {
+  const families = programmeNatureFamilies(family, twin, referential.natureHome ?? null);
+  return referential.natures.filter((nature) => nature.current || (nature.active && families.includes(nature.family)));
+}
+
+/**
+ * The hint under « Nature d'analyse » (Q129): where the other natures come
+ * from — `choices` is the number of natures the select offers, the current
+ * one included; `home`, the domain a single-sample line on « Autres
+ * analyses » came from. The sheet shows it while the programme is editable.
+ */
+export function natureHint(family: Family, twin: SampleTwin | null, choices: number, home: Family | null = null): string {
+  const label = (of: Family) => ANALYSIS_FAMILY_LABELS[of].toLowerCase();
+  const homes = programmeNatureFamilies(family, twin, home).filter((of) => of !== "AUTRE");
+  // A split line's other family is another sample; a line moved to « Autres
+  // analyses » goes back to its domain — either, only when the journal knows none.
+  const split = family !== "AUTRE" || homes.length === 1;
+  if (choices < 2) {
+    return family === "AUTRE"
+      ? `Aucune autre nature active parmi les autres analyses ni dans ${split ? "le domaine de l'échantillon" : "les domaines"} (${homes.map(label).join(" ou ")}).`
+      : `Aucune autre nature active dans le même domaine (${label(family)}) ni parmi les autres analyses.`;
+  }
+  const scope =
+    family === "AUTRE"
+      ? `Parmi les autres analyses, ou dans ${split ? "le domaine de l'échantillon" : "l'un des deux domaines"} (${homes.map(label).join(" ou ")})`
+      : `Dans le même domaine (${label(family)}) ou parmi les autres analyses`;
+  return `${scope}${split ? " : l'autre domaine fait l'objet d'un autre échantillon" : ""}. Changer de nature recharge les analyses, les profils et les prix ; la nature change à l'enregistrement du programme.`;
 }
 
 /**
@@ -369,7 +621,7 @@ export function natureChangeNotice(label: string, dropped: string[], current: bo
 export function unitWarning(draft: ProgrammeDraft, type: ProductTypeRef | undefined): string | null {
   const needed = typeUnitCount(type);
   if (!type || needed === 0 || draft.unitCount >= needed) return null;
-  return `Le type « ${type.name} » attend n = ${needed} ; avec ${draft.unitCount} unité${draft.unitCount > 1 ? "s" : ""} la paillasse lira en indicatif, sans verdict officiel.`;
+  return `La famille « ${type.name} » attend n = ${needed} ; avec ${draft.unitCount} unité${draft.unitCount > 1 ? "s" : ""} la paillasse lira en indicatif, sans verdict officiel.`;
 }
 
 export type BillingLine = { parameterId: string; name: string; unitPrice: number | null };
@@ -623,7 +875,7 @@ export function programmeReadOnlyReason(
   const how = rights.analyses
     ? `par « ${correctionLabel(rights)} » ci-dessous, avec un motif`
     : "par le responsable des paramètres ou l'administrateur, avec un motif";
-  return `Fiche en lecture seule : la paillasse a commencé. Les analyses, le type de produit et le nombre d'unités se changent désormais ${how} ; l'identification de l'échantillon, par la réception, la validation ou l'administrateur.`;
+  return `Fiche en lecture seule : la paillasse a commencé. Les analyses, la famille de produits et le nombre d'unités se changent désormais ${how} ; l'identification de l'échantillon, par la réception, la validation ou l'administrateur.`;
 }
 
 /**

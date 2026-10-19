@@ -307,6 +307,7 @@ function verbSampleOf(line: ReceptionLineData, clientId: string, status: SampleS
   return {
     clientId,
     productTypeId: line.productType?.id ?? null,
+    productTypeName: line.productType?.name ?? null,
     id: line.id,
     code: line.code,
     controlCode: line.controlCode,
@@ -922,7 +923,7 @@ export function SerieReceptionForm({
                     </div>
                     {twin && (
                       <p id={`q-hint-${line.sampleId}`} className="mt-1 text-xs text-slate-500">
-                        Un contenant par famille : pesez la part de chaque famille.
+                        Un contenant par domaine : pesez la part de chaque domaine.
                       </p>
                     )}
                   </div>

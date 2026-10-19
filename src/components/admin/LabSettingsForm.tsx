@@ -257,10 +257,10 @@ export function LabSettingsForm({
       <Card className="p-5">
         <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
           <Scale className="h-4 w-4 text-brand" aria-hidden="true" />
-          Réglementation proposée par famille
+          Réglementation proposée par domaine
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          Proposée au validateur technique quand ni le produit du client ni son type n&apos;en ont déjà une ;
+          Proposée au validateur technique quand ni le produit du client ni sa famille n&apos;en ont déjà une ;
           il la confirme ou la change pour chaque échantillon. La liste se gère dans « Réglementations ».
         </p>
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -294,7 +294,7 @@ export function LabSettingsForm({
           règle (1) est la réponse du réceptionniste ; une quantité sous le minimum ou une
           température manquante rend l&apos;échantillon non conforme ; la réception décide alors,
           échantillon par échantillon, de l&apos;analyser malgré tout ou de le détruire. La règle (8)
-          s&apos;applique aux aliments dont la désignation, le type ou la nature nomme des mollusques
+          s&apos;applique aux aliments dont la désignation, la famille de produits ou la nature nomme des mollusques
           bivalves.
         </p>
         <ol className="mt-3 space-y-1 rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-600 ring-1 ring-slate-100">

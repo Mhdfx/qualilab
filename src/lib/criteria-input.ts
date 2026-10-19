@@ -14,9 +14,19 @@ export type CleanProductType = {
   name: string;
   normalizedName: string;
   family: Family;
+  /** The type d'analyse (RETOUR-LABO-16-10.md F1); null = « à préciser ». */
+  natureId: string | null;
   clientId: string | null;
   active: boolean;
 };
+
+/**
+ * A nature the family may be given: the caller reads it from the database
+ * (`AnalysisNature`). `active` false = archived, refused — except the one a
+ * family already carries, which the caller passes as active so an edit of
+ * the name or of the activity never trips over it.
+ */
+export type ProductTypeNature = { id: string; family: Family; active: boolean };
 
 export type CleanCriterion = {
   id: string | null;
@@ -42,17 +52,33 @@ function text(v: unknown, max = 191) {
   return s.length > max ? s.slice(0, max) : s;
 }
 
-export function validateProductType(raw: unknown): Ok<CleanProductType> | Fail {
+/**
+ * A product family as typed in the catalogue screens. With a type d'analyse
+ * (`natureId`, one of `natures`, active), the domain is the nature's — the
+ * `family` sent is then ignored: a hands family is never « Physico-chimie »
+ * while its nature says « Microbiologie ». Without one, the domain is the
+ * one chosen (MICRO by default).
+ */
+export function validateProductType(raw: unknown, natures: readonly ProductTypeNature[] = []): Ok<CleanProductType> | Fail {
   const input = (raw ?? {}) as Record<string, unknown>;
   const name = text(input.name).replace(/\s+/g, " ");
-  if (!name) return { ok: false, error: "Le nom du type de produit est obligatoire." };
-  const family = FAMILIES.includes(input.family as Family) ? (input.family as Family) : "MICRO";
+  if (!name) return { ok: false, error: "Le nom de la famille est obligatoire." };
+
+  let natureId: string | null = null;
+  let family: Family = FAMILIES.includes(input.family as Family) ? (input.family as Family) : "MICRO";
+  if (input.natureId !== undefined && input.natureId !== null && input.natureId !== "") {
+    const nature = typeof input.natureId === "string" ? natures.find((n) => n.id === input.natureId && n.active) : undefined;
+    if (!nature) return { ok: false, error: "Type d'analyse inconnu ou archivé." };
+    natureId = nature.id;
+    family = nature.family;
+  }
   return {
     ok: true,
     value: {
       name,
       normalizedName: normalizeLabel(name),
       family,
+      natureId,
       clientId: text(input.clientId) || null,
       active: input.active === undefined ? true : input.active === true,
     },

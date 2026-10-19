@@ -289,6 +289,7 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
                   unitCount: sample.unitCount,
                   parameterIds: sample.parameters.map((p) => p.parameterId),
                   productTypeId: sample.productTypeId,
+                  productTypeName: sample.productType?.name ?? null,
                   clientId: sample.clientId,
                 }
               : null

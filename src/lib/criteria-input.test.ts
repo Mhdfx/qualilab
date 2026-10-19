@@ -7,9 +7,44 @@ describe("validateProductType", () => {
   it("normalises the name and defaults the family", () => {
     expect(validateProductType({ name: "  Salades  avec source protéique ", clientId: "" })).toEqual({
       ok: true,
-      value: { name: "Salades avec source protéique", normalizedName: "salades avec source proteique", family: "MICRO", clientId: null, active: true },
+      value: { name: "Salades avec source protéique", normalizedName: "salades avec source proteique", family: "MICRO", natureId: null, clientId: null, active: true },
     });
     expect(validateProductType({ name: "" })).toMatchObject({ ok: false });
+  });
+
+  // RETOUR-LABO-16-10.md F1: the type d'analyse of each family.
+  const natures = [
+    { id: "nat-surfaces", family: "MICRO" as const, active: true },
+    { id: "nat-pc-surfaces", family: "CHIMIE" as const, active: true },
+    { id: "nat-archivee", family: "MICRO" as const, active: false },
+  ];
+
+  it("takes a type d'analyse and derives the domain from it, whatever domain is sent", () => {
+    expect(validateProductType({ name: "Hygiène des surfaces", natureId: "nat-pc-surfaces", family: "MICRO" }, natures)).toMatchObject({
+      ok: true,
+      value: { natureId: "nat-pc-surfaces", family: "CHIMIE" },
+    });
+    expect(validateProductType({ name: "Hygiène du personnel", natureId: "nat-surfaces", family: "AUTRE" }, natures)).toMatchObject({
+      ok: true,
+      value: { natureId: "nat-surfaces", family: "MICRO" },
+    });
+  });
+
+  it("leaves it « à préciser » when empty, and keeps the domain chosen", () => {
+    for (const natureId of [undefined, null, ""]) {
+      expect(validateProductType({ name: "Plat cuisiné", natureId, family: "CHIMIE" }, natures)).toMatchObject({
+        ok: true,
+        value: { natureId: null, family: "CHIMIE" },
+      });
+    }
+  });
+
+  it("refuses an unknown or archived type d'analyse", () => {
+    for (const natureId of ["nat-inconnue", "nat-archivee", 42]) {
+      expect(validateProductType({ name: "Plat cuisiné", natureId }, natures)).toEqual({ ok: false, error: "Type d'analyse inconnu ou archivé." });
+    }
+    // No nature offered by the caller: none can be chosen.
+    expect(validateProductType({ name: "Plat cuisiné", natureId: "nat-surfaces" })).toMatchObject({ ok: false });
   });
 });
 

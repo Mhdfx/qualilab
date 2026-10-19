@@ -365,7 +365,10 @@ export function DepositForm({
         if (!cancelled) setProfiles(Array.isArray(data) ? data : []);
       })
       .catch(() => {});
-    fetch(clientId ? `/api/product-types?clientId=${clientId}` : "/api/product-types")
+    // Food families only (RETOUR-LABO-16-10.md F5): the family is chosen on
+    // food lines alone — hands, surfaces, water and air families stay off them.
+    const typeQuery = new URLSearchParams({ category: "ALIMENTAIRE", ...(clientId ? { clientId } : {}) });
+    fetch(`/api/product-types?${typeQuery}`)
       .then((r) => r.json())
       .then((data: ProductTypeOption[]) => {
         if (!cancelled) setProductTypes(Array.isArray(data) ? data : []);
@@ -1264,7 +1267,7 @@ export function DepositForm({
                   </h3>
                   {twins && (
                     <p className="mt-1 text-xs text-slate-500">
-                      Deux familles cochées : deux échantillons, {microRef} (microbiologie) et {chimieRef}{" "}
+                      Deux domaines cochés : deux échantillons, {microRef} (microbiologie) et {chimieRef}{" "}
                       (physico-chimie), chacun avec son N° de contrôle et son propre contenant, pesé à part. La
                       réponse à la règle (1), la température, les contrôles complémentaires, la conformité et la
                       décision saisis ici valent pour les deux.

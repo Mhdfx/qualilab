@@ -251,7 +251,7 @@ describe("receptionChecklist — always the eight rules of the paper", () => {
       [5, "SANS_OBJET", "Sans objet : aliment"],
       [6, "CONFORME", "4 °C (glacière)"],
       [7, "SANS_OBJET", "Histamine non demandée"],
-      [8, "SANS_OBJET", "Sans objet : pas de mollusques bivalves dans la désignation, le type ou la nature"],
+      [8, "SANS_OBJET", "Sans objet : pas de mollusques bivalves dans la désignation, la famille de produits ou la nature"],
     ]);
     expect(row(rows, 2).rules).toEqual(["ALIMENT_MICRO_POIDS"]);
     expect(checklistSummary(rows)).toBe("3 conformes · 5 sans objet");

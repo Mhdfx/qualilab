@@ -12,7 +12,7 @@ import { parseLabValue } from "@/lib/result-value";
 import { MAX_UNITS } from "@/lib/series";
 import { FAMILY_SHORT_LABELS as FAMILY_LABELS } from "@/lib/labels";
 
-type TypeHeader = { id: string; name: string; family: Family; clientId: string | null; active: boolean };
+type TypeHeader = { id: string; name: string; family: Family; natureId: string | null; clientId: string | null; active: boolean };
 type CriterionRow = {
   id: string | null;
   parameterId: string;
@@ -28,6 +28,8 @@ type CriterionRow = {
 type ParameterRow = { id: string; name: string; category: SampleType; unit: string | null };
 type VersionRow = { id: string; code: string; version: string; label: string; current: boolean };
 type ClientRow = { id: string; name: string };
+/** A type d'analyse; an archived one is offered only to the family that still carries it. */
+type NatureRow = { id: string; label: string; family: Family; active: boolean };
 
 type Draft = {
   key: string;
@@ -107,8 +109,10 @@ function toDraft(c: CriterionRow): Draft {
 const CELL = "w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900 shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50";
 
 /**
- * The criteria grid of one product type (CRITERES.md §6) — edited whole,
- * saved whole. The limits are typed in the lab's notation (« 1.10² »).
+ * The criteria grid of one famille de produits (CRITERES.md §6) — edited
+ * whole, saved whole. The limits are typed in the lab's notation
+ * (« 1.10² »). The header names the family, its type d'analyse
+ * (RETOUR-LABO-16-10.md F4) — which sets its domain — and its client.
  */
 export function CriteriaGrid({
   type,
@@ -116,15 +120,26 @@ export function CriteriaGrid({
   parameters,
   versions,
   clients,
+  natures,
 }: {
   type: TypeHeader;
   criteria: CriterionRow[];
   parameters: ParameterRow[];
   versions: VersionRow[];
   clients: ClientRow[];
+  natures: NatureRow[];
 }) {
   const router = useRouter();
-  const [header, setHeader] = useState({ name: type.name, family: type.family, clientId: type.clientId ?? "", active: type.active });
+  const [header, setHeader] = useState({
+    name: type.name,
+    natureId: type.natureId ?? "",
+    family: type.family,
+    clientId: type.clientId ?? "",
+    active: type.active,
+  });
+  // The domain follows the type d'analyse; it is chosen only while that is « à préciser ».
+  const nature = natures.find((n) => n.id === header.natureId) ?? null;
+  const natureOptions = natures.filter((n) => n.active || n.id === type.natureId);
   const [rows, setRows] = useState<Draft[]>(criteria.map(toDraft));
   // Row keys come from Date.now(): fine for React, not for an id the server renders too.
   const hintId = useId();
@@ -159,14 +174,14 @@ export function CriteriaGrid({
       const response = await fetch(`/api/product-types/${type.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...header, clientId: header.clientId || null }),
+        body: JSON.stringify({ ...header, natureId: header.natureId || null, clientId: header.clientId || null }),
       });
       const data = await response.json();
       if (!response.ok) {
         setError(data.error ?? "Enregistrement impossible.");
         return;
       }
-      setNotice("Type de produit enregistré.");
+      setNotice("Famille enregistrée.");
       router.refresh();
     } catch {
       setError("Une erreur réseau est survenue. Réessayez.");
@@ -217,18 +232,45 @@ export function CriteriaGrid({
   return (
     <div className="space-y-5">
       <Card className="p-5">
-        <form onSubmit={saveHeader} noValidate className="grid grid-cols-1 gap-3 sm:grid-cols-[2fr_1fr_1fr_auto_auto] sm:items-end">
+        <form onSubmit={saveHeader} noValidate className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1.6fr_1fr_1.2fr_auto_auto] lg:items-end">
           <div>
             <label htmlFor="type-name" className="block text-xs font-medium text-slate-600">Nom</label>
             <input id="type-name" type="text" value={header.name} onChange={(e) => setHeader((h) => ({ ...h, name: e.target.value }))} className="input-field mt-1 px-3" />
           </div>
           <div>
-            <label htmlFor="type-family" className="block text-xs font-medium text-slate-600">Famille</label>
-            <select id="type-family" value={header.family} onChange={(e) => setHeader((h) => ({ ...h, family: e.target.value as Family }))} className="input-field mt-1 px-3">
-              {(Object.keys(FAMILY_LABELS) as Family[]).map((f) => (
-                <option key={f} value={f}>{FAMILY_LABELS[f]}</option>
+            <label htmlFor="type-nature" className="block text-xs font-medium text-slate-600">Type d&apos;analyse</label>
+            <select
+              id="type-nature"
+              value={header.natureId}
+              // Back to « à préciser », the domain stays the one the type d'analyse gave.
+              onChange={(e) => setHeader((h) => ({ ...h, natureId: e.target.value, family: nature?.family ?? h.family }))}
+              className="input-field mt-1 px-3"
+            >
+              <option value="">— à préciser —</option>
+              {natureOptions.map((n) => (
+                <option key={n.id} value={n.id}>{n.active ? n.label : `${n.label} (archivé)`}</option>
               ))}
             </select>
+          </div>
+          <div>
+            {nature ? (
+              <>
+                <span className="block text-xs font-medium text-slate-600">Domaine</span>
+                <p className="mt-1 flex min-h-[42px] flex-wrap items-center gap-x-1.5 px-1 text-sm text-slate-700">
+                  {FAMILY_LABELS[nature.family]}
+                  <span className="text-xs text-slate-500">(selon le type d&apos;analyse)</span>
+                </p>
+              </>
+            ) : (
+              <>
+                <label htmlFor="type-family" className="block text-xs font-medium text-slate-600">Domaine</label>
+                <select id="type-family" value={header.family} onChange={(e) => setHeader((h) => ({ ...h, family: e.target.value as Family }))} className="input-field mt-1 px-3">
+                  {(Object.keys(FAMILY_LABELS) as Family[]).map((f) => (
+                    <option key={f} value={f}>{FAMILY_LABELS[f]}</option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
           <div>
             <label htmlFor="type-client" className="block text-xs font-medium text-slate-600">Propre à un client</label>
@@ -241,7 +283,7 @@ export function CriteriaGrid({
           </div>
           <label className="flex min-h-[44px] items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" checked={header.active} onChange={(e) => setHeader((h) => ({ ...h, active: e.target.checked }))} className="h-4 w-4 accent-brand" />
-            Actif
+            Active
           </label>
           <SecondaryButton type="submit" disabled={busy !== null}>
             <Check className="h-4 w-4" aria-hidden="true" />
@@ -285,7 +327,7 @@ export function CriteriaGrid({
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={10} className="px-5 py-6 text-center text-sm text-slate-500">
-                    Aucun critère : ce type sera lu en valeur simple, sans verdict.
+                    Aucun critère : cette famille sera lue en valeur simple, sans verdict.
                   </td>
                 </tr>
               )}

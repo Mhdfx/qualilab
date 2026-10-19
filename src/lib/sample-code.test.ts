@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sampleCodeFor, twinFor } from "./sample-code";
+import { familyOfTwin, sampleCodeFor, twinFor, twinOfCode } from "./sample-code";
 
 /**
  * The internal code of a sample: « série-ligne », and since
@@ -33,5 +33,23 @@ describe("twinFor", () => {
       "1/26-1M",
       "1/26-1P",
     ]);
+  });
+});
+
+describe("twinOfCode / familyOfTwin (16/10, Q129)", () => {
+  it("reads back the letter of a two-family line, and its family", () => {
+    expect(twinOfCode(sampleCodeFor("2780/26", 3, "M"))).toBe("M");
+    expect(twinOfCode("2780/26-12P")).toBe("P");
+    expect(familyOfTwin("M")).toBe("MICRO");
+    expect(familyOfTwin("P")).toBe("CHIMIE");
+    for (const family of ["MICRO", "CHIMIE"] as const) expect(familyOfTwin(twinFor(family))).toBe(family);
+  });
+
+  it("finds no letter on a single sample, an older code or no code", () => {
+    expect(twinOfCode("2780/26-3")).toBeNull();
+    expect(twinOfCode("QL-2026-0007")).toBeNull();
+    expect(twinOfCode("")).toBeNull();
+    expect(twinOfCode(null)).toBeNull();
+    expect(twinOfCode(undefined)).toBeNull();
   });
 });

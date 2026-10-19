@@ -32,7 +32,7 @@ export type SampleSearch = {
   state: SearchState | null;
   /** « Étape » (`statut`): one exact status; it takes precedence over `state`. */
   status: SampleStatus | null;
-  /** « Domaine » (`type`): Alimentaire, Eau or Ambiance. */
+  /** « Catégorie » (`type`): Alimentaire, Eau or Ambiance. */
   type: SampleType | null;
   /** `rapport=1`: only the samples that carry a report (amended ones included). */
   withReport: boolean;

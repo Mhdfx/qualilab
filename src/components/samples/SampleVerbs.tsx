@@ -229,7 +229,8 @@ function CorrectDialog({
   useEffect(() => {
     if (kind !== "ALIMENT" || !scope.analyses) return;
     let cancelled = false;
-    fetch(`/api/product-types?clientId=${sample.clientId}`)
+    // Food families only (RETOUR-LABO-16-10.md F5): this select shows on food lines alone.
+    fetch(`/api/product-types?${new URLSearchParams({ category: "ALIMENTAIRE", clientId: sample.clientId })}`)
       .then((r) => r.json())
       .then((data: { id: string; name: string; clientId: string | null; unitCount: number }[]) => {
         if (!cancelled) setProductTypes(Array.isArray(data) ? data : []);
@@ -533,7 +534,7 @@ function CorrectDialog({
           <div className={scope.identification ? "mt-3 border-t border-slate-100 pt-3" : ""}>
             {shown.food && (
               <div>
-                <label htmlFor="correct-product-type" className="block text-xs font-medium text-slate-600">Type de produit (critères)</label>
+                <label htmlFor="correct-product-type" className="block text-xs font-medium text-slate-600">Famille de produits (critères)</label>
                 <select
                   id="correct-product-type"
                   value={values.productTypeId}
@@ -546,9 +547,17 @@ function CorrectDialog({
                   }}
                   className="input-field mt-1 px-3"
                 >
-                  <option value="">— aucun —</option>
+                  <option value="">— aucune —</option>
+                  {/* The line's family when the list no longer offers it (archived, or classified for another category): named, never shown as « — aucune — ». */}
+                  {values.productTypeId && productTypes.length > 0 && !productTypes.some((t) => t.id === values.productTypeId) && (
+                    <option value={values.productTypeId}>
+                      {values.productTypeId === sample.productTypeId && sample.productTypeName
+                        ? `${sample.productTypeName} (hors de la liste)`
+                        : "Famille enregistrée (hors de la liste)"}
+                    </option>
+                  )}
                   {productTypes.some((t) => t.clientId) && (
-                    <optgroup label="Types du client">
+                    <optgroup label="Familles du client">
                       {productTypes.filter((t) => t.clientId).map((t) => (
                         <option key={t.id} value={t.id}>{t.name}</option>
                       ))}

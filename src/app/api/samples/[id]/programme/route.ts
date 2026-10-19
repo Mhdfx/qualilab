@@ -17,6 +17,7 @@ import {
   loadProgrammeReferential,
   loadProgrammeSample,
   normVersionsForParameters,
+  programmeNatureContext,
   programmeOf,
   serializeProgramme,
 } from "@/lib/programme-referential";
@@ -38,8 +39,9 @@ class StaleProgramme extends Error {}
  *
  * `?natureId=` computes the referential for another nature the line may
  * take (RETOUR-LABO-06-10.md §5, V3 — Q49 by default: an active nature of
- * the same family): its parameters, profiles and prices. The line itself is
- * unchanged until a PUT names that nature.
+ * the same family; since 16/10, Q129, also « Autres analyses » and back —
+ * `programmeNatureFamilies`): its parameters, profiles and prices. The line
+ * itself is unchanged until a PUT names that nature.
  */
 export async function GET(
   request: Request,
@@ -54,10 +56,7 @@ export async function GET(
 
   const requested = new URL(request.url).searchParams.get("natureId") || null;
   const natures = await loadProgrammeNatures(sample, requested);
-  const nature = resolveProgrammeNature(
-    { natureId: requested },
-    { natureId: sample.natureId, natureFamily: sample.nature.family, natureLineKind: sample.nature.defaultLineKind, natures }
-  );
+  const nature = resolveProgrammeNature({ natureId: requested }, programmeNatureContext(sample, natures));
   if (!nature.ok) return NextResponse.json({ error: nature.error }, { status: 400 });
 
   const referential = await loadProgrammeReferential(sample, { natureId: nature.natureId, natures });
@@ -89,10 +88,12 @@ function namedParameters(input: unknown): string[] {
  * per-analysis technician (before 13/10) stays on the analyses kept
  * (`programmeParameterRows`), read under the row lock.
  *
- * The request may name another nature of the line's family (Q49): the line
- * then takes it in the same transaction — `Sample.natureId` and
- * `Sample.type` (its category) — and the analyses are checked against the
- * new category. The journal line carries the nature before and after.
+ * The request may name another nature of the line's family (Q49), or of
+ * « Autres analyses » and back (Q129): the line then takes it in the same
+ * transaction — `Sample.natureId` and `Sample.type` (its category) — and
+ * the analyses are checked against the new category. `code` and
+ * `controlCode` never change. The journal line carries the nature before
+ * and after.
  */
 export async function PUT(
   request: Request,
@@ -135,7 +136,7 @@ export async function PUT(
     sample,
     typeof input.natureId === "string" && input.natureId ? input.natureId : null
   );
-  const natureCtx = { natureId: sample.natureId, natureFamily: sample.nature.family, natureLineKind: sample.nature.defaultLineKind, natures };
+  const natureCtx = programmeNatureContext(sample, natures);
   const resolved = resolveProgrammeNature(body, natureCtx);
   const newNature = resolved.ok ? resolved.changed : null;
   const category = newNature ? newNature.legacyType : sample.type;

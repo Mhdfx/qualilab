@@ -64,7 +64,7 @@ export const adminNav: NavSection[] = [
     items: [
       { label: "Paramètres d'analyse", href: "/admin/parametres", icon: Settings },
       { label: "Profils d'analyses", href: "/admin/profils", icon: ListChecks },
-      { label: "Types de produits & critères", href: "/admin/types-produits", icon: Tags },
+      { label: "Familles de produits & critères", href: "/admin/types-produits", icon: Tags },
       { label: "Normes", href: "/admin/normes", icon: BookOpen },
       { label: "Réglementations", href: "/admin/reglementations", icon: Scale },
       { label: "Système Qualité", href: "/qualite", icon: Gauge },

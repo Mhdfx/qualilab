@@ -1,6 +1,6 @@
 import type { Family } from "@/generated/prisma/enums";
 import type { LineFamily } from "@/lib/nature-family";
-import type { SampleTwin } from "@/lib/sample-code";
+import { familyOfTwin, twinOfCode } from "@/lib/sample-code";
 
 /**
  * How the préleveur's screens name the samples of a saved série
@@ -26,12 +26,8 @@ export function familiesLabel(families: readonly LineFamily[]): string {
   return families.map((family) => FAMILY_SHORT_LABELS[family]).join(" et ");
 }
 
-/** The twin letter of a sample code: « 1/26-3M » → « M »; null for a single
- * sample (« 1/26-3 ») or a code older than the série numbering. */
-export function twinOfCode(code: string | null | undefined): SampleTwin | null {
-  const match = /-\d+([MP])$/.exec(code ?? "");
-  return match ? (match[1] as SampleTwin) : null;
-}
+/** The twin letter of a sample code — one rule for every screen (`sample-code.ts`). */
+export { twinOfCode };
 
 type SampleLike = {
   lineNumber: number;
@@ -43,7 +39,7 @@ type SampleLike = {
  * otherwise its nature's family (MICRO / CHIMIE only). */
 export function sampleFamily(sample: SampleLike): LineFamily | null {
   const twin = twinOfCode(sample.code);
-  if (twin) return twin === "M" ? "MICRO" : "CHIMIE";
+  if (twin) return familyOfTwin(twin);
   const family = sample.nature?.family;
   return family === "MICRO" || family === "CHIMIE" ? family : null;
 }

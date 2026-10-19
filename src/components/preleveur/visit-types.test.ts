@@ -377,7 +377,7 @@ describe("before saving", () => {
   it("asks for a box, and for the fields of each type", () => {
     const base = line({ lieu: "Cuisine", produit: "Plat test" });
     expect(lineDraftError(base, NATURES)).toBeNull();
-    expect(lineDraftError({ ...base, analysesMicro: false }, NATURES)).toMatch(/au moins une famille/);
+    expect(lineDraftError({ ...base, analysesMicro: false }, NATURES)).toMatch(/au moins un domaine/);
     expect(lineDraftError({ ...base, lieu: " " }, NATURES)).toBe("Indiquez le lieu / la section.");
     expect(lineDraftError({ ...base, lieu: "" }, NATURES, { requirePlace: false })).toBeNull();
     const surface = { ...base, lineKind: "SURFACE" as const, surfaceLabel: "Planche verte" };

@@ -103,7 +103,7 @@ describe("attachSummary", () => {
       "Le site « Agadir » sera créé chez « Chaîne Test ».",
       "1 adresse e-mail",
       "3 produits mémorisés",
-      "1 type de produit",
+      "1 famille de produits",
       "Les adresses e-mail rejoignent le site avec les cases « rapports » et « alertes » décochées.",
     ]);
     expect(summary.stays).toEqual([

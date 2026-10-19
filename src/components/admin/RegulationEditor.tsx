@@ -7,20 +7,26 @@ import { Check, Scale } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 
 /**
- * The regulation proposed for a product type's samples (RETOUR-LABO-30-09.md,
- * slice I). The technical validator confirms or changes it per sample; the
- * report prints the one chosen, frozen at approval.
+ * The regulation proposed for a famille de produits' samples
+ * (RETOUR-LABO-30-09.md, slice I). The technical validator confirms or
+ * changes it per sample; the report prints the one chosen, frozen at
+ * approval. The responsable des paramètres chooses it too (16/10, Q125);
+ * the list itself stays the administrator's (`regulationsHref` null: no
+ * link into a space he cannot open).
  */
 export function RegulationEditor({
   typeId,
   initialId,
   options,
   familyDefault,
+  regulationsHref,
 }: {
   typeId: string;
   initialId: string | null;
   options: { id: string; title: string }[];
   familyDefault: string | null;
+  /** Where the list is managed, for the administrator; null for anyone else. */
+  regulationsHref: string | null;
 }) {
   const router = useRouter();
   const [value, setValue] = useState(initialId ?? "");
@@ -59,13 +65,20 @@ export function RegulationEditor({
       <form onSubmit={save} noValidate>
         <label htmlFor="pt-regulation" className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
           <Scale className="h-4 w-4 text-brand" aria-hidden="true" />
-          Réglementation proposée pour ce type
+          Réglementation proposée pour cette famille
         </label>
         <p className="mt-1 text-sm text-slate-500">
           Le validateur technique la confirme ou la change pour chaque échantillon ; ensuite, son dernier choix
-          pour le même produit du client est proposé en premier. Aucune : celle de la famille
-          {familyDefault ? <> (« {familyDefault} »)</> : " (Réglages — aucune pour l'instant)"}. La liste se gère dans{" "}
-          <Link href="/admin/reglementations" className="font-medium text-brand hover:underline">Réglementations</Link>.
+          pour le même produit du client est proposé en premier. Aucune : celle du domaine
+          {familyDefault ? <> (« {familyDefault} »)</> : " (Réglages — aucune pour l'instant)"}.{" "}
+          {regulationsHref ? (
+            <>
+              La liste se gère dans{" "}
+              <Link href={regulationsHref} className="font-medium text-brand hover:underline">Réglementations</Link>.
+            </>
+          ) : (
+            "La liste est tenue par l'administrateur."
+          )}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <select
@@ -77,7 +90,7 @@ export function RegulationEditor({
             }}
             className="input-field max-w-xl px-3"
           >
-            <option value="">— celle de la famille —</option>
+            <option value="">— celle du domaine —</option>
             {options.map((o) => (
               <option key={o.id} value={o.id}>{o.title}</option>
             ))}

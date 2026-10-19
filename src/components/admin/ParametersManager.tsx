@@ -78,8 +78,8 @@ export function ParametersManager({ parameters }: { parameters: ParameterRow[] }
         </p>
       )}
 
-      <div className="mb-5" role="group" aria-label="Filtrer par famille">
-        <p className="mb-1.5 text-xs font-medium text-slate-600">Famille</p>
+      <div className="mb-5" role="group" aria-label="Filtrer par domaine">
+        <p className="mb-1.5 text-xs font-medium text-slate-600">Domaine</p>
         <div className="flex flex-wrap gap-2">
           {(["TOUTES", ...PARAMETER_FAMILIES] as FamilyFilter[]).map((family) => {
             const active = familyFilter === family;
@@ -93,7 +93,7 @@ export function ParametersManager({ parameters }: { parameters: ParameterRow[] }
                   active ? "border-brand bg-brand-light/60 text-brand" : "border-slate-200 text-slate-600 hover:border-slate-300"
                 }`}
               >
-                {family === "TOUTES" ? "Toutes" : FAMILY_LABELS[family]}
+                {family === "TOUTES" ? "Tous" : FAMILY_LABELS[family]}
                 <span className="text-xs font-normal text-slate-400">{countOf(family)}</span>
               </button>
             );
@@ -143,8 +143,8 @@ export function ParametersManager({ parameters }: { parameters: ParameterRow[] }
                 {rows.length === 0 && creating !== domain ? (
                   <p className="p-6 text-center text-sm text-slate-500">
                     {familyFilter === "TOUTES"
-                      ? "Aucun paramètre pour ce domaine."
-                      : `Aucun paramètre « ${FAMILY_LABELS[familyFilter]} » pour ce domaine.`}
+                      ? "Aucun paramètre dans cette catégorie."
+                      : `Aucun paramètre « ${FAMILY_LABELS[familyFilter]} » dans cette catégorie.`}
                   </p>
                 ) : (
                   <ul className="divide-y divide-slate-100">
@@ -172,7 +172,7 @@ export function ParametersManager({ parameters }: { parameters: ParameterRow[] }
                               {row.name}
                               <span
                                 className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${FAMILY_BADGE[row.family] ?? FAMILY_BADGE.AUTRE}`}
-                                title="Famille d'analyse"
+                                title="Domaine"
                               >
                                 {FAMILY_LABELS[row.family] ?? row.family}
                               </span>
@@ -313,7 +313,7 @@ function ParameterForm({
         />
         <div>
           <label htmlFor="p-family" className="block text-xs font-medium text-slate-600">
-            Famille
+            Domaine
           </label>
           <select
             id="p-family"
@@ -327,7 +327,7 @@ function ParameterForm({
               </option>
             ))}
           </select>
-          <p className="mt-0.5 text-[11px] text-slate-500">Range l&apos;analyse sur l&apos;échantillon de sa famille</p>
+          <p className="mt-0.5 text-[11px] text-slate-500">Range l&apos;analyse sur l&apos;échantillon de son domaine</p>
         </div>
         <Field id="p-unit" label="Unité" value={unit} onChange={setUnit} placeholder="UFC/g" />
         <Field

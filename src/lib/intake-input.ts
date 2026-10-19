@@ -365,7 +365,7 @@ export function validateIntake(raw: unknown, current: IntakeCurrent): IntakeVali
   let productTypeId = current.productTypeId;
   if (input.productTypeId !== undefined) {
     if (input.productTypeId !== null && typeof input.productTypeId !== "string") {
-      return { ok: false, error: "Type de produit invalide." };
+      return { ok: false, error: "Famille de produits invalide." };
     }
     productTypeId = (input.productTypeId ?? "").trim() || null;
   }

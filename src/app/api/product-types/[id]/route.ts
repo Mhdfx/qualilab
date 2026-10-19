@@ -11,6 +11,7 @@ const DETAIL_SELECT: Prisma.ProductTypeSelect = {
   id: true,
   name: true,
   family: true,
+  natureId: true,
   clientId: true,
   active: true,
   regulationId: true,
@@ -39,21 +40,23 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (session instanceof NextResponse) return session;
   const { id } = await params;
   const type = await prisma.productType.findUnique({ where: { id }, select: DETAIL_SELECT });
-  if (!type) return NextResponse.json({ error: "Type de produit introuvable." }, { status: 404 });
+  if (!type) return NextResponse.json({ error: "Famille de produits introuvable." }, { status: 404 });
   return NextResponse.json(type);
 }
 
-/** Name, family, client, activity and the report's regulation text — the
- *  criteria have their own route. */
+/** Name, type d'analyse, family, client, activity and the report's
+ *  regulation text — the criteria have their own route. `natureId` left out
+ *  keeps the family's; null or "" sets it back to « à préciser ». The
+ *  responsable des paramètres manages the families too (16/10, Q125). */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireApiRole("ADMIN");
+  const session = await requireApiRole("PROGRAMMATEUR", "ADMIN");
   if (session instanceof NextResponse) return session;
   const { id } = await params;
   const existing = await prisma.productType.findUnique({
     where: { id },
-    select: { id: true, name: true, family: true, clientId: true, active: true, regulationId: true },
+    select: { id: true, name: true, family: true, natureId: true, clientId: true, active: true, regulationId: true },
   });
-  if (!existing) return NextResponse.json({ error: "Type de produit introuvable." }, { status: 404 });
+  if (!existing) return NextResponse.json({ error: "Famille de produits introuvable." }, { status: 404 });
 
   let body: unknown;
   try {
@@ -62,12 +65,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
   const input = (body ?? {}) as Record<string, unknown>;
-  const checked = validateProductType({
-    name: input.name ?? existing.name,
-    family: input.family ?? existing.family,
-    clientId: input.clientId === undefined ? existing.clientId ?? "" : input.clientId,
-    active: input.active ?? existing.active,
-  });
+  const natureId = input.natureId === undefined ? existing.natureId : input.natureId;
+  // The nature the family already carries stays acceptable once archived:
+  // renaming or deactivating the family must not trip over it.
+  const natures = typeof natureId === "string" && natureId
+    ? (await prisma.analysisNature.findMany({ where: { id: natureId }, select: { id: true, family: true, active: true } }))
+        .map((nature) => ({ ...nature, active: nature.active || nature.id === existing.natureId }))
+    : [];
+  const checked = validateProductType(
+    {
+      name: input.name ?? existing.name,
+      family: input.family ?? existing.family,
+      natureId,
+      clientId: input.clientId === undefined ? existing.clientId ?? "" : input.clientId,
+      active: input.active ?? existing.active,
+    },
+    natures
+  );
   if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: 400 });
 
   // The regulation proposed for this type's samples (slice I): null = the family's.
@@ -92,7 +106,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     where: { normalizedName: checked.value.normalizedName, clientId: checked.value.clientId, id: { not: id } },
     select: { id: true },
   });
-  if (duplicate) return NextResponse.json({ error: "Un type de produit de ce nom existe déjà." }, { status: 409 });
+  if (duplicate) return NextResponse.json({ error: "Une famille de produits de ce nom existe déjà." }, { status: 409 });
 
   // Renaming into a near-duplicate of another type asks for the same confirmation.
   if (checked.value.normalizedName !== normalizeName(existing.name) && input.confirmSimilar !== true) {
@@ -102,7 +116,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     });
     const similar = similarLabels(checked.value.name, others.map((t) => t.name), 5);
     if (similar.length > 0) {
-      return NextResponse.json({ error: "Un type de produit très proche existe déjà.", similar }, { status: 409 });
+      return NextResponse.json({ error: "Une famille de produits très proche existe déjà.", similar }, { status: 409 });
     }
   }
 

@@ -390,17 +390,17 @@ describe("analysesNotice — what the analyses on screen do to the results (16/1
   it("an addition, another product type or other units: every result goes, back to the bench from the validation", () => {
     expect(analysesNotice(sample, ["p1", "p2", "p3", "p4"], same)?.tone).toBe("warning");
     expect(analysesNotice(sample, ["p1", "p2", "p3"], { ...same, unitCount: 9 })?.text).toBe(
-      "Ajouter une analyse, changer le type de produit ou le nombre d'unités efface tous les résultats déjà saisis."
+      "Ajouter une analyse, changer la famille de produits ou le nombre d'unités efface tous les résultats déjà saisis."
     );
     expect(analysesNotice({ ...sample, status: "RESULTATS_SAISIS" }, ["p1"], { ...same, productTypeId: "" })?.text).toBe(
-      "Ajouter une analyse, changer le type de produit ou le nombre d'unités efface tous les résultats déjà saisis et renvoie l'échantillon à la paillasse."
+      "Ajouter une analyse, changer la famille de produits ou le nombre d'unités efface tous les résultats déjà saisis et renvoie l'échantillon à la paillasse."
     );
   });
 
   it("nothing changed yet: the rule, in one sentence", () => {
     expect(analysesNotice(sample, ["p3", "p2", "p1"], same)).toEqual({
       tone: "info",
-      text: "Retirer une analyse n'efface que ses résultats. Ajouter une analyse, changer le type de produit ou le nombre d'unités efface tous les résultats déjà saisis.",
+      text: "Retirer une analyse n'efface que ses résultats. Ajouter une analyse, changer la famille de produits ou le nombre d'unités efface tous les résultats déjà saisis.",
     });
   });
 

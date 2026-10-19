@@ -16,7 +16,7 @@ export default async function RegulationsPage() {
       <PageHeader
         badge="Configuration"
         title="Réglementations"
-        subtitle="Les textes que le validateur technique choisit pour chaque échantillon ; celui choisi est imprimé en tête du rapport et figé. Proposé ensuite d'après le dernier choix pour le même produit du client, puis le type de produit."
+        subtitle="Les textes que le validateur technique choisit pour chaque échantillon ; celui choisi est imprimé en tête du rapport et figé. Proposé ensuite d'après le dernier choix pour le même produit du client, puis la famille de produits."
       />
       <RegulationsManager rows={rows.map(({ _count, ...r }) => ({ ...r, samples: _count.samples }))} />
     </div>

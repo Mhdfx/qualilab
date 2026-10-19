@@ -11,12 +11,18 @@
 > et le technicien qui prend l'échantillon en charge est le seul à le saisir
 > (§10). Point de retour : tag `v1.2-avant-sans-affectation` (`DEPLOY.md`).
 >
-> **16/10/2026 — réponses du laboratoire** (`RETOUR-LABO-16-10.md`, rien
-> n'est encore construit) : pas de catégories (Q121) ; le responsable des
+> **16/10/2026 — réponses du laboratoire** (`RETOUR-LABO-16-10.md` ;
+> F1, F3–F7 et F9 construits en local le 19/10, vague 4, non déployés) :
+> pas de catégories (Q121) ; le responsable des
 > paramètres gère familles et critères sous /programmation (F4) ; changer de
-> famille remplacera la liste (F6, contraire au §4 actuel) ; après le
+> famille remplace la liste (F6, §4) ; après le
 > programme, les analyses se changeront par lui et l'administrateur (F8) ;
 > « Reprendre » l'échantillon d'un collègue est dans la relance (C3, §10).
+> Vocabulaire des écrans (Q120, F7) : « Famille de produits » (« Familles
+> du client ») remplace « Type de produit », et « Domaine » désigne
+> Microbiologie / Physico-chimie / Autre ; les identifiants (`ProductType`,
+> `Family`, `/admin/types-produits`) ne changent pas, et la famille n'est
+> jamais imprimée (Q34). Ce document suit ce vocabulaire depuis le 19/10.
 >
 > **14/10/2026 — remarques du laboratoire** (`RETOUR-LABO-14-10.md`).
 > Vocabulaire : le laboratoire appelle « famille » ce que ce document et
@@ -49,7 +55,7 @@ PRELEVE ──réception──▶ RECU ──programme confirmé──▶ PROGRA
   paillasse ; elle attend dans « À prendre » jusqu'à sa prise en charge
   (§10). Le programme reste modifiable tant que la ligne est PROGRAMME, même
   prise en charge. Ensuite (16/10, Q128 — `RETOUR-LABO-16-10.md` F8), les
-  analyses — leur liste, le type de produit, le nombre d'unités — se
+  analyses — leur liste, la famille de produits, le nombre d'unités — se
   changent par « Corriger les analyses » (motif, journal) : le responsable
   des paramètres à EN_ANALYSE et RESULTATS_SAISIS, l'administrateur
   toujours ; l'identification de l'échantillon, par « Corriger la fiche »
@@ -74,14 +80,22 @@ PRELEVE ──réception──▶ RECU ──programme confirmé──▶ PROGRA
 - `Role.PROGRAMMATEUR`, libellé « Responsable des paramètres », espace
   `/programmation`, redirection de connexion vers `/programmation`.
 - Droits : tout ce que voit un technicien (lecture des échantillons, feuille
-  de paillasse, recherche avec export) + le programme ; pas d'approbation,
-  pas de validation, pas de configuration.
+  de paillasse, recherche avec export) + le programme + **les familles de
+  produits et leurs critères** (16/10, Q122 / Q125 — `RETOUR-LABO-16-10.md`
+  F4 : créer, renommer, classer par type d'analyse, rattacher à un client,
+  désactiver une famille, choisir sa réglementation proposée, enregistrer sa
+  grille de critères) ; pas d'approbation, pas de validation. Le reste de la
+  configuration — paramètres, normes, profils, liste des réglementations,
+  `/admin/*` — reste à l'administrateur (`programmation-guards.test.ts`).
 - L'ADMIN peut tout faire à sa place (remplaçant en cas d'absence).
 - Compte de démonstration `param1` — « Rachid Alaoui » (seed + panneau de
   connexion + `scripts/disable-demo-accounts.sh` si la liste y est codée).
 - Menu (`src/components/layout/programmation-nav.ts`) : Tableau de bord
   `/programmation`, À programmer `/programmation#file`, Recherche des
-  analyses `/recherche`, Documents › Feuille de paillasse `/api/bench-sheet`.
+  analyses `/recherche`, Catalogue › Familles & critères
+  `/programmation/familles` (la liste et la grille de l'administrateur,
+  `/admin/types-produits`, dans son espace), Documents › Feuille de
+  paillasse `/api/bench-sheet`.
 
 ## 3. Le modèle (migration `prisma/migrations/20261006100000_programme`)
 
@@ -124,7 +138,7 @@ et `assignedAt` existaient déjà, avec leurs index `Sample(technicianId)` et
 restent pour les lignes héritées.
 
 Le nombre d'unités reste `Sample.unitCount` (fait de terrain) : le
-responsable peut l'abaisser ou le relever ; s'il est inférieur au n du type,
+responsable peut l'abaisser ou le relever ; s'il est inférieur au n de la famille de produits,
 la paillasse lit en indicatif comme aujourd'hui, et la fiche l'affiche
 en avertissement avant confirmation.
 
@@ -135,19 +149,98 @@ réception (date, T°, quantité, conformité), unités prélevées, statut.
 
 Sections, dans l'ordre :
 
-1. **Type de produit et critères** — sélecteur avec recherche (types du
-   client puis catalogue, comme `LineEditor`), aperçu des critères du type
-   (germe · norme · n · c · m · M). Choisir un type ajoute ses germes aux
-   analyses et propose son n ; « — aucun — » laisse la lecture simple.
+1. **Nature, famille de produits et paramètres à rechercher** (16/10,
+   Q123 / Q124 / Q40 — `RETOUR-LABO-16-10.md` F5, F6). La nature d'analyse
+   (même domaine Micro / PC, Q49 ; depuis le 16/10, Q129 — F9, aussi les
+   natures « Autres analyses » du même type d'échantillon, comme
+   « Analyse sensorielle » d'un aliment, et le retour au domaine de la
+   lettre du code « …M » / « …P » ; un échantillon seul (code sans
+   lettre) ne retourne qu'au domaine d'où il est venu, lu dans le journal
+   (`natureHomeFromJournal`) — MICRO → sensorielle → CHIMIE en deux
+   enregistrements contournerait Q49 et les contrôles de réception faits
+   pour son domaine ; l'un ou l'autre seulement quand le journal n'en dit
+   rien ; le code et le N° de contrôle ne changent jamais —
+   `programmeNatureFamilies`), puis la famille de produits
+   (`ProductType`), choisie dans le dialogue partagé « Choisir une famille
+   de produits » (`FamilyPickerDialog.tsx`, à la place du select) :
+   - filtre « Type d'analyse » (`ProductType.natureId` — le mot du
+     laboratoire pour les familles, Q124 ; c'est la « Nature d'analyse » de
+     la fiche, et le dialogue le dit : « la nature d'analyse de
+     l'échantillon (son type d'analyse) », option « — nature de
+     l'échantillon ») préréglé sur la nature à l'écran, modifiable, « Tous
+     les types d'analyse » possible ;
+     pour une nature alimentaire, les familles encore « à préciser » (sans
+     type d'analyse) sont listées aussi ; chaque type d'analyse dit son
+     nombre de familles (`referential.familyNatures`) ;
+   - recherche sur le nom sans accents ni casse (`matchesQuery`) ; les
+     familles du client en tête, puis le catalogue commun (groupes nommés
+     pour les lecteurs d'écran), chacune avec son nombre de critères — un
+     par germe, la version en vigueur, comme l'aperçu ; la famille actuelle
+     reste à portée hors filtre ;
+   - la famille sélectionnée s'affiche en aperçu (germe · norme · unité ·
+     n / c / m / M) **sans toucher au brouillon** ; « Choisir » (ou Entrée
+     sur une famille, ou un double-clic) l'applique ; « Fermer », Échap ou
+     un clic à côté ne changent rien ; « Aucune famille » en tête de liste ;
+   - clavier : la recherche a le focus (sur téléphone, le titre — le
+     clavier virtuel couvrirait la liste) ; **Entrée dans la recherche
+     sélectionne la première famille trouvée et y met le focus, sans
+     choisir** — une seconde Entrée choisit ; Tab reste dans le dialogue
+     (Maj+Tab atteint le filtre), une seule tabulation pour la liste
+     (flèches), le focus revient au bouton « Choisir une famille… » /
+     « Changer de famille… ». Sur téléphone le formulaire est le seul
+     ascenseur.
+   Pures et testées : `familyFilterFor`, `filterFamilies`. Le serveur
+   accepte toujours toute famille active du catalogue ou du client.
+
+   La famille choisie devient la liste **« Paramètres à rechercher »** :
+   germe · norme (celle du critère, sinon la version en vigueur du
+   paramètre) · **unité du critère** (« /1g » quand la famille le dit,
+   Q40 ; sinon celle du paramètre) · n / c / m / M, **cochés d'office** ;
+   « Cocher tout » et « Décocher tout » ne touchent que les germes de la
+   famille ; « N paramètre(s) coché(s) sur M ». Un critère posé sur un
+   paramètre d'une autre catégorie que la nature est affiché, pas cochable.
+
+   **Changer de famille remplace sa liste** (Q123 ; jusqu'au 16/10 le
+   choix était additif) : les germes venus seulement de l'ancienne famille
+   quittent les analyses, ceux de la nouvelle sont cochés avec la version de
+   norme de leur critère, et le message de la fiche — en section 1, sous la
+   famille, région vivante, ambre quand une analyse part ou que n baisse —
+   nomme les analyses retirées et le changement de n (« n : 9 → 3 »).
+   Restent : les germes communs aux deux familles, les analyses
+   cochées ou décochées à la main sur la fiche (un profil choisi compte), et
+   celles que la ligne portait à l'ouverture sans être des germes de sa
+   famille enregistrée — les demandes du préleveur (`manualIds`, mémoire de
+   la fiche, jamais envoyé). n est recalculé depuis la nouvelle famille (le
+   plus grand n de ses critères), jamais sous celui d'un profil choisi sur
+   la fiche. « Aucune famille » — et une famille sans critère — retire de
+   même les germes de l'ancienne et laisse n tel quel (rien à lire). Rien
+   n'est écrit avant l'enregistrement du programme. Pures et testées :
+   `applyProductType`, `checkAllOfType`, `uncheckAllOfType`,
+   `familyCheckCount`, `familyParameterRows`, `criterionUnit`,
+   `familyChangeNotice`, `familyChangeTookAway` (`programme-sheet-logic.test.ts`).
+
+   Ailleurs, rien ne change de comportement : `LineEditor` / `DepositForm`
+   (dépôt au comptoir) ajoutent toujours les germes de la famille choisie,
+   et « Corriger la fiche » (`SampleVerbs`) choisit la famille sans toucher
+   aux analyses ; ces trois sélecteurs ne proposent plus que les familles
+   alimentaires (`GET /api/product-types?category=ALIMENTAIRE` : type
+   d'analyse alimentaire ou encore « à préciser ») — ils ne s'affichent que
+   sur les lignes d'aliment.
 2. **Analyses** — puces de profils (`/api/profiles?clientId&natureId`) et
    cases par paramètre de la catégorie de la nature ; au moins une analyse
    pour confirmer. Les analyses cochées par le préleveur sont pré-cochées.
+   Avec une famille, les germes de la famille se cochent en section 1 et les
+   autres analyses sont rangées sous « Analyses hors famille », repliable
+   (ouvert d'office quand l'une d'elles est cochée, par exemple une demande
+   du préleveur, et qui reste ouvert dès qu'on y coche ou décoche une case —
+   le panneau ne se referme jamais sous le curseur). « Autres analyses »
+   reste le nom du domaine AUTRE (l'analyse sensorielle).
 3. **Nombres** — unités à lire (`unitCount`, puces 1 / 3 / 5 / 9 + champ,
-   avertissement si < n du type), prise d'essai (`testPortion`), facteur de
+   avertissement si < n de la famille), prise d'essai (`testPortion`), facteur de
    dilution par paramètre (`dilutionFactor`, facultatif, « ×10 »).
 4. **Méthodes** — par paramètre : version de norme (liste des versions du
-   paramètre, celle en vigueur par défaut, celle du critère du type si un
-   type est choisi), note de méthode (`note`).
+   paramètre, celle en vigueur par défaut, celle du critère de la famille
+   si une famille est choisie), note de méthode (`note`).
 5. **Organisation** — priorité (Normale / Urgente), délai de rendu
    (`dueAt`, pas dans le passé), consignes (`programmeNote`). Aucun
    technicien ni charge de travail depuis le 13/10 : la ligne confirmée
@@ -186,9 +279,19 @@ autre jour et déjà à la paillasse.
 
 - `GET /api/samples/[id]/programme` (PROGRAMMATEUR, ADMIN ; refusé au
   technicien depuis le 14/10 : 403, RP3c) : l'échantillon, son programme courant, et le référentiel utile
-  (types de produits du client + catalogue avec critères, paramètres de la
-  catégorie, profils, versions de norme par paramètre, prix du catalogue par
+  (familles de produits du client + catalogue avec leurs critères actifs,
+  chacune avec `natureId` (son type d'analyse, null = « à préciser ») et
+  `criteriaCount` (un par germe) ; `familyNatures` — les types d'analyse du
+  filtre du dialogue ; `natureHome` — pour un échantillon seul sur « Autres
+  analyses », le domaine où il peut revenir ; paramètres de la catégorie,
+  profils, versions de norme par paramètre, prix du catalogue par
   paramètre). Depuis le 13/10, ni la liste des techniciens ni leur charge.
+- `GET /api/product-types?natureId=&category=&clientId=&all=1` : les
+  familles de produits (`productTypeListWhere`, testé) — `natureId` garde un
+  type d'analyse ; `category` garde les familles de cette catégorie **et
+  celles encore « à préciser »** ; `all=1` (PROGRAMMATEUR, ADMIN) ajoute les
+  inactives et celles de tous les clients ; 400 « Catégorie d'analyse
+  invalide. » pour une catégorie inconnue ; 400 familles au plus.
 - `PUT /api/samples/[id]/programme` (PROGRAMMATEUR, ADMIN) — corps validé par
   `src/lib/programme-input.ts` (`validateProgramme`) :
   `{ confirm: boolean, natureId?: string, productTypeId: string|null,
@@ -291,7 +394,7 @@ facturation au forfait, notification au technicien (e-mail), planning.
 - Réception sans technicien → ligne RECU dans la file de programmation ;
   paillasse : la ligne n'apparaît pas et son URL affiche « En attente de
   programmation ».
-- Programme : type avec critères, profil, unités < n (avertissement),
+- Programme : famille de produits avec critères, profil, unités < n (avertissement),
   prise d'essai, dilution ×10 sur un germe, versions de norme, micro à tech1
   et chimie à tech2, urgente, délai, consignes ; brouillon puis confirmation ;
   journal avant/après ; modification après confirmation.
@@ -459,7 +562,7 @@ libre »). Recette : TESTPLAN V14.
   retirées sont effacés, les autres restent et l'échantillon garde son
   étape — une validation technique déjà donnée est effacée à
   RESULTATS_SAISIS (`resultsToReset`, `src/lib/intake-input.ts`). Ajouter
-  une analyse, changer le type de produit ou le nombre d'unités efface tous
+  une analyse, changer la famille de produits ou le nombre d'unités efface tous
   les résultats (et renvoie à la paillasse depuis la validation).
 - « NE », « non effectué » et leurs variantes ne sont **pas** des
   résultats : la saisie les refuse (400 « … n'est pas un résultat. Une

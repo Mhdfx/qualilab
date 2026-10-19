@@ -5,8 +5,10 @@ Extracts the old software's catalogue from its restored Firebird base
 /admin/import:
 
   regulations.csv  GLF_CRITERES — the 176 regulation sources
-  types.csv        TYPE_NOURITURE — the 634 product types, their regulation
-                   and their last use
+  types.csv        TYPE_NOURITURE — the 634 product types, their regulation,
+                   their type d'analyse (`echantillon` = ECHANTILLION, matched
+                   to AnalysisNature.legacyId — RETOUR-LABO-16-10.md F3) and
+                   their last use
   criteria.csv     TYPENOURITURE_PARAMS × INTERVAL_PETITM — one row per
                    type × parameter, the intervals flattened (3 lines)
   clients.csv      CLIENTS — the active clients (for the client import)

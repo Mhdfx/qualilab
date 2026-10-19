@@ -132,7 +132,7 @@ export function parseCriteriaSheet(rows: SheetRow[]): ParsedSheet {
     }
     if (HEADER.test(a)) continue;
     if (!product) {
-      refused.push({ line, productType: null, reason: "ligne hors bloc de type de produit" });
+      refused.push({ line, productType: null, reason: "ligne hors bloc de famille de produits" });
       continue;
     }
     const norme = text(row[1]);

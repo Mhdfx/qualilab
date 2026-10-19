@@ -841,7 +841,7 @@ export function VisitForm({ me }: { me: Preleveur }) {
                         <p className="text-xs text-slate-500">{draftLineDetails(line)}</p>
                         {families.length > 1 && (
                           <p className="mt-0.5 text-xs text-slate-500">
-                            Deux échantillons au laboratoire : un par famille d&apos;analyses.
+                            Deux échantillons au laboratoire : un par domaine d&apos;analyses.
                           </p>
                         )}
                       </div>

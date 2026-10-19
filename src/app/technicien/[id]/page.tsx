@@ -223,7 +223,7 @@ export default async function AnalysePage({
       : !canEdit
         ? "Résultats soumis à la validation — consultation en lecture seule."
         : bench.plans.size > 0
-          ? "Lisez chaque répétition (R1 … Rn) : le verdict (satisfaisant, acceptable, non satisfaisant) suit le plan n, c, m, M du type de produit."
+          ? "Lisez chaque répétition (R1 … Rn) : le verdict (satisfaisant, acceptable, non satisfaisant) suit le plan n, c, m, M de la famille de produits."
           : bench.unitCount > 1
             ? "Lisez chaque répétition (R1 … Rn) : la valeur retenue est la plus défavorable, comparée à la limite de référence."
             : "Saisissez chaque paramètre. La conformité est calculée automatiquement à partir de la limite de référence.";
@@ -307,7 +307,7 @@ export default async function AnalysePage({
                   </span>
                 )}
               </Field>
-              <Field icon={Package} label="Type de produit">
+              <Field icon={Package} label="Famille de produits">
                 {bench.productType ? (
                   <>
                     {bench.productType.name}
@@ -316,7 +316,7 @@ export default async function AnalysePage({
                     </span>
                   </>
                 ) : (
-                  <span className="text-slate-400">Aucun — lecture simple</span>
+                  <span className="text-slate-400">Aucune — lecture simple</span>
                 )}
               </Field>
               <Field icon={Hash} label="N° de lot">

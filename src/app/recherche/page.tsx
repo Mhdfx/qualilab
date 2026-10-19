@@ -102,7 +102,7 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
       <PageHeader
         badge="Recherche"
         title="Recherche des analyses"
-        subtitle={`Les analyses terminées ou en cours, par client et site, période, domaine, type d'analyse, état ou étape.${canExport ? " Exportez le résultat en Excel." : ""}`}
+        subtitle={`Les analyses terminées ou en cours, par client et site, période, catégorie, type d'analyse, état ou étape.${canExport ? " Exportez le résultat en Excel." : ""}`}
       />
 
       <Card className="p-5">
@@ -120,7 +120,7 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
             siteId={search.siteId}
           />
           <div>
-            <label htmlFor="type" className="block text-sm font-medium text-slate-700">Domaine</label>
+            <label htmlFor="type" className="block text-sm font-medium text-slate-700">Catégorie</label>
             <select id="type" name="type" defaultValue={search.type ?? ""} className="input-field mt-1.5 px-3">
               <option value="">Tous</option>
               {(Object.keys(SAMPLE_TYPE_LABELS) as (keyof typeof SAMPLE_TYPE_LABELS)[]).map((type) => (

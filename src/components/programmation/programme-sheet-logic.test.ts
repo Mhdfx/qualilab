@@ -9,14 +9,26 @@ import {
   benchHolder,
   benchHolderNotice,
   billingLines,
+  checkAllOfType,
   confirmationNotice,
   criteriaOf,
+  criterionUnit,
   defaultNormVersionId,
   entryChecks,
+  familyChangeNotice,
+  familyChangeTookAway,
+  familyCheckCount,
+  familyCheckLabel,
+  familyFilterFor,
+  familyGermIds,
+  familyParameterRows,
+  filterFamilies,
   groupParameters,
   initialDraft,
   natureChangeNotice,
   natureChoices,
+  natureHint,
+  otherParameterGroups,
   parameterFamilies,
   profileApplied,
   programmeReadOnlyReason,
@@ -24,18 +36,22 @@ import {
   programmeVerbsNote,
   toRequestBody,
   toggleParameter,
+  typeOf,
   typeUnitCount,
+  uncheckAllOfType,
   unitWarning,
   updateSetting,
 } from "./programme-sheet-logic";
-import type { ProgrammeReferentialData, ProgrammeSampleData, ProgrammeState } from "./programme-sheet-types";
+import type { ProductTypeRef, ProgrammeReferentialData, ProgrammeSampleData, ProgrammeState } from "./programme-sheet-types";
 
 /**
- * PROGRAMME.md §4 — what the sheet does on its own: a product type adds its
- * germs and proposes n and the norm version, a profile replaces the
- * analyses, the entry check never blocks, the billing preview prices the
- * programme. Since 13/10 (« prise en charge libre ») it hands the line to
- * nobody: it only says who took it at the bench.
+ * PROGRAMME.md §4 — what the sheet does on its own: a family of products
+ * replaces the previous one's germs (16/10, Q123 — never the analyses asked
+ * for) and proposes n and the norm version, the picker filters the families
+ * by type d'analyse (Q124), a profile replaces the analyses, the entry check
+ * never blocks, the billing preview prices the programme. Since 13/10
+ * (« prise en charge libre ») it hands the line to nobody: it only says who
+ * took it at the bench.
  */
 
 const referential: ProgrammeReferentialData = {
@@ -52,7 +68,9 @@ const referential: ProgrammeReferentialData = {
       id: "type-client",
       name: "Salade du client",
       family: "MICRO",
+      natureId: "nat",
       clientId: "client-a",
+      criteriaCount: 1,
       criteria: [
         { parameterId: "p-ecoli", parameterName: "E. coli", n: 3, c: 2, mKind: "VALUE", m: 10, bigM: 100, unit: "ufc/g", normVersionId: "nv-ecoli-2013", normVersion: { id: "nv-ecoli-2013", label: "ISO 16649-2:2013", current: false, version: "2013" } },
       ],
@@ -61,7 +79,10 @@ const referential: ProgrammeReferentialData = {
       id: "type-catalogue",
       name: "Plat cuisiné",
       family: "MICRO",
+      natureId: null,
       clientId: null,
+      // One per germ: the older E. coli version is no criterion more (3 rows, 3 germs).
+      criteriaCount: 3,
       criteria: [
         { parameterId: "p-ecoli", parameterName: "E. coli", n: 5, c: 2, mKind: "VALUE", m: 10, bigM: 100, unit: "ufc/g", normVersionId: "nv-ecoli-2021", normVersion: { id: "nv-ecoli-2021", label: "ISO 16649-2:2021", current: true, version: "2021" } },
         // An older criterion for the same germ: the one in force wins.
@@ -75,7 +96,9 @@ const referential: ProgrammeReferentialData = {
       id: "type-chimie",
       name: "Poisson (histamine)",
       family: "CHIMIE",
+      natureId: "nat-pc",
       clientId: null,
+      criteriaCount: 1,
       criteria: [
         { parameterId: "p-hist", parameterName: "Histamine", n: 9, c: 2, mKind: "VALUE", m: 100, bigM: 200, unit: "mg/kg", normVersionId: null, normVersion: null },
       ],
@@ -101,6 +124,10 @@ const referential: ProgrammeReferentialData = {
     "p-flore": [],
   },
   prices: { "p-ecoli": 320, "p-salm": 450, "p-hist": null, "p-flore": 220 },
+  familyNatures: [
+    { id: "nat", label: "Microbiologie des aliments", category: "ALIMENTAIRE" },
+    { id: "nat-pc", label: "Physico-chimie des aliments", category: "ALIMENTAIRE" },
+  ],
 };
 
 const sample: Pick<ProgrammeSampleData, "lineKind" | "nature" | "quantity" | "quantityUnit" | "receptionTemperature"> = {
@@ -189,7 +216,7 @@ describe("product type", () => {
     expect(defaultNormVersionId("p-hist", referential.productTypes[2], referential)).toBe("");
   });
 
-  it("adds the type's germs to the analyses, raises n and sets the criterion's version", () => {
+  it("ticks the family's germs after the préleveur's requests, proposes its n and the criterion's version", () => {
     const draft = applyProductType(initialDraft({ ...received, parameterIds: ["p-flore"], parameters: [] }, referential), "type-catalogue", referential);
     expect(draft.productTypeId).toBe("type-catalogue");
     // The préleveur's analysis stays, the germs come after it, the unknown one is ignored.
@@ -199,27 +226,244 @@ describe("product type", () => {
     expect(draft.settings["p-salm"].normVersionId).toBe("nv-salm-2021");
   });
 
-  it("never lowers n, and the client's type overrides the version the sheet proposed", () => {
-    const base = { ...initialDraft(received, referential), unitCount: 9 };
-    const draft = applyProductType(base, "type-client", referential);
-    expect(draft.unitCount).toBe(9);
-    expect(draft.settings["p-ecoli"].normVersionId).toBe("nv-ecoli-2013");
-  });
-
-  it("« — aucun — » detaches the type without touching the analyses", () => {
-    const withType = applyProductType(initialDraft(received, referential), "type-catalogue", referential);
-    const draft = applyProductType(withType, "", referential);
-    expect(draft.productTypeId).toBe("");
-    expect(draft.parameterIds).toEqual(withType.parameterIds);
-    expect(draft.unitCount).toBe(5);
-  });
-
-  it("warns when fewer units are read than the type's plans need", () => {
+  it("warns when fewer units are read than the family's plans need", () => {
     const draft = { ...initialDraft(received, referential), unitCount: 3 };
-    expect(unitWarning(draft, referential.productTypes[1])).toMatch(/n = 5/);
+    expect(unitWarning(draft, referential.productTypes[1])).toMatch(/^La famille « .+ » attend n = 5 ;/);
     expect(unitWarning(draft, referential.productTypes[1])).toMatch(/3 unités/);
     expect(unitWarning({ ...draft, unitCount: 5 }, referential.productTypes[1])).toBeNull();
     expect(unitWarning(draft, undefined)).toBeNull();
+  });
+});
+
+describe("changing family replaces its list (16/10, Q123 — RETOUR-LABO-16-10.md F6)", () => {
+  /** Family B: shares Salmonelles with « Plat cuisiné » (A), read in 1 g (Q40), and reads 1 unit. */
+  const volaille: ProductTypeRef = {
+    id: "type-volaille",
+    name: "Volaille crue",
+    family: "MICRO",
+    natureId: "nat",
+    clientId: null,
+    criteriaCount: 1,
+    criteria: [
+      { parameterId: "p-salm", parameterName: "Salmonelles", n: 1, c: null, mKind: "ABSENCE", m: null, bigM: null, unit: "/1g", normVersionId: "nv-salm-2021", normVersion: { id: "nv-salm-2021", label: "ISO 6579-1:2021", current: true, version: "2021" } },
+    ],
+  };
+  const sansCritere: ProductTypeRef = { id: "type-vide", name: "Famille sans critère", family: "MICRO", natureId: "nat", clientId: null, criteriaCount: 0, criteria: [] };
+  const ref: ProgrammeReferentialData = { ...referential, productTypes: [...referential.productTypes, volaille, sansCritere] };
+  /** The préleveur asked for the total flora; nothing programmed yet. */
+  const asked = () => initialDraft({ ...received, parameterIds: ["p-flore"], parameters: [] }, ref);
+
+  it("A → B removes the germs that came only from A, keeps the shared ones, the hand-ticked ones and the préleveur's requests", () => {
+    const withA = applyProductType(asked(), "type-catalogue", ref);
+    expect(withA.parameterIds).toEqual(["p-flore", "p-ecoli", "p-salm"]);
+    // Histamine ticked by hand on the sheet.
+    const byHand = toggleParameter(withA, "p-hist", ref);
+    const withB = applyProductType(byHand, "type-volaille", ref);
+    expect(withB.productTypeId).toBe("type-volaille");
+    // E. coli came only from A: removed. Salmonelles is B's too: kept (ticked).
+    expect(withB.parameterIds).toEqual(["p-flore", "p-salm", "p-hist"]);
+    // Its settings survive, for a family that brings it back.
+    expect(withB.settings["p-ecoli"].normVersionId).toBe("nv-ecoli-2021");
+    expect(applyProductType(withB, "type-catalogue", ref).parameterIds).toEqual(["p-flore", "p-salm", "p-hist", "p-ecoli"]);
+  });
+
+  it("a germ of A unticked then ticked again by hand stays when B does not have it", () => {
+    const withA = applyProductType(asked(), "type-catalogue", ref);
+    const again = toggleParameter(toggleParameter(withA, "p-ecoli", ref), "p-ecoli", ref);
+    expect(again.parameterIds).toEqual(["p-flore", "p-salm", "p-ecoli"]);
+    expect(applyProductType(again, "type-volaille", ref).parameterIds).toEqual(["p-flore", "p-salm", "p-ecoli"]);
+    // Unticked by hand and left so: B does not bring it back either.
+    const off = toggleParameter(withA, "p-ecoli", ref);
+    expect(applyProductType(off, "type-volaille", ref).parameterIds).toEqual(["p-flore", "p-salm"]);
+  });
+
+  it("at opening, what the stored family does not explain is the préleveur's — kept when the family changes", () => {
+    const opened = initialDraft({ ...received, productTypeId: "type-catalogue", parameterIds: ["p-ecoli", "p-salm", "p-flore"], parameters: [] }, ref);
+    expect(opened.manualIds).toEqual(["p-flore"]);
+    expect(applyProductType(opened, "type-client", ref).parameterIds).toEqual(["p-ecoli", "p-flore"]);
+    // No family stored: everything the line carries was asked for.
+    expect(initialDraft(received, ref).manualIds).toEqual(["p-ecoli"]);
+    // A family the client may no longer use: nothing to tell apart, nothing removed.
+    const lost = initialDraft({ ...received, productTypeId: "type-retire", parameterIds: ["p-ecoli", "p-salm"], parameters: [] }, ref);
+    expect(lost.manualIds).toEqual(["p-ecoli", "p-salm"]);
+    expect(applyProductType(lost, "type-volaille", ref).parameterIds).toEqual(["p-ecoli", "p-salm"]);
+  });
+
+  it("a profile chosen on the sheet counts as asked for", () => {
+    const withA = applyProductType(asked(), "type-catalogue", ref);
+    const profiled = applyProfile(withA, referential.profiles[0], ref);
+    expect(profiled.parameterIds).toEqual(["p-ecoli", "p-salm"]);
+    expect(applyProductType(profiled, "type-volaille", ref).parameterIds).toEqual(["p-ecoli", "p-salm"]);
+  });
+
+  it("« — aucun — » removes the family's germs the same way, and leaves n as it is", () => {
+    const withA = toggleParameter(applyProductType(asked(), "type-catalogue", ref), "p-hist", ref);
+    const none = applyProductType(withA, "", ref);
+    expect(none.productTypeId).toBe("");
+    expect(none.parameterIds).toEqual(["p-flore", "p-hist"]);
+    expect(none.unitCount).toBe(5);
+    // A family without criteria: same — nothing to read n from.
+    const empty = applyProductType(withA, "type-vide", ref);
+    expect(empty).toMatchObject({ productTypeId: "type-vide", parameterIds: ["p-flore", "p-hist"], unitCount: 5 });
+  });
+
+  it("n is recomputed from the new family, never below the n of a profile chosen on the sheet", () => {
+    const withA = applyProductType(asked(), "type-catalogue", ref);
+    expect(withA.unitCount).toBe(5);
+    // B reads 1 unit: n follows it down.
+    expect(applyProductType(withA, "type-volaille", ref).unitCount).toBe(1);
+    // A hand-typed n is the family's to recompute; the client's type also brings its version.
+    const typed = applyProductType({ ...initialDraft(received, ref), unitCount: 9 }, "type-client", ref);
+    expect(typed.unitCount).toBe(3);
+    expect(typed.settings["p-ecoli"].normVersionId).toBe("nv-ecoli-2013");
+    // The histamine profile (n = 9) chosen on the sheet: a family never lowers n below it.
+    const profiled = applyProfile(asked(), referential.profiles[1], ref);
+    expect(profiled.profileUnitCount).toBe(9);
+    expect(applyProductType(profiled, "type-client", ref).unitCount).toBe(9);
+  });
+
+  it("« Cocher tout » and « Décocher tout » touch only the family's germs, and mark nothing as asked for", () => {
+    const withA = toggleParameter(applyProductType(asked(), "type-catalogue", ref), "p-hist", ref);
+    const unchecked = uncheckAllOfType(withA, ref);
+    expect(unchecked.parameterIds).toEqual(["p-flore", "p-hist"]);
+    expect(unchecked.manualIds).toEqual(withA.manualIds);
+    const checked = checkAllOfType(unchecked, ref);
+    expect(checked.parameterIds).toEqual(["p-flore", "p-hist", "p-ecoli", "p-salm"]);
+    expect(checked.settings["p-ecoli"].normVersionId).toBe("nv-ecoli-2021");
+    // Still the family's: B removes E. coli.
+    expect(applyProductType(checked, "type-volaille", ref).parameterIds).toEqual(["p-flore", "p-hist", "p-salm"]);
+    // Without a family, nothing to tick or untick.
+    expect(checkAllOfType(asked(), ref).parameterIds).toEqual(["p-flore"]);
+    expect(uncheckAllOfType(asked(), ref).parameterIds).toEqual(["p-flore"]);
+  });
+
+  it("counts the family's ticked germs — those the nature may programme", () => {
+    const withA = applyProductType(asked(), "type-catalogue", ref);
+    // « Autre » is a criterion of A on a parameter of another category: not counted.
+    expect(familyGermIds(typeOf(ref, "type-catalogue"), ref)).toEqual(["p-ecoli", "p-salm"]);
+    expect(familyCheckCount(withA, ref)).toEqual({ checked: 2, total: 2 });
+    expect(familyCheckLabel(familyCheckCount(withA, ref))).toBe("2 paramètres cochés sur 2");
+    const one = toggleParameter(withA, "p-ecoli", ref);
+    expect(familyCheckLabel(familyCheckCount(one, ref))).toBe("1 paramètre coché sur 2");
+    expect(familyCheckLabel(familyCheckCount(uncheckAllOfType(withA, ref), ref))).toBe("0 paramètre coché sur 2");
+    expect(familyCheckCount(asked(), ref)).toEqual({ checked: 0, total: 0 });
+  });
+
+  it("lists the family as « Paramètres à rechercher »: germ · norm · the criterion's unit (Q40) · n / c / m / M", () => {
+    const rows = familyParameterRows(applyProductType(asked(), "type-volaille", ref), ref);
+    // Salmonelles is « /25 g » as a parameter; this family reads it in 1 g.
+    expect(rows).toEqual([
+      expect.objectContaining({ parameterId: "p-salm", name: "Salmonelles", normLabel: "ISO 6579-1:2021", unit: "/1g", checked: true, available: true }),
+    ]);
+    expect(rows[0].criterion).toMatchObject({ n: 1, mKind: "ABSENCE" });
+    const catalogue = familyParameterRows(applyProductType(asked(), "type-catalogue", ref), ref);
+    expect(catalogue.map((row) => [row.parameterId, row.unit, row.normLabel, row.available])).toEqual([
+      // Another category's germ: shown, not tickable; no unit known.
+      ["p-autre", null, null, false],
+      ["p-ecoli", "ufc/g", "ISO 16649-2:2021", true],
+      // No version on the criterion: the parameter's version in force.
+      ["p-salm", "/25 g", "ISO 6579-1:2021", true],
+    ]);
+    expect(familyParameterRows(asked(), ref)).toEqual([]);
+  });
+
+  it("reads an analysis in the criterion's unit when the family gives one, else in the parameter's", () => {
+    expect(criterionUnit({ unit: "/1g" }, { unit: "/25 g" })).toBe("/1g");
+    expect(criterionUnit({ unit: " " }, { unit: "/25 g" })).toBe("/25 g");
+    expect(criterionUnit({ unit: null }, { unit: null })).toBeNull();
+    expect(criterionUnit(undefined, { unit: "UFC/g" })).toBe("UFC/g");
+  });
+
+  it("« Autres analyses » leaves out the family's germs", () => {
+    const withA = applyProductType(asked(), "type-catalogue", ref);
+    const others = otherParameterGroups(groupParameters(ref, "MICRO"), withA, ref);
+    expect(others.map((g) => [g.family, g.parameters.map((p) => p.id)])).toEqual([
+      ["MICRO", ["p-flore"]],
+      ["CHIMIE", ["p-hist"]],
+    ]);
+    // No family: every analysis.
+    expect(otherParameterGroups(groupParameters(ref, "MICRO"), asked(), ref)).toEqual(groupParameters(ref, "MICRO"));
+  });
+
+  it("says which analyses left with the previous family, and the n it changed", () => {
+    const withA = applyProductType(asked(), "type-catalogue", ref);
+    const withB = applyProductType(withA, "type-volaille", ref);
+    expect(familyChangeNotice(withA, withB, ref)).toBe(
+      "Famille « Volaille crue » choisie ; l'analyse « E. coli », venue de la famille précédente, a été retirée ; n : 5 → 1. Enregistrez le programme pour l'appliquer."
+    );
+    expect(familyChangeTookAway(withA, withB)).toBe(true);
+    expect(familyChangeNotice(withA, applyProductType(withA, "", ref), ref)).toBe(
+      "Aucune famille : lecture en valeur simple ; 2 analyses venues de la famille précédente ont été retirées (« E. coli », « Salmonelles »). Enregistrez le programme pour l'appliquer."
+    );
+    expect(familyChangeNotice({ ...asked(), unitCount: 5 }, withA, ref)).toBe("Famille « Plat cuisiné » choisie. Enregistrez le programme pour l'appliquer.");
+    expect(familyChangeTookAway({ ...asked(), unitCount: 5 }, withA)).toBe(false);
+    // A hand-typed 9 (histamine) recomputed by the client's family: said, never silent.
+    const typed = { ...initialDraft(received, ref), unitCount: 9 };
+    expect(familyChangeNotice(typed, applyProductType(typed, "type-client", ref), ref)).toMatch(/ ; n : 9 → 3\. Enregistrez le programme pour l'appliquer\.$/);
+    expect(familyChangeTookAway(typed, applyProductType(typed, "type-client", ref))).toBe(true);
+  });
+
+  it("never sends what the sheet remembers", () => {
+    const body = toRequestBody(applyProfile(asked(), referential.profiles[0], ref), false);
+    expect(body).not.toHaveProperty("manualIds");
+    expect(body).not.toHaveProperty("profileUnitCount");
+  });
+});
+
+describe("« Choisir une famille de produits » (16/10, Q124 — RETOUR-LABO-16-10.md F5)", () => {
+  const family = (id: string, name: string, natureId: string | null, clientId: string | null = null) => ({ id, name, natureId, clientId });
+  const families = [
+    family("f-surface", "Hygiène de surfaces", "nat-surf"),
+    family("f-plat", "Plats cuisinés", "nat"),
+    family("f-precis", "Produit alimentaire", null),
+    family("f-client", "Salade composée", "nat", "client-a"),
+    family("f-epices", "Épices", "nat-pc"),
+    family("f-glace", "Crème glacée", "nat"),
+  ];
+  const withSurfaces = {
+    ...referential,
+    familyNatures: [...referential.familyNatures, { id: "nat-surf", label: "Microbiologie des surfaces", category: "AMBIANCE" as const }],
+  };
+  const ids = (list: { id: string }[]) => list.map((item) => item.id);
+
+  it("opens on the sample's nature: a food one also lists the families « à préciser », the client's first", () => {
+    const preset = familyFilterFor("nat", withSurfaces);
+    expect(preset).toEqual({ natureId: "nat", includeUnclassified: true, query: "" });
+    expect(ids(filterFamilies(families, preset))).toEqual(["f-client", "f-glace", "f-plat", "f-precis"]);
+  });
+
+  it("another category's nature lists its own families only", () => {
+    const preset = familyFilterFor("nat-surf", withSurfaces);
+    expect(preset.includeUnclassified).toBe(false);
+    expect(ids(filterFamilies(families, preset))).toEqual(["f-surface"]);
+    // The nature on screen, even absent from the list, is read from the referential.
+    expect(familyFilterFor("nat", { ...withSurfaces, familyNatures: [] }).includeUnclassified).toBe(true);
+    expect(familyFilterFor("nat-inconnue", withSurfaces).includeUnclassified).toBe(false);
+  });
+
+  it("« Tous » lists every family, the client's first, then by name", () => {
+    expect(ids(filterFamilies(families, familyFilterFor(null, withSurfaces)))).toEqual([
+      "f-client",
+      "f-glace",
+      "f-epices",
+      "f-surface",
+      "f-plat",
+      "f-precis",
+    ]);
+  });
+
+  it("searches the name without minding accents or case", () => {
+    expect(ids(filterFamilies(families, familyFilterFor(null, withSurfaces, "creme")))).toEqual(["f-glace"]);
+    expect(ids(filterFamilies(families, familyFilterFor(null, withSurfaces, "EPICES")))).toEqual(["f-epices"]);
+    expect(ids(filterFamilies(families, familyFilterFor("nat", withSurfaces, "plats cuisines")))).toEqual(["f-plat"]);
+    // The type d'analyse still applies to the search.
+    expect(ids(filterFamilies(families, familyFilterFor("nat", withSurfaces, "surfaces")))).toEqual([]);
+  });
+
+  it("reads the referential's families as they come from the server", () => {
+    const listed = filterFamilies(referential.productTypes, familyFilterFor("nat", referential));
+    // « Plat cuisiné » is « à préciser » (no type d'analyse yet); « Poisson (histamine) » is of the physico-chimie.
+    expect(ids(listed)).toEqual(["type-client", "type-catalogue"]);
   });
 });
 
@@ -277,7 +521,7 @@ describe("parameter families", () => {
       ...bare,
       productTypes: [
         ...referential.productTypes,
-        { id: "t-mix", name: "Mixte", family: "CHIMIE", clientId: null, criteria: [{ parameterId: "p-ecoli", parameterName: "E. coli", n: 5, c: null, mKind: "VALUE", m: 1, bigM: null, unit: null, normVersionId: null, normVersion: null }] },
+        { id: "t-mix", name: "Mixte", family: "CHIMIE", natureId: null, clientId: null, criteriaCount: 1, criteria: [{ parameterId: "p-ecoli", parameterName: "E. coli", n: 5, c: null, mKind: "VALUE", m: 1, bigM: null, unit: null, normVersionId: null, normVersion: null }] },
       ],
     };
     expect(parameterFamilies(ambiguous, "CHIMIE").get("p-ecoli")).toBe("CHIMIE");
@@ -525,7 +769,7 @@ describe("entry check and billing", () => {
     // The type and the nature chosen on the sheet count too.
     const typed: ProgrammeReferentialData = {
       ...referential,
-      productTypes: [...referential.productTypes, { id: "type-bivalves", name: "Mollusques bivalves vivants", family: "MICRO", clientId: null, criteria: [] }],
+      productTypes: [...referential.productTypes, { id: "type-bivalves", name: "Mollusques bivalves vivants", family: "MICRO", natureId: null, clientId: null, criteriaCount: 0, criteria: [] }],
       natures: referential.natures.map((n) => (n.id === "nat-fine" ? { ...n, label: "Coquillages — palourdes" } : n)),
     };
     expect(
@@ -609,10 +853,82 @@ describe("nature d'analyse (Q49 by default)", () => {
   };
 
   it("offers the current nature and the active natures of its family only", () => {
-    expect(natureChoices(referential, "MICRO").map((n) => n.id)).toEqual(["nat", "nat-fine"]);
+    expect(natureChoices(referential, "MICRO", null).map((n) => n.id)).toEqual(["nat", "nat-fine"]);
+    expect(natureChoices(referential, "MICRO", "M").map((n) => n.id)).toEqual(["nat", "nat-fine"]);
     // The line's own nature stays offered even once archived.
     const archived = { ...referential, natures: referential.natures.map((n) => (n.id === "nat" ? { ...n, active: false } : n)) };
-    expect(natureChoices(archived, "MICRO").map((n) => n.id)).toEqual(["nat", "nat-fine"]);
+    expect(natureChoices(archived, "MICRO", null).map((n) => n.id)).toEqual(["nat", "nat-fine"]);
+  });
+
+  describe("« Autres analyses » (16/10, Q129)", () => {
+    /** The referential of a food line, with the sensory nature of « Autres analyses » beside its own. */
+    const withSensory: ProgrammeReferentialData = {
+      ...referential,
+      natures: [
+        ...referential.natures,
+        { id: "nat-sens", code: "ANALYSE_SENSORIELLE", label: "Analyse sensorielle", family: "AUTRE", legacyType: "ALIMENTAIRE", active: true, current: false },
+      ],
+    };
+    /** The same line once its programme moved it to the sensory nature. */
+    const onSensory: ProgrammeReferentialData = {
+      ...withSensory,
+      natureId: "nat-sens",
+      natures: withSensory.natures.map((n) => ({ ...n, current: n.id === "nat-sens" })),
+    };
+
+    it("offers the sensory analysis beside the line's own family, never the other family", () => {
+      expect(natureChoices(withSensory, "MICRO", "M").map((n) => n.id)).toEqual(["nat", "nat-fine", "nat-sens"]);
+      expect(natureChoices(withSensory, "MICRO", null).map((n) => n.id)).toEqual(["nat", "nat-fine", "nat-sens"]);
+      expect(natureChoices(withSensory, "CHIMIE", "P").map((n) => n.id)).toEqual(["nat", "nat-pc", "nat-sens"]);
+    });
+
+    it("from the sensory analysis, offers the way back to the family of the code's letter", () => {
+      expect(natureChoices(onSensory, "AUTRE", "M").map((n) => n.id)).toEqual(["nat", "nat-fine", "nat-sens"]);
+      expect(natureChoices(onSensory, "AUTRE", "P").map((n) => n.id)).toEqual(["nat-pc", "nat-sens"]);
+      // A single sample has no twin: either family.
+      expect(natureChoices(onSensory, "AUTRE", null).map((n) => n.id)).toEqual(["nat", "nat-fine", "nat-pc", "nat-sens"]);
+    });
+
+    it("keeps an archived sensory nature only while it is the line's own", () => {
+      const archived = (r: ProgrammeReferentialData) => ({
+        ...r,
+        natures: r.natures.map((n) => (n.id === "nat-sens" ? { ...n, active: false } : n)),
+      });
+      expect(natureChoices(archived(withSensory), "MICRO", "M").map((n) => n.id)).toEqual(["nat", "nat-fine"]);
+      expect(natureChoices(archived(onSensory), "AUTRE", "M").map((n) => n.id)).toEqual(["nat", "nat-fine", "nat-sens"]);
+    });
+
+    it("says where the other natures come from", () => {
+      const tail = " Changer de nature recharge les analyses, les profils et les prix ; la nature change à l'enregistrement du programme.";
+      expect(natureHint("MICRO", "M", 3)).toBe(
+        "Dans le même domaine (analyses microbiologiques) ou parmi les autres analyses : l'autre domaine fait l'objet d'un autre échantillon." + tail
+      );
+      expect(natureHint("AUTRE", "P", 2)).toBe(
+        "Parmi les autres analyses, ou dans le domaine de l'échantillon (analyses physico-chimiques) : l'autre domaine fait l'objet d'un autre échantillon." +
+          tail
+      );
+      expect(natureHint("AUTRE", null, 4)).toBe(
+        "Parmi les autres analyses, ou dans l'un des deux domaines (analyses microbiologiques ou analyses physico-chimiques)." + tail
+      );
+      // A single sample moved from microbiology: back there only.
+      expect(natureHint("AUTRE", null, 3, "MICRO")).toBe(
+        "Parmi les autres analyses, ou dans le domaine de l'échantillon (analyses microbiologiques) : l'autre domaine fait l'objet d'un autre échantillon." +
+          tail
+      );
+    });
+
+    it("says when there is nothing else to choose", () => {
+      expect(natureHint("CHIMIE", null, 1)).toBe(
+        "Aucune autre nature active dans le même domaine (analyses physico-chimiques) ni parmi les autres analyses."
+      );
+      expect(natureHint("AUTRE", "M", 1)).toBe(
+        "Aucune autre nature active parmi les autres analyses ni dans le domaine de l'échantillon (analyses microbiologiques)."
+      );
+      // With no letter, « Autres analyses » goes back to either domain.
+      expect(natureHint("AUTRE", null, 1)).toBe(
+        "Aucune autre nature active parmi les autres analyses ni dans les domaines (analyses microbiologiques ou analyses physico-chimiques)."
+      );
+    });
   });
 
   it("switching drops the analyses the new nature does not offer and keeps everything else", () => {
@@ -720,7 +1036,7 @@ describe("programmeReadOnlyReason — why the sheet is closed, and who to ask (1
   it("at the bench, points the responsable des paramètres to « Corriger les analyses », and the admin to « Corriger la fiche »", () => {
     for (const status of ["EN_ANALYSE", "RESULTATS_SAISIS"] as const) {
       expect(programmeReadOnlyReason({ ...closed, status }, "PROGRAMMATEUR"), status).toBe(
-        "Fiche en lecture seule : la paillasse a commencé. Les analyses, le type de produit et le nombre d'unités se changent désormais par « Corriger les analyses » ci-dessous, avec un motif ; l'identification de l'échantillon, par la réception, la validation ou l'administrateur."
+        "Fiche en lecture seule : la paillasse a commencé. Les analyses, la famille de produits et le nombre d'unités se changent désormais par « Corriger les analyses » ci-dessous, avec un motif ; l'identification de l'échantillon, par la réception, la validation ou l'administrateur."
       );
       expect(programmeReadOnlyReason({ ...closed, status }, "ADMIN"), status).toContain("par « Corriger la fiche » ci-dessous");
     }

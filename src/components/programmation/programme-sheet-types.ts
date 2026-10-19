@@ -147,7 +147,11 @@ export type ProductTypeRef = {
   id: string;
   name: string;
   family: Family;
+  /** The family's type d'analyse (RETOUR-LABO-16-10.md F1); null = « à préciser ». */
+  natureId: string | null;
   clientId: string | null;
+  /** How many germs carry an active criterion (one per germ, the version in force — never older rows), for the picker and the sheet. */
+  criteriaCount: number;
   criteria: CriterionRef[];
 };
 
@@ -167,7 +171,8 @@ export type ParameterRef = {
 /**
  * A nature the sheet may give the line (RETOUR-LABO-06-10.md §5, V3 — Q49
  * by default): the current one (`current`, even archived) and the active
- * natures of the same family, in the catalogue order.
+ * natures of the same family — or of « Autres analyses » and back (16/10,
+ * Q129) — in the catalogue order.
  */
 export type ProgrammeNatureData = {
   id: string;
@@ -196,15 +201,35 @@ export type NormVersionRef = {
   current: boolean;
 };
 
+/**
+ * A type d'analyse the « Choisir une famille de produits » filter offers
+ * (RETOUR-LABO-16-10.md F5): one the families below are classified under,
+ * or the nature on screen — whatever its family, unlike `natures`.
+ */
+export type FamilyNatureRef = {
+  id: string;
+  label: string;
+  /** Its category: a food one also lists the families still « à préciser ». */
+  category: SampleType;
+};
+
 export type ProgrammeReferentialData = {
   /** The nature this referential was computed for — the line's, or the one the sheet is trying. */
   natureId: string;
   /** That nature's category: the parameters, prices and services below are of it. */
   category: SampleType;
-  /** The natures the sheet may choose from (same family only). */
+  /**
+   * A single-sample line on « Autres analyses »: the domain it came from, the
+   * only one it may go back to (`programmeNatureFamilies`); null or absent =
+   * unknown or not needed.
+   */
+  natureHome?: Family | null;
+  /** The natures the sheet may choose from: the same family, « Autres analyses » and back (Q129). */
   natures: ProgrammeNatureData[];
   /** The client's own types first, then the catalogue. */
   productTypes: ProductTypeRef[];
+  /** The picker's « Type d'analyse » choices, in the catalogue order (F5). */
+  familyNatures: FamilyNatureRef[];
   /** The parameters of the nature's category, each with its family. */
   parameters: ParameterRef[];
   profiles: ProfileRef[];

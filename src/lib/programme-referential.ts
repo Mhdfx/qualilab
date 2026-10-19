@@ -3,7 +3,14 @@ import type { Family, LineKind, SampleType } from "@/generated/prisma/enums";
 import { prisma } from "./prisma";
 import { buildCatalogueIndex, catalogueKey, type CatalogueEntry } from "./billing";
 import { toMoney } from "./money";
-import type { ProgrammeNatureRef } from "./programme-input";
+import {
+  natureHomeFromJournal,
+  programmeNatureFamilies,
+  type NatureChange,
+  type ProgrammeContext,
+  type ProgrammeNatureRef,
+} from "./programme-input";
+import { twinOfCode, type SampleTwin } from "./sample-code";
 import { PROGRAMMABLE_STATUSES } from "./sample-status";
 
 /**
@@ -21,10 +28,12 @@ import { PROGRAMMABLE_STATUSES } from "./sample-status";
  * no technician at all.
  *
  * RETOUR-LABO-06-10.md §5 (V3, Q49 by default): the fiche may change the
- * line's nature to another active nature of the same family; the
- * referential then lists those natures and can be computed for any of them
- * (its parameters, profiles and prices follow the nature's category). Each
- * parameter carries its family (`AnalysisParameter.family`).
+ * line's nature to another active nature of the same family — and, since
+ * 16/10 (Q129, F9), to an « Autres analyses » nature of the same kind of
+ * sample, and back (`programmeNatureFamilies`); the referential then lists
+ * those natures and can be computed for any of them (its parameters,
+ * profiles and prices follow the nature's category). Each parameter carries
+ * its family (`AnalysisParameter.family`).
  */
 
 export const PROGRAMME_SAMPLE_SELECT = {
@@ -104,7 +113,41 @@ export const PROGRAMME_SAMPLE_SELECT = {
 } as const;
 
 export async function loadProgrammeSample(id: string) {
-  return prisma.sample.findUnique({ where: { id }, select: PROGRAMME_SAMPLE_SELECT });
+  const row = await prisma.sample.findUnique({ where: { id }, select: PROGRAMME_SAMPLE_SELECT });
+  if (!row) return null;
+  return { ...row, natureHome: await loadNatureHome(row) };
+}
+
+/** The programme's journal entries that changed a line's nature (`metadata.nature`, Q49 / Q129). */
+const PROGRAMME_ACTIONS = ["SAMPLE_PROGRAMMED", "SAMPLE_PROGRAMME_UPDATED"];
+
+/**
+ * The domain a single-sample line on « Autres analyses » came from — the
+ * only one it may go back to (`programmeNatureFamilies`). Read only when it
+ * matters: a line elsewhere, or with its code's letter, needs nothing.
+ */
+async function loadNatureHome(row: { id: string; code: string; natureId: string; nature: { family: Family } }): Promise<Family | null> {
+  if (row.nature.family !== "AUTRE" || twinOfCode(row.code) !== null) return null;
+  const [entries, natures] = await Promise.all([
+    prisma.auditLog.findMany({
+      where: { entity: "Sample", entityId: row.id, action: { in: PROGRAMME_ACTIONS }, metadata: { contains: '"nature":{' } },
+      select: { metadata: true },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 20,
+    }),
+    prisma.analysisNature.findMany({ select: { id: true, family: true } }),
+  ]);
+  const changes: NatureChange[] = entries.flatMap(({ metadata }) => {
+    try {
+      const nature = (JSON.parse(metadata ?? "") as { nature?: { before?: { id?: unknown }; after?: { id?: unknown } } }).nature;
+      return typeof nature?.before?.id === "string" && typeof nature.after?.id === "string"
+        ? [{ before: nature.before.id, after: nature.after.id }]
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  return natureHomeFromJournal(changes, row.natureId, new Map(natures.map((n) => [n.id, n.family])));
 }
 
 export type ProgrammeSampleRow = NonNullable<Awaited<ReturnType<typeof loadProgrammeSample>>>;
@@ -119,7 +162,7 @@ const num = (value: Numeric) => (value === null || value === undefined ? null : 
  */
 export function programmeOf(sample: ProgrammeSampleRow) {
   return {
-    /** The nature the programme was decided for — changeable within its family (Q49). */
+    /** The nature the programme was decided for — changeable within its family (Q49) or to « Autres analyses » (Q129). */
     natureId: sample.natureId,
     productTypeId: sample.productTypeId,
     parameterIds: sample.parameters.map((p) => p.parameterId),
@@ -172,13 +215,43 @@ export function serializeProgramme(sample: ProgrammeSampleRow) {
 /** A nature the fiche may give the line (`current` = the one it has). */
 export type ProgrammeNatureOption = ProgrammeNatureRef & { code: string; current: boolean };
 
+/** The line as the nature rules read it: its code (its twin letter) and its nature. */
+type NatureLine = {
+  code: string;
+  natureId: string;
+  nature: { family: Family; defaultLineKind?: LineKind };
+  /** The domain a single-sample line on « Autres analyses » came from (`loadProgrammeSample`). */
+  natureHome?: Family | null;
+};
+
+/**
+ * What `resolveProgrammeNature` needs to know about the line, derived in one
+ * place for the GET and the PUT: its nature, its kind of sample and the
+ * letter of its code (Q129 — the family a line on « Autres analyses » goes
+ * back to).
+ */
+export function programmeNatureContext(
+  sample: NatureLine,
+  natures: readonly ProgrammeNatureRef[]
+): Pick<ProgrammeContext, "natureId" | "natureFamily" | "natureLineKind" | "twin" | "natureHome" | "natures"> {
+  return {
+    natureId: sample.natureId,
+    natureFamily: sample.nature.family,
+    natureLineKind: sample.nature.defaultLineKind,
+    twin: twinOfCode(sample.code),
+    natureHome: sample.natureHome ?? null,
+    natures,
+  };
+}
+
 /**
  * The natures the programme may name for this line: the active natures of
- * its family, its current nature (even archived — it stays readable) and,
+ * the families it may take (`programmeNatureFamilies`, Q129) for its kind
+ * of sample, its current nature (even archived — it stays readable) and,
  * for a PUT, the one the request names (so a refusal can say why).
  */
 export async function loadProgrammeNatures(
-  sample: { natureId: string; nature: { family: Family; defaultLineKind?: LineKind } },
+  sample: NatureLine,
   requestedId?: string | null
 ): Promise<ProgrammeNatureOption[]> {
   const ids = [sample.natureId, ...(requestedId ? [requestedId] : [])];
@@ -187,7 +260,7 @@ export async function loadProgrammeNatures(
       OR: [
         {
           active: true,
-          family: sample.nature.family,
+          family: { in: programmeNatureFamilies(sample.nature.family, twinOfCode(sample.code), sample.natureHome ?? null) },
           ...(sample.nature.defaultLineKind ? { defaultLineKind: sample.nature.defaultLineKind } : {}),
         },
         { id: { in: ids } },
@@ -199,12 +272,22 @@ export async function loadProgrammeNatures(
   return rows.map((row) => ({ ...row, current: row.id === sample.natureId }));
 }
 
-/** The natures the fiche offers: the current one and the active ones of its family and its kind of sample. */
-export function selectableNatures(natures: readonly ProgrammeNatureOption[], family: Family, lineKind?: LineKind) {
+/**
+ * The natures the fiche offers: the current one and the active ones of the
+ * families the line may take (`programmeNatureFamilies` — its own, « Autres
+ * analyses », and back by its code's letter) and of its kind of sample.
+ */
+export function selectableNatures(
+  natures: readonly ProgrammeNatureOption[],
+  line: { family: Family; twin: SampleTwin | null; lineKind?: LineKind; home?: Family | null }
+) {
+  const families = programmeNatureFamilies(line.family, line.twin, line.home ?? null);
   return natures.filter(
     (nature) =>
       nature.current ||
-      (nature.active && nature.family === family && (!lineKind || !nature.defaultLineKind || nature.defaultLineKind === lineKind))
+      (nature.active &&
+        families.includes(nature.family) &&
+        (!line.lineKind || !nature.defaultLineKind || nature.defaultLineKind === line.lineKind))
   );
 }
 
@@ -284,20 +367,19 @@ export async function normVersionsForParameters(
  * current one; the GET route refuses it before calling this.
  */
 export async function loadProgrammeReferential(
-  sample: {
+  sample: NatureLine & {
     clientId: string;
     type: SampleType;
-    natureId: string;
-    nature: { family: Family; defaultLineKind?: LineKind };
     parameters: { parameterId: string; normVersionId: string | null }[];
   },
   options: { natureId?: string | null; natures?: ProgrammeNatureOption[] } = {}
 ) {
-  const natures = selectableNatures(
-    options.natures ?? (await loadProgrammeNatures(sample)),
-    sample.nature.family,
-    sample.nature.defaultLineKind
-  );
+  const natures = selectableNatures(options.natures ?? (await loadProgrammeNatures(sample)), {
+    family: sample.nature.family,
+    twin: twinOfCode(sample.code),
+    lineKind: sample.nature.defaultLineKind,
+    home: sample.natureHome ?? null,
+  });
   const target =
     (options.natureId && natures.find((nature) => nature.id === options.natureId)) ||
     natures.find((nature) => nature.current) ||
@@ -307,13 +389,14 @@ export async function loadProgrammeReferential(
   const category: SampleType = target && !target.current ? target.legacyType : sample.type;
   const natureId = target?.id ?? sample.natureId;
 
-  const [productTypes, parameters, profiles, services] = await Promise.all([
+  const [productTypes, familyNatures, parameters, profiles, services] = await Promise.all([
     prisma.productType.findMany({
       where: { active: true, OR: [{ clientId: null }, { clientId: sample.clientId }] },
       select: {
         id: true,
         name: true,
         family: true,
+        natureId: true,
         clientId: true,
         criteria: {
           where: { active: true },
@@ -333,6 +416,19 @@ export async function loadProgrammeReferential(
       },
       // The client's own types first (NULL sorts last in DESC), then the catalogue.
       orderBy: [{ clientId: "desc" }, { name: "asc" }],
+    }),
+    // The picker's « Type d'analyse » filter (RETOUR-LABO-16-10.md F5): the
+    // natures these families are classified under, and the one on screen —
+    // its preset, even when no family carries it yet.
+    prisma.analysisNature.findMany({
+      where: {
+        OR: [
+          { id: natureId },
+          { productTypes: { some: { active: true, OR: [{ clientId: null }, { clientId: sample.clientId }] } } },
+        ],
+      },
+      select: { id: true, label: true, legacyType: true },
+      orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
     }),
     prisma.analysisParameter.findMany({
       where: { category },
@@ -373,6 +469,8 @@ export async function loadProgrammeReferential(
     /** The nature this referential was computed for, and its category. */
     natureId,
     category,
+    /** A single-sample line on « Autres analyses »: the domain it may go back to (null = unknown or not needed). */
+    natureHome: sample.natureHome ?? null,
     /** The natures the fiche may give the line (the current one flagged), in the catalogue order. */
     natures: natures.map((nature) => ({
       id: nature.id,
@@ -387,7 +485,16 @@ export async function loadProgrammeReferential(
       id: type.id,
       name: type.name,
       family: type.family,
+      /** The family's type d'analyse (RETOUR-LABO-16-10.md F1); null = « à préciser ». */
+      natureId: type.natureId,
       clientId: type.clientId,
+      /**
+       * Its germs with an active criterion — the picker and the sheet show the
+       * count (F5). One per germ, as the preview and « Paramètres à
+       * rechercher » list them (the version in force, `criteriaOf`), not one
+       * per row: an older norm version of a germ is no criterion more.
+       */
+      criteriaCount: new Set(type.criteria.map((criterion) => criterion.parameterId)).size,
       criteria: type.criteria.map((criterion) => ({
         parameterId: criterion.parameterId,
         parameterName: criterion.parameter.name,
@@ -401,6 +508,7 @@ export async function loadProgrammeReferential(
         normVersion: criterion.normVersion,
       })),
     })),
+    familyNatures: familyNatures.map((nature) => ({ id: nature.id, label: nature.label, category: nature.legacyType })),
     parameters,
     profiles: profiles.map((profile) => ({
       id: profile.id,

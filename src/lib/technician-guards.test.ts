@@ -207,6 +207,9 @@ describe("the technician's guards (14/10) — read from every page and route", (
       "programmation/layout.tsx layout",
       "programmation/page.tsx page",
       "programmation/[id]/page.tsx page",
+      // « Familles & critères » (16/10, Q125 — RETOUR-LABO-16-10.md F4).
+      "programmation/familles/page.tsx page",
+      "programmation/familles/[id]/page.tsx page",
       "api/programmation/queue/route.ts GET",
     ]) {
       expect(at(place).length, place).toBeGreaterThan(0);

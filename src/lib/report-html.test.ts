@@ -456,8 +456,10 @@ describe("buildReportHtml — the results of page 1", () => {
     expect(html).toContain('<td class="rep ">&lt; 10</td>');
   });
 
-  it("never prints the product type — an internal family (Q34)", () => {
-    expect(buildReportHtml(base)).not.toContain("Type de produit");
+  it("never prints the famille de produits — internal to the laboratory (Q34), under its old name or its new one (Q120)", () => {
+    const html = buildReportHtml(base);
+    expect(html).not.toContain("Type de produit");
+    expect(html).not.toMatch(/famille de produits/i);
   });
 
   it("prints one column per repetition under « Résultats », with the method", () => {

@@ -191,7 +191,7 @@ export async function createSerie(
       where: { id: { in: productTypeIds }, active: true, OR: [{ clientId: null }, { clientId: input.clientId }] },
       select: { id: true },
     });
-    if (types.length !== productTypeIds.length) throw new SerieCreationError("Un des types de produit n'existe pas.");
+    if (types.length !== productTypeIds.length) throw new SerieCreationError("Une des familles de produits n'existe pas.");
   }
 
   const isDeposit = input.kind === "DEPOT";

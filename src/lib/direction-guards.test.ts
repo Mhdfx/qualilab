@@ -164,9 +164,9 @@ const ADMIN_ONLY = [
   "api/admin/import/criteres/route.ts POST",
   "api/admin/import/legacy/route.ts POST",
   "api/admin/import/clients/route.ts POST",
-  // Catalogue writes.
+  // Catalogue writes (the familles de produits are the responsable des
+  // paramètres' too since 16/10, Q125 — programmation-guards.test.ts).
   "api/parameters/route.ts POST",
-  "api/product-types/route.ts POST",
   "api/profiles/route.ts POST",
   "api/norms/route.ts POST",
   "api/regulations/route.ts POST",

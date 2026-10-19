@@ -245,7 +245,7 @@ export default async function ValidationDetailPage({
             </div>
             {sample.productType && (
               <p className="mt-2 text-xs text-slate-500">
-                Type de produit : <b className="font-medium text-slate-700">{sample.productType.name}</b> · {sample.unitCount} unité{sample.unitCount > 1 ? "s" : ""} prélevée{sample.unitCount > 1 ? "s" : ""}
+                Famille de produits : <b className="font-medium text-slate-700">{sample.productType.name}</b> · {sample.unitCount} unité{sample.unitCount > 1 ? "s" : ""} prélevée{sample.unitCount > 1 ? "s" : ""}
               </p>
             )}
 
@@ -370,6 +370,7 @@ export default async function ValidationDetailPage({
                   unitCount: sample.unitCount,
                   parameterIds: sample.parameters.map((p) => p.parameterId),
                   productTypeId: sample.productTypeId,
+                  productTypeName: sample.productType?.name ?? null,
                   clientId: sample.clientId,
                 }}
               />

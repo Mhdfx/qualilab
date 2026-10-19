@@ -1,5 +1,6 @@
 import type { Family, LineKind, ProgrammePriority, SampleStatus, SampleType } from "@/generated/prisma/enums";
 import { ANALYSIS_FAMILY_LABELS, SAMPLE_STATUS_LABELS } from "./labels";
+import { familyOfTwin, type SampleTwin } from "./sample-code";
 import { PROGRAMMABLE_STATUSES } from "./sample-status";
 import { MAX_UNITS } from "./series";
 
@@ -25,7 +26,10 @@ import { MAX_UNITS } from "./series";
  * supplements, oils…) is chosen here, never by the préleveur — the payload
  * may name another active nature of the SAME family as the line's (the other
  * family is another sample, with its own code « …M » / « …P »). The
- * parameters are then those of the new nature's category.
+ * parameters are then those of the new nature's category. Since 16/10
+ * (Q129 — RETOUR-LABO-16-10.md F9) the « Autres analyses » natures of the
+ * same kind of sample are open too (« Analyse sensorielle » of a food), and
+ * back (`programmeNatureFamilies`).
  */
 
 export const PROGRAMME_PRIORITIES: readonly ProgrammePriority[] = ["NORMALE", "URGENTE"];
@@ -78,6 +82,78 @@ export type ProgrammeInput = {
   parameters: ProgrammeParameter[];
 };
 
+/** The families in the order the protocol lists them. */
+const NATURE_FAMILY_ORDER: readonly Family[] = ["MICRO", "CHIMIE", "AUTRE"];
+
+/**
+ * The families a line's nature may move to on the programme sheet (16/10,
+ * Q129 — RETOUR-LABO-16-10.md F9), in the protocol's order.
+ *
+ * - From microbiology or physico-chemistry: that family (Q49 by default —
+ *   the other one is another sample, « …M » / « …P », or a box the
+ *   préleveur did not tick) plus « Autres analyses », where the laboratory
+ *   files the sensory analysis of a food.
+ * - From « Autres analyses »: back to the family the line was split for,
+ *   read from its code's letter (« …M » → microbiology, « …P » →
+ *   physico-chemistry, `twinOfCode`); a single-sample line (bare code, or an
+ *   older « QL-… » code) back to the domain it came from (`home`, read from
+ *   the journal by `natureHomeFromJournal`) — its reception checks (one
+ *   container, the delay of that domain) were made for it, so MICRO →
+ *   sensory → CHIMIE in two saves never bypasses Q49. Both only when the
+ *   journal knows none (a line created on « Autres analyses »).
+ *
+ * The code and the N° de contrôle never change: only the nature does. The
+ * line's kind of sample still bounds the choice (a water line never reaches
+ * the sensory nature of a food — `resolveProgrammeNature`).
+ */
+export function programmeNatureFamilies(currentFamily: Family, twin: SampleTwin | null, home: Family | null = null): Family[] {
+  const homes: Family[] =
+    currentFamily !== "AUTRE"
+      ? [currentFamily]
+      : twin
+        ? [familyOfTwin(twin)]
+        : home && home !== "AUTRE"
+          ? [home]
+          : ["MICRO", "CHIMIE"];
+  return NATURE_FAMILY_ORDER.filter((family) => family === "AUTRE" || homes.includes(family));
+}
+
+/** One change of nature as the programme journals it (`metadata.nature`, newest first). */
+export type NatureChange = { before: string; after: string };
+
+/**
+ * The domain a line on « Autres analyses » came from: walking the journal's
+ * changes of nature back from the current one (through other natures of
+ * « Autres analyses »), the first nature of microbiology or physico-chemistry.
+ * Null when the line was never moved there.
+ */
+export function natureHomeFromJournal(
+  changes: readonly NatureChange[],
+  currentNatureId: string,
+  familyOf: ReadonlyMap<string, Family>
+): Family | null {
+  let target = currentNatureId;
+  for (const change of changes) {
+    if (change.after !== target) continue;
+    const family = familyOf.get(change.before);
+    if (!family) return null;
+    if (family !== "AUTRE") return family;
+    target = change.before;
+  }
+  return null;
+}
+
+/** Why a nature of another family is refused, and where to look instead. */
+function otherFamilyMessage(currentFamily: Family, allowed: readonly Family[]): string {
+  const homes = allowed
+    .filter((family) => family !== "AUTRE")
+    .map((family) => ANALYSIS_FAMILY_LABELS[family].toLowerCase())
+    .join(" ou ");
+  return currentFamily === "AUTRE"
+    ? `Choisissez une nature des autres analyses ou du domaine de l'échantillon (${homes}) : l'autre domaine fait l'objet d'un autre échantillon.`
+    : `Choisissez une nature du même domaine (${homes}) ou des autres analyses : l'autre domaine fait l'objet d'un autre échantillon.`;
+}
+
 /** A `SampleParameter` row as the programme writes it. */
 export type ProgrammeParameterRow = ProgrammeParameter & {
   sampleId: string;
@@ -118,15 +194,31 @@ export type ProgrammeContext = {
   /** The line's current status: only RECU and PROGRAMME accept a programme. */
   status: SampleStatus;
   clientId: string;
-  /** The line's current nature and its family — a change stays in that family. */
+  /**
+   * The line's current nature and its family — a change stays in that
+   * family or goes to « Autres analyses », and back (Q129,
+   * `programmeNatureFamilies`).
+   */
   natureId: string;
   natureFamily: Family;
   /** The kind of sample the current nature is for: the new nature must be for the same kind. */
   natureLineKind?: LineKind;
   /**
-   * The natures the request may name: at least the active ones of the line's
-   * family and the requested one, so a refusal can say why (unknown,
-   * archived, other family).
+   * The letter of the line's code (« …M » / « …P », `twinOfCode`), null for
+   * a single sample or an older code: the family a line on « Autres
+   * analyses » goes back to.
+   */
+  twin: SampleTwin | null;
+  /**
+   * For a single-sample line on « Autres analyses »: the domain it came from
+   * (`natureHomeFromJournal`) — the only one it may go back to. Null when
+   * unknown (never moved, or a code with its letter).
+   */
+  natureHome?: Family | null;
+  /**
+   * The natures the request may name: at least the active ones of the
+   * families the line may take and the requested one, so a refusal can say
+   * why (unknown, archived, other family).
    */
   natures: readonly ProgrammeNatureRef[];
   /** The product types the request names (the rule checks activity and visibility). */
@@ -156,14 +248,15 @@ export type NatureResolution =
   | { ok: false; error: string };
 
 /**
- * The nature a request asks for (Q49 by default): absent, empty or the
- * current one = no change; otherwise an active nature of the same family.
+ * The nature a request asks for (Q49 by default, Q129): absent, empty or the
+ * current one = no change; otherwise an active nature of a family the line
+ * may take (`programmeNatureFamilies`) and of the same kind of sample.
  * The route calls it first to know which category's parameters to load;
  * `validateProgramme` calls it again, so the rule lives in one place.
  */
 export function resolveProgrammeNature(
   raw: unknown,
-  ctx: Pick<ProgrammeContext, "natureId" | "natureFamily" | "natureLineKind" | "natures">
+  ctx: Pick<ProgrammeContext, "natureId" | "natureFamily" | "natureLineKind" | "twin" | "natureHome" | "natures">
 ): NatureResolution {
   const requested =
     typeof raw === "object" && raw !== null && !Array.isArray(raw)
@@ -176,11 +269,9 @@ export function resolveProgrammeNature(
 
   const nature = ctx.natures.find((candidate) => candidate.id === requested);
   if (!nature) return { ok: false, error: "Nature d'analyse inconnue." };
-  if (nature.family !== ctx.natureFamily) {
-    return {
-      ok: false,
-      error: `Choisissez une nature de la même famille (${ANALYSIS_FAMILY_LABELS[ctx.natureFamily].toLowerCase()}) : l'autre famille fait l'objet d'un autre échantillon.`,
-    };
+  const allowed = programmeNatureFamilies(ctx.natureFamily, ctx.twin, ctx.natureHome ?? null);
+  if (!allowed.includes(nature.family)) {
+    return { ok: false, error: otherFamilyMessage(ctx.natureFamily, allowed) };
   }
   if (ctx.natureLineKind && nature.defaultLineKind && nature.defaultLineKind !== ctx.natureLineKind) {
     return {
@@ -274,7 +365,7 @@ export function validateProgramme(raw: unknown, ctx: ProgrammeContext): Programm
   // A confirmed programme stays confirmed: an edit may not empty it.
   const confirming = confirm || ctx.status === "PROGRAMME";
 
-  // ---- Nature (Q49: the fine nature, within the line's family) -----------
+  // ---- Nature (Q49: the fine nature, within the line's family; Q129) -----
   const nature = resolveProgrammeNature(input, ctx);
   if (!nature.ok) return fail(nature.error);
 
@@ -294,12 +385,12 @@ export function validateProgramme(raw: unknown, ctx: ProgrammeContext): Programm
 
   // ---- Product type -------------------------------------------------------
   const productTypeRef = optionalId(input.productTypeId);
-  if (productTypeRef === undefined) return fail("Type de produit invalide.");
+  if (productTypeRef === undefined) return fail("Famille de produits invalide.");
   let productTypeId: string | null = null;
   if (productTypeRef) {
     const type = ctx.productTypes.find((candidate) => candidate.id === productTypeRef);
     if (!type || !type.active || (type.clientId !== null && type.clientId !== ctx.clientId)) {
-      return fail("Type de produit inconnu pour ce client.");
+      return fail("Famille de produits inconnue pour ce client.");
     }
     productTypeId = type.id;
   }

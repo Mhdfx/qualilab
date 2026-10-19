@@ -978,6 +978,8 @@ model AnalysisNature {
   legacyId        Int?              @unique
   samples         Sample[]
   profiles        AnalysisProfile[]
+  /// The product families of this type d'analyse (RETOUR-LABO-16-10.md F1).
+  productTypes    ProductType[]
 
   @@index([active, sortOrder])
 }
@@ -1064,27 +1066,37 @@ model DocumentReference {
 // ---- Chantier 2 · catalogue and criteria (CRITERES.md §3) ------------------
 
 model ProductType {
-  id                String      @id @default(cuid())
+  id                String          @id @default(cuid())
   name              String
   normalizedName    String
-  family            Family      @default(MICRO)
+  /// The domain (Micro / PC / Autre): derived from `nature` when one is set
+  /// (`validateProductType`), MICRO by default otherwise.
+  family            Family          @default(MICRO)
+  /// The family's type d'analyse (RETOUR-LABO-16-10.md F1, Q121 / Q124):
+  /// which samples it applies to — food, hands and surfaces, water, air.
+  /// NULL = « à préciser ». Filled from the old software's `echantillon` by
+  /// the « Catalogue de l'ancien logiciel » import (F3), or chosen on screen.
+  natureId          String?
+  nature            AnalysisNature? @relation(fields: [natureId], references: [id], onDelete: SetNull)
   /// A client's own product (35 of the 131 types of the workbook).
   clientId          String?
-  client            Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  active            Boolean     @default(true)
-  legacyId          Int?        @unique
+  client            Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  active            Boolean         @default(true)
+  legacyId          Int?            @unique
   /// Slice C's free text, superseded by `regulationId` (slice I); kept, unused.
-  regulation        String?     @db.Text
+  regulation        String?         @db.Text
   /// The regulation proposed for this type's samples (slice I).
   regulationId      String?
-  defaultRegulation Regulation? @relation(fields: [regulationId], references: [id], onDelete: SetNull)
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
+  defaultRegulation Regulation?     @relation(fields: [regulationId], references: [id], onDelete: SetNull)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
   criteria          Criterion[]
   samples           Sample[]
 
   @@index([normalizedName])
   @@index([clientId, active])
+  // The family pickers filter by type d'analyse (F5) among the active families.
+  @@index([natureId, active])
 }
 
 model Norm {

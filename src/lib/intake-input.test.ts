@@ -435,7 +435,7 @@ describe("validateIntake — old data stays as it was", () => {
       ok: true,
       value: { changes: { productTypeId: null } },
     });
-    expect(validateIntake({ productTypeId: 7, reason: "x" }, water)).toMatchObject({ ok: false, error: "Type de produit invalide." });
+    expect(validateIntake({ productTypeId: 7, reason: "x" }, water)).toMatchObject({ ok: false, error: "Famille de produits invalide." });
   });
 
   it("never empties a stored value the correction does not mention", () => {

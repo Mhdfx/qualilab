@@ -141,7 +141,7 @@ export default async function ProgrammationPage({
       <PageHeader
         badge="Enregistrement des paramètres"
         title="Programme d'analyse"
-        subtitle="Pour chaque échantillon réceptionné, décidez de la nature, du type de produit, des analyses, des nombres, des méthodes et de l'organisation avant la paillasse. La facturation se prépare dès la confirmation."
+        subtitle="Pour chaque échantillon réceptionné, décidez de la nature, de la famille de produits, des analyses, des nombres, des méthodes et de l'organisation avant la paillasse. La facturation se prépare dès la confirmation."
       />
 
       <section aria-label="Indicateurs" className="mb-8">

@@ -31,6 +31,23 @@ export function twinFor(family: "MICRO" | "CHIMIE"): SampleTwin {
   return family === "MICRO" ? "M" : "P";
 }
 
+/** The family a twin letter stands for — the inverse of `twinFor`. */
+export function familyOfTwin(twin: SampleTwin): "MICRO" | "CHIMIE" {
+  return twin === "M" ? "MICRO" : "CHIMIE";
+}
+
+/**
+ * The twin letter of a sample code: « 2780/26-3M » → « M »; null for a
+ * single sample (« 2780/26-3 ») or a code older than the série numbering
+ * (QL-…). The code never changes after creation, so the letter keeps
+ * saying which family the line was split for — even once the programme
+ * moved the sample to « Autres analyses » (16/10, Q129).
+ */
+export function twinOfCode(code: string | null | undefined): SampleTwin | null {
+  const match = /-\d+([MP])$/.exec(code ?? "");
+  return match ? (match[1] as SampleTwin) : null;
+}
+
 /** « 2780/26-3 » — the line's own reference, visible to the préleveur;
  * « 2780/26-3M » / « 2780/26-3P » for the two samples of a two-family line. */
 export function sampleCodeFor(serieNumber: string, lineNumber: number, twin?: SampleTwin) {

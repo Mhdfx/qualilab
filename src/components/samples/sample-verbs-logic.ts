@@ -58,6 +58,8 @@ export type VerbSample = {
   parameterIds: string[];
   /** The catalogue's product type, changeable until approval (CRITERES.md). */
   productTypeId: string | null;
+  /** Its name, so « Corriger la fiche » names a family its list no longer offers. */
+  productTypeName?: string | null;
   clientId: string;
 };
 
@@ -247,7 +249,7 @@ export function analysesNotice(
   if (reset.kind === "all") {
     return {
       tone: "warning",
-      text: `Ajouter une analyse, changer le type de produit ou le nombre d'unités efface tous les résultats déjà saisis${
+      text: `Ajouter une analyse, changer la famille de produits ou le nombre d'unités efface tous les résultats déjà saisis${
         validating ? " et renvoie l'échantillon à la paillasse" : ""
       }.`,
     };
@@ -262,6 +264,6 @@ export function analysesNotice(
   }
   return {
     tone: "info",
-    text: "Retirer une analyse n'efface que ses résultats. Ajouter une analyse, changer le type de produit ou le nombre d'unités efface tous les résultats déjà saisis.",
+    text: "Retirer une analyse n'efface que ses résultats. Ajouter une analyse, changer la famille de produits ou le nombre d'unités efface tous les résultats déjà saisis.",
   };
 }

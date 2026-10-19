@@ -39,7 +39,7 @@ describe("wording", () => {
     expect(familiesSummary(["MICRO"])).toBe("Analyses microbiologiques");
     expect(familiesSummary(["CHIMIE"])).toBe("Analyses physico-chimiques");
     expect(familiesSummary(["CHIMIE", "MICRO"])).toBe("Analyses microbiologiques et physico-chimiques");
-    expect(familiesSummary([])).toBe("Aucune famille d'analyses cochée");
+    expect(familiesSummary([])).toBe("Aucun domaine d'analyses coché");
   });
 
   it("names the samples a line becomes", () => {
@@ -326,7 +326,7 @@ describe("depositLineChecklist — the eight rules of a deposit line", () => {
   it("still checks the temperature when no family is ticked", () => {
     const { rows } = depositLineChecklist({ ...food, families: [], quantity: 150, receptionTemperature: null }, DEFAULT_THRESHOLDS);
     expect(row(rows, 6)).toMatchObject({ status: "NON_CONFORME", rules: ["TEMPERATURE_ARRIVEE"] });
-    expect(row(rows, 2)).toMatchObject({ status: "SANS_OBJET", detail: "Sans objet : autre famille d'analyses" });
+    expect(row(rows, 2)).toMatchObject({ status: "SANS_OBJET", detail: "Sans objet : autre domaine d'analyses" });
   });
 
   it("lists the contrôles complémentaires after the eight rules, one answer for both samples", () => {
@@ -434,7 +434,7 @@ describe("depositLineChecklist — the eight rules of a deposit line", () => {
   it("names the default of « Conservation » for the line's families", () => {
     expect(storageDefaultLabel("ALIMENT", ["MICRO"])).toBe("Réfrigéré (par défaut)");
     expect(storageDefaultLabel("AIR", ["MICRO"])).toBe("Sans objet (par défaut)");
-    expect(storageDefaultLabel("EAU", ["MICRO", "CHIMIE"])).toBe("Selon la famille (par défaut)");
+    expect(storageDefaultLabel("EAU", ["MICRO", "CHIMIE"])).toBe("Selon le domaine (par défaut)");
     expect(storageDefaultLabel("EAU", [])).toBe("Sans objet (par défaut)");
   });
 

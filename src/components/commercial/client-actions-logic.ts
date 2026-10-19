@@ -107,7 +107,7 @@ function memoryDetails(counts: {
   ].filter(Boolean);
   if (memory.length > 0) details.push(frenchList(memory));
   const settings = [
-    n(counts.productTypes) > 0 ? countLabel(n(counts.productTypes), "type de produit", "types de produits") : "",
+    n(counts.productTypes) > 0 ? countLabel(n(counts.productTypes), "famille de produits", "familles de produits") : "",
     n(counts.profiles) > 0 ? countLabel(n(counts.profiles), "profil d'analyse", "profils d'analyse") : "",
   ].filter(Boolean);
   if (settings.length > 0) details.push(frenchList(settings));

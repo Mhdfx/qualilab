@@ -38,12 +38,12 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const rawCategory = searchParams.get("category");
   if (rawCategory && !SAMPLE_TYPES.includes(rawCategory as SampleType)) {
-    return NextResponse.json({ error: "Domaine d'analyse invalide." }, { status: 400 });
+    return NextResponse.json({ error: "Catégorie d'analyse invalide." }, { status: 400 });
   }
   const category = rawCategory as SampleType | null;
   const rawFamily = searchParams.get("family");
   if (rawFamily && !PARAMETER_FAMILIES.includes(rawFamily as Family)) {
-    return NextResponse.json({ error: "Famille d'analyse invalide." }, { status: 400 });
+    return NextResponse.json({ error: "Domaine invalide." }, { status: 400 });
   }
   const family = rawFamily as Family | null;
 
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
   });
   if (duplicate) {
     return NextResponse.json(
-      { error: "Ce paramètre existe déjà pour ce domaine." },
+      { error: "Ce paramètre existe déjà dans cette catégorie." },
       { status: 409 }
     );
   }

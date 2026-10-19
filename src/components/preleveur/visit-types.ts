@@ -583,7 +583,7 @@ export function lineDraftError(
   options: { requirePlace?: boolean; requireAmbient?: boolean } = {}
 ): string | null {
   const families = lineFamilies(line);
-  if (families.length === 0) return "Cochez au moins une famille d'analyses (microbiologiques ou physico-chimiques).";
+  if (families.length === 0) return "Cochez au moins un domaine d'analyses (microbiologiques ou physico-chimiques).";
   for (const family of families) {
     if (familyStatus(natures, line.lineKind, family) !== "OK") {
       return `Les analyses ${FAMILY_ADJECTIVES[family]} ne sont pas proposées pour ce type de prélèvement.`;

@@ -89,6 +89,13 @@ describe("navFor", () => {
     expect(all.some((href) => href.startsWith("/validation") || href.startsWith("/admin"))).toBe(false);
   });
 
+  it("gives the responsable des paramètres « Familles & critères » in his own space, never the technician (16/10, Q125)", () => {
+    const items = navFor("PROGRAMMATEUR").flatMap((section) => section.items);
+    expect(items.find((item) => item.label === "Familles & critères")?.href).toBe("/programmation/familles");
+    expect(hrefs(navFor("TECHNICIEN")).some((href) => href.startsWith("/programmation"))).toBe(false);
+    expect(navFor("TECHNICIEN").flatMap((section) => section.items).some((item) => item.label === "Familles & critères")).toBe(false);
+  });
+
   it("captions the shell with the role, not the space", () => {
     for (const role of ASSIGNABLE_ROLES) {
       expect(roleLabelFor(role)).toBe(ROLE_LABELS[role]);
@@ -101,6 +108,13 @@ describe("activeHref", () => {
     expect(activeHref("/reception/abc123", navFor("ADMIN"))).toBe("/reception");
     expect(activeHref("/qualite/temperatures", navFor("ADMIN"))).toBe("/qualite");
     expect(activeHref("/programmation/abc123", navFor("ADMIN"))).toBe("/programmation");
+  });
+
+  it("lights « Familles & critères » on the list and on a family, the dashboard on a sample's programme", () => {
+    const nav = navFor("PROGRAMMATEUR");
+    expect(activeHref("/programmation/familles", nav)).toBe("/programmation/familles");
+    expect(activeHref("/programmation/familles/abc123", nav)).toBe("/programmation/familles");
+    expect(activeHref("/programmation/abc123", nav)).toBe("/programmation");
   });
 
   it("lights the administrator's own entries for the reception history and the e-mail log", () => {

@@ -53,7 +53,7 @@ export async function PATCH(
       select: { id: true },
     });
     if (duplicate) {
-      return NextResponse.json({ error: "Ce paramètre existe déjà pour ce domaine." }, { status: 409 });
+      return NextResponse.json({ error: "Ce paramètre existe déjà dans cette catégorie." }, { status: 409 });
     }
   }
 

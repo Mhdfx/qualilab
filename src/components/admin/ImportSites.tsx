@@ -81,7 +81,7 @@ function transferText(written: Written): string {
     `${plural(places, "lieu", "lieux")}${written.places.merged > 0 ? ` (dont ${written.places.merged} fusionnés avec ceux du site)` : ""}`,
     `${plural(products, "produit", "produits")}${written.products.merged > 0 ? ` (dont ${written.products.merged} fusionnés avec ceux du client)` : ""}`,
     plural(written.emails, "adresse", "adresses"),
-    ...(written.productTypes > 0 ? [plural(written.productTypes, "type de produit", "types de produits")] : []),
+    ...(written.productTypes > 0 ? [plural(written.productTypes, "famille de produits", "familles de produits")] : []),
     ...(written.profiles > 0 ? [plural(written.profiles, "profil d'analyses", "profils d'analyses")] : []),
   ];
   return `Transférés aux sites : ${parts.slice(0, -1).join(", ")} et ${parts[parts.length - 1]}.`;

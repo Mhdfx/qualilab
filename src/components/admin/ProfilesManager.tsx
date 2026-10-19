@@ -260,7 +260,7 @@ function ProfileForm({
       <div className="mt-3">
         <p className="text-xs font-medium text-slate-600">Analyses du profil *</p>
         {available.length === 0 ? (
-          <p className="mt-1 text-sm text-amber-700">Aucun paramètre pour ce domaine — créez-les d&apos;abord dans « Paramètres d&apos;analyse ».</p>
+          <p className="mt-1 text-sm text-amber-700">Aucun paramètre dans cette catégorie — créez-les d&apos;abord dans « Paramètres d&apos;analyse ».</p>
         ) : (
           <div className="mt-1 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
             {available.map((p) => (

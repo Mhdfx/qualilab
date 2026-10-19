@@ -607,14 +607,14 @@ export function LineEditor({
 
           {kind === "ALIMENT" && productTypes.length > 0 && (
             <Field
-              label="Type de produit"
+              label="Famille de produits"
               htmlFor={id("product-type")}
               hint={
                 selectedType
                   ? selectedType.criteriaCount > 0
                     ? `Le rapport interprétera ce produit selon ses ${selectedType.criteriaCount} critère${selectedType.criteriaCount > 1 ? "s" : ""} ; ses germes ont été ajoutés aux analyses ci-dessous.`
-                    : "Aucun critère enregistré pour ce type : lecture en valeur simple."
-                  : "Le type de produit apporte les critères d'interprétation du rapport (facultatif)."
+                    : "Aucun critère enregistré pour cette famille : lecture en valeur simple."
+                  : "La famille de produits apporte les critères d'interprétation du rapport (facultatif)."
               }
             >
               <div className="relative mb-2">
@@ -623,13 +623,13 @@ export function LineEditor({
                   type="search"
                   value={typeQuery}
                   onChange={(e) => setTypeQuery(e.target.value)}
-                  placeholder="Rechercher un type (ex. : salade, charcuterie)"
-                  aria-label="Rechercher un type de produit"
+                  placeholder="Rechercher une famille (ex. : salade, charcuterie)"
+                  aria-label="Rechercher une famille de produits"
                   className="input-field pl-9 pr-4"
                 />
               </div>
               {typeQuery && visibleTypes.length === 0 && (
-                <p className="mb-2 text-xs text-slate-500">Aucun type ne correspond à « {typeQuery} ».</p>
+                <p className="mb-2 text-xs text-slate-500">Aucune famille ne correspond à « {typeQuery} ».</p>
               )}
               <select
                 id={id("product-type")}
@@ -638,9 +638,9 @@ export function LineEditor({
                 onChange={(e) => applyProductType(e.target.value)}
                 className="input-field px-4"
               >
-                <option value="">— aucun —</option>
+                <option value="">— aucune —</option>
                 {clientTypes.length > 0 && (
-                  <optgroup label="Types du client">
+                  <optgroup label="Familles du client">
                     {clientTypes.map((t) => (
                       <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
@@ -717,7 +717,7 @@ export function LineEditor({
                   describedBy={id("quantity-hint")}
                 />
                 <p id={id("quantity-hint")} className="text-xs text-slate-500">
-                  Un contenant par famille : pesez la part de chaque famille.
+                  Un contenant par domaine : pesez la part de chaque domaine.
                 </p>
               </div>
             ) : (
@@ -877,7 +877,7 @@ export function LineEditor({
               })}
             </div>
             {ticked.length === 0 && (
-              <p className="mt-1.5 text-xs text-rose-600">Cochez au moins une famille d&apos;analyses.</p>
+              <p className="mt-1.5 text-xs text-rose-600">Cochez au moins un domaine d&apos;analyses.</p>
             )}
           </fieldset>
 
@@ -913,7 +913,7 @@ export function LineEditor({
               Facultatif — le responsable des paramètres complète le programme.
             </p>
             {ticked.length === 0 ? (
-              <p className="text-sm text-slate-500">Cochez d&apos;abord une famille d&apos;analyses.</p>
+              <p className="text-sm text-slate-500">Cochez d&apos;abord un domaine d&apos;analyses.</p>
             ) : parametersLoading ? (
               <p className="text-sm text-slate-500">Chargement…</p>
             ) : (
@@ -930,7 +930,7 @@ export function LineEditor({
                       </p>
                       {list.length === 0 ? (
                         <p className="text-sm text-slate-500">
-                          Aucune analyse de cette famille au catalogue pour ce type : le laboratoire la fixera.
+                          Aucune analyse de ce domaine au catalogue pour ce type de prélèvement : le laboratoire la fixera.
                         </p>
                       ) : (
                         <div className="grid gap-2 sm:grid-cols-2">

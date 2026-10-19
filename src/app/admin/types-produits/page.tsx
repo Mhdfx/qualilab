@@ -1,48 +1,32 @@
 import { requireRole } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { loadFamilyList } from "@/lib/family-catalogue";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ProductTypesManager } from "@/components/admin/ProductTypesManager";
 
-export const metadata = { title: "Types de produits & critères" };
+export const metadata = { title: "Familles de produits & critères" };
 
-export default async function ProductTypesPage() {
+export default async function ProductTypesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   await requireRole("ADMIN");
-
-  const [types, clients] = await Promise.all([
-    prisma.productType.findMany({
-      select: {
-        id: true,
-        name: true,
-        family: true,
-        clientId: true,
-        active: true,
-        client: { select: { name: true } },
-        _count: { select: { criteria: { where: { active: true } }, samples: true } },
-      },
-      orderBy: [{ clientId: "desc" }, { name: "asc" }],
-    }),
-    prisma.client.findMany({ where: { archived: false }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-  ]);
+  const data = await loadFamilyList(await searchParams);
 
   return (
     <div>
       <PageHeader
         badge="Configuration"
-        title="Types de produits & critères"
-        subtitle="Le catalogue des produits analysés et, pour chacun, les critères d'interprétation (n, c, m, M) par germe et par version de norme. Un échantillon reçoit son type (au dépôt ou sur la fiche de programme) ; le rapport en tire ses verdicts."
+        title="Familles de produits & critères"
+        subtitle="Les familles de produits, par type d'analyse, et pour chacune les critères d'interprétation (n, c, m, M) par germe et par version de norme. Un échantillon reçoit sa famille (au dépôt ou sur la fiche de programme) ; le rapport en tire ses verdicts."
       />
       <ProductTypesManager
-        clients={clients}
-        types={types.map((t) => ({
-          id: t.id,
-          name: t.name,
-          family: t.family,
-          clientId: t.clientId,
-          clientName: t.client?.name ?? null,
-          active: t.active,
-          criteriaCount: t._count.criteria,
-          sampleCount: t._count.samples,
-        }))}
+        basePath="/admin/types-produits"
+        types={data.types}
+        germNames={data.germNames}
+        natures={data.natures}
+        clients={data.clients}
+        initialFilter={data.filter}
       />
     </div>
   );

@@ -10,7 +10,10 @@
 > ce qu'il modifie (§2) ; la conception de §4 reste la référence pour le reste.
 >
 > - **Rien n'est construit** : ce document est le plan. Le propriétaire décide
->   quand le construire (§4 propose quatre vagues).
+>   quand le construire (§4 propose quatre vagues). *19/10 : les vagues 1 à 4
+>   sont construites et revues en local (branche `lot2-retour-16-10`), non
+>   déployées — `HANDOFF.md` §8 ; la revue de la vague 4 a précisé F3, F5, F6
+>   et F9 (fin de §3.F).*
 > - **Lot 2A** = ce qui peut se construire maintenant (réponse claire, ou défaut
 >   sûr quelle que soit la réponse) ; **lot 2B** = après la relance du 18/10
 >   (§7) ; **Données** = attend un fichier ou une liste du laboratoire ;
@@ -266,6 +269,28 @@ nom de client) restent hors du dépôt.
 | F9 | **RP7 — « Analyse sensorielle »** (Q129). `programmeNatureFamilies(famille, jumeau)` : depuis MICRO ou CHIMIE, la même famille + les natures AUTRE du même type de ligne ; depuis AUTRE, la famille d'origine (suffixe « …M » / « …P », `twinOfCode`) ; utilisé par les quatre endroits qui filtrent les natures ; code et N° de contrôle inchangés ; garder n = 1 pour la sensorielle. « Analyse physique » : rien | `programme-input.ts` (+ test), `programme-referential.ts`, `programme-sheet-logic.ts`, `ProgrammeSheet.tsx`, `sample-code.ts` | S ≈ 4 h | non | Assouplit « même famille seulement » (07/10) pour les natures AUTRE | 2A |
 
 RP2c (écrans des catégories) : **abandonné**. N2 et OLD31 : dans F3.
+
+*19/10 — ce que la revue de la vague 4 a ajouté (construit en local) :*
+F3 — un paramètre créé pour un rattachement est le **jumeau** de son germe
+(alerte de contamination, limite, seuil, facteur copiés ; unité seulement si
+ses critères hors mains s'accordent) ; un jumeau qui ressemble à un paramètre
+existant de sa catégorie (« Salmonelles » / « Salmonelles surfaces ») est
+listé, et l'import attend un alias dans « Paramètres » ou une confirmation ;
+« jamais sur une modification manuelle » vaut aussi pour les critères (grille
+enregistrée à la main : rien de l'ancien logiciel, sauf si la famille n'a
+aucune ligne) et pour la réglementation (pas de nouveau lien) ; l'analyse
+compte les échantillons en cours dont le verdict change (commencent à être
+jugés / perdent leurs critères, par statut) et « Importer… » les fait
+confirmer ; l'import porte l'empreinte de l'analyse (409 « relancez
+l'analyse » sinon) ; les paramètres alimentaires vidés par les copies sont
+listés (D-13). Le chemin de production a été rejoué une fois sur un schéma
+local jetable (`HANDOFF.md` §8). F5 — Entrée dans la recherche va à la
+première famille trouvée, sans choisir ; le filtre « Type d'analyse » est dit
+« nature d'analyse de l'échantillon ». F6 — le message du changement de
+famille est en section 1 (ambre quand une analyse part ou que n baisse,
+« n : 9 → 3 ») ; le panneau s'appelle « Analyses hors famille » et ne se
+referme plus sous le curseur. F9 — un échantillon seul (code sans lettre)
+ne revient de « Autres analyses » qu'au domaine d'où il est venu (journal).
 
 ### 3.G Ancien logiciel (Q130)
 

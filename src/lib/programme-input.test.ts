@@ -6,6 +6,8 @@ import {
   MAX_PARAMETER_NOTE,
   MAX_PROGRAMME_NOTE,
   MAX_TEST_PORTION,
+  natureHomeFromJournal,
+  programmeNatureFamilies,
   programmeParameterRows,
   resolveProgrammeNature,
   validateProgramme,
@@ -20,13 +22,18 @@ import { MAX_UNITS } from "./series";
  */
 const NOW = new Date("2026-10-06T10:00:00.000Z");
 
-/** Invented natures: two micro ones of the food category, one of water, one archived, one physico-chemical. */
+/**
+ * Invented natures: two micro ones of the food category, one of water, one
+ * archived, one physico-chemical, and the sensory one of « Autres analyses »
+ * (Q129).
+ */
 const natures: ProgrammeNatureRef[] = [
   { id: "nat-micro-aliments", label: "Microbiologie des aliments", family: "MICRO", legacyType: "ALIMENTAIRE", active: true },
   { id: "nat-micro-fine", label: "Microbiologie d'une nature fine", family: "MICRO", legacyType: "ALIMENTAIRE", active: true },
   { id: "nat-micro-eaux", label: "Microbiologie des eaux", family: "MICRO", legacyType: "EAU", active: true },
   { id: "nat-micro-retiree", label: "Microbiologie retirée", family: "MICRO", legacyType: "ALIMENTAIRE", active: false },
   { id: "nat-pc-aliments", label: "Physico-chimie des aliments", family: "CHIMIE", legacyType: "ALIMENTAIRE", active: true },
+  { id: "nat-sensorielle", label: "Analyse sensorielle", family: "AUTRE", legacyType: "ALIMENTAIRE", active: true },
 ];
 
 const ctx: ProgrammeContext = {
@@ -34,6 +41,7 @@ const ctx: ProgrammeContext = {
   clientId: "client-a",
   natureId: "nat-micro-aliments",
   natureFamily: "MICRO",
+  twin: null,
   natures,
   productTypes: [
     { id: "type-catalogue", clientId: null, active: true },
@@ -201,10 +209,10 @@ describe("validateProgramme — the product type", () => {
   });
 
   it("refuses another client's type, a retired one, or an unknown one", () => {
-    expectError({ ...good, productTypeId: "type-client-b" }, /Type de produit inconnu/);
-    expectError({ ...good, productTypeId: "type-retired" }, /Type de produit inconnu/);
-    expectError({ ...good, productTypeId: "type-nowhere" }, /Type de produit inconnu/);
-    expectError({ ...good, productTypeId: 12 }, /Type de produit invalide/);
+    expectError({ ...good, productTypeId: "type-client-b" }, /Famille de produits inconnue/);
+    expectError({ ...good, productTypeId: "type-retired" }, /Famille de produits inconnue/);
+    expectError({ ...good, productTypeId: "type-nowhere" }, /Famille de produits inconnue/);
+    expectError({ ...good, productTypeId: 12 }, /Famille de produits invalide/);
   });
 });
 
@@ -406,7 +414,7 @@ describe("programmeParameterRows — legacy per-analysis technicians (before 13/
   });
 });
 
-describe("validateProgramme — the nature (Q49, within the family)", () => {
+describe("validateProgramme — the nature (Q49, within the family; Q129)", () => {
   it("keeps the current nature when the request names none, an empty one or the same", () => {
     for (const natureId of [undefined, null, "", "nat-micro-aliments"]) {
       const checked = validateProgramme({ ...good, natureId }, ctx);
@@ -422,8 +430,18 @@ describe("validateProgramme — the nature (Q49, within the family)", () => {
   });
 
   it("refuses a nature of the other family: that is another sample", () => {
-    expectError({ ...good, natureId: "nat-pc-aliments" }, /même famille \(analyses microbiologiques\)/);
+    expectError({ ...good, natureId: "nat-pc-aliments" }, /même domaine \(analyses microbiologiques\)/);
     expectError({ ...good, natureId: "nat-pc-aliments" }, /autre échantillon/);
+    // Even on « …M »: microbiology never becomes physico-chemistry.
+    expectError({ ...good, natureId: "nat-pc-aliments" }, /même domaine/, { ...ctx, twin: "M" });
+  });
+
+  it("accepts the sensory analysis of a food (16/10, Q129), checked against its category", () => {
+    for (const twin of [null, "M"] as const) {
+      const checked = validateProgramme({ ...good, natureId: "nat-sensorielle" }, { ...ctx, twin });
+      expect(checked.ok).toBe(true);
+      if (checked.ok) expect(checked.value.natureId).toBe("nat-sensorielle");
+    }
   });
 
   it("refuses an archived, an unknown or a malformed nature", () => {
@@ -433,7 +451,7 @@ describe("validateProgramme — the nature (Q49, within the family)", () => {
   });
 
   it("checks the nature before the analyses, and the status before the nature", () => {
-    expectError({ ...good, natureId: "nat-pc-aliments", parameterIds: ["p-nowhere"] }, /même famille/);
+    expectError({ ...good, natureId: "nat-pc-aliments", parameterIds: ["p-nowhere"] }, /même domaine/);
     expectError({ ...good, natureId: "nat-pc-aliments" }, /ne peut plus être modifié/, { ...ctx, status: "EN_ANALYSE" }, 409);
   });
 
@@ -469,7 +487,7 @@ describe("validateProgramme — the nature (Q49, within the family)", () => {
 });
 
 describe("resolveProgrammeNature", () => {
-  const natureCtx = { natureId: "nat-micro-aliments", natureFamily: "MICRO" as const, natures };
+  const natureCtx = { natureId: "nat-micro-aliments", natureFamily: "MICRO" as const, twin: null, natures };
 
   it("tells the route whether the nature changes, and to which", () => {
     expect(resolveProgrammeNature({}, natureCtx)).toEqual({ ok: true, natureId: "nat-micro-aliments", changed: null });
@@ -493,17 +511,150 @@ describe("resolveProgrammeNature", () => {
 
   it("keeps the kind of sample: a food line never becomes a water nature", () => {
     const kinded = natures.map((n) => ({ ...n, defaultLineKind: n.legacyType === "EAU" ? ("EAU" as const) : ("ALIMENT" as const) }));
-    const kindCtx = { natureId: "nat-micro-aliments", natureFamily: "MICRO" as const, natureLineKind: "ALIMENT" as const, natures: kinded };
+    const kindCtx = {
+      natureId: "nat-micro-aliments",
+      natureFamily: "MICRO" as const,
+      natureLineKind: "ALIMENT" as const,
+      twin: null,
+      natures: kinded,
+    };
     const refused = resolveProgrammeNature({ natureId: "nat-micro-eaux" }, kindCtx);
     expect(refused).toMatchObject({ ok: false });
     if (!refused.ok) expect(refused.error).toMatch(/autre type d'échantillon/);
     expect(resolveProgrammeNature({ natureId: "nat-micro-fine" }, kindCtx)).toMatchObject({ ok: true, natureId: "nat-micro-fine" });
   });
 
-  it("keeps a family of its own for « Autres analyses »", () => {
-    const other = { natureId: "nat-sensorielle", natureFamily: "AUTRE" as const, natures };
-    const refused = resolveProgrammeNature({ natureId: "nat-micro-fine" }, other);
+});
+
+describe("programmeNatureFamilies (16/10, Q129)", () => {
+  it("opens « Autres analyses » to a microbiology or physico-chemistry line", () => {
+    expect(programmeNatureFamilies("MICRO", null)).toEqual(["MICRO", "AUTRE"]);
+    expect(programmeNatureFamilies("MICRO", "M")).toEqual(["MICRO", "AUTRE"]);
+    expect(programmeNatureFamilies("CHIMIE", "P")).toEqual(["CHIMIE", "AUTRE"]);
+    expect(programmeNatureFamilies("CHIMIE", null)).toEqual(["CHIMIE", "AUTRE"]);
+  });
+
+  it("sends a line on « Autres analyses » back to its code's family, or to either without a letter", () => {
+    expect(programmeNatureFamilies("AUTRE", "M")).toEqual(["MICRO", "AUTRE"]);
+    expect(programmeNatureFamilies("AUTRE", "P")).toEqual(["CHIMIE", "AUTRE"]);
+    expect(programmeNatureFamilies("AUTRE", null)).toEqual(["MICRO", "CHIMIE", "AUTRE"]);
+  });
+
+  it("sends a single-sample line back only to the domain it came from, when the journal knows it", () => {
+    expect(programmeNatureFamilies("AUTRE", null, "MICRO")).toEqual(["MICRO", "AUTRE"]);
+    expect(programmeNatureFamilies("AUTRE", null, "CHIMIE")).toEqual(["CHIMIE", "AUTRE"]);
+    // The code's letter wins; a home elsewhere than « Autres analyses » only.
+    expect(programmeNatureFamilies("AUTRE", "P", "MICRO")).toEqual(["CHIMIE", "AUTRE"]);
+    expect(programmeNatureFamilies("AUTRE", null, "AUTRE")).toEqual(["MICRO", "CHIMIE", "AUTRE"]);
+    expect(programmeNatureFamilies("MICRO", null, "CHIMIE")).toEqual(["MICRO", "AUTRE"]);
+  });
+});
+
+describe("natureHomeFromJournal — where a line on « Autres analyses » came from", () => {
+  const families = new Map(natures.map((n) => [n.id, n.family]));
+
+  it("reads the last move into the current nature", () => {
+    const changes = [{ before: "nat-micro-aliments", after: "nat-sensorielle" }];
+    expect(natureHomeFromJournal(changes, "nat-sensorielle", families)).toBe("MICRO");
+  });
+
+  it("walks back through other natures of « Autres analyses », newest first", () => {
+    const withOther = new Map([...families, ["nat-autre-2", "AUTRE" as const]]);
+    const changes = [
+      { before: "nat-sensorielle", after: "nat-autre-2" },
+      { before: "nat-pc-aliments", after: "nat-sensorielle" },
+      { before: "nat-micro-aliments", after: "nat-pc-aliments" },
+    ];
+    expect(natureHomeFromJournal(changes, "nat-autre-2", withOther)).toBe("CHIMIE");
+  });
+
+  it("knows nothing for a line never moved there, or a nature it cannot read", () => {
+    expect(natureHomeFromJournal([], "nat-sensorielle", families)).toBeNull();
+    expect(natureHomeFromJournal([{ before: "nat-micro-aliments", after: "nat-micro-fine" }], "nat-sensorielle", families)).toBeNull();
+    expect(natureHomeFromJournal([{ before: "nat-inconnue", after: "nat-sensorielle" }], "nat-sensorielle", families)).toBeNull();
+  });
+});
+
+describe("resolveProgrammeNature — « Autres analyses » (16/10, Q129)", () => {
+  /** The kind of sample of each invented nature: water for the water one, food otherwise (the sensory one too). */
+  const kinded = natures.map((n) => ({ ...n, defaultLineKind: n.legacyType === "EAU" ? ("EAU" as const) : ("ALIMENT" as const) }));
+  const sensory = kinded.find((n) => n.id === "nat-sensorielle");
+  const line = {
+    natureId: "nat-micro-aliments",
+    natureFamily: "MICRO" as const,
+    natureLineKind: "ALIMENT" as const,
+    twin: null,
+    natures: kinded,
+  };
+  const sensoryLine = { ...line, natureId: "nat-sensorielle", natureFamily: "AUTRE" as const };
+  const otherFamily =
+    "Choisissez une nature du même domaine (analyses microbiologiques) ou des autres analyses : l'autre domaine fait l'objet d'un autre échantillon.";
+
+  it("takes a food line from microbiology or physico-chemistry to the sensory analysis", () => {
+    for (const twin of [null, "M"] as const) {
+      expect(resolveProgrammeNature({ natureId: "nat-sensorielle" }, { ...line, twin })).toEqual({
+        ok: true,
+        natureId: "nat-sensorielle",
+        changed: sensory,
+      });
+    }
+    const chemistry = { ...line, natureId: "nat-pc-aliments", natureFamily: "CHIMIE" as const, twin: "P" as const };
+    expect(resolveProgrammeNature({ natureId: "nat-sensorielle" }, chemistry)).toMatchObject({ ok: true, natureId: "nat-sensorielle" });
+  });
+
+  it("brings a sensory « …M » line back to microbiology, never to physico-chemistry", () => {
+    const m = { ...sensoryLine, twin: "M" as const };
+    expect(resolveProgrammeNature({ natureId: "nat-micro-aliments" }, m)).toMatchObject({ ok: true, natureId: "nat-micro-aliments" });
+    expect(resolveProgrammeNature({ natureId: "nat-micro-fine" }, m)).toMatchObject({ ok: true, natureId: "nat-micro-fine" });
+    expect(resolveProgrammeNature({ natureId: "nat-pc-aliments" }, m)).toEqual({
+      ok: false,
+      error:
+        "Choisissez une nature des autres analyses ou du domaine de l'échantillon (analyses microbiologiques) : l'autre domaine fait l'objet d'un autre échantillon.",
+    });
+  });
+
+  it("brings a sensory « …P » line back to physico-chemistry, never to microbiology", () => {
+    const p = { ...sensoryLine, twin: "P" as const };
+    expect(resolveProgrammeNature({ natureId: "nat-pc-aliments" }, p)).toMatchObject({ ok: true, natureId: "nat-pc-aliments" });
+    const refused = resolveProgrammeNature({ natureId: "nat-micro-fine" }, p);
     expect(refused).toMatchObject({ ok: false });
-    if (!refused.ok) expect(refused.error).toMatch(/même famille \(autres analyses\)/);
+    if (!refused.ok) expect(refused.error).toMatch(/domaine de l'échantillon \(analyses physico-chimiques\)/);
+  });
+
+  it("lets a sensory single-sample line go back to either family when its past is unknown", () => {
+    expect(resolveProgrammeNature({ natureId: "nat-micro-aliments" }, sensoryLine)).toMatchObject({ ok: true });
+    expect(resolveProgrammeNature({ natureId: "nat-pc-aliments" }, sensoryLine)).toMatchObject({ ok: true });
+  });
+
+  it("never lets a single-sample line hop MICRO → sensory → CHIMIE: back to its own domain only (Q49)", () => {
+    const fromMicro = { ...sensoryLine, natureHome: "MICRO" as const };
+    expect(resolveProgrammeNature({ natureId: "nat-micro-aliments" }, fromMicro)).toMatchObject({ ok: true });
+    expect(resolveProgrammeNature({ natureId: "nat-pc-aliments" }, fromMicro)).toEqual({
+      ok: false,
+      error:
+        "Choisissez une nature des autres analyses ou du domaine de l'échantillon (analyses microbiologiques) : l'autre domaine fait l'objet d'un autre échantillon.",
+    });
+  });
+
+  it("still refuses microbiology → physico-chemistry, with or without a letter", () => {
+    for (const twin of [null, "M"] as const) {
+      expect(resolveProgrammeNature({ natureId: "nat-pc-aliments" }, { ...line, twin })).toEqual({ ok: false, error: otherFamily });
+    }
+  });
+
+  it("never takes a water line to the sensory analysis of a food", () => {
+    const water = { ...line, natureId: "nat-micro-eaux", natureLineKind: "EAU" as const };
+    expect(resolveProgrammeNature({ natureId: "nat-sensorielle" }, water)).toEqual({
+      ok: false,
+      error: "La nature « Analyse sensorielle » concerne un autre type d'échantillon : choisissez une nature de ce type.",
+    });
+  });
+
+  it("refuses an archived « Autres analyses » nature like any other", () => {
+    const archived = { ...line, natures: kinded.map((n) => (n.id === "nat-sensorielle" ? { ...n, active: false } : n)) };
+    expect(resolveProgrammeNature({ natureId: "nat-sensorielle" }, archived)).toEqual({
+      ok: false,
+      error: "La nature « Analyse sensorielle » est archivée : choisissez-en une autre.",
+    });
   });
 });

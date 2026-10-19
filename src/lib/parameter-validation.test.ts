@@ -153,7 +153,7 @@ describe("family (RETOUR-LABO-06-10.md §5, V3)", () => {
       const result = validateParameter({ ...base, family });
       expect(result).toEqual({
         ok: false,
-        error: "Famille d'analyse invalide : microbiologie, physico-chimie ou autre.",
+        error: "Domaine invalide : microbiologie, physico-chimie ou autre.",
       });
     }
   });

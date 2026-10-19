@@ -181,7 +181,7 @@ export async function PATCH(
       where: { id: changes.productTypeId, active: true, OR: [{ clientId: null }, { clientId: sample.clientId }] },
       select: { id: true },
     });
-    if (!type) return NextResponse.json({ error: "Type de produit inconnu pour ce client." }, { status: 400 });
+    if (!type) return NextResponse.json({ error: "Famille de produits inconnue pour ce client." }, { status: 400 });
   }
 
   // Changing the product type or the number of units changes the criteria

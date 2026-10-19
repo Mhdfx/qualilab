@@ -565,7 +565,7 @@ describe("les analyses sont facultatives (V6)", () => {
     ).toMatchObject({ ok: true, value: { parameterIds: [] } });
   });
 
-  it("garde le type de produit sur une ligne aliment seulement, facultatif", () => {
+  it("garde la famille de produits sur une ligne aliment seulement, facultatif", () => {
     expect(validateLine({ ...aliment, productTypeId: "pt1" }, 0, natures)).toMatchObject({ ok: true, value: { productTypeId: "pt1" } });
     expect(validateLine(aliment, 0, natures)).toMatchObject({ ok: true, value: { productTypeId: null } });
     expect(validateLine({ ...surface, productTypeId: "pt1" }, 0, natures)).toMatchObject({ ok: true, value: { productTypeId: null } });
@@ -633,7 +633,7 @@ describe("validateSerie — the visit as a whole", () => {
     ).toMatchObject({ ok: false });
   });
 
-  it("accepte une visite sans analyse ni type de produit (V6)", () => {
+  it("accepte une visite sans analyse ni famille de produits (V6)", () => {
     const r = validateSerie({ ...visit, lines: [{ ...aliment, parameterIds: [] }, { ...surface, parameterIds: [] }] }, natures, { kind: "VISITE" });
     expect(r.ok).toBe(true);
   });

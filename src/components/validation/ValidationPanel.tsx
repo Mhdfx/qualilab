@@ -268,7 +268,7 @@ export function ValidationPanel({
           </select>
           <p className="mt-1 text-xs text-slate-500">
             {proposedRegulationId && regulationId === proposedRegulationId
-              ? "Proposée d'après les choix précédents pour ce produit ou son type — imprimée en tête du rapport."
+              ? "Proposée d'après les choix précédents pour ce produit ou sa famille — imprimée en tête du rapport."
               : "Imprimée en tête du rapport ; proposée ensuite pour le même produit du client."}
           </p>
         </div>

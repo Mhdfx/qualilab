@@ -69,7 +69,7 @@ export function ImportCriteres() {
           Critères d&apos;interprétation — le classeur
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          Le classeur Excel du laboratoire : un bloc par type de produit (micro-organismes, norme, n, c, m, M). Les types, les normes et les critères sont créés ou mis à jour ; rien n&apos;est écrit avant « Importer ».
+          Le classeur Excel du laboratoire : un bloc par famille de produits (micro-organismes, norme, n, c, m, M). Les familles, les normes et les critères sont créés ou mis à jour ; rien n&apos;est écrit avant « Importer ».
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <label className="inline-flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-brand/30">
@@ -121,14 +121,14 @@ export function ImportCriteres() {
 
           <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label="Lignes lues" value={summary.rows} />
-            <Stat label="Types de produits" value={summary.productTypes.total} hint={`${summary.productTypes.toCreate} à créer · ${summary.productTypes.existing} connus`} />
+            <Stat label="Familles de produits" value={summary.productTypes.total} hint={`${summary.productTypes.toCreate} à créer · ${summary.productTypes.existing} connues`} />
             <Stat label="Normes (versions)" value={summary.norms} />
             <Stat label="Critères importables" value={summary.criteria.usable} hint={summary.criteria.refusedUnknownParameter > 0 ? `${summary.criteria.refusedUnknownParameter} sans germe connu` : `catalogue actuel : ${summary.criteria.existing} critère${summary.criteria.existing > 1 ? "s" : ""}`} />
           </dl>
 
           {summary.created && (
             <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-              Créés : {summary.created.productTypes} type{summary.created.productTypes > 1 ? "s" : ""}, {summary.created.parameters} paramètre{summary.created.parameters > 1 ? "s" : ""}, {summary.created.norms} norme{summary.created.norms > 1 ? "s" : ""} ({summary.created.versions} version{summary.created.versions > 1 ? "s" : ""}), {summary.created.criteria} critère{summary.created.criteria > 1 ? "s" : ""} · {summary.created.updated} mis à jour.
+              Créés : {summary.created.productTypes} famille{summary.created.productTypes > 1 ? "s" : ""}, {summary.created.parameters} paramètre{summary.created.parameters > 1 ? "s" : ""}, {summary.created.norms} norme{summary.created.norms > 1 ? "s" : ""} ({summary.created.versions} version{summary.created.versions > 1 ? "s" : ""}), {summary.created.criteria} critère{summary.created.criteria > 1 ? "s" : ""} · {summary.created.updated} mis à jour.
             </p>
           )}
 
@@ -150,7 +150,7 @@ export function ImportCriteres() {
 
           {summary.duplicates.length > 0 && (
             <p className="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              {summary.duplicates.length} ligne{summary.duplicates.length > 1 ? "s" : ""} en double (même type, même germe, même version de norme) — la première lue est gardée :{" "}
+              {summary.duplicates.length} ligne{summary.duplicates.length > 1 ? "s" : ""} en double (même famille, même germe, même version de norme) — la première lue est gardée :{" "}
               {summary.duplicates.slice(0, 8).map((d) => `L${d.line} ${d.parameterLabel}`).join(" · ")}
               {summary.duplicates.length > 8 ? " …" : ""}
             </p>
