@@ -3,6 +3,8 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { validateParameter } from "@/lib/parameter-validation";
+import { reclassifyRefusal } from "@/lib/parameter-reclassify";
+import { loadReclassifyContext } from "@/lib/parameter-reclassify-store";
 
 /**
  * Editing an analysis parameter — its unit, its reference threshold, its
@@ -44,6 +46,18 @@ export async function PATCH(
   });
   if (!validated.ok) {
     return NextResponse.json({ error: validated.error }, { status: 400 });
+  }
+
+  // A change of domain obeys the refusals of the reclassification (D-19); a
+  // change of category alone, the rule of the natures only (no profile read).
+  const familyChanged = validated.value.family !== existing.family;
+  if (familyChanged || validated.value.category !== existing.category) {
+    const refusal = reclassifyRefusal(
+      { id, name: existing.name, category: validated.value.category, family: existing.family },
+      validated.value.family,
+      await loadReclassifyContext(familyChanged ? [id] : [])
+    );
+    if (refusal) return NextResponse.json({ error: refusal }, { status: 409 });
   }
 
   // A rename (or a move to another domain) must not create a twin.

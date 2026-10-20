@@ -4,6 +4,8 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { normInForce } from "@/lib/parameter-caption";
 import { PARAMETER_FAMILIES, SAMPLE_TYPES, validateParameter } from "@/lib/parameter-validation";
+import { reclassifyRefusal } from "@/lib/parameter-reclassify";
+import { loadReclassifyContext } from "@/lib/parameter-reclassify-store";
 import { normVersionsForParameters } from "@/lib/programme-referential";
 import type { Family, SampleType } from "@/generated/prisma/client";
 
@@ -92,6 +94,15 @@ export async function POST(request: Request) {
       { status: 409 }
     );
   }
+
+  // No active nature of its domain for its category: nothing could carry it
+  // (RETOUR-LABO-19-10.md D-19). An empty id names no profile: that rule only.
+  const refusal = reclassifyRefusal(
+    { id: "", name: validated.value.name, category: validated.value.category, family: validated.value.family },
+    validated.value.family,
+    await loadReclassifyContext([])
+  );
+  if (refusal) return NextResponse.json({ error: refusal }, { status: 409 });
 
   const parameter = await prisma.analysisParameter.create({
     data: validated.value,
