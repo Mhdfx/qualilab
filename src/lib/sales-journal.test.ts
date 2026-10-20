@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   EXPORT_PRESET_LABELS,
@@ -7,12 +9,14 @@ import {
   exportPresets,
   salesJournalFileName,
   salesJournalHref,
+  salesJournalColumns,
   salesJournalRows,
   salesJournalTotals,
   settlementRows,
   settlementsTotal,
   type SalesJournalInvoice,
 } from "./sales-journal";
+import { invoiceClientIdentity } from "./invoice-client-identity";
 
 const invoice = (overrides: Partial<SalesJournalInvoice> = {}): SalesJournalInvoice => ({
   number: "FAC-2026-0001",
@@ -22,7 +26,7 @@ const invoice = (overrides: Partial<SalesJournalInvoice> = {}): SalesJournalInvo
   subtotal: "1000.00",
   taxAmount: "200.00",
   total: "1200.00",
-  client: { name: "Labo Test", ice: "001234567000089" },
+  client: { name: "Labo Test", ice: "001234567000089", fiscalId: "40123456", tradeRegister: "12345 Ville" },
   creditedInvoice: null,
   payments: [],
   creditNotes: [],
@@ -47,6 +51,8 @@ describe("salesJournalRows", () => {
       originNumber: "",
       client: "Labo Test",
       ice: "001234567000089",
+      fiscalId: "40123456",
+      tradeRegister: "12345 Ville",
       ht: 1000,
       tva: 200,
       ttc: 1200,
@@ -98,7 +104,74 @@ describe("salesJournalRows", () => {
   });
 
   it("prints an empty ICE when the client has none", () => {
-    expect(salesJournalRows([invoice({ client: { name: "Sans ICE", ice: null } })])[0].ice).toBe("");
+    expect(
+      salesJournalRows([invoice({ client: { name: "Sans ICE", ice: null, fiscalId: null, tradeRegister: null } })])[0].ice
+    ).toBe("");
+  });
+
+  it("prints an empty IF and RC when the document holds none (a snapshot before 20/10, H2)", () => {
+    const [row] = salesJournalRows([
+      invoice({ client: { name: "TEST UI Client", ice: "001234567000089", fiscalId: null, tradeRegister: null } }),
+    ]);
+    expect(row).toMatchObject({ ice: "001234567000089", fiscalId: "", tradeRegister: "" });
+  });
+});
+
+describe("salesJournalColumns — the « Journal des ventes » sheet (H2, Q85)", () => {
+  const columns = salesJournalColumns("20/10/2026");
+
+  it("names the client with its three identifiers, ICE, IF, RC, right after its name", () => {
+    const headers = columns.map((column) => column.header);
+    const at = headers.indexOf("Client");
+    expect(headers.slice(at, at + 4)).toEqual(["Client", "ICE", "IF", "RC"]);
+    expect(columns.slice(at + 1, at + 4).map((column) => column.key)).toEqual(["ice", "fiscalId", "tradeRegister"]);
+  });
+
+  it("does not export the client's address (re-ask R-2)", () => {
+    expect(columns.map((column) => column.header.toLowerCase())).not.toContain("adresse");
+    expect(columns.map((column) => column.key as string)).not.toContain("address");
+  });
+
+  it("keeps the other columns in their order, money and day formats included", () => {
+    expect(columns.map((column) => column.header)).toEqual([
+      "Date",
+      "N°",
+      "Facture / Avoir",
+      "N° de facture d'origine",
+      "Client",
+      "ICE",
+      "IF",
+      "RC",
+      "HT",
+      "TVA",
+      "TTC",
+      "État",
+      "Annulée",
+      "Reste à payer au 20/10/2026",
+    ]);
+    expect(columns.filter((column) => column.format === "money").map((column) => column.key)).toEqual([
+      "ht",
+      "tva",
+      "ttc",
+      "remaining",
+    ]);
+    expect(columns.filter((column) => column.format === "day").map((column) => column.key)).toEqual(["day"]);
+  });
+
+  it("every column reads a key of the row", () => {
+    const [row] = salesJournalRows([invoice()]);
+    for (const column of columns) expect(row, column.header).toHaveProperty(column.key);
+  });
+
+  it("is what GET /api/invoices/export writes: no inline column list, the identity the document keeps", () => {
+    const route = readFileSync(fileURLToPath(new URL("../app/api/invoices/export/route.ts", import.meta.url)), "utf8");
+    expect(route).toMatch(/journal\.columns = salesJournalColumns\(/);
+    // An inline list (as before H2) would drop the IF and the RC with every test still green.
+    expect(route).not.toContain('header: "ICE"');
+    expect(route).not.toContain('key: "ice"');
+    // The rows' client is the identity frozen on the document (snapshot, else the live client).
+    expect(route).toContain("client: { select: CLIENT_IDENTITY_SELECT }");
+    expect(route).toContain("client: invoiceClientIdentity(invoice)");
   });
 });
 
@@ -190,5 +263,37 @@ describe("period and links", () => {
     expect(exportPresets("2028-03-02")[1]).toEqual({ label: "Mois précédent", du: "2028-02-01", au: "2028-02-29" });
     expect(exportPresets("pas une date")).toEqual([]);
     expect(exportPresets("2026-10-10").map((choice) => choice.label)).toEqual([...EXPORT_PRESET_LABELS]);
+  });
+});
+
+describe("the export reads the IF and the RC frozen on the document (H2)", () => {
+  const live = {
+    name: "TEST UI Client (renommé)",
+    address: null,
+    contact: null,
+    phone: null,
+    email: null,
+    ice: "001234567000089",
+    fiscalId: "99999999",
+    tradeRegister: "9999 Ville",
+  };
+
+  it("an invoice issued with them exports them, whatever the client has become", () => {
+    const frozen = { ...live, name: "TEST UI Client", fiscalId: "40123456", tradeRegister: "12345 Ville" };
+    const client = invoiceClientIdentity({ number: "FAC-2026-0001", clientSnapshot: frozen, client: live });
+    expect(salesJournalRows([invoice({ client })])[0]).toMatchObject({
+      client: "TEST UI Client",
+      fiscalId: "40123456",
+      tradeRegister: "12345 Ville",
+    });
+  });
+
+  it("an invoice frozen before they existed exports them empty, not the live client's", () => {
+    const client = invoiceClientIdentity({
+      number: "FAC-2026-0001",
+      clientSnapshot: { name: "TEST UI Client", ice: "001234567000089" },
+      client: live,
+    });
+    expect(salesJournalRows([invoice({ client })])[0]).toMatchObject({ client: "TEST UI Client", fiscalId: "", tradeRegister: "" });
   });
 });

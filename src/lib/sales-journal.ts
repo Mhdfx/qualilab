@@ -19,7 +19,9 @@ import { toMoney, type MoneyInput } from "./money";
  *   note) by date of issue. A credit note's amounts are negative, so a column
  *   sums to the net sales. A cancelled invoice keeps its row (its number is
  *   in the sequence) but stays out of the totals, like « Facturé »
- *   everywhere else (`billingFigures`).
+ *   everywhere else (`billingFigures`). The client is named with its three
+ *   identifiers — ICE, IF, RC (RETOUR-LABO-19-10.md H2, Q85) — as frozen
+ *   on the document; its address is not exported (re-ask R-2).
  * - « Règlements »: one row per settlement by date of receipt.
  *
  * Money is summed in centimes (no float drift). Days are the laboratory's
@@ -38,8 +40,8 @@ export type SalesJournalInvoice = {
   subtotal: MoneyInput;
   taxAmount: MoneyInput;
   total: MoneyInput;
-  /** The client's identity as printed on the document. */
-  client: { name: string; ice: string | null };
+  /** The client's identity as kept by the document (`invoiceClientIdentity`). */
+  client: { name: string; ice: string | null; fiscalId: string | null; tradeRegister: string | null };
   creditedInvoice: { number: string | null } | null;
   /** Every settlement of the invoice (to compute what is left today). */
   payments: MoneyInput[];
@@ -56,6 +58,10 @@ export type SalesJournalRow = {
   originNumber: string;
   client: string;
   ice: string;
+  /** IF (identifiant fiscal); empty when the document does not hold one. */
+  fiscalId: string;
+  /** RC (registre de commerce); empty when the document does not hold one. */
+  tradeRegister: string;
   /** Negative for a credit note. */
   ht: number;
   tva: number;
@@ -113,6 +119,8 @@ export function salesJournalRows(invoices: SalesJournalInvoice[]): SalesJournalR
       originNumber: invoice.kind === "AVOIR" ? (invoice.creditedInvoice?.number ?? "") : "",
       client: invoice.client.name,
       ice: invoice.client.ice ?? "",
+      fiscalId: invoice.client.fiscalId ?? "",
+      tradeRegister: invoice.client.tradeRegister ?? "",
       ht: (sign * cents(invoice.subtotal)) / 100,
       tva: (sign * cents(invoice.taxAmount)) / 100,
       ttc: (sign * cents(invoice.total)) / 100,
@@ -121,6 +129,38 @@ export function salesJournalRows(invoices: SalesJournalInvoice[]): SalesJournalR
       remaining: collectable ? balance(invoice.total, paidCents / 100, creditedCents / 100) : null,
     };
   });
+}
+
+/** One column of the « Journal des ventes » sheet; `format`: the cell's Excel number format. */
+export type SalesJournalColumn = {
+  header: string;
+  key: keyof SalesJournalRow;
+  width: number;
+  format?: "day" | "money";
+};
+
+/**
+ * The « Journal des ventes » sheet's columns, in order. `asOf`: the day
+ * « Reste à payer » is computed (« JJ/MM/AAAA »). The client's three
+ * identifiers follow its name (H2).
+ */
+export function salesJournalColumns(asOf: string): SalesJournalColumn[] {
+  return [
+    { header: "Date", key: "day", width: 12, format: "day" },
+    { header: "N°", key: "number", width: 16 },
+    { header: "Facture / Avoir", key: "type", width: 14 },
+    { header: "N° de facture d'origine", key: "originNumber", width: 22 },
+    { header: "Client", key: "client", width: 32 },
+    { header: "ICE", key: "ice", width: 18 },
+    { header: "IF", key: "fiscalId", width: 14 },
+    { header: "RC", key: "tradeRegister", width: 18 },
+    { header: "HT", key: "ht", width: 14, format: "money" },
+    { header: "TVA", key: "tva", width: 12, format: "money" },
+    { header: "TTC", key: "ttc", width: 14, format: "money" },
+    { header: "État", key: "state", width: 20 },
+    { header: "Annulée", key: "cancelled", width: 10 },
+    { header: `Reste à payer au ${asOf}`, key: "remaining", width: 22, format: "money" },
+  ];
 }
 
 /** The totals row: every document but the cancelled invoices; credit notes deducted. */

@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { validateClient, validateClientEmails } from "@/lib/client-validation";
+import {
+  emailSiteChanges,
+  emailSiteIds,
+  emailSitesRefusal,
+  validateClient,
+  validateClientEmails,
+  type EmailSiteChange,
+} from "@/lib/client-validation";
 import { findSimilarClients, sameClientName } from "@/lib/client-identity";
 import { LOCK_RETRIES, isLockConflict, lockRetryPause } from "@/lib/billing";
 import { toCompleteAfterSave } from "@/lib/client-completion";
@@ -11,6 +18,9 @@ const LINK = { select: { id: true, name: true } } as const;
 
 /** Another client took the new name meanwhile: rolls the save back, then the 409. */
 class NameTaken extends Error {}
+
+/** An address given a site that is not this client's (H3): rolls the save back, then the 400. */
+class SiteRefused extends Error {}
 
 /**
  * A client record: read, update, archive.
@@ -139,7 +149,8 @@ export async function PATCH(
     return NextResponse.json({ error: validated.error }, { status: 400 });
   }
 
-  const list = validateClientEmails(emails);
+  // H3 (Q45): each row may carry the site its address belongs to.
+  const list = validateClientEmails(emails, { sites: true });
   if (!list.ok) {
     return NextResponse.json({ error: list.error }, { status: 400 });
   }
@@ -196,34 +207,52 @@ export async function PATCH(
       },
     });
 
+    let siteChanges: EmailSiteChange[] = [];
     if (emails !== undefined) {
       // The list is replaced wholesale: simpler than diffing, and the client
-      // form always submits the complete set. The form shows an address's
-      // site but never sends it (set by the sites import, RETOUR-LABO-06-10.md
-      // §5 V5): an address kept in the list keeps its site (D-04).
-      const previous = await tx.clientEmail.findMany({
-        where: { clientId: id, siteId: { not: null } },
-        select: { email: true, siteId: true },
-      });
+      // form always submits the complete set. Since H3 (Q45) the form sends
+      // each address's site (« Tout le client » / « Site : X »), checked
+      // against this client's own sites; a row without `siteId` (an older
+      // screen) keeps its address's previous site, as before (D-04). Who
+      // receives what stays `src/lib/email-recipients.ts`.
+      const [previous, sites] = await Promise.all([
+        tx.clientEmail.findMany({ where: { clientId: id }, select: { email: true, siteId: true } }),
+        tx.site.findMany({ where: { clientId: id }, select: { id: true, name: true, active: true } }),
+      ]);
       const siteOf = new Map(previous.map((entry) => [entry.email.toLowerCase(), entry.siteId]));
+      const refused = emailSitesRefusal(list.value, sites, siteOf);
+      if (refused) throw new SiteRefused(refused);
+      const siteIds = emailSiteIds(list.value, siteOf);
+      // For the journal: the addresses whose site changed, a new one given a site included.
+      siteChanges = emailSiteChanges(list.value, siteIds, siteOf, sites);
       await tx.clientEmail.deleteMany({ where: { clientId: id } });
       if (list.value.length > 0) {
         await tx.clientEmail.createMany({
-          data: list.value.map((entry) => ({ ...entry, clientId: id, siteId: siteOf.get(entry.email) ?? null })),
+          data: list.value.map(({ email, label, forReports, forAlerts }, index) => ({
+            email,
+            label,
+            forReports,
+            forAlerts,
+            clientId: id,
+            siteId: siteIds[index],
+          })),
         });
       }
     }
 
-    return client;
+    return { client, siteChanges };
   });
 
-  let updated: Awaited<ReturnType<typeof saveOnce>> | null = null;
-  for (let attempt = 1; updated === null; attempt += 1) {
+  let saved: Awaited<ReturnType<typeof saveOnce>> | null = null;
+  for (let attempt = 1; saved === null; attempt += 1) {
     try {
-      updated = await saveOnce();
+      saved = await saveOnce();
     } catch (error) {
       if (error instanceof NameTaken) {
         return NextResponse.json({ error: "Un client porte déjà cette raison sociale." }, { status: 409 });
+      }
+      if (error instanceof SiteRefused) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
       }
       // Two writes on the same name at the same instant: InnoDB rolls one
       // back (their gap locks deadlock). Nothing was written; it runs again
@@ -239,6 +268,7 @@ export async function PATCH(
     }
   }
 
+  const { client: updated, siteChanges } = saved;
   await logAudit({
     actorId: session.id,
     action: "CLIENT_UPDATED",
@@ -247,6 +277,8 @@ export async function PATCH(
     metadata: {
       name: updated.name,
       emails: list.value.length,
+      // H3: who now receives a site's mail only (or every site's) — D-04.
+      ...(siteChanges.length > 0 ? { emailSites: siteChanges } : {}),
       ...(renamed ? { renamedFrom: existing.name } : {}),
       ...(renamed && confirmDuplicate === true ? { confirmedNotDuplicate: true } : {}),
       ...(completion.completed ? { completed: true } : {}),

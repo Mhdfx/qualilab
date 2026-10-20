@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ClientForm } from "@/components/clients/ClientForm";
 import { clientCompletionGaps, completionHint } from "@/lib/client-completion";
+import { siteOptions } from "@/components/clients/client-form-logic";
 
 
 export const metadata = { title: "Modifier le client" };
@@ -20,13 +21,16 @@ export default async function ModifierClientPage({
   const client = await prisma.client.findUnique({
     where: { id },
     include: {
-      // An address of a site says so on the form (D-04).
-      emails: { orderBy: { email: "asc" }, include: { site: { select: { name: true } } } },
+      emails: { orderBy: { email: "asc" } },
       mergedInto: { select: { id: true, name: true } },
+      // H3 (RETOUR-LABO-19-10.md, Q45): an address is the whole client's or
+      // one of its sites' (D-04), chosen on the form.
+      sites: { select: { id: true, name: true, active: true } },
     },
   });
 
   if (!client) notFound();
+  const sites = siteOptions(client.sites, client.emails.map((entry) => entry.siteId));
 
   return (
     <div>
@@ -50,6 +54,7 @@ export default async function ModifierClientPage({
           archived={client.archived}
           mergedInto={client.mergedInto}
           toComplete={client.toComplete && !client.archived ? { hint: completionHint(clientCompletionGaps(client)) } : null}
+          sites={sites}
           initial={{
             name: client.name,
             contact: client.contact ?? "",
@@ -57,12 +62,15 @@ export default async function ModifierClientPage({
             phone: client.phone ?? "",
             address: client.address ?? "",
             ice: client.ice ?? "",
+            fiscalId: client.fiscalId ?? "",
+            tradeRegister: client.tradeRegister ?? "",
             emails: client.emails.map((entry) => ({
               email: entry.email,
               label: entry.label ?? "",
               forReports: entry.forReports,
               forAlerts: entry.forAlerts,
-              site: entry.site ? { name: entry.site.name, email: entry.email } : null,
+              siteId: entry.siteId,
+              savedSiteId: entry.siteId,
             })),
           }}
         />

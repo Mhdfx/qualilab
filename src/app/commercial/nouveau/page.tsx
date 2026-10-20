@@ -34,6 +34,8 @@ export default async function NouveauClientPage() {
             phone: "",
             address: "",
             ice: "",
+            fiscalId: "",
+            tradeRegister: "",
             emails: [],
           }}
         />

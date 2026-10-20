@@ -349,6 +349,13 @@ export default async function ClientDetailPage({
             <Field icon={Hash} label="ICE">
               {client.ice ? <span className="font-mono">{client.ice}</span> : <Missing />}
             </Field>
+            {/* H2 (RETOUR-LABO-19-10.md, Q85): exported with the invoices, not printed. */}
+            <Field icon={Hash} label="IF (identifiant fiscal)">
+              {client.fiscalId ? <span className="font-mono">{client.fiscalId}</span> : <Missing />}
+            </Field>
+            <Field icon={Hash} label="RC (registre de commerce)">
+              {client.tradeRegister ? <span className="font-mono">{client.tradeRegister}</span> : <Missing />}
+            </Field>
             <Field icon={Mail} label="Email principal">{client.email ?? <Missing />}</Field>
             <Field icon={Phone} label="Téléphone">{client.phone ?? <Missing />}</Field>
             <Field icon={MapPin} label="Adresse">{client.address ?? <Missing />}</Field>

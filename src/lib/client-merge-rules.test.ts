@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   checkAttachAsSite,
@@ -315,5 +317,49 @@ describe("portalAccountsWarning — B's portal accounts are left to the administ
 
   it("says nothing when B has none", () => {
     expect(portalAccountsWarning(0, "B", "A")).toEqual([]);
+  });
+});
+
+describe("the IF and the RC are carried by a merge like the ICE (RETOUR-LABO-19-10.md H2)", () => {
+  it("B's IF and RC complete A's empty ones", () => {
+    const b = { contact: null, email: null, phone: null, address: null, ice: null, fiscalId: "40123456", tradeRegister: "12345 Ville" };
+    const a = { contact: null, email: null, phone: null, address: null, ice: null, fiscalId: null, tradeRegister: "  " };
+    expect(mergeFill(b, a)).toEqual({ fill: { fiscalId: "40123456", tradeRegister: "12345 Ville" }, ignored: [] });
+  });
+
+  it("never overwrites A's own, and says which of B's were ignored", () => {
+    const b = { contact: null, email: null, phone: null, address: null, ice: null, fiscalId: "40123456", tradeRegister: "12345 Ville" };
+    const a = { contact: null, email: null, phone: null, address: null, ice: null, fiscalId: "99999999", tradeRegister: "12345  ville" };
+    // The RC differs only by case and spaces: the same value, not reported.
+    expect(mergeFill(b, a)).toEqual({ fill: {}, ignored: ["fiscalId"] });
+    const result = checkMerge(
+      client("b", "TEST UI B", { ice: ICE_1, fiscalId: "40123456" }),
+      client("a", "TEST UI A", { ice: ICE_1, fiscalId: "99999999" })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.warnings).toContain("Déjà renseignés sur « TEST UI A », ces champs de « TEST UI B » sont ignorés : IF.");
+    }
+  });
+
+  it("a client without them (older facts) completes nothing and ignores nothing", () => {
+    expect(mergeFill({ ice: ICE_1 }, { ice: null })).toEqual({ fill: { ice: ICE_1 }, ignored: [] });
+  });
+
+  it("A's invoices before 10/10 are not warned about the IF and the RC: the PDF does not print them", () => {
+    expect(filledFieldsInvoicesWarning(2, ["fiscalId", "tradeRegister"], "TEST UI B", "TEST UI A")).toEqual([]);
+    expect(filledFieldsInvoicesWarning(1, ["ice", "fiscalId"], "TEST UI B", "TEST UI A")).toEqual([
+      "1 facture émise de « TEST UI A » avant le 10/10 imprimera aussi les champs repris de « TEST UI B » (ICE) : sans instantané du client, elle imprime la fiche telle qu'elle est.",
+    ]);
+  });
+
+  it("the merge route reads them and writes what mergeFill completes", () => {
+    const route = readFileSync(fileURLToPath(new URL("../app/api/clients/[id]/merge/route.ts", import.meta.url)), "utf8");
+    const select = route.slice(route.indexOf("const FACTS_SELECT"), route.indexOf("} as const;"));
+    expect(select).toMatch(/fiscalId: true/);
+    expect(select).toMatch(/tradeRegister: true/);
+    expect(route).toMatch(/fiscalId: row\.fiscalId,/);
+    expect(route).toMatch(/tradeRegister: row\.tradeRegister,/);
+    expect(route).toMatch(/const data: Prisma\.ClientUncheckedUpdateInput = \{ \.\.\.fill \};/);
   });
 });

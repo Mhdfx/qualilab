@@ -178,6 +178,9 @@ export function clientCreationInput(body: unknown, role: Role): CreationResult {
     phone: raw.phone,
     address: raw.address,
     ice: raw.ice,
+    // H2 (RETOUR-LABO-19-10.md): the client form's IF and RC, next to the ICE.
+    fiscalId: raw.fiscalId,
+    tradeRegister: raw.tradeRegister,
   });
   if (!validated.ok) return counter ? { ok: false, error: COUNTER_NAME_MESSAGES[validated.error] ?? validated.error } : validated;
 

@@ -59,6 +59,9 @@ const FACTS_SELECT = {
   email: true,
   phone: true,
   address: true,
+  // RETOUR-LABO-19-10.md H2: A's empty IF and RC are completed by B's, like the ICE.
+  fiscalId: true,
+  tradeRegister: true,
   _count: { select: { sites: true, billingClients: true, billedSites: true, invoices: true } },
 } as const;
 
@@ -145,6 +148,8 @@ function facts(row: Row): ClientFacts {
     email: row.email,
     phone: row.phone,
     address: row.address,
+    fiscalId: row.fiscalId,
+    tradeRegister: row.tradeRegister,
   };
 }
 

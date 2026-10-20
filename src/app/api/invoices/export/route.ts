@@ -9,6 +9,7 @@ import { CLIENT_IDENTITY_SELECT, invoiceClientIdentity } from "@/lib/invoice-cli
 import {
   MAX_EXPORT_ROWS,
   exportPeriodError,
+  salesJournalColumns,
   salesJournalFileName,
   salesJournalRows,
   salesJournalTotals,
@@ -24,10 +25,12 @@ import {
  * without the cancelled invoices) and « Règlements » (settlements by date
  * of receipt). Rows are built by `lib/sales-journal.ts`. Audited.
  *
- * The client's name and ICE are the ones the document PRINTS
- * (`invoiceClientIdentity`): the snapshot frozen at issue, else — a document
- * issued before the snapshot existed — the live client. A later rename or
- * merge of the client therefore never changes an exported line.
+ * The client's name, ICE, IF and RC (RETOUR-LABO-19-10.md H2) are the ones
+ * the document KEEPS (`invoiceClientIdentity`): the snapshot frozen at
+ * issue, else — a document issued before the snapshot existed — the live
+ * client. A later rename or merge of the client therefore never changes an
+ * exported line; a snapshot taken before the IF and the RC existed exports
+ * them empty. « Règlements » names the client only.
  */
 
 const MONEY = "#,##0.00";
@@ -110,20 +113,13 @@ export async function GET(request: Request) {
     workbook.creator = "Qualilab";
 
     const journal = workbook.addWorksheet("Journal des ventes");
-    journal.columns = [
-      { header: "Date", key: "day", width: 12, style: { numFmt: DAY } },
-      { header: "N°", key: "number", width: 16 },
-      { header: "Facture / Avoir", key: "type", width: 14 },
-      { header: "N° de facture d'origine", key: "originNumber", width: 22 },
-      { header: "Client", key: "client", width: 32 },
-      { header: "ICE", key: "ice", width: 18 },
-      { header: "HT", key: "ht", width: 14, style: { numFmt: MONEY } },
-      { header: "TVA", key: "tva", width: 12, style: { numFmt: MONEY } },
-      { header: "TTC", key: "ttc", width: 14, style: { numFmt: MONEY } },
-      { header: "État", key: "state", width: 20 },
-      { header: "Annulée", key: "cancelled", width: 10 },
-      { header: `Reste à payer au ${formatDayShort(now)}`, key: "remaining", width: 22, style: { numFmt: MONEY } },
-    ];
+    // The columns are `salesJournalColumns` (ICE, IF and RC after the client, H2).
+    journal.columns = salesJournalColumns(formatDayShort(now)).map(({ header, key, width, format }) => ({
+      header,
+      key,
+      width,
+      ...(format ? { style: { numFmt: format === "day" ? DAY : MONEY } } : {}),
+    }));
     for (const row of sales) {
       journal.addRow({ ...row, cancelled: row.cancelled ? "Oui" : "Non", remaining: row.remaining ?? "" });
     }

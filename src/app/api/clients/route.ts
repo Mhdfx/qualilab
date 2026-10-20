@@ -221,7 +221,9 @@ export async function GET(request: Request) {
  * rules are `clientCreationInput` (src/lib/quick-client.ts).
  *
  * Body: the fiche's fields (`name`, `contact`, `email`, `phone`, `address`,
- * `ice`), `emails` (the recipient list), `sites` (created with it, active),
+ * `ice`, and since 20/10 `fiscalId` (IF) and `tradeRegister` (RC) —
+ * RETOUR-LABO-19-10.md H2), `emails` (the recipient list; a row's `siteId`
+ * is ignored: the client has no site yet), `sites` (created with it, active),
  * `places` (its usual sampling places, under the site when one site is
  * created, else the siège's), `origin` (« DEPOT » / « VISITE »),
  * `confirmDuplicate` (« Ce n'est pas le même client »).

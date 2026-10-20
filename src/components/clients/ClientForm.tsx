@@ -6,12 +6,17 @@ import { Plus, Trash2, Archive, ArchiveRestore, ClipboardList, ExternalLink, Map
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import type { SimilarClient } from "@/lib/client-identity";
-import { siteAddressHint } from "@/lib/email-recipients";
 import {
   SIMILAR_DEBOUNCE_MS,
   shouldCheckSimilar,
   similarQuery,
 } from "@/components/commercial/client-actions-logic";
+import {
+  WHOLE_CLIENT_LABEL,
+  emailSiteHint,
+  siteOptionLabel,
+  type SiteOption,
+} from "@/components/clients/client-form-logic";
 
 export type EmailRow = {
   email: string;
@@ -19,12 +24,15 @@ export type EmailRow = {
   forReports: boolean;
   forAlerts: boolean;
   /**
-   * The site the address belongs to (sites import, a client attached as a
-   * site), as saved — read-only here. Such an address receives only the
-   * mail of its site (D-04); the server keeps the binding while the address
-   * is unchanged (PATCH /api/clients/[id]).
+   * The site the address belongs to, null for the whole client — chosen
+   * here since H3 (RETOUR-LABO-19-10.md, Q45; before, only the sites import
+   * and « Rattacher comme site » set it). Such an address receives only the
+   * mail of its site (D-04). Sent on save; the server checks the site is
+   * this client's (PATCH /api/clients/[id]).
    */
-  site?: { name: string; email: string } | null;
+  siteId: string | null;
+  /** The site as saved when the form opened (the warning when it is removed). */
+  savedSiteId: string | null;
 };
 
 export type ClientFormValues = {
@@ -34,6 +42,10 @@ export type ClientFormValues = {
   phone: string;
   address: string;
   ice: string;
+  /** IF (identifiant fiscal) — H2, Q85: exported, not printed. */
+  fiscalId: string;
+  /** RC (registre de commerce) — H2, Q85: exported, not printed. */
+  tradeRegister: string;
   emails: EmailRow[];
 };
 
@@ -41,6 +53,11 @@ type ClientFormProps = {
   /** Absent when creating. */
   clientId?: string;
   initial: ClientFormValues;
+  /**
+   * The sites an address may be given (`siteOptions`: the active ones, and
+   * an inactive one an address already belongs to). Empty when creating.
+   */
+  sites?: SiteOption[];
   archived?: boolean;
   /**
    * Set when the fiche was merged into, or attached as a site of, another
@@ -61,9 +78,11 @@ const EMPTY_EMAIL: EmailRow = {
   label: "",
   forReports: true,
   forAlerts: true,
+  siteId: null,
+  savedSiteId: null,
 };
 
-export function ClientForm({ clientId, initial, archived, mergedInto, toComplete }: ClientFormProps) {
+export function ClientForm({ clientId, initial, sites = [], archived, mergedInto, toComplete }: ClientFormProps) {
   const router = useRouter();
   const [values, setValues] = useState<ClientFormValues>(initial);
   const [busy, setBusy] = useState<string | null>(null);
@@ -137,11 +156,18 @@ export function ClientForm({ clientId, initial, archived, mergedInto, toComplete
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...values,
-            // Rows the user started and abandoned are not an error; the
-            // site is the server's to keep, never sent.
+            // Rows the user started and abandoned are not an error. The site
+            // of each address (H3) is sent when editing: a new client has
+            // no site yet.
             emails: values.emails
               .filter((row) => row.email.trim())
-              .map(({ email, label, forReports, forAlerts }) => ({ email, label, forReports, forAlerts })),
+              .map(({ email, label, forReports, forAlerts, siteId }) => ({
+                email,
+                label,
+                forReports,
+                forAlerts,
+                ...(clientId ? { siteId } : {}),
+              })),
             ...(conflict && notSame ? { confirmDuplicate: true } : {}),
           }),
         }
@@ -237,6 +263,21 @@ export function ClientForm({ clientId, initial, archived, mergedInto, toComplete
             hint="15 chiffres — figure sur la facture"
             inputMode="numeric"
           />
+          <Field
+            id="fiscalId"
+            label="IF (identifiant fiscal)"
+            value={values.fiscalId}
+            onChange={(v) => set("fiscalId", v)}
+            hint="Repris dans l'export comptable"
+            inputMode="numeric"
+          />
+          <Field
+            id="tradeRegister"
+            label="RC (registre de commerce)"
+            value={values.tradeRegister}
+            onChange={(v) => set("tradeRegister", v)}
+            hint="Repris dans l'export comptable"
+          />
           <Field id="email" label="Email principal" type="email" value={values.email} onChange={(v) => set("email", v)} />
           <Field id="phone" label="Téléphone" type="tel" value={values.phone} onChange={(v) => set("phone", v)} />
           <Field
@@ -266,9 +307,16 @@ export function ClientForm({ clientId, initial, archived, mergedInto, toComplete
           </p>
         )}
 
+        {sites.length > 0 && (
+          <p className="mt-1.5 text-xs text-slate-500">
+            Une adresse rattachée à un site ne reçoit que les envois de ce site ;
+            « {WHOLE_CLIENT_LABEL} » reçoit ceux de tous les sites et du siège.
+          </p>
+        )}
+
         <ul className="mt-3 space-y-3">
           {values.emails.map((row, index) => {
-            const siteHint = row.site ? siteAddressHint(row.site.name, row.site.email, row.email, row) : null;
+            const siteHint = emailSiteHint(row, sites);
             return (
               <li key={index} className="rounded-xl border border-slate-200 p-3">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_150px_auto]">
@@ -301,6 +349,28 @@ export function ClientForm({ clientId, initial, archived, mergedInto, toComplete
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </button>
                 </div>
+
+                {sites.length > 0 && (
+                  <div className="mt-2.5 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                    <label htmlFor={`site-${index}`} className="text-sm font-medium text-slate-700">
+                      Reçoit les envois de
+                    </label>
+                    <select
+                      id={`site-${index}`}
+                      value={row.siteId ?? ""}
+                      onChange={(event) => setEmail(index, { siteId: event.target.value || null })}
+                      aria-describedby={siteHint ? `email-${index}-site` : undefined}
+                      className="min-h-[42px] w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 sm:w-auto sm:min-w-[16rem] sm:max-w-sm"
+                    >
+                      <option value="">{WHOLE_CLIENT_LABEL}</option>
+                      {sites.map((site) => (
+                        <option key={site.id} value={site.id}>
+                          {siteOptionLabel(site)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 {siteHint && (
                   <p

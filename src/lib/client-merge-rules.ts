@@ -37,6 +37,9 @@ export type ClientFacts = {
   email?: string | null;
   phone?: string | null;
   address?: string | null;
+  /** IF and RC (RETOUR-LABO-19-10.md H2): completed by a merge like the ICE. */
+  fiscalId?: string | null;
+  tradeRegister?: string | null;
 };
 
 export type RuleResult = { ok: true; warnings: string[] } | { ok: false; error: string };
@@ -67,9 +70,18 @@ const FILLABLE = [
   ["phone", "téléphone"],
   ["address", "adresse"],
   ["ice", "ICE"],
+  ["fiscalId", "IF"],
+  ["tradeRegister", "RC"],
 ] as const;
 
 export type FillableField = (typeof FILLABLE)[number][0];
+
+/**
+ * The fields an invoice PDF prints about its client (`invoice-html.ts`):
+ * the IF and the RC are frozen with the invoice and exported, never printed
+ * (H2).
+ */
+const PRINTED: readonly FillableField[] = ["contact", "email", "phone", "address", "ice"];
 
 const filled = (value: string | null | undefined) => (value ?? "").trim() !== "";
 
@@ -193,7 +205,8 @@ export function unfrozenInvoicesWarning(count: number, sourceName: string, targe
  * The merge preview's warning about A's own invoices issued before 10/10:
  * without a frozen client they print the live one, so the fields B fills
  * on A (`mergeFill`: contact, e-mail, phone, address, ICE) appear on them
- * too. Empty when nothing is filled, or when every one is frozen.
+ * too. The IF and the RC are not printed (H2), so they alone warn of
+ * nothing. Empty when nothing printed is filled, or when every one is frozen.
  */
 export function filledFieldsInvoicesWarning(
   count: number,
@@ -201,10 +214,11 @@ export function filledFieldsInvoicesWarning(
   sourceName: string,
   targetName: string
 ): string[] {
-  if (!Number.isFinite(count) || count <= 0 || filled.length === 0) return [];
+  const printed = filled.filter((field) => PRINTED.includes(field));
+  if (!Number.isFinite(count) || count <= 0 || printed.length === 0) return [];
   const many = count > 1;
   return [
-    `${plural(count, "facture émise", "factures émises")} de ${q(targetName)} avant le 10/10 ${many ? "imprimeront" : "imprimera"} aussi les champs repris de ${q(sourceName)} (${fieldWords(filled)}) : sans instantané du client, ${many ? "elles impriment" : "elle imprime"} la fiche telle qu'elle est.`,
+    `${plural(count, "facture émise", "factures émises")} de ${q(targetName)} avant le 10/10 ${many ? "imprimeront" : "imprimera"} aussi les champs repris de ${q(sourceName)} (${fieldWords(printed)}) : sans instantané du client, ${many ? "elles impriment" : "elle imprime"} la fiche telle qu'elle est.`,
   ];
 }
 
