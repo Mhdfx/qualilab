@@ -93,6 +93,11 @@ le journal sans être réellement expédiés**, et l'interface l'indique clairem
 > Q109, Q112, Q115, Q119–Q129 ; Q68, fondue dans Q118 — l'heure inconnue :
 > relance 2.6 ; Q84 défaut retenu) ; les autres portent une note « 16/10 »
 > (reposées dans la relance du 18/10, sauf Q94–Q96, hors relance).
+>
+> **19/10 — pages 9 et 10 de la relance du 18/10** (`RETOUR-LABO-19-10.md`
+> §1) : Q11, Q45, Q54, Q81, Q82 réglées, passées au §3 ; Q30, Q85, Q86 en
+> partie (note « 19/10 ») ; Q93, Q97, Q103, Q104, Q105 laissées vides ; la
+> page 11 (Q19, Q20, Q98) et les parties 1, 2, 3 et 5 ne sont pas revenues.
 
 À poser au laboratoire avant d'ouvrir les chantiers de mise à niveau (PLAN.md,
 Phase 9). Numérotées Q1–Q20 ; les réponses deviennent des données ou des
@@ -108,15 +113,14 @@ réglages, pas des développements.
 | Q7 | Portée d'accréditation par paramètre et matrice ; mention à imprimer ; écriture des unités | Catalogue et rapport |
 | Q8 | *(16/10 : laissée vide — relance partie 3)* Délais contractuels par famille de paramètres ; jours ouvrés | Échéances et retards |
 | Q10 | Imprimer les n valeurs ou seulement la conclusion ? Feuille papier conservée ou saisie sur tablette ? | Rapport et paillasse |
-| Q11 | *(16/10 : page non revenue — relance partie 4)* Un paramètre non effectué est-il facturé ? | Facturation |
 | Q12 | Pourquoi 94 000 dévalidations dans l'ancien logiciel : corrections par lots ou résultats tardifs ajoutés après coup ? | Validation par paramètre ou par échantillon |
 | Q14 | *(16/10 : laissée vide — relance partie 3 (et les fichiers, partie 5))* Fournir trois rapports réels récents, les modèles des grands comptes, le texte d'e-mail, les références/versions de tous les documents, le logo d'accréditation et les cachets | Maquette du rapport, cartouches |
 | Q15 | Signataires autorisés et délégués « par ordre », titre exact à imprimer | Comptes et signatures |
 | Q16 | *(16/10 : page non revenue — fondue dans Q30 (relance partie 4))* Le forfait mensuel couvre-t-il un maximum d'échantillons ? Liste du mois sur la facture ? Causes des 264 avoirs de 2025 ? | Facturation forfaitaire |
 | Q17 | En janvier, la numérotation repart-elle à 1/27 ? Une facture annulée garde-t-elle son numéro ? | Compteurs |
 | Q18 | Que contient « N° de factures » sur le protocole ? | Référence client sur la visite |
-| Q19 | *(16/10 : page non revenue — relance partie 4)* Date de bascule, durée de cohabitation avec l'ancien logiciel, sort des ≈ 8 000 dossiers en cours | Plan de bascule |
-| Q20 | *(16/10 : page non revenue — relance partie 4)* Le partage des PDF contient-il tous les rapports depuis 2017 ? Années d'historique sur le portail ? Factures visibles sur le portail ? | Reprise de l'historique, portail |
+| Q19 | *(16/10 : page non revenue ; 19/10 : page 11 de la relance toujours pas revenue)* Date de bascule, durée de cohabitation avec l'ancien logiciel, sort des ≈ 8 000 dossiers en cours | Plan de bascule |
+| Q20 | *(16/10 : page non revenue ; 19/10 : page 11 de la relance toujours pas revenue)* Le partage des PDF contient-il tous les rapports depuis 2017 ? Années d'historique sur le portail ? Factures visibles sur le portail ? | Reprise de l'historique, portail |
 | Q21 | Le N° de série doit-il être **réservé dès l'ouverture** de la visite sur le téléphone (il apparaît alors avant l'enregistrement, mais une visite abandonnée consomme un numéro) ou **attribué à l'enregistrement** (affiché ensuite, aucun trou dans la séquence) ? | Formulaire « Nouvelle visite » (retour du 14/09, point 1) |
 | Q23 | Au-delà de 26 unités, comment nommer les unités sur les étiquettes et la feuille de paillasse : lettres AA, AB… ou numéros 01…50 ? Un même échantillon de 50 unités est-il courant (histamine, autre) ? | Étiquettes, paillasse (retour du 14/09, point 8) |
 | Q24 | Les cases « Analyses à effectuer : microbiologiques / physico-chimiques » en bas du protocole : cocher « physico-chimie » sans ligne physico-chimique signifie-t-il que la réception ajoute les analyses, ou qu'une ligne doit exister ? Qui décide du panel physico-chimique quand il n'est pas au catalogue ? | Formulaire, réception (retour du 14/09, point 9) |
@@ -129,7 +133,7 @@ réglages, pas des développements.
 | Q26 → **implémenté par défaut** (18/09) : la version la plus récente de chaque norme est « en vigueur » ; l'ancienne reste en base. `/admin/normes` permet d'en changer et de dater. Le rapport imprime la version sous laquelle le résultat a été lu. | | |
 | Q28 → **implémenté par défaut** (18/09) : quatre phrases modifiables dans `/admin/reglages` → Échelle de conclusion ; le rapport imprime les cinq lectures A…E **et** le verdict. | | |
 | Q29 → **implémenté par défaut** (18/09) : « 3(-2) » = 3 × 10² = 300, « 0(-1) » = « < 10 », « < x » compte comme 0, le facteur de dilution du paramètre multiplie la lecture. | | |
-| Q30 | *(16/10 : page non revenue — relance partie 4)* Facturation : parmi les sept modèles d'impression de l'ancien logiciel (par paramètres groupés, par paramètres et produit, par paramètres par produit, par échantillon, par échantillon et nom de produit, sites au forfait, forfaits), lesquels sont utilisés et pour quels clients ? Un PDF de chacun ; sens de « avec remise », « forfaits / mois », « INTSTAT » | Facturation (chantier 5) |
+| Q30 | *(16/10 : page non revenue ; 19/10 : « OK » pour démarrer avec un seul modèle, plus « Besoin par paramètres » — à confirmer : `RETOUR-LABO-19-10.md` H4, relance R-1)* Facturation : parmi les sept modèles d'impression de l'ancien logiciel (par paramètres groupés, par paramètres et produit, par paramètres par produit, par échantillon, par échantillon et nom de produit, sites au forfait, forfaits), lesquels sont utilisés et pour quels clients ? Un PDF de chacun ; sens de « avec remise », « forfaits / mois », « INTSTAT » | Facturation (chantier 5) |
 
 Retour du laboratoire du 14/09 sur l'écran « Nouvelle visite » (neuf points,
 analysés dans `WORKFLOW.md` §13, traités par la tranche 1b) : tout existe
@@ -148,7 +152,6 @@ préleveur photographie la feuille signée depuis le téléphone.
 | Q41 | Programme d'analyse : « les nombres » = unités à lire, prise d'essai et dilutions ? Les N° de contrôle restent-ils attribués à la réception ? | Programme (`PROGRAMME.md`) |
 | Q43 | *(16/10 : « si, il y a des critères dans cette famille » (§3) ; reprise des familles vides : relance 2.19)* Des types repris de l'ancien logiciel n'ont **aucun critère** (ex. « PLATS CUISINÉS-VOLAILLES ») : la fiche de programme les propose sans tableau n / c / m / M et le rapport n'imprime alors ni critère ni verdict. Quels types doivent être complétés avant le go-live, et avec quels critères ? | Critères (chantier 2) — `RECETTE-06-10-PARCOURS.md` §3 |
 | Q44 | Un échantillon jugé sans critère (seulement une limite du catalogue) n'imprime pas la ligne « Réglementation en vigueur », même si le validateur en a choisi une. Faut-il l'imprimer quand même, sans la croix Satisfaisant / Acceptable / Non satisfaisant ? | Rapport — `RECETTE-06-10-PARCOURS.md` §3 |
-| Q45 | *(16/10 : page non revenue — relance partie 4)* Sites : rattacher les 426 sites de l'ancien logiciel à leurs 36 clients (84, 77, 55 sites pour les trois plus grands…) et archiver les « clients » créés pour chaque site à l'import ? Rapports et factures par site ? | Clients — `RETOUR-LABO-06-10.md` §2.1 |
 | Q46 | « Service vétérinaire » : le retirer aussi du dépôt au comptoir (11 % des échantillons de l'ancien logiciel) ? Proposé : oui — « Contrôle officiel » disparaît avec le nouveau cadre (07/10). | Série — `RETOUR-LABO-06-10.md` §2.2 |
 | Q47 | Sur une ligne aliment, eau ou air, retirer le champ facultatif « Surface prélevée » (doublon de « Désignation ») ? | Visite — `RETOUR-LABO-06-10.md` §2.4 |
 | Q48 | Micro et physico-chimie cochées sur un échantillon : deux N° de contrôle et deux rapports, comme dans l'ancien logiciel ? | Visite — `RETOUR-LABO-06-10.md` §2.5 |
@@ -157,7 +160,6 @@ préleveur photographie la feuille signée depuis le téléphone.
 | Q51 | Ligne Surface : la désignation (« Planche verte ») reste et « État de la surface » (Aseptique / En cours de travail / Nettoyé) s'ajoute en choix obligatoire — c'est bien la lecture ? | Visite — `RETOUR-LABO-06-10.md` §2.4 |
 | Q52 | Cadre (Autre / Devis validé / BC / Convention) : valeur par défaut (aucune ou celle de la dernière visite du client) ? Le N° du BC ou du devis va-t-il dans « Référence client » ? | Série — `RETOUR-LABO-06-10.md` §2.8 |
 | Q53 | Sites : 75 noms de site douteux (même nom chez plusieurs clients, ex. une ville) et 5 sites dont le client parent existe en double n'ont rien archivé ; faut-il les rattacher à la main depuis la fiche client, ou fusionner les clients en double ? (liste dans l'analyse de l'import, `/admin/import`) | Clients — `RETOUR-LABO-06-10.md` §6 |
-| Q54 | *(16/10 : page non revenue — relance partie 4)* Clients en double : valider le fichier `doublons-clients.xlsx` (colonne « Décision du labo ») — 74 fusions, 109 clients facturés à lier, 14 sites, 27 cas à trancher. Un client facturé (franchisé) doit-il recevoir les rapports, les factures, ou les deux ? | Clients — `RETOUR-LABO-06-10.md` §7 |
 | Q55 | *(16/10 : plus de nom du client sur la feuille de paillasse (§3) ; les écrans du technicien : relance 2.15)* Numérotation aveugle : les étiquettes n'affichent plus le client ni le site (08/10). La feuille de paillasse imprime encore « Série NN · client » : faut-il l'enlever aussi ? | Paillasse — `RETOUR-LABO-06-10.md` §9.4 |
 | Q56 | *(16/10 : une famille PC des surfaces, « pas pour les mains et l'air » (§3) ; la case des mains et de l'air : relance 2.19)* Physico-chimie des surfaces / mains / air : quelles analyses (et unités) ajouter au catalogue ? Aucune aujourd'hui : ces échantillons se créent et se réceptionnent mais ne se programment pas encore (complète Q50). | Catalogue — `RETOUR-LABO-06-10.md` §9.2 |
 | Q64 | *(16/10 : un bouton général + le choix par échantillon (§3) ; (a) identification, (b) « Détruire » proposé : relance 2.7)* Réception — règle (1) : une réponse par échantillon (actuel), ou un bouton « tous exploitables » par série ? Un échantillon non exploitable : « Détruire » par défaut ? | Réception — règle (1) — **sans réponse le 12/10**, toujours ouverte |
@@ -180,20 +182,18 @@ questions Q1–Q66 encore ouvertes qu'elles complètent sont citées.
 | Q77 | *(16/10 : « Ignoré » (ou « Rejeté ») — à reposer, relance 2.9)* **Réserve sur le rapport** (complète la décision du 29/09, point 14). Pour un échantillon reçu non conforme et analysé avec l'accord du client, la norme demande une réserve sur le rapport. Faut-il l'imprimer, avec quels mots ? Elle ne figurerait que sur les rapports émis après le changement | Défaut : rien sur le rapport ; l'accord est imprimé sur le bon de réception et visible du validateur |
 | Q78 | *(16/10 : « ?? » — reposée avec un exemple chiffré, relance 2.11)* **Lecture « > x » sous la limite** (ex. « > 50 » face à m = 10²). La fiche reste « Incomplet » et demande de lire une dilution supérieure. Faut-il pouvoir soumettre quand même, avec une réserve, quand l'échantillon est épuisé ? Sans critère, le technicien choisit la conformité après l'avertissement, et décide aussi pour « Indénombrable » sur un paramètre sans limite : à confirmer | Défaut : soumission bloquée avec un critère ; choix du technicien sans critère |
 | Q79 | *(16/10 : « ?? » — reposée avec un exemple chiffré, relance 2.12)* **« > x » et dilution ; impression.** « > x » est-il bien la lecture brute de la boîte (le facteur de dilution la multiplie : « > 300 » au 1/10 devient « > 3.10³ ») ? Le rapport et l'alerte impriment « Indénombrable », « TNTC » ou « > x » tels que saisis : préférez-vous une formule fixe (toujours « Indénombrable ») ou « > 3.10⁵ UFC/g » calculé ? | Défaut : facteur appliqué ; impression telle que saisie |
-| Q81 | *(16/10 : page non revenue — relance partie 4)* **Premier mot de passe.** Chacun peut maintenant changer son mot de passe (« Mon compte », en cliquant sur son nom). Faut-il obliger chaque nouveau compte à changer le mot de passe donné par l'administrateur à la première connexion ? | Défaut : pas de changement forcé |
-| Q82 | *(16/10 : page non revenue — relance partie 4)* **Déconnexion après inactivité.** 30 minutes sans activité, avertissement 2 minutes avant (« Rester connecté »), pour tous les postes du laboratoire et les comptes du portail ; le préleveur (téléphone sur le terrain) n'est jamais déconnecté automatiquement. Ces durées et cette exception vous conviennent-elles ? | Défaut construit (constantes, pas un réglage) |
 | Q83 | *(16/10 : page non revenue — fondue dans Q98 (relance partie 4))* **Numérotation des factures et avoirs** (complète Q17). Continuez-vous la numérotation de l'ancien logiciel ? Si oui, à partir de quels derniers numéros (facture et avoir), et le format FAC-AAAA-NNNN / AV-AAAA-NNNN vous convient-il ? Le saut se règle dans Réglages « Compteurs », le jour de la bascule, avant la première vraie facture | Défaut : format FAC- / AV-, numérotation continue depuis le dernier numéro émis dans le LIMS |
-| Q85 | *(16/10 : page non revenue — relance partie 4)* **Export comptable** (Excel, Factures → « Export comptable »). Une ligne par document émis à sa date d'émission, avoirs en négatif, factures annulées listées mais hors totaux, « reste à payer » au jour de l'export, feuille « Règlements » par date d'encaissement : est-ce le format attendu par votre cabinet comptable ? Un classeur à deux feuilles ou deux fichiers ? Faut-il plus que le nom et l'ICE du client (adresse, IF, RC) ? | Défaut : un classeur, deux feuilles, nom et ICE tels qu'imprimés sur la facture |
-| Q86 | *(16/10 : page non revenue — relance partie 4)* **Facturation, compléments** (complète Q4, Q16, Q30). Délai de paiement par défaut (« à réception », 30 ou 60 jours) ? Une avance encaissée au comptoir doit-elle solder la facture ? Que signifie « avec remise » dans l'ancien logiciel ? Faut-il reprendre les 6 695 prix clients de l'ancien logiciel ? | Facturation (chantier 5) |
+| Q85 | *(16/10 : page non revenue ; 19/10 : format OK, ajouter l'IF et le RC (avec l'ICE) — H2 ; l'adresse non marquée : relance R-2)* **Export comptable** (Excel, Factures → « Export comptable »). Une ligne par document émis à sa date d'émission, avoirs en négatif, factures annulées listées mais hors totaux, « reste à payer » au jour de l'export, feuille « Règlements » par date d'encaissement : est-ce le format attendu par votre cabinet comptable ? Un classeur à deux feuilles ou deux fichiers ? Faut-il plus que le nom et l'ICE du client (adresse, IF, RC) ? | Défaut : un classeur, deux feuilles, nom et ICE tels qu'imprimés sur la facture |
+| Q86 | *(16/10 : page non revenue ; 19/10 : (2) « non », l'avance n'apparaît pas sur la facture — déjà le cas ; (1) sans réponse : relance R-3 ; (3) « ? » : relance R-4, H5)* **Facturation, compléments** (complète Q4, Q16, Q30). Délai de paiement par défaut (« à réception », 30 ou 60 jours) ? Une avance encaissée au comptoir doit-elle solder la facture ? Que signifie « avec remise » dans l'ancien logiciel ? Faut-il reprendre les 6 695 prix clients de l'ancien logiciel ? | Facturation (chantier 5) |
 | Q88 | *(16/10 : une liste existante + « Autre » sur place (§3) ; la liste et qui la tient : relance 2.18)* **Liste des surfaces.** Une liste commune au laboratoire ou une par client ? « Autre (préciser) » autorisé sur place ? Qui ajoute une surface ? Liste de départ, avec la surface par défaut en cm² ? | Non construit |
 | Q91 | *(16/10 : pas de rapport si l'analyse n'est pas faite (§3) ; plusieurs analyses, prévenir le client : relance 2.10)* **Paramètre « non effectué »** (complète Q11). Que faut-il imprimer sur le rapport (« Non effectué », « NE », avec la raison ?) et faut-il prévenir le client ? Aujourd'hui un tel paramètre bloque tout l'échantillon | Résultats, rapport |
 | Q92 | *(16/10 : conclusion selon les critères, pas d'envoi automatique (§3) ; « avoir les deux options » et la suite : relance 2.16)* **Validation** (complète Q13). Le validateur technique peut-il modifier la conclusion imprimée (journalisé) ? Quelqu'un peut-il forcer un verdict contraire au calcul, avec quel motif ? Le rapport part-il automatiquement à la validation administrative ou après un envoi manuel ? Peut-on valider une série entière d'un coup, toujours avec deux signataires ? | Défaut actuel : conclusion calculée, envoi automatique à la validation administrative, validation échantillon par échantillon ; l'administrateur dispose de « Modifier la conclusion » (non journalisé, décision du 18/08) |
-| Q93 | *(16/10 : page non revenue — relance partie 4)* **Copies internes des alertes** (complète Q45, Q54). Quelles adresses du laboratoire doivent être en copie de chaque alerte de contamination (direction, responsable technique, qualité) ? | Destinataires des e-mails |
+| Q93 | *(16/10 : page non revenue ; 19/10 : page revenue, laissée vide — relance R-5)* **Copies internes des alertes** (complète Q45, Q54). Quelles adresses du laboratoire doivent être en copie de chaque alerte de contamination (direction, responsable technique, qualité) ? | Destinataires des e-mails |
 | Q94 | *(16/10 : page non revenue — hors relance (module non chiffré : au propriétaire de la reposer))* **Réclamations clients** (volet ultérieur). Qui enregistre une réclamation : le personnel seulement, ou le client depuis le portail ? Quels statuts et champs (gravité, fondée ou non) ? Lien avec un registre des non-conformités / actions correctives, et qui est prévenu ? | Phase 8 |
 | Q95 | *(16/10 : page non revenue — hors relance (module non chiffré : au propriétaire de la reposer))* **Alertes automatiques Achat & Stock et Qualité.** Qui les reçoit (les comptes du personnel n'ont pas d'e-mail réel) ? Par e-mail ou à l'écran, à quelle heure ? Faut-il ouvrir le module Achat & Stock, aujourd'hui caché ? | Phases 6–7 |
 | Q96 | *(16/10 : page non revenue — hors relance (hors périmètre signé))* **Pièces jointes** au-delà de la photo du protocole signé (photos d'échantillons, documents du client) : en voulez-vous ? | Non construit (hors périmètre signé) |
-| Q97 | *(16/10 : page non revenue — relance partie 4)* **Exploitation du serveur.** Où envoyer la copie hors site des sauvegardes (stockage chiffré S3 / B2 / SFTP, ou un serveur à vous), qui la paie et la détient, et qui garde la clé de chiffrement hors du serveur ? Qui sont les détenteurs d'une clé SSH (une par personne) et quel créneau de maintenance (jour et heure hors activité) pour les redémarrages ? | Défaut : copie hors site désactivée ; durcissement SSH à faire (`DEPLOY.md` « SSH — key login only ») |
-| Q98 | *(16/10 : page non revenue — relance partie 4)* **Mise en service.** Les derniers N° de série et de contrôle de l'ancien logiciel le jour de la bascule ; confirmation que le client « TEST UI 2026-10-06 Traiteur » et le compte « portail.test » peuvent être supprimés à la mise en service | Bascule ; nettoyage des données de test |
+| Q97 | *(16/10 : page non revenue ; 19/10 : page revenue, laissée vide — relance R-5)* **Exploitation du serveur.** Où envoyer la copie hors site des sauvegardes (stockage chiffré S3 / B2 / SFTP, ou un serveur à vous), qui la paie et la détient, et qui garde la clé de chiffrement hors du serveur ? Qui sont les détenteurs d'une clé SSH (une par personne) et quel créneau de maintenance (jour et heure hors activité) pour les redémarrages ? | Défaut : copie hors site désactivée ; durcissement SSH à faire (`DEPLOY.md` « SSH — key login only ») |
+| Q98 | *(16/10 : page non revenue ; 19/10 : page 11 de la relance toujours pas revenue)* **Mise en service.** Les derniers N° de série et de contrôle de l'ancien logiciel le jour de la bascule ; confirmation que le client « TEST UI 2026-10-06 Traiteur » et le compte « portail.test » peuvent être supprimés à la mise en service | Bascule ; nettoyage des données de test |
 
 > **Q87 : répondue sur le principe le 14/10** (« Ajouter la possibilité d'ajouter un client avec ses sites et informations (dans le rôle Préleveur aussi) »), archivée au §3 ; les détails — champs obligatoires, destinataires des rapports, suivi par le commercial — sont Q116 et Q117.
 
@@ -202,9 +202,9 @@ trancher. Chaque question a, elle aussi, un **défaut déjà construit** (13/10)
 
 | # | Question | Ce que la réponse décide (défaut construit le 13/10) |
 |---|---|---|
-| Q103 | *(16/10 : page non revenue — relance partie 4)* **Dates des nouvelles versions** : protocole PG04/EN01 version G et bon de réception PG05/EN04 version H (date de mise à jour de chacun). | **13/10 : G (protocole de prélèvement) et H (bon de réception) sont en vigueur ; les dates restent à confirmer par le laboratoire** — dès qu'elles arrivent, l'exploitant les saisit dans `/admin/documents` ; d'ici là les cartouches impriment F et G |
-| Q104 | *(16/10 : page non revenue — relance partie 4, avec un nouveau lettrage (a)–(g) : (f) = conclusion en annexe + « (VC) », (g) = accréditation ; l'ancien (f), la date d'analyse, est réglé par le lot 1b)* **Rapport, là où le modèle M ne dit rien.** (a) Le modèle n'a que « Satisfaisant » / « Non satisfaisant » : une colonne « Acceptable » apparaît pour un échantillon acceptable — d'accord ? (b) Le pied du modèle n'a pas d'ICE : le rapport n'imprime plus l'ICE du laboratoire ni celui du client — d'accord ? (c) « Analyses réalisées par » n'est plus imprimé — d'accord ? (d) « Moyen de prélèvement » hors air (écouvillon, flacon stérile, sachet) : que mettre ? (e) Prélèvement fait par le client : « Référence prélèvement : N/A (prélèvement non effectué par le laboratoire) » — le bon libellé ? (f) « Date d'analyse » = de la confirmation du programme au dernier résultat, et « Nombre d'analyse/échantillon » = n : d'accord ? (g) La conclusion est imprimée dans l'annexe sous les critères, et « (VC) » suit le numéro d'un rapport amendé : d'accord ? (h) Quels paramètres sont accrédités ou sous-traités (la légende « * », SA, SN, DPC n'est encore appliquée à aucun) ? | Rapport PG06/EN03 M — défauts construits comme décrit. **15/10, extrait de rapport réel (`RETOUR-LABO-14-10.md` §8)** : (d) sans moyen renseigné, le rapport imprime « N/A » (la liste des moyens par type reste ouverte) ; (f) une seule date d'analyse, le début des analyses — à construire avec le lot 1b. (c) depuis le 13/10 : le nom serait celui du technicien qui a pris l'échantillon en charge (prise en charge libre) ; il est affiché « Analysé par » à la validation, jamais imprimé tant que vous ne le demandez pas |
-| Q105 | *(16/10 : page non revenue — relance partie 4)* **Restes de Q58 / Q60.** Le « N° de fax » du client sur le bon : saisi sur la fiche client ou rempli à la main ? Facture, avoir et étiquettes restent-ils sans cartouche qualité ? | Défaut : fax du client rempli à la main ; facture, avoir, étiquettes sans cartouche |
+| Q103 | *(16/10 : page non revenue ; 19/10 : page revenue, laissée vide — relance R-5)* **Dates des nouvelles versions** : protocole PG04/EN01 version G et bon de réception PG05/EN04 version H (date de mise à jour de chacun). | **13/10 : G (protocole de prélèvement) et H (bon de réception) sont en vigueur ; les dates restent à confirmer par le laboratoire** — dès qu'elles arrivent, l'exploitant les saisit dans `/admin/documents` ; d'ici là les cartouches impriment F et G |
+| Q104 | *(19/10 : page revenue, laissée vide — relance R-5 ; 16/10 : page non revenue — relance partie 4, avec un nouveau lettrage (a)–(g) : (f) = conclusion en annexe + « (VC) », (g) = accréditation ; l'ancien (f), la date d'analyse, est réglé par le lot 1b)* **Rapport, là où le modèle M ne dit rien.** (a) Le modèle n'a que « Satisfaisant » / « Non satisfaisant » : une colonne « Acceptable » apparaît pour un échantillon acceptable — d'accord ? (b) Le pied du modèle n'a pas d'ICE : le rapport n'imprime plus l'ICE du laboratoire ni celui du client — d'accord ? (c) « Analyses réalisées par » n'est plus imprimé — d'accord ? (d) « Moyen de prélèvement » hors air (écouvillon, flacon stérile, sachet) : que mettre ? (e) Prélèvement fait par le client : « Référence prélèvement : N/A (prélèvement non effectué par le laboratoire) » — le bon libellé ? (f) « Date d'analyse » = de la confirmation du programme au dernier résultat, et « Nombre d'analyse/échantillon » = n : d'accord ? (g) La conclusion est imprimée dans l'annexe sous les critères, et « (VC) » suit le numéro d'un rapport amendé : d'accord ? (h) Quels paramètres sont accrédités ou sous-traités (la légende « * », SA, SN, DPC n'est encore appliquée à aucun) ? | Rapport PG06/EN03 M — défauts construits comme décrit. **15/10, extrait de rapport réel (`RETOUR-LABO-14-10.md` §8)** : (d) sans moyen renseigné, le rapport imprime « N/A » (la liste des moyens par type reste ouverte) ; (f) une seule date d'analyse, le début des analyses — à construire avec le lot 1b. (c) depuis le 13/10 : le nom serait celui du technicien qui a pris l'échantillon en charge (prise en charge libre) ; il est affiché « Analysé par » à la validation, jamais imprimé tant que vous ne le demandez pas |
+| Q105 | *(16/10 : page non revenue ; 19/10 : page revenue, laissée vide — relance R-5)* **Restes de Q58 / Q60.** Le « N° de fax » du client sur le bon : saisi sur la fiche client ou rempli à la main ? Facture, avoir et étiquettes restent-ils sans cartouche qualité ? | Défaut : fax du client rempli à la main ; facture, avoir, étiquettes sans cartouche |
 
 Décision du laboratoire du 13/10 — **plus d'affectation, prise en charge
 libre** (`PROGRAMME.md` §10, `RETOUR-LABO-06-10.md` §13) : personne n'attribue
@@ -260,6 +260,46 @@ corps de l'e-mail du lot du 18/10) :
 ## 2. Ready to send — current batch
 
 *Copy this into an email. Update the date when you send it.*
+
+> **Lot du 20/10 — suite des pages 9 et 10 revenues le 19/10 — dans le corps
+> d'un e-mail, sans nouveau PDF (détail `RETOUR-LABO-19-10.md` §5) ; à
+> envoyer quand le propriétaire le décide, avec la présentation
+> `backups/Qualilab-presentation-evolutions-16-10-2026-10-20.pdf` s'il la
+> joint :**
+> Objet : Vos réponses du 19/10 — merci, et quatre précisions
+>
+> Bonjour,
+>
+> Merci pour les pages 9 et 10 renvoyées le 19/10. Nous avons noté : une
+> analyse non faite n'est pas facturée (Q11) ; l'export comptable vous
+> convient, nous y ajoutons l'IF et le RC du client avec l'ICE (Q85) ;
+> l'avance encaissée au comptoir n'apparaît pas sur la facture (Q86) ; les
+> rapports d'un site partent aussi à ses propres adresses (Q45) ; vous
+> fusionnez vous-mêmes les clients en double (Q54) ; chacun devra choisir son
+> mot de passe à la première connexion et après chaque réinitialisation
+> (Q81) ; la déconnexion après 30 minutes est gardée (Q82).
+>
+> Quatre précisions, une ligne suffit :
+> 1. **Q30** — Vous avez écrit « Besoin par paramètres » : souhaitez-vous une
+>    facture groupée par paramètre (une ligne par analyse, avec le nombre
+>    d'échantillons), en plus de la facture par échantillon ? Pour quels
+>    clients ? Un exemple de l'ancien logiciel nous aiderait.
+> 2. **Q85** — Faut-il aussi l'adresse du client dans l'export comptable ?
+> 3. **Q86** — Le délai de paiement par défaut reste « à réception de
+>    facture, sauf échéance saisie » : d'accord ?
+> 4. **Q86** — Faut-il reprendre dès le démarrage les ≈ 6 700 prix propres à
+>    chaque client de l'ancien logiciel ? Sans eux, chaque facture propose le
+>    prix du catalogue, que le comptable corrige à la main pour un client à
+>    prix négocié.
+>
+> Sans réponse aux questions Q104, Q93, Q103, Q105 et Q97 (laissées vides
+> sur ces pages), nous gardons ce qui est construit. Il nous manque encore la
+> page 11 (Q19 — la numérotation, urgente —, Q98, Q20) et les autres parties
+> du document du 18/10 (ce que nous avons compris, les 21 réponses à
+> préciser, les informations à nous transmettre), ainsi que les trois
+> questions Q131, Q132 et Q133 de notre e-mail.
+>
+> Cordialement,
 
 *19/10 — the PDF of 18/10 was produced before lot 2 was built: it does
 **not** hold Q131 (raised by wave 1, F2) nor Q132 / Q133 (raised by the
@@ -621,3 +661,11 @@ Bien cordialement,
 | 2026-10-16 | Q13 — rouvrir, annuler | « l'administrateur », « Direction ou le validateur technique », « ces personnes » ⇒ ces trois rôles rouvrent un rapport envoyé et annulent un échantillon en cours d'analyse (D1) |
 | 2026-10-16 | Q92 — validation et envoi (en partie) | « La conclusion se fait selon les critères » ; « le rapport ne devra pas être envoyé automatiquement au client » ; « avoir les deux options » ⇒ plus d'envoi automatique (D2) ; relance 2.16 |
 | 2026-10-16 | Q84 — facture à 0,00 | page non revenue ; défaut retenu sans question : elle s'annule comme une facture impayée |
+| 2026-10-19 | Q11 — analyse non faite | « OK » : elle n'est pas facturée (retirée du programme ; avoir si la facture est émise) — déjà le cas |
+| 2026-10-19 | Q45 — chaînes et sites | « OK » : rapports aux adresses du client et, s'il y en a, à celles du site ; une facture par client ⇒ choisir le site d'une adresse sur la fiche (`RETOUR-LABO-19-10.md` H3) |
+| 2026-10-19 | Q54 — clients en double | « OK » : le laboratoire fusionne lui-même à partir du fichier ; la société facturée (franchisé) reçoit les factures seulement |
+| 2026-10-19 | Q81 — premier mot de passe | « OK » : changement obligatoire à la première connexion et après chaque réinitialisation ⇒ H1 |
+| 2026-10-19 | Q82 — déconnexion automatique | « OK » : 30 minutes, avertissement 2 minutes avant, sauf le préleveur sur son téléphone — gardé |
+| 2026-10-19 | Q30 — modèles de facture (en partie) | « OK » pour démarrer avec un seul modèle, « + » et « Besoin par paramètres » ⇒ H4 après la relance R-1 |
+| 2026-10-19 | Q85 — export comptable (en partie) | « OK » ; IF et RC marqués, « et ICE » ⇒ H2 ; l'adresse non marquée : R-2 |
+| 2026-10-19 | Q86 — délai, avance, prix (en partie) | (2) « non » : l'avance encaissée au comptoir n'apparaît pas sur la facture — déjà le cas ; (1) sans réponse (R-3) ; (3) « ? » sur la reprise des prix clients (R-4) |

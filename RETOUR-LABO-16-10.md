@@ -12,9 +12,9 @@
 > **État au 19/10 : le lot 2A (lot 1b compris) est construit et testé en
 > local, il n'est pas déployé.** Branche `lot2-retour-16-10` = `master`
 > (`a1ad186`) + quatre commits : `9770bb0` (vague 1), `d7b8750` (vague 2),
-> `124af3a` (vague 3), `b898586` (vague 4) ; les corrections de la
-> vérification finale du 19/10 sont dans l'arbre de travail, **pas encore
-> commitées**. Contrôles verts (tsc, eslint, vitest 117 fichiers / 2 312
+> `124af3a` (vague 3), `b898586` (vague 4), `d9dcd2d` (vérification
+> finale), puis deux commits de documents (`81de56d`, `f4e9140` : déploiement
+> reporté par le propriétaire, phase de développement). Contrôles verts (tsc, eslint, vitest 117 fichiers / 2 312
 > tests, `npm run build`) ; recette locale v16-1 63/63, v16-2 109/109, v16-3
 > 67/67, v16-4 73/73, plus les non-régressions V15 24/24 et V14 40/40, et la
 > vérification finale 21/21 + 7/7 ; cinq migrations additives répétées sur
@@ -40,6 +40,11 @@
 >   le point de retour du lot 2 sera le tag `v1.4-avant-lot2-16-10` =
 >   `a1ad186` (= `52e0d27` + documents) et le dump
 >   `qualilab_avant-lot2-16-10.sql.gz`, pris au déploiement (`DEPLOY.md`).*
+>
+> **Suite (19/10, scan reçu le 20/10)** : le laboratoire a renvoyé les pages
+> 9 et 10 de la relance (Q11, Q30, Q85, Q86, Q45, Q54, Q81, Q82 ; Q104, Q93,
+> Q103, Q105, Q97 vides) → `RETOUR-LABO-19-10.md` (lot 2C : H1–H5 et les
+> défauts D-15 à D-19 relevés en préparant la présentation du 20/10).
 >
 > Effort : XS ≈ 1 h ou moins · S 1–4 h · M 4–12 h · L plus de 12 h
 > (estimations).
@@ -160,6 +165,8 @@ dans la relance) · **à reposer** (illisible, contradictoire ou « ?? ») ·
 - **Partie 2 (informations)** : rien reçu — reposée en partie 5 de la relance,
   plus une question nouvelle (2.21 : quelles analyses déclenchent l'alerte de
   contamination).
+- *19/10 : les pages 9 et 10 de la relance sont revenues (partie 4, sauf la
+  page 11) — `RETOUR-LABO-19-10.md` §1.*
 
 ## 2. Ce qui change dans le plan du 14/10 (`RETOUR-LABO-14-10.md` §4)
 
@@ -381,7 +388,7 @@ Traiteur » et données « TEST UI V16 … » seulement) :
 | 2 — terrain, comptoir, lot 1b | `d7b8750` | A1, A5, A6, A7, A8, B1, B2, B3, B4, D5, D6 ; migrations `20261019100000`, `20261019110000`, `20261019120000` ; revue adverse (15 points) | `v16-2-local` 109/109 | réponses 2.1 (états des mains) et 2.6 (heure inconnue) de la relance, **ou** décision écrite du propriétaire de livrer les propositions (un interrupteur chacune, `HANDOFF.md` §9) ; prévenir le laboratoire |
 | 3 — droits, envoi, clients | `124af3a` | D1, D2, C5, F8, E1, E2, E3, E4 ; migration `20261019130000` ; revue adverse (26 points) | `v16-3-local` 67/67 | comptes nominatifs et comptes de démonstration **désactivés** (D1) ; décision du propriétaire sur `Invoice.clientSnapshot` (E4) |
 | 4 — catalogue | `b898586` | F1, F3, F4, F5, F6, F7, F9 ; migration `20261019140000` ; revue adverse (31 points) | `v16-4-local` 73/73 | F3 en production : geste de l'exploitant **après** le déploiement (second dump, analyse, alias, échantillons en cours, import, nouvelle analyse vide) |
-| Vérification finale | arbre de travail, **non commité** | revue de toute la branche (3 constats moyens, 3 faibles), puis dix corrections : grille jusqu'à 1000 lignes et c sans objet effacé (F2), « Analyses modifiées après facturation » (C5 / F6 / F8), ce que dit « Annuler » d'un échantillon facturé ou alerté (D1), famille corrigeable à la paillasse (F5 × F8), réouverture d'un rapport jamais envoyé (D2 × D1), « Analyse sensorielle » à n = 1 (F9), date de réception = l'arrivée dans l'export Excel et /recherche ; aucune migration | `v16-final-local` 21/21, `v16-final-ui` 7/7 ; non-régressions `v15-lot1` 24/24 et `v14-take` 40/40 | commit sur la branche avant la fusion dans `master` ; Q131, Q132, Q133 : défauts construits, à confirmer (NEEDEDINFO §1b) |
+| Vérification finale | `d9dcd2d` | revue de toute la branche (3 constats moyens, 3 faibles), puis dix corrections : grille jusqu'à 1000 lignes et c sans objet effacé (F2), « Analyses modifiées après facturation » (C5 / F6 / F8), ce que dit « Annuler » d'un échantillon facturé ou alerté (D1), famille corrigeable à la paillasse (F5 × F8), réouverture d'un rapport jamais envoyé (D2 × D1), « Analyse sensorielle » à n = 1 (F9), date de réception = l'arrivée dans l'export Excel et /recherche ; aucune migration | `v16-final-local` 21/21, `v16-final-ui` 7/7 ; non-régressions `v15-lot1` 24/24 et `v14-take` 40/40 | fusion dans `master` au déploiement ; Q131, Q132, Q133 : défauts construits, à confirmer (NEEDEDINFO §1b) |
 
 - **Contrôles** (branche + vérification finale) : `npx tsc --noEmit` 0,
   `npx eslint src` 0, vitest 117 fichiers / 2 312 tests, `npm run build`
@@ -483,6 +490,10 @@ Cinq parties :
 5. **Informations et documents** (7) : comptes, signataires, coordonnées
    bancaires, e-mails et adresse du logiciel, destinataires de chaque client,
    fichiers (logo HD, logo d'accréditation, cachet), le « point 7 » du 13/10.
+
+*Retour au 20/10 : seules les pages 9 et 10 sont revenues (scan du 19/10,
+`RETOUR-LABO-19-10.md`) ; la page 11 et les parties 1, 2, 3 et 5 restent
+attendues, comme Q131–Q133.*
 
 Laissées hors de la relance, exprès : Q84 (défaut retenu), Q94, Q95, Q96
 (modules non chiffrés : au propriétaire de les reposer).

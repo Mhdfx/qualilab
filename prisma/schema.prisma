@@ -294,6 +294,11 @@ model User {
   /// Null = the default « Technicien de QUALILAB 'I.NOM' », computed from
   /// `name` at print time (`defaultDocumentName`), never written here.
   documentName String?
+  /// RETOUR-LABO-19-10.md H1 (Q81): the person must choose their own password
+  /// before anything else. Set when an administrator creates the account or
+  /// resets its password; cleared when the person changes it themselves.
+  /// Existing accounts default to false (no data rewritten).
+  mustChangePassword Boolean @default(false)
 
   samples              Sample[]
   /// The invoices and credit notes this user created (drafts included).
@@ -387,6 +392,11 @@ model Client {
   phone          String?
   address        String?
   ice            String?
+  /// RETOUR-LABO-19-10.md H2 (Q85): identifiant fiscal (IF) of the client,
+  /// frozen on each issued invoice and listed in the accounting export.
+  fiscalId       String?
+  /// RETOUR-LABO-19-10.md H2 (Q85): registre de commerce (RC) of the client.
+  tradeRegister  String?
   /// Clients are archived, never deleted: samples, reports and invoices refer
   /// to them and the laboratory's history must stay readable.
   archived       Boolean           @default(false)

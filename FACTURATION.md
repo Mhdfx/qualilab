@@ -82,3 +82,27 @@ Liste : filtre par statut et par type, colonne « Reste à payer ». Fiche
 client et tableaux de bord : chiffres selon §4. Journal : `INVOICE_DRAFT_*`,
 `INVOICE_ISSUED`, `INVOICE_CANCELLED`, `CREDIT_NOTE_ISSUED`,
 `PAYMENT_RECORDED`, `PAYMENT_DELETED`.
+
+## 6. Réponses du laboratoire du 19/10 (`RETOUR-LABO-19-10.md`)
+
+- **Q11** — une analyse non faite n'est pas facturée : retirée du programme,
+  elle disparaît de la facture proposée ; une facture déjà émise se corrige
+  par un avoir (§2). Rien à construire.
+- **Q30** — d'accord pour démarrer avec **un seul modèle** (une ligne par
+  analyse et par échantillon, prix du catalogue modifiable avant émission ;
+  ni forfait ni remise). « Besoin par paramètres » : une facture groupée par
+  paramètre en plus, à confirmer (relance R-1, élément H4).
+- **Q85** — l'export comptable (« Journal des ventes » + « Règlements ») convient ;
+  y ajouter l'**IF** et le **RC** du client avec l'ICE, tirés de l'identité
+  figée de la facture (`Invoice.clientSnapshot`) — élément H2 (nouveaux champs
+  `Client.fiscalId`, `Client.tradeRegister`). L'adresse : relance R-2.
+- **Q86** — (2) l'avance encaissée au comptoir **n'apparaît pas** sur la
+  facture : elle reste sur le bon de réception seulement (déjà le cas :
+  `Serie.advanceAmount` n'est lu par aucun code de facturation). (1) délai de
+  paiement : sans réponse, le défaut reste « Règlement à réception de
+  facture, sauf accord écrit contraire », échéance saisie par le comptable
+  (R-3). (3) reprise des ≈ 6 700 prix propres à chaque client : « ? »
+  (R-4 ; élément H5 si oui — il n'existe aujourd'hui aucun tarif par client).
+- **Q45** — une facture par client ; un site peut être facturé à une société
+  liée (`Site.billingClientId`, `CLIENTS-FUSION.md`). Inchangé.
+

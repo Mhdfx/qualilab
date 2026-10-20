@@ -4,12 +4,14 @@
 > "where do I change X" map. Read after `AGENTS.md`. **Keep this current** — it
 > is what lets any AI on any platform continue without archaeology.
 >
-> Last updated: **2026-10-19** (lot 2 + lot 1b — the four waves of
+> Last updated: **2026-10-20** (lot 2 + lot 1b — the four waves of
 > `RETOUR-LABO-16-10.md` built, reviewed and tested **locally** on branch
-> `lot2-retour-16-10` (`9770bb0`, `d7b8750`, `124af3a`, `b898586`) + the final
-> verification's fixes in the working tree, not committed; deploy rehearsed on
-> a local copy; **not deployed** — gates in §1 and §9, order in `DEPLOY.md`
-> « Lot 2 du 16/10 » ; relance du 18/10 à envoyer, with Q131–Q133) · Production: `52e0d27` (lot 1 du 14/10, TESTPLAN
+> `lot2-retour-16-10` (`9770bb0`, `d7b8750`, `124af3a`, `b898586`, final
+> verification `d9dcd2d`); deploy rehearsed on a local copy; **not deployed —
+> postponed by the owner on 19/10** (development phase); gates in §1 and §9,
+> order in `DEPLOY.md` « Lot 2 du 16/10 ». 20/10: the lab's pages 9–10 of the
+> 18/10 re-ask → plan of **lot 2C**, `RETOUR-LABO-19-10.md` (H1–H5, D-15–D-19),
+> nothing built yet ; presentation PDF of lot 2A in `backups/`) · Production: `52e0d27` (lot 1 du 14/10, TESTPLAN
 > V15; restore point tag `v1.3-avant-retour-14-10` = `cd0054f`) ; documents
 > only since · Remote:
 > `github.com/Mhdfx/qualilab.git`
@@ -947,6 +949,12 @@ Found by the end-to-end recette of 06/10 (`RECETTE-06-10-PARCOURS.md`).
 - **Deploy rehearsal (local only).** On a 13/10 copy at the production schema (34 migrations, `migrate diff` empty), the five migrations applied by `npx prisma migrate deploy` and by the image's compose `migrate` command: 44 tables row-hashed identical before / after, the appended enum values keep the stored positions (a `NON_LAVEES` fixture survived), all-INSTANT DDL but the `ProductType` foreign key; the 92 local reports render byte-identical through `master`'s code and the branch's; 84 pages and PDFs 200 on a standalone production build. **One caveat**: a code-only rollback is safe only while no row holds `ASEPTISEES` or `NON_RECU` (`DEPLOY.md`).
 - **Decision: one deploy, gated.** The four waves go to production together (five migrations), after: the final verification's fixes committed; the answers 2.1 / 2.6 or the owner's written decision (wave 2); named accounts and the demo accounts **disabled** — not only the panel hidden — before D1 widens reopen / cancel; the owner's `Invoice.clientSnapshot` decision before E4 opens merges; the laboratory told of the new required fields; a read-only check that no production grid exceeds the 1000-row cap. Order and checks: `DEPLOY.md` « Lot 2 du 16/10 ». The production lines of TESTPLAN V16 are the owner's (no demo account left to click); the reprise F3 is the operator's, after the deploy.
 
+### 2026-10-20 — réponses du 19/10 (pages 9 et 10 de la relance) : plan du lot 2C (`RETOUR-LABO-19-10.md`) — nothing built
+- The lab returned **two pages** of the 18/10 re-ask (scan of 19/10, `backups/reponses-labo-19-10-scan-pages-9-10.pdf`, git-ignored): Q11, Q45, Q54, Q81, Q82 « OK »; Q30 « OK » + « Besoin par paramètres »; Q85 « OK » with IF and RC marked and « et ICE »; Q86 (2) proposal crossed out → « non », a « ? » on (3); Q104, Q93, Q103, Q105, Q97 blank. Page 11 (Q19, Q98, Q20) and parts 1, 2, 3, 5 not returned.
+- **Checked in the code:** Q11 and Q86 (2) are the current behaviour (`Serie.advanceAmount` is read by no billing code); Q45's send rule is D-04's (`email-recipients.ts`), but no screen binds an address to a site; no IF / RC on `Client`; no forced password change anywhere; no client price table.
+- **Plan:** lot 2C = H1 (forced password change), H2 (IF / RC on the client, in the invoice snapshot and the export), H3 (an address's site on the client form), D-15–D-18 (found while capturing the 20/10 presentation) ≈ 16 h, one additive migration; then D-19 (reclassify chemistry parameters filed as MICRO, data only). After the re-ask of 20/10 (`NEEDEDINFO.md` §2): H4 (invoice grouped by parameter, Q30), H5 (client prices, Q86 (3)), the address in the export (Q85).
+- **Presentation (20/10):** `backups/Qualilab-presentation-evolutions-16-10-2026-10-20.pdf` — 35 screens of lot 2A on the local development version, each with its future production link; captured with `.ui-tests/pres-*.mjs` (git-ignored) on the TEST UI client and the demo accounts; the samples it created are cancelled.
+
 ## 8c. A lesson written down (2026-08-25)
 
 Importing anything that touches Prisma from a **client** component drags the
@@ -962,7 +970,7 @@ importing a server module.
 - **« Date de réception » is the arrival everywhere the client reads it (lot 1b, wave 2).** The report issued now, its e-mail (`printedReceptionAt`), the contamination alert, the destruction notice and the portal's « Reçu le » print `receptionInstant` (`Serie.arrivedAt`, else `Sample.receivedAt`). Reports frozen before wave 2 (13/10 layout) printed the reception screen's instant and keep it, so on a late cooler the portal and an old PDF can differ by a day. Once a série is received, its arrival is the laboratory's: PATCH `/api/series/[id]` refuses the préleveur's change, an emptied one, or one after the reception (`arrivalChangeRefusal`), and journals it before / after.
 
 - **Lot 2 du 16/10 — the gates before the production deploy (19/10: four waves built and tested locally, not deployed; order and commands in `DEPLOY.md` « Lot 2 du 16/10 »).** One deploy carries the four waves, so every gate below applies to it:
-  - **Nothing of the final verification is committed.** Its fixes sit in the working tree of `lot2-retour-16-10`; `src/lib/billing-hold.ts` is untracked. Commit them (and the docs) and re-run the gates before the ff-merge into `master`.
+  - ~~Nothing of the final verification is committed.~~ → committed 19/10 (`d9dcd2d`, `src/lib/billing-hold.ts` included); re-run the gates before the ff-merge.
   - **Wave 2 — re-ask 2.1 and 2.6** (first bullet of this section): the answers, or the owner's written decision to ship the proposals, recorded here and in PROGRESS.
   - **D1 — demo accounts disabled first.** Reopening a report and cancelling a sample in analysis open to VALIDATEUR and DIRECTION: deploy only once the named accounts exist and `bash scripts/disable-demo-accounts.sh` has run, with `NEXT_PUBLIC_DEMO_MODE=false` set before the build. A hidden panel leaves the demo accounts usable with the shared password.
   - **E4 — the `Invoice.clientSnapshot` decision first** (« Billing » below): with merges open to the gestionnaire commercial, real merges no longer need us; invoices issued before 10/10 print the live client.
@@ -970,6 +978,7 @@ importing a server module.
   - **Q131 (c with n = 1), Q132 (a never-sent report corrected by amendment), Q133 (sensory n = 1)**: defaults built, not in the 18/10 PDF — asked in the e-mail of `NEEDEDINFO.md` §2. Each answer that differs is a small change, not a migration.
   - **The 1000-row grid cap is unchecked against production** (no access on 19/10): read-only count per family before the deploy (`DEPLOY.md`); a hands, surface, water or air family above 500 rows could pass 1000 after the reprise (each copy keeps its deactivated original in the family).
   - **Owner's decisions of 19/10:** **deployment postponed** — the project stays in the development phase (more work remains); production, its accounts and its data stay as they are. For the future deploy: (1) Re-ask 2.1 and 2.6: the **proposals ship** (hands' list, « Heure de prélèvement inconnue du client » box) until the laboratory answers. (2) D1: the **demo accounts stay active** that evening — the owner accepts the risk, as decided on 10/10 — and are disabled (`scripts/disable-demo-accounts.sh`, `NEXT_PUBLIC_DEMO_MODE=false`) as soon as the named accounts exist. (3) E4: **no real client merge** until the owner decides the `Invoice.clientSnapshot` backfill; the merge preview warns. (4) The **reprise F3 is not run** that evening. (5) The demo accounts' names are left as they are (no rename).
+- **Lot 2C (answers of 19/10, `RETOUR-LABO-19-10.md`) — planned, not built.** H1 (Q81): `User.mustChangePassword` set by an admin's create / reset, cleared by the person's own change, one guard in `src/lib/auth.ts` (+ portal) — existing accounts stay false (no UPDATE), so the named accounts of the go-live get it by being created after the build. H2 (Q85): `Client.fiscalId` / `Client.tradeRegister` go into `Invoice.clientSnapshot` (`invoice-client-identity.ts`) and the accounting export; an invoice snapshotted before H2 exports them empty, one issued before 10/10 (no snapshot) reads the live client. H3 (Q45): the send rule is already right (D-04); only `ClientForm` cannot bind an address to a site. One additive migration for H1 + H2. **D-19 (data, before go-live):** 355 ALIMENTAIRE / MICRO parameters on the local copy include chemistry (reprise residue of D-13; production very likely the same) — they are offered as « Analyses microbiologiques »; reclassify through the logged screen after the owner's review, never by SQL.
 - **Lot 2 du 16/10 — after the deploy.**
   - **The reprise F3 is the operator's**, after the deploy, outside the laboratory's hours and with no MAINS / SURFACE / EAU / AIR sample in progress: second labelled dump, analyse, aliases for the look-alikes in /admin/parametres, the in-flight confirmation, import, a new analysis that must plan nothing (`DEPLOY.md` step 5). The criteria of those families apply from the import on, at the bench too.
   - **The meaningless tolerances c are not cleared yet** (983 rows in 424 families locally): the reprise's commit clears them (`PlannedTidy`, (e)), or a family's first grid save does (`tidied`, never « à la main »). No verdict changes either way.
