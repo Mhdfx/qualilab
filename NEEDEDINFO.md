@@ -133,7 +133,7 @@ réglages, pas des développements.
 | Q26 → **implémenté par défaut** (18/09) : la version la plus récente de chaque norme est « en vigueur » ; l'ancienne reste en base. `/admin/normes` permet d'en changer et de dater. Le rapport imprime la version sous laquelle le résultat a été lu. | | |
 | Q28 → **implémenté par défaut** (18/09) : quatre phrases modifiables dans `/admin/reglages` → Échelle de conclusion ; le rapport imprime les cinq lectures A…E **et** le verdict. | | |
 | Q29 → **implémenté par défaut** (18/09) : « 3(-2) » = 3 × 10² = 300, « 0(-1) » = « < 10 », « < x » compte comme 0, le facteur de dilution du paramètre multiplie la lecture. | | |
-| Q30 | *(16/10 : page non revenue ; 19/10 : « OK » pour démarrer avec un seul modèle, plus « Besoin par paramètres » — à confirmer : `RETOUR-LABO-19-10.md` H4, relance R-1)* Facturation : parmi les sept modèles d'impression de l'ancien logiciel (par paramètres groupés, par paramètres et produit, par paramètres par produit, par échantillon, par échantillon et nom de produit, sites au forfait, forfaits), lesquels sont utilisés et pour quels clients ? Un PDF de chacun ; sens de « avec remise », « forfaits / mois », « INTSTAT » | Facturation (chantier 5) |
+| Q30 | *(16/10 : page non revenue ; 19/10 : « OK » pour démarrer avec un seul modèle, plus « Besoin par paramètres » — à confirmer : `RETOUR-LABO-19-10.md` H4, relance R-1 ; 20/10 : la facture « par paramètre » est construite en option, à l'impression — R-1 demande de la confirmer et pour quels clients l'imprimer par défaut)* Facturation : parmi les sept modèles d'impression de l'ancien logiciel (par paramètres groupés, par paramètres et produit, par paramètres par produit, par échantillon, par échantillon et nom de produit, sites au forfait, forfaits), lesquels sont utilisés et pour quels clients ? Un PDF de chacun ; sens de « avec remise », « forfaits / mois », « INTSTAT » | Facturation (chantier 5) |
 
 Retour du laboratoire du 14/09 sur l'écran « Nouvelle visite » (neuf points,
 analysés dans `WORKFLOW.md` §13, traités par la tranche 1b) : tout existe
@@ -280,10 +280,13 @@ corps de l'e-mail du lot du 18/10) :
 > (Q81) ; la déconnexion après 30 minutes est gardée (Q82).
 >
 > Quatre précisions, une ligne suffit :
-> 1. **Q30** — Vous avez écrit « Besoin par paramètres » : souhaitez-vous une
->    facture groupée par paramètre (une ligne par analyse, avec le nombre
->    d'échantillons), en plus de la facture par échantillon ? Pour quels
->    clients ? Un exemple de l'ancien logiciel nous aiderait.
+> 1. **Q30** — Vous avez écrit « Besoin par paramètres » : nous avons
+>    préparé, en plus de la facture par échantillon, la même facture groupée
+>    par paramètre (une ligne par analyse, avec le nombre d'échantillons ;
+>    mêmes montants, même numéro), au choix à l'impression (bouton « PDF par
+>    paramètre »). Est-ce bien ce que vous vouliez ? Faut-il l'imprimer par
+>    défaut pour certains clients, et lesquels ? Un exemple de l'ancien
+>    logiciel nous permettra de la comparer.
 > 2. **Q85** — Faut-il aussi l'adresse du client dans l'export comptable ?
 > 3. **Q86** — Le délai de paiement par défaut reste « à réception de
 >    facture, sauf échéance saisie » : d'accord ?

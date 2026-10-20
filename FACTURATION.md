@@ -75,6 +75,14 @@ devient « Enregistrer un règlement » pré-rempli du reste. Les factures déj�
 PDF : « BROUILLON » en filigrane et sans numéro ; tampon « ANNULÉE » avec la
 date et le motif ; bloc « Réglé / Reste à payer » ; un avoir s'intitule
 « AVOIR N° AV-… » et rappelle « se rapporte à la facture FAC-… du … ».
+PDF par paramètre (`?modele=parametre`, Q30, `src/lib/invoice-html-layout.ts`) :
+la même facture ou le même avoir, une ligne par paramètre et par prix
+unitaire (quantité = nombre d'analyses, montant = somme des lignes, les
+références des échantillons sous la ligne) ; lignes libres inchangées, à leur
+place ; totaux, TVA, numéro et tampons identiques. Une ligne d'avoir rejoint
+son paramètre par la ligne de facture qu'elle reprend. Sans paramètre, le
+PDF par ligne, inchangé ; un autre modèle → 400. Bouton « PDF par paramètre »
+sur la fiche facture (comptable, admin) et sur la fiche client (gestionnaire).
 Fiche facture : statut lisible (Brouillon, Émise, Partiellement payée,
 Payée, Annulée ; Avoir), actions selon le statut, liste des règlements et
 des avoirs. Nouvelle facture : « Enregistrer le brouillon » / « Émettre ».
@@ -91,11 +99,22 @@ client et tableaux de bord : chiffres selon §4. Journal : `INVOICE_DRAFT_*`,
 - **Q30** — d'accord pour démarrer avec **un seul modèle** (une ligne par
   analyse et par échantillon, prix du catalogue modifiable avant émission ;
   ni forfait ni remise). « Besoin par paramètres » : une facture groupée par
-  paramètre en plus, à confirmer (relance R-1, élément H4).
+  paramètre en plus — **construit le 20/10 en option, avant R-1** (élément
+  H4, §5 « PDF par paramètre », `a83ec7e`) : un second bouton à
+  l'impression, sans choix par client ni changement de schéma ; testé en
+  local, non déployé. La relance R-1 dira si c'est bien cela et s'il faut un
+  modèle par défaut par client.
 - **Q85** — l'export comptable (« Journal des ventes » + « Règlements ») convient ;
   y ajouter l'**IF** et le **RC** du client avec l'ICE, tirés de l'identité
-  figée de la facture (`Invoice.clientSnapshot`) — élément H2 (nouveaux champs
-  `Client.fiscalId`, `Client.tradeRegister`). L'adresse : relance R-2.
+  figée de la facture (`Invoice.clientSnapshot`) — élément H2, **construit le
+  20/10** (`f057892`), testé en local, non déployé : `Client.fiscalId` et
+  `Client.tradeRegister` saisis sur la fiche client à côté de l'ICE, figés à
+  l'émission (avoir compris), colonnes « ICE », « IF », « RC » du « Journal
+  des ventes » ; « Règlements » garde le nom seul ; ni l'un ni l'autre n'est
+  imprimé sur la facture. Une facture figée avant H2 les exporte vides, une
+  facture d'avant le 10/10 (sans instantané) lit la fiche du client.
+  L'ancienne base ne porte pas l'IF ni le RC des clients : rien à reprendre.
+  L'adresse : relance R-2.
 - **Q86** — (2) l'avance encaissée au comptoir **n'apparaît pas** sur la
   facture : elle reste sur le bon de réception seulement (déjà le cas :
   `Serie.advanceAmount` n'est lu par aucun code de facturation). (1) délai de

@@ -104,7 +104,8 @@ as no row holds a value the previous code does not know**. An enum value
 appended by a migration is the exception: once the new code has stored it,
 the previous version's Prisma client refuses to read that row (« Value '…'
 not found in enum '…' ») — check the « Point de retour » section of the
-deploy for its rollback rule (lot 2 du 16/10: `ASEPTISEES`, `NON_RECU`).
+deploy for its rollback rule (lot 2 du 16/10: `ASEPTISEES`, `NON_RECU`;
+lot 2C appends none).
 
 **Check once, read-only, at the next deploy — the client's real address.**
 Better Auth reads the client IP from `X-Real-IP` first (`advanced.ipAddress`
@@ -209,6 +210,15 @@ docker compose up -d --build
 
 `disable-demo-accounts.sh` is idempotent and refuses to lock the lab out:
 it exits with a clear message while no non-demo ADMIN exists.
+
+**Since lot 2C (H1, Q81 — once deployed):** every account the administrator
+creates in step 1, the real ADMIN included, carries « mot de passe à
+changer »: the administrator hands over a temporary password, and at the
+first sign-in the person lands on « Mon compte » and must choose their own
+before anything else opens (every API answers 403 meanwhile). A reset by the
+administrator sets it again and closes the person's sessions. Accounts that
+existed before the deploy are not flagged (no UPDATE). Disable the demo
+accounts — never reset them to « hand them over ».
 
 ## Time zone — Morocco's return to GMT (20/09/2026)
 
@@ -374,15 +384,22 @@ invoice entered after it. To resume the shared bench later:
 
 ## Point de retour — avant le lot 2 du 16/10 (2026-10-19)
 
-Lot 2 (`RETOUR-LABO-16-10.md`, four waves) is the first deploy with
-migrations since 13/10: five, additive — `20261019100000_retour_labo_16_10_terrain`
+Lot 2 (`RETOUR-LABO-16-10.md`, four waves, and lot 2C,
+`RETOUR-LABO-19-10.md`) is the first deploy with migrations since 13/10:
+six, additive — `20261019100000_retour_labo_16_10_terrain`
 (`HandsState` + `ASEPTISEES`, `Sample.surfaceAreaNote`, `Sample.airExposureMin`),
 `20261019110000_retour_labo_16_10_non_recu` (`EmailType` + `NON_RECU`),
 `20261019120000_retour_labo_16_10_denomination` (`User.documentName`),
 `20261019130000_retour_labo_16_10_client_a_completer` (`Client.toComplete`),
-`20261019140000_retour_labo_16_10_famille_type_analyse` (`ProductType.natureId`).
-Rehearsed on 19/10 on a local copy at the production schema (no row
-changed, the Docker `migrate` command included). ⏳ Not deployed: the tag
+`20261019140000_retour_labo_16_10_famille_type_analyse` (`ProductType.natureId`),
+and lot 2C's `20261020100000_retour_labo_19_10_comptes_clients`
+(`User.mustChangePassword` BOOLEAN NOT NULL DEFAULT false,
+`Client.fiscalId` / `Client.tradeRegister` VARCHAR(191) NULL — no enum
+value, no UPDATE). The first five were rehearsed on 19/10 on a local copy
+at the production schema (no row changed, the Docker `migrate` command
+included); the sixth was applied to the local development copy on 20/10
+(re-run the rehearsal with all six before the window — « Lot 2 du 16/10 »
+step 0). ⏳ Not deployed: the tag
 and the dump below are the first steps of that deploy — the whole order,
 its gates and checks, and the reprise F3 that follows are in « Lot 2 du
 16/10 » below.
@@ -394,8 +411,9 @@ its gates and checks, and the reprise F3 that follows are in « Lot 2 du
   `scripts/deploy.sh` — same commands as the 13/10 dump above, with this
   name; outside the rotation pattern, do not delete it.
 
-**Expected in `docker compose logs migrate`:** five « Applying migration
-`20261019…` » lines, then « All migrations have been successfully applied. »
+**Expected in `docker compose logs migrate`:** six « Applying migration »
+lines (five `20261019…`, then `20261020100000_retour_labo_19_10_comptes_clients`),
+then « All migrations have been successfully applied. »
 and exit 0. Two lines « prisma:warn Prisma failed to detect the
 libssl/openssl version… Please manually install OpenSSL » come before them:
 **harmless** — the build stage (`node:22-slim`) has no `openssl` binary
@@ -424,7 +442,11 @@ docker compose exec -T db mysql -u qualilab -p"$DB_PASSWORD" qualilab -e \
 
 - **Both 0 — code-only rollback is allowed:**
   `sudo -u qualilab git fetch --tags && sudo -u qualilab git checkout v1.4-avant-lot2-16-10 && sudo -u qualilab bash scripts/deploy.sh`.
-  The five migrations stay applied; the old code ignores the new columns.
+  The six migrations stay applied; the old code ignores the new columns.
+  Lot 2C's three columns change nothing for it: an IF / RC frozen in
+  `Invoice.clientSnapshot` is an extra JSON key the old reader skips, and
+  an account still flagged « mot de passe à changer » simply signs in as
+  before (the flag is back in force if lot 2C is redeployed).
 - **Either one above 0 — restore the dump:** check the tag out **first**
   (so the restore does not replay the new migrations), then
   `DB_PASSWORD=... bash scripts/restore-db.sh /var/backups/qualilab/qualilab_avant-lot2-16-10.sql.gz`
@@ -438,9 +460,13 @@ To resume lot 2 later: `git checkout master` and redeploy.
 
 Branch `lot2-retour-16-10` (`RETOUR-LABO-16-10.md` §4 « État au 19/10 »):
 the four waves (`9770bb0`, `d7b8750`, `124af3a`, `b898586`), the final
-verification's fixes, five additive migrations (listed in the section
-above). **One deploy carries the four waves**, so it carries the
-preconditions of waves 2 and 3. Rehearsed on 19/10 on a local copy at the
+verification's fixes (`d9dcd2d`), and since 20/10 **lot 2C**
+(`RETOUR-LABO-19-10.md`: migration `c5db24e`, H1 `7b1b540`, H2 / H3
+`f057892`, H4 `a83ec7e`, D-15–D-18 `5666f3b`, D-19 `1cb4a4f`) — six
+additive migrations (listed in the section above). **One deploy carries
+the four waves and lot 2C**, so it carries the preconditions of waves 2 and
+3 and lot 2C's go-live steps (H1, D-19). Rehearsed on 19/10 (the first five
+migrations) on a local copy at the
 production schema (34 migrations): `npx prisma migrate deploy`, then the
 compose `migrate` command run from an image built out of `git archive HEAD`
 — no row changed in any of the 44 tables (every row hashed before / after),
@@ -452,11 +478,15 @@ environment variable**.
 
 ### 0. Before the window — the gates (owner)
 
-- **Commit first.** The final verification's fixes and these docs sit in
-  the working tree of `lot2-retour-16-10` (`src/lib/billing-hold.ts` is a new
-  file — add it). Gates again on that commit: `npx tsc --noEmit -p .`,
-  `npx eslint src`, `npx vitest run`, `npm run build`. They add no migration:
-  the rehearsal above stays valid.
+- **Committed** (19/10 `d9dcd2d`; lot 2C 20/10, commits above). Gates again
+  on the branch's head: `npx tsc --noEmit -p .`, `npx eslint src`,
+  `npx vitest run`, `npm run build` (green on 20/10: 0 / 0 / 123 files,
+  2 479 tests / 94 pages). **Rehearse again with the six migrations** on a
+  local copy at the production schema (the 19/10 procedure:
+  `npx prisma migrate deploy`, then the compose `migrate` command from an
+  image built out of `git archive HEAD`; every row hashed before / after).
+  The sixth only adds three columns, but the rehearsal is what the restore
+  point relies on.
 - **Wave 2 (A1, B1).** The laboratory answered the re-ask 2.1 (hands'
   states) and 2.6 (« Heure de prélèvement inconnue du client »), **or** the
   owner decided in writing to ship the proposals — recorded in HANDOFF §9
@@ -505,13 +535,20 @@ environment variable**.
     « analysé avec l'accord de »);
   - every page or phone opened before the deploy must be reloaded, and a
     visit in progress on a phone is submitted **before** the deploy (the old
-    page sends no ambient temperature and is refused afterwards).
+    page sends no ambient temperature and is refused afterwards);
+  - lot 2C: each new account, and each account whose password the
+    administrator resets, chooses its own password at its first sign-in
+    (H1); the client fiche has « IF » and « RC » next to the ICE, exported
+    with the invoices (H2), and each address « Tout le client » or one site
+    (H3); invoices and credit notes have a second button « PDF par
+    paramètre » (H4); « Analyse sensorielle » removes the family's analyses
+    on the programme sheet and says so (D-16).
 - Outside the laboratory's hours.
 
 ### 1. Restore point (development machine)
 
 ```bash
-git tag -a v1.4-avant-lot2-16-10 a1ad186 -m "Version stable avant le lot 2 du 16/10 (5 migrations additives) — retour : DEPLOY.md « Point de retour — avant le lot 2 du 16/10 »"
+git tag -a v1.4-avant-lot2-16-10 a1ad186 -m "Version stable avant le lot 2 du 16/10 et le lot 2C (6 migrations additives) — retour : DEPLOY.md « Point de retour — avant le lot 2 du 16/10 »"
 git push origin v1.4-avant-lot2-16-10
 git checkout master && git merge --ff-only lot2-retour-16-10 && git push origin master
 ```
@@ -549,11 +586,14 @@ too when `BACKUP_REMOTE` is set (« Backups » above).
 
 ```bash
 docker compose ps -a migrate                       # Exited (0)
-docker compose logs migrate | tail -25             # five « Applying migration `20261019…` », then « All migrations have been successfully applied. »
+docker compose logs migrate | tail -25             # six « Applying migration » (five `20261019…`, one `20261020100000…`), then « All migrations have been successfully applied. »
 curl -s localhost:3000/api/health                  # {"status":"ok","database":"connected"}
 docker compose exec -T db mysql -u qualilab -p"$DB_PASSWORD" qualilab -e \
-  "SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations WHERE migration_name LIKE '20261019%'"
-# → 5 rows, finished_at set, rolled_back_at NULL
+  "SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations WHERE migration_name LIKE '20261019%' OR migration_name LIKE '20261020%'"
+# → 6 rows (five 20261019…, 20261020100000_retour_labo_19_10_comptes_clients), finished_at set, rolled_back_at NULL
+docker compose exec -T db mysql -u qualilab -p"$DB_PASSWORD" qualilab -e \
+  "SHOW COLUMNS FROM User LIKE 'mustChangePassword'; SHOW COLUMNS FROM Client LIKE 'fiscalId'; SHOW COLUMNS FROM Client LIKE 'tradeRegister'; SELECT COUNT(*) FROM User WHERE mustChangePassword = 1"
+# → tinyint(1) NOT NULL default 0 · varchar(191) NULL · varchar(191) NULL · 0 (no account flagged by the migration)
 docker compose exec -T db mysql -u qualilab -p"$DB_PASSWORD" qualilab -e \
   "SHOW COLUMNS FROM Sample LIKE 'handsState'; SHOW COLUMNS FROM EmailLog LIKE 'type'"
 # → enum('LAVEES','NON_LAVEES','ASEPTISEES') · enum('RAPPORT','ALERTE_CONTAMINATION','DESTRUCTION','NON_RECU')
@@ -575,8 +615,10 @@ docker compose logs app --since 10m                # no error
   full name) — and so does its duplicata.
 - An old protocole and an old bon reprint with the new wording (the
   denomination, « mains en cours de travail », « Boîte exposée 30 min »).
-- Then the production lines of `TESTPLAN.md` V16, on « TEST UI 2026-10-06
-  Traiteur » and « TEST UI V16 … » data only.
+- Then the production lines of `TESTPLAN.md` V16 and V17, on « TEST UI
+  2026-10-06 Traiteur », « TEST UI V16 … » and « TEST UI V17 … » data only
+  (V17-H1: a test account created after the deploy chooses its password
+  first).
 
 ### 5. Reprise F3 — « Catalogue de l'ancien logiciel » (operator, after the deploy)
 
@@ -633,7 +675,46 @@ path was replayed once on 19/10 on a local schema rebuilt to production's
 To undo the reprise only: restore `qualilab_avant-reprise-F3.sql.gz` with
 `scripts/restore-db.sh` (the code stays; everything entered since is lost).
 
-### 6. Rollback of the deploy
+### 6. D-19 — chemistry parameters filed as microbiology (operator, after the deploy, before go-live)
+
+Lot 2C's screen « Reclasser plusieurs paramètres » (/admin/parametres,
+ADMIN) moves a ticked set of parameters to another domain in one
+transaction, one `PARAMETER_UPDATED` per parameter (`RETOUR-LABO-19-10.md`
+D-19). The local copy was reclassified with it on 20/10 (293 food
+parameters MICRO → CHIMIE, 62 left in MICRO). Production very likely holds
+the same rows. **Never by an UPDATE**: only the screen writes.
+
+1. **The owner's review first:** `backups/D-19-parametres-a-reclasser-2026-10-20.md`
+   (outside the repo: the list, the names not to tick, the procedure in
+   French) — 59 names to leave in microbiology in production (53 germs and
+   6 to confirm with the laboratory; the file's 3 other rows are local test
+   germs). Nothing is run before that review.
+2. **Read-only list, then an offline check.** On the VPS:
+   `docker compose exec -T db mysql -B -N -u qualilab -p"$DB_PASSWORD" qualilab -e "SELECT name FROM AnalysisParameter WHERE category='ALIMENTAIRE' AND family='MICRO' ORDER BY name" > d19-prod-noms.txt`;
+   on the development machine `node .ui-tests/d19-compare-names.mjs d19-prod-noms.txt`
+   prints N (the list), the names to untick and X (to move), and **stops on
+   any name unknown to the 20/10 list** — such a parameter is judged (germ
+   or chemistry) before anything is ticked. Same catalogue as the local
+   copy: N = 352, 59 to untick, X = 293.
+3. **Restore point:** tag the deployed commit and take a labelled dump with
+   the commands of step 2 (proposed name `qualilab_avant-D19.sql.gz`;
+   `gzip -t`, « -- Dump completed », `chown`). Outside the laboratory's
+   hours.
+4. **The screen** (ADMIN, /admin/parametres): « Reclasser plusieurs
+   paramètres », Catégorie « Alimentaire » + Domaine « Microbiologie »,
+   **empty search**, « Tout cocher (N) » — N as the script said; untick the
+   listed names one box at a time (a search may find a row, but never « Tout
+   cocher » / « Tout décocher » while a search is active, and never tick
+   through a short search such as « pH », « Cu », « As », « PCR »); empty
+   the search, « Passer en Physico-chimie (X) »; the dialog says X, none
+   refused, no listed name in it; « Confirmer (X) ». A refusal (409) writes
+   nothing. Any gap: « Annuler », start again.
+5. **Afterwards:** Alimentaire + Microbiologie lists N − X rows (59 if the
+   catalogue is the same); /admin/journal shows X « Paramètre modifié » of
+   the same minute. To undo: the same screen the other way, or the dump (it
+   loses everything entered since).
+
+### 7. Rollback of the deploy
 
 « Point de retour — avant le lot 2 du 16/10 » above: first the two counts
 (`ASEPTISEES`, `NON_RECU`); both 0 → code only; otherwise check the tag out

@@ -20,6 +20,17 @@
 >
 > Effort : XS ≈ 1 h ou moins · S 1–4 h · M 4–12 h · L plus de 12 h
 > (estimations).
+>
+> **État au 20/10 (soir) : lot 2C construit le 20/10 et testé en local,
+> non déployé.** H1, H2, H3, H4 (en option, à l'impression, avant R-1),
+> D-15 à D-18 et l'écran de D-19 ; commits `7b1b540` (H1), `f057892`
+> (H2, H3), `a83ec7e` (H4), `5666f3b` (D-15 à D-18), `1cb4a4f` (D-19) sur
+> la branche `lot2-retour-16-10`, après la migration additive
+> `20261020100000` (`c5db24e`). Portes vertes, recette locale
+> `TESTPLAN.md` V17 (§7). **Reste** : H5 et le modèle de facture par client
+> (après R-4 et R-1), la relecture de la liste D-19 par le propriétaire
+> puis le reclassement en production, et le déploiement (un seul, lot 2A +
+> lot 2C, quand le propriétaire le décide).
 
 ---
 
@@ -55,7 +66,7 @@ prochaine relance (§5).
 | Q103 | (vide) | Dates des versions G (protocole) et H (bon) | vide | les cartouches impriment toujours F et G ; R-5 |
 | Q105 | (vide) | Fax du client sur le bon ; cartouche sur facture, avoir, étiquettes | vide | défaut gardé (fax à la main, pas de cartouche) ; R-5 |
 | Q11 | « OK » coché | Une analyse non faite n'est pas facturée (retirée du programme ; avoir si la facture est déjà émise) | réglée | rien à construire : c'est le fonctionnement actuel |
-| Q30 | « OK » coché, un « + », une flèche vers la proposition, et « Besoin par paramètres » | D'accord pour démarrer avec un seul modèle (une ligne par analyse et par échantillon). « Besoin par paramètres » : très probablement une facture **groupée par paramètre** (une ligne par analyse avec la quantité, comme le modèle « par paramètres groupés » de l'ancien logiciel), en plus du modèle actuel. À confirmer avant de construire | en partie | H4 après R-1 |
+| Q30 | « OK » coché, un « + », une flèche vers la proposition, et « Besoin par paramètres » | D'accord pour démarrer avec un seul modèle (une ligne par analyse et par échantillon). « Besoin par paramètres » : très probablement une facture **groupée par paramètre** (une ligne par analyse avec la quantité, comme le modèle « par paramètres groupés » de l'ancien logiciel), en plus du modèle actuel. À confirmer avant de construire | en partie | H4 construit en option (impression) ; le choix par client après R-1 |
 | Q85 | « OK » coché ; « IF » et « RC » marqués dans la question ; « et ICE » ajouté | Le format de l'export convient. Ajouter l'**IF** (identifiant fiscal) et le **RC** (registre de commerce) du client, avec l'ICE (déjà présent). L'adresse, dans la même question, n'est **pas** marquée | en partie | H2 ; l'adresse : R-2 |
 | Q86 | case vide ; dans la proposition, « (2) oui, l'avance apparaît comme déjà réglée sur la facture » **barré** et « 2) non » écrit ; un « ? » souligné sous « (3) non au démarrage » | (1) délai de paiement : pas de réponse, le défaut reste (« à réception, sauf échéance saisie »). (2) l'avance encaissée au comptoir **ne figure pas** sur la facture comme déjà réglée : elle reste sur le bon de réception seulement — c'est le fonctionnement actuel. (3) reprendre les ≈ 6 700 prix propres à chaque client de l'ancien logiciel : le « ? » dit une hésitation, pas un refus | en partie | (2) rien à construire ; (1) et (3) : R-3, R-4 ; H5 si (3) = oui |
 | Q45 | « OK » coché | Le rapport porte « Client — Site » et part aux adresses du client **et, s'il y en a, à celles du site** ; une facture par client (un site peut être facturé à une société liée) | réglée | H3 |
@@ -64,7 +75,7 @@ prochaine relance (§5).
 | Q82 | « OK » coché | Déconnexion après 30 minutes, avertissement 2 minutes avant, sauf le préleveur sur son téléphone : gardé | réglée | rien à construire |
 | Q97 | (vide) | Sauvegarde chiffrée hors du serveur, clé, accès, créneau | vide | défaut gardé (copie hors site désactivée) ; R-5 |
 
-## 2. Vérifié dans le code (branche `lot2-retour-16-10`)
+## 2. Vérifié dans le code (branche `lot2-retour-16-10`, `f4e9140` — l'état avant le lot 2C)
 
 - **Q11** : retirer une analyse du programme la retire du rapport et de la
   facture proposée ; une facture émise se corrige par un avoir
@@ -101,11 +112,11 @@ prochaine relance (§5).
 
 | # | Quoi | Ce qu'il faut faire | Où | Effort | Migration | Ce qui change en production | Statut |
 |---|---|---|---|---|---|---|---|
-| H1 | Q81 — mot de passe à changer | (1) `User.mustChangePassword Boolean @default(false)`. (2) Vrai à la création d'un compte et à chaque réinitialisation par un administrateur (personnel **et** portail client). (3) Faux quand la personne change elle-même son mot de passe. (4) Tant qu'il est vrai : toute page mène à « Mon compte » avec le message « Choisissez votre mot de passe avant de continuer », toute route d'API répond 403, sauf la session, la déconnexion et le changement de mot de passe — un seul garde, dans `src/lib/auth.ts` (`getSession` / `requireRole` / `requireApiRole`) et son équivalent du portail. (5) Les comptes existants restent à faux (aucun UPDATE) : les comptes nominatifs créés à la mise en service l'auront d'office ; les comptes de démonstration (seed) jamais. (6) Journal : `PASSWORD_CHANGE_REQUIRED` à la pose. Tests : création, réinitialisation, garde des pages et des API, préleveur sur téléphone, portail | `prisma/schema.prisma`, `src/lib/auth.ts`, `api/admin/users`, `api/admin/users/[id]`, `api/compte/mot-de-passe`, `api/portail/compte/mot-de-passe`, `/compte`, portail | S–M ≈ 5 h | oui (additive) | chaque compte créé ou réinitialisé par l'administrateur doit choisir son mot de passe à la connexion suivante | lot 2C — à construire |
-| H2 | Q85 — IF et RC du client | (1) `Client.fiscalId` (IF) et `Client.tradeRegister` (RC), facultatifs. (2) Saisis sur la fiche client (gestionnaire commercial, administrateur), à côté de l'ICE ; repris par la fusion (E4) comme les autres champs. (3) Entrent dans `Invoice.clientSnapshot` à l'émission. Une facture émise avec un instantané sans IF / RC laisse ces cases vides dans l'export ; une facture émise avant le 10/10 (sans instantané) lit la fiche vivante, comme aujourd'hui pour le nom et l'ICE (`invoiceClientIdentity`). (4) Export comptable : colonnes « ICE », « IF », « RC » dans « Journal des ventes » (et le nom seul dans « Règlements », comme aujourd'hui). (5) Vérifier si l'ancienne base (`qlabo-fb`) porte l'IF et le RC des clients : si oui, une reprise en lecture → écriture journalisée, d'abord sur la copie locale (S en plus). Pas d'adresse avant R-2 | `prisma/schema.prisma`, `ClientForm.tsx`, `api/clients`, `invoice-client-identity.ts` (identité figée), `sales-journal.ts`, `api/invoices/export` | S ≈ 4 h (+ S si reprise) | oui (additive) | deux champs de plus sur la fiche client ; trois colonnes d'identité dans l'export | lot 2C — à construire |
-| H3 | Q45 — adresse propre à un site | Sur la fiche client, chaque adresse e-mail reçoit un choix « Tout le client » / « Site X » (les sites actifs du client) ; la route vérifie que le site appartient au client ; la règle d'envoi (D-04) ne change pas. La fiche (lecture) affiche déjà « site X — ce site seulement ». Rien sur la facture : « une facture par client » est déjà la règle (`Site.billingClientId` pour un site facturé à une société liée) | `ClientForm.tsx`, `validateClientEmails`, `PATCH /api/clients/[id]` | S ≈ 3 h | non | le gestionnaire commercial peut donner à un site ses propres destinataires | lot 2C — à construire |
-| H4 | Q30 — facture « par paramètres » | Si R-1 confirme : une seconde mise en page de la **même** facture, une ligne par paramètre (quantité = nombre d'analyses, prix unitaire, montant), choisie à l'impression ou par client ; montants, numéros et avoirs inchangés | `invoice` PDF, fiche client (choix du modèle) | M ≈ 8 h | peut-être (`Client.invoiceLayout`) | — | après R-1 |
-| H5 | Q86 (3) — prix propres à chaque client | Si R-4 = oui : une table des prix par client (client, analyse, prix), reprise des ≈ 6 700 prix de l'ancien logiciel (copie locale d'abord, liste des prix sans analyse correspondante), proposée à la place du prix du catalogue sur la facture, toujours modifiable | schéma, reprise, facture | M–L ≈ 12 h | oui (additive) | — | après R-4 |
+| H1 | Q81 — mot de passe à changer | (1) `User.mustChangePassword Boolean @default(false)`. (2) Vrai à la création d'un compte et à chaque réinitialisation par un administrateur (personnel **et** portail client). (3) Faux quand la personne change elle-même son mot de passe. (4) Tant qu'il est vrai : toute page mène à « Mon compte » avec le message « Choisissez votre mot de passe avant de continuer », toute route d'API répond 403, sauf la session, la déconnexion et le changement de mot de passe — un seul garde, dans `src/lib/auth.ts` (`getSession` / `requireRole` / `requireApiRole`) et son équivalent du portail. (5) Les comptes existants restent à faux (aucun UPDATE) : les comptes nominatifs créés à la mise en service l'auront d'office ; les comptes de démonstration (seed) jamais. (6) Journal : `USER_PASSWORD_CHANGE_REQUIRED { username, reason: CREATED \| RESET }` à la pose (« Changement de mot de passe exigé ») ; `USER_PASSWORD_CHANGED` porte alors `required` et `flagCleared`. Tests : création, réinitialisation, garde des pages et des API, préleveur sur téléphone, portail | `prisma/schema.prisma`, `src/lib/auth.ts`, `api/admin/users`, `api/admin/users/[id]`, `api/compte/mot-de-passe`, `api/portail/compte/mot-de-passe`, `/compte`, portail | S–M ≈ 5 h | oui (additive) | chaque compte créé ou réinitialisé par l'administrateur doit choisir son mot de passe à la connexion suivante | construit le 20/10 (`7b1b540`), testé en local, non déployé ; le garde et ses exceptions : `HANDOFF.md` §3 ; recette `TESTPLAN.md` V17-H1 |
+| H2 | Q85 — IF et RC du client | (1) `Client.fiscalId` (IF) et `Client.tradeRegister` (RC), facultatifs. (2) Saisis sur la fiche client (gestionnaire commercial, administrateur), à côté de l'ICE ; repris par la fusion (E4) comme les autres champs. (3) Entrent dans `Invoice.clientSnapshot` à l'émission. Une facture émise avec un instantané sans IF / RC laisse ces cases vides dans l'export ; une facture émise avant le 10/10 (sans instantané) lit la fiche vivante, comme aujourd'hui pour le nom et l'ICE (`invoiceClientIdentity`). (4) Export comptable : colonnes « ICE », « IF », « RC » dans « Journal des ventes » (et le nom seul dans « Règlements », comme aujourd'hui). (5) Vérifier si l'ancienne base (`qlabo-fb`) porte l'IF et le RC des clients : si oui, une reprise en lecture → écriture journalisée, d'abord sur la copie locale (S en plus). **Vérifié le 20/10 (copie locale, lecture seule) : l'ancienne base ne les porte pas.** Sa table des clients (2 394 fiches) n'a que l'ICE (renseigné sur 381) ; ses informations complémentaires sont le délai et le mode de paiement, l'adresse de facturation par défaut, le rapport et deux blocages ; l'IF, le RC, la patente et la CNSS n'y existent que pour le laboratoire lui-même. Seules deux fiches (le même RC, très probablement un doublon) portent un RC écrit dans l'adresse : à saisir à la main. Rien à reprendre. Pas d'adresse avant R-2 | `prisma/schema.prisma`, `ClientForm.tsx`, `api/clients`, `invoice-client-identity.ts` (identité figée), `sales-journal.ts`, `api/invoices/export` | S ≈ 4 h (pas de reprise) | oui (additive) | deux champs de plus sur la fiche client ; trois colonnes d'identité dans l'export | construit le 20/10 (`f057892`), testé en local, non déployé ; (5) vérifié : rien à reprendre ; recette `TESTPLAN.md` V17-H2 |
+| H3 | Q45 — adresse propre à un site | Sur la fiche client, chaque adresse e-mail reçoit un choix « Tout le client » / « Site X » (les sites actifs du client) ; la route vérifie que le site appartient au client ; la règle d'envoi (D-04) ne change pas. La fiche (lecture) affiche déjà « site X — ce site seulement ». Rien sur la facture : « une facture par client » est déjà la règle (`Site.billingClientId` pour un site facturé à une société liée) | `ClientForm.tsx`, `validateClientEmails`, `PATCH /api/clients/[id]` | S ≈ 3 h | non | le gestionnaire commercial peut donner à un site ses propres destinataires | construit le 20/10 (`f057892`), testé en local, non déployé ; un site désactivé reste proposé et accepté tant qu'une adresse du client y est rattachée ; recette `TESTPLAN.md` V17-H3 |
+| H4 | Q30 — facture « par paramètres » | Si R-1 confirme : une seconde mise en page de la **même** facture, une ligne par paramètre (quantité = nombre d'analyses, prix unitaire, montant), choisie à l'impression ou par client ; montants, numéros et avoirs inchangés. **Construit (20/10) à l'impression seulement** : `GET /api/invoices/[id]/pdf?modele=parametre`, bouton « PDF par paramètre » (fiche facture ; fiche client pour le gestionnaire) ; le paramètre est relu dans le libellé de la ligne (`billedAnalysis`), une ligne d'avoir par la ligne de facture qu'elle reprend ; le PDF par ligne reste le défaut, octet pour octet | `src/lib/invoice-html-layout.ts`, `invoice-html.ts`, `api/invoices/[id]/pdf`, `FactureDetail.tsx`, `commercial/[id]` | M ≈ 8 h | non (le choix par client, `Client.invoiceLayout`, attend R-1) | un second bouton PDF ; rien ne change sur le PDF actuel | construit le 20/10 (`a83ec7e`) en option, à l'impression, avant R-1, sans choix par client ; testé en local, non déployé ; recette `TESTPLAN.md` V17-H4 |
+| H5 | Q86 (3) — prix propres à chaque client | Si R-4 = oui : une table des prix par client (client, analyse, prix), reprise des ≈ 6 700 prix de l'ancien logiciel (copie locale d'abord, liste des prix sans analyse correspondante), proposée à la place du prix du catalogue sur la facture, toujours modifiable | schéma, reprise, facture | M–L ≈ 12 h | oui (additive) | — | après R-4 : rien de construit |
 
 Rien à construire pour Q11, Q54, Q82 et Q86 (2) : c'est le fonctionnement
 actuel (§2).
@@ -119,11 +130,11 @@ données ; ces points :
 
 | # | Défaut | Conséquence | Correction | Effort | Statut |
 |---|---|---|---|---|---|
-| D-15 | Fiche de programme : après un changement de famille (avis « Famille X choisie ; N analyses … retirées »), choisir la nature « Analyse sensorielle » détache la famille, mais l'avis de l'ancienne famille reste affiché. `changeNature()` (`src/components/programmation/ProgrammeSheet.tsx`, ≈ l. 333) n'efface pas `familyNotice`, contrairement à `save()` | l'écran se contredit (« Aucune famille » sous un avis qui en nomme une) | `setFamilyNotice(null)` dans `changeNature()` ; test | XS ≈ 0,5 h | lot 2C |
-| D-16 | Passer un aliment en « Analyse sensorielle » retire la famille et ramène n à 1, mais les germes venus de cette famille restent cochés (« 6 analyses · n = 1 · sans famille »), alors que choisir « — aucune — » famille les retire. `adoptReferential()` (`programme-sheet-logic.ts`) ne touche que n et la famille | un échantillon d'analyse sensorielle peut partir à la paillasse avec des germes microbiologiques | retirer, comme « aucune famille », les analyses venues seulement de la famille, et le dire dans l'avis | XS ≈ 1 h | lot 2C, à régler avec Q133 |
-| D-17 | Le nombre de « critères » d'une même famille diffère selon l'écran : la liste « Familles & critères » compte les lignes de critères, versions de norme comprises (`family-catalogue.ts:71`, `criteria.length`) ; le dialogue « Choisir une famille de produits » et la fiche comptent les germes distincts (`programme-referential.ts:497`). Exemple : « CONFITURES, COMPOTES… » 6 dans la liste, 5 dans le dialogue | le laboratoire voit deux chiffres pour la même famille | un seul compte partout : « N germes » (distincts), et « N lignes » seulement dans la grille de la famille | XS ≈ 0,5 h | lot 2C |
-| D-18 | Page d'une famille (`/programmation/familles/[id]`) à 1366 px de large : l'en-tête et la grille tronquent « Type d'analyse », « Propre à un client », les germes et les normes (« Microbiologie des alim… », « Clostridium pe… », « NM ISO 1664… ») | lisible au survol seulement, sur le portable le plus courant | colonnes germe / norme plus larges, retour à la ligne dans les listes, en-tête sur deux lignes sous 1440 px | S ≈ 1,5 h | lot 2C |
-| D-19 | **Données** : sur la copie locale, 355 paramètres ALIMENTAIRE de domaine MICRO, dont beaucoup de physico-chimie (absorbance K 232 nm, acésulfame-K, acides gras, cuivre, DDT, colorants E120 / E124…), proposés comme « Analyses microbiologiques » (« Corriger les analyses », fiche de programme). Reste de D-13 : la reprise du 07/10 créait tout paramètre inconnu en ALIMENTAIRE / MICRO ; F3 ne corrige que les créations nouvelles. La production a très probablement les mêmes lignes | des analyses chimiques proposées en microbiologie ; un mauvais choix fausse le domaine de l'échantillon | (1) liste en lecture des paramètres MICRO dont le nom ou la norme relève de la chimie (copie locale, puis production en lecture) ; (2) relue par le propriétaire (ou le laboratoire si un cas est douteux) ; (3) reclassement en CHIMIE par l'écran journalisé, d'abord sur la copie locale ; en production par l'exploitant, après tag + dump. Aucune migration, aucun UPDATE hors de l'écran | S ≈ 3 h (+ la relecture) | avant la mise en service |
+| D-15 | Fiche de programme : après un changement de famille (avis « Famille X choisie ; N analyses … retirées »), choisir la nature « Analyse sensorielle » détache la famille, mais l'avis de l'ancienne famille reste affiché. `changeNature()` (`src/components/programmation/ProgrammeSheet.tsx`, ≈ l. 333) n'efface pas `familyNotice`, contrairement à `save()` | l'écran se contredit (« Aucune famille » sous un avis qui en nomme une) | `setFamilyNotice(null)` dans `changeNature()` ; test | XS ≈ 0,5 h | construit le 20/10 (`5666f3b`), testé en local, non déployé : l'avis de la famille choisie est remplacé (`natureChangeOutcome`), jamais laissé ; recette `TESTPLAN.md` V17-D15 / D16 |
+| D-16 | Passer un aliment en « Analyse sensorielle » retire la famille et ramène n à 1, mais les germes venus de cette famille restent cochés (« 6 analyses · n = 1 · sans famille »), alors que choisir « — aucune — » famille les retire. `adoptReferential()` (`programme-sheet-logic.ts`) ne touche que n et la famille | un échantillon d'analyse sensorielle peut partir à la paillasse avec des germes microbiologiques | retirer, comme « aucune famille », les analyses venues seulement de la famille, et le dire dans l'avis | XS ≈ 1 h | construit le 20/10 (`5666f3b`), testé en local, non déployé, avec le défaut actuel de Q133 : les analyses venues seulement de la famille sont retirées et la section 1 le dit en ambre (« Famille « X » retirée avec la nature « Analyse sensorielle » : n ramené à 1 (au lieu de 5) ; 2 analyses venues de cette famille ont été retirées (…) », `natureDetachNotice`) ; recette V17-D15 / D16 |
+| D-17 | Le nombre de « critères » d'une même famille diffère selon l'écran : la liste « Familles & critères » compte les lignes de critères, versions de norme comprises (`family-catalogue.ts:71`, `criteria.length`) ; le dialogue « Choisir une famille de produits » et la fiche comptent les germes distincts (`programme-referential.ts:497`). Exemple : « CONFITURES, COMPOTES… » 6 dans la liste, 5 dans le dialogue | le laboratoire voit deux chiffres pour la même famille | un seul compte partout : « N germes » (distincts), et « N lignes » seulement dans la grille de la famille | XS ≈ 0,5 h | construit le 20/10 (`5666f3b`), testé en local, non déployé : « N critères » = un par germe partout (`germCount`), « N critères · M lignes » dans la grille seulement ; recette V17-D17 |
+| D-18 | Page d'une famille (`/programmation/familles/[id]`) à 1366 px de large : l'en-tête et la grille tronquent « Type d'analyse », « Propre à un client », les germes et les normes (« Microbiologie des alim… », « Clostridium pe… », « NM ISO 1664… ») | lisible au survol seulement, sur le portable le plus courant | colonnes germe / norme plus larges, retour à la ligne dans les listes, en-tête sur deux lignes sous 1440 px | S ≈ 1,5 h | construit le 20/10 (`5666f3b`), testé en local, non déployé : chaque liste de la page est un choix à retour à la ligne (`WrappingSelect`), les en-têtes n, c, m, M gardent leur casse, une grille enregistrée vide le dit ; recette V17-D18 |
+| D-19 | **Données** : sur la copie locale, 355 paramètres ALIMENTAIRE de domaine MICRO, dont beaucoup de physico-chimie (absorbance K 232 nm, acésulfame-K, acides gras, cuivre, DDT, colorants E120 / E124…), proposés comme « Analyses microbiologiques » (« Corriger les analyses », fiche de programme). Reste de D-13 : la reprise du 07/10 créait tout paramètre inconnu en ALIMENTAIRE / MICRO ; F3 ne corrige que les créations nouvelles. La production a très probablement les mêmes lignes | des analyses chimiques proposées en microbiologie ; un mauvais choix fausse le domaine de l'échantillon | (1) liste en lecture des paramètres MICRO dont le nom ou la norme relève de la chimie (copie locale, puis production en lecture) ; (2) relue par le propriétaire (ou le laboratoire si un cas est douteux) ; (3) reclassement en CHIMIE par l'écran journalisé, d'abord sur la copie locale ; en production par l'exploitant, après tag + dump. Aucune migration, aucun UPDATE hors de l'écran | S ≈ 3 h (+ la relecture) | l'écran construit le 20/10 (`1cb4a4f`), testé en local, non déployé : « Reclasser plusieurs paramètres » dans « Paramètres d'analyse » (administrateur ; aperçu, puis tout ou rien, une entrée de journal par paramètre ; la recherche part du début des mots) ; la liste et la marche à suivre en production : `backups/D-19-parametres-a-reclasser-2026-10-20.md` (hors dépôt, 62 lignes à ne pas cocher sur 355 — 59 en production : 3 sont des germes de test de la copie locale), le contrôle des noms `.ui-tests/d19-compare-names.mjs` ; **appliqué sur la copie locale** le 20/10 (293 paramètres alimentaires passés en physico-chimie par la route, `.ui-tests/d19-apply.mjs` ; 62 restent en microbiologie, dont 6 à confirmer avec le laboratoire) ; **reste** : la relecture du propriétaire, puis la production par l'exploitant (tag + dump), avant la mise en service ; recette V17-D19 |
 
 ## 5. La prochaine relance (à envoyer quand le propriétaire le décide)
 
@@ -132,9 +143,12 @@ brouillon est dans `NEEDEDINFO.md` §2 (« Lot du 20/10 »).
 
 - **R-1 — Q30** : « Besoin par paramètres » : une facture groupée par
   paramètre (une ligne par analyse, avec la quantité), en plus du modèle par
-  échantillon ? Pour quels clients ? Un exemple de l'ancien logiciel.
+  échantillon — **construite le 20/10, à l'impression** (« PDF par
+  paramètre », H4) : est-ce bien ce que vous vouliez ? Faut-il l'imprimer
+  par défaut pour certains clients (lesquels) ? Un exemple de l'ancien
+  logiciel nous permettra de la comparer.
 - **R-2 — Q85** : faut-il aussi l'**adresse** du client dans l'export
-  comptable (IF, RC et ICE seront ajoutés) ?
+  comptable (IF, RC et ICE y sont, construits le 20/10) ?
 - **R-3 — Q86 (1)** : le délai de paiement par défaut reste « à réception,
   sauf échéance saisie » : d'accord ?
 - **R-4 — Q86 (3)** : le « ? » : faut-il reprendre les ≈ 6 700 prix propres à
@@ -157,27 +171,59 @@ brouillon est dans `NEEDEDINFO.md` §2 (« Lot du 20/10 »).
    préalable reste la décision du propriétaire sur le rattrapage unique de
    l'instantané des factures émises avant le 10/10 (`HANDOFF.md` §9 : sans
    lui, une fusion change le client imprimé sur ces anciennes factures).
+   Depuis H2, ce rattrapage fige aussi l'IF et le RC (huit champs, la
+   requête de `HANDOFF.md` §9) et ne se lance **qu'après la migration du
+   lot 2C** (`20261020100000`) : une version à six champs figerait ces
+   factures sans IF ni RC, et leur export les laisserait vides pour
+   toujours.
 2. **Q81** : à la mise en service, l'administrateur crée les comptes
-   nominatifs (ils auront « mot de passe à changer » avec H1) et désactive les
-   comptes de démonstration (`scripts/disable-demo-accounts.sh`,
-   `NEXT_PUBLIC_DEMO_MODE=false`).
-3. **D-19** : relire la liste des paramètres à reclasser avant de la passer
-   en production.
+   nominatifs **après le déploiement** : chacun a alors « mot de passe à
+   changer » (H1) et choisit le sien à sa première connexion, à partir du
+   mot de passe provisoire que l'administrateur lui remet. Chaque
+   réinitialisation par l'administrateur pose de nouveau le drapeau et ferme
+   les sessions de la personne. Les comptes existant avant le déploiement ne
+   l'ont pas (aucun UPDATE). Les comptes de démonstration sont **désactivés**
+   (`scripts/disable-demo-accounts.sh`, `NEXT_PUBLIC_DEMO_MODE=false`), pas
+   réinitialisés. Ordre : `DEPLOY.md` « Lot 2 du 16/10 ».
+3. **D-19** : le propriétaire relit la liste
+   `backups/D-19-parametres-a-reclasser-2026-10-20.md` (hors dépôt : les
+   noms à ne pas cocher — 59 en production, 53 germes et 6 à confirmer avec
+   le laboratoire). Puis, après le déploiement et avant la mise en service,
+   l'exploitant reclasse en production **par l'écran** « Reclasser
+   plusieurs paramètres », après un tag et un dump, en suivant la marche à
+   suivre du même fichier (noms vérifiés par
+   `.ui-tests/d19-compare-names.mjs`) ; jamais par SQL (`DEPLOY.md` « Lot 2
+   du 16/10 », étape 6). Point ouvert du même fichier : la famille de
+   catalogue « AUTRES » cite 283 des 293 paramètres reclassés ; choisie sur
+   un échantillon de microbiologie, elle les cochera sous « autre domaine
+   que l'échantillon » — la désactiver ou la scinder (« Familles &
+   critères ») est une décision du propriétaire, pas un geste de ce lot.
 
 ## 7. Ordre et recette
 
-- **Lot 2C maintenant** : H1, H2, H3, D-15, D-16 (avec le défaut actuel de
-  Q133), D-17, D-18 — ≈ 16 h, **une migration additive**
-  (`User.mustChangePassword`, `Client.fiscalId`, `Client.tradeRegister`),
-  écrite à la main, vérifiée contre `prisma migrate diff`, aucun UPDATE. Puis
-  D-19 (données, ≈ 3 h + relecture).
-- **Après la relance** : H4 (R-1), H5 (R-4), l'adresse dans l'export (R-2).
-- **Recette** : `TESTPLAN.md` Checkpoint V17 (à écrire avec la
-  construction) — en local sur « TEST UI » ; en production, plus tard, par le
-  propriétaire avec ses comptes (les comptes de démonstration seront
-  désactivés).
-- **Le déploiement** : un seul, lot 2A + lot 2C, quand le propriétaire le
-  décide (`DEPLOY.md` « Lot 2 du 16/10 » + la migration du lot 2C).
+- **Lot 2C — construit le 20/10, testé en local, non déployé** : H1, H2,
+  H3, H4 (en option, avant R-1), D-15, D-16 (avec le défaut actuel de Q133),
+  D-17, D-18 et l'écran de D-19 ; **une migration additive**
+  (`20261020100000` : `User.mustChangePassword`, `Client.fiscalId`,
+  `Client.tradeRegister`), écrite à la main, vérifiée contre
+  `prisma migrate diff`, aucun UPDATE. Commits `7b1b540`, `f057892`,
+  `a83ec7e`, `5666f3b`, `1cb4a4f`. Portes : `npx tsc --noEmit -p .` 0,
+  `npx eslint src` 0, `npx vitest run` 123 fichiers / 2 479 tests,
+  `npm run build` 94 pages. D-19 (données) : la copie locale reclassée par
+  l'écran (293 paramètres alimentaires passés en physico-chimie, 62 restés
+  en microbiologie) ; la production attend la relecture du propriétaire
+  (§6).
+- **Après la relance** : H5 (R-4), l'adresse dans l'export (R-2) ; pour H4,
+  seulement le modèle par défaut par client si R-1 le demande (la mise en
+  page par paramètre est déjà construite, à l'impression).
+- **Recette** : `TESTPLAN.md` Checkpoint V17 (écrit le 20/10 :
+  `.ui-tests/v17-local.mjs` 78/78 sur la copie locale, H1–H4 et D-15–D-19 de
+  bout en bout ; régressions v16-1 62/62, v16-2 109/109, v16-3 67/67, v16-4
+  73/73, v16-final 21/21 + 7/7, V15 24/24, V14 40/40) — en local sur
+  « TEST UI » ; en production, plus tard, par le propriétaire avec ses
+  comptes (les comptes de démonstration seront désactivés).
+- **Le déploiement** : un seul, lot 2A + lot 2C, six migrations additives,
+  quand le propriétaire le décide (`DEPLOY.md` « Lot 2 du 16/10 »).
 
 ## 8. Dépôt public
 

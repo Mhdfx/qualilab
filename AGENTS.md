@@ -49,6 +49,7 @@ should list all three. If it doesn't, you are in the wrong folder.
 | 4b | **WORKFLOW.md** | Phase 9, chantier 1: the série-based circuit — design rules, model delta, slices. Read before touching `Sample`, préleveur or réception |
 | 4c | **CRITERES.md** → **RETOUR-LABO-29-09.md** → **RETOUR-LABO-30-09.md** → **RETOUR-LABO-05-10.md** → **RETOUR-LABO-06-10.md** | The criteria engine, then the laboratory's feedback batches up to 13/10 (the later file wins; `RETOUR-LABO-06-10.md` §5–§13 records what was built from 05/10 to 13/10) |
 | 4e | **RETOUR-LABO-16-10.md** | **The current plan**: the laboratory's answers of 16/10 (pages 1–6 of the 14/10 questionnaire) — each answer and its reading, what changes in the 14/10 plan, the full lot 2 + lot 1b plan by chantier (A–G) in four waves, latent defects D-01–D-14, the owner's operational items, the re-ask of 18/10 |
+| 4f | **RETOUR-LABO-19-10.md** | **Lot 2C**, the answers of 19/10 (pages 9–10 of the 18/10 re-ask): H1 password to change, H2 the client's IF / RC, H3 an address's site, H4 the invoice « par paramètre », H5 client prices (waiting), defects D-15–D-19 — built and tested locally 20/10 on the same branch as lot 2, not deployed; the next re-ask (R-1–R-5) |
 | 4d | **RETOUR-LABO-14-10.md** | The plan of 14/10 (still the reference design where RETOUR-LABO-16-10 does not change it): the laboratory's remarks of 14/10 — vocabulary (« famille » / « catégorie »), the table of every item (P, R, RP, OLD), lot 1 (built 14/10), lot 2 (answered 16/10, built in four waves — see RETOUR-LABO-16-10) with its design and order |
 | 5 | **CODE_QUALITY.md** | The non-negotiable quality bar (front + back + all) |
 | 6 | **TESTPLAN.md** | The full browser test path, every phase. Tick what you verified; extend the phase section when you finish it |
@@ -166,7 +167,9 @@ npm run db:studio        # prisma studio
 
 Demo logins after seed (all password `password`): `pre1`, `recep1`, `param1`,
 `tech1`, `tech2`, `valid1`, `direction1`, `commercial1`, `compta1`, `admin`,
-`magasin1`.
+`magasin1`. They never carry « mot de passe à changer » (lot 2C H1), but an
+account an administrator creates or resets does: it opens « Mon compte »
+only until it chooses its own password (HANDOFF §3).
 
 ## 7. Session protocol — how continuity survives across platforms
 
