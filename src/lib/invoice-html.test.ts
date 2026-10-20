@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildInvoiceHtml, invoiceDocumentTitle, type InvoiceDocument } from "./invoice-html";
 import { clientSnapshotOf, invoiceClientIdentity } from "./invoice-client-identity";
+import { lineDescription } from "./billing";
+import { layoutSourceLine } from "./invoice-html-layout";
 
 const issued: InvoiceDocument = {
   kind: "FACTURE",
@@ -213,5 +215,164 @@ describe("the client an issued invoice prints (clientSnapshot)", () => {
   it("an invoice issued before the snapshot existed keeps printing the live client", () => {
     const client = invoiceClientIdentity({ number: issued.number, clientSnapshot: null, client: renamed });
     expect(text(buildInvoiceHtml({ ...issued, client }))).toContain("Groupe Renommé");
+  });
+});
+
+describe("the « par paramètre » layout (Q30)", () => {
+  const at = (controlCode: string) => ({
+    id: controlCode,
+    controlCode,
+    code: controlCode,
+    type: "ALIMENTAIRE" as const,
+    produit: "Plat cuisiné",
+    parameters: [],
+  });
+  const line = (name: string, controlCode: string, unitPrice: number) => ({
+    description: lineDescription(name, at(controlCode)),
+    quantity: 1,
+    unitPrice,
+    lineTotal: unitPrice,
+    fromSample: true,
+  });
+  // Three samples, two parameters, a free line: 3 × 320 + 2 × 450 + 145,50.
+  const perSample: InvoiceDocument = {
+    ...issued,
+    client: { ...issued.client, name: "TEST UI V17 Traiteur" },
+    subtotal: 2005.5,
+    taxAmount: 401.1,
+    total: 2406.6,
+    items: [
+      line("E. coli", "480/26-2", 320),
+      line("Salmonelles", "480/26-2", 450),
+      line("E. coli", "480/26-3", 320),
+      { description: "Déplacement", quantity: 1, unitPrice: 145.5, lineTotal: 145.5 },
+      line("E. coli", "480/26-4", 320),
+      line("Salmonelles", "480/26-4", 450),
+    ],
+  };
+
+  /** The page without its table of lines (and the layout's caption and styles). */
+  const withoutLines = (html: string) =>
+    html
+      .replace(/<tbody>[\s\S]*?<\/tbody>/, "<tbody></tbody>")
+      .replace(/<p class="layout">[^<]*<\/p>\n/, "")
+      .replace(/\n {2}\.layout \{[^}]*\}\n {2}\.refs \{[^}]*\}/, "");
+
+  it("absent, the document is the per-line one, untouched", () => {
+    const html = buildInvoiceHtml(perSample);
+    expect(buildInvoiceHtml(perSample, undefined, { layout: "ligne" })).toBe(html);
+    expect(html).not.toContain('class="layout"');
+    expect(html).not.toContain(".refs");
+    expect(text(html)).toContain("E. coli (Alimentaire) — Plat cuisiné · 480/26-3");
+  });
+
+  it("absent, the markup is the one printed before the layout existed, byte for byte", () => {
+    // Pinned on the renderer as it was before Q30: nothing after the last
+    // style, nothing between the parties and the table, one row per stored
+    // line written exactly as before.
+    const html = buildInvoiceHtml(perSample);
+    expect(html).toContain("padding-top: 4px; }\n</style>");
+    expect(html).toContain("</div>\n\n<table>\n  <thead>");
+    expect(html).toContain(
+      "<tbody>\n      <tr>\n" +
+        '        <td class="desc">E. coli (Alimentaire) — Plat cuisiné · 480/26-2</td>\n' +
+        '        <td class="num">1</td>\n' +
+        '        <td class="num">320,00 DH</td>\n' +
+        '        <td class="num strong">320,00 DH</td>\n' +
+        "      </tr>\n      <tr>\n" +
+        '        <td class="desc">Salmonelles (Alimentaire) — Plat cuisiné · 480/26-2</td>'
+    );
+    expect(html).toContain(
+      "      <tr>\n" +
+        '        <td class="desc">Déplacement</td>\n' +
+        '        <td class="num">1</td>\n' +
+        '        <td class="num">145,50 DH</td>\n' +
+        '        <td class="num strong">145,50 DH</td>\n' +
+        "      </tr>\n      <tr>\n" +
+        '        <td class="desc">E. coli (Alimentaire) — Plat cuisiné · 480/26-4</td>'
+    );
+    expect(html).toContain('<td class="num strong">450,00 DH</td>\n      </tr></tbody>');
+    expect(html.match(/<tr>\s*<td class="desc">/g)).toHaveLength(perSample.items.length);
+  });
+
+  it("one line per parameter and price: number of analyses, unit price, amount, the samples", () => {
+    const html = buildInvoiceHtml(perSample, undefined, { layout: "parametre" });
+    const page = text(html);
+    expect(page).toContain("Présentation par paramètre");
+    expect(page).toMatch(
+      /E\. coli \(Alimentaire\) Échantillons : 480\/26-2, 480\/26-3, 480\/26-4 3 320,00 DH 960,00 DH/
+    );
+    expect(page).toMatch(/Salmonelles \(Alimentaire\) Échantillons : 480\/26-2, 480\/26-4 2 450,00 DH 900,00 DH/);
+    expect(page).toMatch(/Déplacement 1 145,50 DH 145,50 DH/);
+    expect(page).not.toContain("Plat cuisiné");
+    expect(html.match(/<tr>\s*<td class="desc">/g)).toHaveLength(3);
+  });
+
+  it("only the table differs: totals, VAT, number, client, payment and words are the same", () => {
+    const perLine = buildInvoiceHtml(perSample);
+    const byParameter = buildInvoiceHtml(perSample, undefined, { layout: "parametre" });
+    expect(withoutLines(byParameter)).toBe(withoutLines(perLine));
+    const page = text(byParameter);
+    expect(page).toMatch(dh("2 005,50"));
+    expect(page).toMatch(dh("401,10"));
+    expect(page).toMatch(dh("2 406,60"));
+    expect(page).toContain("N° FAC-2026-0042");
+    expect(page).toContain("TEST UI V17 Traiteur");
+    expect(page).toContain("Modalités de règlement");
+  });
+
+  it("keeps the « BROUILLON » watermark and the « ANNULÉE » stamp", () => {
+    const draft = buildInvoiceHtml({ ...perSample, number: null, status: "BROUILLON" }, undefined, { layout: "parametre" });
+    expect(draft).toContain('<div class="watermark">BROUILLON</div>');
+    expect(text(draft)).toContain("N° non attribué — brouillon");
+    const cancelled = buildInvoiceHtml(
+      { ...perSample, status: "ANNULEE", cancelledAt: new Date("2026-10-08T09:00:00Z"), cancelReason: "Erreur" },
+      undefined,
+      { layout: "parametre" }
+    );
+    expect(cancelled).toContain('<div class="stamp">ANNULÉE</div>');
+    expect(text(cancelled)).toContain("Motif : Erreur");
+  });
+
+  it("a credit note is grouped the same way, still « Avoir N° AV-… »", () => {
+    // As the credit-note route stores its lines: no sample of their own, the
+    // invoice line they take back carries it.
+    const takenBack = (name: string, controlCode: string, unitPrice: number) =>
+      layoutSourceLine({
+        description: lineDescription(name, at(controlCode)),
+        quantity: 1,
+        unitPrice,
+        lineTotal: unitPrice,
+        sampleId: null,
+        creditedItem: { sampleId: controlCode },
+      });
+    const html = buildInvoiceHtml(
+      {
+        ...perSample,
+        kind: "AVOIR",
+        number: "AV-2026-0003",
+        subtotal: 640,
+        taxAmount: 128,
+        total: 768,
+        items: [takenBack("E. coli", "480/26-2", 320), takenBack("E. coli", "480/26-3", 320)],
+        creditedInvoice: { number: "FAC-2026-0042", issueDate: new Date("2026-10-07T10:00:00Z") },
+      },
+      undefined,
+      { layout: "parametre" }
+    );
+    const page = text(html);
+    expect(page).toContain("Avoir N° AV-2026-0003");
+    expect(page).toMatch(/E\. coli \(Alimentaire\) Échantillons : 480\/26-2, 480\/26-3 2 320,00 DH 640,00 DH/);
+    expect(page).toContain("Se rapporte à la facture FAC-2026-0042");
+  });
+
+  it("escapes what it prints", () => {
+    const html = buildInvoiceHtml(
+      { ...perSample, items: [{ ...line("Flore <totale>", "A&B", 10), lineTotal: 10 }] },
+      undefined,
+      { layout: "parametre" }
+    );
+    expect(html).toContain("Flore &lt;totale&gt; (Alimentaire)");
+    expect(html).toContain("Échantillon : A&amp;B");
   });
 });

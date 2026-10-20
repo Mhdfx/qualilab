@@ -8,6 +8,7 @@ import { buildInvoiceHtml, type InvoiceDocument } from "@/lib/invoice-html";
 import { invoiceAmounts } from "@/lib/billing";
 import { getCompany } from "@/lib/company-server";
 import { invoiceClientIdentity } from "@/lib/invoice-client-identity";
+import { INVOICE_LAYOUT_PARAM, invoiceLayoutOf, layoutSourceLine } from "@/lib/invoice-html-layout";
 
 /**
  * The invoice — or credit note — as a PDF, rendered server-side.
@@ -19,21 +20,29 @@ import { invoiceClientIdentity } from "@/lib/invoice-client-identity";
  * with date and reason, « Réglé / Reste à payer », and « AVOIR N° AV-… »
  * naming the invoice it corrects. An issued document prints its client as it
  * was at issue (`clientSnapshot`), not as renamed or merged since.
+ *
+ * `?modele=parametre` prints the same document one line per parameter (Q30,
+ * `invoice-html-layout.ts`); without it, the per-line layout, unchanged.
  */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await requireApiRole("COMPTABLE", "GESTIONNAIRE", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;
+  const layout = invoiceLayoutOf(new URL(request.url).searchParams.get(INVOICE_LAYOUT_PARAM));
+  if (!layout) {
+    return NextResponse.json({ error: "Modèle de facture inconnu." }, { status: 400 });
+  }
 
   const invoice = await prisma.invoice.findUnique({
     where: { id },
     include: {
       client: true,
-      items: true,
+      // A credit-note line bills an analysis through the invoice line it takes back.
+      items: { include: { creditedItem: { select: { sampleId: true } } } },
       payments: { select: { amount: true } },
       creditNotes: { select: { total: true } },
       creditedInvoice: { select: { number: true, issueDate: true } },
@@ -70,26 +79,23 @@ export async function GET(
     creditedInvoice: invoice.creditedInvoice,
     // Issued: the client as it was at issue; a draft: the live client.
     client: invoiceClientIdentity(invoice),
-    items: invoice.items.map((item) => ({
-      description: item.description,
-      quantity: item.quantity,
-      unitPrice: toMoney(item.unitPrice),
-      lineTotal: toMoney(item.lineTotal),
-    })),
+    items: invoice.items.map((item) =>
+      layoutSourceLine({ ...item, unitPrice: toMoney(item.unitPrice), lineTotal: toMoney(item.lineTotal) })
+    ),
   };
 
   // A draft has no number yet: its file is named after its id.
-  const fileName = invoice.number ?? `brouillon-${invoice.id}`;
+  const fileName = `${invoice.number ?? `brouillon-${invoice.id}`}${layout === "parametre" ? "-par-parametre" : ""}`;
 
   try {
-    const pdf = await renderPdf(buildInvoiceHtml(document, await getCompany()));
+    const pdf = await renderPdf(buildInvoiceHtml(document, await getCompany(), { layout }));
 
     await logAudit({
       actorId: session.id,
       action: "INVOICE_DOWNLOADED",
       entity: "Invoice",
       entityId: invoice.id,
-      metadata: { number: invoice.number, kind: invoice.kind, status: invoice.status },
+      metadata: { number: invoice.number, kind: invoice.kind, status: invoice.status, layout },
     });
 
     return new NextResponse(new Uint8Array(pdf), {

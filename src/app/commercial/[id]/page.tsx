@@ -61,6 +61,7 @@ import { canResendReport, reportVersionSent } from "@/lib/report-actions";
 import { ResendReportButton } from "@/components/validation/ResendReportButton";
 import { searchSamples } from "@/lib/sample-search-server";
 import { billingFigures } from "@/components/invoices/invoice-queries";
+import { invoicePdfPath } from "@/lib/invoice-html-layout";
 
 /**
  * Fiche client 360° — everything the laboratory knows about one client on a
@@ -82,9 +83,10 @@ export default async function ClientDetailPage({
 }) {
   const session = await requireRole("GESTIONNAIRE", "ADMIN");
   // The invoice screen lives in the admin space; the gestionnaire gets the
-  // PDF itself (its endpoint admits the role) instead of a silent bounce.
+  // PDF itself (its endpoint admits the role) instead of a silent bounce —
+  // and, next to it, the same PDF one line per parameter (Q30).
   const invoiceHref = (id: string) =>
-    session.role === "ADMIN" ? `/admin/factures/${id}` : `/api/invoices/${id}/pdf`;
+    session.role === "ADMIN" ? `/admin/factures/${id}` : invoicePdfPath(id);
   const { id } = await params;
 
   // The summary's period (slice F): the current month by default.
@@ -555,18 +557,32 @@ export default async function ClientDetailPage({
                     const { state } = invoice;
                     return (
                     <li key={invoice.id} className="flex items-center justify-between gap-3 py-2.5">
-                      <Link
-                        href={invoiceHref(invoice.id)}
-                        target={session.role === "ADMIN" ? undefined : "_blank"}
-                        className="min-w-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-                      >
-                        <p className="font-mono text-sm font-semibold text-slate-900">
-                          {documentLabel(invoice)}
-                        </p>
-                        <p className="mt-0.5 text-xs text-slate-500">
-                          {formatDate(invoice.issueDate)}
-                        </p>
-                      </Link>
+                      <div className="min-w-0">
+                        <Link
+                          href={invoiceHref(invoice.id)}
+                          target={session.role === "ADMIN" ? undefined : "_blank"}
+                          className="block min-w-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                        >
+                          <p className="font-mono text-sm font-semibold text-slate-900">
+                            {documentLabel(invoice)}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {formatDate(invoice.issueDate)}
+                          </p>
+                        </Link>
+                        {/* The admin finds this button on the invoice screen (FactureDetail). */}
+                        {session.role !== "ADMIN" && (
+                          <a
+                            href={invoicePdfPath(invoice.id, "parametre")}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Le même document, une ligne par paramètre : la quantité est le nombre d'analyses."
+                            className="mt-0.5 inline-block rounded text-xs font-semibold text-brand underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                          >
+                            PDF par paramètre
+                          </a>
+                        )}
+                      </div>
                       <div className="text-right">
                         <p
                           className={`text-sm font-semibold ${

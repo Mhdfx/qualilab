@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useInvoiceBasePath } from "@/lib/invoice-paths";
-import { ArrowLeft, Download, Printer } from "lucide-react";
+import { ArrowLeft, Download, Layers, Printer } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { formatCurrency, formatDate, formatDecimal } from "@/lib/labels";
 import type { CompanyInfo } from "@/lib/company";
 import { computeInvoiceTotals } from "@/lib/invoice-math";
+import { invoicePdfPath } from "@/lib/invoice-html-layout";
 import { INVOICE_NOTICE_LABELS, invoiceNotices } from "@/lib/invoice-notices";
 import { InvoiceStateBadge } from "@/components/invoices/InvoiceStateBadge";
 import { InvoiceActionsBar, InvoiceLedger } from "@/components/invoices/InvoiceManagement";
@@ -96,13 +97,25 @@ export function FactureDetail({
           {/* Rendered server-side, like the analysis report: selectable text
               and real page breaks rather than a screenshot of this page. */}
           <a
-            href={`/api/invoices/${invoice.id}/pdf`}
+            href={invoicePdfPath(invoice.id)}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full bg-gradient-to-b from-[#234b73] to-[#1a3a5c] px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand/25 transition-all hover:from-[#2d6a9f] hover:to-[#1a3a5c] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 active:scale-[0.98]"
           >
             <Download className="h-4 w-4" aria-hidden="true" />
             Télécharger (PDF)
+          </a>
+          {/* Q30: the same document, one line per parameter — amounts, number
+              and totals unchanged (invoice-html-layout.ts). */}
+          <a
+            href={invoicePdfPath(invoice.id, "parametre")}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Le même document, une ligne par paramètre : la quantité est le nombre d'analyses."
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand active:scale-[0.98]"
+          >
+            <Layers className="h-4 w-4" aria-hidden="true" />
+            PDF par paramètre
           </a>
         </div>
       </div>

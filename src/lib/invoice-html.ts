@@ -5,6 +5,7 @@ import { formatDate, formatDecimal } from "./labels";
 import { amountToFrenchWords } from "./number-to-words-fr";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
 import { balance, invoiceState, type InvoiceState } from "./invoice-lifecycle";
+import { groupLinesByParameter, type InvoiceLayout, type LayoutSourceLine } from "./invoice-html-layout";
 
 /**
  * The invoice — or credit note — as a printable document.
@@ -20,6 +21,11 @@ import { balance, invoiceState, type InvoiceState } from "./invoice-lifecycle";
  * an « ANNULÉE » stamp with the date and the reason; an issued invoice shows
  * what was settled and what is left to pay; a credit note is titled
  * « AVOIR N° AV-… » and names the invoice it corrects.
+ *
+ * Two layouts of the same document (Q30, `invoice-html-layout.ts`): one line
+ * per analysis and per sample (the default), or one line per parameter. Only
+ * the table of lines differs; everything else — totals, VAT, number, client,
+ * stamps, payment — is printed alike.
  */
 
 export type InvoiceDocument = {
@@ -43,12 +49,8 @@ export type InvoiceDocument = {
     email: string | null;
     ice: string | null;
   };
-  items: {
-    description: string;
-    quantity: number;
-    unitPrice: number;
-    lineTotal: number;
-  }[];
+  /** `fromSample` is read by the « par paramètre » layout only. */
+  items: LayoutSourceLine[];
   /** Sum of the settlements (issued invoice). */
   paidAmount?: number;
   /** Sum of the credit notes issued against it (issued invoice). */
@@ -83,10 +85,39 @@ export function invoiceDocumentTitle(invoice: Pick<InvoiceDocument, "kind" | "nu
   return invoice.number ? `${kind} ${invoice.number}` : `${kind} (brouillon)`;
 }
 
+/** « Échantillon : 480/26-2 » / « Échantillons : 480/26-2, 480/26-3 » — under a parameter's line. */
+function referencesLine(references: readonly string[]): string {
+  return `${references.length > 1 ? "Échantillons" : "Échantillon"} : ${references.map(escapeHtml).join(", ")}`;
+}
+
+/** The « par paramètre » table: a parameter's line names the samples it adds up. */
+function parameterRows(items: readonly LayoutSourceLine[]): string {
+  return groupLinesByParameter(items)
+    .map(
+      (line) => `
+      <tr>
+        <td class="desc">${escapeHtml(line.description)}${
+          line.references.length > 0 ? `<div class="refs">${referencesLine(line.references)}</div>` : ""
+        }</td>
+        <td class="num">${formatDecimal(line.quantity, 2)}</td>
+        <td class="num">${money(line.unitPrice)}</td>
+        <td class="num strong">${money(line.lineTotal)}</td>
+      </tr>`
+    )
+    .join("");
+}
+
+/** Styles of the « par paramètre » layout only — the default document is printed byte for byte as before. */
+const PARAMETER_LAYOUT_CSS = `
+  .layout { margin: 0 0 6px; font-size: 8.4pt; color: #55707d; }
+  .refs { margin-top: 2px; font-size: 7.8pt; font-weight: 400; color: #55707d; }`;
+
 export function buildInvoiceHtml(
   invoice: InvoiceDocument,
-  company: CompanyInfo = COMPANY
+  company: CompanyInfo = COMPANY,
+  { layout = "ligne" }: { layout?: InvoiceLayout } = {}
 ): string {
+  const byParameter = layout === "parametre";
   const isCreditNote = invoice.kind === "AVOIR";
   const isDraft = !isCreditNote && invoice.status === "BROUILLON";
   const isCancelled = !isCreditNote && invoice.status === "ANNULEE";
@@ -102,17 +133,24 @@ export function buildInvoiceHtml(
   const badge = STATE_BADGES[state];
   const title = invoiceDocumentTitle(invoice);
 
-  const rows = invoice.items
-    .map(
-      (item) => `
+  const rows = byParameter
+    ? parameterRows(invoice.items)
+    : invoice.items
+        .map(
+          (item) => `
       <tr>
         <td class="desc">${escapeHtml(item.description)}</td>
         <td class="num">${formatDecimal(item.quantity, 2)}</td>
         <td class="num">${money(item.unitPrice)}</td>
         <td class="num strong">${money(item.lineTotal)}</td>
       </tr>`
-    )
-    .join("");
+        )
+        .join("");
+
+  // Said above the table, so the reader knows why a line counts several analyses.
+  const layoutCaption = byParameter
+    ? `<p class="layout">Présentation par paramètre : une ligne par paramètre et par prix unitaire ; la quantité est le nombre d'analyses.</p>\n`
+    : "";
 
   const numberLine = invoice.number
     ? `N° <b>${escapeHtml(invoice.number)}</b><br>`
@@ -247,7 +285,7 @@ export function buildInvoiceHtml(
   .payment .row { margin-top: 1px; }
   .payment b { color: #1b2a33; }
   footer { position: fixed; bottom: 0; left: 0; right: 0; font-size: 7pt; color: #7d929c;
-    text-align: center; border-top: 1px solid #e3eaee; padding-top: 4px; }
+    text-align: center; border-top: 1px solid #e3eaee; padding-top: 4px; }${byParameter ? PARAMETER_LAYOUT_CSS : ""}
 </style>
 </head>
 <body>
@@ -297,7 +335,7 @@ ${cancelStamp}
   </div>
 </div>
 
-<table>
+${layoutCaption}<table>
   <thead>
     <tr>
       <th style="width:58%">Désignation</th>
