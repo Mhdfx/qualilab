@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Check, Package, Search, X } from "lucide-react";
+import { criteriaCountLabel } from "@/lib/family-list";
 import { fmt } from "@/lib/interpretation";
 import {
   familyFilterFor,
@@ -22,7 +23,8 @@ import type { CriterionRef, ProductTypeRef, ProgrammeReferentialData } from "./p
  * families still « à préciser » — and « Tous » shows everything (the route
  * accepts any family of the catalogue or of the client); the search forgives
  * accents and a typo; the client's own families come first, each with its
- * number of germs with a criterion.
+ * number of germs with a criterion — the count « Familles & critères » shows
+ * (D-17, `criteriaCountLabel`).
  *
  * Highlighting a family previews its « Paramètres à rechercher » (F6) and
  * never touches the draft: only « Choisir » hands the choice to the sheet,
@@ -53,10 +55,6 @@ const FOCUSABLE =
 
 /** The « Tous » option of the filter (a nature id is never empty). */
 const ALL = "";
-
-/** One per germ (the version in force), as the preview and « Paramètres à rechercher » list them. */
-const criteriaCountLabel = (count: number) =>
-  count === 0 ? "aucun critère" : `${count} critère${count > 1 ? "s" : ""}`;
 
 /** m and M in the laboratory's notation, « Absence » for an absence test — as the sheet shows them. */
 function limits(criterion: CriterionRef): { m: string; bigM: string } {
@@ -395,10 +393,10 @@ export function FamilyPickerDialog({ referential, draft, onChoose, onClose }: Fa
                             <th scope="col" className="pb-2 pr-3 font-medium">Germe</th>
                             <th scope="col" className="pb-2 pr-3 font-medium">Norme</th>
                             <th scope="col" className="pb-2 pr-3 font-medium">Unité</th>
-                            <th scope="col" className="pb-2 pr-3 text-right font-medium">n</th>
-                            <th scope="col" className="pb-2 pr-3 text-right font-medium">c</th>
-                            <th scope="col" className="pb-2 pr-3 text-right font-medium">m</th>
-                            <th scope="col" className="pb-2 text-right font-medium">M</th>
+                            <th scope="col" className="pb-2 pr-3 text-right font-medium normal-case">n</th>
+                            <th scope="col" className="pb-2 pr-3 text-right font-medium normal-case">c</th>
+                            <th scope="col" className="pb-2 pr-3 text-right font-medium normal-case">m</th>
+                            <th scope="col" className="pb-2 text-right font-medium normal-case">M</th>
                           </tr>
                         </thead>
                         <tbody>

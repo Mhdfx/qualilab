@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { formatDateTime } from "@/lib/labels";
 import { DEFAULT_THRESHOLDS } from "@/lib/reception-rules";
@@ -26,7 +28,9 @@ import {
   groupParameters,
   initialDraft,
   natureChangeNotice,
+  natureChangeOutcome,
   natureChoices,
+  natureDetachNotice,
   natureHint,
   otherParameterGroups,
   parameterFamilies,
@@ -880,7 +884,9 @@ describe("nature d'analyse (Q49 by default)", () => {
       const micro = { ...initialDraft(received, withSensory), unitCount: 5, productTypeId: "type-catalogue" };
       const { draft, reset } = adoptReferential(micro, withSensory, onSensory);
       expect(draft).toMatchObject({ natureId: "nat-sens", unitCount: 1, productTypeId: "" });
-      expect(reset).toEqual({ unitCount: 5, productType: withSensory.productTypes.find((t) => t.id === "type-catalogue")!.name });
+      // E. coli is the préleveur's request (no family stored at opening): it stays.
+      expect(draft.parameterIds).toEqual(["p-ecoli"]);
+      expect(reset).toEqual({ unitCount: 5, productType: withSensory.productTypes.find((t) => t.id === "type-catalogue")!.name, removed: [] });
       expect(natureChangeNotice("Analyse sensorielle", [], false, reset)).toBe(
         `Nature « Analyse sensorielle » choisie ; n ramené à 1 (au lieu de 5), famille « ${reset!.productType} » retirée : une autre analyse se lit sur une seule unité. Enregistrez le programme pour l'appliquer.`
       );
@@ -890,6 +896,140 @@ describe("nature d'analyse (Q49 by default)", () => {
       const back = adoptReferential({ ...draft, unitCount: 3 }, onSensory, { ...withSensory, natures: onSensory.natures });
       expect(back.reset).toBeNull();
       expect(back.draft.unitCount).toBe(3);
+    });
+
+    describe("the family's analyses leave with it (RETOUR-LABO-19-10.md D-16)", () => {
+      /** The préleveur asked for the total flora; « Plat cuisiné » chosen on the sheet, histamine ticked by hand. */
+      const programmed = () =>
+        toggleParameter(
+          applyProductType(initialDraft({ ...received, parameterIds: ["p-flore"], parameters: [] }, withSensory), "type-catalogue", withSensory),
+          "p-hist",
+          withSensory
+        );
+
+      it("removes what came only from the family, as « — aucune — » does, and keeps what was asked for", () => {
+        const before = programmed();
+        expect(before.parameterIds).toEqual(["p-flore", "p-ecoli", "p-salm", "p-hist"]);
+        const { draft, dropped, reset } = adoptReferential(before, withSensory, onSensory);
+        // Not « 4 analyses · n = 1 · sans famille »: the family's germs are gone.
+        expect(draft).toMatchObject({ natureId: "nat-sens", productTypeId: "", unitCount: 1, parameterIds: ["p-flore", "p-hist"] });
+        expect(draft.parameterIds).toEqual(applyProductType(before, "", withSensory).parameterIds);
+        expect(dropped).toEqual([]);
+        expect(reset).toEqual({ unitCount: 5, productType: "Plat cuisiné", removed: ["E. coli", "Salmonelles"] });
+        // What the sheet remembers is untouched: a way back loses nothing.
+        expect(draft.manualIds).toEqual(before.manualIds);
+        expect(draft.settings["p-ecoli"].normVersionId).toBe("nv-ecoli-2021");
+      });
+
+      it("keeps a germ of the family ticked again by hand", () => {
+        const again = toggleParameter(toggleParameter(programmed(), "p-salm", withSensory), "p-salm", withSensory);
+        const { draft, reset } = adoptReferential(again, withSensory, onSensory);
+        expect(draft.parameterIds).toEqual(["p-flore", "p-hist", "p-salm"]);
+        expect(reset?.removed).toEqual(["E. coli"]);
+      });
+
+      it("says which analyses left with the family — once, beside those the nature does not offer", () => {
+        const { dropped, reset } = adoptReferential(programmed(), withSensory, onSensory);
+        expect(natureChangeNotice("Analyse sensorielle", dropped, false, reset)).toBe(
+          "Nature « Analyse sensorielle » choisie ; n ramené à 1 (au lieu de 5), famille « Plat cuisiné » retirée : une autre analyse se lit sur une seule unité ; 2 analyses venues de cette famille ont été retirées (« E. coli », « Salmonelles »). Enregistrez le programme pour l'appliquer."
+        );
+        // A sensory referential without Salmonelles: said as not offered, never twice.
+        const narrower = { ...onSensory, parameters: onSensory.parameters.filter((p) => p.id !== "p-salm") };
+        const other = adoptReferential(programmed(), withSensory, narrower);
+        expect(other.dropped).toEqual(["Salmonelles"]);
+        expect(other.reset?.removed).toEqual(["E. coli"]);
+        expect(natureChangeNotice("Analyse sensorielle", other.dropped, false, other.reset)).toBe(
+          "Nature « Analyse sensorielle » choisie : l'analyse « Salmonelles » n'existe pas pour cette nature et a été retirée ; n ramené à 1 (au lieu de 5), famille « Plat cuisiné » retirée : une autre analyse se lit sur une seule unité ; l'analyse « E. coli », venue de cette famille, a été retirée. Enregistrez le programme pour l'appliquer."
+        );
+      });
+
+      it("n = 1 stays the rule (Q133 unanswered): a family read on one unit is detached all the same", () => {
+        const withPoultry = { ...withSensory, productTypes: [...withSensory.productTypes, { id: "type-volaille", name: "Volaille crue", family: "MICRO" as const, natureId: "nat", clientId: null, criteriaCount: 1, criteria: [{ parameterId: "p-salm", parameterName: "Salmonelles", n: 1, c: null, mKind: "ABSENCE" as const, m: null, bigM: null, unit: "/1g", normVersionId: null, normVersion: null }] }] };
+        const poultry = applyProductType(initialDraft({ ...received, parameterIds: [], parameters: [] }, withPoultry), "type-volaille", withPoultry);
+        expect(poultry.unitCount).toBe(1);
+        const { draft, reset } = adoptReferential(poultry, withPoultry, { ...onSensory, productTypes: withPoultry.productTypes });
+        expect(draft).toMatchObject({ unitCount: 1, productTypeId: "", parameterIds: [] });
+        expect(natureChangeNotice("Analyse sensorielle", [], false, reset)).toBe(
+          "Nature « Analyse sensorielle » choisie ; famille « Volaille crue » retirée : une autre analyse se lit sur une seule unité ; l'analyse « Salmonelles », venue de cette famille, a été retirée. Enregistrez le programme pour l'appliquer."
+        );
+      });
+    });
+
+    describe("a change of nature clears the notice of a change of family (RETOUR-LABO-19-10.md D-15)", () => {
+      it("into « Analyse sensorielle », after a family was chosen: « Famille X choisie » replaced, in amber, by the family detached", () => {
+        const asked = initialDraft({ ...received, parameterIds: ["p-flore"], parameters: [] }, withSensory);
+        const withFamily = applyProductType(asked, "type-catalogue", withSensory);
+        // What section 1 said after the choice of family.
+        expect(familyChangeNotice(asked, withFamily, withSensory)).toMatch(/^Famille « Plat cuisiné » choisie/);
+        const outcome = natureChangeOutcome(withFamily, withSensory, onSensory, "nat");
+        // Said where the family is shown (D-16), not only at the foot of the sheet.
+        expect(outcome.familyNotice).toEqual({
+          text: "Famille « Plat cuisiné » retirée avec la nature « Analyse sensorielle » : n ramené à 1 (au lieu de 5) ; 2 analyses venues de cette famille ont été retirées (« E. coli », « Salmonelles »). Enregistrez le programme pour l'appliquer.",
+          tookAway: true,
+        });
+        expect(outcome.familyNotice!.text).not.toMatch(/choisie/);
+        expect(outcome.draft).toMatchObject({ productTypeId: "", unitCount: 1, parameterIds: ["p-flore"] });
+        expect(outcome.notice).toBe(
+          "Nature « Analyse sensorielle » choisie ; n ramené à 1 (au lieu de 5), famille « Plat cuisiné » retirée : une autre analyse se lit sur une seule unité ; 2 analyses venues de cette famille ont été retirées (« E. coli », « Salmonelles »). Enregistrez le programme pour l'appliquer."
+        );
+      });
+
+      it("says only what the detachment took: the family alone, one analysis, or n without a family", () => {
+        expect(natureDetachNotice("Analyse sensorielle", { unitCount: 1, productType: "Volaille crue", removed: [] })).toBe(
+          "Famille « Volaille crue » retirée avec la nature « Analyse sensorielle ». Enregistrez le programme pour l'appliquer."
+        );
+        expect(natureDetachNotice("Analyse sensorielle", { unitCount: 1, productType: "Volaille crue", removed: ["Salmonelles"] })).toBe(
+          "Famille « Volaille crue » retirée avec la nature « Analyse sensorielle » : l'analyse « Salmonelles », venue de cette famille, a été retirée. Enregistrez le programme pour l'appliquer."
+        );
+        // No family on the line: n lowered all the same, never silently.
+        const micro = { ...initialDraft(received, withSensory), unitCount: 3, productTypeId: "" };
+        const outcome = natureChangeOutcome(micro, withSensory, onSensory, "nat");
+        expect(outcome.familyNotice).toEqual({
+          text: "Nature « Analyse sensorielle » : n ramené à 1 (au lieu de 3). Enregistrez le programme pour l'appliquer.",
+          tookAway: true,
+        });
+        // Already n = 1 without a family: nothing reset, nothing said in section 1.
+        expect(natureChangeOutcome({ ...micro, unitCount: 1 }, withSensory, onSensory, "nat").familyNotice).toBeNull();
+      });
+
+      it("the sheet hands the outcome's family notice to section 1 on every change of nature", () => {
+        // The rule lives in `natureChangeOutcome`; this guards the one line that applies it.
+        const sheet = readFileSync(fileURLToPath(new URL("./ProgrammeSheet.tsx", import.meta.url)), "utf8");
+        const start = sheet.indexOf("async function changeNature(");
+        const end = sheet.indexOf("async function save(", start);
+        expect(start).toBeGreaterThan(-1);
+        expect(end).toBeGreaterThan(start);
+        const body = sheet.slice(start, end);
+        expect(body).toContain("natureChangeOutcome(");
+        expect(body).toContain("setFamilyNotice(outcome.familyNotice)");
+        // Never the bare referential swap of before D-15, which left the old notice standing.
+        expect(body).not.toContain("adoptReferential(");
+      });
+
+      it("any other nature too, the family kept or not; the stored nature reads « rétablie »", () => {
+        const fine = { ...withSensory, natureId: "nat-fine" };
+        const withFamily = applyProductType(initialDraft(received, withSensory), "type-catalogue", withSensory);
+        const there = natureChangeOutcome(withFamily, withSensory, fine, "nat");
+        expect(there.familyNotice).toBeNull();
+        expect(there.draft.productTypeId).toBe("type-catalogue");
+        expect(there.notice).toBe("Nature « Nature fine de test » choisie. Enregistrez le programme pour l'appliquer.");
+        const back = natureChangeOutcome(there.draft, fine, withSensory, "nat");
+        expect(back.familyNotice).toBeNull();
+        expect(back.notice).toBe("Nature d'origine « Microbiologie des aliments » rétablie. Enregistrez le programme pour l'appliquer.");
+      });
+    });
+
+    describe("the plan's letters keep their case in every criteria table (D-18 review)", () => {
+      it("n, c, m and M are never uppercased with the rest of the header: m and M would both read « M »", () => {
+        const tables = ["./ProgrammeSheet.tsx", "./FamilyPickerDialog.tsx", "../admin/CriteriaGrid.tsx"].map((path) =>
+          readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8")
+        );
+        for (const source of tables) {
+          const letters = [...source.matchAll(/<th\b([^>]*)>\s*([ncmM])\s*<\/th>/g)];
+          expect(letters.map((match) => match[2])).toEqual(["n", "c", "m", "M"]);
+          for (const [, attributes] of letters) expect(attributes).toMatch(/\bnormal-case\b/);
+        }
+      });
     });
 
     it("offers the sensory analysis beside the line's own family, never the other family", () => {

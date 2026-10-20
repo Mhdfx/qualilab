@@ -2,6 +2,7 @@ import "server-only";
 import type { Family, LineKind, SampleType } from "@/generated/prisma/enums";
 import { prisma } from "./prisma";
 import { buildCatalogueIndex, catalogueKey, type CatalogueEntry } from "./billing";
+import { germCount } from "./family-list";
 import { toMoney } from "./money";
 import {
   natureHomeFromJournal,
@@ -492,9 +493,10 @@ export async function loadProgrammeReferential(
        * Its germs with an active criterion — the picker and the sheet show the
        * count (F5). One per germ, as the preview and « Paramètres à
        * rechercher » list them (the version in force, `criteriaOf`), not one
-       * per row: an older norm version of a germ is no criterion more.
+       * per row: an older norm version of a germ is no criterion more — the
+       * count of « Familles & critères » too (D-17, `germCount`).
        */
-      criteriaCount: new Set(type.criteria.map((criterion) => criterion.parameterId)).size,
+      criteriaCount: germCount(type.criteria),
       criteria: type.criteria.map((criterion) => ({
         parameterId: criterion.parameterId,
         parameterName: criterion.parameter.name,

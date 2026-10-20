@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, Scale } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { WrappingSelect } from "@/components/ui/WrappingSelect";
 
 /**
  * The regulation proposed for a famille de produits' samples
@@ -81,20 +82,23 @@ export function RegulationEditor({
           )}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <select
+          {/* A regulation's long title wraps rather than being cut (RETOUR-LABO-19-10.md D-18). */}
+          <WrappingSelect
             id="pt-regulation"
+            variant="field"
+            className="min-w-0 flex-1 basis-72"
             value={value}
             onChange={(e) => {
               setValue(e.target.value);
               setSaved(false);
             }}
-            className="input-field max-w-xl px-3"
+            display={options.find((o) => o.id === value)?.title ?? "— celle du domaine —"}
           >
             <option value="">— celle du domaine —</option>
             {options.map((o) => (
               <option key={o.id} value={o.id}>{o.title}</option>
             ))}
-          </select>
+          </WrappingSelect>
           <button
             type="submit"
             disabled={saving || value === (initialId ?? "")}

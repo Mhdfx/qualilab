@@ -68,7 +68,8 @@ export async function GET(request: Request) {
         clientId: row.clientId,
         clientName: row.client?.name ?? null,
         active: row.active,
-        criteriaCount: row.criteria.length,
+        // One per germ, as every screen counts them (RETOUR-LABO-19-10.md D-17).
+        criteriaCount: parameterIds.length,
         parameterIds,
         unitCount: row.criteria.reduce((max, c) => Math.max(max, c.n), 1),
       };

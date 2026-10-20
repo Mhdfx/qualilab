@@ -4,8 +4,12 @@ import {
   NO_FAMILY_FILTER,
   UNCLASSIFIED,
   UNCLASSIFIED_LABEL,
+  criteriaCountLabel,
+  criteriaGridCountLabel,
+  criteriaGridSavedNotice,
   familyListQuery,
   filterFamilyList,
+  germCount,
   groupFamiliesByNature,
   parseFamilyListFilter,
   withFamilyListQuery,
@@ -151,5 +155,59 @@ describe("the list's address keeps its filters", () => {
     expect(href).toBe("/programmation/familles/f1?type=a_preciser&sans=1&q=plats+cuisin%C3%A9s");
     const params = Object.fromEntries(new URL(href, "http://localhost").searchParams);
     expect(parseFamilyListFilter(params, known)).toEqual(chosen);
+  });
+});
+
+describe("one count of criteria on every screen (RETOUR-LABO-19-10.md D-17)", () => {
+  /** A family kept under two versions of one norm for one germ: 6 rows, 5 germs (« CONFITURES, COMPOTES… » on the copy). */
+  const rows = [
+    { parameterId: "p-levures", active: true },
+    { parameterId: "p-moisissures", active: true },
+    { parameterId: "p-flore", active: true },
+    { parameterId: "p-coliformes", active: true },
+    { parameterId: "p-staph", active: true },
+    // The same germ under the older version of its norm: no criterion more.
+    { parameterId: "p-staph", active: true },
+  ];
+
+  it("counts the distinct germs, never the rows — the list, the picker and the sheet say the same number", () => {
+    expect(germCount(rows)).toBe(5);
+    expect(germCount([])).toBe(0);
+    expect(criteriaCountLabel(germCount(rows))).toBe("5 critères");
+    expect(criteriaCountLabel(1)).toBe("1 critère");
+    expect(criteriaCountLabel(0)).toBe("aucun critère");
+  });
+
+  it("the family's grid also says how many rows it holds, when they are more", () => {
+    expect(criteriaGridCountLabel(rows)).toBe("5 critères · 6 lignes");
+    expect(criteriaGridCountLabel(rows.slice(0, 5))).toBe("5 critères");
+    // An inactive row and a row without a germ yet are rows, not criteria.
+    expect(criteriaGridCountLabel([...rows.slice(0, 5), { parameterId: "p-salm", active: false }, { parameterId: "", active: true }])).toBe(
+      "5 critères · 7 lignes"
+    );
+    expect(criteriaGridCountLabel([{ parameterId: "p-salm", active: false }])).toBe("aucun critère · 1 ligne");
+    expect(criteriaGridCountLabel([])).toBe("aucun critère");
+  });
+
+  it("the grid's save notice gives that count, and never « enregistrés (aucun critère) »", () => {
+    expect(criteriaGridSavedNotice(rows)).toBe("Critères enregistrés (5 critères · 6 lignes).");
+    expect(criteriaGridSavedNotice(rows.slice(0, 1))).toBe("Critères enregistrés (1 critère).");
+    // Every row deleted, then saved.
+    expect(criteriaGridSavedNotice([])).toBe("Critères enregistrés : la famille n'a aucun critère et sera lue en valeur simple, sans verdict.");
+    // Inactive rows only: kept, but no criterion is read.
+    expect(criteriaGridSavedNotice([{ parameterId: "p-salm", active: false }])).toBe(
+      "Critères enregistrés : aucun critère actif (1 ligne inactive), la famille sera lue en valeur simple, sans verdict."
+    );
+    expect(criteriaGridSavedNotice([{ parameterId: "p-salm", active: false }, { parameterId: "p-staph", active: false }])).toBe(
+      "Critères enregistrés : aucun critère actif (2 lignes inactives), la famille sera lue en valeur simple, sans verdict."
+    );
+    for (const saved of [[], [{ parameterId: "p-salm", active: false }], rows]) {
+      expect(criteriaGridSavedNotice(saved)).not.toMatch(/\(aucun critère/);
+    }
+  });
+
+  it("« Sans critère » still finds only the families without any", () => {
+    const counted = row({ id: "f8", name: "CONFITURES, COMPOTES", criteriaCount: germCount(rows) });
+    expect(ids(filterFamilyList([...ROWS, counted], filter({ withoutCriteria: true }), GERMS))).toEqual(["f4", "f5"]);
   });
 });

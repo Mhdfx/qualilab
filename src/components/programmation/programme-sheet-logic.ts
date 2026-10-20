@@ -584,9 +584,10 @@ export function natureHint(family: Family, twin: SampleTwin | null, choices: num
 
 /**
  * What moving a line into « Autres analyses » undid (`adoptReferential`):
- * the units it had, and the family it carried — null when unchanged.
+ * the units it had, the family it carried — null when unchanged — and, by
+ * name, the analyses that came only from that family (D-16).
  */
-export type OtherAnalysesReset = { unitCount: number; productType: string | null };
+export type OtherAnalysesReset = { unitCount: number; productType: string | null; removed: string[] };
 
 /**
  * The draft once the referential of another nature replaced the one on
@@ -600,9 +601,13 @@ export type OtherAnalysesReset = { unitCount: number; productType: string | null
  * sensorielle », 16/10, Q129 — RETOUR-LABO-16-10.md F9: « garder n = 1 pour
  * la sensorielle »): n goes back to 1 and the family is detached — the
  * micro family's n = 5 would have every analysis read per unit, R1–R5, and
- * its criteria are not the sensory analysis's. `reset` says what changed;
- * the laboratory confirms the rule against its old software's n = 5
- * (NEEDEDINFO Q133).
+ * its criteria are not the sensory analysis's. The family leaves as
+ * « — aucune — » takes it (RETOUR-LABO-19-10.md D-16, `applyProductType`):
+ * the analyses that came only from it leave too — a sensory sample never
+ * goes to the bench with the family's micro germs — while those asked for
+ * stay (ticked by hand, a profile, the préleveur's requests). `reset` says
+ * what changed; the laboratory confirms the rule against its old
+ * software's n = 5 (NEEDEDINFO Q133).
  */
 export function adoptReferential(
   draft: ProgrammeDraft,
@@ -611,29 +616,41 @@ export function adoptReferential(
 ): { draft: ProgrammeDraft; dropped: string[]; reset: OtherAnalysesReset | null } {
   const known = new Set(next.parameters.map((parameter) => parameter.id));
   const kept = draft.parameterIds.filter((id) => known.has(id));
-  const dropped = draft.parameterIds
-    .filter((id) => !known.has(id))
-    .map((id) => previous.parameters.find((parameter) => parameter.id === id)?.name ?? id);
+  const nameOf = (id: string) => previous.parameters.find((parameter) => parameter.id === id)?.name ?? id;
+  const dropped = draft.parameterIds.filter((id) => !known.has(id)).map(nameOf);
   const familyOf = (r: ProgrammeReferentialData) => r.natures.find((nature) => nature.id === r.natureId)?.family ?? null;
   const intoOther = familyOf(next) === "AUTRE" && familyOf(previous) !== "AUTRE";
   if (intoOther && (draft.unitCount !== 1 || draft.productTypeId)) {
-    const reset = { unitCount: draft.unitCount, productType: draft.productTypeId ? typeOf(previous, draft.productTypeId)?.name ?? null : null };
-    return { draft: { ...draft, natureId: next.natureId, parameterIds: kept, productTypeId: "", unitCount: 1 }, dropped, reset };
+    // Read on the referential the family was chosen on; settings are kept, for a way back.
+    const detached = applyProductType(draft, "", previous).parameterIds;
+    const parameterIds = kept.filter((id) => detached.includes(id));
+    const reset = {
+      unitCount: draft.unitCount,
+      productType: draft.productTypeId ? typeOf(previous, draft.productTypeId)?.name ?? null : null,
+      // The new nature's own analyses only: the others are already `dropped`.
+      removed: kept.filter((id) => !detached.includes(id)).map(nameOf),
+    };
+    return { draft: { ...draft, natureId: next.natureId, parameterIds, productTypeId: "", unitCount: 1 }, dropped, reset };
   }
   // The product type stays only while the client may still use it.
   const productTypeId = draft.productTypeId && typeOf(next, draft.productTypeId) ? draft.productTypeId : "";
   return { draft: { ...draft, natureId: next.natureId, parameterIds: kept, productTypeId }, dropped, reset: null };
 }
 
-/** « Nature « Huiles » choisie : 2 analyses retirées (« A », « B ») … ». */
+/**
+ * « Nature « Huiles » choisie : 2 analyses retirées (« A », « B ») … » — and,
+ * into « Autres analyses », the n and the family undone and the analyses
+ * that left with the family (D-16).
+ */
 export function natureChangeNotice(label: string, dropped: string[], current: boolean, reset: OtherAnalysesReset | null = null): string {
   const head = current ? `Nature d'origine « ${label} » rétablie` : `Nature « ${label} » choisie`;
+  const quoted = (names: string[]) => names.map((name) => `« ${name} »`).join(", ");
   const removed =
     dropped.length === 0
       ? ""
       : dropped.length === 1
         ? ` : l'analyse « ${dropped[0]} » n'existe pas pour cette nature et a été retirée`
-        : ` : ${dropped.length} analyses n'existent pas pour cette nature et ont été retirées (${dropped.map((name) => `« ${name} »`).join(", ")})`;
+        : ` : ${dropped.length} analyses n'existent pas pour cette nature et ont été retirées (${quoted(dropped)})`;
   const parts = reset
     ? [
         ...(reset.unitCount !== 1 ? [`n ramené à 1 (au lieu de ${reset.unitCount})`] : []),
@@ -641,7 +658,61 @@ export function natureChangeNotice(label: string, dropped: string[], current: bo
       ]
     : [];
   const otherAnalyses = parts.length > 0 ? ` ; ${parts.join(", ")} : une autre analyse se lit sur une seule unité` : "";
-  return `${head}${removed}${otherAnalyses}. Enregistrez le programme pour l'appliquer.`;
+  const fromFamily = reset?.removed ?? [];
+  const familyAnalyses =
+    fromFamily.length === 0
+      ? ""
+      : fromFamily.length === 1
+        ? ` ; l'analyse « ${fromFamily[0]} », venue de cette famille, a été retirée`
+        : ` ; ${fromFamily.length} analyses venues de cette famille ont été retirées (${quoted(fromFamily)})`;
+  return `${head}${removed}${otherAnalyses}${familyAnalyses}. Enregistrez le programme pour l'appliquer.`;
+}
+
+/**
+ * Section 1's notice once a nature of « Autres analyses » detached the
+ * family (`adoptReferential`, D-16) — « Famille « X » retirée avec la nature
+ * « Analyse sensorielle » : n ramené à 1 (au lieu de 5) ; 2 analyses venues
+ * de cette famille ont été retirées (…) » — said where the family is shown,
+ * not only at the foot of the sheet. A line without a family only had its n
+ * lowered.
+ */
+export function natureDetachNotice(label: string, reset: OtherAnalysesReset): string {
+  const head = reset.productType ? `Famille « ${reset.productType} » retirée avec la nature « ${label} »` : `Nature « ${label} »`;
+  const removed =
+    reset.removed.length === 0
+      ? []
+      : reset.removed.length === 1
+        ? [`l'analyse « ${reset.removed[0]} », venue de cette famille, a été retirée`]
+        : [`${reset.removed.length} analyses venues de cette famille ont été retirées (${reset.removed.map((name) => `« ${name} »`).join(", ")})`];
+  const parts = [...(reset.unitCount !== 1 ? [`n ramené à 1 (au lieu de ${reset.unitCount})`] : []), ...removed];
+  return `${head}${parts.length > 0 ? ` : ${parts.join(" ; ")}` : ""}. Enregistrez le programme pour l'appliquer.`;
+}
+
+/**
+ * What the sheet shows once the referential of another nature replaced the
+ * one on screen (`changeNature`): the draft (`adoptReferential`), the notice
+ * — and, in section 1, no notice of an earlier change of family any more
+ * (RETOUR-LABO-19-10.md D-15), as after a save: it named the family chosen,
+ * which « Analyse sensorielle » may just have detached — « Aucune famille »
+ * under « Famille X choisie ». When it did, the old notice is replaced by
+ * the detachment (`natureDetachNotice`), amber like a change of family that
+ * took something away (F6, never silently): the family, maybe n and
+ * analyses, went without being asked for. `savedNatureId` is the nature the
+ * sample carries in the database.
+ */
+export function natureChangeOutcome(
+  draft: ProgrammeDraft,
+  previous: ProgrammeReferentialData,
+  next: ProgrammeReferentialData,
+  savedNatureId: string
+): { draft: ProgrammeDraft; notice: string; familyNotice: { text: string; tookAway: boolean } | null } {
+  const { draft: adopted, dropped, reset } = adoptReferential(draft, previous, next);
+  const label = next.natures.find((nature) => nature.id === next.natureId)?.label ?? "choisie";
+  return {
+    draft: adopted,
+    notice: natureChangeNotice(label, dropped, next.natureId === savedNatureId, reset),
+    familyNotice: reset ? { text: natureDetachNotice(label, reset), tookAway: true } : null,
+  };
 }
 
 /** The warning of PROGRAMME.md §3 when the units read are fewer than the type's plans need. */

@@ -27,6 +27,7 @@ import {
   formatCurrency,
   formatDateTime,
 } from "@/lib/labels";
+import { criteriaCountLabel } from "@/lib/family-list";
 import { fmt } from "@/lib/interpretation";
 import { normInForce, parameterCaption } from "@/lib/parameter-caption";
 import {
@@ -50,7 +51,6 @@ import { SampleVerbs, type VerbSample } from "@/components/samples/SampleVerbs";
 import { FamilyPickerDialog } from "./FamilyPickerDialog";
 import {
   UNIT_CHOICES,
-  adoptReferential,
   applyProductType,
   applyProfile,
   benchHolder,
@@ -68,7 +68,7 @@ import {
   familyParameterRows,
   groupParameters,
   initialDraft,
-  natureChangeNotice,
+  natureChangeOutcome,
   natureChoices,
   natureHint,
   otherParameterGroups,
@@ -216,8 +216,9 @@ export function ProgrammeSheet({
   // Saved on a line an invoice holds, with other analyses: what to tell the accountant.
   const [billingNotice, setBillingNotice] = useState<string | null>(null);
   // What a change of family did (F6), said in section 1 where it was made;
-  // `tookAway` = analyses removed or n lowered (amber). Cleared by the next
-  // change of family or a save.
+  // `tookAway` = analyses removed or n lowered (amber). Replaced by the next
+  // change of family; by a change of nature, cleared (D-15) or replaced by
+  // the family it detached (D-16, `natureChangeOutcome`); cleared by a save.
   const [familyNotice, setFamilyNotice] = useState<{ text: string; tookAway: boolean } | null>(null);
   // « Choisir une famille de produits » (F5), and « Analyses hors famille »
   // folded or not (F6: null = open while one of them is ticked, else folded;
@@ -349,11 +350,12 @@ export function ProgrammeSheet({
         // The « actuelle » flag is the stored nature's, whatever the route computed it for.
         natures: data.referential.natures.map((nature) => ({ ...nature, current: nature.id === savedNatureId })),
       };
-      const result = adoptReferential(draftRef.current, referential, next);
+      // The family's notice goes too (D-15) — or says, in amber, that the nature detached that family (D-16).
+      const outcome = natureChangeOutcome(draftRef.current, referential, next, savedNatureId);
       setReferential(next);
-      setDraft(result.draft);
-      const label = next.natures.find((nature) => nature.id === next.natureId)?.label ?? "choisie";
-      setNotice(natureChangeNotice(label, result.dropped, next.natureId === savedNatureId, result.reset));
+      setDraft(outcome.draft);
+      setNotice(outcome.notice);
+      setFamilyNotice(outcome.familyNotice);
     } catch {
       if (ticket === natureRequest.current) setError("Une erreur réseau est survenue. Réessayez.");
     } finally {
@@ -581,7 +583,7 @@ export function ProgrammeSheet({
                   <span className="block font-medium text-slate-800">{type.name}</span>
                   <span className="block text-xs text-slate-500">
                     {type.clientId ? "Famille du client" : "Catalogue commun"} ·{" "}
-                    {type.criteriaCount === 0 ? "aucun critère" : `${type.criteriaCount} critère${type.criteriaCount > 1 ? "s" : ""}`}
+                    {criteriaCountLabel(type.criteriaCount)}
                     {type.natureId === null ? " · type d'analyse à préciser" : ""}
                   </span>
                 </>
@@ -676,10 +678,10 @@ export function ProgrammeSheet({
                     <th scope="col" className="pb-2 pr-3 font-medium">Germe</th>
                     <th scope="col" className="pb-2 pr-3 font-medium">Norme</th>
                     <th scope="col" className="pb-2 pr-3 font-medium">Unité</th>
-                    <th scope="col" className="pb-2 pr-3 text-right font-medium">n</th>
-                    <th scope="col" className="pb-2 pr-3 text-right font-medium">c</th>
-                    <th scope="col" className="pb-2 pr-3 text-right font-medium">m</th>
-                    <th scope="col" className="pb-2 text-right font-medium">M</th>
+                    <th scope="col" className="pb-2 pr-3 text-right font-medium normal-case">n</th>
+                    <th scope="col" className="pb-2 pr-3 text-right font-medium normal-case">c</th>
+                    <th scope="col" className="pb-2 pr-3 text-right font-medium normal-case">m</th>
+                    <th scope="col" className="pb-2 text-right font-medium normal-case">M</th>
                   </tr>
                 </thead>
                 <tbody>

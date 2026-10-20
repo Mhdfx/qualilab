@@ -2,7 +2,7 @@ import "server-only";
 import type { Family } from "@/generated/prisma/enums";
 import { prisma } from "./prisma";
 import { getLabSettings } from "./lab-settings";
-import { parseFamilyListFilter, type FamilyListFilter, type FamilyListRow } from "./family-list";
+import { germCount, parseFamilyListFilter, type FamilyListFilter, type FamilyListRow } from "./family-list";
 
 /**
  * What the families' screens read (RETOUR-LABO-16-10.md F4): the list and
@@ -68,7 +68,8 @@ export async function loadFamilyList(searchParams: SearchParams): Promise<{
     clientId: type.clientId,
     clientName: type.client?.name ?? null,
     active: type.active,
-    criteriaCount: type.criteria.length,
+    // One per germ, as the picker and the programme sheet count them (D-17).
+    criteriaCount: germCount(type.criteria),
     sampleCount: type._count.samples,
     germs: [...new Set(type.criteria.flatMap((c) => germIndex.get(parameterName.get(c.parameterId) ?? "") ?? []))],
   }));

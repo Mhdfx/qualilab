@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { Check, Plus, Save, Trash2 } from "lucide-react";
 import type { Family, LimitKind, SampleType } from "@/generated/prisma/enums";
 import { Card } from "@/components/ui/Card";
+import { WrappingSelect } from "@/components/ui/WrappingSelect";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { LIMITLESS_HINT, bigMChange, kindChange, toleranceApplies, wideToleranceNote } from "@/lib/criteria-input";
+import { criteriaGridCountLabel, criteriaGridSavedNotice } from "@/lib/family-list";
 import { fmt } from "@/lib/interpretation";
 import { parseLabValue } from "@/lib/result-value";
 import { MAX_UNITS } from "@/lib/series";
@@ -106,6 +108,25 @@ function toDraft(c: CriterionRow): Draft {
   };
 }
 
+/** A type d'analyse as the header offers it; an archived one says so. */
+const natureText = (n: NatureRow) => (n.active ? n.label : `${n.label} (archivé)`);
+
+/** A norm version as the list offers it: « NM ISO 6888-1:2022 · en vigueur ». */
+const versionText = (v: VersionRow) => `${v.code}${v.version ? `:${v.version}` : ""}${v.current ? " · en vigueur" : ""}`;
+
+/**
+ * A norm's code broken at its spaces only — « NM ISO » / « 4833-1:2023 »,
+ * never after the hyphen — unless one part alone is wider than the cell.
+ */
+function NormCode({ text }: { text: string }) {
+  return text.split(" ").map((part, index) => (
+    <Fragment key={index}>
+      {index > 0 && " "}
+      <span className="inline-block max-w-full">{part}</span>
+    </Fragment>
+  ));
+}
+
 const CELL = "w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900 shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50";
 
 /**
@@ -113,6 +134,15 @@ const CELL = "w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text
  * whole, saved whole. The limits are typed in the lab's notation
  * (« 1.10² »). The header names the family, its type d'analyse
  * (RETOUR-LABO-16-10.md F4) — which sets its domain — and its client.
+ *
+ * At 1366 px nothing is cut (RETOUR-LABO-19-10.md D-18): the header holds
+ * two lines — on one, the name and the selects were cut even at 1440 px —
+ * the germ and norm columns take what the narrow ones leave, and the type
+ * d'analyse, the client, the germ and the norm wrap (`WrappingSelect`) —
+ * every select of the page is one, so a row or the header never shows two
+ * kinds of arrow. The count beside the title is the list's — one criterion
+ * per germ (D-17) — plus the rows when an older norm version or an inactive
+ * row adds some.
  */
 export function CriteriaGrid({
   type,
@@ -219,8 +249,10 @@ export function CriteriaGrid({
         setError(data.error ?? "Enregistrement impossible.");
         return;
       }
-      setRows((data.criteria as CriterionRow[]).map(toDraft));
-      setNotice(`${data.criteria.length} critère${data.criteria.length > 1 ? "s" : ""} enregistré${data.criteria.length > 1 ? "s" : ""}.`);
+      const saved = data.criteria as CriterionRow[];
+      setRows(saved.map(toDraft));
+      // The list's count, then the rows (D-17): « 5 critères · 6 lignes » — or, saved empty, no verdict.
+      setNotice(criteriaGridSavedNotice(saved));
       router.refresh();
     } catch {
       setError("Une erreur réseau est survenue. Réessayez.");
@@ -232,27 +264,30 @@ export function CriteriaGrid({
   return (
     <div className="space-y-5">
       <Card className="p-5">
-        <form onSubmit={saveHeader} noValidate className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1.6fr_1fr_1.2fr_auto_auto] lg:items-end">
-          <div>
+        {/* On two lines (D-18): the name and the type d'analyse, then the domain, the client, the state and the save. */}
+        <form onSubmit={saveHeader} noValidate className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12 lg:items-end">
+          <div className="sm:col-span-2 lg:col-span-7">
             <label htmlFor="type-name" className="block text-xs font-medium text-slate-600">Nom</label>
             <input id="type-name" type="text" value={header.name} onChange={(e) => setHeader((h) => ({ ...h, name: e.target.value }))} className="input-field mt-1 px-3" />
           </div>
-          <div>
+          <div className="lg:col-span-5">
             <label htmlFor="type-nature" className="block text-xs font-medium text-slate-600">Type d&apos;analyse</label>
-            <select
+            <WrappingSelect
               id="type-nature"
+              variant="field"
+              className="mt-1"
               value={header.natureId}
               // Back to « à préciser », the domain stays the one the type d'analyse gave.
               onChange={(e) => setHeader((h) => ({ ...h, natureId: e.target.value, family: nature?.family ?? h.family }))}
-              className="input-field mt-1 px-3"
+              display={nature ? natureText(nature) : "— à préciser —"}
             >
               <option value="">— à préciser —</option>
               {natureOptions.map((n) => (
-                <option key={n.id} value={n.id}>{n.active ? n.label : `${n.label} (archivé)`}</option>
+                <option key={n.id} value={n.id}>{natureText(n)}</option>
               ))}
-            </select>
+            </WrappingSelect>
           </div>
-          <div>
+          <div className="lg:col-span-3">
             {nature ? (
               <>
                 <span className="block text-xs font-medium text-slate-600">Domaine</span>
@@ -264,28 +299,42 @@ export function CriteriaGrid({
             ) : (
               <>
                 <label htmlFor="type-family" className="block text-xs font-medium text-slate-600">Domaine</label>
-                <select id="type-family" value={header.family} onChange={(e) => setHeader((h) => ({ ...h, family: e.target.value as Family }))} className="input-field mt-1 px-3">
+                <WrappingSelect
+                  id="type-family"
+                  variant="field"
+                  className="mt-1"
+                  value={header.family}
+                  onChange={(e) => setHeader((h) => ({ ...h, family: e.target.value as Family }))}
+                  display={FAMILY_LABELS[header.family]}
+                >
                   {(Object.keys(FAMILY_LABELS) as Family[]).map((f) => (
                     <option key={f} value={f}>{FAMILY_LABELS[f]}</option>
                   ))}
-                </select>
+                </WrappingSelect>
               </>
             )}
           </div>
-          <div>
+          <div className="lg:col-span-5">
             <label htmlFor="type-client" className="block text-xs font-medium text-slate-600">Propre à un client</label>
-            <select id="type-client" value={header.clientId} onChange={(e) => setHeader((h) => ({ ...h, clientId: e.target.value }))} className="input-field mt-1 px-3">
+            <WrappingSelect
+              id="type-client"
+              variant="field"
+              className="mt-1"
+              value={header.clientId}
+              onChange={(e) => setHeader((h) => ({ ...h, clientId: e.target.value }))}
+              display={clients.find((c) => c.id === header.clientId)?.name ?? "— catalogue commun —"}
+            >
               <option value="">— catalogue commun —</option>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
-            </select>
+            </WrappingSelect>
           </div>
-          <label className="flex min-h-[44px] items-center gap-2 text-sm text-slate-700">
+          <label className="flex min-h-[44px] items-center gap-2 text-sm text-slate-700 lg:col-span-2">
             <input type="checkbox" checked={header.active} onChange={(e) => setHeader((h) => ({ ...h, active: e.target.checked }))} className="h-4 w-4 accent-brand" />
             Active
           </label>
-          <SecondaryButton type="submit" disabled={busy !== null}>
+          <SecondaryButton type="submit" disabled={busy !== null} className="lg:col-span-2">
             <Check className="h-4 w-4" aria-hidden="true" />
             {busy === "header" ? "Enregistrement…" : "Enregistrer"}
           </SecondaryButton>
@@ -296,6 +345,7 @@ export function CriteriaGrid({
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             Critères d&apos;interprétation
+            <span className="ml-2 font-normal normal-case tracking-normal">{criteriaGridCountLabel(rows)}</span>
           </h2>
           <button type="button" onClick={addRow} className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-brand transition hover:bg-brand-light focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
             <Plus className="h-4 w-4" aria-hidden="true" />
@@ -308,18 +358,20 @@ export function CriteriaGrid({
         </p>
 
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[980px] text-sm">
+          {/* The narrow columns at the width their values need; germ and norm share the rest (D-18). */}
+          <table className="w-full min-w-[900px] text-sm">
             <thead>
               <tr className="border-y border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-3 py-2 font-medium">Germe</th>
-                <th className="px-2 py-2 font-medium">Norme (version)</th>
-                <th className="w-20 px-2 py-2 font-medium">n</th>
-                <th className="w-16 px-2 py-2 font-medium">c</th>
+                <th className="min-w-[180px] px-3 py-2 font-medium">Germe</th>
+                <th className="min-w-[140px] px-2 py-2 font-medium">Norme (version)</th>
+                {/* The plan's letters keep their case: uppercase, m and M would both read « M ». */}
+                <th className="w-14 px-2 py-2 font-medium normal-case">n</th>
+                <th className="w-14 px-2 py-2 font-medium normal-case">c</th>
                 <th className="w-44 px-2 py-2 font-medium">Type de limite</th>
-                <th className="w-28 px-2 py-2 font-medium">m</th>
-                <th className="w-28 px-2 py-2 font-medium">M</th>
+                <th className="w-24 px-2 py-2 font-medium normal-case">m</th>
+                <th className="w-24 px-2 py-2 font-medium normal-case">M</th>
                 <th className="w-24 px-2 py-2 font-medium">Unité</th>
-                <th className="w-16 px-2 py-2 font-medium">Actif</th>
+                <th className="w-14 px-2 py-2 font-medium">Actif</th>
                 <th className="w-10 px-2 py-2" />
               </tr>
             </thead>
@@ -333,11 +385,19 @@ export function CriteriaGrid({
               )}
               {rows.map((row, index) => {
                 const note = draftNote(row);
+                const germ = parameters.find((p) => p.id === row.parameterId);
+                const version = versions.find((v) => v.id === row.normVersionId);
                 return (
                   <Fragment key={row.key}>
                     <tr className={`${note ? "" : "border-b border-slate-100 "}align-middle`}>
                       <td className="px-3 py-1.5">
-                        <select aria-label={`Germe ligne ${index + 1}`} value={row.parameterId} onChange={(e) => update(row.key, { parameterId: e.target.value })} className={CELL}>
+                        <WrappingSelect
+                          aria-label={`Germe ligne ${index + 1}`}
+                          variant="cell"
+                          value={row.parameterId}
+                          onChange={(e) => update(row.key, { parameterId: e.target.value })}
+                          display={germ ? germ.name : <span className="text-slate-500">Choisir…</span>}
+                        >
                           <option value="">Choisir…</option>
                           <optgroup label="Microbiologie alimentaire">
                             {food.map((p) => (
@@ -351,17 +411,30 @@ export function CriteriaGrid({
                               ))}
                             </optgroup>
                           )}
-                        </select>
+                        </WrappingSelect>
                       </td>
                       <td className="px-2 py-1.5">
-                        <select aria-label={`Norme ligne ${index + 1}`} value={row.normVersionId} onChange={(e) => update(row.key, { normVersionId: e.target.value })} className={CELL}>
+                        <WrappingSelect
+                          aria-label={`Norme ligne ${index + 1}`}
+                          variant="cell"
+                          value={row.normVersionId}
+                          onChange={(e) => update(row.key, { normVersionId: e.target.value })}
+                          display={
+                            version ? (
+                              <>
+                                <NormCode text={`${version.code}${version.version ? `:${version.version}` : ""}`} />
+                                {version.current && <span className="block text-xs text-slate-500">en vigueur</span>}
+                              </>
+                            ) : (
+                              "— sans norme —"
+                            )
+                          }
+                        >
                           <option value="">— sans norme —</option>
                           {versions.map((v) => (
-                            <option key={v.id} value={v.id}>
-                              {v.code}{v.version ? `:${v.version}` : ""}{v.current ? " · en vigueur" : ""}
-                            </option>
+                            <option key={v.id} value={v.id}>{versionText(v)}</option>
                           ))}
-                        </select>
+                        </WrappingSelect>
                       </td>
                       <td className="px-2 py-1.5">
                         <input aria-label={`n ligne ${index + 1}`} type="number" min={1} max={MAX_UNITS} value={row.n} onChange={(e) => update(row.key, { n: e.target.value })} className={CELL} />
@@ -370,11 +443,17 @@ export function CriteriaGrid({
                         <input aria-label={`c ligne ${index + 1}`} aria-describedby={note ? `${hintId}-c-${index}` : undefined} type="number" min={0} value={offersTolerance(row) ? row.c : ""} onChange={(e) => update(row.key, { c: e.target.value })} disabled={!offersTolerance(row)} placeholder="—" className={CELL} />
                       </td>
                       <td className="px-2 py-1.5">
-                        <select aria-label={`Type de limite ligne ${index + 1}`} value={row.mKind} onChange={(e) => update(row.key, kindChange(row, e.target.value as LimitKind))} className={CELL}>
+                        <WrappingSelect
+                          aria-label={`Type de limite ligne ${index + 1}`}
+                          variant="cell"
+                          value={row.mKind}
+                          onChange={(e) => update(row.key, kindChange(row, e.target.value as LimitKind))}
+                          display={KIND_LABELS[row.mKind]}
+                        >
                           {(Object.keys(KIND_LABELS) as LimitKind[]).map((k) => (
                             <option key={k} value={k}>{KIND_LABELS[k]}</option>
                           ))}
-                        </select>
+                        </WrappingSelect>
                       </td>
                       <td className="px-2 py-1.5">
                         <input aria-label={`m ligne ${index + 1}`} type="text" value={row.m} onChange={(e) => update(row.key, { m: e.target.value })} disabled={row.mKind !== "VALUE"} placeholder={row.mKind === "VALUE" ? "1.10²" : "—"} className={`${CELL} font-mono`} />

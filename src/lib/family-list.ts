@@ -36,7 +36,7 @@ export type FamilyListRow = {
   clientId: string | null;
   clientName: string | null;
   active: boolean;
-  /** Its active criteria. */
+  /** Its active criteria, one per germ (`germCount`). */
   criteriaCount: number;
   sampleCount: number;
   /**
@@ -58,6 +58,49 @@ export type FamilyListFilter = {
   /** Words of the family's name or of one of its germs. */
   query: string;
 };
+
+/**
+ * How many criteria a family has (RETOUR-LABO-19-10.md D-17): one per germ,
+ * as « Paramètres à rechercher » lists them — never one per row: a germ kept
+ * under an older norm version beside the one in force is no criterion more.
+ * The one count of « Familles & critères », « Choisir une famille de
+ * produits », the programme sheet and the préleveur's form; only the
+ * family's grid also says how many rows it holds (`criteriaGridCountLabel`).
+ */
+export function germCount(criteria: readonly { parameterId: string }[]): number {
+  return new Set(criteria.map((criterion) => criterion.parameterId)).size;
+}
+
+/** « aucun critère », « 1 critère », « 5 critères » — a `germCount`, in the words every screen uses. */
+export function criteriaCountLabel(count: number): string {
+  return count === 0 ? "aucun critère" : `${count} critère${count > 1 ? "s" : ""}`;
+}
+
+/**
+ * Beside the title of a family's grid: its criteria as the list counts them
+ * — the active rows with a germ, one per germ — then, when the grid holds
+ * more rows (an older norm version, an inactive row), how many.
+ */
+export function criteriaGridCountLabel(rows: readonly { parameterId: string; active: boolean }[]): string {
+  const criteria = germCount(rows.filter((row) => row.active && row.parameterId !== ""));
+  const label = criteriaCountLabel(criteria);
+  return rows.length === criteria ? label : `${label} · ${rows.length} ligne${rows.length > 1 ? "s" : ""}`;
+}
+
+/**
+ * The grid's notice once saved: its count (`criteriaGridCountLabel`) — but
+ * never « Critères enregistrés (aucun critère) »: a grid saved empty, or
+ * with inactive rows only, says that the family is now read without a
+ * verdict, as its empty grid does.
+ */
+export function criteriaGridSavedNotice(rows: readonly { parameterId: string; active: boolean }[]): string {
+  if (rows.length === 0) return "Critères enregistrés : la famille n'a aucun critère et sera lue en valeur simple, sans verdict.";
+  if (germCount(rows.filter((row) => row.active && row.parameterId !== "")) === 0) {
+    const lines = `${rows.length} ligne${rows.length > 1 ? "s" : ""} inactive${rows.length > 1 ? "s" : ""}`;
+    return `Critères enregistrés : aucun critère actif (${lines}), la famille sera lue en valeur simple, sans verdict.`;
+  }
+  return `Critères enregistrés (${criteriaGridCountLabel(rows)}).`;
+}
 
 export const NO_FAMILY_FILTER: FamilyListFilter = {
   natureId: "",
