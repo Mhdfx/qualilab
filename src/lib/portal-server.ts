@@ -1,7 +1,7 @@
 import "server-only";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
-import { requireApiRole, requireRole, type SessionUser } from "./auth";
+import { passwordChangeGuards, requireApiRole, requireRole, type SessionUser } from "./auth";
 import { auth } from "./auth-server";
 import { AUDIT_ACTIONS, logAudit } from "./audit";
 import { prisma } from "./prisma";
@@ -44,11 +44,20 @@ async function resolveAccess(session: SessionUser): Promise<PortalAccess> {
 
 /**
  * Page guard of /portail. Not signed in → /login; a laboratory account →
- * its own dashboard (`requireRole`). Returns the access decision: a page
- * renders the refusal message — and no data — when it is not `ok`.
+ * its own dashboard (`requireRole`); a password to change (Q81) →
+ * /portail/compte. Returns the access decision: a page renders the refusal
+ * message — and no data — when it is not `ok`.
+ *
+ * `allowsPasswordChange`: /portail/compte and the portal's layout around
+ * it only (`passwordChangeGuards`, auth.ts) — every other portal page
+ * calls this guard without it.
  */
-export async function requirePortalPage(): Promise<{ session: SessionUser; access: PortalAccess }> {
-  const session = await requireRole("CLIENT");
+export async function requirePortalPage(
+  options: { allowsPasswordChange?: boolean } = {}
+): Promise<{ session: SessionUser; access: PortalAccess }> {
+  const session = options.allowsPasswordChange
+    ? await passwordChangeGuards.requireRole("CLIENT")
+    : await requireRole("CLIENT");
   return { session, access: await resolveAccess(session) };
 }
 

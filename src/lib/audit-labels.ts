@@ -109,6 +109,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   USER_ROLE_CHANGED: "Rôle d'un utilisateur modifié",
   USER_PASSWORD_RESET: "Mot de passe réinitialisé",
   USER_PASSWORD_CHANGED: "Mot de passe modifié par l'utilisateur",
+  // Q81 (RETOUR-LABO-19-10.md H1): creation or reset by the administrator.
+  USER_PASSWORD_CHANGE_REQUIRED: "Changement de mot de passe exigé",
   USER_CLIENT_CHANGED: "Client d'un compte portail modifié",
   // Lot 1b (RETOUR-LABO-16-10.md D5): « Technicien de QUALILAB 'I.NOM' ».
   USER_DOCUMENT_NAME_CHANGED: "Dénomination sur les documents modifiée",

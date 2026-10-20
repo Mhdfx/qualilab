@@ -4,6 +4,7 @@ import { requireApiRole } from "@/lib/auth";
 import { auth } from "@/lib/auth-server";
 import { internalEmailFor } from "@/lib/auth-server";
 import { logAudit } from "@/lib/audit";
+import type { PasswordChangeCause } from "@/lib/password-change";
 import { prisma } from "@/lib/prisma";
 import { PASSWORD_MAX_LENGTH, readClientId, userClientRefusal } from "@/lib/portal-access";
 import { ASSIGNABLE_ROLES, PORTAL_ROLE, type Role } from "@/lib/roles";
@@ -15,6 +16,12 @@ import { ASSIGNABLE_ROLES, PORTAL_ROLE, type Role } from "@/lib/roles";
  * Creation goes through Better Auth so the credentials are hashed exactly as
  * the runtime expects. A « Client (portail) » account carries its client
  * (PORTAIL.md §1): required for that role, refused for every other one.
+ *
+ * « Mot de passe à changer » (Q81, RETOUR-LABO-19-10.md H1): every account
+ * created here — laboratory or portal — chooses its own password at its
+ * first sign-in (`User.mustChangePassword`, written with the account;
+ * journal USER_PASSWORD_CHANGE_REQUIRED). The list carries the flag for the
+ * « Mot de passe à changer » badge.
  */
 export async function GET() {
   const session = await requireApiRole("ADMIN");
@@ -30,6 +37,8 @@ export async function GET() {
       createdAt: true,
       // « Dénomination sur les documents » (lot 1b): null = the default.
       documentName: true,
+      // Q81: still to choose its own password.
+      mustChangePassword: true,
       clientId: true,
       client: { select: { id: true, name: true, archived: true, mergedIntoId: true } },
     },
@@ -124,9 +133,12 @@ export async function POST(request: Request) {
         role: role as never,
         // The client is written with the account, in the same insert
         // (`clientId` is a Better Auth additional field, auth-server.ts).
+        // So is the password to change (Q81), a Better Auth additional field
+        // too: the account never exists without it.
         data: {
           username: cleanUsername,
           displayUsername: cleanUsername,
+          mustChangePassword: true,
           ...(role === PORTAL_ROLE && client ? { clientId: client.id } : {}),
         },
       },
@@ -157,6 +169,12 @@ export async function POST(request: Request) {
       data: { clientId: client.id },
     });
   }
+  // The same for the password to change: the created row says whether it
+  // was written; otherwise it is written now (the guards read it on every
+  // request).
+  if ((created.user as { mustChangePassword?: unknown }).mustChangePassword !== true) {
+    await prisma.user.update({ where: { id: created.user.id }, data: { mustChangePassword: true } });
+  }
 
   await logAudit({
     actorId: session.id,
@@ -169,9 +187,16 @@ export async function POST(request: Request) {
       ...(client ? { clientId: client.id, clientName: client.name } : {}),
     },
   });
+  await logAudit({
+    actorId: session.id,
+    action: "USER_PASSWORD_CHANGE_REQUIRED",
+    entity: "User",
+    entityId: created.user.id,
+    metadata: { username: cleanUsername, reason: "CREATED" satisfies PasswordChangeCause },
+  });
 
   return NextResponse.json(
-    { id: created.user.id, username: cleanUsername, role, clientId: client?.id ?? null },
+    { id: created.user.id, username: cleanUsername, role, clientId: client?.id ?? null, mustChangePassword: true },
     { status: 201 }
   );
 }

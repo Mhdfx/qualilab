@@ -69,6 +69,17 @@ export const auth = betterAuth({
         required: false,
         input: false,
       },
+      // « Mot de passe à changer » (Q81, RETOUR-LABO-19-10.md H1): set by the
+      // administrator's creation (POST /api/admin/users passes it to
+      // createUser) and reset; cleared by the person's own change. Declared
+      // here so the session read carries it (`getSession` in auth.ts) —
+      // never an input of Better Auth's own endpoints.
+      mustChangePassword: {
+        type: "boolean",
+        required: false,
+        defaultValue: false,
+        input: false,
+      },
     },
   },
   session: {

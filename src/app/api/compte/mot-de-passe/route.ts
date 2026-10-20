@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireApiRole } from "@/lib/auth";
+import { passwordChangeGuards } from "@/lib/auth";
 import { changeOwnPassword } from "@/lib/password-change-server";
 
 /**
@@ -12,9 +12,13 @@ import { changeOwnPassword } from "@/lib/password-change-server";
  * renewed cookie is passed back. Journal: USER_PASSWORD_CHANGED
  * `{ username, portal: false }`. Five wrong current passwords in 15 minutes
  * lock the change for the account (429, `passwordChangeLimiter`).
+ *
+ * Open to an account whose password must be changed (Q81) — every other
+ * route answers it 403 (`passwordChangeGuards`); the change clears the flag
+ * and answers `redirectTo`, the account's dashboard.
  */
 export async function POST(request: Request) {
-  const session = await requireApiRole(
+  const session = await passwordChangeGuards.requireApiRole(
     "PRELEVEUR",
     "RECEPTIONNISTE",
     "PROGRAMMATEUR",

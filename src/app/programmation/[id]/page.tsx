@@ -48,7 +48,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   // Metadata renders alongside the layout's redirect: the sample's blind
   // reference goes in the title only for a role that may open the page.
   const session = await getSession();
-  if (!session || !roleAllowed(session.role, ["PROGRAMMATEUR", "ADMIN"])) return { title: "Programme d'analyse" };
+  if (!session || session.mustChangePassword || !roleAllowed(session.role, ["PROGRAMMATEUR", "ADMIN"])) return { title: "Programme d'analyse" };
   const { id } = await params;
   const sample = await prisma.sample.findUnique({ where: { id }, select: { code: true, controlCode: true } });
   return { title: sample ? `Programme ${labReference(sample)}` : "Programme d'analyse" };

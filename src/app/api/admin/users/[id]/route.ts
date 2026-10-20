@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { auth } from "@/lib/auth-server";
 import { logAudit } from "@/lib/audit";
+import type { PasswordChangeCause } from "@/lib/password-change";
 import { prisma } from "@/lib/prisma";
 import {
   PASSWORD_MAX_LENGTH,
@@ -34,6 +35,11 @@ import { onlyDocumentNameChange, readDocumentName } from "@/lib/document-name";
  * carries a `warning` instead: those samples stay taken, and a colleague
  * cannot take them, until the admin gives them back to « À prendre »
  * (« Libérer », while nothing is typed) or finishes them.
+ *
+ * « Mot de passe à changer » (Q81, RETOUR-LABO-19-10.md H1): a reset makes
+ * the person choose their own password at the next sign-in
+ * (`User.mustChangePassword`, in the reset's transaction; journal
+ * USER_PASSWORD_CHANGE_REQUIRED). Nothing else here touches the flag.
  */
 export async function PATCH(
   request: Request,
@@ -128,9 +134,10 @@ export async function PATCH(
 
   // ---- Writes -------------------------------------------------------------
   // One transaction for the whole request: the role/client, the ban and the
-  // password land together or not at all, and the sessions are closed in the
-  // same breath. The hash is computed first (it is slow, and outside the
-  // transaction it holds no lock).
+  // password — with its « mot de passe à changer » — land together or not
+  // at all, and the sessions are closed in the same breath. The hash is
+  // computed first (it is slow, and outside the transaction it holds no
+  // lock).
   const roleChanged = touchesRole && nextRole !== user.role;
   const clientChanged = touchesRole && nextClientId !== user.clientId;
   const scopeChanged = roleChanged || clientChanged;
@@ -150,18 +157,16 @@ export async function PATCH(
 
   if (scopeChanged || banChanged || documentNameChanged || passwordHash !== null) {
     await prisma.$transaction([
-      ...(scopeChanged || banChanged || documentNameChanged
-        ? [
-            prisma.user.update({
-              where: { id },
-              data: {
-                ...(scopeChanged ? { role: nextRole, clientId: nextClientId } : {}),
-                ...(banChanged ? { banned } : {}),
-                ...(documentNameChanged ? { documentName: nextDocumentName } : {}),
-              },
-            }),
-          ]
-        : []),
+      prisma.user.update({
+        where: { id },
+        data: {
+          ...(scopeChanged ? { role: nextRole, clientId: nextClientId } : {}),
+          ...(banChanged ? { banned } : {}),
+          ...(documentNameChanged ? { documentName: nextDocumentName } : {}),
+          // Q81: the password the administrator typed is never the person's own.
+          ...(passwordHash !== null ? { mustChangePassword: true } : {}),
+        },
+      }),
       // What Better Auth's `internalAdapter.updatePassword` writes: the
       // credential account's hash.
       ...(passwordHash !== null
@@ -219,6 +224,13 @@ export async function PATCH(
       entityId: id,
       metadata: { username: user.username },
     });
+    await logAudit({
+      actorId: session.id,
+      action: "USER_PASSWORD_CHANGE_REQUIRED",
+      entity: "User",
+      entityId: id,
+      metadata: { username: user.username, reason: "RESET" satisfies PasswordChangeCause },
+    });
   }
 
   if (documentNameChanged) {
@@ -241,6 +253,7 @@ export async function PATCH(
       role: true,
       banned: true,
       documentName: true,
+      mustChangePassword: true,
       clientId: true,
       client: { select: { id: true, name: true, archived: true, mergedIntoId: true } },
     },

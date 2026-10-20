@@ -17,6 +17,9 @@ export default async function UtilisateursPage() {
       banned: true,
       // « Dénomination sur les documents » (lot 1b): null = the default.
       documentName: true,
+      // « Mot de passe à changer » (Q81): created or reset here, not yet
+      // replaced by the person's own.
+      mustChangePassword: true,
       // The client of a « Client (portail) » account (PORTAIL.md §1), with
       // what closes its portal (archived or merged).
       clientId: true,

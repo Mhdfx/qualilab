@@ -38,6 +38,11 @@ export type UserRow = {
   banned: boolean | null;
   /** « Dénomination sur les documents » (lot 1b); null = the default from the name. */
   documentName?: string | null;
+  /**
+   * « Mot de passe à changer » (Q81, RETOUR-LABO-19-10.md H1): created or
+   * reset here, and the person has not chosen their own password yet.
+   */
+  mustChangePassword?: boolean;
   /** Optional: read from GET /api/admin/users when the page does not pass it. */
   clientId?: string | null;
   client?: UserClient | null;
@@ -90,6 +95,10 @@ function useAccountClients(users: UserRow[]): Record<string, UserClient | null> 
  * QUALILAB 'I.NOM' » by default, computed from the name; typed here when
  * the default does not fit. The one thing the administrator may change on
  * their own account.
+ *
+ * « Mot de passe à changer » (Q81): a created account, or a reset password,
+ * must be replaced by the person's own at the next sign-in — the badge stays
+ * on the row until then.
  */
 export function UsersManager({
   users,
@@ -231,6 +240,15 @@ export function UsersManager({
                       {user.banned && (
                         <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
                           désactivé
+                        </span>
+                      )}
+                      {user.mustChangePassword && (
+                        <span
+                          title="Le mot de passe donné à la création ou à la réinitialisation n'a pas encore été remplacé par la personne."
+                          className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200"
+                        >
+                          <KeyRound className="h-3 w-3" aria-hidden="true" />
+                          Mot de passe à changer
                         </span>
                       )}
                       {isSelf && (
@@ -499,7 +517,7 @@ function CreateUserForm({
           type="password"
           value={password}
           onChange={setPassword}
-          hint="Au moins 8 caractères"
+          hint="Au moins 8 caractères — à changer à la première connexion"
         />
         <div>
           <label htmlFor="u-role" className="block text-xs font-medium text-slate-600">
@@ -644,7 +662,7 @@ function ResetPasswordForm({
           type="password"
           value={password}
           onChange={setPassword}
-          hint="Au moins 8 caractères — ses sessions seront déconnectées"
+          hint="Au moins 8 caractères — ses sessions seront déconnectées, et il choisira son propre mot de passe à la connexion suivante"
         />
       </div>
       <button

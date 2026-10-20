@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession, getDashboardPath } from "@/lib/auth";
+import { getSession, landingPath } from "@/lib/auth";
 import { loginNoticeFor } from "@/lib/idle-policy";
 import LoginForm from "@/components/LoginForm";
 
@@ -11,8 +11,10 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // Already signed in: the dashboard — or « Mon compte » while the password
+  // must be changed (Q81).
   const session = await getSession();
-  if (session) redirect(getDashboardPath(session.role));
+  if (session) redirect(landingPath(session));
 
   const { motif } = await searchParams;
   return <LoginForm notice={loginNoticeFor(motif)} />;

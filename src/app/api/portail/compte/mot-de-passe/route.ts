@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireApiRole } from "@/lib/auth";
+import { passwordChangeGuards } from "@/lib/auth";
 import { changeOwnPassword } from "@/lib/password-change-server";
 
 /**
@@ -12,9 +12,12 @@ import { changeOwnPassword } from "@/lib/password-change-server";
  * Open to a portal account even when its client is closed: changing one's
  * password reveals nothing of the laboratory's data. The laboratory's staff
  * use `POST /api/compte/mot-de-passe` — same rule (`changeOwnPassword`).
+ * Open too to an account whose password must be changed (Q81) — every other
+ * portal route answers it 403 (`passwordChangeGuards`); the change clears
+ * the flag and answers `redirectTo` (/portail).
  */
 export async function POST(request: Request) {
-  const session = await requireApiRole("CLIENT");
+  const session = await passwordChangeGuards.requireApiRole("CLIENT");
   if (session instanceof NextResponse) return session;
   return changeOwnPassword(request, session, { portal: true });
 }
