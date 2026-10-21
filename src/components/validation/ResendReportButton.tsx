@@ -25,7 +25,7 @@ export function ResendReportButton({
   number: string;
   /** False while this version has never left (`reportVersionSent`): the action reads « Envoyer ». */
   sent?: boolean;
-  /** One small link, for a table row or a list line. */
+  /** One small link, for a table row or a list line (40 px tall all the same). */
   compact?: boolean;
 }) {
   const router = useRouter();
@@ -75,9 +75,10 @@ export function ResendReportButton({
           setDialogVerb(verb);
           setOpen(true);
         }}
+        // Compact: small text, but a 40 px tall target in a table row or a list line.
         className={
           compact
-            ? "inline-flex items-center gap-1 rounded text-xs font-medium text-brand hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            ? "inline-flex min-h-[40px] items-center gap-1 rounded text-xs font-medium text-brand hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             : "flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
         }
       >

@@ -86,7 +86,7 @@ export default async function ReceptionHistoryPage({
           <div className="flex flex-wrap items-start gap-2 sm:col-span-2 lg:col-span-4">
             <button
               type="submit"
-              className="inline-flex min-h-[42px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
             >
               <Filter className="h-4 w-4" aria-hidden="true" />
               Filtrer
@@ -94,7 +94,7 @@ export default async function ReceptionHistoryPage({
             {filtered && (
               <Link
                 href={RECEPTION_HISTORY_PATH}
-                className="inline-flex min-h-[42px] items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                className="inline-flex min-h-[44px] items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
                 Effacer
               </Link>
@@ -178,7 +178,7 @@ export default async function ReceptionHistoryPage({
           {filters.cursor && (
             <Link
               href={receptionHistoryHref(filters)}
-              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 font-medium text-slate-700 transition hover:bg-slate-50"
+              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 font-medium text-slate-700 transition hover:bg-slate-50"
             >
               <RotateCcw className="h-4 w-4" aria-hidden="true" />
               Revenir aux plus récentes
@@ -187,7 +187,7 @@ export default async function ReceptionHistoryPage({
           {nextCursor && (
             <Link
               href={receptionHistoryHref(filters, nextCursor)}
-              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 font-medium text-slate-700 transition hover:bg-slate-50"
+              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 font-medium text-slate-700 transition hover:bg-slate-50"
             >
               Séries plus anciennes
               <ChevronRight className="h-4 w-4" aria-hidden="true" />
