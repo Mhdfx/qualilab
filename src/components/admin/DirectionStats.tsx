@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { billingFigures } from "@/components/invoices/invoice-queries";
-import { formatCurrency, SAMPLE_STATUS_LABELS, SAMPLE_TYPE_LABELS } from "@/lib/labels";
+import { formatCurrency, formatDecimal, SAMPLE_STATUS_LABELS, SAMPLE_TYPE_LABELS } from "@/lib/labels";
 import { OPEN_STATUSES, rechercheHref } from "@/lib/sample-search";
 import { countInStatuses, invoiceTileHref } from "@/lib/management-views";
 import { serverIsoDay, viewHref } from "@/lib/dashboard-view";
@@ -142,7 +142,7 @@ export async function DirectionStats() {
       ? "—"
       : turnaroundHours < 48
         ? `${Math.round(turnaroundHours)} h`
-        : `${(turnaroundHours / 24).toFixed(1)} j`;
+        : `${formatDecimal(turnaroundHours / 24)} j`;
 
   const STATUS_ORDER: SampleStatus[] = [
     "PRELEVE",

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildInvoiceHtml, invoiceDocumentTitle, type InvoiceDocument } from "./invoice-html";
+import { formatCurrency } from "./labels";
 import { clientSnapshotOf, invoiceClientIdentity } from "./invoice-client-identity";
 import { lineDescription } from "./billing";
 import { layoutSourceLine } from "./invoice-html-layout";
@@ -35,7 +36,7 @@ const text = (html: string) =>
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ");
 
-/** fr-FR money: narrow no-break spaces as thousands separators. */
+/** fr-FR money, the thousands apart (U+00A0 since 21/10 — pinned in « the thousands separator » below). */
 const dh = (value: string) => new RegExp(value.replace(/ /g, "[\\s\\u202f\\u00a0]") + " DH");
 
 describe("invoiceDocumentTitle", () => {
@@ -374,5 +375,58 @@ describe("the « par paramètre » layout (Q30)", () => {
     );
     expect(html).toContain("Flore &lt;totale&gt; (Alimentaire)");
     expect(html).toContain("Échantillon : A&amp;B");
+  });
+});
+
+describe("the thousands separator of the printed amounts (found 21/10)", () => {
+  // The PDF's regular weight drew Intl's U+202F as nothing: « Total HT
+  // 1800,00 DH » above a bold « 2 160,00 DH ». Every amount now carries U+00A0.
+  const NBSP = "\u00a0";
+  const presented: InvoiceDocument = {
+    ...issued,
+    subtotal: 1800,
+    taxAmount: 360,
+    total: 2160,
+    items: [{ description: "Flore totale", quantity: 1000, unitPrice: 1.8, lineTotal: 1800 }],
+  };
+
+  it("« 1 800,00 DH » and « 2 160,00 DH » with a no-break space, never U+202F / U+2009", () => {
+    for (const layout of ["ligne", "parametre"] as const) {
+      const html = buildInvoiceHtml(presented, undefined, { layout });
+      expect(html).toContain(`1${NBSP}800,00 DH`);
+      expect(html).toContain(`2${NBSP}160,00 DH`);
+      expect(html).toContain(`<td class="num">1${NBSP}000</td>`);
+      expect(html).not.toMatch(/[\u202f\u2009]/);
+    }
+  });
+
+  it("millions, zero and a credit note alike", () => {
+    const big = buildInvoiceHtml({ ...presented, subtotal: 1234500, taxAmount: 246900, total: 1481400, paidAmount: 0 });
+    expect(big).toContain(`1${NBSP}234${NBSP}500,00 DH`);
+    expect(big).toContain(`1${NBSP}481${NBSP}400,00 DH`);
+    expect(text(big)).toMatch(/Réglé 0,00 DH/);
+    const note = buildInvoiceHtml({
+      ...presented,
+      kind: "AVOIR",
+      number: "AV-2026-0003",
+      creditedInvoice: { number: "FAC-2026-0042", issueDate: new Date("2026-10-07T10:00:00Z") },
+    });
+    expect(note).toContain(`2${NBSP}160,00 DH`);
+    expect(note).not.toMatch(/[\u202f\u2009]/);
+  });
+
+  it("is the interface's formatCurrency \u2014 a negative or a non-finite amount prints as on the pages", () => {
+    // One money formatter only: the PDF used to carry its own copy of it.
+    const odd = buildInvoiceHtml({
+      ...presented,
+      items: [
+        { description: "Remise", quantity: 1, unitPrice: -1234.5, lineTotal: -1234.5 },
+        { description: "Montant illisible", quantity: 1, unitPrice: Number.NaN, lineTotal: Number.NaN },
+      ],
+    });
+    expect(formatCurrency(-1234.5)).toMatch(/1\u00a0234,50 DH$/);
+    expect(odd).toContain(`<td class="num">${formatCurrency(-1234.5)}</td>`);
+    expect(odd).toContain(`<td class="num">${formatCurrency(Number.NaN)}</td>`);
+    expect(odd).not.toContain("NaN");
   });
 });

@@ -1,7 +1,7 @@
 import type { InvoiceKind, InvoiceStatus } from "@/generated/prisma/enums";
 import { COMPANY, type CompanyInfo } from "./company";
 import { companyBrandHtml } from "./brand-html";
-import { formatDate, formatDecimal } from "./labels";
+import { formatCurrency, formatDate, formatDecimal } from "./labels";
 import { amountToFrenchWords } from "./number-to-words-fr";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
 import { balance, invoiceState, type InvoiceState } from "./invoice-lifecycle";
@@ -62,12 +62,12 @@ export type InvoiceDocument = {
   creditedInvoice?: { number: string | null; issueDate: Date } | null;
 };
 
-function money(amount: number) {
-  return `${new Intl.NumberFormat("fr-FR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount)} DH`;
-}
+/**
+ * « 1 800,00 DH » — the interface's own formatter, so the PDF and the pages
+ * can never print an amount two ways again (U+00A0 between thousands, 0 for
+ * a non-finite amount: `formatCurrency`).
+ */
+const money = formatCurrency;
 
 /** The pill under the number. */
 const STATE_BADGES: Record<InvoiceState, { text: string; tone: "yes" | "no" | "off" }> = {

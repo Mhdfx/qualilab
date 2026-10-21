@@ -372,14 +372,26 @@ export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
 export const CURRENCY = "DH";
 
 /**
- * A plain number in French: comma for the decimal mark, thin space for the
- * thousands. Used wherever a figure is shown outside a currency — a
+ * The thousands separator every figure is printed with: U+00A0, the ordinary
+ * no-break space. Intl's fr-FR writes U+202F (narrow no-break space; U+2009,
+ * thin space, in older ICU), which some fonts and weights draw as nothing —
+ * the invoice PDF printed « Total HT 1800,00 DH » above « 2 160,00 DH »
+ * (found 21/10). U+00A0 is in every font and still never breaks a figure.
+ * Only the separators change: digits, decimals and rounding are Intl's.
+ */
+export function withPrintableSpaces(formatted: string): string {
+  return formatted.replace(/[\u202f\u2009]/g, "\u00a0");
+}
+
+/**
+ * A plain number in French: comma for the decimal mark, no-break space for
+ * the thousands. Used wherever a figure is shown outside a currency — a
  * temperature, a VAT rate — so the whole interface reads the same way.
  */
 export function formatDecimal(value: number | string, maxDigits = 1) {
   const parsed = typeof value === "number" ? value : Number(String(value).replace(",", "."));
   if (!Number.isFinite(parsed)) return String(value);
-  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: maxDigits }).format(parsed);
+  return withPrintableSpaces(new Intl.NumberFormat("fr-FR", { maximumFractionDigits: maxDigits }).format(parsed));
 }
 
 export function formatCurrency(amount: number) {
@@ -387,5 +399,27 @@ export function formatCurrency(amount: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number.isFinite(amount) ? amount : 0);
-  return `${value} ${CURRENCY}`;
+  return `${withPrintableSpaces(value)} ${CURRENCY}`;
+}
+
+/**
+ * An amount still in a text field — the deposit's « Avance encaissée » — as
+ * it will be stored: read the way `serie-input.ts` reads it (comma or dot,
+ * rounded to the cent), then `formatCurrency`. « 1800 » is « 1 800,00 DH »,
+ * like the bon de réception; text the server will refuse is shown as typed
+ * (« 1 800 DH »), never as a figure it made up.
+ */
+export function formatTypedAmount(text: string): string {
+  const parsed = text.trim() === "" ? Number.NaN : Number(text.replace(",", "."));
+  return Number.isFinite(parsed) ? formatCurrency(Math.round(parsed * 100) / 100) : `${text} ${CURRENCY}`;
+}
+
+/**
+ * An amount typed in a text field that the server stores as nothing: blank,
+ * or zero (« 0 », « 0,00 » — `serie-input.ts` keeps no advance for 0). The
+ * deposit then neither asks for a payment mode nor shows an « Avance » line
+ * on its confirmation.
+ */
+export function typedAmountIsNone(text: string): boolean {
+  return text.trim() === "" || Number(text.replace(",", ".")) === 0;
 }

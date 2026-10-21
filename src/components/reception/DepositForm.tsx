@@ -37,6 +37,8 @@ import {
   SAMPLER_KIND_LABELS,
   formatCadre,
   formatDateTime,
+  formatTypedAmount,
+  typedAmountIsNone,
 } from "@/lib/labels";
 import {
   EXPLOITABLE_MESSAGES,
@@ -665,7 +667,7 @@ export function DepositForm({
       reveal("deposit-arrived");
       return setStepError(arrivedProblem);
     }
-    if (advanceAmount.trim() && !advanceMode) return setStepError("Indiquez le mode de paiement de l'avance.");
+    if (!typedAmountIsNone(advanceAmount) && !advanceMode) return setStepError("Indiquez le mode de paiement de l'avance.");
     for (const [i, line] of lines.entries()) {
       const n = i + 1;
       // No analysis is required (V6): the programme sheet fixes them.
@@ -1491,7 +1493,7 @@ export function DepositForm({
               <Row label="Arrivé le" value={isMounted && arrivedAt ? formatDateTime(localInputDate(arrivedAt)!) : "—"} />
               {clientReference && <Row label="Référence client" value={clientReference} />}
               <Row label="Analyses à effectuer" value={serieFamilies.length > 0 ? familiesSummary(serieFamilies) : "—"} />
-              {advanceAmount && <Row label="Avance" value={`${advanceAmount} DH — ${PAYMENT_MODES.find((m) => m.value === advanceMode)?.label ?? ""}`} />}
+              {!typedAmountIsNone(advanceAmount) && <Row label="Avance" value={`${formatTypedAmount(advanceAmount)} — ${PAYMENT_MODES.find((m) => m.value === advanceMode)?.label ?? ""}`} />}
             </div>
             <ul className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-100">
               {lines.map((line, i) => {
