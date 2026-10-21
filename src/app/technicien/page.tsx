@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { VIEW_PARAM, parseView, viewHref } from "@/lib/dashboard-view";
 import { BENCH_VIEWS, benchViewWhere, type BenchView } from "@/lib/circuit-views";
 import { UNCLAIMED_WHERE, benchQueueWhereFor, takenByOthersWhere } from "@/lib/bench-access";
+import { isCurrentSendBack, maySendBack, type SendBackState } from "@/lib/send-back";
+import { lastSubmissionsOf } from "@/lib/send-back-server";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard, type StatAccent } from "@/components/ui/StatCard";
 import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
@@ -95,7 +97,8 @@ const WORK_ITEM_SELECT = {
   nature: { select: { label: true } },
   receivedAt: true,
   conformity: true,
-  // « Renvoyé » on a sample a validator sent back to the bench.
+  // « Renvoyé » on a sample a validator sent back to the bench, while not
+  // submitted again since (`isCurrentSendBack`).
   rejectedAt: true,
   priority: true,
   dueAt: true,
@@ -152,6 +155,14 @@ export default async function TechnicienPage({
     count("soumis"),
   ]);
 
+  // « Renvoyé » only while the send-back is unanswered (B2): one grouped
+  // read of the journal, for the few rows that may show it.
+  const submissions = await lastSubmissionsOf(
+    [...viewItems, ...free, ...held, ...colleagues].filter(maySendBack).map((item) => item.id)
+  );
+  const withSendBack = <T extends SendBackState & { id: string }>(items: T[]) =>
+    items.map((item) => ({ ...item, sentBack: isCurrentSendBack(item, submissions.get(item.id) ?? null) }));
+
   const values: Record<BenchView, number> = {
     a_prendre: toTake,
     a_commencer: waiting,
@@ -201,7 +212,7 @@ export default async function TechnicienPage({
           }
         >
           <WorkQueue
-            items={viewItems}
+            items={withSendBack(viewItems)}
             viewerId={viewerId}
             empty={(!isTechnician && ADMIN_EMPTY[view]) || EMPTY[view]}
           />
@@ -215,7 +226,7 @@ export default async function TechnicienPage({
             description="Programme confirmé, personne ne les a pris : les urgents d'abord, puis les plus anciens."
             truncated={free.length === LIST_LIMIT ? `La liste est limitée aux ${LIST_LIMIT} premiers échantillons.` : null}
           >
-            <WorkQueue items={free} viewerId={viewerId} empty={EMPTY.a_prendre} />
+            <WorkQueue items={withSendBack(free)} viewerId={viewerId} empty={EMPTY.a_prendre} />
           </BenchList>
 
           <BenchList
@@ -229,7 +240,7 @@ export default async function TechnicienPage({
             }
             truncated={held.length === LIST_LIMIT ? `La liste est limitée aux ${LIST_LIMIT} premiers échantillons.` : null}
           >
-            <WorkQueue items={held} viewerId={viewerId} empty={isTechnician ? undefined : TAKEN_EMPTY} />
+            <WorkQueue items={withSendBack(held)} viewerId={viewerId} empty={isTechnician ? undefined : TAKEN_EMPTY} />
           </BenchList>
 
           {isTechnician && (
@@ -242,7 +253,7 @@ export default async function TechnicienPage({
                 colleagues.length === LIST_LIMIT ? `La liste est limitée aux ${LIST_LIMIT} premiers échantillons.` : null
               }
             >
-              <WorkQueue items={colleagues} viewerId={viewerId} empty={COLLEAGUES_EMPTY} />
+              <WorkQueue items={withSendBack(colleagues)} viewerId={viewerId} empty={COLLEAGUES_EMPTY} />
             </BenchList>
           )}
         </div>

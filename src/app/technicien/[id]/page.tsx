@@ -15,6 +15,8 @@ import {
   isUnclaimed,
 } from "@/lib/bench-access";
 import { reportTechnicianNames } from "@/lib/report-programme";
+import { isCurrentSendBack, maySendBack } from "@/lib/send-back";
+import { lastSubmissionsOf } from "@/lib/send-back-server";
 import { effectiveFactor } from "@/lib/dilution";
 import { benchStartingReadings, benchUnit } from "@/lib/bench-reading";
 import { formatDate, formatDateTime, PROGRAMME_PRIORITY_LABELS, surfaceAreaText } from "@/lib/labels";
@@ -82,8 +84,8 @@ export default async function AnalysePage({
       // observation (A7, A9).
       ...RECEPTION_NON_CONFORMITY_SELECT,
       receptionNote: true,
-      // The validator's last « Renvoyer au technicien »: never cleared, so
-      // its date says whether it is the current one.
+      // The validator's last « Renvoyer au technicien »: never cleared — the
+      // journal says whether it is still the current one (`isCurrentSendBack`).
       rejectionReason: true,
       rejectedAt: true,
       rejectedBy: { select: { name: true } },
@@ -139,7 +141,12 @@ export default async function AnalysePage({
   if (isTechnician && !canReadAtBench(sample, session.id)) {
     redirect(getDashboardPath(session.role));
   }
-  const bench = await loadBenchPlans(sample.id);
+  // A send-back is current until the next submission (B2): the journal is
+  // read only for a sample that may show one.
+  const [bench, submissions] = await Promise.all([
+    loadBenchPlans(sample.id),
+    maySendBack(sample) ? lastSubmissionsOf([sample.id]) : null,
+  ]);
 
   // Who holds the sample (prise en charge libre, PROGRAMME.md §10).
   const free = isUnclaimed(sample);
@@ -213,8 +220,9 @@ export default async function AnalysePage({
   const canEdit = onBench && !heldByOther;
   // Received but not programmed yet: nothing to type (PROGRAMME.md §6).
   const waiting = sample.status === "PRELEVE" || sample.status === "RECU";
-  // Back on the bench after a validator's « Renvoyer au technicien ».
-  const sentBack = sample.status === "EN_ANALYSE" && sample.rejectedAt !== null;
+  // Back on the bench after a validator's « Renvoyer au technicien », and
+  // not submitted again since (« Corriger la fiche », a reactivation).
+  const sentBack = isCurrentSendBack(sample, submissions?.get(sample.id) ?? null);
 
   const subtitle = waiting
     ? "En attente de programmation — le responsable des paramètres n'a pas encore confirmé le programme d'analyse."

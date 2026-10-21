@@ -36,6 +36,11 @@ export type WorkItem = {
   conformity: boolean | null;
   /** The validator's last « Renvoyer au technicien » (never cleared). */
   rejectedAt: Date | null;
+  /**
+   * That send-back is the current one: not submitted again since
+   * (`isCurrentSendBack`, B2) — the « Renvoyé » chip.
+   */
+  sentBack: boolean;
   /** The programme d'analyse (PROGRAMME.md §3): priority and promised date. */
   priority: ProgrammePriority;
   dueAt: Date | null;
@@ -130,7 +135,7 @@ function RowDetails({
             Urgente
           </span>
         )}
-        {item.status === "EN_ANALYSE" && item.rejectedAt && (
+        {item.sentBack && item.rejectedAt && (
           <span
             className={`${CHIP} bg-amber-50 text-amber-800 ring-amber-300`}
             title={`Renvoyé par la validation le ${formatDateTime(item.rejectedAt)}`}
