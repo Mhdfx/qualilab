@@ -92,7 +92,7 @@ import {
   useMinuteClock,
 } from "./reception-widgets";
 import { receptionLineMessage, sampleRef } from "@/lib/reception-input";
-import { SampleVerbs, type VerbSample } from "@/components/samples/SampleVerbs";
+import { SampleVerbs } from "@/components/samples/SampleVerbs";
 import type { Role } from "@/lib/roles";
 import {
   allExploitableNotice,
@@ -107,6 +107,7 @@ import {
   storageDefaultLabel,
   unansweredExploitableCount,
 } from "./reception-logic";
+import { summaryLineOf, verbSampleOf, type ReceptionVerbFacts } from "./reception-verbs";
 
 /**
  * Reception of a série in one screen — WORKFLOW.md §3.3.
@@ -198,7 +199,10 @@ export type ReceptionLineData = {
   technician: { id: string; name: string } | null;
   /** When it was taken; optional on an older payload. */
   assignedAt?: string | null;
-};
+  // + the verbs' facts (`withVerbFacts`, D1): an issued report, the invoice
+  // holding the sample and the alert already sent — read by the page for the
+  // whole série; optional on an older payload.
+} & Partial<ReceptionVerbFacts>;
 
 export type ReceptionSerieData = {
   id: string;
@@ -229,7 +233,8 @@ export type ReceptionSerieData = {
   signedProtocolReceived?: boolean | null;
 };
 
-type ReceivedLine = {
+/** A line of the summary after the reception: the API's answer, or the page's data read again. */
+export type ReceivedLine = {
   id: string;
   code: string;
   lineNumber: number;
@@ -300,43 +305,6 @@ function numberOrNull(value: string) {
   if (!value.trim()) return null;
   const n = Number(value.replace(",", "."));
   return Number.isFinite(n) ? n : null;
-}
-
-/** What the verbs need of a sample, as the API serialised it. */
-function verbSampleOf(line: ReceptionLineData, clientId: string, status: SampleStatus = line.status): VerbSample {
-  return {
-    clientId,
-    productTypeId: line.productType?.id ?? null,
-    productTypeName: line.productType?.name ?? null,
-    id: line.id,
-    code: line.code,
-    controlCode: line.controlCode,
-    status,
-    type: line.type,
-    lineKind: line.lineKind,
-    produit: line.produit,
-    lieu: line.lieu,
-    numeroLot: line.numeroLot,
-    productionDate: line.productionDate,
-    expiryDate: line.expiryDate,
-    quantity: line.quantity,
-    quantityUnit: line.quantityUnit,
-    productTemperature: line.productTemperature,
-    ambientTemperature: line.ambientTemperature,
-    surfaceLabel: line.surfaceLabel,
-    surfaceAreaCm2: line.surfaceAreaCm2,
-    surfaceAreaNote: line.surfaceAreaNote,
-    personName: line.personName,
-    personRole: line.personRole,
-    handsState: line.handsState,
-    // « État de la surface » / « Méthode de prélèvement » in « Corriger la fiche ».
-    surfaceState: line.surfaceState ?? null,
-    airMethod: line.airMethod ?? null,
-    airExposureMin: line.airExposureMin,
-    remarks: line.remarks,
-    unitCount: line.unitCount,
-    parameterIds: line.parameters.map((p) => p.parameter.id),
-  };
 }
 
 function unitsLabel(unitCount: number) {
@@ -743,31 +711,11 @@ export function SerieReceptionForm({
 
   if (result || pending.length === 0) {
     // Once the page data shows the série received (after a refresh — a
-    // « Corriger la fiche » refreshes it), the summary reads the database,
-    // not the answer of the reception kept in memory (recette 07/10).
-    const received: ReceivedLine[] =
-      result && pending.length > 0
-        ? result
-        : alreadyReceived.map((s) => ({
-        id: s.id,
-        code: s.code,
-        lineNumber: s.lineNumber,
-        controlCode: s.controlCode,
-        unitCount: s.unitCount,
-        conformity: s.conformity,
-        conformityReason: s.conformityReason,
-        receptionNote: s.receptionNote ?? null,
-        analysisBlocked: s.analysisBlocked ?? false,
-        awaitingClientSince: s.awaitingClientSince ?? null,
-        produit: s.produit,
-        surfaceLabel: s.surfaceLabel,
-        surfaceState: s.surfaceState ?? null,
-        airMethod: s.airMethod ?? null,
-        personName: s.personName,
-        nature: { label: s.nature.label },
-        technician: s.technician,
-        assignedAt: s.assignedAt ?? null,
-      }));
+    // « Corriger la fiche » or an « Annuler » refreshes it), the summary
+    // reads the database, not the answer of the reception kept in memory
+    // (recette 07/10) — status and cancel reason included (`summaryLineOf`):
+    // `justReceived` stays true after that refresh and reads them on the line.
+    const received: ReceivedLine[] = result && pending.length > 0 ? result : alreadyReceived.map(summaryLineOf);
     return (
       <ReceivedSummary
         serie={serie}
