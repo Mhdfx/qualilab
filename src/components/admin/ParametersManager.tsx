@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Check, ListChecks, Pencil, Plus, Search, X, Bell, BellOff } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, ListChecks, Pencil, Plus, RotateCcw, Search, X, Bell, BellOff } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Dialog } from "@/components/invoices/InvoiceDialogs";
 import { FAMILY_SHORT_LABELS as FAMILY_LABELS, SAMPLE_TYPE_LABELS } from "@/lib/labels";
-import { DEFAULT_PARAMETER_FAMILY, PARAMETER_FAMILIES } from "@/lib/parameter-validation";
+import { DEFAULT_PARAMETER_FAMILY, PARAMETER_CHANGED_ERROR, PARAMETER_FAMILIES, parameterVersion } from "@/lib/parameter-validation";
 import { parameterMatches, RECLASSIFY_FAMILY_LABELS as TARGET_LABELS, type ReclassifyPlan } from "@/lib/parameter-reclassify";
 import type { Family, SampleType } from "@/generated/prisma/client";
 
@@ -84,7 +84,9 @@ export function ParametersManager({ parameters }: { parameters: ParameterRow[] }
   const searched = query.trim() === "" ? parameters : parameters.filter((p) => parameterMatches(p, query));
   const familyCount = (family: FamilyFilter) => searched.filter((p) => inCategory(p) && inFamily(p, family)).length;
   const categoryCount = (category: CategoryFilter) => searched.filter((p) => inCategory(p, category) && inFamily(p)).length;
-  const shown = searched.filter((p) => inCategory(p) && inFamily(p));
+  // The row being edited stays whatever the filters: reclassified under its
+  // open form (here or elsewhere), it must not vanish with what was typed.
+  const shown = searched.filter((p) => p.id === editing || (inCategory(p) && inFamily(p)));
   const shownIds = new Set(shown.map((p) => p.id));
 
   const chosen = parameters.filter((p) => selected.has(p.id));
@@ -205,7 +207,9 @@ export function ParametersManager({ parameters }: { parameters: ParameterRow[] }
       <div className="space-y-6">
         {DOMAINS.filter((domain) => categoryFilter === "TOUTES" || categoryFilter === domain).map((domain) => {
           const rows = shown.filter((p) => p.category === domain);
-          const allTicked = rows.length > 0 && rows.every((row) => selected.has(row.id));
+          // « Tout cocher » takes what the filters show, never a row kept only for its open form.
+          const tickable = rows.filter((row) => inCategory(row) && inFamily(row));
+          const allTicked = tickable.length > 0 && tickable.every((row) => selected.has(row.id));
           return (
             <section key={domain}>
               <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
@@ -213,13 +217,13 @@ export function ParametersManager({ parameters }: { parameters: ParameterRow[] }
                   {SAMPLE_TYPE_LABELS[domain]}
                 </h2>
                 <div className="flex flex-wrap items-center gap-1">
-                  {selecting && rows.length > 0 && (
+                  {selecting && tickable.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => toggle(rows.map((row) => row.id), !allTicked)}
+                      onClick={() => toggle(tickable.map((row) => row.id), !allTicked)}
                       className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-brand transition hover:bg-brand-light focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                     >
-                      {allTicked ? `Tout décocher (${rows.length})` : `Tout cocher (${rows.length})`}
+                      {allTicked ? `Tout décocher (${tickable.length})` : `Tout cocher (${tickable.length})`}
                     </button>
                   )}
                   <button
@@ -632,6 +636,29 @@ function ReclassifyDialog({
   );
 }
 
+/** What the form shows for a stored parameter, or for a new one. */
+function formValues(parameter: ParameterRow | undefined, defaultFamily: Family) {
+  return {
+    name: parameter?.name ?? "",
+    family: parameter?.family ?? defaultFamily,
+    unit: parameter?.unit ?? "",
+    threshold: parameter?.threshold ?? "",
+    limitValue: parameter?.limitValue !== null && parameter?.limitValue !== undefined ? String(parameter.limitValue) : "",
+    alertOnExceed: parameter?.alertOnExceed ?? false,
+    calcFactor: parameter && parameter.calcFactor !== 1 ? String(parameter.calcFactor) : "",
+    aliases: parameter?.aliases ?? "",
+  };
+}
+
+/**
+ * Creating a parameter, or editing one. An edit sends the version of the
+ * row it loaded (`parameterVersion`, open point of D-19): the row of the
+ * opening, not the list's — a list refreshed by a reclassification must not
+ * make a form still showing the old domain look current. A 409 « modifié
+ * entre-temps » keeps the form open with « Recharger », which takes the
+ * stored values the server answered with. A list refreshed under the form
+ * with another version of its row says the same before the save.
+ */
 function ParameterForm({
   category,
   parameter,
@@ -648,24 +675,67 @@ function ParameterForm({
   onSaved: () => void;
   onError: (message: string) => void;
 }) {
-  const [name, setName] = useState(parameter?.name ?? "");
-  const [family, setFamily] = useState<Family>(parameter?.family ?? defaultFamily);
-  const [unit, setUnit] = useState(parameter?.unit ?? "");
-  const [threshold, setThreshold] = useState(parameter?.threshold ?? "");
-  const [limitValue, setLimitValue] = useState(
-    parameter?.limitValue !== null && parameter?.limitValue !== undefined
-      ? String(parameter.limitValue)
-      : ""
-  );
-  const [alertOnExceed, setAlertOnExceed] = useState(parameter?.alertOnExceed ?? false);
-  const [calcFactor, setCalcFactor] = useState(
-    parameter && parameter.calcFactor !== 1 ? String(parameter.calcFactor) : ""
-  );
-  const [aliases, setAliases] = useState(parameter?.aliases ?? "");
+  const router = useRouter();
+  const initial = formValues(parameter, defaultFamily);
+  const [name, setName] = useState(initial.name);
+  const [family, setFamily] = useState<Family>(initial.family);
+  const [unit, setUnit] = useState(initial.unit);
+  const [threshold, setThreshold] = useState(initial.threshold);
+  const [limitValue, setLimitValue] = useState(initial.limitValue);
+  const [alertOnExceed, setAlertOnExceed] = useState(initial.alertOnExceed);
+  const [calcFactor, setCalcFactor] = useState(initial.calcFactor);
+  const [aliases, setAliases] = useState(initial.aliases);
   const [saving, setSaving] = useState(false);
+  // The stored row the fields were loaded from — its version goes with the save.
+  const [loaded, setLoaded] = useState(parameter);
+  // The list's version of the row when the fields were loaded.
+  const [listed, setListed] = useState(() => (parameter ? parameterVersion(parameter) : null));
+  // A 409 « modifié entre-temps »: the server's message and the stored row.
+  const [changed, setChanged] = useState<{ message: string; current: ParameterRow } | null>(null);
+  const reloadRef = useRef<HTMLButtonElement>(null);
+  const familyRef = useRef<HTMLSelectElement>(null);
+
+  // The list refreshed under the form (« Passer en … » here, any refresh
+  // after an edit elsewhere) with another version of the row than the one
+  // loaded: said now, before the typing is lost to a 409. Not the refresh
+  // that follows « Recharger », which brings the row already loaded.
+  const listedNow = parameter ? parameterVersion(parameter) : null;
+  const drift =
+    parameter && loaded && !changed && listedNow !== listed && listedNow !== parameterVersion(loaded) ? parameter : null;
+  const stale = changed ?? (drift ? { message: PARAMETER_CHANGED_ERROR, current: drift } : null);
+
+  // The save refused: « Enregistrer » goes disabled under the keyboard, so
+  // the focus goes to the way forward.
+  useEffect(() => {
+    if (changed) reloadRef.current?.focus();
+  }, [changed]);
+
+  function load(row: ParameterRow) {
+    const values = formValues(row, row.family);
+    setName(values.name);
+    setFamily(values.family);
+    setUnit(values.unit);
+    setThreshold(values.threshold);
+    setLimitValue(values.limitValue);
+    setAlertOnExceed(values.alertOnExceed);
+    setCalcFactor(values.calcFactor);
+    setAliases(values.aliases);
+    setLoaded(row);
+    setListed(listedNow);
+  }
+
+  function reload() {
+    if (!stale) return;
+    load(stale.current);
+    setChanged(null);
+    // After a 409 the list is behind the stored row; after a drift it shows it already.
+    if (changed) router.refresh();
+    // « Recharger » goes away with the alert: the keyboard stays in the form.
+    familyRef.current?.focus();
+  }
 
   async function save() {
-    if (saving) return;
+    if (saving || stale) return;
     setSaving(true);
     onError("");
 
@@ -677,7 +747,7 @@ function ParameterForm({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name,
-            category,
+            category: loaded?.category ?? category,
             family,
             unit,
             threshold,
@@ -685,11 +755,17 @@ function ParameterForm({
             alertOnExceed,
             calcFactor,
             aliases,
+            // The row this form was loaded from: refused (409) if it changed since.
+            ...(loaded ? { version: parameterVersion(loaded) } : {}),
           }),
         }
       );
       const data = await response.json();
       if (!response.ok) {
+        if (loaded && response.status === 409 && data.current) {
+          setChanged({ message: data.error ?? "Ce paramètre a été modifié entre-temps.", current: data.current });
+          return;
+        }
         onError(data.error ?? "Enregistrement impossible.");
         return;
       }
@@ -717,6 +793,7 @@ function ParameterForm({
             Domaine
           </label>
           <select
+            ref={familyRef}
             id="p-family"
             value={family}
             onChange={(event) => setFamily(event.target.value as Family)}
@@ -800,11 +877,35 @@ function ParameterForm({
         </span>
       </label>
 
+      {stale && (
+        <div
+          role="alert"
+          className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+        >
+          <p className="min-w-0 flex-1">
+            {stale.message}
+            {loaded && stale.current.family !== loaded.family && (
+              <> Domaine enregistré : « {FAMILY_LABELS[stale.current.family] ?? stale.current.family} ».</>
+            )}{" "}
+            <span className="text-amber-800">« Recharger » reprend les valeurs enregistrées ; vos saisies sont abandonnées.</span>
+          </p>
+          <button
+            ref={reloadRef}
+            type="button"
+            onClick={reload}
+            className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+            Recharger
+          </button>
+        </div>
+      )}
+
       <div className="mt-3 flex gap-2">
         <button
           type="button"
           onClick={save}
-          disabled={saving}
+          disabled={saving || !!stale}
           className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg bg-brand px-3.5 text-sm font-semibold text-white transition hover:bg-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
         >
           <Check className="h-4 w-4" aria-hidden="true" />

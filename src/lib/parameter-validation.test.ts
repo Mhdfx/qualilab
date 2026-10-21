@@ -1,5 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_PARAMETER_FAMILY, PARAMETER_FAMILIES, validateParameter, parseLimit } from "./parameter-validation";
+import {
+  checkParameterVersion,
+  DEFAULT_PARAMETER_FAMILY,
+  isOutdatedFormSave,
+  PARAMETER_CHANGED_ERROR,
+  PARAMETER_FAMILIES,
+  PARAMETER_FORM_KEYS,
+  PARAMETER_PAGE_OUTDATED_ERROR,
+  parameterVersion,
+  validateParameter,
+  parseLimit,
+  type CleanParameter,
+} from "./parameter-validation";
 
 const valid = {
   name: "E. coli",
@@ -173,5 +185,144 @@ describe("columns of 191 characters", () => {
     expect(validateParameter({ ...base, unit: "u".repeat(192) }).ok).toBe(false);
     expect(validateParameter({ ...base, threshold: "t".repeat(192) }).ok).toBe(false);
     expect(validateParameter({ ...base, unit: "u".repeat(191), threshold: "t".repeat(191) }).ok).toBe(true);
+  });
+});
+
+describe("parameterVersion — what an edit loaded (open point of D-19)", () => {
+  const stored: CleanParameter = {
+    name: "Plomb",
+    category: "ALIMENTAIRE",
+    family: "MICRO",
+    unit: "mg/kg",
+    threshold: "0,1 mg/kg",
+    limitValue: 0.1,
+    alertOnExceed: false,
+    calcFactor: 1,
+    aliases: "Pb\nPlomb total",
+  };
+
+  it("is the same for the same values, whatever else the row carries or the key order", () => {
+    const version = parameterVersion(stored);
+    expect(version).toMatch(/^[0-9a-f]{14}$/);
+    expect(parameterVersion({ ...stored })).toBe(version);
+    // The screen's row has an id and the norm in force; the route's, an id.
+    const screenRow = { id: "p1", normLabel: "NM 08.0.xxx", ...stored };
+    expect(parameterVersion(screenRow)).toBe(version);
+    const reordered = Object.fromEntries(Object.entries(stored).reverse()) as CleanParameter;
+    expect(parameterVersion(reordered)).toBe(version);
+  });
+
+  it("changes with every field an edit writes — the domain of a reclassification first", () => {
+    const version = parameterVersion(stored);
+    const edits: Partial<CleanParameter>[] = [
+      { family: "CHIMIE" },
+      { category: "EAU" },
+      { name: "Plomb (Pb)" },
+      { unit: null },
+      { unit: "mg/l" },
+      { threshold: null },
+      { limitValue: 0.2 },
+      { limitValue: null },
+      { alertOnExceed: true },
+      { calcFactor: 10 },
+      { aliases: "Pb" },
+      { aliases: null },
+    ];
+    const versions = edits.map((edit) => parameterVersion({ ...stored, ...edit }));
+    for (const other of versions) expect(other).not.toBe(version);
+    expect(new Set(versions).size).toBe(edits.length);
+  });
+
+  it("tells null from an empty text and a limit of 0 from no limit", () => {
+    expect(parameterVersion({ ...stored, unit: null })).not.toBe(parameterVersion({ ...stored, unit: "" }));
+    expect(parameterVersion({ ...stored, limitValue: 0 })).not.toBe(parameterVersion({ ...stored, limitValue: null }));
+  });
+
+  it("survives the trip through JSON — the screen gets its rows serialised", () => {
+    const travelled = JSON.parse(JSON.stringify({ id: "p1", ...stored, limitValue: 0.1 + 0.2, calcFactor: 1e-7 }));
+    expect(parameterVersion(travelled)).toBe(parameterVersion({ ...stored, limitValue: 0.1 + 0.2, calcFactor: 1e-7 }));
+  });
+});
+
+describe("checkParameterVersion", () => {
+  const stored: CleanParameter = {
+    name: "pH",
+    category: "EAU",
+    family: "CHIMIE",
+    unit: null,
+    threshold: "6,5 – 8,5",
+    limitValue: null,
+    alertOnExceed: false,
+    calcFactor: 1,
+    aliases: null,
+  };
+
+  it("accepts the version of the stored row", () => {
+    expect(checkParameterVersion(parameterVersion(stored), stored)).toBe("ok");
+  });
+
+  it("refuses the version of a row that has changed since — reclassified or edited", () => {
+    const opened: CleanParameter = { ...stored, family: "MICRO" };
+    expect(checkParameterVersion(parameterVersion(opened), stored)).toBe("stale");
+    expect(checkParameterVersion(parameterVersion({ ...stored, threshold: "6 – 9" }), stored)).toBe("stale");
+    expect(checkParameterVersion("", stored)).toBe("stale");
+  });
+
+  it("does not check a request without a version (older callers, scripts)", () => {
+    expect(checkParameterVersion(undefined, stored)).toBe("ok");
+    expect(checkParameterVersion(null, stored)).toBe("ok");
+  });
+
+  it("calls anything but a string invalid", () => {
+    expect(checkParameterVersion(42, stored)).toBe("invalid");
+    expect(checkParameterVersion({ family: "CHIMIE" }, stored)).toBe("invalid");
+    expect(checkParameterVersion(true, stored)).toBe("invalid");
+  });
+
+  it("says what happened and what to do", () => {
+    expect(PARAMETER_CHANGED_ERROR).toBe(
+      "Ce paramètre a été modifié entre-temps (reclassé ou édité) : rechargez-le avant d'enregistrer."
+    );
+  });
+});
+
+describe("isOutdatedFormSave — a page loaded before the deploy (D-19)", () => {
+  // What the form of master (production before this release) sends: the nine fields, no version.
+  const oldForm = {
+    name: "Plomb",
+    category: "ALIMENTAIRE",
+    family: "MICRO",
+    unit: "mg/kg",
+    threshold: "0,1 mg/kg",
+    limitValue: "0.1",
+    alertOnExceed: false,
+    calcFactor: "",
+    aliases: "",
+  };
+
+  it("knows the old form: every field of the form, no version", () => {
+    expect(Object.keys(oldForm).sort()).toEqual([...PARAMETER_FORM_KEYS].sort());
+    expect(isOutdatedFormSave(oldForm)).toBe(true);
+    expect(isOutdatedFormSave({ ...oldForm, version: null })).toBe(true);
+    // An emptied field is still sent ("" or null): still the old form.
+    expect(isOutdatedFormSave({ ...oldForm, unit: null, threshold: "" })).toBe(true);
+  });
+
+  it("lets the current form through: it always sends its version", () => {
+    expect(isOutdatedFormSave({ ...oldForm, version: "00000000000000" })).toBe(false);
+  });
+
+  it("lets a script changing a field or two through", () => {
+    expect(isOutdatedFormSave({ threshold: "0,2 mg/kg" })).toBe(false);
+    expect(isOutdatedFormSave({ family: "CHIMIE" })).toBe(false);
+    const eight = Object.fromEntries(Object.entries(oldForm).filter(([key]) => key !== "aliases"));
+    expect(isOutdatedFormSave(eight)).toBe(false);
+    expect(isOutdatedFormSave({})).toBe(false);
+  });
+
+  it("says what to do, and that nothing was saved", () => {
+    expect(PARAMETER_PAGE_OUTDATED_ERROR).toBe(
+      "Cette page date d'avant la dernière mise à jour du logiciel : rechargez-la avant d'enregistrer. Rien n'a été enregistré."
+    );
   });
 });

@@ -148,3 +148,90 @@ export function validateParameter(input: ParameterInput): ParameterResult {
     },
   };
 }
+
+/**
+ * An edit made on a stale copy (open point of D-19): a form opened before
+ * « Reclasser plusieurs paramètres » sends back the domain it showed and
+ * silently undoes the reclassification. So the form sends the version of
+ * the parameter it loaded and `PATCH /api/parameters/[id]` answers 409 with
+ * this message when the stored parameter is no longer that one.
+ */
+export const PARAMETER_CHANGED_ERROR =
+  "Ce paramètre a été modifié entre-temps (reclassé ou édité) : rechargez-le avant d'enregistrer.";
+
+/**
+ * The version of a parameter: a fingerprint of every field an edit writes
+ * (the columns of `CleanParameter`, nothing else — not its id, not the norm
+ * the screen shows). The table has no `updatedAt`, so the values themselves
+ * are compared. Pure and the same in the browser and on the server: the
+ * screen computes it from the row it was given, the route from the row it
+ * reads.
+ */
+export function parameterVersion(parameter: CleanParameter): string {
+  const fields = JSON.stringify([
+    parameter.name,
+    parameter.category,
+    parameter.family,
+    parameter.unit,
+    parameter.threshold,
+    parameter.limitValue,
+    parameter.alertOnExceed,
+    parameter.calcFactor,
+    parameter.aliases,
+  ]);
+  // cyrb53: 53 bits, enough to tell two states of one parameter apart.
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < fields.length; i++) {
+    const code = fields.charCodeAt(i);
+    h1 = Math.imul(h1 ^ code, 2654435761);
+    h2 = Math.imul(h2 ^ code, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, "0");
+}
+
+/**
+ * The `version` an edit sent against the stored parameter: "ok" when it is
+ * the stored one — or when none was sent (a script changing one field: no
+ * token, no check; the screen always sends one) — "stale" when the
+ * parameter changed since it was loaded, "invalid" when it is not a version.
+ */
+export function checkParameterVersion(sent: unknown, stored: CleanParameter): "ok" | "stale" | "invalid" {
+  if (sent === undefined || sent === null) return "ok";
+  if (typeof sent !== "string") return "invalid";
+  return sent === parameterVersion(stored) ? "ok" : "stale";
+}
+
+/** The nine fields the edit form has always sent, all of them on every save. */
+export const PARAMETER_FORM_KEYS = [
+  "name",
+  "category",
+  "family",
+  "unit",
+  "threshold",
+  "limitValue",
+  "alertOnExceed",
+  "calcFactor",
+  "aliases",
+] as const;
+
+/**
+ * The answer to a save from a page loaded before the version existed: the
+ * old form shows it in the page banner and keeps what was typed.
+ */
+export const PARAMETER_PAGE_OUTDATED_ERROR =
+  "Cette page date d'avant la dernière mise à jour du logiciel : rechargez-la avant d'enregistrer. Rien n'a été enregistré.";
+
+/**
+ * A save sent by the edit form of a page loaded before the deploy (D-19): the
+ * nine fields of the form and no `version`. Such a tab still runs the old
+ * code and would send back the domain it showed — after « Reclasser
+ * plusieurs paramètres », the old one. A script changing a field or two
+ * never sends the whole form, so it is not concerned.
+ */
+export function isOutdatedFormSave(body: Record<string, unknown>): boolean {
+  if (body.version !== undefined && body.version !== null) return false;
+  return PARAMETER_FORM_KEYS.every((key) => key in body);
+}
