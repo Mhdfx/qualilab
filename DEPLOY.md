@@ -463,9 +463,16 @@ the four waves (`9770bb0`, `d7b8750`, `124af3a`, `b898586`), the final
 verification's fixes (`d9dcd2d`), and since 20/10 **lot 2C**
 (`RETOUR-LABO-19-10.md`: migration `c5db24e`, H1 `7b1b540`, H2 / H3
 `f057892`, H4 `a83ec7e`, D-15–D-18 `5666f3b`, D-19 `1cb4a4f`) — six
-additive migrations (listed in the section above). **One deploy carries
-the four waves and lot 2C**, so it carries the preconditions of waves 2 and
-3 and lot 2C's go-live steps (H1, D-19). Rehearsed on 19/10 (the first five
+additive migrations (listed in the section above) — and since 21/10 the
+debts closed before the deploy (`0c8bd0d` money's thousands separator,
+`e224170` D-09, `7c35cfe` the reception's « Annuler », `7490af8` D-19's
+concurrent edit, `287ed6a` the server's idle bound Q82, `533d56c` B2,
+`e879e21` early alerts, `eeb9de6` a11y — TESTPLAN V18, **no new
+migration**: still six). **One deploy carries the four waves, lot 2C and
+the 21/10 batch**, so it carries the preconditions of waves 2 and
+3, lot 2C's go-live steps (H1, D-19) and step 2's `UPDATE Session` (Q82).
+The owner decided on 21/10 to deploy after every build, then test on
+production: this deploy is the next step. Rehearsed on 19/10 (the first five
 migrations) on a local copy at the
 production schema (34 migrations): `npx prisma migrate deploy`, then the
 compose `migrate` command run from an image built out of `git archive HEAD`
@@ -478,10 +485,11 @@ environment variable**.
 
 ### 0. Before the window — the gates (owner)
 
-- **Committed** (19/10 `d9dcd2d`; lot 2C 20/10, commits above). Gates again
-  on the branch's head: `npx tsc --noEmit -p .`, `npx eslint src`,
-  `npx vitest run`, `npm run build` (green on 20/10: 0 / 0 / 123 files,
-  2 479 tests / 94 pages). **Rehearse again with the six migrations** on a
+- **Committed** (19/10 `d9dcd2d`; lot 2C 20/10 and the 21/10 batch,
+  commits above; pushed 21/10). Gates again on the branch's head:
+  `npx tsc --noEmit -p .`, `npx eslint src`, `npx vitest run`,
+  `npm run build` (green on 21/10: 0 / 0 / 133 files, 2 695 tests / 94
+  pages). **Rehearse again with the six migrations** on a
   local copy at the production schema (the 19/10 procedure:
   `npx prisma migrate deploy`, then the compose `migrate` command from an
   image built out of `git archive HEAD`; every row hashed before / after).
@@ -542,7 +550,13 @@ environment variable**.
     with the invoices (H2), and each address « Tout le client » or one site
     (H3); invoices and credit notes have a second button « PDF par
     paramètre » (H4); « Analyse sensorielle » removes the family's analyses
-    on the programme sheet and says so (D-16).
+    on the programme sheet and says so (D-16);
+  - the sign-out after inactivity, now on the server too: « Après la mise
+    à jour, rechargez chaque onglet ouvert (ou reconnectez-vous) ; une
+    session inactive depuis plus de 35 minutes est désormais fermée par le
+    serveur. » (a tab opened before the deploy keeps the old page, which
+    never reports a long entry to the server: its save would be refused
+    after 35 minutes without a request).
 - Outside the laboratory's hours.
 
 ### 1. Restore point (development machine)
@@ -576,11 +590,25 @@ docker compose exec -T db mysqldump --single-transaction --routines --triggers -
 gzip -t /var/backups/qualilab/qualilab_avant-lot2-16-10.sql.gz \
   && zcat /var/backups/qualilab/qualilab_avant-lot2-16-10.sql.gz | tail -n 1   # « -- Dump completed … »
 chown qualilab: /var/backups/qualilab/qualilab_avant-lot2-16-10.sql.gz
+docker compose exec -T db mysql -u qualilab -p"$DB_PASSWORD" qualilab -e \
+  "UPDATE Session SET updatedAt = UTC_TIMESTAMP(3) WHERE expiresAt > UTC_TIMESTAMP(3)"   # the app is stopped: now, never after the next line
 sudo -u qualilab bash scripts/deploy.sh   # up -d --build (cached) → migrate → app → health → prune
 ```
 
 The dump's name is outside the rotation pattern; copy it off the machine
 too when `BACKUP_REMOTE` is set (« Backups » above).
+
+**The `UPDATE Session` line (idle sign-out on the server, 21/10).** From
+this deploy on, the server closes a non-préleveur session idle for 35
+minutes, read from `Session.updatedAt` (HANDOFF §3). The old code wrote that
+stamp once a day, so without the line every staff session would be closed
+at its first request after the deploy, a person still at work included.
+It runs while the app is stopped, right before `deploy.sh`: the first
+request the new code serves deletes the session it judges idle, and an
+UPDATE run afterwards cannot bring it back. It is safe — the old code's
+refresh only ever sets `updatedAt` to now — and changes nothing else (a
+session the browser left idle is still closed by the browser on arrival,
+or by the server 35 minutes later).
 
 ### 3. Checks right after
 
@@ -615,10 +643,20 @@ docker compose logs app --since 10m                # no error
   full name) — and so does its duplicata.
 - An old protocole and an old bon reprint with the new wording (the
   denomination, « mains en cours de travail », « Boîte exposée 30 min »).
-- Then the production lines of `TESTPLAN.md` V16 and V17, on « TEST UI
-  2026-10-06 Traiteur », « TEST UI V16 … » and « TEST UI V17 … » data only
-  (V17-H1: a test account created after the deploy chooses its password
-  first).
+- **The 21/10 batch (V18), in five minutes:** someone signed in before the
+  deploy who reloads within 35 minutes is still signed in (step 2's
+  `UPDATE Session` ran in time); a « TEST UI » invoice above 1 000 DH reads
+  « 1 800,00 DH »-style figures on its page and in both PDFs (« PDF » and
+  « PDF par paramètre »), never « 1800,00 »; /admin/envois opens, an alert
+  without a report links to its sample or reads « non rattaché »; a
+  /admin/parametres save answers 200 (or 409 « Recharger » if the row
+  changed since the form opened); /validation/[id] of a sample with typed
+  results shows « Saisi par … le … ».
+- Then the production lines of `TESTPLAN.md` V16, V17 and V18, on « TEST UI
+  2026-10-06 Traiteur », « TEST UI V16 … », « TEST UI V17 … » and
+  « TEST UI V18 … » data only (V17-H1: a test account created after the
+  deploy chooses its password first; V18-E: on a test account, never by
+  ageing a real person's session).
 
 ### 5. Reprise F3 — « Catalogue de l'ancien logiciel » (operator, after the deploy)
 
@@ -709,9 +747,17 @@ the same rows. **Never by an UPDATE**: only the screen writes.
    the search, « Passer en Physico-chimie (X) »; the dialog says X, none
    refused, no listed name in it; « Confirmer (X) ». A refusal (409) writes
    nothing. Any gap: « Annuler », start again.
+   **Tabs opened before the deploy:** before the reclassification, close
+   or reload every /admin/parametres tab opened before the deploy. Such a
+   tab can no longer save anything (409 « Cette page date d'avant la
+   dernière mise à jour du logiciel… », `isOutdatedFormSave`), but
+   reloading it avoids the surprise; a form opened after the deploy and
+   saved after the reclassification gets 409 « Ce paramètre a été modifié
+   entre-temps… » and « Recharger » (since 21/10).
 5. **Afterwards:** Alimentaire + Microbiologie lists N − X rows (59 if the
    catalogue is the same); /admin/journal shows X « Paramètre modifié » of
-   the same minute. To undo: the same screen the other way, or the dump (it
+   the same minute, and no other « Paramètre modifié » whose « après »
+   domain differs from the target. To undo: the same screen the other way, or the dump (it
    loses everything entered since).
 
 ### 7. Rollback of the deploy

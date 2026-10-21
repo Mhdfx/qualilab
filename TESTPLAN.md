@@ -824,6 +824,7 @@ paillasse, four rapports, facture — one page each. Script:
 | Remarques du 14/10, lot 1 (V15) | Claude Code | 2026-10-14 | ✅ deployed 14/10 (`52e0d27`) — tsc, lint, vitest 1 796, build; adversarial review (17 findings fixed); browser in English: local 23/23, production 24/24; V14 regression 40/40; remaining unticked V15 lines to run by hand |
 | Lot 2 + lot 1b, réponses du 16/10 (V16) — local | Claude Code | 2026-10-19 | ⏳ built and tested **locally only**, not deployed (branch `lot2-retour-16-10`: `9770bb0`, `d7b8750`, `124af3a`, `b898586` + final fixes, committed `d9dcd2d`) — tsc 0, eslint 0, vitest 117 files / 2 312 tests, build 93/93; adversarial reviews per wave (15, 15, 26, 31 findings) + a whole-branch review (6, fixed); local recette v16-1 63/63, v16-2 109/109, v16-3 67/67, v16-4 73/73, final 21/21 + 7/7, V15 24/24, V14 40/40; deploy rehearsed on a copy at the production schema; every production line pending (the owner, after the deploy gates) |
 | Lot 2C, réponses du 19/10 (V17) — local | Claude Code | 2026-10-20 | ⏳ built and tested **locally only**, not deployed (branch `lot2-retour-16-10`: migration `c5db24e`, then `7b1b540` H1, `f057892` H2 + H3, `a83ec7e` H4, `5666f3b` D-15–D-18, `1cb4a4f` D-19) — tsc 0, eslint 0, vitest 123 files / 2 479 tests, build 94 pages; a review per area, every finding fixed (accounts 3, clients 5, programme 5, invoice 4, parameters 6); local recette `v17-local.mjs` 78/78 (+ `local-v17-h1.mjs` 53/53, `local-v17-clients-h2-h3.mjs` 31/31), regressions v16-1 62/62, v16-2 109/109, v16-3 67/67, v16-4 73/73, final 21/21 + 7/7, V15 24/24, V14 40/40; every production line pending (the owner, after the deploy) |
+| Dettes fermées avant le déploiement (V18) — local | Claude Code | 2026-10-21 | ⏳ built and tested **locally only**, committed and pushed, not deployed (branch `lot2-retour-16-10`: `0c8bd0d` money, `e224170` D-09, `7c35cfe` reception « Annuler », `7490af8` D-19 concurrent edit, `287ed6a` Q82, `533d56c` B2, `e879e21` early alerts, `eeb9de6` a11y; no migration) — tsc 0, eslint 0, vitest 133 files / 2 695 tests, build 94 pages; `v18-local.mjs` 53/53; regressions v16-1 64/64, v16-2 109/109, v16-3 67/67, v16-4 73/73, final 21/21 + 7/7, V15 24/24, V14 40/40, v17-local 78/78, v17-h1 53/53, v17-h2-h3 31/31; every production line pending (the owner, after the deploy — next, by the decision of 21/10) |
 | Extensions (G3) | | | |
 
 ## Checkpoint I — Audit round 1 (2026-09-07)
@@ -1114,6 +1115,58 @@ Rules pinned by `parameter-reclassify.test.ts`; the reading list and the product
 - [ ] The laboratory told beforehand (`DEPLOY.md` step 0): first sign-in → choose a password; IF / RC on the fiche; an address per site; « PDF par paramètre ».
 - [ ] The named accounts created after the deploy; each one's first sign-in lands on « Mon compte »; the demo accounts disabled, not reset (V17-H1).
 
+## Checkpoint V18 — dettes fermées avant le déploiement (le séparateur des milliers et les dettes de `HANDOFF.md` §9) — built and tested locally 21/10, committed, **not deployed**
+
+Built 21/10 on branch `lot2-retour-16-10`, on top of `d4bff04`, committed and pushed: `0c8bd0d` (A, money), `e224170` (B, D-09), `7c35cfe` (C, the reception's « Annuler »), `7490af8` (D, D-19's concurrent edit), `287ed6a` (E, Q82), `533d56c` (F, B2), `e879e21` (G, early alerts), `eeb9de6` (H, a11y); no migration. Ships with lot 2A and lot 2C in one deploy (`DEPLOY.md` « Lot 2 du 16/10 ») — the next step, by the owner's decision of 21/10 (deploy after every build, then test on production). Local copy only (http://localhost:3210 on `qlab-local-db` / `qualilab_local`), client « TEST UI 2026-10-06 Traiteur » and « TEST UI V18 … » records only. **Production: nothing run.**
+
+**Integration run (21/10):** `npx tsc --noEmit -p .` 0, `npx eslint src` 0, `npx vitest run` 133 files / 2 695 tests, `npm run build` OK (94 pages); **`.ui-tests/v18-local.mjs` 53/53** (git-ignored; `npx tsx .ui-tests/v18-local.mjs` — API, served pages and a headless Chrome; one visit of 4 samples cancelled at the end except the one whose report was issued, one invoice issued then cancelled with a motif, one parameter and its journal rows deleted, its own sessions deleted); regressions v16-1 64/64, v16-2 109/109, v16-3 67/67, v16-4 73/73, final 21/21 + 7/7, V15 24/24, V14 40/40, v17-local 78/78, local-v17-h1 53/53, local-v17-clients-h2-h3 31/31.
+
+### V18-A — Le séparateur des milliers (go-live blocker of 21/10)
+- [x] An invoice of 1 800,00 DH HT issued by compta1: its page shows « 1 800,00 DH » and « 2 160,00 DH » with U+00A0 between thousands, never U+202F. *Local 21/10 (`v18-local`).*
+- [x] Its PDF, per line and `?modele=parametre`: « Total HT 1 800,00 DH », « 2 160,00 DH », never « 1800,00 » nor U+202F (pdftotext). *Local 21/10 (`v18-local`).*
+- [x] Unit rules: `formatCurrency` / `formatDecimal` (negatives, zero, millions, NaN), the PDF's `money` is `formatCurrency`, `formatTypedAmount` (« 1800 » → « 1 800,00 DH », refused text as typed), `typedAmountIsNone` (a typed 0 asks for no payment mode and shows no « Avance » line), « Délai moyen » « 2,5 j ». *`labels.test.ts`, `invoice-html.test.ts`.*
+- [ ] Production (the owner, after the deploy): one invoice above 1 000 DH, its page and both PDFs.
+
+### V18-B — Qui a saisi chaque lecture (D-09, C3 « Avec lui »)
+- [x] tech1 types Coliformes « 50 » → author tech1, the empty E. coli has none; the administrator saves the sheet with E. coli « 20 » → Coliformes keeps tech1 and its time, E. coli is the administrator's; journal `RESULTS_SAVED` `changed` = [E. coli], `replaced` = {}. *Local 21/10 (`v18-local`).*
+- [x] tech1 retypes E. coli → his again, `replaced` = { E. coli: the administrator }; the unchanged line keeps its author and time. *Local 21/10.*
+- [x] /validation/[id] (valid1): « Saisi par … le … » under each typed result, one per reading. *Local 21/10.*
+- [x] The bench opens a line with what was typed after a criterion was added (the single value becomes R1) or withdrawn (R1 becomes the single value, never the figure × factor) — `benchStartingReadings`. *`bench-reading.test.ts`.*
+- [ ] Production (the owner): two people type on one sample; the validation page names each.
+
+### V18-C — « Annuler » à la réception nomme la facture (D1)
+- [x] /reception/series/[id] as admin, « Annuler » on a sample on an issued invoice: « Déjà facturé (FAC-…) : sa ligne reste sur la facture, la comptabilité établira un avoir. », never the neutral « s'il est déjà facturé… »; Escape closes it, nothing cancelled. *Local 21/10 (`v18-local`, headless Chrome).*
+- [ ] Production (the owner): the same on a « TEST UI » sample, dialog closed without confirming.
+
+### V18-D — Un paramètre modifié entre-temps (D-19, point ouvert)
+- [x] A form opened, then « Reclasser plusieurs paramètres » → CHIMIE, then the form saves → 409 « Ce paramètre a été modifié entre-temps… » with the stored row; the domain stays CHIMIE; « Recharger » then save → 200, CHIMIE kept. *Local 21/10 (`v18-local`).*
+- [x] A tab opened before the deploy (the nine fields, no `version`) → 409 « Cette page date d'avant la dernière mise à jour… », no `current`; a one-field script without `version` → 200, the other fields kept. *Local 21/10.*
+- [x] Lock held by another MySQL session, collation-equal corrections (« 10² », case), the drift warning and focus in the browser. *Local 21/10 (`param-race-lock.mts`, `param-race-ui.mjs`, `parameter-edit-conflict.test.ts`).*
+- [ ] Production (the owner): before D-19's step 6, reload every /admin/parametres tab (`DEPLOY.md`).
+
+### V18-E — La borne d'inactivité du serveur (Q82)
+- [x] A tech2 session aged 40 min (SQL on the local copy, `updatedAt` and `expiresAt` moved together): « / » and /technicien → 307 `/login?motif=inactivite`, the Session row deleted, GET /api/auth/get-session → `null`, an API → 401 « Non autorisé. »; the login page says « Session fermée après inactivité. ». *Local 21/10 (`v18-local`).*
+- [x] Aged 10 min → /technicien 200 and stamped again (`updatedAt` < 1 min); pre1 aged 3 days → /preleveur 200, the session kept; a fresh session → 200. *Local 21/10.*
+- [ ] Production (the owner): the C3 lines of V11 plus « C3 — the server's bound » above, on a test account.
+
+### V18-F — « Renvoyé par … » (B2)
+- [x] Submitted then sent back by valid1 → EN_ANALYSE, tech1's sheet shows « Renvoyé par … »; resubmitted, cancelled, reactivated (PROGRAMME, `rejectedAt` kept) and typed again → EN_ANALYSE without the banner. *Local 21/10 (`v18-local`).*
+- [x] The queue's « Renvoyé » chip follows the same rule (`isCurrentSendBack`, one grouped read of the journal); the cancel and reactivate routes never write `RESULTS_SUBMITTED` nor `rejectedAt`. *`send-back.test.ts`.*
+- [ ] Production (the owner): a « TEST UI » sample sent back by the validation shows « Renvoyé par … » at the bench; resubmitted, the banner and the chip are gone.
+
+### V18-G — Les alertes envoyées à la validation technique
+- [x] E. coli « 1000 » (limit 100), technical validation by valid1 → one alert (SIMULE), its journal row names the send (`emailLogId`), no `reportId`; /admin/envois links it to the sample (« alerte à la validation technique ») and the validation page's « Envois » card lists it — before the report and once the administrator approved (report issued). *Local 21/10 (`v18-local`).*
+- [ ] Production (the owner): /admin/envois filtered on « Alerte de contamination » after the next real alert.
+
+### V18-H — Accessibilité des actions du rapport (`ReportDialog`) et des listes d'envois
+- [x] Tab and Shift+Tab loop inside the report actions' dialog (rendered controls only), Escape closes it and the focus returns to its opener; the cross is 44 px; the compact « Renvoyer au client » is 40 px tall; /admin/envois and /reception/historique filter and paging buttons are 44 px. *`report-dialog-logic.test.ts` (`focusTrapTarget`); the sizes read in the source.*
+- [ ] Production (the owner): on a validated « TEST UI » sample, open « Versions du rapport » and Tab through it — the focus never leaves the dialog.
+
+### V18 — The deploy (production, the owner)
+- [ ] `DEPLOY.md` « Lot 2 du 16/10 » step 2: the `UPDATE Session SET updatedAt = UTC_TIMESTAMP(3) …` ran while the app was stopped, right before `deploy.sh` — a staff member signed in before the deploy is still signed in after it (if they reload within 35 minutes).
+- [ ] Still six migrations applied (none added on 21/10); the laboratory told to reload every tab (the 35-minute bound).
+- [ ] Then the production lines of V18-A to V18-H above, on « TEST UI » data only.
+
 ## Checkpoint V16 — Lot 2 et lot 1b (plan du 16/10, `RETOUR-LABO-16-10.md` §3–§4) — built and tested locally 19/10, **not deployed**
 
 Built 19/10 on branch `lot2-retour-16-10`: `master` (`a1ad186`) + `9770bb0` (wave 1), `d7b8750` (wave 2), `124af3a` (wave 3), `b898586` (wave 4); the final verification's fixes were in the working tree (V16-F), committed the same day as `d9dcd2d`. One section per wave. One deploy carries the four waves and their five migrations, after a restore point (tag + labelled dump outside the rotation) — `DEPLOY.md` « Lot 2 du 16/10 ».
@@ -1188,6 +1241,8 @@ Rules for the production run — production holds real laboratory data:
 - [x] F2 grids: a grid of 250 rows saves; above 1000 → 400 « Trop de lignes (1000 maximum). »; a c on an absence criterion is still refused by the API; a grid shown with meaningless imported c saves as shown — 10 c cleared, journalled `tidied`, none « à la main », no c left on the family; one changed cell writes one row and one journal line; the reprise's analysis lists the c to clear (rows, families) and writes nothing. *Local 19/10 (`v16-final-local`).*
 - [x] Analyses changed on a billed sample: the programme sheet of a sample on a draft and « Corriger la fiche » on an invoiced one name the draft / the invoice (« Échantillon déjà facturé (FAC-…) »); a correction without an analyses change says nothing; journal `billedOn` = the invoice; « Analyses modifiées après facturation » with the reference on the issued invoice, the same on the draft, the badge on the client fiche. *Local 19/10 (`v16-final-local`, `v16-final-ui`).*
 - [x] « Annuler » after the programme: /validation/[id] passes the invoice; the dialog says « Déjà facturé (FAC-…) : sa ligne reste sur la facture »; the cancellation journals `billedOn`. *Local 19/10.*
+- [x] « Annuler » on /reception/series/[id] (admin): draft → « Il est sur un brouillon de facture… », none → « …du rapport et de la facturation. »; recep1's payload carries neither `invoiced` nor `alertsSentAt`. *Local 21/10.*
+- [x] Receive a série → « Annuler » one line in the summary (« Doublon »): after the refresh the line shows « Annulé · Doublon », no « Annuler », « Réactiver » for the administrator, and the label count drops by one (`summaryLineOf`). *Local 21/10.*
 - [x] « Rouvrir pour amendement » of a validated, never-sent report says the client never received the version replaced (Q132); of a sent report, no such warning. *Local 19/10 (`v16-final-ui`).*
 - [x] The family of a water sample at the bench: « Corriger les analyses » offers « Famille de produits (critères) » with the water families. *Local 19/10 (`v16-final-ui`).*
 - [x] « Analyse sensorielle » sets n = 1 and detaches the family, said on the sheet (Q133). *Local 19/10 (`v16-final-ui`).*
@@ -1442,6 +1497,7 @@ Rules for this recette — production holds real laboratory data:
 - [ ] **C1** — Each lab role clicks its name in the header → `/compte` (name, username, role, « Changer mon mot de passe »); a test account changes its password → its other session is signed out; journal « Mot de passe modifié par l'utilisateur » (`USER_PASSWORD_CHANGED`, `portal: false`); a CLIENT account is redirected to `/portail`. pre1's menu shows « Mon compte ».
 - [ ] **C2** — On a test account, 5 wrong current passwords → the 6th answers 429 « Trop de tentatives, réessayez dans N minutes. » (portal and staff); a correct one after 15 min works.
 - [ ] **C3** — On a lab PC, idle 28 min → « Vous allez être déconnecté pour inactivité » with a countdown; « Rester connecté » closes it in every open tab; idle 30 min → `/login` « Session fermée après inactivité. »; a tab closed and reopened after 30 min lands on the login page; a fresh sign-in is not signed out; pre1 on a phone is never signed out.
+- [ ] **C3 — the server's bound (since 21/10, lot 2C)** — a non-préleveur session stamped (`Session.updatedAt`) 40 min ago: its page → 307 `/login?motif=inactivite` (« Session fermée après inactivité. »), the row deleted; GET /api/auth/get-session → 200 `null`; an API → 401 « Non autorisé. »; stamped 10 min ago → served and stamped again (once a minute at most); pre1 stamped 3 days ago → kept; the row locked by another connection (the delete fails) → still `null`, the row not refreshed, deleted at the next request. Browser: opening a page (Back included) sends one GET /api/auth/get-session; « Rester connecté » sends one at once. *Local 21/10: over HTTP on the dev server 16/16, through the application's own Better Auth instance 13/13; in the browser, /technicien → /compte → Back (restored with no `?_rsc` request) sent its own get-session.*
 - [ ] **C4** — admin `/admin/journal`: filters Action / Utilisateur (disabled accounts and « Système » included) / Du / Au / Référence; a test N° de contrôle, a test série « NN/26 » and a test invoice number each list their entries (« Référence X : 1 échantillon (et son rapport) »); an unknown reference shows the « Aucun … ne porte la référence » message; « Actions plus anciennes » / « Revenir aux plus récentes »; 50 per page.
 - [ ] **C5** — admin menu: « Enregistrement des paramètres », « Historique des réceptions », « Envois d'e-mails » open their pages and light up.
 - [ ] **C6** — pre1 dashboard: tiles count every visit (not the last 50); « Mes visites » search (série, client « TEST UI », site), status filter and « Voir plus » append the next page.

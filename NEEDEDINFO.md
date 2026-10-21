@@ -264,8 +264,9 @@ corps de l'e-mail du lot du 18/10) :
 > **Lot du 20/10 — suite des pages 9 et 10 revenues le 19/10 — dans le corps
 > d'un e-mail, sans nouveau PDF (détail `RETOUR-LABO-19-10.md` §5) ; à
 > envoyer quand le propriétaire le décide, avec la présentation
-> `backups/Qualilab-presentation-evolutions-16-10-2026-10-20.pdf` s'il la
-> joint :**
+> `backups/Qualilab-presentation-evolutions-2026-10-21-v2.pdf` s'il la joint
+> (elle remplace celle du 20/10 et la première du 21/10, qui ne sont pas à
+> envoyer : la v2 montre les montants avec l'espace des milliers) :**
 > Objet : Vos réponses du 19/10 — merci, et quatre précisions
 >
 > Bonjour,
@@ -282,7 +283,7 @@ corps de l'e-mail du lot du 18/10) :
 > Quatre précisions, une ligne suffit :
 > 1. **Q30** — Vous avez écrit « Besoin par paramètres » : nous avons
 >    préparé, en plus de la facture par échantillon, la même facture groupée
->    par paramètre (une ligne par analyse, avec le nombre d'échantillons ;
+>    par paramètre (une ligne par paramètre, avec le nombre d'analyses ;
 >    mêmes montants, même numéro), au choix à l'impression (bouton « PDF par
 >    paramètre »). Est-ce bien ce que vous vouliez ? Faut-il l'imprimer par
 >    défaut pour certains clients, et lesquels ? Un exemple de l'ancien

@@ -31,6 +31,15 @@
 > (après R-4 et R-1), la relecture de la liste D-19 par le propriétaire
 > puis le reclassement en production, et le déploiement (un seul, lot 2A +
 > lot 2C, quand le propriétaire le décide).
+>
+> **21/10 : le point ouvert de D-19 est réglé** — un formulaire de
+> /admin/parametres ouvert avant un reclassement écrasait le domaine
+> reclassé en enregistrant ; il reçoit désormais 409 « Ce paramètre a été
+> modifié entre-temps… » et « Recharger » (`7490af8`, avec les autres dettes
+> du 21/10 : `HANDOFF.md` §8 « 2026-10-21 », `TESTPLAN.md` V18-D). Commité et
+> poussé, non déployé. Le propriétaire a décidé le 21/10 de déployer après
+> chaque construction : le prochain déploiement porte les lots 2A, 2C et ces
+> dettes, toujours avec six migrations.
 
 ---
 
@@ -134,7 +143,7 @@ données ; ces points :
 | D-16 | Passer un aliment en « Analyse sensorielle » retire la famille et ramène n à 1, mais les germes venus de cette famille restent cochés (« 6 analyses · n = 1 · sans famille »), alors que choisir « — aucune — » famille les retire. `adoptReferential()` (`programme-sheet-logic.ts`) ne touche que n et la famille | un échantillon d'analyse sensorielle peut partir à la paillasse avec des germes microbiologiques | retirer, comme « aucune famille », les analyses venues seulement de la famille, et le dire dans l'avis | XS ≈ 1 h | construit le 20/10 (`5666f3b`), testé en local, non déployé, avec le défaut actuel de Q133 : les analyses venues seulement de la famille sont retirées et la section 1 le dit en ambre (« Famille « X » retirée avec la nature « Analyse sensorielle » : n ramené à 1 (au lieu de 5) ; 2 analyses venues de cette famille ont été retirées (…) », `natureDetachNotice`) ; recette V17-D15 / D16 |
 | D-17 | Le nombre de « critères » d'une même famille diffère selon l'écran : la liste « Familles & critères » compte les lignes de critères, versions de norme comprises (`family-catalogue.ts:71`, `criteria.length`) ; le dialogue « Choisir une famille de produits » et la fiche comptent les germes distincts (`programme-referential.ts:497`). Exemple : « CONFITURES, COMPOTES… » 6 dans la liste, 5 dans le dialogue | le laboratoire voit deux chiffres pour la même famille | un seul compte partout : « N germes » (distincts), et « N lignes » seulement dans la grille de la famille | XS ≈ 0,5 h | construit le 20/10 (`5666f3b`), testé en local, non déployé : « N critères » = un par germe partout (`germCount`), « N critères · M lignes » dans la grille seulement ; recette V17-D17 |
 | D-18 | Page d'une famille (`/programmation/familles/[id]`) à 1366 px de large : l'en-tête et la grille tronquent « Type d'analyse », « Propre à un client », les germes et les normes (« Microbiologie des alim… », « Clostridium pe… », « NM ISO 1664… ») | lisible au survol seulement, sur le portable le plus courant | colonnes germe / norme plus larges, retour à la ligne dans les listes, en-tête sur deux lignes sous 1440 px | S ≈ 1,5 h | construit le 20/10 (`5666f3b`), testé en local, non déployé : chaque liste de la page est un choix à retour à la ligne (`WrappingSelect`), les en-têtes n, c, m, M gardent leur casse, une grille enregistrée vide le dit ; recette V17-D18 |
-| D-19 | **Données** : sur la copie locale, 355 paramètres ALIMENTAIRE de domaine MICRO, dont beaucoup de physico-chimie (absorbance K 232 nm, acésulfame-K, acides gras, cuivre, DDT, colorants E120 / E124…), proposés comme « Analyses microbiologiques » (« Corriger les analyses », fiche de programme). Reste de D-13 : la reprise du 07/10 créait tout paramètre inconnu en ALIMENTAIRE / MICRO ; F3 ne corrige que les créations nouvelles. La production a très probablement les mêmes lignes | des analyses chimiques proposées en microbiologie ; un mauvais choix fausse le domaine de l'échantillon | (1) liste en lecture des paramètres MICRO dont le nom ou la norme relève de la chimie (copie locale, puis production en lecture) ; (2) relue par le propriétaire (ou le laboratoire si un cas est douteux) ; (3) reclassement en CHIMIE par l'écran journalisé, d'abord sur la copie locale ; en production par l'exploitant, après tag + dump. Aucune migration, aucun UPDATE hors de l'écran | S ≈ 3 h (+ la relecture) | l'écran construit le 20/10 (`1cb4a4f`), testé en local, non déployé : « Reclasser plusieurs paramètres » dans « Paramètres d'analyse » (administrateur ; aperçu, puis tout ou rien, une entrée de journal par paramètre ; la recherche part du début des mots) ; la liste et la marche à suivre en production : `backups/D-19-parametres-a-reclasser-2026-10-20.md` (hors dépôt, 62 lignes à ne pas cocher sur 355 — 59 en production : 3 sont des germes de test de la copie locale), le contrôle des noms `.ui-tests/d19-compare-names.mjs` ; **appliqué sur la copie locale** le 20/10 (293 paramètres alimentaires passés en physico-chimie par la route, `.ui-tests/d19-apply.mjs` ; 62 restent en microbiologie, dont 6 à confirmer avec le laboratoire) ; **reste** : la relecture du propriétaire, puis la production par l'exploitant (tag + dump), avant la mise en service ; recette V17-D19 |
+| D-19 | **Données** : sur la copie locale, 355 paramètres ALIMENTAIRE de domaine MICRO, dont beaucoup de physico-chimie (absorbance K 232 nm, acésulfame-K, acides gras, cuivre, DDT, colorants E120 / E124…), proposés comme « Analyses microbiologiques » (« Corriger les analyses », fiche de programme). Reste de D-13 : la reprise du 07/10 créait tout paramètre inconnu en ALIMENTAIRE / MICRO ; F3 ne corrige que les créations nouvelles. La production a très probablement les mêmes lignes | des analyses chimiques proposées en microbiologie ; un mauvais choix fausse le domaine de l'échantillon | (1) liste en lecture des paramètres MICRO dont le nom ou la norme relève de la chimie (copie locale, puis production en lecture) ; (2) relue par le propriétaire (ou le laboratoire si un cas est douteux) ; (3) reclassement en CHIMIE par l'écran journalisé, d'abord sur la copie locale ; en production par l'exploitant, après tag + dump. Aucune migration, aucun UPDATE hors de l'écran | S ≈ 3 h (+ la relecture) | l'écran construit le 20/10 (`1cb4a4f`), testé en local, non déployé : « Reclasser plusieurs paramètres » dans « Paramètres d'analyse » (administrateur ; aperçu, puis tout ou rien, une entrée de journal par paramètre ; la recherche part du début des mots) ; la liste et la marche à suivre en production : `backups/D-19-parametres-a-reclasser-2026-10-20.md` (hors dépôt, 62 lignes à ne pas cocher sur 355 — 59 en production : 3 sont des germes de test de la copie locale), le contrôle des noms `.ui-tests/d19-compare-names.mjs` ; **appliqué sur la copie locale** le 20/10 (293 paramètres alimentaires passés en physico-chimie par la route, `.ui-tests/d19-apply.mjs` ; 62 restent en microbiologie, dont 6 à confirmer avec le laboratoire) ; **point ouvert réglé le 21/10** (`7490af8`, non déployé) : une modification d'un seul paramètre faite sur un formulaire ouvert avant le reclassement est refusée (409 « Ce paramètre a été modifié entre-temps… », « Recharger »), un onglet ouvert avant le déploiement aussi (409 « … rechargez-la ») ; **reste** : la relecture du propriétaire, puis la production par l'exploitant (tag + dump), avant la mise en service ; recette V17-D19, V18-D |
 
 ## 5. La prochaine relance (à envoyer quand le propriétaire le décide)
 
@@ -198,6 +207,9 @@ brouillon est dans `NEEDEDINFO.md` §2 (« Lot du 20/10 »).
    un échantillon de microbiologie, elle les cochera sous « autre domaine
    que l'échantillon » — la désactiver ou la scinder (« Familles &
    critères ») est une décision du propriétaire, pas un geste de ce lot.
+   Avant le reclassement, fermer ou recharger tout onglet /admin/parametres
+   ouvert avant le déploiement (il ne peut plus rien enregistrer depuis le
+   21/10, mais le recharger évite la surprise).
 
 ## 7. Ordre et recette
 
@@ -222,8 +234,10 @@ brouillon est dans `NEEDEDINFO.md` §2 (« Lot du 20/10 »).
   73/73, v16-final 21/21 + 7/7, V15 24/24, V14 40/40) — en local sur
   « TEST UI » ; en production, plus tard, par le propriétaire avec ses
   comptes (les comptes de démonstration seront désactivés).
-- **Le déploiement** : un seul, lot 2A + lot 2C, six migrations additives,
-  quand le propriétaire le décide (`DEPLOY.md` « Lot 2 du 16/10 »).
+- **Le déploiement** : un seul, lot 2A + lot 2C (+ les dettes fermées le
+  21/10, `TESTPLAN.md` V18), six migrations additives (aucune de plus le
+  21/10) ; décision du propriétaire du 21/10 : déployer après chaque
+  construction, puis tester en production (`DEPLOY.md` « Lot 2 du 16/10 »).
 
 ## 8. Dépôt public
 
