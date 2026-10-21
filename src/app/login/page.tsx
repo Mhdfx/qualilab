@@ -5,7 +5,11 @@ import LoginForm from "@/components/LoginForm";
 
 export const metadata = { title: "Connexion" };
 
-/** `?motif=inactivite`: the shell closed the session after 30 minutes without activity (IdleLogout). */
+/**
+ * `?motif=inactivite`: the session was closed for inactivity — by the shell
+ * after 30 minutes (IdleLogout), or by the server after 35 (a guard's
+ * `signedOutPath`, session-idle-server.ts).
+ */
 export default async function LoginPage({
   searchParams,
 }: {

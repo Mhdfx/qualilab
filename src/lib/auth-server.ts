@@ -3,6 +3,8 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { admin, username } from "better-auth/plugins";
 import { prisma } from "@/lib/prisma";
 import { ROLES } from "@/lib/roles";
+import { SESSION_ACTIVITY_UPDATE_AGE_S, SESSION_COOKIE_PREFIX } from "@/lib/session-idle";
+import { closeIdleSessionHook } from "@/lib/session-idle-server";
 
 /**
  * Origins allowed to call the auth endpoints (CSRF protection).
@@ -83,8 +85,23 @@ export const auth = betterAuth({
     },
   },
   session: {
+    // Seven days for everyone: the préleveur's phone keeps its session that
+    // long, whatever it does. Every other role is closed after 35 minutes
+    // without activity by `hooks.before` below.
     expiresIn: 60 * 60 * 24 * 7, // 7 days
-    updateAge: 60 * 60 * 24, // refresh once a day
+    // A request stamps the session (`updatedAt`, and the expiry rolls) once a
+    // minute at most: the stamp is the last activity the idle bound reads
+    // (session-idle.ts). It used to be once a day. No `cookieCache`: the
+    // session read would answer from the cookie, a session the idle bound
+    // deleted included (session-idle.test.ts pins it).
+    updateAge: SESSION_ACTIVITY_UPDATE_AGE_S,
+  },
+  hooks: {
+    // The server's sign-out after inactivity (Q82): ahead of every auth
+    // endpoint — the guards' session read included — a session idle past its
+    // role's bound (30 min + 5, never the préleveur) is deleted, so it reads
+    // as signed out everywhere. IdleLogout signs out first, in the browser.
+    before: closeIdleSessionHook,
   },
   // Accounts are disabled, never deleted: every signature in the circuit
   // (validatedById, approvedById, audit actors…) points at a user row, and
@@ -112,7 +129,9 @@ export const auth = betterAuth({
     "/is-username-available",
   ],
   advanced: {
-    cookiePrefix: "qualilab",
+    // « qualilab.session_token »: the page guards read whether it is there
+    // (`carriesSessionCookie`, session-idle.ts).
+    cookiePrefix: SESSION_COOKIE_PREFIX,
     // The client's address for the sign-in rate limit and the sessions.
     // Behind nginx every request comes from 127.0.0.1: the address is the
     // one nginx writes (`proxy_set_header X-Real-IP $remote_addr`, which a

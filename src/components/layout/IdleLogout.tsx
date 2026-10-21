@@ -13,6 +13,13 @@ import {
   readLastActivity,
   shouldRecordActivity,
 } from "@/lib/idle-policy";
+import {
+  SERVER_TOUCH_RETRY_MS,
+  SERVER_TOUCH_TIMEOUT_MS,
+  shouldTouchServer,
+  touchOutcome,
+  type TouchOutcome,
+} from "@/lib/session-idle";
 
 /** What counts as someone at the keyboard. */
 const ACTIVITY_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
@@ -64,11 +71,24 @@ export function recordSignIn(): void {
  * than the limit — the tab was closed without « Déconnexion », the session
  * cookie still valid — the session is closed on arrival instead of being
  * handed to the next person at the PC.
+ *
+ * The server closes an idle session too, 5 minutes after the browser would
+ * (session-idle.ts): it knows of the activity through requests, so this tab
+ * reports it (`touchServer`) — at every page it opens, whether or not the
+ * page came from the server (Back may restore a page from the browser's
+ * cache with no request), then every 2 minutes while someone works in a page
+ * that sends none — a long entry — and « Rester connecté » at once. A report
+ * that failed is sent again by a timer, without waiting for an activity.
  */
 export function IdleLogout({ timeoutMs }: { timeoutMs: number }) {
   const router = useRouter();
   const lastActivity = useRef(0);
   const lastWritten = useRef(0);
+  const lastTouch = useRef(0);
+  const lastTouchAttempt = useRef(0);
+  const touching = useRef(false);
+  const retryTimer = useRef<number | null>(null);
+  const mounted = useRef(false);
   const signingOut = useRef(false);
   const warningShown = useRef(false);
   const stayButton = useRef<HTMLButtonElement>(null);
@@ -76,18 +96,73 @@ export function IdleLogout({ timeoutMs }: { timeoutMs: number }) {
   const titleId = useId();
   const descriptionId = useId();
 
-  /** Restarts the clock at `now` and shares it (`force`: whatever the throttle). */
-  const restart = useCallback((force: boolean) => {
-    if (signingOut.current) return;
-    const now = Date.now();
-    lastActivity.current = now;
-    if (force || shouldRecordActivity(lastWritten.current, now)) {
-      lastWritten.current = now;
-      writeShared(now);
-    }
-    warningShown.current = false;
-    setWarningLeft(null);
-  }, []);
+  /**
+   * Tells the server the person is still here: Better Auth's session read
+   * stamps the session with this request (session-idle.ts). What the answer
+   * means is `touchOutcome`: stamped; unknown — an error, no answer within
+   * `SERVER_TOUCH_TIMEOUT_MS` — sent again `SERVER_TOUCH_RETRY_MS` later by
+   * a timer; no session — closed on the server meanwhile: its idle bound, an
+   * administrator's reset, « Déconnexion » in another tab — the sign-in page,
+   * since nothing more can be saved from here.
+   */
+  const touchServer = useCallback(
+    async function touch(): Promise<void> {
+      if (touching.current || signingOut.current) return;
+      touching.current = true;
+      if (retryTimer.current !== null) {
+        window.clearTimeout(retryTimer.current);
+        retryTimer.current = null;
+      }
+      const sentAt = Date.now();
+      lastTouchAttempt.current = sentAt;
+      let outcome: TouchOutcome = "retry";
+      try {
+        outcome = touchOutcome(
+          await authClient.getSession({ fetchOptions: { signal: AbortSignal.timeout(SERVER_TOUCH_TIMEOUT_MS) } })
+        );
+      } catch {
+        // Network down, or no answer in time: retried below.
+      } finally {
+        touching.current = false;
+      }
+      if (signingOut.current || !mounted.current) return;
+      if (outcome === "stamped") {
+        lastTouch.current = sentAt;
+      } else if (outcome === "retry") {
+        retryTimer.current = window.setTimeout(() => {
+          retryTimer.current = null;
+          void touch();
+        }, SERVER_TOUCH_RETRY_MS);
+      } else {
+        signingOut.current = true;
+        setWarningLeft(null);
+        router.replace("/login");
+        router.refresh();
+      }
+    },
+    [router]
+  );
+
+  /**
+   * Restarts the clock at `now` and shares it (`force`: whatever the
+   * throttles — « Rester connecté » reaches the server at once,
+   * `shouldTouchServer`).
+   */
+  const restart = useCallback(
+    (force: boolean) => {
+      if (signingOut.current) return;
+      const now = Date.now();
+      lastActivity.current = now;
+      if (force || shouldRecordActivity(lastWritten.current, now)) {
+        lastWritten.current = now;
+        writeShared(now);
+      }
+      if (shouldTouchServer(force, lastTouch.current, lastTouchAttempt.current, now)) void touchServer();
+      warningShown.current = false;
+      setWarningLeft(null);
+    },
+    [touchServer]
+  );
 
   /**
    * A click, a key, the wheel or a touch on the page. Ignored while the
@@ -153,6 +228,7 @@ export function IdleLogout({ timeoutMs }: { timeoutMs: number }) {
 
     // Opening a page is an activity — unless the session was already idle
     // past the limit when the page opened (tab closed without signing out).
+    mounted.current = true;
     const start = Date.now();
     if (expiredOnArrival(readSharedRaw(), start, timeoutMs)) {
       void signOut();
@@ -160,6 +236,11 @@ export function IdleLogout({ timeoutMs }: { timeoutMs: number }) {
       lastActivity.current = start;
       lastWritten.current = start;
       writeShared(start);
+      // An activity, so the server hears of it too: the page may come from
+      // the browser's cache (Back) with no request that stamped the session.
+      // After a full load its guard did — the touch then writes nothing
+      // (Better Auth's update age).
+      void touchServer();
     }
 
     const options: AddEventListenerOptions = { capture: true, passive: true };
@@ -169,12 +250,17 @@ export function IdleLogout({ timeoutMs }: { timeoutMs: number }) {
     const interval = window.setInterval(tick, 1000);
 
     return () => {
+      mounted.current = false;
       for (const type of ACTIVITY_EVENTS) window.removeEventListener(type, recordActivity, options);
       window.removeEventListener("storage", onStorage);
       document.removeEventListener("visibilitychange", onVisibility);
       window.clearInterval(interval);
+      if (retryTimer.current !== null) {
+        window.clearTimeout(retryTimer.current);
+        retryTimer.current = null;
+      }
     };
-  }, [timeoutMs, router, recordActivity]);
+  }, [timeoutMs, router, recordActivity, touchServer]);
 
   const warningOpen = warningLeft !== null;
   useEffect(() => {

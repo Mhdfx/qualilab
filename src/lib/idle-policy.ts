@@ -2,8 +2,9 @@ import type { Role } from "./roles";
 
 /**
  * Sign-out after inactivity (finalversion.md: « Déconnexion automatique
- * après inactivité ») — the laboratory's PCs are shared, and a session
- * otherwise rolls for seven days (auth-server.ts). Pure: the clock and the
+ * après inactivité ») — the laboratory's PCs are shared. The browser closes
+ * the session first, with its warning; the server closes it 5 minutes later
+ * should the browser never have (session-idle.ts). Pure: the clock and the
  * stored value are parameters, so the rule is tested without a browser.
  * `IdleLogout.tsx` applies it in every shell.
  *
@@ -86,10 +87,12 @@ export function readLastActivity(raw: string | null | undefined, now: number): n
  * Whether a page that opens must close the session at once: the last
  * activity any tab of this browser recorded is older than the limit. That
  * is the shared PC whose tab was closed — or whose browser was left on
- * another site — without « Déconnexion »: the session cookie lives for days
- * (auth-server.ts), so without this the next person opening the
- * application would find the previous user's session. A missing or
- * unreadable value (blocked storage, first visit) never signs out.
+ * another site — without « Déconnexion »: between the browser's limit and
+ * the server's, 5 minutes later (session-idle.ts), the session is still
+ * open on the server, so without this the next person opening the
+ * application would find the previous user's session; after that the page
+ * guard sends them to the same notice. A missing or unreadable value
+ * (blocked storage, first visit) never signs out.
  *
  * The sign-in page writes the moment of a successful sign-in
  * (`recordSignIn` in IdleLogout.tsx), so the stale value a previous user

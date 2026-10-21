@@ -1,7 +1,9 @@
+import { cache } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth-server";
+import { IDLE_LOGIN_HREF } from "@/lib/idle-policy";
 import { isBanActive } from "@/lib/portal-access";
 import {
   PASSWORD_CHANGE_API_ERROR,
@@ -10,6 +12,7 @@ import {
   passwordChangeBlocks,
 } from "@/lib/password-change";
 import { getDashboardPath, isRole, roleAllowed, type Role } from "@/lib/roles";
+import { carriesSessionCookie } from "@/lib/session-idle";
 
 export type { Role };
 export { getDashboardPath, landingPath };
@@ -33,8 +36,12 @@ export type SessionUser = {
  * Authorization rule for the whole app: never trust the client. Every page and
  * every route handler resolves the session here and goes through one of the
  * guards below — hiding a control in the UI is not access control.
+ *
+ * Read once per server render (React's `cache`): a layout and its page share
+ * the read, and with it Better Auth's idle check (session-idle-server.ts).
+ * Never shared between two requests; outside a render it is read at each call.
  */
-export async function getSession(): Promise<SessionUser | null> {
+export const getSession = cache(async (): Promise<SessionUser | null> => {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return null;
 
@@ -59,6 +66,20 @@ export async function getSession(): Promise<SessionUser | null> {
     // field, auth-server.ts): never stale, never an extra round trip.
     mustChangePassword: user.mustChangePassword === true,
   };
+});
+
+/**
+ * Where a page sends a request without a session. The session cookie still
+ * there means the server closed that session — idle past its bound
+ * (session-idle-server.ts), the tab reopened the next morning — so the
+ * sign-in page says « Session fermée après inactivité. », as after the
+ * browser's own sign-out (IdleLogout). No cookie: a plain /login (never
+ * signed in, or « Déconnexion », which deletes it). A session the
+ * administrator closed (reset, disabling) reads the same way: the cookie
+ * cannot tell them apart.
+ */
+export async function signedOutPath(): Promise<string> {
+  return carriesSessionCookie((await headers()).get("cookie")) ? IDLE_LOGIN_HREF : "/login";
 }
 
 /**
@@ -74,7 +95,7 @@ const PASSWORD_CHANGE_SCREEN: GuardScope = { allowsPasswordChange: true };
 /** The one page guard behind `requireRole` and `passwordChangeGuards.requireRole`. */
 async function guardPage(allowed: readonly Role[], scope: GuardScope): Promise<SessionUser> {
   const session = await getSession();
-  if (!session) redirect("/login");
+  if (!session) redirect(await signedOutPath());
   if (passwordChangeBlocks(session, scope)) redirect(accountPath(session.role));
   if (!roleAllowed(session.role, allowed)) {
     // Their own dashboard — or their « Mon compte » while the password must
@@ -102,7 +123,8 @@ async function guardApi(allowed: readonly Role[], scope: GuardScope): Promise<Se
 /**
  * Page guard: returns the session or redirects.
  *
- * - not signed in                → /login
+ * - not signed in                → /login (`?motif=inactivite` when the
+ *                                  server closed the session, `signedOutPath`)
  * - password to change (Q81)     → « Mon compte » (/compte, /portail/compte)
  * - signed in, wrong role        → their own dashboard (never a dead end)
  *
