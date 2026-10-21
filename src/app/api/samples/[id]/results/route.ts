@@ -8,7 +8,7 @@ import { loadBenchPlans } from "@/lib/bench-plan";
 import { TYPED_RESULT_WHERE, canEnterParameter, hasTypedResult } from "@/lib/bench-access";
 import { lockTakeState } from "@/lib/bench-take-server";
 import { effectiveFactor } from "@/lib/dilution";
-import { benchUnit } from "@/lib/bench-reading";
+import { benchUnit, unitsAgainstLimit, valueAgainstLimit } from "@/lib/bench-reading";
 import {
   applyUnitFactor,
   judgeUnits,
@@ -19,6 +19,7 @@ import {
   type UnitReading,
 } from "@/lib/interpretation";
 import { NOT_DONE_MESSAGE, benchConformity, isNotDoneText, singleValueEntry, suggestConformity } from "@/lib/result-value";
+import { resultAuthor, storedReading, typedUnits } from "@/lib/result-author";
 import type { Interpretation, ResultWorkStatus } from "@/generated/prisma/enums";
 import { Prisma } from "@/generated/prisma/client";
 
@@ -68,6 +69,11 @@ type Entry = {
   normVersionId: string | null;
   /** The readings per unit (R1 … Rn); null = single value. */
   units: UnitReading[] | null;
+  /**
+   * `conform` is the technician's « Conforme / Non conforme », not computed
+   * (D-09): the screen asks for one exactly where `.needsManual` says so.
+   */
+  conformChosen: boolean;
 };
 
 /**
@@ -96,6 +102,11 @@ type Entry = {
  * screen used, and the line's `value` is the worst unit — what the alerts
  * and the old columns keep reading. Fewer units than the plan's n: no
  * official verdict, an indicative one for the e-mail.
+ *
+ * Each line keeps who typed it (RETOUR-LABO-16-10.md, D-09): the sheet comes
+ * back whole on every save, and only a line whose typing changed — value,
+ * unit, note, step, the technician's own conformity — takes this save's
+ * author and time (`resultAuthor`); the others keep theirs.
  */
 export async function PUT(
   request: Request,
@@ -253,6 +264,7 @@ export async function PUT(
           // The method of the report: the programmed version, else the criterion's.
           normVersionId: line.normVersionId ?? plan.normVersionId,
           units: readings,
+          conformChosen: false,
         });
       } else {
         // No criterion: the worst unit against the parameter's own limit,
@@ -274,6 +286,7 @@ export async function PUT(
           criterion: Prisma.DbNull,
           normVersionId: line.normVersionId,
           units: readings,
+          conformChosen: unitsAgainstLimit(units, factor, parameter.limitValue).needsManual,
         });
       }
       continue;
@@ -318,6 +331,7 @@ export async function PUT(
       criterion: Prisma.DbNull,
       normVersionId: line.normVersionId,
       units: null,
+      conformChosen: valueAgainstLimit(value, factor, parameter.limitValue).needsManual,
     });
   }
 
@@ -338,7 +352,14 @@ export async function PUT(
     | { kind: "stale" }
     | { kind: "programme" }
     | { kind: "held"; holderName: string | null }
-    | { kind: "ok"; took: boolean; started: boolean; status: typeof sample.status };
+    | {
+        kind: "ok";
+        took: boolean;
+        started: boolean;
+        status: typeof sample.status;
+        changed: string[];
+        replaced: Record<string, string>;
+      };
   const written: Written = await prisma.$transaction(async (tx) => {
     // Two saves of the same sheet (double click, two technicians on a free
     // sample) are serialised on the sample row: racing upserts of a first
@@ -393,8 +414,46 @@ export async function PUT(
       });
       took = taken.count > 0;
     }
+    // What each line holds now, read under the lock: a line keeps its author
+    // and time unless this save changes what was typed on it (D-09).
+    const stored = await tx.result.findMany({
+      where: { sampleId: sample.id },
+      select: {
+        parameterId: true,
+        value: true,
+        rawValue: true,
+        note: true,
+        workStatus: true,
+        conform: true,
+        enteredById: true,
+        enteredAt: true,
+        units: { select: { unitIndex: true, rawValue: true } },
+      },
+    });
+    const before = new Map(
+      stored.map((row) => [row.parameterId, { ...storedReading(row), enteredById: row.enteredById, enteredAt: row.enteredAt }])
+    );
+    const changed: string[] = [];
+    // The colleague each retyped line is taken from (parameterId → user id).
+    const replaced: Record<string, string> = {};
     for (const entry of entries) {
-      const { units, ...data } = entry;
+      const { units, conformChosen, ...data } = entry;
+      const author = resultAuthor(
+        before.get(entry.parameterId) ?? null,
+        {
+          typed: data.rawValue ?? data.value,
+          units: typedUnits(units),
+          note: data.note,
+          workStatus: data.workStatus,
+          conform: data.conform,
+          perUnit: units !== null,
+          conformChosen,
+        },
+        session.id,
+        now
+      );
+      if (author.changed) changed.push(entry.parameterId);
+      if (author.replaced) replaced[entry.parameterId] = author.replaced;
       const result = await tx.result.upsert({
         where: {
           sampleId_parameterId: {
@@ -405,14 +464,12 @@ export async function PUT(
         create: {
           sampleId: sample.id,
           ...data,
-          enteredById: session.id,
-          enteredAt: now,
+          enteredById: author.enteredById,
+          enteredAt: author.enteredAt,
         },
-        update: {
-          ...data,
-          enteredById: session.id,
-          enteredAt: now,
-        },
+        // An unchanged line is rewritten (its verdict follows the catalogue)
+        // but its author and time are left as they are.
+        update: author.changed ? { ...data, enteredById: session.id, enteredAt: now } : data,
         select: { id: true },
       });
       // The readings are replaced whole: the grid on screen is the truth.
@@ -441,7 +498,7 @@ export async function PUT(
       });
       started = moved.count > 0;
     }
-    return { kind: "ok", took, started, status: started ? "EN_ANALYSE" : locked.status };
+    return { kind: "ok", took, started, status: started ? "EN_ANALYSE" : locked.status, changed, replaced };
   });
   if (written.kind === "stale") {
     return NextResponse.json(
@@ -487,6 +544,11 @@ export async function PUT(
     metadata: {
       code: sample.code,
       count: entries.length,
+      // The lines this save typed on — the others kept their author (D-09).
+      changed: written.changed,
+      // …and who had typed the ones it retyped, so a correction or a
+      // takeover never loses the original typist.
+      replaced: written.replaced,
       verdicts: Object.fromEntries(entries.filter((e) => e.interpretation).map((e) => [e.parameterId, e.interpretation])),
       indicative: Object.fromEntries(entries.filter((e) => e.informalInterpretation).map((e) => [e.parameterId, e.informalInterpretation])),
     },

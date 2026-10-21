@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   awaitsManualConformity,
+  benchStartingReadings,
   benchUnit,
   benchUnits,
   unitsAgainstLimit,
@@ -131,6 +132,53 @@ describe("awaitsManualConformity — the submission checks the screen's rule aga
     expect(awaitsManualConformity(single({ value: "Présence", units, conform: false }), perUnit)).toBe(false);
     const counted = units.map((unit) => (unit.unitIndex === 2 ? { ...unit, rawValue: "150" } : unit));
     expect(awaitsManualConformity(single({ value: "1,5.10²", units: counted }), perUnit)).toBe(false);
+  });
+});
+
+describe("benchStartingReadings — a line opens with what was typed", () => {
+  const single = (value: string | null, rawValue: string | null = null) => ({ value, rawValue, units: [] });
+  const perUnit = (...typed: [number, string][]) => ({
+    value: "worst ×10",
+    rawValue: null,
+    units: typed.map(([unitIndex, rawValue]) => ({ unitIndex, rawValue })),
+  });
+
+  it("nothing saved: an empty grid, an empty value", () => {
+    expect(benchStartingReadings(undefined, true, 3)).toEqual({ units: ["", "", ""], value: "" });
+    expect(benchStartingReadings(null, false, 1)).toEqual({ units: [], value: "" });
+    expect(benchStartingReadings(undefined, true, 0)).toEqual({ units: [""], value: "" });
+  });
+
+  it("the usual cases are unchanged: R1 … Rn in their places, the single value as typed", () => {
+    expect(benchStartingReadings(perUnit([1, "12"], [3, "0(-1)"]), true, 3).units).toEqual(["12", "", "0(-1)"]);
+    expect(benchStartingReadings(single("1,5.10²", "15"), false, 1)).toEqual({ units: [], value: "15" });
+    expect(benchStartingReadings(single("Absence"), false, 1)).toEqual({ units: [], value: "Absence" });
+  });
+
+  it("a criterion added since a single value was saved: the value opens as R1, never an empty grid", () => {
+    expect(benchStartingReadings(single("10"), true, 1).units).toEqual(["10"]);
+    expect(benchStartingReadings(single("300", "3(-2)"), true, 3).units).toEqual(["3(-2)", "", ""]);
+    // An empty single value adds nothing.
+    expect(benchStartingReadings(single(""), true, 2).units).toEqual(["", ""]);
+    expect(benchStartingReadings(single(null), true, 1).units).toEqual([""]);
+  });
+
+  it("a criterion withdrawn since a lone R1 was saved: R1 opens as the single value, not the figure × factor", () => {
+    // R1 « 5 » with a factor 10 was stored « 50 »: the field must show « 5 »,
+    // else the next save stores « 500 ».
+    expect(benchStartingReadings({ value: "50", rawValue: null, units: [{ unitIndex: 1, rawValue: "5" }] }, false, 1)).toEqual({
+      units: [],
+      value: "5",
+    });
+  });
+
+  it("several readings for a line now read once: the stored value, as before", () => {
+    expect(benchStartingReadings(perUnit([1, "5"], [2, "7"]), false, 1).value).toBe("worst ×10");
+  });
+
+  it("the bench page opens its lines through it", () => {
+    const page = readFileSync(fileURLToPath(new URL("../app/technicien/[id]/page.tsx", import.meta.url)), "utf8");
+    expect(page).toContain("benchStartingReadings(existing, perUnit, bench.unitCount)");
   });
 });
 

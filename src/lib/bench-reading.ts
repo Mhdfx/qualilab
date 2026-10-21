@@ -123,6 +123,47 @@ export type StoredResult = {
   units: { unitIndex: number; rawValue: string }[];
 };
 
+/** What the bench sheet opens a line with: the readings as the technician typed them. */
+export type StartingReadings = {
+  /** R1 … Rn of a line read per unit; empty for a single value. */
+  units: string[];
+  /** The single value of a line read once. */
+  value: string;
+};
+
+/**
+ * What the bench sheet shows in a line when it opens — always what was
+ * typed, never a figure the dilution factor already rewrote, whatever the
+ * catalogue did between two saves:
+ * - a criterion added (or units taken) after a single value was saved: the
+ *   value opens as R1 — an empty grid would erase it at the next save;
+ * - a criterion withdrawn after a lone R1 was saved: R1 opens as the single
+ *   value — the stored `value` has the factor applied, and the next save
+ *   would apply it twice (R1 « 5 » × 10 stored « 50 », saved « 500 »).
+ * Several readings stored for a line now read once cannot fit one field:
+ * the stored value is shown, as before.
+ */
+export function benchStartingReadings(
+  existing: { value: string | null; rawValue: string | null; units: { unitIndex: number; rawValue: string | null }[] } | null | undefined,
+  perUnit: boolean,
+  unitCount: number
+): StartingReadings {
+  const stored = existing?.units ?? [];
+  // The single value as typed (`rawValue` when the factor or « 3(-2) »
+  // rewrote it).
+  const single = existing ? (existing.rawValue ?? existing.value ?? "") : "";
+  if (perUnit) {
+    const units = Array.from(
+      { length: Math.max(1, unitCount) },
+      (_, index) => stored.find((unit) => unit.unitIndex === index + 1)?.rawValue ?? ""
+    );
+    if (stored.length === 0 && single.trim() !== "") units[0] = single;
+    return { units, value: single };
+  }
+  if (stored.length === 1) return { units: [], value: stored[0].rawValue ?? "" };
+  return { units: [], value: single };
+}
+
 /**
  * A result still waiting for the technician's « Conforme » / « Non
  * conforme »: no criterion, nothing stored, and the reading — read again

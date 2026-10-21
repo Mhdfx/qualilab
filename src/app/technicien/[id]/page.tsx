@@ -16,7 +16,7 @@ import {
 } from "@/lib/bench-access";
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { effectiveFactor } from "@/lib/dilution";
-import { benchUnit } from "@/lib/bench-reading";
+import { benchStartingReadings, benchUnit } from "@/lib/bench-reading";
 import { formatDate, formatDateTime, PROGRAMME_PRIORITY_LABELS, surfaceAreaText } from "@/lib/labels";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
@@ -174,9 +174,9 @@ export default async function AnalysePage({
     // One reading per unit taken (R1 … Rn) for a germ with a criterion, and
     // for every parameter once the sampler took several units.
     const perUnit = plan !== null || bench.unitCount > 1;
-    const units = perUnit
-      ? Array.from({ length: Math.max(1, bench.unitCount) }, (_, i) => existing?.units.find((u) => u.unitIndex === i + 1)?.rawValue ?? "")
-      : [];
+    // What was typed, R1 … Rn or the single value — also when the catalogue
+    // added or withdrew a criterion since the last save (`benchStartingReadings`).
+    const { units, value } = benchStartingReadings(existing, perUnit, bench.unitCount);
     return {
       perUnit,
       plan: plan?.plan ?? null,
@@ -197,7 +197,7 @@ export default async function AnalysePage({
       // « 3(-2) » printed « 3.10² »), the bench reading (rawValue) is what
       // the technician typed and re-edits; `value` holds the figure the
       // report prints.
-      value: existing?.rawValue ?? existing?.value ?? "",
+      value,
       note: existing?.note ?? "",
       workStatus: existing?.workStatus ?? "EN_COURS",
       manualConform: existing?.conform ?? null,

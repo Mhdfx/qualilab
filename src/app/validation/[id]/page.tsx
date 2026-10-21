@@ -138,6 +138,9 @@ export default async function ValidationDetailPage({
           threshold: true,
           interpretation: true,
           informalInterpretation: true,
+          // D-09: who typed this reading, kept across a colleague's later saves.
+          enteredBy: { select: { name: true } },
+          enteredAt: true,
           normVersion: { select: { label: true } },
           units: { select: { unitIndex: true, rawValue: true }, orderBy: { unitIndex: "asc" } },
           parameter: {
@@ -281,6 +284,12 @@ export default async function ValidationDetailPage({
                         {result.note && (
                           <span className="mt-0.5 block text-xs text-slate-500">
                             {result.note}
+                          </span>
+                        )}
+                        {/* D-09: the author of the reading (a line left empty names nobody). */}
+                        {result.enteredBy && result.enteredAt && (result.value || result.units.length > 0) && (
+                          <span className="mt-0.5 block text-xs text-slate-500">
+                            Saisi par {result.enteredBy.name} le {formatDateTime(result.enteredAt)}
                           </span>
                         )}
                       </td>
