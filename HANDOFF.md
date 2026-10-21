@@ -4,6 +4,16 @@
 > "where do I change X" map. Read after `AGENTS.md`. **Keep this current** — it
 > is what lets any AI on any platform continue without archaeology.
 >
+> **DEPLOYED 2026-10-21 ~21:55 (server time): production runs `4946ec3`** (lots 2A + 2C
+> + V18, six migrations applied, row counts unchanged, health ok, 0 errors in the
+> logs; read-only smoke on production 21/21 through the demo accounts). Restore
+> points: tag `v1.4-avant-lot2-16-10` + dump `qualilab_avant-lot2-16-10.sql.gz`;
+> tag `v1.5-lot2-16-10` + dump `qualilab_avant-reprise-F3.sql.gz`. **Not done on
+> production yet: the reprise F3 (analysed: 0 sample in progress affected, 2
+> look-alikes kept distinct as locally — plan hash `4061d3f6…`) and D-19** — both
+> are catalogue writes the session's auto-mode check refused; they need the
+> owner's go (`DEPLOY.md` §5, §6; `.ui-tests/f3-prod.mjs`).
+>
 > Last updated: **2026-10-21** (21/10: the open debts closed before the
 > deploy — the go-live blocker (money's thousands separator), D-09, D-19's
 > concurrent edit, the server's idle bound (Q82), B2, the early alerts, the
