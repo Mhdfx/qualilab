@@ -1118,6 +1118,10 @@ export async function sendContaminationAlerts(
           status: result.status,
           // What this alert said: an amended report does not repeat it.
           fingerprint: fingerprints.get(germ) ?? null,
+          // The send's own row: an alert sent before the report exists has
+          // no `EmailLog.reportId`, and /admin/envois finds its sample here
+          // (`alert-log-samples.ts`).
+          ...(result.logId ? { emailLogId: result.logId } : {}),
           ...(amendment ? { amendment: true } : {}),
         },
       });

@@ -33,6 +33,12 @@ export type SendResult = {
   status: "ENVOYE" | "SIMULE" | "ECHEC";
   providerId: string | null;
   error: string | null;
+  /**
+   * The `EmailLog` row that records this send — null when nothing was
+   * recorded (no recipient, or the journal write failed). A contamination
+   * alert keeps it in its journal row: it names the sample (`alert-log-samples.ts`).
+   */
+  logId: string | null;
 };
 
 function sender() {
@@ -46,13 +52,14 @@ export async function sendEmail(input: SendEmailInput): Promise<SendResult> {
       status: "ECHEC",
       providerId: null,
       error: "Aucun destinataire.",
+      logId: null,
     };
   }
 
   const result = await deliver(input, recipients);
 
   // The journal is written whatever happened, including failures.
-  await prisma.emailLog
+  const log = await prisma.emailLog
     .create({
       data: {
         reportId: input.reportId ?? null,
@@ -65,18 +72,20 @@ export async function sendEmail(input: SendEmailInput): Promise<SendResult> {
         providerId: result.providerId,
         error: result.error,
       },
+      select: { id: true },
     })
     .catch((error) => {
       console.error("[email] could not record the send", { error });
+      return null;
     });
 
-  return result;
+  return { ...result, logId: log?.id ?? null };
 }
 
 async function deliver(
   input: SendEmailInput,
   recipients: string[]
-): Promise<SendResult> {
+): Promise<Omit<SendResult, "logId">> {
   const apiKey = process.env.RESEND_API_KEY;
 
   if (!apiKey) {

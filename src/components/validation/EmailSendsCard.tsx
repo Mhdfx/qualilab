@@ -16,9 +16,11 @@ export type EmailSendRow = {
 };
 
 /**
- * « Envois » of one report on the validation page: every message of the
- * send journal attached to it (report, amended report, alerts sent once it
- * existed), newest first — what « Dernier envoi à » alone could not say.
+ * « Envois » of one sample on the validation page: every message of the
+ * send journal attached to its report (report, amended report, alerts sent
+ * once it existed) and the contamination alerts sent at the technical
+ * validation, before the report (`earlyAlertSendsOf`, alert-log-samples),
+ * newest first — what « Dernier envoi à » alone could not say.
  */
 export function EmailSendsCard({
   rows,

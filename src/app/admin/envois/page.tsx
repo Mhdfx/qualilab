@@ -6,6 +6,7 @@ import { formatDateTime } from "@/lib/labels";
 import { DEFAULT_PAGE_SIZE, toPage } from "@/lib/pagination";
 import { amendedNumber } from "@/lib/report-amendment";
 import { dayRangeParams } from "@/lib/day-range";
+import { alertSamplesOf, type AlertSample } from "@/lib/alert-log-samples-server";
 import {
   EMAIL_LOG_STATUSES,
   EMAIL_STATUS_LABELS,
@@ -29,7 +30,9 @@ const ENVOIS_PATH = "/admin/envois";
  * destruction notices — newest first, 50 per page (`lib/pagination.ts`),
  * filtered by a plain GET form so a view can be bookmarked. Read-only: a
  * report is resent from its sample's validation page (« Renvoyer au
- * client »), linked from each line.
+ * client »), linked from each line. A contamination alert sent at the
+ * technical validation, before the report existed, has no report: it links
+ * to its sample, found through the alert's journal row (`alertSamplesOf`).
  */
 export default async function EnvoisPage({
   searchParams,
@@ -58,6 +61,10 @@ export default async function EnvoisPage({
   });
   const { items: entries, nextCursor } = toPage(rows, DEFAULT_PAGE_SIZE);
   const filtered = hasEmailLogFilter(filters);
+  // The alerts of this page that no report carries: their sample instead.
+  const alertSamples = await alertSamplesOf(
+    entries.filter((entry) => !entry.report && entry.type === "ALERTE_CONTAMINATION")
+  );
 
   return (
     <div>
@@ -173,7 +180,7 @@ export default async function EnvoisPage({
                           <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
                         </Link>
                       ) : (
-                        <span className="text-xs text-slate-400">non rattaché</span>
+                        <UnlinkedSend sample={alertSamples.get(entry.id)} />
                       )}
                     </td>
                   </tr>
@@ -207,5 +214,29 @@ export default async function EnvoisPage({
         </nav>
       )}
     </div>
+  );
+}
+
+/**
+ * The « Échantillon » cell of a send no report carries: an alert sent at the
+ * technical validation (the only alerts without a report — the sample may
+ * have been cancelled since, and never get one) links to its sample;
+ * anything else (a destruction notice, « non reçu », an alert whose sample
+ * is not found) reads « non rattaché ».
+ */
+function UnlinkedSend({ sample }: { sample: AlertSample | undefined }) {
+  if (!sample) return <span className="text-xs text-slate-400">non rattaché</span>;
+  return (
+    <>
+      <Link
+        href={`/validation/${sample.id}`}
+        className="inline-flex items-center gap-1 rounded font-mono text-xs font-semibold text-brand hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+      >
+        {sample.reference}
+        <span className="sr-only"> — ouvrir l&apos;échantillon</span>
+        <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+      </Link>
+      <span className="mt-0.5 block whitespace-nowrap text-[11px] text-slate-500">alerte à la validation technique</span>
+    </>
   );
 }

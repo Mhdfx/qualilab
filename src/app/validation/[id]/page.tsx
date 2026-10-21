@@ -41,6 +41,8 @@ import { sampleTimelineFor } from "@/lib/sample-timeline-server";
 import { heldInvoices } from "@/lib/billing-hold";
 import { SampleTimelineCard } from "@/components/validation/SampleTimelineCard";
 import { EmailSendsCard } from "@/components/validation/EmailSendsCard";
+import { earlyAlertSendsOf } from "@/lib/alert-log-samples-server";
+import { withEarlyAlerts } from "@/lib/alert-log-samples";
 
 /** The sends listed under « Envois » (newest first). */
 const SENDS_SHOWN = 20;
@@ -173,7 +175,7 @@ export default async function ValidationDetailPage({
 
   // « Réglementation en vigueur » (slice I): proposed from what is known,
   // confirmed or changed by the validator.
-  const [regulations, settings, signedProtocols, timeline, sends, held] = await Promise.all([
+  const [regulations, settings, signedProtocols, timeline, reportSends, earlyAlerts, held] = await Promise.all([
     prisma.regulation.findMany({ where: { active: true }, select: { id: true, title: true }, orderBy: [{ sortOrder: "asc" }, { title: "asc" }] }),
     getLabSettings(),
     // Whether the visit's signed protocol was photographed — counted, never
@@ -190,11 +192,15 @@ export default async function ValidationDetailPage({
           select: { id: true, createdAt: true, type: true, to: true, status: true, error: true },
         })
       : Promise.resolve(null),
+    // …and the alerts sent at the technical validation, before the report
+    // existed (no `reportId`): found through the sample's alert journal rows.
+    earlyAlertSendsOf(sample.id),
     // The invoice holding the sample, if one does: « Annuler » and « Corriger
     // les analyses » say what happens to it (billable from the programme).
     heldInvoices([sample.id]),
   ]);
   const heldInvoice = held.get(sample.id) ?? null;
+  const sends = withEarlyAlerts(reportSends, earlyAlerts);
   const protocolPhotoHref = signedProtocols > 0 ? `/api/series/${sample.serieId}/protocol-photo` : null;
   const proposedRegulationId = proposeRegulation(
     {
