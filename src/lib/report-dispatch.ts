@@ -24,11 +24,11 @@ import { sendEmail, recipientsFor } from "./email";
 import { otherSitesMessage } from "./email-recipients";
 import { reportEmail, alertEmail, type AlertRow } from "./emails/templates";
 import { getCompany } from "./company-server";
-import { generateReportNumber } from "./report-number";
+import { drawReportNumber, ensureReportCounter } from "./report-number";
 import { reportMethod, reportTechnicianNames } from "./report-programme";
 import type { Prisma } from "@/generated/prisma/client";
 import type { Interpretation } from "@/generated/prisma/enums";
-import { retryOnDuplicate } from "./retry-unique";
+import { CONTENTION_CODES, retryOnDuplicate } from "./retry-unique";
 import { sampleDesignation } from "./document-html";
 import { REOPENED_SAMPLE_FIELDS, amendmentIssueRefusal, canTransition } from "./sample-status";
 import { REOPENED_STATUS, amendedNumber, reopenRefusal, reopensReports } from "./report-amendment";
@@ -417,22 +417,44 @@ const asJson = (data: ReportData) => reportDataToJson(data) as Prisma.InputJsonV
 
 export type IssuedReport = { id: string; number: string; amended?: boolean };
 
-/** Attempts at drawing a free « RAP-AAAA-NNNNN » (1–10 people at once, AGENTS.md §1). */
+/**
+ * Attempts at issuing a report. The number is drawn from the RAPPORT counter
+ * inside the issuing transaction (report-number.ts), so simultaneous
+ * approvals no longer collide; the retry stays as a safety net — a number
+ * written outside the counter (the next draw seats it above), the same
+ * sample approved twice at once (the second attempt finds the report), or a
+ * busy database (`CONTENTION_CODES`: the issue rolled back, run again — a
+ * deadlock or lock-wait timeout of the counter's raw statements included,
+ * `retryCode` in retry-unique.ts).
+ */
 const REPORT_NUMBER_TRIES = 10;
 
 /**
+ * Every issue queues on the one RAPPORT row, through a pool of five
+ * connections (database-url.ts): Prisma's defaults (2 s to start, 5 s to
+ * run) left a burst of 30 approvals with 14 report-less samples (P2028).
+ * Room to queue — and the pause the retry keeps — instead.
+ */
+const ISSUE_TRANSACTION = { maxWait: 10_000, timeout: 20_000 };
+
+/**
  * Creates the report record for an approved sample, and freezes its version
- * 0 with it (one transaction). Idempotent: an existing report is returned as
- * is. Number collisions (two approvals at the same instant) are retried; any
- * other failure returns null and is logged, and `sendReport` retries the
- * creation later so an approved sample can never stay report-less forever.
+ * 0 with it (one transaction, which also draws the number). Idempotent: an
+ * existing report is returned as is. A unique clash or a busy database is
+ * retried; any other failure returns null and is logged, and `sendReport`
+ * retries the creation later so an approved sample can never stay
+ * report-less forever.
  */
 export async function createReportFor(sampleId: string): Promise<IssuedReport | null> {
-  const existing = await prisma.report.findUnique({
-    where: { sampleId },
-    select: { id: true, number: true, version: true },
-  });
-  if (existing) return { id: existing.id, number: amendedNumber(existing.number, existing.version) };
+  const issuedReport = async () => {
+    const report = await prisma.report.findUnique({
+      where: { sampleId },
+      select: { id: true, number: true, version: true },
+    });
+    return report ? { id: report.id, number: amendedNumber(report.number, report.version) } : null;
+  };
+  const existing = await issuedReport();
+  if (existing) return existing;
 
   const fields = await computeReportFields(sampleId);
   const sample = await prisma.sample.findUnique({
@@ -440,15 +462,31 @@ export async function createReportFor(sampleId: string): Promise<IssuedReport | 
     select: { ...REPORT_SAMPLE_SELECT, approvedAt: true, approvedById: true },
   });
   if (!fields || !sample) return null;
-  // One instant for the version and for the « Date d'édition » it prints.
+  // One instant for the version, for the « Date d'édition » it prints and
+  // for the year of its number.
   const issuedAt = sample.approvedAt ?? new Date();
 
+  let retry = false;
   try {
     return await retryOnDuplicate(async () => {
-      const number = await generateReportNumber();
-      // Issued now: the aligned layout (lot 1b), frozen with the version.
-      const data = toReportData(sample, { ...fields, number, issuedAt, layout: REPORT_LAYOUT_ALIGNED });
+      // After a clash, the other approval of this very sample may have
+      // issued it: returned as is, no second number drawn.
+      if (retry) {
+        const issued = await issuedReport();
+        if (issued) return issued;
+      }
+      retry = true;
+      // Committed on its own first, when missing: the year's counter row
+      // exists before any issuing transaction locks it (report-number.ts).
+      // Inside the attempt: on a year's first approvals it is the write
+      // they meet on, and a deadlock there is retried like the issue's.
+      await ensureReportCounter(prisma, issuedAt);
       return prisma.$transaction(async (tx) => {
+        // First: the counter row locked here is what simultaneous issues
+        // wait on, until this one commits (or rolls back, number unburnt).
+        const number = await drawReportNumber(tx, issuedAt);
+        // Issued now: the aligned layout (lot 1b), frozen with the version.
+        const data = toReportData(sample, { ...fields, number, issuedAt, layout: REPORT_LAYOUT_ALIGNED });
         const report = await tx.report.create({
           data: { sampleId, number, ...fields },
           select: { id: true, number: true },
@@ -464,15 +502,12 @@ export async function createReportFor(sampleId: string): Promise<IssuedReport | 
           },
         });
         return report;
-      });
-      // Each round of a number race lets one creator through: as many tries
-      // as people who can approve at once (four simultaneous approvals left
-      // the fourth report-less with the default three).
-    }, REPORT_NUMBER_TRIES);
+      }, ISSUE_TRANSACTION);
+    }, REPORT_NUMBER_TRIES, ["P2002", ...CONTENTION_CODES]);
   } catch (error) {
     // Two approvals at the same instant: the other one created it.
-    const created = await prisma.report.findUnique({ where: { sampleId }, select: { id: true, number: true, version: true } });
-    if (created) return { id: created.id, number: amendedNumber(created.number, created.version) };
+    const created = await issuedReport();
+    if (created) return created;
     console.error("[report] creation failed", { sampleId, error });
     return null;
   }

@@ -18,6 +18,16 @@ import type { Prisma } from "@/generated/prisma/client";
 export type CounterKind = "SERIE" | "CONTROLE" | "FACTURE" | "AVOIR";
 
 /**
+ * Every sequence of the table: the four of the « Compteurs » screen, and the
+ * official reports « RAP-2026-00010 » (HANDOFF §9, lot 2D item 5) — drawn
+ * the same way, inside the transaction that issues the report, so two
+ * approvals at the same second never collide. Not on the screen: nobody
+ * types it at switch-over, it continues by itself from the highest report
+ * already issued (`drawReportNumber`, report-number.ts).
+ */
+export type SequenceKind = CounterKind | "RAPPORT";
+
+/**
  * FACTURATION.md §1–2 — the invoices (« FAC-2026-0042 ») and the credit notes
  * (« AV-2026-0003 ») have their own yearly sequences in the same table. The
  * 09/10/2026 migration started FACTURE at the highest number already issued.
@@ -87,9 +97,28 @@ export function highestSequence(kind: CounterKind, year: number, numbers: readon
   return highest;
 }
 
-/** The number a counter draw prints: lab format for the séries and samples, document format for invoices. */
-export function formatCounterNumber(kind: CounterKind, sequence: number, year: number) {
+/** The number a counter draw prints: lab format for the séries and samples, document format for invoices and reports. */
+export function formatCounterNumber(kind: SequenceKind, sequence: number, year: number) {
+  if (kind === "RAPPORT") return formatReportNumber(sequence, year);
   return isDocumentCounter(kind) ? formatDocumentNumber(kind, sequence, year) : formatLabNumber(sequence, year);
+}
+
+/** « RAP-2026-00010 » — the official report number: four-digit year, at least five digits. */
+export function formatReportNumber(sequence: number, year: number) {
+  return `RAP-${year}-${String(sequence).padStart(5, "0")}`;
+}
+
+/**
+ * Parses « RAP-2026-00010 » back into its parts; null for anything else —
+ * an amended version's « RAP-2026-00010-A1 » included: the record keeps the
+ * number of version 0, the suffix is printed from its `version`.
+ */
+export function parseReportNumber(value: string): { year: number; sequence: number } | null {
+  const match = /^\s*RAP-(\d{4})-(\d{1,9})\s*$/.exec(value);
+  if (!match) return null;
+  const sequence = Number(match[2]);
+  if (sequence < 1) return null;
+  return { year: Number(match[1]), sequence };
 }
 
 /** « 2780/26 » — the lab's format: sequence, slash, two-digit year. */
@@ -121,11 +150,12 @@ export function parseLabNumber(
  * transaction: callers must draw the number and create the row that carries
  * it in the same `$transaction`. `formatted` follows the kind: « 2780/26 »
  * for SERIE / CONTROLE, « FAC-2026-0042 » / « AV-2026-0003 » for FACTURE /
- * AVOIR — a failed issue rolls back and never burns a number.
+ * AVOIR, « RAP-2026-00010 » for RAPPORT — a failed issue rolls back and
+ * never burns a number.
  */
 export async function nextNumber(
   tx: Tx,
-  kind: CounterKind,
+  kind: SequenceKind,
   year: number
 ): Promise<{ sequence: number; formatted: string }> {
   await tx.$executeRaw`
@@ -150,11 +180,12 @@ export async function nextNumber(
 /**
  * Sets the value the next draw will follow — used once at switch-over so the
  * sequences continue where the old software stopped (e.g. 2779 → next 2780).
- * Refuses to go backwards below what is already used.
+ * Never goes backwards (`GREATEST`); creates the row on first use — which is
+ * how the report sequence starts each year at the highest report issued.
  */
 export async function setCounter(
   tx: Tx,
-  kind: CounterKind,
+  kind: SequenceKind,
   year: number,
   last: number
 ) {

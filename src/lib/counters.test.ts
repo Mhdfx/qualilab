@@ -4,10 +4,12 @@ import {
   formatCounterNumber,
   formatDocumentNumber,
   formatLabNumber,
+  formatReportNumber,
   highestSequence,
   isDocumentCounter,
   parseDocumentNumber,
   parseLabNumber,
+  parseReportNumber,
 } from "./counters";
 
 describe("lab numbers « NNNN/AA »", () => {
@@ -58,10 +60,31 @@ describe("document numbers « FAC-AAAA-NNNN » / « AV-AAAA-NNNN »", () => {
   });
 });
 
+describe("report numbers « RAP-AAAA-NNNNN »", () => {
+  it("formats at least five digits, the counter's draw included", () => {
+    expect(formatReportNumber(10, 2026)).toBe("RAP-2026-00010");
+    expect(formatReportNumber(123456, 2026)).toBe("RAP-2026-123456");
+    expect(formatCounterNumber("RAPPORT", 1, 2027)).toBe("RAP-2027-00001");
+  });
+
+  it("parses version 0's number, round-trips", () => {
+    expect(parseReportNumber("RAP-2026-00009")).toEqual({ year: 2026, sequence: 9 });
+    expect(parseReportNumber(formatReportNumber(4321, 2027))).toEqual({ year: 2027, sequence: 4321 });
+  });
+
+  it("rejects anything else, an amended version's suffix included", () => {
+    for (const value of ["", "RAP-2026-00000", "RAP-2026-00009-A1", "RAP-26-00009", "rap-2026-00009", "FAC-2026-0042", "2780/26"]) {
+      expect(parseReportNumber(value), value).toBeNull();
+    }
+  });
+});
+
 describe("the « Compteurs » screen", () => {
   it("covers the four yearly sequences, documents after the lab's numbers", () => {
     expect(COUNTER_KINDS).toEqual(["SERIE", "CONTROLE", "FACTURE", "AVOIR"]);
     expect(COUNTER_KINDS.filter(isDocumentCounter)).toEqual(["FACTURE", "AVOIR"]);
+    // The report sequence continues by itself: nobody types it at switch-over.
+    expect(COUNTER_KINDS).not.toContain("RAPPORT");
   });
 
   it("previews the next number in each kind's format", () => {
