@@ -103,7 +103,10 @@ export function IdleLogout({ timeoutMs }: { timeoutMs: number }) {
    * `SERVER_TOUCH_TIMEOUT_MS` — sent again `SERVER_TOUCH_RETRY_MS` later by
    * a timer; no session — closed on the server meanwhile: its idle bound, an
    * administrator's reset, « Déconnexion » in another tab — the sign-in page,
-   * since nothing more can be saved from here.
+   * since nothing more can be saved from here. By way of « / »: its guard
+   * says why (`signedOutPath` — « inactivité », the administrator's reset,
+   * the password changed elsewhere; nothing after « Déconnexion »), the
+   * touch having left the cookie that tells it (session-idle-server.ts).
    */
   const touchServer = useCallback(
     async function touch(): Promise<void> {
@@ -136,7 +139,7 @@ export function IdleLogout({ timeoutMs }: { timeoutMs: number }) {
       } else {
         signingOut.current = true;
         setWarningLeft(null);
-        router.replace("/login");
+        router.replace("/");
         router.refresh();
       }
     },

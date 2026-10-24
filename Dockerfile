@@ -6,6 +6,16 @@
 
 FROM node:22-slim AS deps
 WORKDIR /app
+# OpenSSL here too, not only in `build` below: `npm ci` downloads Prisma's
+# schema engine for the platform it detects (debian-openssl-3.0.x with the
+# binary, the openssl-1.1.x default without). The `migrate` service runs
+# from `build`, which detects 3.0.x once OpenSSL is there: an engine fetched
+# here without it would be the wrong one, and `migrate deploy` would try to
+# download the right one from binaries.prisma.sh at every deploy (refused
+# offline — rehearsed 23/10 in node:22-slim with --network none).
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 # postinstall runs `prisma generate`, which needs the schema present.
 # (src/generated is gitignored build output — generate recreates it.)
@@ -15,6 +25,17 @@ RUN npm ci
 
 FROM node:22-slim AS build
 WORKDIR /app
+# Prisma reads the OpenSSL version to name its platform — in `prisma
+# generate` and `next build` here, and in `migrate deploy` (the compose
+# `migrate` service runs from this stage). Without the binary it printed
+# « prisma:warn Prisma failed to detect the libssl/openssl version »
+# (harmless, DEPLOY.md « Lot 2 du 16/10 »); installed so the deploy logs
+# carry no warning — with the same line in `deps`, so that the engine `npm
+# ci` fetched is the one detected here. The runtime image is unchanged (the
+# app queries through the driver adapter, no native engine).
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # The build needs no real database: pages are dynamic and query at runtime.

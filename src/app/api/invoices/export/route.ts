@@ -3,7 +3,7 @@ import ExcelJS from "exceljs";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { formatDayShort, formatIsoDay } from "@/lib/labels";
+import { formatDayShort, formatDecimal, formatIsoDay } from "@/lib/labels";
 import { parseLabDayRange } from "@/lib/lab-day-range";
 import { CLIENT_IDENTITY_SELECT, invoiceClientIdentity } from "@/lib/invoice-client-identity";
 import {
@@ -85,7 +85,7 @@ export async function GET(request: Request) {
     ]);
     if (invoices.length > MAX_EXPORT_ROWS || payments.length > MAX_EXPORT_ROWS) {
       return NextResponse.json(
-        { error: `Trop de lignes : réduisez la période (${MAX_EXPORT_ROWS.toLocaleString("fr-FR")} maximum par feuille).` },
+        { error: `Trop de lignes : réduisez la période (${formatDecimal(MAX_EXPORT_ROWS, 0)} maximum par feuille).` },
         { status: 400 }
       );
     }

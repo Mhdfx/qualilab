@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, Lock, ShieldCheck, Clock } from "lucide-react";
+import { User, Lock, ShieldCheck, Clock, KeyRound } from "lucide-react";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { BrandLogo } from "@/components/BrandLogo";
 import { authClient } from "@/lib/auth-client";
@@ -11,9 +11,18 @@ import { recordSignIn } from "@/components/layout/IdleLogout";
 
 /**
  * `notice`: why the user is back on the sign-in page, when the application
- * sent them here (« Session fermée après inactivité », `loginNoticeFor`).
+ * sent them here (« Session fermée après inactivité », `loginNoticeFor`; the
+ * administrator's reset, disabling or access change, or the person's own
+ * password change on another device, `revocationNoticeFor` — `noticeKind`
+ * "account", a key instead of the clock).
  */
-export default function LoginForm({ notice = null }: { notice?: string | null }) {
+export default function LoginForm({
+  notice = null,
+  noticeKind = "idle",
+}: {
+  notice?: string | null;
+  noticeKind?: "idle" | "account";
+}) {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -69,7 +78,11 @@ export default function LoginForm({ notice = null }: { notice?: string | null })
               role="status"
               className="mb-6 flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-sm text-amber-800 ring-1 ring-amber-100"
             >
-              <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {noticeKind === "account" ? (
+                <KeyRound className="h-4 w-4 shrink-0" aria-hidden="true" />
+              ) : (
+                <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
+              )}
               {notice}
             </p>
           )}

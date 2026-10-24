@@ -3,6 +3,11 @@ import { memoryAdapter } from "better-auth/adapters/memory";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { SESSION_ACTIVITY_UPDATE_AGE_S, SESSION_COOKIE_PREFIX } from "./session-idle";
 import { closeIdleSessionHook } from "./session-idle-server";
+import {
+  revocationMarkerIdentifier,
+  revokedSessionCause,
+  verifiedSessionToken,
+} from "./session-revocation-server";
 
 /**
  * The server's sign-out after inactivity (Q82) through a real Better Auth
@@ -78,6 +83,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   deleteFails = false;
   db.session.length = 0;
+  db.verification.length = 0;
   const signedIn = await auth.api.signInEmail({
     body: { email: "personne.test@qualilab.local", password: "mot-de-passe-de-test" },
     returnHeaders: true,
@@ -143,5 +149,58 @@ describe("IdleLogout's touch (GET /api/auth/get-session)", () => {
     deleteFails = false;
     expect(await (await touch()).json()).toBeNull();
     expect(db.session).toHaveLength(0);
+  });
+
+  /** The Set-Cookie lines of an answer that write the session cookie (a deletion included). */
+  const sessionCookieWrites = (response: Response) =>
+    response.headers.getSetCookie().filter((line) => line.startsWith(`${SESSION_COOKIE_PREFIX}.session_token=`));
+
+  it("a session closed on purpose (a marker left): null, and the cookie kept for the page guard (23/10)", async () => {
+    const token = String(sessionRow()?.token);
+    await (await auth.$context).internalAdapter.createVerificationValue({
+      identifier: revocationMarkerIdentifier(token),
+      value: "PASSWORD_RESET",
+      expiresAt: new Date(Date.now() + 60 * MINUTE),
+    });
+    db.session.length = 0; // the administrator's reset deleted it
+    const response = await touch();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toBeNull();
+    expect(sessionCookieWrites(response)).toEqual([]);
+    // A guard's own read answers no session too.
+    expect(await read()).toBeNull();
+  });
+
+  it("a session gone without a marker: null, and Better Auth clears the cookie, as before", async () => {
+    db.session.length = 0;
+    const response = await touch();
+    expect(await response.json()).toBeNull();
+    expect(sessionCookieWrites(response)).toHaveLength(1);
+    expect(sessionCookieWrites(response)[0]).toMatch(/Max-Age=0/i);
+  });
+});
+
+describe("a page guard's reading of Better Auth's own cookie (signedOutPath, 23/10)", () => {
+  it("the token of the cookie Better Auth set, under its context's secret — none once altered or under another", async () => {
+    const ctx = await auth.$context;
+    expect(verifiedSessionToken(cookie, ctx.secret)).toBe(String(sessionRow()?.token));
+    expect(verifiedSessionToken(cookie, "un-autre-secret-0123456789abcdef")).toBeNull();
+    const eq = cookie.indexOf("=");
+    const forged = `${cookie.slice(0, eq)}=${encodeURIComponent(`x${decodeURIComponent(cookie.slice(eq + 1))}`)}`;
+    expect(verifiedSessionToken(forged, ctx.secret)).toBeNull();
+    // Better Auth refuses it the same way.
+    expect(await auth.api.getSession({ headers: new Headers({ cookie: forged }) })).toBeNull();
+  });
+
+  it("finds the marker of that session once it is gone, through Better Auth's verification store", async () => {
+    const ctx = await auth.$context;
+    await ctx.internalAdapter.createVerificationValue({
+      identifier: revocationMarkerIdentifier(String(sessionRow()?.token)),
+      value: "DISABLED:u-test",
+      expiresAt: new Date(Date.now() + 60 * MINUTE),
+    });
+    db.session.length = 0;
+    const find = (identifier: string) => ctx.internalAdapter.findVerificationValue(identifier);
+    expect(await revokedSessionCause(cookie, find, ctx.secret)).toBe("DISABLED");
   });
 });

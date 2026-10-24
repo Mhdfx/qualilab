@@ -13,6 +13,8 @@ import {
 } from "@/lib/password-change";
 import { getDashboardPath, isRole, roleAllowed, type Role } from "@/lib/roles";
 import { carriesSessionCookie } from "@/lib/session-idle";
+import { revokedLoginHref } from "@/lib/session-revocation";
+import { revokedSessionCause } from "@/lib/session-revocation-server";
 
 export type { Role };
 export { getDashboardPath, landingPath };
@@ -75,11 +77,35 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
  * sign-in page says « Session fermée après inactivité. », as after the
  * browser's own sign-out (IdleLogout). No cookie: a plain /login (never
  * signed in, or « Déconnexion », which deletes it). A session the
- * administrator closed (reset, disabling) reads the same way: the cookie
- * cannot tell them apart.
+ * administrator closed (reset, disabling, a portal account's scope) — or
+ * the person's own password change, made on another device — left a marker
+ * (session-revocation.ts): the sign-in page says that instead
+ * (`/login?motif=reinitialisation`, `desactivation`, `acces`, `changement`).
+ * Looked up for a correctly signed cookie only: a forged one costs no query.
  */
 export async function signedOutPath(): Promise<string> {
-  return carriesSessionCookie((await headers()).get("cookie")) ? IDLE_LOGIN_HREF : "/login";
+  const cookie = (await headers()).get("cookie");
+  if (!carriesSessionCookie(cookie)) return "/login";
+  const revoked = await revokedCauseOf(cookie);
+  return revoked ? revokedLoginHref(revoked) : IDLE_LOGIN_HREF;
+}
+
+/**
+ * The marker of the cookie's session, read in Better Auth's verification
+ * store (its read also clears the expired rows) with its secret. Any
+ * failure is no marker: the idle notice, never an error page.
+ */
+async function revokedCauseOf(cookie: string | null) {
+  try {
+    const ctx = await auth.$context;
+    return await revokedSessionCause(
+      cookie,
+      (identifier) => ctx.internalAdapter.findVerificationValue(identifier),
+      ctx.secret
+    );
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -124,7 +150,9 @@ async function guardApi(allowed: readonly Role[], scope: GuardScope): Promise<Se
  * Page guard: returns the session or redirects.
  *
  * - not signed in                → /login (`?motif=inactivite` when the
- *                                  server closed the session, `signedOutPath`)
+ *                                  server closed the session; `reinitialisation`,
+ *                                  `desactivation`, `acces`, `changement` when
+ *                                  it was closed on purpose — `signedOutPath`)
  * - password to change (Q81)     → « Mon compte » (/compte, /portail/compte)
  * - signed in, wrong role        → their own dashboard (never a dead end)
  *

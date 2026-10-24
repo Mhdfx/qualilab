@@ -18,7 +18,8 @@ const stubs = vi.hoisted(() => {
     },
     client: { findUnique: vi.fn() },
     account: { updateMany: vi.fn() },
-    session: { deleteMany: vi.fn() },
+    // findMany: the sessions a closing marks (session-revocation-route.test.ts) — none here.
+    session: { deleteMany: vi.fn(), findMany: vi.fn() },
     sample: { count: vi.fn() },
     $transaction: vi.fn(),
   };
@@ -82,6 +83,7 @@ beforeEach(() => {
   stubs.prisma.user.updateMany.mockResolvedValue({ count: 0 });
   stubs.prisma.account.updateMany.mockImplementation((args: unknown) => ({ op: "account.updateMany", args }));
   stubs.prisma.session.deleteMany.mockImplementation((args: unknown) => ({ op: "session.deleteMany", args }));
+  stubs.prisma.session.findMany.mockResolvedValue([]);
   stubs.prisma.sample.count.mockResolvedValue(0);
   stubs.prisma.$transaction.mockResolvedValue([]);
 });

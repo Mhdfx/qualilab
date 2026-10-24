@@ -14,6 +14,8 @@ import { ASSIGNABLE_ROLES, PORTAL_ROLE, type Role } from "@/lib/roles";
 import { benchQueueWhereFor } from "@/lib/bench-access";
 import { benchHoldWarning, leavesBench } from "@/lib/technician-load";
 import { onlyDocumentNameChange, readDocumentName } from "@/lib/document-name";
+import { REVOCATION_MARKER_PREFIX, revocationCauseOf, revocationMarkerValue } from "@/lib/session-revocation";
+import { revocationMarkers } from "@/lib/session-revocation-server";
 
 /**
  * Managing one account: change its role (and, for a « Client (portail) »
@@ -24,7 +26,10 @@ import { onlyDocumentNameChange, readDocumentName } from "@/lib/document-name";
  * is the one field the administrator may change on their own account.
  * Disabling revokes the sessions too — a banned user must be out
  * now, not at their next login; so does any change of what a portal account
- * can see (role in or out of CLIENT, another client).
+ * can see (role in or out of CLIENT, another client). Each session closed
+ * leaves a marker, so the person's next page says why — the reset, the
+ * disabling, the changed access — not « inactivité » (session-revocation.ts);
+ * a re-enabling removes its account's « désactivé » markers.
  *
  * Everything is checked before anything is written, so a refused field never
  * leaves the account half-changed.
@@ -154,6 +159,29 @@ export async function PATCH(
     { role: nextRole, clientId: nextClientId },
     { banned: banChanged ? banned : undefined, passwordReset: passwordHash !== null }
   );
+  // Why those sessions end, for the person's next page (session-revocation.ts):
+  // « Votre mot de passe a été réinitialisé par l'administrateur… » instead of
+  // « Session fermée après inactivité. ». One marker per session, written
+  // with the closing; a session opened between this read and the delete is
+  // closed all the same, with the idle notice.
+  const revocation = revocationCauseOf({
+    closesSessions: kick,
+    disabled: banChanged && banned === true,
+    passwordReset: passwordHash !== null,
+  });
+  const revocationRows = revocation
+    ? revocationMarkers(
+        await prisma.session.findMany({ where: { userId: id }, select: { token: true, expiresAt: true } }),
+        revocation,
+        id,
+        new Date()
+      )
+    : [];
+  // A re-enabling: « Votre compte a été désactivé » is no longer true. The
+  // markers the disabling left on the sessions it closed go, in the same
+  // transaction — the person's next page then says the idle notice, and
+  // signing in works again.
+  const reEnabled = banChanged && banned === false;
 
   if (scopeChanged || banChanged || documentNameChanged || passwordHash !== null) {
     await prisma.$transaction([
@@ -172,6 +200,14 @@ export async function PATCH(
       ...(passwordHash !== null
         ? [prisma.account.updateMany({ where: { userId: id, providerId: "credential" }, data: { password: passwordHash } })]
         : []),
+      ...(reEnabled
+        ? [
+            prisma.verification.deleteMany({
+              where: { identifier: { startsWith: REVOCATION_MARKER_PREFIX }, value: revocationMarkerValue("DISABLED", id) },
+            }),
+          ]
+        : []),
+      ...(revocationRows.length > 0 ? [prisma.verification.createMany({ data: revocationRows })] : []),
       ...(kick ? [prisma.session.deleteMany({ where: { userId: id } })] : []),
     ]);
   }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, CheckCircle2, EyeOff } from "lucide-react";
+import { formatDecimal } from "@/lib/labels";
 import { CONCLUSION_MAX_LENGTH } from "@/lib/report-actions";
 import { ReportDialog } from "./ReportDialog";
 
@@ -136,7 +137,7 @@ export function ConclusionEditDialog({ reportId, onClose }: { reportId: string; 
             className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
           <p id="adminConclusionCount" className="mt-1 text-right text-xs tabular-nums text-slate-500">
-            {text.length.toLocaleString("fr-FR")} / {CONCLUSION_MAX_LENGTH.toLocaleString("fr-FR")} caractères
+            {formatDecimal(text.length, 0)} / {formatDecimal(CONCLUSION_MAX_LENGTH, 0)} caractères
           </p>
           {error && (
             <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">

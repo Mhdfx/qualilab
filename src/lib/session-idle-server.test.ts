@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { closeIdleSession, closeIdleSessionHook, type IdleSessionStore } from "./session-idle-server";
+import { revocationMarkerIdentifier } from "./session-revocation-server";
 
 /**
  * The server's sign-out after inactivity (Q82), where it is applied: the hook
@@ -88,18 +89,22 @@ function signedCookie(token: string, secret = SECRET): string {
 const adapter = {
   findSession: vi.fn(),
   deleteSession: vi.fn(async () => undefined),
+  findVerificationValue: vi.fn(),
 };
 const logger = { error: vi.fn() };
 
 /**
  * Runs the hook on a request carrying `cookie`, the way Better Auth's
- * dispatch does (`path`: the endpoint's), and returns what it hands back.
+ * dispatch does (`path`: the endpoint's; `http`: called over HTTP, as the
+ * router does — the request at hand, the answer wanted as a response — not
+ * as `auth.api.*`), and returns what it hands back.
  */
-async function runHook(cookie: string | null, path = "/get-session") {
+async function runHook(cookie: string | null, path = "/get-session", http = false) {
   const headers = new Headers(cookie ? { cookie } : {});
   return (closeIdleSessionHook as unknown as (input: unknown) => Promise<unknown>)({
     path,
     headers,
+    ...(http ? { request: new Request(`http://localhost/api/auth${path}`, { headers }), asResponse: true } : {}),
     context: {
       secret: SECRET,
       authCookies: { sessionToken: { name: COOKIE } },
@@ -126,6 +131,8 @@ beforeEach(() => {
   adapter.findSession.mockReset();
   adapter.deleteSession.mockReset();
   adapter.deleteSession.mockResolvedValue(undefined);
+  adapter.findVerificationValue.mockReset();
+  adapter.findVerificationValue.mockResolvedValue(null);
   logger.error.mockClear();
 });
 
@@ -184,5 +191,47 @@ describe("closeIdleSessionHook — ahead of every auth endpoint", () => {
     expect(cookieHandedOn(await runHook(signedCookie("tok-1")))).toBeUndefined();
     expect(logger.error).toHaveBeenCalled();
     expect(adapter.deleteSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("closeIdleSessionHook — IdleLogout's touch on a session closed on purpose (23/10)", () => {
+  // The administrator's reset, a disabling, the password changed elsewhere
+  // left a marker (session-revocation.ts). Better Auth's endpoint would
+  // delete the cookie that names it, and with it the reason the page guard
+  // gives: the hook answers « no session » first.
+  const live = () => ({ value: "PASSWORD_RESET", expiresAt: new Date(Date.now() + 3600e3) });
+
+  it("a session gone with a live marker: answered null over HTTP, the cookie left", async () => {
+    adapter.findSession.mockResolvedValue(null);
+    adapter.findVerificationValue.mockResolvedValue(live());
+    const result = await runHook(signedCookie("tok-1"), "/get-session", true);
+    // better-call's `ctx.json(null)` for a response: the dispatch sends it as
+    // is and never runs the endpoint — so no Set-Cookie clearing the session.
+    expect(result).toMatchObject({ body: null, _flag: "json" });
+    expect(adapter.findVerificationValue).toHaveBeenCalledWith(revocationMarkerIdentifier("tok-1"));
+    expect(adapter.deleteSession).not.toHaveBeenCalled();
+  });
+
+  it("a session gone without a marker, or an expired one: the endpoint answers, as before", async () => {
+    adapter.findSession.mockResolvedValue(null);
+    expect(await runHook(signedCookie("tok-1"), "/get-session", true)).toBeUndefined();
+    adapter.findVerificationValue.mockResolvedValue({ value: "PASSWORD_RESET", expiresAt: new Date(Date.now() - 1000) });
+    expect(await runHook(signedCookie("tok-1"), "/get-session", true)).toBeUndefined();
+    adapter.findVerificationValue.mockRejectedValue(new Error("base indisponible"));
+    expect(await runHook(signedCookie("tok-1"), "/get-session", true)).toBeUndefined();
+  });
+
+  it("reads no marker for a live session, a server read, another endpoint or a failed session read", async () => {
+    adapter.findVerificationValue.mockResolvedValue(live());
+    adapter.findSession.mockResolvedValue(sessionRow("TECHNICIEN", 5));
+    expect(await runHook(signedCookie("tok-1"), "/get-session", true)).toBeUndefined();
+    adapter.findSession.mockResolvedValue(null);
+    // A guard's `auth.api.getSession`: no cookie is set from there, and
+    // `signedOutPath` reads the marker itself.
+    expect(await runHook(signedCookie("tok-1"), "/get-session", false)).toBeUndefined();
+    expect(await runHook(signedCookie("tok-1"), "/list-sessions", true)).toBeUndefined();
+    adapter.findSession.mockRejectedValue(new Error("base indisponible"));
+    expect(await runHook(signedCookie("tok-1"), "/get-session", true)).toBeUndefined();
+    expect(adapter.findVerificationValue).not.toHaveBeenCalled();
   });
 });

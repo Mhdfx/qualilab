@@ -504,10 +504,10 @@ function CorrectDialog({
             {shown.food && input("expiryDate", "DLC — expiration", "date")}
             {shown.quantity && (
               <div>
-                <label className="block text-xs font-medium text-slate-600">Quantité</label>
+                <label htmlFor="correct-quantity" className="block text-xs font-medium text-slate-600">Quantité</label>
                 <div className="mt-1 flex gap-2">
-                  <input type="text" inputMode="decimal" value={values.quantity} onChange={(e) => set("quantity", e.target.value)} className="input-field px-3" />
-                  <select value={values.quantityUnit} onChange={(e) => set("quantityUnit", e.target.value)} className="input-field w-28 px-2">
+                  <input id="correct-quantity" type="text" inputMode="decimal" value={values.quantity} onChange={(e) => set("quantity", e.target.value)} className="input-field px-3" />
+                  <select aria-label="Unité de la quantité" value={values.quantityUnit} onChange={(e) => set("quantityUnit", e.target.value)} className="input-field w-28 px-2">
                     {UNITS.map((u) => (
                       <option key={u} value={u}>{QUANTITY_UNIT_LABELS[u]}</option>
                     ))}
@@ -751,8 +751,10 @@ function CancelDialog({ sample, onClose, onDone }: { sample: VerbSample; onClose
             {warning}
           </p>
         ))}
-        <label className="mt-3 block text-xs font-medium text-slate-600">Motif *</label>
-        <select value={reason} onChange={(e) => setReason(e.target.value as CancelReason | "")} className="input-field mt-1 px-3">
+        {/* Each label names its field (htmlFor): a click on « Précision » puts
+            the cursor in the box, a screen reader reads the label with it. */}
+        <label htmlFor="cancel-reason" className="mt-3 block text-xs font-medium text-slate-600">Motif *</label>
+        <select id="cancel-reason" value={reason} onChange={(e) => setReason(e.target.value as CancelReason | "")} className="input-field mt-1 px-3">
           <option value="">Choisir un motif</option>
           {cancelReasonsFor(sample.status).map((r) => (
             <option key={r} value={r}>{CANCEL_REASON_LABELS[r]}</option>
@@ -764,8 +766,8 @@ function CancelDialog({ sample, onClose, onDone }: { sample: VerbSample; onClose
             facturé pour cet échantillon. L&apos;écran suivant dit s&apos;il est parti.
           </p>
         )}
-        <label className="mt-3 block text-xs font-medium text-slate-600">Précision {reason === "AUTRE" && "*"}</label>
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="input-field mt-1 resize-none px-3" placeholder="Facultatif" />
+        <label htmlFor="cancel-note" className="mt-3 block text-xs font-medium text-slate-600">Précision {reason === "AUTRE" && "*"}</label>
+        <textarea id="cancel-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="input-field mt-1 resize-none px-3" placeholder="Facultatif" />
         {error && <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
         <Actions busy={busy} label="Annuler l'échantillon" onClose={onClose} danger />
       </form>
@@ -799,8 +801,8 @@ function ReactivateDialog({ sample, onClose, onDone }: { sample: VerbSample; onC
         <p className="text-sm text-slate-600">
           L&apos;échantillon reprend à l&apos;étape atteinte : {sample.controlCode ? "reçu, avec son N° de contrôle" : "en attente de réception"}.
         </p>
-        <label className="mt-3 block text-xs font-medium text-slate-600">Motif *</label>
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="input-field mt-1 resize-none px-3" />
+        <label htmlFor="reactivate-note" className="mt-3 block text-xs font-medium text-slate-600">Motif *</label>
+        <textarea id="reactivate-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="input-field mt-1 resize-none px-3" />
         {error && <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
         <Actions busy={busy} label="Réactiver" onClose={onClose} />
       </form>

@@ -13,6 +13,8 @@ import {
 } from "@/lib/attempt-limiter";
 import { checkPasswordChange, passwordErrorMessage } from "@/lib/portal-access";
 import { getDashboardPath } from "@/lib/roles";
+import { sessionTokenOfCookie } from "@/lib/session-revocation";
+import { revocationMarkers } from "@/lib/session-revocation-server";
 
 /**
  * « Mon compte »: a signed-in account changes its own password — the one
@@ -34,6 +36,10 @@ import { getDashboardPath } from "@/lib/roles";
  * (the one the administrator gave). The answer then carries `redirectTo`,
  * the account's dashboard, which every page was refusing until now — or
  * `stillRequired` should the flag fail to clear.
+ *
+ * The other sessions it closes — the préleveur's phone, a second PC — each
+ * get a marker (session-revocation.ts), so their next page says « Votre mot
+ * de passe a été changé… », not « Session fermée après inactivité. ».
  */
 export async function changeOwnPassword(
   request: Request,
@@ -60,13 +66,17 @@ export async function changeOwnPassword(
 
   let outcome: AttemptOutcome = "NEUTRAL";
   try {
+    const requestHeaders = await headers();
+    // Read before the change, which deletes them all and opens this page a
+    // new one: the sessions of the person's other devices.
+    const others = await otherSessionsOf(session.id, sessionTokenOfCookie(requestHeaders.get("cookie")));
     const response = await auth.api.changePassword({
       body: {
         currentPassword: checked.currentPassword,
         newPassword: checked.newPassword,
         revokeOtherSessions: true,
       },
-      headers: await headers(),
+      headers: requestHeaders,
       asResponse: true,
     });
 
@@ -85,6 +95,7 @@ export async function changeOwnPassword(
     outcome = "SUCCEEDED";
     // The password is changed and this session's cookie renewed: whatever
     // follows must still hand the cookie back, or the person is signed out.
+    await markClosedSessions(session.id, others);
     const required = session.mustChangePassword;
     let cleared = false;
     if (required) {
@@ -128,5 +139,40 @@ export async function changeOwnPassword(
     return result;
   } finally {
     passwordChangeLimiter.settle(session.id, started.attempt, outcome);
+  }
+}
+
+type OpenSession = { token: string; expiresAt: Date };
+
+/**
+ * The account's sessions but the one of this request (`currentToken`, read
+ * from its cookie): those the change closes on the person's other devices.
+ * A read that fails marks none — the change goes on, the other devices then
+ * read the idle notice as before.
+ */
+async function otherSessionsOf(userId: string, currentToken: string | null): Promise<OpenSession[]> {
+  try {
+    return await prisma.session.findMany({
+      where: currentToken ? { userId, token: { not: currentToken } } : { userId },
+      select: { token: true, expiresAt: true },
+    });
+  } catch (error) {
+    console.error("[compte] sessions des autres appareils non lues", { userId, error });
+    return [];
+  }
+}
+
+/**
+ * Leaves a marker for each session the change closed (Better Auth has
+ * deleted them; the marker is read at their next request). Never fails the
+ * change: a write that fails only costs the notice.
+ */
+async function markClosedSessions(userId: string, closed: readonly OpenSession[]): Promise<void> {
+  const rows = revocationMarkers(closed, "PASSWORD_CHANGED", userId, new Date());
+  if (rows.length === 0) return;
+  try {
+    await prisma.verification.createMany({ data: rows });
+  } catch (error) {
+    console.error("[compte] motif de fermeture des autres sessions non écrit", { userId, error });
   }
 }

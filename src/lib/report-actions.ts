@@ -1,5 +1,6 @@
 import type { SampleStatus } from "@/generated/prisma/enums";
 import type { Role } from "./roles";
+import { formatDecimal } from "./labels";
 
 /**
  * The actions on an issued report that are not part of the double
@@ -140,7 +141,7 @@ export function readConclusionEdit(body: unknown, amendmentPending: boolean): Co
     return {
       ok: false,
       status: 400,
-      error: `La conclusion ne peut pas dépasser ${CONCLUSION_MAX_LENGTH.toLocaleString("fr-FR")} caractères (${text.length.toLocaleString("fr-FR")} saisis).`,
+      error: `La conclusion ne peut pas dépasser ${formatDecimal(CONCLUSION_MAX_LENGTH, 0)} caractères (${formatDecimal(text.length, 0)} saisis).`,
     };
   }
   return { ok: true, conclusion: text };

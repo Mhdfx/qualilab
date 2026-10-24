@@ -17,6 +17,7 @@ import { factoredText, singleValueEntry, type ParsedValue } from "@/lib/result-v
 import { hasLimit, judgeUnits, type Plan, type Verdict as PlanVerdict } from "@/lib/interpretation";
 import { benchUnits, unitsAgainstLimit, valueAgainstLimit } from "@/lib/bench-reading";
 import { repetitionLabel } from "@/lib/series";
+import { formatDecimal } from "@/lib/labels";
 import { lostSampleHolder } from "@/lib/take-over";
 import { SHEET_SAVED_BY_COLLEAGUE, followServer, overlapNotice } from "@/lib/take-over-sheet";
 import type { ResultWorkStatus } from "@/generated/prisma/enums";
@@ -759,7 +760,9 @@ function Verdict({
   if (numeric === null && kind !== "uncountable") return null;
 
   const conform = reading.conform;
-  const shown = numeric === null ? "" : `${numeric.toLocaleString("fr-FR")}${unit ? ` ${unit}` : ""}`;
+  // « 1 800 » with the interface's no-break space (formatDecimal), three
+  // decimals at most as before.
+  const shown = numeric === null ? "" : `${formatDecimal(numeric, 3)}${unit ? ` ${unit}` : ""}`;
   const readAs =
     kind === "absence"
       ? "lu comme une absence"
@@ -798,7 +801,7 @@ function Verdict({
       <span className="font-normal">
         — {readAs}
         {limitValue !== null &&
-          ` · limite ${limitValue.toLocaleString("fr-FR")}${unit ? ` ${unit}` : ""}`}
+          ` · limite ${formatDecimal(limitValue, 3)}${unit ? ` ${unit}` : ""}`}
       </span>
       {!conform && limitValue !== null && (
         <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold">

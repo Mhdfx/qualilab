@@ -56,8 +56,11 @@ export const SERVER_IDLE_MARGIN_MS = 5 * 60 * 1000;
 /** The prefix of Better Auth's cookies (`advanced.cookiePrefix`, auth-server.ts). */
 export const SESSION_COOKIE_PREFIX = "qualilab";
 
-/** The session cookie: plain over HTTP (development), `__Secure-` over HTTPS (production). */
-const SESSION_COOKIE_NAMES: readonly string[] = [
+/**
+ * The session cookie: plain over HTTP (development), `__Secure-` over HTTPS
+ * (production). session-revocation.ts finds its token by the same names.
+ */
+export const SESSION_COOKIE_NAMES: readonly string[] = [
   `${SESSION_COOKIE_PREFIX}.session_token`,
   `__Secure-${SESSION_COOKIE_PREFIX}.session_token`,
 ];
@@ -148,8 +151,8 @@ export function touchOutcome(answer: { data?: unknown; error?: unknown }): Touch
   return answer.data == null ? "signed-out" : "stamped";
 }
 
-/** The `name=value` pairs of a `cookie` header, as written. */
-function cookiePairs(cookieHeader: string | null | undefined): { name: string; value: string; raw: string }[] {
+/** The `name=value` pairs of a `cookie` header, as written (session-revocation.ts reads them too). */
+export function cookiePairs(cookieHeader: string | null | undefined): { name: string; value: string; raw: string }[] {
   if (!cookieHeader) return [];
   return cookieHeader
     .split(";")
