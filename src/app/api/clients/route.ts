@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
+import { benchHidesClient } from "@/lib/bench-access";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { findSimilarClients } from "@/lib/client-identity";
@@ -148,6 +149,12 @@ export async function GET(request: Request) {
     "ADMIN"
   );
   if (session instanceof NextResponse) return session;
+  // The blind bench (relance 2.15, BLIND_BENCH_SCREENS): no technician screen
+  // reads the clients, and this list would hand a technician every name,
+  // contact and address the bench screens no longer show.
+  if (benchHidesClient(session.role)) {
+    return NextResponse.json({ error: "Accès refusé." }, { status: 403 });
+  }
 
   const params = new URL(request.url).searchParams;
   const includeArchived = params.get("archived") === "true";

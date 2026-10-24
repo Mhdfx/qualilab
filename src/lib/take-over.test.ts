@@ -507,3 +507,12 @@ describe("the bench screens read these rules", () => {
     expect(page).toContain("{!blind && (\n            <ClientSiteFilter");
   });
 });
+
+describe("blind bench — the client list (production recette 24/10)", () => {
+  it("GET /api/clients refuses a technician while the bench is blind", () => {
+    const source = readFileSync(`${process.cwd()}/src/app/api/clients/route.ts`, "utf8");
+    const get = source.slice(source.indexOf("export async function GET"));
+    expect(get).toMatch(/if \(benchHidesClient\(session\.role\)\) \{\s*return NextResponse\.json\(\{ error: "Accès refusé\." \}, \{ status: 403 \}\);/);
+    expect(get.indexOf("benchHidesClient")).toBeLessThan(get.indexOf("searchParams"));
+  });
+});
