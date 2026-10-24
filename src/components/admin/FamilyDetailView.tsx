@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { CriteriaGrid } from "@/components/admin/CriteriaGrid";
+import { FamilySplitAction } from "@/components/admin/FamilySplitDialog";
 import { RegulationEditor } from "@/components/admin/RegulationEditor";
 import { withFamilyListQuery } from "@/lib/family-list";
 import type { FamilyDetailData } from "@/lib/family-catalogue";
@@ -52,6 +53,8 @@ export function FamilyDetailView({
         familyDefault={data.familyDefaultRegulation}
         regulationsHref={administrator ? "/admin/reglementations" : null}
       />
+      {/* « Scinder par domaine » — the administrator's (its route answers no one else). */}
+      {administrator && <FamilySplitAction typeId={type.id} basePath={basePath} />}
       <CriteriaGrid
         type={{ id: type.id, name: type.name, family: type.family, natureId: type.natureId, clientId: type.clientId, active: type.active }}
         criteria={data.criteria}

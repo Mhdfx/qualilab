@@ -1,4 +1,5 @@
 import type { Family, LimitKind } from "@/generated/prisma/enums";
+import { fingerprint } from "./fingerprint";
 import { singleLimit, type Plan } from "./interpretation";
 import { isDilutionShorthand, parseLabValue } from "./result-value";
 import { normalizeLabel } from "./serie-input";
@@ -272,3 +273,33 @@ export function criterionChange(previous: StoredCriterion, row: CleanCriterion):
   const meaningless = !toleranceApplies(previous.mKind, previous.m !== null, previous.bigM !== null);
   return row.c === null && meaningless ? "tidy" : "change";
 }
+
+/** A stored criterion row as the grid's version reads it: its id and its last write. */
+export type CriteriaGridStamp = { id: string; updatedAt: Date | string };
+
+/**
+ * The grid of a family as it was loaded: every row's id and last write,
+ * whatever their order. The page computes it from the rows it was given
+ * (`family-catalogue.ts`), the route from the rows it holds under lock.
+ * « Scinder par domaine » (which deactivates rows), another tab's save, the
+ * old software's reprise, a row added or deleted elsewhere: each gives
+ * another version, and the save of a grid opened before is refused (409)
+ * instead of writing its old rows back — the split's rows active again on
+ * the source, nothing reported.
+ */
+export function criteriaGridVersion(rows: readonly CriteriaGridStamp[]): string {
+  const stamps = rows
+    .map((row) => {
+      const at = new Date(row.updatedAt);
+      return `${row.id}@${Number.isNaN(at.getTime()) ? String(row.updatedAt) : at.toISOString()}`;
+    })
+    .sort();
+  return fingerprint(stamps.join("|"));
+}
+
+/** The 409 of a grid saved after its rows changed under it. */
+export const CRITERIA_GRID_STALE_ERROR =
+  "La grille a changé depuis son ouverture (scission ou autre enregistrement) : rechargez la page. Rien n'a été modifié.";
+
+/** The 409 when another write held the family's rows through the whole save. */
+export const CRITERIA_GRID_BUSY_ERROR = "Une autre opération sur cette famille était en cours. Rien n'a été modifié : réessayez.";

@@ -102,7 +102,7 @@ export async function loadFamilyDetail(id: string, searchParams: SearchParams) {
         active: true,
         regulationId: true,
         criteria: {
-          select: { id: true, parameterId: true, normVersionId: true, unit: true, n: true, c: true, mKind: true, m: true, bigM: true, active: true },
+          select: { id: true, parameterId: true, normVersionId: true, unit: true, n: true, c: true, mKind: true, m: true, bigM: true, active: true, updatedAt: true },
           orderBy: [{ parameter: { name: "asc" } }, { normVersion: { version: "desc" } }],
         },
       },
@@ -134,7 +134,10 @@ export async function loadFamilyDetail(id: string, searchParams: SearchParams) {
       active: type.active,
       regulationId: type.regulationId,
     },
-    criteria: type.criteria,
+    // With each row's last write: the grid sends their version back with its
+    // save (`criteriaGridVersion`), so a page opened before a split cannot
+    // write its old rows back.
+    criteria: type.criteria.map((row) => ({ ...row, updatedAt: row.updatedAt.toISOString() })),
     parameters,
     versions: norms.flatMap((norm) => norm.versions.map((v) => ({ id: v.id, code: norm.code, version: v.version, label: v.label, current: v.current }))),
     clients: clientOptions,

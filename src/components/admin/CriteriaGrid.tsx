@@ -1,13 +1,13 @@
 "use client";
 
-import { Fragment, useId, useState } from "react";
+import { Fragment, useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Plus, Save, Trash2 } from "lucide-react";
 import type { Family, LimitKind, SampleType } from "@/generated/prisma/enums";
 import { Card } from "@/components/ui/Card";
 import { WrappingSelect } from "@/components/ui/WrappingSelect";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
-import { LIMITLESS_HINT, bigMChange, kindChange, toleranceApplies, wideToleranceNote } from "@/lib/criteria-input";
+import { LIMITLESS_HINT, bigMChange, criteriaGridVersion, kindChange, toleranceApplies, wideToleranceNote } from "@/lib/criteria-input";
 import { criteriaGridCountLabel, criteriaGridSavedNotice } from "@/lib/family-list";
 import { fmt } from "@/lib/interpretation";
 import { parseLabValue } from "@/lib/result-value";
@@ -15,8 +15,9 @@ import { MAX_UNITS } from "@/lib/series";
 import { FAMILY_SHORT_LABELS as FAMILY_LABELS } from "@/lib/labels";
 
 type TypeHeader = { id: string; name: string; family: Family; natureId: string | null; clientId: string | null; active: boolean };
+/** A stored criterion row, as the page and the save's answer give it. */
 type CriterionRow = {
-  id: string | null;
+  id: string;
   parameterId: string;
   normVersionId: string | null;
   unit: string | null;
@@ -26,6 +27,8 @@ type CriterionRow = {
   m: number | null;
   bigM: number | null;
   active: boolean;
+  /** Its last write (ISO): the grid's version (`criteriaGridVersion`) is made of these. */
+  updatedAt: string;
 };
 type ParameterRow = { id: string; name: string; category: SampleType; unit: string | null };
 type VersionRow = { id: string; code: string; version: string; label: string; current: boolean };
@@ -170,12 +173,31 @@ export function CriteriaGrid({
   // The domain follows the type d'analyse; it is chosen only while that is « à préciser ».
   const nature = natures.find((n) => n.id === header.natureId) ?? null;
   const natureOptions = natures.filter((n) => n.active || n.id === type.natureId);
-  const [rows, setRows] = useState<Draft[]>(criteria.map(toDraft));
+  const [rows, setRows] = useState<Draft[]>(() => criteria.map(toDraft));
   // Row keys come from Date.now(): fine for React, not for an id the server renders too.
   const hintId = useId();
   const [busy, setBusy] = useState<"header" | "grid" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  // The rows as the server holds them, and the version the rows on screen
+  // come from — sent with the save, refused (409) once the rows changed.
+  // router.refresh() keeps this state: after « Scinder par domaine » (or any
+  // write outside the grid) the page brings other rows, and the grid takes
+  // them, or its next save would write the moved rows back as active. A
+  // refresh that brings back the grid's own save, or only the header's,
+  // changes nothing: what was typed and the « enregistré » notice stay.
+  const serverVersion = useMemo(() => criteriaGridVersion(criteria), [criteria]);
+  const [loadedVersion, setLoadedVersion] = useState(serverVersion);
+  const [seenVersion, setSeenVersion] = useState(serverVersion);
+  if (serverVersion !== seenVersion) {
+    setSeenVersion(serverVersion);
+    if (serverVersion !== loadedVersion) {
+      setRows(criteria.map(toDraft));
+      setLoadedVersion(serverVersion);
+      setError("");
+    }
+  }
 
   const food = parameters.filter((p) => p.category === "ALIMENTAIRE");
   const others = parameters.filter((p) => p.category !== "ALIMENTAIRE");
@@ -230,6 +252,7 @@ export function CriteriaGrid({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          version: loadedVersion,
           criteria: rows.map((r) => ({
             id: r.id,
             parameterId: r.parameterId,
@@ -251,6 +274,8 @@ export function CriteriaGrid({
       }
       const saved = data.criteria as CriterionRow[];
       setRows(saved.map(toDraft));
+      // What the refresh below brings back: the grid keeps these rows.
+      setLoadedVersion(criteriaGridVersion(saved));
       // The list's count, then the rows (D-17): « 5 critères · 6 lignes » — or, saved empty, no verdict.
       setNotice(criteriaGridSavedNotice(saved));
       router.refresh();
