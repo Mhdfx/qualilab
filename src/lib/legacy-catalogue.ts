@@ -53,7 +53,11 @@ export type LegacyCriterion = {
   norm: string;
   unit: string | null;
   plan: Plan | null;
-  /** Why no plan could be derived (the row is listed, not imported). */
+  /**
+   * Why no plan could be derived (the row is listed, not imported).
+   * `REASON_OBSOLETE` / `REASON_DELETED` say the row is not in service in the
+   * old software (OBSOLETE 1 / 2); any other value, or none, that it is.
+   */
   reason: string | null;
 };
 
@@ -162,8 +166,22 @@ export function derivePlan(r: Row): { plan: Plan | null; reason: string | null }
   return { plan: { ...plan, c: toleranceApplies(plan.mKind, plan.m !== null, plan.bigM !== null) ? plan.c : null }, reason: null };
 }
 
+/** Why a row of the old software is no criterion: OBSOLETE = 1 (`deriveRawPlan`). */
+export const REASON_OBSOLETE = "obsolète";
+/** Why a row of the old software is no criterion: OBSOLETE = 2, or any value but 0 and 1 (`deriveRawPlan`). */
+export const REASON_DELETED = "supprimé dans l'ancien logiciel";
+
 function deriveRawPlan(r: Row): { plan: Plan | null; reason: string | null } {
-  if (int(r.obsolete) === 1) return { plan: null, reason: "obsolète" };
+  // TYPENOURITURE_PARAMS.OBSOLETE (backups/criteres-OBSOLETE-2-ancienne-base-2026-10-23.md
+  // §1): 0 in service; 1 obsolete — greyed in the family's grid, never offered at
+  // reception; 2 deleted from the family's grid — DEL_PMATRICE could not DELETE
+  // it because past analyses point at it, so it is hidden everywhere and never
+  // offered again. Only 0 is a criterion. Anything else is read as deleted: the
+  // old software shows only `OBSOLETE in (0, 1)` and offers only `OBSOLETE = 0`.
+  // The row is still returned (listed, counted, and read by the reprise's step (f)).
+  const obsolete = int(r.obsolete);
+  if (obsolete === 1) return { plan: null, reason: REASON_OBSOLETE };
+  if (obsolete !== 0) return { plan: null, reason: REASON_DELETED };
   const typePm = int(r.type_pm);
   const qualitative = int(r.type_resultat) === 12;
   const nbr = int(r.nbr);
@@ -252,13 +270,25 @@ export function usableNorm(norm: string): boolean {
 //       food microbiology parameter;
 //   (e) F2 (19/10): the tolerance c an earlier import wrote where it means
 //       nothing (absence tests, limitless rows) is cleared (`PlannedTidy`),
-//       so every imported grid saves back as it is shown.
+//       so every imported grid saves back as it is shown;
+//   (f) OBSOLETE = 2 (23/10, backups/criteres-OBSOLETE-2-ancienne-base-
+//       2026-10-23.md): a row the old software deleted from its family's grid
+//       came in active with slice J and the first reprise. Now never
+//       imported (`deriveRawPlan`); the ones already in are deactivated —
+//       never deleted (`PlannedRetirement`): in each family the import owns,
+//       every active row matching the germ × norm version of a deleted row
+//       and of no row still in service anywhere in the family's name group
+//       (the twin a step (b) copied included). Planned before (b), so a
+//       retired row is never copied.
 //
 // What a person changed is never undone (« jamais sur une modification
 // manuelle »): a family whose criteria grid was saved by hand
 // (`CRITERIA_UPDATED`) gets no criterion of the old software unless it holds
 // no criterion row at all, and one whose regulation was changed by hand
-// (`PRODUCT_TYPE_UPDATED`) is not linked again — both listed. A parameter
+// (`PRODUCT_TYPE_UPDATED`) is not linked again — both listed. Step (f)
+// leaves such a grid alone too, a split's source included (« Scinder par
+// domaine » journals its save), and lists the deleted rows still active in
+// it — with those the split copied into the family it created. A parameter
 // created here is the twin of the germ it copies (contamination alert,
 // limit, threshold, factor); one that looks like an existing parameter of
 // its category is listed, and the commit waits for an alias or a
@@ -308,6 +338,12 @@ export type CatalogueType = {
   criteriaEdited: boolean;
   /** Its regulation was changed by hand (`regulationEditedByHand` over its journal). */
   regulationEdited: boolean;
+  /**
+   * The family « Scinder par domaine » created it from (`splitOrigin` over
+   * its journal), so (f) can list the deleted rows the split copied into it;
+   * null or absent otherwise.
+   */
+  splitFrom?: string | null;
 };
 
 export type CatalogueCriterion = {
@@ -439,6 +475,21 @@ export type PlannedLink = { typeId: string; name: string; regulationLegacyId: nu
  */
 export type PlannedTidy = { criterionId: string; productTypeId: string };
 
+/**
+ * (f) An active row an earlier import brought in from a row the old software
+ * had deleted from the family's grid (OBSOLETE = 2): deactivated, never
+ * deleted — the samples already recorded keep their analyses. `norm` is the
+ * row's `normKey`.
+ */
+export type PlannedRetirement = { criterionId: string; productTypeId: string; parameter: string; norm: string | null };
+
+/**
+ * (f) A family whose deleted rows stay active because nobody may touch its
+ * grid: saved by hand (« main », a split's source included), or created by
+ * « Scinder par domaine » from a family of the old software (« scission »).
+ */
+export type RetiredLeftActive = { id: string; name: string; rows: number; origin: "main" | "scission" };
+
 /** One line of the journal per existing family the import changes (`LEGACY_CATALOGUE_REPRISE`). */
 export type RepriseJournalEntry = {
   typeId: string;
@@ -454,6 +505,8 @@ export type RepriseJournalEntry = {
     added?: number;
     /** Rows whose meaningless tolerance c was cleared (`PlannedTidy`). */
     toleranceCleared?: number;
+    /** (f) The rows deactivated as deleted in the old software: germ and norm version of each. */
+    retired?: { criterionId: string; parameter: string; norm: string | null }[];
   };
 };
 
@@ -463,7 +516,13 @@ export type InFlightImpact = {
   startJudged: number;
   /** Of another category, on the rows the import deactivates: they lose their criteria. */
   loseCriteria: number;
-  byStatus: { status: InFlightStatus; startJudged: number; loseCriteria: number }[];
+  /**
+   * (f) Of the category of a row deleted in the old software that the import
+   * deactivates: that germ is judged by the row of it still in service, or
+   * by none (the Listeria case: « absence » instead of m = 100).
+   */
+  retired: number;
+  byStatus: { status: InFlightStatus; startJudged: number; loseCriteria: number; retired: number }[];
 };
 
 export type CataloguePlanSummary = {
@@ -524,6 +583,8 @@ export type CataloguePlanSummary = {
     inFlight: InFlightImpact;
     /** Stored rows whose meaningless tolerance c is cleared (`PlannedTidy`). */
     tolerances: { rows: number; families: number };
+    /** (f) Rows deleted in the old software deactivated, their families, and the families left alone. */
+    retired: { rows: number; families: number; leftActive: RetiredLeftActive[] };
   };
 };
 
@@ -533,6 +594,8 @@ export type CataloguePlan = {
   parameters: PlannedParameter[];
   natureUpdates: NatureUpdate[];
   links: PlannedLink[];
+  /** (f) Planned before `copies`: a retired row is never copied. */
+  retirements: PlannedRetirement[];
   copies: PlannedCopy[];
   tolerances: PlannedTidy[];
   rows: PlannedRow[];
@@ -612,6 +675,23 @@ export function regulationEditedByHand(metadata: string | null): boolean {
     return (before.regulationId ?? null) !== (after.regulationId ?? null);
   } catch {
     return true;
+  }
+}
+
+/**
+ * The two families of a « Scinder par domaine », read from one of its
+ * `CRITERIA_UPDATED` (`splitJournal`: `split.from` the source, `split.to`
+ * the family created), or null for any other save — the journal entry that
+ * makes the source « modifiée à la main » and names the new family's origin.
+ */
+export function splitOrigin(metadata: string | null): { from: string; to: string } | null {
+  try {
+    const parsed = JSON.parse(metadata ?? "") as { split?: { from?: { id?: unknown }; to?: { id?: unknown } } } | null;
+    const from = parsed?.split?.from?.id;
+    const to = parsed?.split?.to?.id;
+    return typeof from === "string" && typeof to === "string" && from && to && from !== to ? { from, to } : null;
+  } catch {
+    return null;
   }
 }
 
@@ -705,6 +785,46 @@ class ParameterResolver {
 
   keys(parameterId: string): string[] {
     return this.keysOf.get(parameterId) ?? [];
+  }
+
+  /**
+   * Every key a germ of the old software reaches in the catalogue, as
+   * `resolve` would find it — its own, the parameter of the category it
+   * resolves to, the other category's it would be twinned from — planning
+   * nothing (step (f) matches the rows already written with it).
+   */
+  reach(category: SampleType | null, family: Family, label: string): string[] {
+    const own = parameterKey(label).key;
+    if (!own) return [];
+    const reached = new Set([own]);
+    const add = (p: CatalogueParameter | null) => {
+      if (p) for (const key of this.keys(p.id)) reached.add(key);
+    };
+    if (category === null) {
+      // No type d'analyse: slice J's rule, food first.
+      for (const c of CATEGORIES) {
+        const found = this.existing(c, "MICRO", [own]);
+        if (found) {
+          add(found);
+          break;
+        }
+      }
+      return [...reached];
+    }
+    const found = this.existing(category, family, [own]);
+    if (found) {
+      add(found);
+      return [...reached];
+    }
+    for (const c of CATEGORIES) {
+      if (c === category) continue;
+      const twin = this.existing(c, family, [own]);
+      if (!twin) continue;
+      add(twin);
+      add(this.existing(category, family, this.keys(twin.id)));
+      break;
+    }
+    return [...reached];
   }
 
   private existing(category: SampleType, family: Family, keys: string[]): CatalogueParameter | null {
@@ -893,28 +1013,118 @@ export function planLegacyCatalogue(input: {
     natureOf.set(t.id, nature);
   }
 
-  // ---- (b) N2 / OLD31: criteria bound to another category's parameter -------
+  // ---- what each family holds, and who decides its grid ----------------------
   const criteriaOf = new Map<string, CatalogueCriterion[]>();
   for (const c of [...snapshot.criteria].sort((a, b) => a.id.localeCompare(b.id))) {
     criteriaOf.set(c.productTypeId, [...(criteriaOf.get(c.productTypeId) ?? []), c]);
   }
+  const activeCount = new Map<string, number>();
+  const rowCount = new Map<string, number>();
+  /** The germs (every key of their parameter) × norm version each family holds. */
+  const germs = new Map<string, Set<string>>();
+  for (const c of snapshot.criteria) {
+    if (c.active) activeCount.set(c.productTypeId, (activeCount.get(c.productTypeId) ?? 0) + 1);
+    rowCount.set(c.productTypeId, (rowCount.get(c.productTypeId) ?? 0) + 1);
+    const set = germs.get(c.productTypeId) ?? new Set<string>();
+    for (const key of resolver.keys(c.parameterId)) set.add(`${key}|${c.normKey ?? ""}`);
+    germs.set(c.productTypeId, set);
+  }
+  // A grid saved by hand is the laboratory's word: its rows deleted, re-pointed
+  // or deactivated by hand (the PUT deletes for good, so the dedupe below
+  // cannot see them) never come back, and no germ is created for it — the
+  // family is filled only when it holds no criterion row at all, active or not.
+  const editedByHand = (ref: string) => typeById.get(ref)?.criteriaEdited === true && (rowCount.get(ref) ?? 0) > 0;
+  // A family the old software alone knows takes all its criteria; a family of
+  // the September workbook only when it has no active one (Q39, refined by Q43).
+  const owned = (ref: string) => kindOf.get(ref) !== "workbook" || (activeCount.get(ref) ?? 0) === 0;
+  /** Per family, the categories whose samples gain criteria, and those whose rows the import deactivates. */
+  const judgedCategories = new Map<string, Set<SampleType>>();
+  const lostCategories = new Map<string, Set<SampleType>>();
+  const retiredCategories = new Map<string, Set<SampleType>>();
+  const mark = (index: Map<string, Set<SampleType>>, typeId: string, category: SampleType) =>
+    index.set(typeId, (index.get(typeId) ?? new Set<SampleType>()).add(category));
+
+  // ---- (f) the rows the old software deleted from a family's grid ------------
+  // Before (b): a retired row is never copied. Only a family the import owns
+  // and nobody saved by hand; a germ × norm version still in service in any
+  // family of the name group (the planner merged them) keeps its rows.
+  const legacyRowsOf = new Map<number, LegacyCriterion[]>();
+  for (const c of legacyCriteria) legacyRowsOf.set(c.typeLegacyId, [...(legacyRowsOf.get(c.typeLegacyId) ?? []), c]);
+  const isDeleted = (c: LegacyCriterion) => c.reason === REASON_DELETED;
+  const inService = (c: LegacyCriterion) => c.reason !== REASON_DELETED && c.reason !== REASON_OBSOLETE;
+  /**
+   * The active rows of `typeId` that only a deleted row of `group` explains:
+   * a key of their parameter × their norm version is one a deleted row
+   * reaches (`ParameterResolver.reach`, in the family's category, so the
+   * twin of (b) is found too) and none a row in service reaches.
+   */
+  const deletedOnly = (typeId: string, group: LegacyType[], nature: CatalogueNature | null): CatalogueCriterion[] => {
+    const rows = group.flatMap((t) => legacyRowsOf.get(t.legacyId) ?? []);
+    const keysOf = (c: LegacyCriterion) => {
+      const norm = legacyNorm(c.norm)?.key ?? "";
+      return resolver.reach(nature?.legacyType ?? null, nature?.family ?? "MICRO", c.parameterName).map((key) => `${key}|${norm}`);
+    };
+    const deleted = new Set(rows.filter(isDeleted).flatMap(keysOf));
+    if (deleted.size === 0) return [];
+    const live = new Set(rows.filter(inService).flatMap(keysOf));
+    return (criteriaOf.get(typeId) ?? []).filter((criterion) => {
+      if (!criterion.active) return false;
+      const keys = resolver.keys(criterion.parameterId).map((key) => `${key}|${criterion.normKey ?? ""}`);
+      return keys.some((key) => deleted.has(key)) && !keys.some((key) => live.has(key));
+    });
+  };
+  const retirements: PlannedRetirement[] = [];
+  const retired = new Set<string>();
+  const retiredLeftActive: RetiredLeftActive[] = [];
+  for (const t of types) {
+    const group = legacyOf.get(t.id);
+    if (!group || !owned(t.id)) continue;
+    const found = deletedOnly(t.id, group, natureOf.get(t.id) ?? null);
+    if (found.length === 0) continue;
+    if (editedByHand(t.id)) {
+      retiredLeftActive.push({ id: t.id, name: t.name, rows: found.length, origin: "main" });
+      continue;
+    }
+    for (const criterion of found) {
+      const parameter = parameterById.get(criterion.parameterId);
+      retired.add(criterion.id);
+      retirements.push({ criterionId: criterion.id, productTypeId: t.id, parameter: parameter?.name ?? criterion.parameterId, norm: criterion.normKey });
+      if (parameter) mark(retiredCategories, t.id, parameter.category);
+    }
+  }
+  // A family « Scinder par domaine » created was never the old software's,
+  // and its split journalled a hand save: listed with the deleted rows the
+  // split copied into it (its source's name group, followed up the splits).
+  for (const t of types) {
+    if (!t.splitFrom || legacyOf.has(t.id)) continue;
+    let source = t.splitFrom;
+    const seen = new Set([t.id]);
+    while (!legacyOf.has(source) && !seen.has(source) && typeById.get(source)?.splitFrom) {
+      seen.add(source);
+      source = typeById.get(source)!.splitFrom!;
+    }
+    const group = legacyOf.get(source);
+    if (!group || !owned(source)) continue;
+    const found = deletedOnly(t.id, group, natureOf.get(t.id) ?? null);
+    if (found.length > 0) retiredLeftActive.push({ id: t.id, name: t.name, rows: found.length, origin: "scission" });
+  }
+  retiredLeftActive.sort((a, b) => a.name.localeCompare(b.name, "fr") || a.id.localeCompare(b.id));
+  const retiredOf = new Map<string, number>();
+  for (const r of retirements) retiredOf.set(r.productTypeId, (retiredOf.get(r.productTypeId) ?? 0) + 1);
+
+  // ---- (b) N2 / OLD31: criteria bound to another category's parameter -------
   const rowKey = (typeRef: string, parameterRef: string, norm: string | null) => `${typeRef}|${parameterRef}|${norm ?? ""}`;
   /** Every (family, parameter, norm version) held or planned, active or not. */
   const taken = new Set(snapshot.criteria.map((c) => rowKey(c.productTypeId, c.parameterId, c.normKey)));
   const copies: PlannedCopy[] = [];
   const collisions: CataloguePlanSummary["reprise"]["rebinding"]["collisions"] = [];
   const reboundFamilies = new Set<string>();
-  /** Per family, the categories whose samples gain criteria, and those whose rows the import deactivates. */
-  const judgedCategories = new Map<string, Set<SampleType>>();
-  const lostCategories = new Map<string, Set<SampleType>>();
-  const mark = (index: Map<string, Set<SampleType>>, typeId: string, category: SampleType) =>
-    index.set(typeId, (index.get(typeId) ?? new Set<SampleType>()).add(category));
   for (const t of types) {
     const nature = natureOf.get(t.id);
     if (!nature || nature.legacyType === "ALIMENTAIRE") continue;
     for (const criterion of criteriaOf.get(t.id) ?? []) {
       const parameter = parameterById.get(criterion.parameterId);
-      if (!criterion.active || !parameter || parameter.category === nature.legacyType) continue;
+      if (!criterion.active || retired.has(criterion.id) || !parameter || parameter.category === nature.legacyType) continue;
       const target = resolver.resolve(nature.legacyType, nature.family, { source: parameter }, {
         allowed: true,
         unit: criterion.unit ?? parameter.unit,
@@ -948,25 +1158,8 @@ export function planLegacyCatalogue(input: {
   }
 
   // ---- (c) + slice J: the old software's criteria ---------------------------
-  const activeCount = new Map<string, number>();
-  const rowCount = new Map<string, number>();
-  /** The germs (every key of their parameter) × norm version each family holds. */
-  const germs = new Map<string, Set<string>>();
-  for (const c of snapshot.criteria) {
-    if (c.active) activeCount.set(c.productTypeId, (activeCount.get(c.productTypeId) ?? 0) + 1);
-    rowCount.set(c.productTypeId, (rowCount.get(c.productTypeId) ?? 0) + 1);
-    const set = germs.get(c.productTypeId) ?? new Set<string>();
-    for (const key of resolver.keys(c.parameterId)) set.add(`${key}|${c.normKey ?? ""}`);
-    germs.set(c.productTypeId, set);
-  }
-  // A grid saved by hand is the laboratory's word: its rows deleted, re-pointed
-  // or deactivated by hand (the PUT deletes for good, so the dedupe below
-  // cannot see them) never come back, and no germ is created for it — the
-  // family is filled only when it holds no criterion row at all, active or not.
-  const editedByHand = (ref: string) => typeById.get(ref)?.criteriaEdited === true && (rowCount.get(ref) ?? 0) > 0;
-  // A family the old software alone knows takes all its criteria; a family of
-  // the September workbook only when it has no active one (Q39, refined by Q43).
-  const owned = (ref: string) => kindOf.get(ref) !== "workbook" || (activeCount.get(ref) ?? 0) === 0;
+  // A row deleted in the old software never comes in (`REASON_DELETED`), and
+  // the retired rows, inactive, still count as present: nothing comes back.
   /** Per family changed by hand, the old software's rows left out. */
   const leftOut = new Map<string, number>();
 
@@ -1081,8 +1274,8 @@ export function planLegacyCatalogue(input: {
   const stillEmpty: CataloguePlanSummary["reprise"]["stillEmpty"] = { active: [], inactive: 0 };
   const lastUseOf = (ref: string) => isoDay(legacyOf.get(ref)?.[0]?.lastUse ?? null);
   const families = [
-    ...types.map((t) => ({ ref: t.id, name: t.name, active: t.active, before: activeCount.get(t.id) ?? 0 })),
-    ...typesToCreate.map((p) => ({ ref: p.ref, name: p.name, active: p.active, before: 0 })),
+    ...types.map((t) => ({ ref: t.id, name: t.name, active: t.active, before: activeCount.get(t.id) ?? 0, retired: retiredOf.get(t.id) ?? 0 })),
+    ...typesToCreate.map((p) => ({ ref: p.ref, name: p.name, active: p.active, before: 0, retired: 0 })),
   ];
   for (const f of families) {
     const more = added.get(f.ref) ?? 0;
@@ -1090,7 +1283,8 @@ export function planLegacyCatalogue(input: {
       fill.families += 1;
       fill.criteria += more;
     }
-    if (f.before + more > 0) continue;
+    // A family whose only active rows were deleted in the old software is empty once (f) is written.
+    if (f.before - f.retired + more > 0) continue;
     if (f.active) stillEmpty.active.push({ name: f.name, nature: natureOf.get(f.ref)?.label ?? null, lastUse: lastUseOf(f.ref) });
     else stillEmpty.inactive += 1;
   }
@@ -1119,7 +1313,10 @@ export function planLegacyCatalogue(input: {
 
   // ---- the parameters the copies empty (D-13) --------------------------------
   const activeOfParameter = new Map<string, number>();
-  for (const c of snapshot.criteria) if (c.active) activeOfParameter.set(c.parameterId, (activeOfParameter.get(c.parameterId) ?? 0) + 1);
+  // The rows (f) deactivates no longer count; they are never copied, so never counted twice.
+  for (const c of snapshot.criteria) {
+    if (c.active && !retired.has(c.id)) activeOfParameter.set(c.parameterId, (activeOfParameter.get(c.parameterId) ?? 0) + 1);
+  }
   const deactivatedOf = new Map<string, number>();
   const sourceOf = new Map(snapshot.criteria.map((c) => [c.id, c.parameterId]));
   for (const copy of copies) {
@@ -1134,19 +1331,22 @@ export function planLegacyCatalogue(input: {
     .sort((a, b) => a.name.localeCompare(b.name, "fr"));
 
   // ---- the samples at the bench whose verdicts change -------------------------
-  const byStatus = new Map<InFlightStatus, { startJudged: number; loseCriteria: number }>(
-    IN_FLIGHT_STATUSES.map((status) => [status, { startJudged: 0, loseCriteria: 0 }])
+  // Each sample counted once: new criteria first, then rows rebound, then rows retired (f).
+  const byStatus = new Map<InFlightStatus, { startJudged: number; loseCriteria: number; retired: number }>(
+    IN_FLIGHT_STATUSES.map((status) => [status, { startJudged: 0, loseCriteria: 0, retired: 0 }])
   );
   for (const s of snapshot.inFlight) {
     const counts = byStatus.get(s.status);
     if (!counts) continue;
     if (judgedCategories.get(s.productTypeId)?.has(s.type)) counts.startJudged += s.count;
     else if (lostCategories.get(s.productTypeId)?.has(s.type)) counts.loseCriteria += s.count;
+    else if (retiredCategories.get(s.productTypeId)?.has(s.type)) counts.retired += s.count;
   }
   const inFlight: InFlightImpact = {
     startJudged: [...byStatus.values()].reduce((n, c) => n + c.startJudged, 0),
     loseCriteria: [...byStatus.values()].reduce((n, c) => n + c.loseCriteria, 0),
-    byStatus: [...byStatus.entries()].filter(([, c]) => c.startJudged + c.loseCriteria > 0).map(([status, c]) => ({ status, ...c })),
+    retired: [...byStatus.values()].reduce((n, c) => n + c.retired, 0),
+    byStatus: [...byStatus.entries()].filter(([, c]) => c.startJudged + c.loseCriteria + c.retired > 0).map(([status, c]) => ({ status, ...c })),
   };
 
   // ---- the meaningless tolerances an earlier import left (F2) ------------------
@@ -1172,6 +1372,10 @@ export function planLegacyCatalogue(input: {
     if (u.family) entry.metadata.family = { before: u.familyBefore, after: u.family };
   }
   for (const link of links) entryOf(link.typeId).metadata.regulation = { before: null, legacyId: link.regulationLegacyId };
+  for (const r of retirements) {
+    const entry = entryOf(r.productTypeId);
+    entry.metadata.retired = [...(entry.metadata.retired ?? []), { criterionId: r.criterionId, parameter: r.parameter, norm: r.norm }];
+  }
   for (const copy of copies) {
     const entry = entryOf(copy.productTypeId);
     entry.metadata.rebound = [...(entry.metadata.rebound ?? []), { criterionId: copy.criterionId, from: copy.fromParameter, to: copy.toParameter }];
@@ -1188,6 +1392,7 @@ export function planLegacyCatalogue(input: {
     parameters,
     natureUpdates,
     links,
+    retirements,
     copies,
     tolerances,
     rows,
@@ -1235,6 +1440,7 @@ export function planLegacyCatalogue(input: {
         orphanedSources,
         inFlight,
         tolerances: { rows: tolerances.length, families: tidiedOf.size },
+        retired: { rows: retirements.length, families: retiredOf.size, leftActive: retiredLeftActive },
       },
     },
   };

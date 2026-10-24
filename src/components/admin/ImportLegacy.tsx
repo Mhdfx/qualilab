@@ -7,7 +7,7 @@ import type { Family, SampleType } from "@/generated/prisma/enums";
 import { Card } from "@/components/ui/Card";
 import { Dialog } from "@/components/invoices/InvoiceDialogs";
 import { FAMILY_SHORT_LABELS, SAMPLE_TYPE_LABELS } from "@/lib/labels";
-import type { InFlightImpact } from "@/lib/legacy-catalogue";
+import type { InFlightImpact, RetiredLeftActive } from "@/lib/legacy-catalogue";
 
 /**
  * The old software's catalogue — regulations, product families, criteria —
@@ -15,7 +15,8 @@ import type { InFlightImpact } from "@/lib/legacy-catalogue";
  * (RETOUR-LABO-30-09.md, slice J), with the reprise of 16/10
  * (RETOUR-LABO-16-10.md F3): each family's type d'analyse, the criteria of
  * hands, surface, water and air families moved onto their own parameters,
- * the empty families filled. Analyse first, then import.
+ * the empty families filled, and (f) the rows the old software had deleted
+ * from a family's grid (OBSOLETE = 2) deactivated. Analyse first, then import.
  *
  * The import changes the criteria the bench reads live: the analysis counts
  * the samples in progress whose verdicts change, lists the parameters to
@@ -70,6 +71,7 @@ type Summary = {
     orphanedSources: { name: string; category: SampleType }[];
     inFlight: InFlightImpact;
     tolerances: { rows: number; families: number };
+    retired: { rows: number; families: number; leftActive: RetiredLeftActive[] };
   };
   created?: {
     regulations: number;
@@ -82,6 +84,7 @@ type Summary = {
     linked: number;
     natures: number;
     families: number;
+    retired: number;
     copies: number;
     deactivated: number;
     tolerancesCleared: number;
@@ -104,6 +107,7 @@ function writtenSentence(c: NonNullable<Summary["created"]>): string {
     `${c.norms} normes / ${c.versions} versions, ${c.parameters} paramètres, ` +
     `${c.linked} familles reliées à leur réglementation, ${c.natures} types d'analyse, ` +
     `${c.copies} critères rattachés (${c.deactivated} anciens désactivés), ${c.families} familles vides remplies` +
+    `${c.retired ? `, ${plural(c.retired, "ligne supprimée", "lignes supprimées")} dans l'ancien logiciel désactivée${c.retired > 1 ? "s" : ""}` : ""}` +
     `${c.tolerancesCleared ? `, ${c.tolerancesCleared} tolérances c sans objet effacées` : ""}.`
   );
 }
@@ -117,7 +121,7 @@ const IN_FLIGHT_WORDS: Record<InFlightImpact["byStatus"][number]["status"], [str
 };
 
 /** « 2 en analyse, 1 programmé » — the samples in progress, by status. */
-function inFlightSentence(impact: InFlightImpact, key: "startJudged" | "loseCriteria"): string {
+function inFlightSentence(impact: InFlightImpact, key: "startJudged" | "loseCriteria" | "retired"): string {
   return impact.byStatus
     .filter((s) => s[key] > 0)
     .map((s) => `${s[key]} ${IN_FLIGHT_WORDS[s.status][s[key] > 1 ? 1 : 0]}`)
@@ -206,9 +210,11 @@ export function ImportLegacy() {
           aucun critère actif : elle reçoit alors ceux de l&apos;ancien logiciel. Une famille que seul l&apos;ancien logiciel connaît est
           créée avec ses critères, inactive si elle n&apos;a pas servi depuis 2025. Chaque famille reçoit le type d&apos;analyse de
           l&apos;ancien logiciel quand elle n&apos;en a pas ; les critères des familles mains, surfaces, eaux et air rattachés à un paramètre
-          d&apos;une autre catégorie sont copiés sur le paramètre de leur catégorie, l&apos;ancien critère désactivé. Une famille dont les
-          critères ou la réglementation ont été modifiés à la main les garde. Rien n&apos;est écrit avant « Importer » ; relancer ne crée
-          aucun doublon. La mémoire des désignations (memory.csv) s&apos;importe dans la section « Mémoire des clients » ci-dessus.
+          d&apos;une autre catégorie sont copiés sur le paramètre de leur catégorie, l&apos;ancien critère désactivé. Une ligne que
+          l&apos;ancien logiciel a supprimée de la grille d&apos;une famille n&apos;est jamais importée, et celles qu&apos;un import précédent a
+          apportées sont désactivées — jamais supprimées. Une famille dont les critères ou la réglementation ont été modifiés à la
+          main les garde. Rien n&apos;est écrit avant « Importer » ; relancer ne crée aucun doublon. La mémoire des désignations
+          (memory.csv) s&apos;importe dans la section « Mémoire des clients » ci-dessus.
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           {FILES.map((f) => (
@@ -288,7 +294,9 @@ export function ImportLegacy() {
             <Stat label="Normes" value={summary.norms} hint={`versions reconnues · ${toCreate(summary.normsToCreate, "créées", "à créer")}`} />
           </dl>
 
-          <h3 className="mt-6 text-sm font-semibold text-slate-800">Reprise du 16/10 — types d&apos;analyse, rattachements, familles vides</h3>
+          <h3 className="mt-6 text-sm font-semibold text-slate-800">
+            Reprise du 16/10 — types d&apos;analyse, rattachements, familles vides, lignes supprimées
+          </h3>
           <dl className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat
               label="Types d'analyse"
@@ -303,6 +311,15 @@ export function ImportLegacy() {
             <Stat label="Familles remplies" value={reprise.fill.families} hint={`${reprise.fill.criteria} critères de l'ancien logiciel`} />
             <Stat label="Familles encore vides" value={reprise.stillEmpty.active.length} hint={`actives · ${reprise.stillEmpty.inactive} inactives`} />
           </dl>
+          <p className="mt-3 text-sm text-slate-700">
+            <span className="font-semibold">Lignes supprimées dans l&apos;ancien logiciel :</span>{" "}
+            {`${reprise.retired.rows} ${done ? (reprise.retired.rows > 1 ? "désactivées" : "désactivée") : "à désactiver"}`}
+            {reprise.retired.rows > 0 &&
+              ` dans ${plural(reprise.retired.families, "famille", "familles")} (jamais supprimées : les échantillons déjà enregistrés gardent leurs analyses)`}
+            {reprise.retired.leftActive.length > 0 &&
+              ` · ${plural(reprise.retired.leftActive.length, "famille laissée telle quelle", "familles laissées telles quelles")} (grille modifiée à la main ou scindée, voir plus bas)`}
+            .
+          </p>
           {reprise.tolerances.rows > 0 && (
             <p className="mt-3 text-xs text-slate-500">
               {`Tolérance c sans objet (critère d'absence, ou sans limite) laissée par un import précédent : ${plural(reprise.tolerances.rows, "ligne", "lignes")} dans ${plural(reprise.tolerances.families, "famille", "familles")}, ${done ? "c effacé" : "c sera effacé"} — aucun verdict ne change, la grille s'enregistre telle qu'elle s'affiche.`}
@@ -369,6 +386,20 @@ export function ImportLegacy() {
                 </li>
               ))}
             </Details>
+            <Details
+              title="Lignes supprimées dans l'ancien logiciel laissées actives — à décocher dans « Familles & critères »"
+              count={reprise.retired.leftActive.length}
+            >
+              {reprise.retired.leftActive.map((f) => (
+                <li key={f.id}>
+                  <span className="font-medium text-slate-800">{f.name}</span> : {plural(f.rows, "ligne", "lignes")}
+                  <span className="text-slate-500">
+                    {" — "}
+                    {f.origin === "main" ? "grille modifiée à la main (une scission compte)" : "famille créée par « Scinder par domaine »"}
+                  </span>
+                </li>
+              ))}
+            </Details>
             <Details title="Paramètres alimentaires sans critère actif après rattachement — à revoir dans « Paramètres »" count={reprise.orphanedSources.length}>
               {reprise.orphanedSources.map((p, i) => (
                 <li key={`${p.category}|${p.name}|${i}`}>
@@ -419,7 +450,7 @@ export function ImportLegacy() {
                     en production).
                   </p>
                   <p className="font-medium">
-                    {inFlight.startJudged + inFlight.loseCriteria === 0
+                    {inFlight.startJudged + inFlight.loseCriteria + inFlight.retired === 0
                       ? "Aucun échantillon en cours n'est concerné."
                       : [
                           inFlight.startJudged > 0
@@ -427,6 +458,9 @@ export function ImportLegacy() {
                             : null,
                           inFlight.loseCriteria > 0
                             ? `${plural(inFlight.loseCriteria, "échantillon d'une autre catégorie perd", "échantillons d'une autre catégorie perdent")} ses critères (${inFlightSentence(inFlight, "loseCriteria")})`
+                            : null,
+                          inFlight.retired > 0
+                            ? `${plural(inFlight.retired, "échantillon en cours n'est plus jugé", "échantillons en cours ne sont plus jugés")} sur les lignes supprimées dans l'ancien logiciel (${inFlightSentence(inFlight, "retired")})`
                             : null,
                         ]
                           .filter(Boolean)
@@ -493,7 +527,7 @@ function ConfirmImport({
   onClose: () => void;
   onConfirm: (confirm: { inFlight: boolean; similar: boolean }) => Promise<void>;
 }) {
-  const affected = inFlight.startJudged + inFlight.loseCriteria;
+  const affected = inFlight.startJudged + inFlight.loseCriteria + inFlight.retired;
   const [inFlightRead, setInFlightRead] = useState(affected === 0);
   const [similarRead, setSimilarRead] = useState(similar.length === 0);
   const [busy, setBusy] = useState(false);
@@ -539,7 +573,15 @@ function ConfirmImport({
                   {inFlight.loseCriteria > 1
                     ? `${inFlight.loseCriteria} d'une autre catégorie perdent leurs critères`
                     : "1 d'une autre catégorie perd ses critères"}
-                  {`, désactivés par le rattachement (${inFlightSentence(inFlight, "loseCriteria")}).`}
+                  {`, désactivés par le rattachement (${inFlightSentence(inFlight, "loseCriteria")})${inFlight.retired > 0 ? " ;" : "."}`}
+                </li>
+              )}
+              {inFlight.retired > 0 && (
+                <li>
+                  {inFlight.retired > 1
+                    ? `${inFlight.retired} ne sont plus jugés sur les lignes que l'ancien logiciel avait supprimées de leur famille`
+                    : "1 n'est plus jugé sur les lignes que l'ancien logiciel avait supprimées de sa famille"}
+                  {` — la ligne en service du même germe s'applique, ou aucune (${inFlightSentence(inFlight, "retired")}).`}
                 </li>
               )}
             </ul>

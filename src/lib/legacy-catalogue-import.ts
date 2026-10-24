@@ -14,6 +14,7 @@ import {
   parseLegacyTypes,
   planLegacyCatalogue,
   regulationEditedByHand,
+  splitOrigin,
   type CataloguePlan,
   type CatalogueSnapshot,
   type InFlightStatus,
@@ -41,8 +42,13 @@ import { normalizeLabel } from "./serie-input";
  *                      unless `confirmSimilar` (an alias in /admin/parametres
  *                      is the usual answer, then a new analysis);
  *                    - samples in progress change verdict (criteria that
- *                      start to apply, or rows deactivated under them),
+ *                      start to apply, or rows deactivated under them — a
+ *                      row deleted in the old software (f) included),
  *                      unless `confirmInFlight`.
+ *
+ * Step (f) deactivates — never deletes — the rows an earlier import brought
+ * in from rows the old software had deleted from their family's grid
+ * (OBSOLETE = 2), before the copies of (b), in the same transaction.
  *
  * Each existing family the reprise changes gets its line in the journal
  * (`LEGACY_CATALOGUE_REPRISE`, the regulation linked included), written in
@@ -124,6 +130,14 @@ async function loadCatalogue(db: Db, regulationLegacyIds: number[]) {
   const familyEdited = editedBy("PRODUCT_TYPE_UPDATED", familyEditedByHand);
   const regulationEdited = editedBy("PRODUCT_TYPE_UPDATED", regulationEditedByHand);
   const criteriaEdited = editedBy("CRITERIA_UPDATED", criteriaEditedByHand);
+  // The family « Scinder par domaine » created, and its source (step (f) lists the
+  // deleted rows the split copied into it): read from the split's own save.
+  const splitFrom = new Map<string, string>();
+  for (const e of edits) {
+    if (e.action !== "CRITERIA_UPDATED") continue;
+    const origin = splitOrigin(e.metadata);
+    if (origin && e.entityId === origin.to) splitFrom.set(origin.to, origin.from);
+  }
   const keyOfVersion = new Map<string, string>();
   const versionIdByKey = new Map<string, string>();
   const normIdByCode = new Map<string, string>();
@@ -143,6 +157,7 @@ async function loadCatalogue(db: Db, regulationLegacyIds: number[]) {
       familyEdited: familyEdited.has(t.id),
       criteriaEdited: criteriaEdited.has(t.id),
       regulationEdited: regulationEdited.has(t.id),
+      splitFrom: splitFrom.get(t.id) ?? null,
     })),
     criteria: criteria.map((c) => ({ ...c, normKey: c.normVersionId ? keyOfVersion.get(c.normVersionId) ?? null : null })),
     normKeys: [...versionIdByKey.keys()].sort(),
@@ -186,6 +201,7 @@ function planHash(plan: CataloguePlan, regulations: { toCreate: LegacyRegulation
     parameters: plan.parameters.map((p) => [p.ref, p.unit, p.alertOnExceed]),
     natureUpdates: plan.natureUpdates.map((u) => [u.typeId, u.natureId, u.family]),
     links: plan.links.map((l) => [l.typeId, l.regulationLegacyId]),
+    retirements: plan.retirements.map((r) => r.criterionId),
     copies: plan.copies.map((c) => [c.criterionId, c.parameterRef]),
     tolerances: plan.tolerances.map((t) => t.criterionId),
     rows: plan.rows.map((r) => [r.productTypeRef, r.parameterRef, r.norm?.key ?? null, r.unit, r.n, r.c, r.mKind, r.m, r.bigM]),
@@ -229,8 +245,9 @@ function auditCounts(plan: CataloguePlan) {
       links: reprise.links,
       handEdited: reprise.handEdited.map((f) => f.id),
       orphanedSources: reprise.orphanedSources.length,
-      inFlight: { startJudged: reprise.inFlight.startJudged, loseCriteria: reprise.inFlight.loseCriteria },
+      inFlight: { startJudged: reprise.inFlight.startJudged, loseCriteria: reprise.inFlight.loseCriteria, retired: reprise.inFlight.retired },
       tolerances: reprise.tolerances,
+      retired: { rows: reprise.retired.rows, families: reprise.retired.families, leftActive: reprise.retired.leftActive.map((f) => f.id) },
     },
   };
 }
@@ -281,7 +298,7 @@ export async function importLegacyCatalogue({
   // ---- commit: read, plan, check and write in one transaction -----------------
   const created = {
     regulations: 0, regulationsMatched: 0, productTypes: 0, parameters: 0, norms: 0, versions: 0, criteria: 0, linked: 0,
-    natures: 0, families: 0, copies: 0, deactivated: 0, tolerancesCleared: 0,
+    natures: 0, families: 0, retired: 0, copies: 0, deactivated: 0, tolerancesCleared: 0,
   };
   let outcome: { plan: CataloguePlan; regs: Awaited<ReturnType<typeof planRegulations>> } | Refusal;
   try {
@@ -307,12 +324,13 @@ export async function importLegacyCatalogue({
             },
           };
         }
-        if (inFlight.startJudged + inFlight.loseCriteria > 0 && !confirmInFlight) {
+        const affected = inFlight.startJudged + inFlight.loseCriteria + inFlight.retired;
+        if (affected > 0 && !confirmInFlight) {
           return {
             refused: {
               status: 409,
               body: {
-                error: `${inFlight.startJudged + inFlight.loseCriteria} échantillon(s) en cours changent de verdict avec cet import : confirmez-le, ou attendez qu'ils soient validés.`,
+                error: `${affected} échantillon(s) en cours changent de verdict avec cet import : confirmez-le, ou attendez qu'ils soient validés.`,
                 code: "in-flight",
               },
             },
@@ -421,6 +439,15 @@ export async function importLegacyCatalogue({
           const version = await tx.normVersion.create({ data: { normId, version: norm.version, label: norm.label }, select: { id: true } });
           versionIdByKey.set(norm.key, version.id);
           created.versions += 1;
+        }
+
+        // (f) The rows the old software deleted from their family's grid
+        // (OBSOLETE = 2): deactivated, never deleted — the samples already
+        // recorded keep their analyses. Before (b), which never copies them.
+        for (let i = 0; i < plan.retirements.length; i += 200) {
+          const chunk = plan.retirements.slice(i, i + 200);
+          const { count } = await tx.criterion.updateMany({ where: { id: { in: chunk.map((r) => r.criterionId) }, active: true }, data: { active: false } });
+          created.retired += count;
         }
 
         // (b) N2 / OLD31: the copy first, then the old row deactivated — never

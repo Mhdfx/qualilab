@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
+import type { Family as Domain } from "@/generated/prisma/enums";
+import { copiedCriterion, movedCriteria, splitJournal, type SplitCriterion } from "./family-split";
 import {
+  REASON_DELETED,
+  REASON_OBSOLETE,
   SKIP_EDITED,
   SKIP_WORKBOOK,
   criteriaEditedByHand,
@@ -13,6 +17,7 @@ import {
   planLegacyCatalogue,
   regulationEditedByHand,
   regulationTitle,
+  splitOrigin,
   usableNorm,
   type CataloguePlan,
   type CatalogueSnapshot,
@@ -45,6 +50,24 @@ describe("derivePlan — the old software's criteria", () => {
     expect(derivePlan(row({ type_pm: "2", type_resultat: "11", obsolete: "0" })).plan).toMatchObject({ mKind: "UNSPECIFIED", bigM: null });
     expect(derivePlan(row({ type_pm: "3", type_resultat: "11", obsolete: "0" }))).toEqual({ plan: null, reason: "aucune limite" });
     expect(derivePlan(row({ type_pm: "3", type_resultat: "11", obsolete: "1", l1_max: "1", l1_concl: "2" }))).toEqual({ plan: null, reason: "obsolète" });
+  });
+
+  it("imports only OBSOLETE = 0: 2 — deleted from the family's grid — and any other value are « supprimé dans l'ancien logiciel »", () => {
+    const limits = { type_pm: "3", type_resultat: "11", nbr: "5", control: "1", l1_max: "1.0000", l1_exp_max: "2", l1_concl: "2" };
+    expect(derivePlan(row({ ...limits, obsolete: "0" })).plan).toEqual({ n: 5, c: 1, mKind: "VALUE", m: 100, bigM: null });
+    expect(derivePlan(row({ ...limits, obsolete: "1" }))).toEqual({ plan: null, reason: REASON_OBSOLETE });
+    // The Listeria row of 23/10: deleted on 02/08/2024, imported active before this fix.
+    expect(derivePlan(row({ ...limits, obsolete: "2" }))).toEqual({ plan: null, reason: REASON_DELETED });
+    expect(REASON_DELETED).toBe("supprimé dans l'ancien logiciel");
+    for (const other of ["3", "", "x", "1.5"]) expect(derivePlan(row({ ...limits, obsolete: other }))).toEqual({ plan: null, reason: REASON_DELETED });
+  });
+
+  it("keeps a deleted row's germ and norm in the parsed file (counted, and read by the reprise's step (f))", () => {
+    const deleted = row({ id: "21570", id_type: "21564", parametre: "Listeria monocytogenes", norme: "NM ISO 11290-2:2017", type_pm: "3", type_resultat: "11", nbr: "5", control: "1", obsolete: "2", l1_max: "1.0000", l1_exp_max: "2", l1_concl: "2" });
+    const parsed = parseLegacyCriteria([CRIT_HEADER, CRIT_HEADER.map((h) => deleted[h])]);
+    expect(parsed.items).toEqual([
+      { legacyId: 21570, typeLegacyId: 21564, parameterName: "Listeria monocytogenes", norm: "NM ISO 11290-2:2017", unit: null, plan: null, reason: REASON_DELETED },
+    ]);
   });
 
   it("falls back to VALEUR_PM × 10^EXPM when no interval line exists", () => {
@@ -299,7 +322,7 @@ function applyPlan(snapshot: CatalogueSnapshot, written: CataloguePlan): Catalog
   for (const p of written.typesToCreate) {
     types.push(family({ id: p.ref, name: p.name, legacyId: p.legacyId, natureId: p.natureId, family: p.family, active: p.active }));
   }
-  const deactivated = new Set(written.copies.map((c) => c.criterionId));
+  const deactivated = new Set([...written.copies.map((c) => c.criterionId), ...written.retirements.map((r) => r.criterionId)]);
   const tidied = new Set(written.tolerances.map((t) => t.criterionId));
   const criteria = snapshot.criteria.map((c) => ({ ...c, ...(deactivated.has(c.id) ? { active: false } : {}), ...(tidied.has(c.id) ? { c: null } : {}) }));
   written.copies.forEach((c, i) => {
@@ -500,12 +523,13 @@ describe("planLegacyCatalogue — idempotence", () => {
         typesToCreate: second.typesToCreate,
         parameters: second.parameters,
         natureUpdates: second.natureUpdates,
+        retirements: second.retirements,
         copies: second.copies,
         tolerances: second.tolerances,
         rows: second.rows,
         normsToCreate: second.normsToCreate,
         journal: second.journal,
-      }).toEqual({ typesToCreate: [], parameters: [], natureUpdates: [], copies: [], tolerances: [], rows: [], normsToCreate: [], journal: [] });
+      }).toEqual({ typesToCreate: [], parameters: [], natureUpdates: [], retirements: [], copies: [], tolerances: [], rows: [], normsToCreate: [], journal: [] });
       // What only a person can settle is still listed.
       expect(second.summary.reprise.rebinding.collisions).toHaveLength(1);
       expect(second.summary.reprise.natures.conflicts).toHaveLength(1);
@@ -686,13 +710,14 @@ describe("planLegacyCatalogue — what the import does to the bench", () => {
     expect(plan(snapshot, false).summary.reprise.inFlight).toEqual({
       startJudged: 3,
       loseCriteria: 1,
+      retired: 0,
       byStatus: [
-        { status: "RECU", startJudged: 1, loseCriteria: 0 },
-        { status: "PROGRAMME", startJudged: 0, loseCriteria: 1 },
-        { status: "EN_ANALYSE", startJudged: 2, loseCriteria: 0 },
+        { status: "RECU", startJudged: 1, loseCriteria: 0, retired: 0 },
+        { status: "PROGRAMME", startJudged: 0, loseCriteria: 1, retired: 0 },
+        { status: "EN_ANALYSE", startJudged: 2, loseCriteria: 0, retired: 0 },
       ],
     });
-    expect(plan(SNAPSHOT, false).summary.reprise.inFlight).toEqual({ startJudged: 0, loseCriteria: 0, byStatus: [] });
+    expect(plan(SNAPSHOT, false).summary.reprise.inFlight).toEqual({ startJudged: 0, loseCriteria: 0, retired: 0, byStatus: [] });
   });
 
   it("lists the food parameters the copies leave without any active criterion (D-13)", () => {
@@ -701,5 +726,260 @@ describe("planLegacyCatalogue — what the import does to the bench", () => {
       { name: "Coliformes totaux", category: "ALIMENTAIRE" },
       { name: "Staphylocoques à coagulase positive", category: "ALIMENTAIRE" },
     ]);
+  });
+});
+
+// ---- (f) OBSOLETE = 2: rows the old software deleted from a family's grid ----------
+
+const deletedRow = (typeLegacyId: number, parameterName: string, norm: string): LegacyCriterion => ({
+  legacyId: nextCriterion++,
+  typeLegacyId,
+  parameterName,
+  norm,
+  unit: null,
+  plan: null,
+  reason: REASON_DELETED,
+});
+
+describe("planLegacyCatalogue — (f) the rows the old software deleted from a family's grid (OBSOLETE = 2)", () => {
+  const ABSENCE = { n: 5, c: null, mKind: "ABSENCE" as const, m: null, bigM: null };
+  const VALUE = { n: 5, c: 1, mKind: "VALUE" as const, m: 100, bigM: null };
+  const snapshot: CatalogueSnapshot = {
+    ...SNAPSHOT,
+    parameters: [
+      ...PARAMETERS,
+      parameter({ id: "p-list", name: "Listeria monocytogenes", category: "ALIMENTAIRE", unit: "/25 g", aliases: null, alertOnExceed: true }),
+      parameter({ id: "p-amb-staph", name: "Staphylocoques à coagulase positive", category: "AMBIANCE", unit: null, aliases: null }),
+      parameter({ id: "p-bl", name: "Bactéries lactiques mésophiles", category: "ALIMENTAIRE", unit: "UFC/g", aliases: null }),
+      parameter({ id: "p-plomb", name: "Plomb (SA)", category: "ALIMENTAIRE", family: "CHIMIE", unit: "mg/kg", aliases: null }),
+    ],
+    types: [
+      family({ id: "t-volaille", name: "PRODUITS CUITS VOLAILLE", legacyId: 30, natureId: "n-aliments" }),
+      // A hands family the first reprise already rebound: its food row inactive, the twin active.
+      family({ id: "t-mains", name: "HYGIENE MAINS", legacyId: 40, natureId: "n-surfaces" }),
+      // Imported on 01/10 as food micro, its type d'analyse given by this plan's (a).
+      family({ id: "t-plan", name: "PLANS DE TRAVAIL", legacyId: 41 }),
+      family({ id: "t-main", name: "FAMILLE MODIFIEE", legacyId: 50, natureId: "n-aliments", criteriaEdited: true }),
+      family({ id: "t-wb", name: "SALADE ET TOMATE", natureId: "n-aliments" }),
+      family({ id: "t-cosm", name: "COSMETIQUES", legacyId: 70, natureId: "n-aliments" }),
+    ],
+    criteria: [
+      // The Listeria case: the deleted 11290-2 (m = 100) next to the 11290-1 in service (absence).
+      criterion({ id: "k-v-list-old", productTypeId: "t-volaille", parameterId: "p-list", normVersionId: "v1", normKey: "NM ISO 11290-2|2017", n: 5, c: 1, m: 100, bigM: null }),
+      criterion({ id: "k-v-list", productTypeId: "t-volaille", parameterId: "p-list", normVersionId: "v2", normKey: "NM ISO 11290-1|2017", mKind: "ABSENCE", c: null, m: null, bigM: null }),
+      // Deleted in n° 30, still in service in n° 31 (same name): kept.
+      criterion({ id: "k-v-salm", productTypeId: "t-volaille", parameterId: "p-salm", normVersionId: "v3", normKey: "NM ISO 6579-1|2017", mKind: "ABSENCE", c: null, m: null, bigM: null }),
+      // Deleted and in service under the same germ and norm (two spellings): kept.
+      criterion({ id: "k-v-ecoli", productTypeId: "t-volaille", parameterId: "p-ecoli" }),
+      // Already inactive: nothing to do.
+      criterion({ id: "k-v-staph-old", productTypeId: "t-volaille", parameterId: "p-staph", normVersionId: "v4", normKey: "NM ISO 6888-1|2008", active: false }),
+      criterion({ id: "k-m-staph-food", productTypeId: "t-mains", parameterId: "p-staph", normVersionId: "v4", normKey: "NM ISO 6888-1|2008", active: false }),
+      criterion({ id: "k-m-staph", productTypeId: "t-mains", parameterId: "p-amb-staph", normVersionId: "v4", normKey: "NM ISO 6888-1|2008" }),
+      // The surface « E. coli » has no « Escherichia coli » alias: reached through the food twin.
+      criterion({ id: "k-m-ecoli-old", productTypeId: "t-mains", parameterId: "p-amb-ecoli", normVersionId: "v5", normKey: "NM ISO 16649-2|2001" }),
+      criterion({ id: "k-m-ecoli", productTypeId: "t-mains", parameterId: "p-amb-ecoli", normVersionId: "v6", normKey: "NM ISO 16649-2|2020" }),
+      criterion({ id: "k-p-ecoli-old", productTypeId: "t-plan", parameterId: "p-ecoli", normVersionId: "v5", normKey: "NM ISO 16649-2|2001" }),
+      criterion({ id: "k-p-coli", productTypeId: "t-plan", parameterId: "p-coli", mKind: "UNSPECIFIED", c: null, m: null, bigM: null }),
+      criterion({ id: "k-e-bl", productTypeId: "t-main", parameterId: "p-bl", normVersionId: "v7", normKey: "NM ISO 15214|1998" }),
+      criterion({ id: "k-wb-bl", productTypeId: "t-wb", parameterId: "p-bl", normVersionId: "v7", normKey: "NM ISO 15214|1998" }),
+      criterion({ id: "k-o-plomb", productTypeId: "t-cosm", parameterId: "p-plomb", mKind: "VALUE", n: 1, c: null, m: 2, bigM: null }),
+    ],
+    normKeys: ["NM ISO 11290-1|2017", "NM ISO 11290-2|2017", "NM ISO 15214|1998", "NM ISO 16649-2|2001", "NM ISO 16649-2|2020", "NM ISO 6579-1|2017", "NM ISO 6888-1|2008"],
+    inFlight: [
+      { productTypeId: "t-volaille", type: "ALIMENTAIRE", status: "EN_ANALYSE", count: 2 },
+      { productTypeId: "t-mains", type: "AMBIANCE", status: "PROGRAMME", count: 1 },
+      // Its copy (b) judges it first: counted once, as starting to be judged.
+      { productTypeId: "t-plan", type: "AMBIANCE", status: "RECU", count: 1 },
+      // Families (f) leaves alone.
+      { productTypeId: "t-main", type: "ALIMENTAIRE", status: "EN_ANALYSE", count: 4 },
+      { productTypeId: "t-wb", type: "ALIMENTAIRE", status: "EN_ANALYSE", count: 3 },
+    ],
+  };
+  const types: LegacyType[] = [
+    legacy(30, "PRODUITS CUITS VOLAILLE", 1, "2026-08-01"),
+    legacy(31, "PRODUITS CUITS - VOLAILLE", 1, "2023-01-01"),
+    legacy(40, "HYGIENE MAINS", 5, "2026-08-01"),
+    legacy(41, "PLANS DE TRAVAIL", 5, "2026-08-01"),
+    legacy(50, "FAMILLE MODIFIEE", 1, "2026-08-01"),
+    legacy(60, "SALADE ET TOMATE", 1, "2026-08-01"),
+    legacy(70, "COSMETIQUES", 1, "2026-08-01"),
+  ];
+  const criteria: LegacyCriterion[] = [
+    deletedRow(30, "Listeria monocytogenes", "NM ISO 11290-2:2017"),
+    legacyCriterion(30, "Listeria monocytogenes", ABSENCE, "/25g", "NM ISO 11290-1:2017"),
+    deletedRow(30, "Salmonella", "NM ISO 6579-1:2017"),
+    deletedRow(30, "Escherichia coli", ""),
+    legacyCriterion(30, "E. coli", VALUE, "ufc/g"),
+    deletedRow(30, "Staphylocoques à coagulase positive à 37 °C", "NM ISO 6888-1:2008"),
+    legacyCriterion(31, "Recherche des Salmonella /25g", ABSENCE, "/25g", "NM ISO 6579-1:2017"),
+    deletedRow(40, "Staphylocoques à coagulase positive", "NM ISO 6888-1:2008"),
+    deletedRow(40, "Escherichia coli", "NM ISO 16649-2:2001"),
+    legacyCriterion(40, "Escherichia coli", VALUE, "UFC/mains", "NM ISO 16649-2:2020"),
+    deletedRow(41, "Escherichia coli", "NM ISO 16649-2:2001"),
+    legacyCriterion(41, "Coliformes totaux", LIMITLESS),
+    deletedRow(50, "Bactéries lactiques mésophiles", "NM ISO 15214:1998"),
+    deletedRow(60, "Bactéries lactiques mésophiles", "NM ISO 15214:1998"),
+    deletedRow(70, "Plomb (SA)", "MI LAQ 222.04"),
+  ];
+  const run = (s: CatalogueSnapshot) => planLegacyCatalogue({ legacyTypes: types, legacyCriteria: criteria, snapshot: s, createMissing: false });
+  const result = run(snapshot);
+  const retiredIds = () => result.retirements.map((r) => r.criterionId).sort();
+
+  it("deactivates the rows only a deleted row explains — the Listeria m = 100 first, the twin of (b) included", () => {
+    expect(retiredIds()).toEqual(["k-m-ecoli-old", "k-m-staph", "k-o-plomb", "k-p-ecoli-old", "k-v-list-old"]);
+    expect(result.retirements.find((r) => r.criterionId === "k-v-list-old")).toEqual({
+      criterionId: "k-v-list-old", productTypeId: "t-volaille", parameter: "Listeria monocytogenes", norm: "NM ISO 11290-2|2017",
+    });
+    expect(result.summary.reprise.retired).toMatchObject({ rows: 5, families: 4 });
+  });
+
+  it("keeps a row whose germ × norm version is still in service — in the family's own row or anywhere in its name group", () => {
+    for (const kept of ["k-v-list", "k-v-salm", "k-v-ecoli", "k-m-ecoli"]) expect(retiredIds()).not.toContain(kept);
+  });
+
+  it("plans the retirement before (b): a deleted row is never copied, the rows in service still are", () => {
+    expect(result.copies.map((c) => c.criterionId)).toEqual(["k-p-coli"]);
+    expect(result.natureUpdates.map((u) => u.typeId)).toContain("t-plan");
+  });
+
+  it("leaves a family saved by hand alone and lists it with the rows left active", () => {
+    expect(retiredIds()).not.toContain("k-e-bl");
+    expect(result.summary.reprise.retired.leftActive).toEqual([{ id: "t-main", name: "FAMILLE MODIFIEE", rows: 1, origin: "main" }]);
+  });
+
+  it("leaves a workbook family with its September criteria alone — its rows are the workbook's, never listed", () => {
+    expect(retiredIds()).not.toContain("k-wb-bl");
+    expect(result.summary.reprise.retired.leftActive.map((f) => f.id)).not.toContain("t-wb");
+  });
+
+  it("imports no deleted row and counts them apart from the obsolete ones", () => {
+    expect(result.rows).toEqual([]);
+    expect(result.summary.criteria.skipped).toContainEqual({ reason: REASON_DELETED, count: 9 });
+    expect(result.summary.criteria.skipped).toContainEqual({ reason: SKIP_WORKBOOK, count: 1 });
+  });
+
+  it("journals the rows of each family, lists a family left without any active row, and counts the samples in progress", () => {
+    const journal = Object.fromEntries(result.journal.map((e) => [e.typeId, e.metadata]));
+    expect(journal["t-volaille"]).toEqual({
+      name: "PRODUITS CUITS VOLAILLE",
+      retired: [{ criterionId: "k-v-list-old", parameter: "Listeria monocytogenes", norm: "NM ISO 11290-2|2017" }],
+    });
+    expect(journal["t-mains"].retired?.map((r) => r.criterionId)).toEqual(["k-m-ecoli-old", "k-m-staph"]);
+    expect(journal["t-main"]).toBeUndefined();
+    expect(result.summary.reprise.stillEmpty.active.map((f) => f.name)).toEqual(["COSMETIQUES"]);
+    expect(result.summary.reprise.inFlight).toEqual({
+      startJudged: 1,
+      loseCriteria: 0,
+      retired: 3,
+      byStatus: [
+        { status: "RECU", startJudged: 1, loseCriteria: 0, retired: 0 },
+        { status: "PROGRAMME", startJudged: 0, loseCriteria: 0, retired: 1 },
+        { status: "EN_ANALYSE", startJudged: 0, loseCriteria: 0, retired: 2 },
+      ],
+    });
+  });
+
+  it("plans nothing more once written: the retired rows stay, inactive, and still count as present", () => {
+    const second = run(applyPlan(snapshot, result));
+    expect([second.retirements, second.copies, second.rows, second.journal]).toEqual([[], [], [], []]);
+    expect(second.summary.reprise.retired).toEqual({ rows: 0, families: 0, leftActive: [{ id: "t-main", name: "FAMILLE MODIFIEE", rows: 1, origin: "main" }] });
+    expect(second.summary.reprise.inFlight.retired).toBe(0);
+  });
+});
+
+describe("planLegacyCatalogue — (f) and « Scinder par domaine »", () => {
+  // « AUTRES » (n° 549, micro) and « AUTRES_ » (n° 550, PC): one family once
+  // imported, each with a deleted row next to the version in service.
+  const natures = NATURES.filter((n) => n.id === "n-aliments" || n.id === "n-pc-aliments");
+  const parameters = [
+    parameter({ id: "p-ecoli", name: "E. coli", category: "ALIMENTAIRE", unit: "UFC/g", aliases: "Escherichia coli" }),
+    parameter({ id: "p-plomb", name: "Plomb", category: "ALIMENTAIRE", family: "CHIMIE", unit: "mg/kg", aliases: null }),
+    parameter({ id: "p-ph", name: "pH", category: "ALIMENTAIRE", family: "CHIMIE", unit: null, aliases: null }),
+  ];
+  const before: CatalogueSnapshot = {
+    natures,
+    parameters,
+    types: [family({ id: "t-autres", name: "AUTRES", legacyId: 549, natureId: "n-aliments" })],
+    criteria: [
+      criterion({ id: "k-ecoli-old", productTypeId: "t-autres", parameterId: "p-ecoli", normVersionId: "v1", normKey: "NM ISO 16649-2|2001", c: null, bigM: null }),
+      criterion({ id: "k-ecoli", productTypeId: "t-autres", parameterId: "p-ecoli", normVersionId: "v2", normKey: "NM ISO 16649-2|2020", c: null, bigM: null }),
+      criterion({ id: "k-plomb-old", productTypeId: "t-autres", parameterId: "p-plomb", normVersionId: "v3", normKey: "NM 08.0.200|2005", c: null, bigM: null }),
+      criterion({ id: "k-plomb", productTypeId: "t-autres", parameterId: "p-plomb", normVersionId: "v4", normKey: "NM 08.0.200|2019", c: null, bigM: null }),
+      criterion({ id: "k-ph", productTypeId: "t-autres", parameterId: "p-ph", mKind: "UNSPECIFIED", c: null, m: null, bigM: null }),
+    ],
+    normKeys: ["NM 08.0.200|2005", "NM 08.0.200|2019", "NM ISO 16649-2|2001", "NM ISO 16649-2|2020"],
+    regulationLegacyIds: [],
+    pricedKeys: [],
+    inFlight: [],
+  };
+  const types = [legacy(549, "AUTRES", 1, "2026-09-07"), legacy(550, "AUTRES_", 20, "2026-09-07")];
+  const VALUE = { n: 1, c: null, mKind: "VALUE" as const, m: 10, bigM: null };
+  const criteria: LegacyCriterion[] = [
+    deletedRow(549, "E. coli", "NM ISO 16649-2:2001"),
+    legacyCriterion(549, "E. coli", VALUE, "ufc/g", "NM ISO 16649-2:2020"),
+    deletedRow(550, "Plomb", "NM 08.0.200:2005"),
+    legacyCriterion(550, "Plomb", VALUE, "mg/kg", "NM 08.0.200:2019"),
+    legacyCriterion(550, "pH", LIMITLESS),
+  ];
+  const run = (s: CatalogueSnapshot) => planLegacyCatalogue({ legacyTypes: types, legacyCriteria: criteria, snapshot: s, createMissing: false });
+
+  /** The split as its route writes it — copies, deactivation, journal — and as the import's read sees it. */
+  function split(s: CatalogueSnapshot, domain: Domain): CatalogueSnapshot {
+    const parameterOf = new Map(s.parameters.map((p) => [p.id, p]));
+    const source = s.criteria.filter((c) => c.productTypeId === "t-autres");
+    const rows: SplitCriterion[] = source.map((c) => {
+      const p = parameterOf.get(c.parameterId)!;
+      return { ...c, parameterName: p.name, parameterFamily: p.family, parameterCategory: p.category };
+    });
+    const moved = movedCriteria(rows, domain);
+    const created = { id: "t-new", name: "AUTRES — physico-chimie", normalizedName: "autres physico chimie", family: domain, natureId: "n-pc-aliments", clientId: null, active: true, regulationId: null };
+    const activeBefore = source.filter((c) => c.active).length;
+    const journal = splitJournal({ source: { id: "t-autres", name: "AUTRES" }, created, domain, moved, sourceRows: rows.length, sourceActiveBefore: activeBefore, sourceActiveAfter: activeBefore - moved.length });
+    const movedIds = new Set(moved.map((r) => r.id));
+    const normKeyOf = new Map(source.map((c) => [c.id, c.normKey]));
+    return {
+      ...s,
+      types: [
+        ...s.types.map((t) => (t.id === "t-autres" ? { ...t, criteriaEdited: criteriaEditedByHand(JSON.stringify(journal.sourceCriteria)) } : t)),
+        family({ ...created, criteriaEdited: criteriaEditedByHand(JSON.stringify(journal.newCriteria)), splitFrom: splitOrigin(JSON.stringify(journal.newCriteria))?.from ?? null }),
+      ],
+      criteria: [
+        ...s.criteria.map((c) => (movedIds.has(c.id) ? { ...c, active: false } : c)),
+        ...moved.map((r, i) => ({ id: `k-new-${i}`, productTypeId: "t-new", normKey: normKeyOf.get(r.id) ?? null, ...copiedCriterion(r) })),
+      ],
+    };
+  }
+
+  it("reads the two families of a split from its journal, and nothing from any other save", () => {
+    const after = split(before, "CHIMIE");
+    expect(after.types.find((t) => t.id === "t-new")?.splitFrom).toBe("t-autres");
+    expect(splitOrigin(JSON.stringify({ name: "X", before: 3, after: 3, changed: [], removed: [] }))).toBeNull();
+    for (const unreadable of [null, "", "{", "null", JSON.stringify({ split: { from: { id: "a" }, to: { id: "a" } } })]) {
+      expect(splitOrigin(unreadable)).toBeNull();
+    }
+  });
+
+  it("before a split, retires the deleted rows of both domains", () => {
+    expect(run(before).retirements.map((r) => r.criterionId).sort()).toEqual(["k-ecoli-old", "k-plomb-old"]);
+  });
+
+  it("after a split, leaves both families alone — the deleted rows stay active in them — and lists them", () => {
+    const after = split(before, "CHIMIE");
+    const result = run(after);
+    expect(result.retirements).toEqual([]);
+    expect(after.criteria.filter((c) => c.active && c.normKey !== null && /2001|2005/.test(c.normKey)).map((c) => c.productTypeId)).toEqual(["t-autres", "t-new"]);
+    expect(result.summary.reprise.retired.leftActive).toEqual([
+      { id: "t-autres", name: "AUTRES", rows: 1, origin: "main" },
+      { id: "t-new", name: "AUTRES — physico-chimie", rows: 1, origin: "scission" },
+    ]);
+  });
+
+  it("the reprise run before the split leaves nothing behind: the split copies only rows in service", () => {
+    const retiredFirst = applyPlan(before, run(before));
+    const after = split(retiredFirst, "CHIMIE");
+    const result = run(after);
+    expect(after.criteria.filter((c) => c.productTypeId === "t-new").map((c) => c.normKey ?? "")).toEqual(["NM 08.0.200|2019", ""]);
+    expect(result.retirements).toEqual([]);
+    expect(result.summary.reprise.retired.leftActive).toEqual([]);
   });
 });

@@ -21,7 +21,11 @@ import { importLegacyCatalogue } from "@/lib/legacy-catalogue-import";
  * d'analyse from the old `echantillon` where it has none; the criteria of
  * hands, surface, water and air families bound to another category's
  * parameter are copied onto their own, the old rows deactivated (N2,
- * OLD31). A family changed by hand keeps its criteria and its regulation.
+ * OLD31). A row the old software deleted from its family's grid (OBSOLETE =
+ * 2) is never imported, and the ones an earlier import brought in are
+ * deactivated — never deleted — before those copies (step (f)). A family
+ * changed by hand keeps its criteria and its regulation; (f) lists the
+ * deleted rows left active in it, and in a family a split created.
  * The commit carries the analysis's `planHash` and, when the analysis says
  * so, `confirmSimilar` (look-alike parameters) and `confirmInFlight`
  * (samples in progress whose verdicts change) — else 409, nothing written.
