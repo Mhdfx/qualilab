@@ -421,6 +421,9 @@ for Prisma to read its version from, and the migrations apply all the same
 (rehearsed 19/10 with this exact command). The same warning shows during
 `next build`. (Silencing it means `apt-get install -y openssl`
 in the build stage — an image change, not part of this deploy.)
+*Since lot 2E (24/10) the image installs `openssl` in its `deps` and
+`build` stages: from that deploy on, the two lines no longer appear (see
+« Lot 2E » below).*
 
 **Rollback — code only, or with the dump.** The new columns are harmless
 to the old code (it rendered all 92 local reports identically on the
@@ -456,7 +459,17 @@ docker compose exec -T db mysql -u qualilab -p"$DB_PASSWORD" qualilab -e \
 
 To resume lot 2 later: `git checkout master` and redeploy.
 
-## Lot 2 du 16/10 — deploy order, checks, reprise F3 (rehearsed 19/10, not deployed)
+## Lot 2 du 16/10 — deploy order, checks, reprise F3 (rehearsed 19/10; deployed 21/10, F3 and D-19 run 23/10)
+
+**Done.** Deployed on 21/10 ~21:55 (server time): production runs `4946ec3`
+(six migrations applied, row counts unchanged, health ok, read-only smoke
+21/21). Steps 5 and 6 ran on 23/10 through the application's own routes
+as the demo administrator, each after a labelled dump: the reprise F3
+(`qualilab_avant-reprise-F3-2310.sql.gz`; 820 criteria, 46 families
+filled, the next analysis plans nothing) and D-19
+(`qualilab_avant-D19.sql.gz`; 28 food parameters MICRO → CHIMIE —
+production's catalogue was not the local copy's). The steps below stay as
+the record of that deploy; the next one is « Lot 2E ».
 
 Branch `lot2-retour-16-10` (`RETOUR-LABO-16-10.md` §4 « État au 19/10 »):
 the four waves (`9770bb0`, `d7b8750`, `124af3a`, `b898586`), the final
@@ -630,7 +643,8 @@ docker compose logs app --since 10m                # no error
 
 - The eight counts of step 2 again: equal.
 - The two « prisma:warn … openssl » lines before the migrations are
-  expected (section above).
+  expected (section above) — for this deploy only: lot 2E's image no
+  longer prints them.
 - The image was rebuilt: run the tzdata check of « Time zone ».
 
 ### 4. Five-minute check — the owner, with their own accounts
@@ -765,6 +779,137 @@ the same rows. **Never by an UPDATE**: only the screen writes.
 « Point de retour — avant le lot 2 du 16/10 » above: first the two counts
 (`ASEPTISEES`, `NON_RECU`); both 0 → code only; otherwise check the tag out
 **then** restore the dump — it loses everything entered since the deploy.
+
+## Lot 2E (23–24/10) — deploy, then the reprise (f), then « Scinder par domaine »
+
+Branch `lot2-retour-16-10` after `8454894` (= production's `4946ec3` +
+documents): `236bf44` report numbers from the counter `RAPPORT`, `552c656`
+the bench (« Saisi par », the technician's screens without the client —
+re-ask 2.15 —, « Reprendre » — 2.13), `504f17f` « toute la série » at the
+validation desk (2.16), `b1b8978` misc (the sign-in notice of a session
+closed on purpose, the dialogs' labels, screen figures, **`openssl` in the
+image**), `1130492` « Scinder par domaine », `8ad569f` the old software's
+deleted rows (OBSOLETE = 2) and the reprise's step (f), then the documents
+(`HANDOFF.md` §8 « 2026-10-24 », `TESTPLAN.md` V19). **No migration, no new
+environment variable**; no change to `package*.json`, `docker-compose.yml`
+or `scripts/*.sh`. The `Dockerfile` installs `openssl` in its `deps` and
+`build` stages: the first rebuild re-runs `apt-get` and `npm ci` there
+(network needed, as `npm ci` already did), and the two « prisma:warn …
+openssl » lines are gone from the build and `migrate` logs.
+
+The three re-ask proposals ship **on** (`src/lib/lab-proposals.ts`,
+`HANDOFF.md` §9): should the laboratory answer otherwise, flip the switch
+and redeploy — no row is rewritten.
+
+### 0. Before the window
+
+- Gates on the branch's head (green on 24/10: `npx tsc --noEmit -p .` 0,
+  `npx eslint src` 0, `npx vitest run` 149 files / 2 971 tests,
+  `npm run build` OK).
+- Tell the laboratory (if anyone works in it by then): a technician's
+  screens no longer name the client; « Reprendre » on a colleague's
+  sample; « Valider la série » / « Envoyer la série au client » at the
+  validation desk; a session the administrator closes now says why at the
+  next sign-in.
+- Outside the laboratory's hours.
+
+### 1. Restore point
+
+- **Code:** tag `v1.5-lot2-16-10` already marks what production runs
+  (`4946ec3`); nothing else to tag. Then, on the development machine:
+  `git checkout master && git merge --ff-only lot2-retour-16-10 && git push origin master`.
+- **Database:** `/var/backups/qualilab/qualilab_avant-lot2e.sql.gz`, taken
+  with the app stopped, right before `deploy.sh` (the commands of « Lot 2
+  du 16/10 » step 2 with this name: `gzip -t`, « -- Dump completed »,
+  `chown qualilab:`).
+
+### 2. On the VPS, as root
+
+As « Lot 2 du 16/10 » step 2, without the `UPDATE Session` line (the idle
+stamp is already written by the code in production): `git rev-parse --short
+HEAD` → `8454894` (or `4946ec3`: same code); the last migration
+`20261020100000_retour_labo_19_10_comptes_clients`, none unfinished; the
+eight counts written down; `git pull --ff-only`; `docker compose build`;
+`docker compose stop app`; the dump of step 1; `bash scripts/deploy.sh`.
+
+### 3. Checks right after
+
+```bash
+docker compose ps -a migrate                       # Exited (0)
+docker compose logs migrate | tail -10             # « No pending migrations to apply. » — and no « prisma:warn … openssl »
+curl -s localhost:3000/api/health                  # {"status":"ok","database":"connected"}
+docker compose logs app --since 10m                # no error
+```
+
+- The eight counts again: equal.
+- The image was rebuilt: the tzdata check of « Time zone ».
+- `TESTPLAN.md` V19 « The deploy ».
+
+### 4. The reprise (f) — the old software's deleted rows (operator, right after the deploy)
+
+**Before any split** (rehearsed on the local copy 24/10,
+`backups/operations-locales-2026-10-24.md`, outside the repo): step (f)
+never touches a family whose grid was saved by hand, and a split counts as
+such for **both** halves — split first, and the deleted rows of the split
+families would stay active (on the local copy one such row, a
+staphylococcus criterion, would have).
+
+1. `docker compose stop app`, a labelled dump
+   `qualilab_avant-reprise-f.sql.gz` (the commands of step 1),
+   `docker compose start app`.
+2. As an ADMIN, `/admin/import` → « Catalogue de l'ancien logiciel » → the
+   three CSV of `legacy-export/` (`regulations.csv`, `types.csv`,
+   `criteria.csv`; « Créer les paramètres inconnus… » ticked, as for F3)
+   → **Analyser**. Read « Lignes supprimées dans l'ancien logiciel : N à
+   désactiver dans K familles » (≈ 268 rows expected — the 23/10 count of
+   deleted rows F3 imported active), the samples in progress (expected 0)
+   and « laissées actives » (expected none: nothing is split yet).
+3. **Importer…**: one transaction; it only deactivates (never deletes) and
+   clears what « tolérance c sans objet » lists; journal
+   `LEGACY_CATALOGUE_REPRISE` with `retired` per family. A 409 « relancez
+   l'analyse »: nothing written — analyse again.
+4. **Analyser** once more: « 0 à désactiver », nothing else planned. The
+   Listeria row (NM ISO 11290-2:2017, m = 100) of « PRODUITS CUITS A BASE
+   DE VOLAILLE … PANES CUITS » is inactive.
+
+To undo it only: restore `qualilab_avant-reprise-f.sql.gz`.
+
+### 5. « Scinder par domaine » — the six merged families (operator, after step 4)
+
+As an ADMIN, on each family's page (`/admin/types-produits/[id]`), card
+« Scinder par domaine » → read the preview (rows and germs that leave, the
+proposed name and type d'analyse, no refusal, the amber warnings) →
+« Scinder (N critères) ». The six families: **AUTRES** (its physico-chimie
+leaves: ≈ 299 rows into « AUTRES — physico-chimie »), **HUILE** (its
+microbiology leaves), **FARINE DE POISSON** (its microbiology leaves), and
+the three families named after a client listed in
+`backups/operations-locales-2026-10-24.md` (outside the repo — one of them
+inactive: the new family is inactive too; one water family is left with
+no criterion, for the laboratory to fill or archive). A refusal (409:
+changed since the preview, open samples that would lose a criterion — the
+list says which, a name taken) writes nothing: settle it, reopen the card.
+
+Then:
+- `/admin/import` → **Analyser** again: « 0 à désactiver » and **no family
+  « laissée telle quelle »**.
+- If the laboratory confirms it: « Réglementation » 1895 (« Critères
+  clients ») on « AUTRES — physico-chimie » (the split copies the source's
+  regulation).
+- `TESTPLAN.md` V19 production lines, « TEST UI » data only. The série's
+  check approves **one 2-sample « TEST UI V19 » série only**: every approval
+  uses up a number of the laboratory's official RAP sequence (numbers are
+  never reused) — write the numbers down.
+
+### 6. Rollback
+
+Code only is safe: lot 2E writes no value the previous code cannot read
+(`Counter` rows of kind `RAPPORT` — `kind` is a string, the old code reads
+the reports' highest number instead —, `Verification` markers, a journal
+code it shows raw, `viaSerie` keys, criteria deactivated or copied through
+existing columns). `sudo -u qualilab git fetch --tags && sudo -u qualilab
+git checkout v1.5-lot2-16-10 && sudo -u qualilab bash scripts/deploy.sh`.
+The reprise (f) and the splits stay (data); undo them with their dumps
+(steps 4 and 1), which lose everything entered since.
 
 ## After every deploy — 5-minute check
 

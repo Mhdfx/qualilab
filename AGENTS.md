@@ -113,9 +113,9 @@ blind grepping.
    « Corriger la fiche » has an analyses-only form, « Corriger les
    analyses », for the responsable des paramètres once the bench has
    started (16/10, Q128 — `correctionRights` in `src/lib/sample-verbs.ts`).
-   « Prendre en charge » / « Libérer » at the bench are not correction
-   verbs: journalled (`SAMPLE_TAKEN` / `SAMPLE_UNTAKEN`), no reason
-   (`PROGRAMME.md` §10).
+   « Prendre en charge » / « Libérer » / « Reprendre » (24/10, lot 2E)
+   at the bench are not correction verbs: journalled (`SAMPLE_TAKEN` /
+   `SAMPLE_UNTAKEN` / `SAMPLE_TAKEN_OVER`), no reason (`PROGRAMME.md` §10).
 6. **Additive migrations with backfill**; old routes stay alive until the
    slice that removes them; Capitalized table names, hand-checked.
 7. **Every slice ships**: tests green, browser-verified, deployed, TESTPLAN L

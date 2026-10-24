@@ -633,7 +633,11 @@ technicien. En résumé :
    résultat n'est saisi (valeur, note, lecture d'unité ou étape autre que
    « En cours »).
 4. **Les collègues voient, sans saisir** : « Pris par un collègue » (nom,
-   heure), lecture seule ; une saisie dessus → 403.
+   heure), lecture seule ; une saisie dessus → 403. *Lot 2E (24/10, non
+   déployé), interrupteur `TAKE_OVER_COLLEAGUE` : un technicien peut
+   « Reprendre » l'échantillon d'un collègue — une confirmation, sans motif ;
+   les lectures enregistrées gardent leur auteur, `assignedAt` ne bouge pas,
+   celui qui reprend termine et soumet (`PROGRAMME.md` §10.9).*
 5. **L'administrateur supplée mais ne prend jamais** (la prise est réservée
    au TECHNICIEN ; sa saisie ne prend pas). Soumettre un échantillon que
    personne ne tient est refusé à tous (409).
@@ -648,5 +652,10 @@ technicien. En résumé :
    `v1.2-avant-sans-affectation` + la sauvegarde
    `qualilab_avant-sans-affectation.sql.gz` (`DEPLOY.md`).
 
-Prendre et libérer ne sont pas des verbes de correction (§8) : journalisés
-(`SAMPLE_TAKEN` / `SAMPLE_UNTAKEN`), sans motif.
+Prendre, libérer et reprendre ne sont pas des verbes de correction (§8) :
+journalisés (`SAMPLE_TAKEN` / `SAMPLE_UNTAKEN` / `SAMPLE_TAKEN_OVER`), sans
+motif. Depuis le lot 2E (interrupteur `BLIND_BENCH_SCREENS`), les écrans du
+technicien ne nomment plus le client ni le site (`PROGRAMME.md` §10.10) ;
+la série se valide et s'envoie aussi en une fois à la validation
+(`SERIES_VALIDATION`, relance 2.16 — chaque échantillon par ses propres
+règles).

@@ -516,7 +516,10 @@ libre »). Recette : TESTPLAN V14.
   l'heure, fiche sans champs ni « Enregistrer ». Saisir dessus : **403**
   « Cet échantillon est pris en charge par X : vous ne pouvez pas y saisir
   de résultats. » (`loadAssignedSample`) ; 409 « Déjà pris par X. » quand le
-  collègue l'a pris pendant la saisie.
+  collègue l'a pris pendant la saisie. *Depuis le lot 2E (24/10, non
+  déployé), interrupteur `TAKE_OVER_COLLEAGUE` allumé : un technicien peut
+  « Reprendre » l'échantillon d'un collègue (§10.9) ; sans reprise, la
+  fiche reste en lecture seule.*
 - Sur la fiche, `canEnterParameter` décide de chaque paramètre : tout
   paramètre d'un échantillon libre (la saisie le prendra), ou un paramètre
   à moi. Les lignes héritées gardent leur règle (`canEditParameter` :
@@ -525,7 +528,8 @@ libre »). Recette : TESTPLAN V14.
 - `/api/samples` et la recherche d'un technicien restent limités aux
   échantillons qu'il tient (`benchWhereFor`) ; le technicien n'a **pas
   d'export** (`canExport`, `/api/samples/export`) — à confirmer avec le
-  laboratoire (NEEDEDINFO Q108, relance 2.14 du 18/10).
+  laboratoire (NEEDEDINFO Q108, relance 2.14 du 18/10). Depuis le lot 2E,
+  ces écrans ne nomment plus le client (§10.10).
 - **La feuille de paillasse d'un technicien = ce qu'il tient** : sans date,
   tout ce qu'il tient maintenant, dans l'ordre où il l'a pris ; avec
   `?date=`, ceux reçus ce jour-là. Les autres rôles impriment la paillasse
@@ -581,7 +585,9 @@ libre »). Recette : TESTPLAN V14.
   13/10 garde son « Attribué à un technicien ». Journal (`/admin/journal`) :
   `SAMPLE_TAKEN` « Échantillon pris en charge », `SAMPLE_UNTAKEN`
   « Échantillon remis dans « À prendre » » (`src/lib/audit-labels.ts`,
-  `src/lib/sample-timeline.ts`).
+  `src/lib/sample-timeline.ts`). Depuis le lot 2E : `SAMPLE_TAKEN_OVER`
+  « Échantillon repris à un collègue », parcours « Repris à un collègue »
+  (§10.9).
 
 ### 10.8 Bascule et compatibilité
 
@@ -598,3 +604,56 @@ libre »). Recette : TESTPLAN V14.
   programme : ignoré, jamais refusé.
 - NEEDEDINFO Q42 (un échantillon réparti entre plusieurs techniciens) est
   close par cette décision : un seul technicien prend l'échantillon entier.
+
+### 10.9 Reprendre l'échantillon d'un collègue (relance 2.13 — lot 2E, 24/10, non déployé)
+
+Réponse du laboratoire à Q107 (16/10) : « l'accès à la saisie doit être pour
+tous les techniciens responsables de la tâche ». Notre proposition de la
+relance 2.13 est construite avant sa réponse, derrière l'interrupteur
+`TAKE_OVER_COLLEAGUE` de `src/lib/lab-proposals.ts` (allumé ; éteint, la
+fiche d'un collègue redevient en lecture seule et la route répond 403).
+
+- Sur la fiche d'un échantillon pris par un collègue, à la paillasse :
+  « Reprendre cet échantillon » → une confirmation qui nomme le titulaire
+  (« Reprendre cet échantillon à X ? » : les résultats enregistrés restent,
+  chacun au nom de la personne qui l'a saisi ; ce que X n'a pas encore
+  enregistré n'est pas gardé) → `PATCH /api/samples/[id]/take`
+  `{ holderId }`, réservé au TECHNICIEN, **sans motif**.
+- Sous le verrou de la ligne (`lockTakeState`), un `updateMany` gardé par le
+  titulaire que la confirmation nommait : si quelqu'un a repris ou libéré
+  l'échantillon entre-temps → 409 « Cet échantillon vient de changer :
+  rechargez la page. », rien d'écrit. Règle pure : `takeOverRefusal`
+  (`src/lib/take-over.ts`) — libre → « utilisez Prendre en charge » ; hors
+  paillasse ou bloqué → 409 ; une ligne répartie par paramètre avant le
+  13/10 ne se reprend pas (un administrateur la termine).
+- Seul `technicianId` change : **`assignedAt` reste le début des analyses**
+  (la « Date d'analyse » du rapport) ; l'heure de la reprise se lit au
+  journal. Les lectures déjà enregistrées gardent leur auteur et leur heure
+  (D-09) ; sous chaque lecture, la fiche dit « Saisi par X le … ». Celui qui
+  reprend termine et soumet : « Analysé par » le nomme.
+- L'ancien titulaire lit « Repris par B le … » sur la fiche et « Repris par
+  B · heure » dans ses listes (l'échantillon passe dans « Pris par un
+  collègue ») ; son prochain « Enregistrer » est refusé (403 qui nomme B),
+  sa saisie reste affichée jusqu'à « Recharger la fiche ». Aucune
+  notification ne le prévient avant. La reprise en sens inverse est permise
+  et journalisée.
+- Une fiche ouverte avant qu'un autre y enregistre (reprise puis retour,
+  administrateur qui supplée) n'écrase jamais ses lectures : la sauvegarde
+  envoie l'heure de la fiche (`loadedAt`) et reçoit 409 ; la fiche se
+  recharge avec ses lectures et garde la saisie
+  (`src/lib/take-over-sheet.ts`).
+- Ce n'est pas un verbe de correction (`WORKFLOW.md` §8, `AGENTS.md` §3b) :
+  journal `SAMPLE_TAKEN_OVER` (ancien titulaire, nombre de lectures déjà
+  enregistrées), sans motif.
+
+### 10.10 Écrans du technicien sans client (relance 2.15 — lot 2E, 24/10, non déployé)
+
+Comme la feuille de paillasse depuis le 19/10 (C1), et derrière
+l'interrupteur `BLIND_BENCH_SCREENS` (allumé ; éteint, le client revient) :
+les listes de `/technicien`, la fiche `/technicien/[id]`, `/recherche` et
+`GET /api/samples` d'un technicien ne chargent ni n'affichent le client, le
+site, le lieu du client ni la personne qui a donné l'accord du client
+(« Analysé avec l'accord du client. ») ; sa recherche libre ne les trouve
+plus (`benchHidesClient`, `benchSearchScope` dans `src/lib/bench-access.ts`).
+Les autres rôles lisent tout, comme avant. Les champs libres (notes,
+désignation, consignes) restent affichés tels que saisis.

@@ -160,7 +160,7 @@ préleveur photographie la feuille signée depuis le téléphone.
 | Q51 | Ligne Surface : la désignation (« Planche verte ») reste et « État de la surface » (Aseptique / En cours de travail / Nettoyé) s'ajoute en choix obligatoire — c'est bien la lecture ? | Visite — `RETOUR-LABO-06-10.md` §2.4 |
 | Q52 | Cadre (Autre / Devis validé / BC / Convention) : valeur par défaut (aucune ou celle de la dernière visite du client) ? Le N° du BC ou du devis va-t-il dans « Référence client » ? | Série — `RETOUR-LABO-06-10.md` §2.8 |
 | Q53 | Sites : 75 noms de site douteux (même nom chez plusieurs clients, ex. une ville) et 5 sites dont le client parent existe en double n'ont rien archivé ; faut-il les rattacher à la main depuis la fiche client, ou fusionner les clients en double ? (liste dans l'analyse de l'import, `/admin/import`) | Clients — `RETOUR-LABO-06-10.md` §6 |
-| Q55 | *(16/10 : plus de nom du client sur la feuille de paillasse (§3) ; les écrans du technicien : relance 2.15)* Numérotation aveugle : les étiquettes n'affichent plus le client ni le site (08/10). La feuille de paillasse imprime encore « Série NN · client » : faut-il l'enlever aussi ? | Paillasse — `RETOUR-LABO-06-10.md` §9.4 |
+| Q55 | *(16/10 : plus de nom du client sur la feuille de paillasse (§3) ; les écrans du technicien : relance 2.15 — 24/10 : construit comme proposé, derrière l'interrupteur `BLIND_BENCH_SCREENS`, non déployé ; dit dans l'e-mail du §2)* Numérotation aveugle : les étiquettes n'affichent plus le client ni le site (08/10). La feuille de paillasse imprime encore « Série NN · client » : faut-il l'enlever aussi ? | Paillasse — `RETOUR-LABO-06-10.md` §9.4 |
 | Q56 | *(16/10 : une famille PC des surfaces, « pas pour les mains et l'air » (§3) ; la case des mains et de l'air : relance 2.19)* Physico-chimie des surfaces / mains / air : quelles analyses (et unités) ajouter au catalogue ? Aucune aujourd'hui : ces échantillons se créent et se réceptionnent mais ne se programment pas encore (complète Q50). | Catalogue — `RETOUR-LABO-06-10.md` §9.2 |
 | Q64 | *(16/10 : un bouton général + le choix par échantillon (§3) ; (a) identification, (b) « Détruire » proposé : relance 2.7)* Réception — règle (1) : une réponse par échantillon (actuel), ou un bouton « tous exploitables » par série ? Un échantillon non exploitable : « Détruire » par défaut ? | Réception — règle (1) — **sans réponse le 12/10**, toujours ouverte |
 
@@ -187,7 +187,7 @@ questions Q1–Q66 encore ouvertes qu'elles complètent sont citées.
 | Q86 | *(16/10 : page non revenue ; 19/10 : (2) « non », l'avance n'apparaît pas sur la facture — déjà le cas ; (1) sans réponse : relance R-3 ; (3) « ? » : relance R-4, H5)* **Facturation, compléments** (complète Q4, Q16, Q30). Délai de paiement par défaut (« à réception », 30 ou 60 jours) ? Une avance encaissée au comptoir doit-elle solder la facture ? Que signifie « avec remise » dans l'ancien logiciel ? Faut-il reprendre les 6 695 prix clients de l'ancien logiciel ? | Facturation (chantier 5) |
 | Q88 | *(16/10 : une liste existante + « Autre » sur place (§3) ; la liste et qui la tient : relance 2.18)* **Liste des surfaces.** Une liste commune au laboratoire ou une par client ? « Autre (préciser) » autorisé sur place ? Qui ajoute une surface ? Liste de départ, avec la surface par défaut en cm² ? | Non construit |
 | Q91 | *(16/10 : pas de rapport si l'analyse n'est pas faite (§3) ; plusieurs analyses, prévenir le client : relance 2.10)* **Paramètre « non effectué »** (complète Q11). Que faut-il imprimer sur le rapport (« Non effectué », « NE », avec la raison ?) et faut-il prévenir le client ? Aujourd'hui un tel paramètre bloque tout l'échantillon | Résultats, rapport |
-| Q92 | *(16/10 : conclusion selon les critères, pas d'envoi automatique (§3) ; « avoir les deux options » et la suite : relance 2.16)* **Validation** (complète Q13). Le validateur technique peut-il modifier la conclusion imprimée (journalisé) ? Quelqu'un peut-il forcer un verdict contraire au calcul, avec quel motif ? Le rapport part-il automatiquement à la validation administrative ou après un envoi manuel ? Peut-on valider une série entière d'un coup, toujours avec deux signataires ? | Défaut actuel : conclusion calculée, envoi automatique à la validation administrative, validation échantillon par échantillon ; l'administrateur dispose de « Modifier la conclusion » (non journalisé, décision du 18/08) |
+| Q92 | *(16/10 : conclusion selon les critères, pas d'envoi automatique (§3) ; « avoir les deux options » et la suite : relance 2.16 — 24/10 : valider et envoyer toute une série construits comme proposé, en plus de l'échantillon par échantillon, derrière l'interrupteur `SERIES_VALIDATION`, non déployés ; dit dans l'e-mail du §2)* **Validation** (complète Q13). Le validateur technique peut-il modifier la conclusion imprimée (journalisé) ? Quelqu'un peut-il forcer un verdict contraire au calcul, avec quel motif ? Le rapport part-il automatiquement à la validation administrative ou après un envoi manuel ? Peut-on valider une série entière d'un coup, toujours avec deux signataires ? | Défaut actuel : conclusion calculée, envoi automatique à la validation administrative, validation échantillon par échantillon ; l'administrateur dispose de « Modifier la conclusion » (non journalisé, décision du 18/08) |
 | Q93 | *(16/10 : page non revenue ; 19/10 : page revenue, laissée vide — relance R-5)* **Copies internes des alertes** (complète Q45, Q54). Quelles adresses du laboratoire doivent être en copie de chaque alerte de contamination (direction, responsable technique, qualité) ? | Destinataires des e-mails |
 | Q94 | *(16/10 : page non revenue — hors relance (module non chiffré : au propriétaire de la reposer))* **Réclamations clients** (volet ultérieur). Qui enregistre une réclamation : le personnel seulement, ou le client depuis le portail ? Quels statuts et champs (gravité, fondée ou non) ? Lien avec un registre des non-conformités / actions correctives, et qui est prévenu ? | Phase 8 |
 | Q95 | *(16/10 : page non revenue — hors relance (module non chiffré : au propriétaire de la reposer))* **Alertes automatiques Achat & Stock et Qualité.** Qui les reçoit (les comptes du personnel n'ont pas d'e-mail réel) ? Par e-mail ou à l'écran, à quelle heure ? Faut-il ouvrir le module Achat & Stock, aujourd'hui caché ? | Phases 6–7 |
@@ -218,7 +218,7 @@ Q104 (c).
 | # | Question | Ce que la réponse décide (défaut construit le 13/10) |
 |---|---|---|
 | Q106 | *(16/10 : laissée vide — relance partie 3 (défaut gardé sans réponse))* **Ordre de la liste « À prendre ».** Les échantillons urgents d'abord, puis la réception la plus ancienne — ou strictement la plus ancienne réception d'abord, urgences comprises ? La liste reste-t-elle groupée par série comme les autres (une série est alors placée à son échantillon le plus urgent ou le plus ancien, ses autres échantillons suivent), ou faut-il une liste échantillon par échantillon ? | Défaut : urgentes d'abord, puis la plus ancienne réception ; groupée par série, comme toutes les listes |
-| Q107 | *(16/10 : « l'accès à la saisie doit être pour tous les techniciens responsables de la tâche » — à reposer, relance 2.13)* **Un technicien part avec des résultats saisis** (compte désactivé, absence longue, changement de poste). Un échantillon ne peut être remis dans « À prendre » que tant que rien n'y est saisi ; ensuite il reste à son titulaire et l'administrateur le termine à sa place (il saisit et soumet ; « Analysé par » nomme toujours le titulaire). Faut-il permettre à l'administrateur de le **libérer quand même** (les résultats déjà saisis restent, journalisé) pour qu'un collègue le reprenne et le signe ? | Défaut : libération refusée dès qu'un résultat est saisi, à tous ; l'administrateur termine l'échantillon |
+| Q107 | *(16/10 : « l'accès à la saisie doit être pour tous les techniciens responsables de la tâche » — à reposer, relance 2.13 — 24/10 : « Reprendre » construit comme proposé, derrière l'interrupteur `TAKE_OVER_COLLEAGUE`, non déployé ; dit dans l'e-mail du §2)* **Un technicien part avec des résultats saisis** (compte désactivé, absence longue, changement de poste). Un échantillon ne peut être remis dans « À prendre » que tant que rien n'y est saisi ; ensuite il reste à son titulaire et l'administrateur le termine à sa place (il saisit et soumet ; « Analysé par » nomme toujours le titulaire). Faut-il permettre à l'administrateur de le **libérer quand même** (les résultats déjà saisis restent, journalisé) pour qu'un collègue le reprenne et le signe ? | Défaut : libération refusée dès qu'un résultat est saisi, à tous ; l'administrateur termine l'échantillon |
 | Q108 | *(16/10 : laissée vide — relance 2.14 ; correction : le technicien n'a pas d'export, seule sa recherche est limitée à ce qu'il tient)* **Recherche des échantillons des collègues.** Sur la paillasse, chaque technicien voit les échantillons pris par ses collègues en lecture seule (« Pris par un collègue »). Dans « Recherche des analyses » et son export, un technicien ne trouve aujourd'hui que les échantillons qu'il tient : doit-il pouvoir rechercher aussi ceux de ses collègues ? | Défaut : la recherche et l'export d'un technicien = ses échantillons |
 
 Remarques du laboratoire du 14/10 (`RETOUR-LABO-14-10.md`, §6 pour le texte
@@ -296,6 +296,25 @@ corps de l'e-mail du lot du 18/10) :
 >    prix du catalogue, que le comptable corrige à la main pour un client à
 >    prix négocié.
 >
+> Trois de vos réponses attendues à notre document du 18/10 sont déjà
+> prêtes, telles que nous vous les avions proposées, et peuvent être
+> retirées sans rien perdre si vous préférez autrement (une ligne de
+> réponse suffit) :
+> - **2.13 (Q107)** — un technicien peut « Reprendre » un échantillon pris
+>   par un collègue (un bouton, une confirmation, sans motif) : les
+>   résultats déjà enregistrés restent, chacun au nom de la personne qui
+>   l'a saisi ; celui qui reprend termine et soumet. Sous chaque résultat,
+>   la fiche dit « Saisi par … le … ».
+> - **2.15 (Q55)** — les écrans du technicien (ses listes, la fiche,
+>   sa recherche) n'affichent plus ni le client ni le site, comme la
+>   feuille de paillasse.
+> - **2.16 (Q92)** — en plus de l'échantillon par échantillon, la
+>   validation technique, la validation administrative et l'envoi au
+>   client peuvent se faire pour toute une série en une fois ; chaque
+>   échantillon passe par les mêmes règles (jamais la même personne pour
+>   les deux signatures) et la fenêtre de confirmation liste d'abord ceux
+>   qui seront traités et ceux qui restent tels quels.
+>
 > Sans réponse aux questions Q104, Q93, Q103, Q105 et Q97 (laissées vides
 > sur ces pages), nous gardons ce qui est construit. Il nous manque encore la
 > page 11 (Q19 — la numérotation, urgente —, Q98, Q20) et les autres parties
@@ -304,6 +323,8 @@ corps de l'e-mail du lot du 18/10) :
 > questions Q131, Q132 et Q133 de notre e-mail.
 >
 > Cordialement,
+
+*24/10 — the « Trois de vos réponses attendues » paragraph above was added with lot 2E: 2.13, 2.15 and 2.16 are built as proposed, each behind a switch of `src/lib/lab-proposals.ts` (HANDOFF §9) — the laboratory's answer decides whether one is turned off. Not deployed on 24/10: send this e-mail once lot 2E is in production (the deploy is next).*
 
 *19/10 — the PDF of 18/10 was produced before lot 2 was built: it does
 **not** hold Q131 (raised by wave 1, F2) nor Q132 / Q133 (raised by the
