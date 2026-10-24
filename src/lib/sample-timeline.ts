@@ -49,7 +49,7 @@ export type TimelineSample = {
   programmedAt: Date | null;
   programmedBy: TimelineActor;
   assignedAt: Date | null;
-  /** The technician assigned at `assignedAt` (the current one). */
+  /** The current holder — the one assigned at `assignedAt`, unless a take-over (C3) changed it since. */
   technician: TimelineActor;
   validatedAt: Date | null;
   validatedBy: TimelineActor;
@@ -129,6 +129,22 @@ export const TIMELINE_ACTIONS: Record<string, ActionSpec> = {
     label: "Remis dans « À prendre »",
     tone: "neutral",
     note: (meta) => (text(meta.previousTechnicianName) ? `Était pris par ${text(meta.previousTechnicianName)}` : null),
+  },
+  // « Reprendre » (re-ask 2.13, C3): « Repris — par B — était pris par A ».
+  SAMPLE_TAKEN_OVER: {
+    label: "Repris à un collègue",
+    tone: "neutral",
+    note: (meta) =>
+      join(
+        text(meta.previousTechnicianName) ? `Était pris par ${text(meta.previousTechnicianName)}` : null,
+        count(meta.typedResults) > 0
+          ? plural(
+              count(meta.typedResults),
+              "résultat déjà saisi, gardé au nom de son auteur",
+              "résultats déjà saisis, gardés au nom de leur auteur"
+            )
+          : null
+      ),
   },
   SAMPLE_ANALYSIS_STARTED: { label: "Analyse démarrée", tone: "neutral" },
   RESULTS_SUBMITTED: {
@@ -245,6 +261,7 @@ const CIRCUIT_ORDER = [
   // A take by a first result and « Analyse démarrée » share one instant.
   "SAMPLE_TAKEN",
   "SAMPLE_UNTAKEN",
+  "SAMPLE_TAKEN_OVER",
   "SAMPLE_ANALYSIS_STARTED",
   "RESULTS_SUBMITTED",
   "SAMPLE_REGULATION_SET",
@@ -398,13 +415,20 @@ export function sampleTimeline(sample: TimelineSample, rows: readonly TimelineAu
   // the technician as its actor: that row is the step. Before, the
   // assignment was written by the reception (older samples), the programme
   // or the release: it names the technician on that step, or stands alone
-  // when no step recorded it.
+  // when no step recorded it. A take-over (« Reprendre », C3) changes the
+  // holder, never `assignedAt`: the technician assigned then is the one the
+  // first take-over since was taken from, not the current holder.
   const assignedAt = sample.assignedAt;
   const takenRow =
     assignedAt &&
     items.some((item) => item.kind === "SAMPLE_TAKEN" && Math.abs(item.at.getTime() - assignedAt.getTime()) <= SAME_STEP_MS);
   if (assignedAt && !takenRow) {
-    const technician = sample.technician?.name ?? null;
+    const firstTakeOver = rows
+      .filter((row) => row.action === "SAMPLE_TAKEN_OVER" && row.createdAt >= assignedAt)
+      .reduce<TimelineAuditRow | null>((first, row) => (!first || row.createdAt < first.createdAt ? row : first), null);
+    const technician = firstTakeOver
+      ? text(parseMeta(firstTakeOver.metadata).previousTechnicianName)
+      : (sample.technician?.name ?? null);
     const note = technician ? `Technicien : ${technician}` : null;
     const step = items.find(
       (item) =>

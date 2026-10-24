@@ -8,12 +8,22 @@ import { labReference } from "@/lib/sample-select";
 import { loadBenchPlans } from "@/lib/bench-plan";
 import {
   BENCH_STATUSES,
+  benchHidesClient,
   canEnterParameter,
   canReadAtBench,
   hasTypedResult,
   isHeldByOther,
   isUnclaimed,
 } from "@/lib/bench-access";
+import {
+  HOLDER_ACTIONS,
+  TAKE_OVER_MESSAGES,
+  currentTakeOver,
+  enteredByText,
+  takeOverRefusal,
+  takeStateOf,
+} from "@/lib/take-over";
+import { TAKE_OVER_COLLEAGUE } from "@/lib/lab-proposals";
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { isCurrentSendBack, maySendBack } from "@/lib/send-back";
 import { lastSubmissionsOf } from "@/lib/send-back-server";
@@ -33,7 +43,7 @@ import {
   ResultEntryForm,
   type ParameterLine,
 } from "@/components/technicien/ResultEntryForm";
-import { ReleaseButton, TakeButton } from "@/components/technicien/BenchTakeActions";
+import { ReleaseButton, TakeButton, TakeOverButton } from "@/components/technicien/BenchTakeActions";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   // Metadata renders alongside the layout's redirect: the sample's blind
@@ -52,6 +62,10 @@ export default async function AnalysePage({
 }) {
   const session = await requireRole("TECHNICIEN", "ADMIN");
   const { id } = await params;
+  // Before anything is read: a reading a colleague saves from here on is one
+  // this sheet never showed — its save is refused, never written over it
+  // (`SHEET_SAVED_BY_COLLEAGUE`, re-ask 2.13).
+  const loadedAt = new Date().toISOString();
 
   const sample = await prisma.sample.findUnique({
     where: { id },
@@ -61,7 +75,8 @@ export default async function AnalysePage({
       controlCode: true,
       type: true,
       status: true,
-      lieu: true,
+      // No `lieu`: the client's place is never shown at the bench, and a
+      // technician's blind sheet never reads it (re-ask 2.15).
       produit: true,
       numeroLot: true,
       // What is analysed: « Planche verte — surface nettoyée », « Salle — Biocollecteur ».
@@ -89,8 +104,9 @@ export default async function AnalysePage({
       rejectionReason: true,
       rejectedAt: true,
       rejectedBy: { select: { name: true } },
-      // The holder: the technician who took the sample, and when
-      // (prise en charge libre, PROGRAMME.md §10).
+      // The holder: the technician who took the sample, and when — the start
+      // of the analyses, never moved by a take-over (the report's « Date
+      // d'analyse »; prise en charge libre, PROGRAMME.md §10).
       technicianId: true,
       assignedAt: true,
       technician: { select: { name: true } },
@@ -103,7 +119,9 @@ export default async function AnalysePage({
       programmeNote: true,
       programmedAt: true,
       programmedBy: { select: { name: true } },
-      client: { select: { name: true } },
+      // The client's name is loaded below, only for a viewer who reads it:
+      // a technician's blind bench never does (re-ask 2.15).
+      clientId: true,
       serie: { select: { serialNumber: true } },
       parameters: {
         select: {
@@ -127,7 +145,8 @@ export default async function AnalysePage({
           },
         },
       },
-      results: { include: { units: { orderBy: { unitIndex: "asc" } } } },
+      // « Saisi par X le … » under each reading (D-09, at the bench too).
+      results: { include: { units: { orderBy: { unitIndex: "asc" } }, enteredBy: { select: { name: true } } } },
     },
   });
 
@@ -141,11 +160,23 @@ export default async function AnalysePage({
   if (isTechnician && !canReadAtBench(sample, session.id)) {
     redirect(getDashboardPath(session.role));
   }
+  // The technician's sheet names no client (re-ask 2.15, `benchHidesClient`).
+  const blind = benchHidesClient(session.role);
   // A send-back is current until the next submission (B2): the journal is
-  // read only for a sample that may show one.
-  const [bench, submissions] = await Promise.all([
+  // read only for a sample that may show one. The last bench row of the
+  // journal says whether the holder took it over from a colleague (C3).
+  const [bench, submissions, client, holderRows] = await Promise.all([
     loadBenchPlans(sample.id),
     maySendBack(sample) ? lastSubmissionsOf([sample.id]) : null,
+    blind ? null : prisma.client.findUnique({ where: { id: sample.clientId }, select: { name: true } }),
+    sample.technicianId
+      ? prisma.auditLog.findMany({
+          where: { entity: "Sample", entityId: sample.id, action: { in: [...HOLDER_ACTIONS] } },
+          select: { action: true, actorId: true, createdAt: true, metadata: true },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+        })
+      : [],
   ]);
 
   // Who holds the sample (prise en charge libre, PROGRAMME.md §10).
@@ -153,7 +184,13 @@ export default async function AnalysePage({
   const onBench = BENCH_STATUSES.includes(sample.status);
   // The holder, plus the parameter technicians of a line programmed before 13/10.
   const holderName = reportTechnicianNames(sample) ?? "un collègue";
-  const takenOn = sample.assignedAt ? `le ${formatDateTime(sample.assignedAt)}` : null;
+  // The holder took it over from a colleague: « Repris à A » — and A,
+  // opening the sheet, reads who took it from them.
+  const takenOver = currentTakeOver(holderRows, sample.technicianId);
+  // Since when the holder holds it: the take-over (its journal row), else
+  // the take — `assignedAt` stays the start of the analyses.
+  const takenAt = takenOver?.at ?? sample.assignedAt;
+  const takenOn = takenAt ? `le ${formatDateTime(takenAt)}` : null;
   // A colleague's sample: readable, never typed on (403 at the save).
   const heldByOther = isTechnician && isHeldByOther(sample, session.id);
   // Only a technician takes, and only a free sample on the bench (`takeRefusal`).
@@ -169,6 +206,11 @@ export default async function AnalysePage({
   );
   const canRelease =
     !free && onBench && !typed && (session.role === "ADMIN" || sample.technicianId === session.id);
+  // « Reprendre » a colleague's sample (re-ask 2.13, C3, `TAKE_OVER_COLLEAGUE`):
+  // any technician, on the bench, not on a line split before 13/10.
+  const takeOver = heldByOther ? takeOverRefusal(takeStateOf(sample), session) : undefined;
+  const canTakeOver = heldByOther && takeOver === null;
+  const takenFromMe = isTechnician && takenOver !== null && takenOver.previousTechnicianId === session.id;
 
   const resultByParameter = new Map(sample.results.map((r) => [r.parameterId, r]));
   // « — » when nothing names it (a food sample without a designation).
@@ -213,6 +255,7 @@ export default async function AnalysePage({
       editable: !isTechnician || canEnterParameter(sample, line, session.id),
       technicianName: line.technician?.name ?? sample.technician?.name ?? null,
       methodNote: line.note,
+      enteredBy: enteredByText(existing),
     };
   });
 
@@ -248,16 +291,32 @@ export default async function AnalysePage({
 
       <PageHeader badge="Analyse" title={labReference(sample)} subtitle={subtitle} />
 
-      {heldByOther && (
+      {/* The previous holder reads « Repris par » instead (below). */}
+      {heldByOther && !takenFromMe && (
         <div
           role="status"
           className="mb-5 flex items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"
         >
           <Eye className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
           <p>
-            {takenOn
-              ? `Pris par ${holderName} ${takenOn} — vous pouvez consulter cette fiche, pas la saisir.`
-              : `Pris par ${holderName} — vous pouvez consulter cette fiche, pas la saisir.`}
+            {`Pris par ${holderName}${takenOn ? ` ${takenOn}` : ""} — ${
+              canTakeOver
+                ? "vous pouvez consulter cette fiche ; pour y saisir, reprenez l'échantillon."
+                : "vous pouvez consulter cette fiche, pas la saisir."
+            }`}
+          </p>
+        </div>
+      )}
+
+      {takenFromMe && takenOver && (
+        <div
+          role="status"
+          className="mb-5 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          <UserCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+          <p>
+            <b className="font-semibold">{`Repris par ${holderName} le ${formatDateTime(takenOver.at)}`}</b>
+            {` — vous l'aviez pris en charge. Vos résultats enregistrés gardent votre nom ; ${holderName} termine la saisie et soumet l'échantillon.`}
           </p>
         </div>
       )}
@@ -300,9 +359,11 @@ export default async function AnalysePage({
                   échantillon {sampleRef(sample.lineNumber, sample.code)}
                 </span>
               </Field>
-              <Field icon={Building2} label="Client">
-                {sample.client.name}
-              </Field>
+              {client && (
+                <Field icon={Building2} label="Client">
+                  {client.name}
+                </Field>
+              )}
               <Field icon={FlaskConical} label="Nature d'analyse">
                 {sample.nature.label}
               </Field>
@@ -357,6 +418,11 @@ export default async function AnalysePage({
                   ) : (
                     holderName
                   )}
+                  {takenOver?.previousTechnicianName && (
+                    <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                      Repris à {takenOver.previousTechnicianName}
+                    </span>
+                  )}
                   {canTake && (
                     <>
                       <TakeButton sampleId={sample.id} className="mt-2.5" />
@@ -382,7 +448,7 @@ export default async function AnalysePage({
               )}
             </dl>
 
-            <ReceptionNonConformity sample={sample} />
+            <ReceptionNonConformity sample={sample} blind={blind} />
             <ReceptionObservation note={sample.receptionNote} />
 
             {sample.notes && (
@@ -422,6 +488,7 @@ export default async function AnalysePage({
             sampleId={sample.id}
             canEdit
             initialLines={lines}
+            loadedAt={loadedAt}
             submitBlocked={
               session.role === "ADMIN" && free
                 ? "Un technicien doit prendre cet échantillon en charge avant sa soumission."
@@ -432,10 +499,25 @@ export default async function AnalysePage({
           <Card className="p-5">
             <h2 className="font-semibold text-slate-900">Pris par un collègue</h2>
             <p className="mt-1.5 text-sm text-slate-600">
-              {`Seul ${holderName} saisit les résultats de cet échantillon : vous suivez ici l'avancement de sa saisie.`}
+              {canTakeOver
+                ? `${holderName} saisit les résultats de cet échantillon : vous suivez ici l'avancement de sa saisie. Si ${holderName} ne peut pas le terminer, reprenez-le : les résultats enregistrés restent, chacun au nom de la personne qui l'a saisi.`
+                : `Seul ${holderName} saisit les résultats de cet échantillon : vous suivez ici l'avancement de sa saisie.`}
             </p>
+            {/* The holder named here is the one taken from: a colleague who took it over meanwhile is answered 409. */}
+            {canTakeOver && sample.technicianId && (
+              <TakeOverButton sampleId={sample.id} holderId={sample.technicianId} holderName={holderName} className="mt-3" />
+            )}
+            {TAKE_OVER_COLLEAGUE && takeOver?.error === TAKE_OVER_MESSAGES.legacy && (
+              <p className="mt-2 text-xs text-slate-500">{TAKE_OVER_MESSAGES.legacy}</p>
+            )}
             <div className="mt-4">
-              <ResultEntryForm sampleId={sample.id} canEdit={false} initialLines={lines} heldBy={holderName} />
+              <ResultEntryForm
+                sampleId={sample.id}
+                canEdit={false}
+                initialLines={lines}
+                loadedAt={loadedAt}
+                heldBy={holderName}
+              />
             </div>
           </Card>
         ) : (
@@ -453,6 +535,7 @@ export default async function AnalysePage({
                 sampleId={sample.id}
                 canEdit={false}
                 initialLines={lines}
+                loadedAt={loadedAt}
               />
             </div>
           </Card>

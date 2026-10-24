@@ -91,6 +91,18 @@ export const SAMPLE_LAB_SELECT = {
   rejectionReason: true,
 } as const;
 
+/**
+ * The technician's blind bench (re-ask 2.15, `benchHidesClient`): the
+ * laboratory view without the client, the site, nor the client's place
+ * (`lieu`) — what their screens never show is never in their payload.
+ */
+export const SAMPLE_BENCH_SELECT = {
+  ...SAMPLE_LAB_SELECT,
+  client: false,
+  lieu: false,
+  serie: { select: { ...SAMPLE_LAB_SELECT.serie.select, site: false } },
+} as const;
+
 export function sampleSelectFor(role: Role) {
   return role === "PRELEVEUR" ? SAMPLE_FIELD_SELECT : SAMPLE_LAB_SELECT;
 }

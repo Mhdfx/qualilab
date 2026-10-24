@@ -17,6 +17,8 @@ import { factoredText, singleValueEntry, type ParsedValue } from "@/lib/result-v
 import { hasLimit, judgeUnits, type Plan, type Verdict as PlanVerdict } from "@/lib/interpretation";
 import { benchUnits, unitsAgainstLimit, valueAgainstLimit } from "@/lib/bench-reading";
 import { repetitionLabel } from "@/lib/series";
+import { lostSampleHolder } from "@/lib/take-over";
+import { SHEET_SAVED_BY_COLLEAGUE, followServer, overlapNotice } from "@/lib/take-over-sheet";
 import type { ResultWorkStatus } from "@/generated/prisma/enums";
 
 export type ParameterLine = {
@@ -51,12 +53,26 @@ export type ParameterLine = {
   technicianName: string | null;
   /** The method note of the programme d'analyse, if any. */
   methodNote: string | null;
+  /**
+   * « Saisi par X le … » — who typed the stored reading, and when
+   * (`enteredByText`, D-09): null on a line nothing is saved on. Read from
+   * the server's sheet on every render, never from the typing, so it
+   * follows each save.
+   */
+  enteredBy: string | null;
 };
 
 type ResultEntryFormProps = {
   sampleId: string;
   canEdit: boolean;
   initialLines: ParameterLine[];
+  /**
+   * When the server rendered `initialLines` (ISO, server time): every
+   * `router.refresh()` brings a new one. The save sends it, so a colleague's
+   * reading saved since is never written over by this sheet (409
+   * `SHEET_SAVED_BY_COLLEAGUE`, re-ask 2.13).
+   */
+  loadedAt: string;
   /**
    * A colleague's sample, opened read-only: who holds it. The page says it
    * once, above the sheet, so no line repeats « lecture seule ».
@@ -75,8 +91,9 @@ type SaveAnswer = { status: string; saved: number; taken: boolean };
 /**
  * What the server decides of a line — which lines the sheet holds and how
  * each one reads — as opposed to what is typed in it. A refresh that brings
- * a new shape (a programme edited while the sheet was open) re-lays the
- * sheet; a refresh after a plain save leaves the typing alone.
+ * a new shape (a programme edited while the sheet was open) says so to the
+ * technician who was refused; the typing is carried over either way
+ * (`followServer`).
  */
 function sheetShape(lines: ParameterLine[]): string {
   return JSON.stringify(
@@ -96,27 +113,6 @@ function sheetShape(lines: ParameterLine[]): string {
       line.methodNote,
     ])
   );
-}
-
-/**
- * The fresh sheet, with what was typed on each line still programmed — and
- * still mine, read the same way — carried over, so a programme edit costs
- * nothing already typed.
- */
-function withTyping(fresh: ParameterLine[], typed: ParameterLine[]): ParameterLine[] {
-  const before = new Map(typed.map((line) => [line.parameterId, line]));
-  return fresh.map((line) => {
-    const previous = before.get(line.parameterId);
-    if (!previous || !line.editable || previous.perUnit !== line.perUnit) return line;
-    return {
-      ...line,
-      value: previous.value,
-      note: previous.note,
-      workStatus: previous.workStatus,
-      manualConform: previous.manualConform,
-      units: line.units.map((unit, index) => previous.units[index] ?? unit),
-    };
-  });
 }
 
 const WORK_STATUS_LABELS: Record<ResultWorkStatus, string> = {
@@ -157,6 +153,7 @@ export function ResultEntryForm({
   sampleId,
   canEdit,
   initialLines,
+  loadedAt,
   heldBy = null,
   submitBlocked = null,
 }: ResultEntryFormProps) {
@@ -165,19 +162,35 @@ export function ResultEntryForm({
   const [busy, setBusy] = useState<"save" | "submit" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // The sample is no longer mine (`refused`): who holds it now, and whether
+  // my readings were saved first (the submission refused after its save).
+  const [revoked, setRevoked] = useState<{ holder: string; saved: boolean } | null>(null);
+  // « Saisi par » follows the server's sheet, not the typing.
+  const authors = new Map(initialLines.map((line) => [line.parameterId, line.enteredBy]));
 
-  // The page re-renders after every save (`router.refresh()`), but the lines
-  // are this form's state: they follow the server only when the sheet's
-  // shape changed — typically the programme was edited meanwhile (409
-  // « … a changé : rechargez la fiche. », which the refresh just did).
-  // Adjusted while rendering, as React recommends for state derived from a
-  // prop, so no stale sheet is ever painted.
-  const shape = sheetShape(initialLines);
-  const [shownShape, setShownShape] = useState(shape);
-  if (shape !== shownShape) {
-    setShownShape(shape);
-    setLines(withTyping(initialLines, lines));
-    if (error) setError("La fiche a été mise à jour : vérifiez votre saisie, puis enregistrez de nouveau.");
+  // The page re-renders after every save (`router.refresh()`), each
+  // rendering with its `loadedAt`. The lines are this form's state: on a new
+  // rendering they follow the server on every line not typed on since the
+  // last one, and keep what was typed (`followServer`) — a programme edited
+  // meanwhile (409 « … a changé : rechargez la fiche. »), a colleague's
+  // reading saved meanwhile (409 `SHEET_SAVED_BY_COLLEAGUE`): the refresh
+  // just did it. Adjusted while rendering, as React recommends for state
+  // derived from a prop, so no stale sheet is ever painted.
+  const [laid, setLaid] = useState({ loadedAt, lines: initialLines });
+  // The last save was refused because a colleague saved meanwhile: the next
+  // rendering names the lines both changed.
+  const [colleagueSaved, setColleagueSaved] = useState(false);
+  if (loadedAt !== laid.loadedAt) {
+    const followed = followServer(initialLines, lines, laid.lines);
+    setLaid({ loadedAt, lines: initialLines });
+    setLines(followed.lines);
+    if (sheetShape(initialLines) !== sheetShape(laid.lines)) {
+      if (error) setError("La fiche a été mise à jour : vérifiez votre saisie, puis enregistrez de nouveau.");
+    } else if (colleagueSaved) {
+      const overlap = overlapNotice(followed.overlap.map((line) => line.name));
+      if (overlap) setError(`${SHEET_SAVED_BY_COLLEAGUE} ${overlap}`);
+    }
+    if (colleagueSaved) setColleagueSaved(false);
   }
 
   const readings = useMemo<Reading[]>(
@@ -249,7 +262,8 @@ export function ResultEntryForm({
     setLines((current) =>
       current.map((line, i) => (i === index ? { ...line, ...patch } : line))
     );
-    setError("");
+    // A revoked sheet keeps saying why it no longer saves.
+    if (revoked === null) setError("");
     setNotice("");
   }
 
@@ -285,14 +299,29 @@ export function ResultEntryForm({
   }
 
   /**
-   * A refusal because the bench moved under the sheet — a colleague took
-   * the sample (409 « Déjà pris par X. »), it is theirs (403), the programme
+   * A refusal because the bench moved under the sheet. The programme
    * changed or the sheet left the bench (409): the reason is shown and the
-   * page re-renders, so the sheet turns read-only or follows the new
-   * programme.
+   * page re-renders, so the sheet follows the new programme (the typing
+   * carried over) or turns read-only; so does any other 403 (a parameter a
+   * legacy programme handed to a colleague). The sample is no longer mine
+   * — a colleague took it over (403, re-ask 2.13) or took it during the
+   * save (409 « Déjà pris par X. »), `lostSampleHolder`: a re-render would
+   * swap this sheet for the read-only one and lose the typing — so the
+   * sheet stays as typed, its buttons closed, until « Recharger la fiche »,
+   * for the technician to pass the readings on. `saved`: the refusal is the
+   * submission's, after its save went through — the readings are stored
+   * under my name, only the submission was refused. A colleague saved on
+   * the sheet since it was rendered (409 `SHEET_SAVED_BY_COLLEAGUE`): the
+   * re-render shows their readings and keeps the typing (`followServer`).
    */
-  function refused(status: number, message: string) {
+  function refused(status: number, message: string, saved = false) {
     setError(message);
+    const holder = lostSampleHolder(message);
+    if (holder !== null) {
+      setRevoked({ holder, saved });
+      return;
+    }
+    if (message === SHEET_SAVED_BY_COLLEAGUE) setColleagueSaved(true);
     if (status === 403 || status === 409) router.refresh();
   }
 
@@ -301,7 +330,8 @@ export function ResultEntryForm({
     const response = await fetch(`/api/samples/${sampleId}/results`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ results: payload() }),
+      // `loadedAt`: the rendering these lines follow (`followServer`).
+      body: JSON.stringify({ results: payload(), loadedAt: laid.loadedAt }),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -348,7 +378,8 @@ export function ResultEntryForm({
       );
       const data = await response.json();
       if (!response.ok) {
-        refused(response.status, data.error ?? "Impossible de soumettre les résultats.");
+        // The save above went through: only the submission is refused.
+        refused(response.status, data.error ?? "Impossible de soumettre les résultats.", true);
         return;
       }
       router.refresh();
@@ -417,6 +448,10 @@ export function ResultEntryForm({
                 </div>
                 {line.methodNote && (
                   <p className="mt-1 text-xs text-slate-500">Méthode : {line.methodNote}</p>
+                )}
+                {/* D-09 at the bench: who typed the stored reading, even after a take-over. */}
+                {authors.get(line.parameterId) && (
+                  <p className="mt-1 text-xs text-slate-500">{authors.get(line.parameterId)}</p>
                 )}
 
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
@@ -577,12 +612,34 @@ export function ResultEntryForm({
         </ul>
 
         {error && (
-          <p
+          <div
             role="alert"
             className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
           >
-            {error}
-          </p>
+            <p>{error}</p>
+            {revoked !== null && (
+              <>
+                <p className="mt-1">
+                  {revoked.saved
+                    ? `Vos résultats ont été enregistrés à votre nom, mais l'échantillon n'a pas été soumis : ${revoked.holder} le termine. Rechargez la fiche.`
+                    : "Rien n'a été enregistré : votre saisie reste affichée ci-dessus. Notez-la pour la transmettre, puis rechargez la fiche."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // The page re-renders read-only when the sample is a
+                    // colleague's; otherwise the sheet is open again.
+                    setRevoked(null);
+                    setError("");
+                    router.refresh();
+                  }}
+                  className="mt-2 rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+                >
+                  Recharger la fiche
+                </button>
+              </>
+            )}
+          </div>
         )}
         {notice && (
           <p
@@ -598,7 +655,7 @@ export function ResultEntryForm({
             <PrimaryButton
               type="button"
               onClick={handleSubmit}
-              disabled={!!busy || !allComplete || !!submitBlocked}
+              disabled={!!busy || revoked !== null || !allComplete || !!submitBlocked}
               className="sm:flex-1"
               title={
                 submitBlocked
@@ -613,7 +670,7 @@ export function ResultEntryForm({
                 ? "Soumission…"
                 : "Soumettre à la validation"}
             </PrimaryButton>
-            <SecondaryButton type="button" onClick={handleSave} disabled={!!busy}>
+            <SecondaryButton type="button" onClick={handleSave} disabled={!!busy || revoked !== null}>
               <Save className="h-4 w-4" aria-hidden="true" />
               {busy === "save" ? "Enregistrement…" : "Enregistrer"}
             </SecondaryButton>

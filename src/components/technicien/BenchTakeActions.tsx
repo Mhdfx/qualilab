@@ -2,12 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Hand, Inbox } from "lucide-react";
+import { Hand, Inbox, UserRoundCog } from "lucide-react";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
+import { takeOverConfirmation } from "@/lib/take-over";
 
 /**
- * « Prendre en charge » and « Libérer » at the bench — the « prise en charge
- * libre » of 13/10 (PROGRAMME.md §10.2, §10.3).
+ * « Prendre en charge », « Libérer » and « Reprendre » at the bench — the
+ * « prise en charge libre » of 13/10 (PROGRAMME.md §10.2, §10.3) and the
+ * take-over of a colleague's sample (re-ask 2.13, C3).
  *
  * Two small client islands, so the bench lists and the sheet stay server
  * components. The server decides everything (`POST` / `DELETE
@@ -21,9 +23,12 @@ const NETWORK_ERROR = "Une erreur réseau est survenue. Réessayez.";
 /** The keyboard ring of the brand, added to the shared buttons. */
 const FOCUS_RING = "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2";
 
-/** The answer of the take route, its French message when it refused. */
-async function callTake(sampleId: string, method: "POST" | "DELETE") {
-  const response = await fetch(`/api/samples/${sampleId}/take`, { method });
+/** The answer of the take route, its French message when it refused. `body`: the take-over's holder. */
+async function callTake(sampleId: string, method: "POST" | "DELETE" | "PATCH", body?: { holderId: string }) {
+  const response = await fetch(
+    `/api/samples/${sampleId}/take`,
+    body ? { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : { method }
+  );
   const data: unknown = await response.json().catch(() => null);
   const error =
     data && typeof data === "object" && "error" in data && typeof data.error === "string" ? data.error : null;
@@ -158,6 +163,71 @@ export function ReleaseButton({ sampleId, className = "" }: { sampleId: string; 
       >
         <Inbox className="h-4 w-4" aria-hidden="true" />
         {busy ? "Libération…" : "Libérer"}
+      </SecondaryButton>
+      <ActionError message={error} />
+    </div>
+  );
+}
+
+/**
+ * « Reprendre cet échantillon » — a colleague's sample (re-ask 2.13, C3,
+ * behind `TAKE_OVER_COLLEAGUE`), after a confirmation that names the
+ * holder and says what stays: the readings already saved, each with its
+ * author; what they have not saved yet does not. The request names that
+ * holder (`holderId`): the server takes it from them only, so a colleague
+ * who took it over meanwhile is never the one replaced. Done, the sheet
+ * re-renders as mine; refused (it was submitted, released, taken over
+ * meanwhile), the reason stays beside the button and the sheet re-renders
+ * with the real holder.
+ */
+export function TakeOverButton({
+  sampleId,
+  holderId,
+  holderName,
+  className = "",
+}: {
+  sampleId: string;
+  holderId: string;
+  holderName: string;
+  className?: string;
+}) {
+  const router = useRouter();
+  const [sending, setSending] = useState(false);
+  const [navigating, startNavigation] = useTransition();
+  const [error, setError] = useState("");
+  const busy = sending || navigating;
+
+  async function takeOver() {
+    if (busy) return;
+    if (!window.confirm(takeOverConfirmation(holderName))) return;
+    setSending(true);
+    setError("");
+    try {
+      const answer = await callTake(sampleId, "PATCH", { holderId });
+      if (!answer.ok) {
+        setError(answer.error ?? "Impossible de reprendre cet échantillon.");
+        if (isStale(answer.status)) startNavigation(() => router.refresh());
+        return;
+      }
+      startNavigation(() => router.refresh());
+    } catch {
+      setError(NETWORK_ERROR);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className={className}>
+      <SecondaryButton
+        type="button"
+        onClick={takeOver}
+        disabled={busy}
+        aria-busy={busy}
+        className={`w-full sm:w-auto ${FOCUS_RING}`}
+      >
+        <UserRoundCog className="h-4 w-4" aria-hidden="true" />
+        {busy ? "Reprise…" : "Reprendre cet échantillon"}
       </SecondaryButton>
       <ActionError message={error} />
     </div>

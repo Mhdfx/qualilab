@@ -31,9 +31,16 @@ export const RECEPTION_NON_CONFORMITY_SELECT = {
  * or « En attente de l'avis du client depuis le 10/10 14:05. ». One paragraph
  * for the programme sheet, the bench and the validation page, so the three
  * never word the reception's decision differently. Renders nothing for a
- * sample received conforme.
+ * sample received conforme. `blind` (a technician's bench, re-ask 2.15):
+ * the agreement is said without the client's person who gave it.
  */
-export function ReceptionNonConformity({ sample }: { sample: ReceptionNonConformityData }) {
+export function ReceptionNonConformity({
+  sample,
+  blind = false,
+}: {
+  sample: ReceptionNonConformityData;
+  blind?: boolean;
+}) {
   if (sample.conformity !== false) return null;
   const agreement = storedConsultation(sample);
   return (
@@ -44,7 +51,9 @@ export function ReceptionNonConformity({ sample }: { sample: ReceptionNonConform
         {sample.conformityReason ? ` — ${NON_CONFORMITY_REASON_LABELS[sample.conformityReason]}` : ""}.
         {sample.conformityNote && ` ${sample.conformityNote}`}
         {agreement ? (
-          <span className="mt-0.5 block">Analysé avec l&apos;{consultationText(agreement)}.</span>
+          <span className="mt-0.5 block">
+            {blind ? "Analysé avec l'accord du client." : <>Analysé avec l&apos;{consultationText(agreement)}.</>}
+          </span>
         ) : sample.awaitingClientSince ? (
           <span className="mt-0.5 block">
             En attente de l&apos;avis du client depuis le {formatDayTime(sample.awaitingClientSince)}.

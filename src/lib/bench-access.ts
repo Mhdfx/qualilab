@@ -1,6 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 import type { ResultWorkStatus, SampleStatus } from "@/generated/prisma/enums";
 import type { Role } from "./roles";
+import { BLIND_BENCH_SCREENS } from "./lab-proposals";
 
 /**
  * Who works a line at the bench — the « prise en charge libre » of 13/10
@@ -140,6 +141,51 @@ export function benchWhereFor(session: { id: string; role: Role }): Prisma.Sampl
   if (session.role !== "TECHNICIEN") return {};
   return {
     OR: [{ technicianId: session.id }, { parameters: { some: { technicianId: session.id } } }],
+  };
+}
+
+/**
+ * Does this viewer's bench hide the client (re-ask 2.15, Q55, plan C2)? A
+ * technician's screens — the bench lists, the sheet, the search — name
+ * neither the client nor the site, like the bench sheet (C1); every other
+ * role still reads them. `enabled` is the switch, passed by the tests.
+ */
+export function benchHidesClient(role: Role, enabled: boolean = BLIND_BENCH_SCREENS): boolean {
+  return enabled && role === "TECHNICIEN";
+}
+
+/**
+ * What a technician's « Recherche des analyses » may reach: the samples they
+ * hold (`benchWhereFor`); every other role, everything (undefined). On a
+ * blind bench (`benchHidesClient`) the free text must also match something
+ * the technician reads on the sheet — the numbers, the designation, the lot
+ * — never only the client's or the site's name, nor the client's place
+ * (`lieu`), which would tell them whose sample it is. Wrapped in AND by
+ * `searchSamples`, so it narrows the search's own text OR (client and site
+ * included) to these fields; a field added there and not here is simply not
+ * searched by the technician (fails closed).
+ */
+export function benchSearchScope(
+  session: { id: string; role: Role },
+  q: string | null,
+  enabled: boolean = BLIND_BENCH_SCREENS
+): Prisma.SampleWhereInput | undefined {
+  if (session.role !== "TECHNICIEN") return undefined;
+  if (!q || !benchHidesClient(session.role, enabled)) return benchWhereFor(session);
+  return {
+    AND: [
+      benchWhereFor(session),
+      {
+        OR: [
+          { code: { contains: q } },
+          { controlCode: { contains: q } },
+          { serialNumber: { contains: q } },
+          { serie: { serialNumber: { contains: q } } },
+          { produit: { contains: q } },
+          { numeroLot: { contains: q } },
+        ],
+      },
+    ],
   };
 }
 

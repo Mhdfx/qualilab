@@ -5,13 +5,15 @@ import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { VIEW_PARAM, parseView, viewHref } from "@/lib/dashboard-view";
 import { BENCH_VIEWS, benchViewWhere, type BenchView } from "@/lib/circuit-views";
-import { UNCLAIMED_WHERE, benchQueueWhereFor, takenByOthersWhere } from "@/lib/bench-access";
+import { UNCLAIMED_WHERE, benchHidesClient, benchQueueWhereFor, takenByOthersWhere } from "@/lib/bench-access";
+import { TAKE_OVER_COLLEAGUE } from "@/lib/lab-proposals";
 import { isCurrentSendBack, maySendBack, type SendBackState } from "@/lib/send-back";
 import { lastSubmissionsOf } from "@/lib/send-back-server";
+import { currentTakeOversOf } from "@/lib/take-over-server";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard, type StatAccent } from "@/components/ui/StatCard";
 import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
-import { WorkQueue } from "@/components/technicien/WorkQueue";
+import { WorkQueue, type WorkItem } from "@/components/technicien/WorkQueue";
 
 export const metadata = { title: "Saisie des résultats" };
 
@@ -77,8 +79,12 @@ const COLLEAGUES_EMPTY = {
   text: "Les échantillons que vos collègues ont pris en charge apparaîtront ici, en lecture seule.",
 };
 
-/** One row of every bench list (`WorkItem`): holder, time taken and legacy parameter technicians included. */
-const WORK_ITEM_SELECT = {
+/**
+ * One row of every bench list (`WorkItem`): holder, time taken and legacy
+ * parameter technicians included — without the client: a technician's blind
+ * bench (re-ask 2.15, `benchHidesClient`) never loads it.
+ */
+const BLIND_WORK_ITEM_SELECT = {
   id: true,
   code: true,
   controlCode: true,
@@ -106,10 +112,15 @@ const WORK_ITEM_SELECT = {
   technicianId: true,
   assignedAt: true,
   technician: { select: { name: true } },
-  client: { select: { name: true } },
   serie: { select: { serialNumber: true } },
   parameters: { select: { parameterId: true, technicianId: true, technician: { select: { name: true } } } },
   results: { select: { parameterId: true, value: true, workStatus: true, interpretation: true } },
+} as const satisfies Prisma.SampleSelect;
+
+/** The same row with its client: the admin's bench, or the technician's when the switch is off. */
+const WORK_ITEM_SELECT = {
+  ...BLIND_WORK_ITEM_SELECT,
+  client: { select: { name: true } },
 } as const satisfies Prisma.SampleSelect;
 
 /** The bench order: the urgent samples first, then the oldest receptions. */
@@ -124,6 +135,8 @@ export default async function TechnicienPage({
 }) {
   const session = await requireRole("TECHNICIEN", "ADMIN");
   const isTechnician = session.role === "TECHNICIEN";
+  // The technician's bench names no client (re-ask 2.15): not even loaded.
+  const blind = benchHidesClient(session.role);
   // A tile is a sort (« comme un tri »): `?vue=` narrows the page to exactly
   // the list that tile counts — one definition each, `circuit-views.ts`.
   const view = parseView((await searchParams)[VIEW_PARAM], BENCH_VIEWS);
@@ -135,9 +148,11 @@ export default async function TechnicienPage({
   // their colleagues' samples are listed read-only. The admin never takes:
   // they oversee « À prendre » and every taken sample, holder named.
   const count = (tile: BenchView) => prisma.sample.count({ where: benchViewWhere(tile, session) });
-  const list = (where: Prisma.SampleWhereInput, orderBy = BENCH_ORDER) =>
-    prisma.sample.findMany({ where, select: WORK_ITEM_SELECT, orderBy, take: LIST_LIMIT });
-  const none = Promise.resolve([]);
+  const list = (where: Prisma.SampleWhereInput, orderBy = BENCH_ORDER): Promise<Omit<WorkItem, "sentBack" | "takenOverAt">[]> =>
+    blind
+      ? prisma.sample.findMany({ where, select: BLIND_WORK_ITEM_SELECT, orderBy, take: LIST_LIMIT })
+      : prisma.sample.findMany({ where, select: WORK_ITEM_SELECT, orderBy, take: LIST_LIMIT });
+  const none: Promise<Omit<WorkItem, "sentBack" | "takenOverAt">[]> = Promise.resolve([]);
 
   // Every list and every count in one round of parallel queries. With a
   // view, the page is that one list; without, the three lists of the bench.
@@ -156,12 +171,20 @@ export default async function TechnicienPage({
   ]);
 
   // « Renvoyé » only while the send-back is unanswered (B2): one grouped
-  // read of the journal, for the few rows that may show it.
-  const submissions = await lastSubmissionsOf(
-    [...viewItems, ...free, ...held, ...colleagues].filter(maySendBack).map((item) => item.id)
-  );
+  // read of the journal, for the few rows that may show it. « Repris par B
+  // · <time> » (C3): a take-over never moves `assignedAt` (the start of the
+  // analyses), its journal row dates it.
+  const rows = [...viewItems, ...free, ...held, ...colleagues];
+  const [submissions, takeOvers] = await Promise.all([
+    lastSubmissionsOf(rows.filter(maySendBack).map((item) => item.id)),
+    currentTakeOversOf(rows),
+  ]);
   const withSendBack = <T extends SendBackState & { id: string }>(items: T[]) =>
-    items.map((item) => ({ ...item, sentBack: isCurrentSendBack(item, submissions.get(item.id) ?? null) }));
+    items.map((item) => ({
+      ...item,
+      sentBack: isCurrentSendBack(item, submissions.get(item.id) ?? null),
+      takenOverAt: takeOvers.get(item.id)?.at ?? null,
+    }));
 
   const values: Record<BenchView, number> = {
     a_prendre: toTake,
@@ -248,7 +271,11 @@ export default async function TechnicienPage({
               id="collegues"
               title="Pris par un collègue"
               count={colleagues.length}
-              description="En lecture seule : seul le technicien qui a pris un échantillon en saisit les résultats."
+              description={
+                TAKE_OVER_COLLEAGUE
+                  ? "En lecture seule : le technicien qui a pris un échantillon en saisit les résultats. Ouvrez-en un pour le reprendre si son titulaire ne peut pas le terminer."
+                  : "En lecture seule : seul le technicien qui a pris un échantillon en saisit les résultats."
+              }
               truncated={
                 colleagues.length === LIST_LIMIT ? `La liste est limitée aux ${LIST_LIMIT} premiers échantillons.` : null
               }

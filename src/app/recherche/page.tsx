@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { SAMPLE_STATUS_LABELS, SAMPLE_TYPE_LABELS, formatDate } from "@/lib/labels";
 import { UNDECLARED_SAMPLING, parseSampleSearch, searchQueryString, type Conclusion } from "@/lib/sample-search";
 import { searchSamples } from "@/lib/sample-search-server";
-import { benchWhereFor } from "@/lib/bench-access";
+import { benchHidesClient, benchSearchScope } from "@/lib/bench-access";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -42,7 +42,11 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
   const raw = await searchParams;
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(raw)) if (typeof v === "string") params.set(k, v);
-  const search = parseSampleSearch(params);
+  // A technician's search names no client nor site, and never filters or
+  // matches by them (re-ask 2.15, `benchHidesClient`).
+  const blind = benchHidesClient(session.role);
+  const parsed = parseSampleSearch(params);
+  const search = blind ? { ...parsed, clientId: null, siteId: null } : parsed;
   const page = Math.max(1, Number.parseInt(params.get("page") ?? "1", 10) || 1);
   const searched = [...params.keys()].some((k) => k !== "page");
 
@@ -50,13 +54,13 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
   // link of its fiche), so submitting the form again keeps it.
   const chosenClient = search.clientId ? [{ id: search.clientId }] : [];
   const [clientRows, sites, natures, result] = await Promise.all([
-    prisma.client.findMany({
+    blind ? [] : prisma.client.findMany({
       where: { OR: [{ archived: false }, ...chosenClient] },
       select: { id: true, name: true, archived: true },
       orderBy: { name: "asc" },
     }),
     // Every site of those clients, inactive ones included: old analyses were done there.
-    prisma.site.findMany({
+    blind ? [] : prisma.site.findMany({
       where: { OR: [{ client: { archived: false } }, ...chosenClient.map(({ id }) => ({ clientId: id }))] },
       select: { id: true, clientId: true, name: true, active: true },
       orderBy: [{ active: "desc" }, { name: "asc" }],
@@ -68,7 +72,10 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
       // A technician's search stays on the samples they hold — taken, or a
       // legacy parameter line of theirs (PROGRAMME.md §10) — like the
       // samples API; « À prendre » and colleagues' samples are the bench's.
-      scope: session.role === "TECHNICIEN" ? benchWhereFor(session) : undefined,
+      // Blind, its free text never matches the client or the site alone,
+      // and the client, the site and the place are not even loaded.
+      scope: benchSearchScope(session, search.q),
+      blind,
     }),
   ]);
   const clients = clientRows.map((c) => ({ id: c.id, name: c.archived ? `${c.name} (archivé)` : c.name }));
@@ -102,23 +109,25 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
       <PageHeader
         badge="Recherche"
         title="Recherche des analyses"
-        subtitle={`Les analyses terminées ou en cours, par client et site, période, catégorie, type d'analyse, état ou étape.${canExport ? " Exportez le résultat en Excel." : ""}`}
+        subtitle={`Les analyses terminées ou en cours, par ${blind ? "" : "client et site, "}période, catégorie, type d'analyse, état ou étape.${canExport ? " Exportez le résultat en Excel." : ""}`}
       />
 
       <Card className="p-5">
         <form method="GET" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="lg:col-span-2">
             <label htmlFor="q" className="block text-sm font-medium text-slate-700">Texte</label>
-            <input id="q" name="q" defaultValue={search.q ?? ""} placeholder="N° de contrôle, série, produit, lot, lieu, site…" className="input-field mt-1.5 px-3" />
+            <input id="q" name="q" defaultValue={search.q ?? ""} placeholder={blind ? "N° de contrôle, série, produit, lot…" : "N° de contrôle, série, produit, lot, lieu, site…"} className="input-field mt-1.5 px-3" />
           </div>
-          <ClientSiteFilter
-            // A new search (« Effacer », a bookmarked link) starts from the URL again.
-            key={`${search.clientId ?? ""}|${search.siteId ?? ""}`}
-            clients={clients}
-            sites={sites}
-            clientId={search.clientId}
-            siteId={search.siteId}
-          />
+          {!blind && (
+            <ClientSiteFilter
+              // A new search (« Effacer », a bookmarked link) starts from the URL again.
+              key={`${search.clientId ?? ""}|${search.siteId ?? ""}`}
+              clients={clients}
+              sites={sites}
+              clientId={search.clientId}
+              siteId={search.siteId}
+            />
+          )}
           <div>
             <label htmlFor="type" className="block text-sm font-medium text-slate-700">Catégorie</label>
             <select id="type" name="type" defaultValue={search.type ?? ""} className="input-field mt-1.5 px-3">
@@ -223,7 +232,7 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
                 <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                   <th className="pb-2 pr-3 font-medium">N°</th>
                   <th className="pb-2 pr-3 font-medium">Série</th>
-                  <th className="pb-2 pr-3 font-medium">Client</th>
+                  {!blind && <th className="pb-2 pr-3 font-medium">Client</th>}
                   <th className="pb-2 pr-3 font-medium">Produit</th>
                   <th className="pb-2 pr-3 font-medium">Analyse</th>
                   <th className="pb-2 pr-3 font-medium">Prélevé</th>
@@ -251,10 +260,12 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
                         )}
                       </td>
                       <td className="py-2.5 pr-3 font-mono text-slate-600">{row.serialNumber}</td>
-                      <td className="py-2.5 pr-3 text-slate-800">
-                        {row.clientName}
-                        {row.siteName && <span className="block text-xs text-slate-500">{row.siteName}</span>}
-                      </td>
+                      {!blind && (
+                        <td className="py-2.5 pr-3 text-slate-800">
+                          {row.clientName}
+                          {row.siteName && <span className="block text-xs text-slate-500">{row.siteName}</span>}
+                        </td>
+                      )}
                       <td className="py-2.5 pr-3 text-slate-800">
                         {row.produit ?? "—"}
                         {row.numeroLot && <span className="block text-xs text-slate-500">Lot {row.numeroLot}</span>}

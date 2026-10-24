@@ -48,7 +48,17 @@ export type WorkItem = {
   technicianId: string | null;
   assignedAt: Date | null;
   technician: { name: string } | null;
-  client: { name: string };
+  /**
+   * When the holder took it over from a colleague (« Reprendre », C3 —
+   * `currentTakeOversOf`), null when they took it from « À prendre »: a
+   * take-over never moves `assignedAt`, the start of the analyses.
+   */
+  takenOverAt: Date | null;
+  /**
+   * Absent on a technician's blind bench (re-ask 2.15, `benchHidesClient`):
+   * the list then names no client — neither on the série nor on the row.
+   */
+  client?: { name: string } | null;
   serie: { serialNumber: string };
   /** Each parameter with its own technician: set only on lines programmed before 13/10. */
   parameters: { parameterId: string; technicianId: string | null; technician: { name: string } | null }[];
@@ -80,8 +90,9 @@ const REFERENCE = "font-mono text-sm font-semibold text-slate-900";
 /**
  * Who holds a line, as the row says it (prise en charge libre,
  * PROGRAMME.md §10): « À prendre » while nobody does, else « Pris par X »
- * with the time it was taken — a line programmed before 13/10 may name
- * its parameter technicians and carry no time.
+ * with the time it was taken, or « Repris par X » with the time of the
+ * take-over (C3) — a line programmed before 13/10 may name its parameter
+ * technicians and carry no time.
  */
 function HolderChip({ item, free }: { item: WorkItem; free: boolean }) {
   // Free and off the bench (the admin's « Anomalies », « Résultats soumis »):
@@ -98,7 +109,11 @@ function HolderChip({ item, free }: { item: WorkItem; free: boolean }) {
   return (
     <span className={`${CHIP} bg-slate-100 text-slate-700 ring-slate-200`}>
       <UserCheck className="h-3 w-3" aria-hidden="true" />
-      {item.assignedAt ? `Pris par ${holder} · ${formatDateTime(item.assignedAt)}` : `Pris par ${holder}`}
+      {item.takenOverAt
+        ? `Repris par ${holder} · ${formatDateTime(item.takenOverAt)}`
+        : item.assignedAt
+          ? `Pris par ${holder} · ${formatDateTime(item.assignedAt)}`
+          : `Pris par ${holder}`}
     </span>
   );
 }
@@ -156,7 +171,7 @@ function RowDetails({
       <p className="mt-1.5 truncate font-semibold text-slate-800">
         {lineDesignation(item)}
         <span className="ml-1.5 font-normal text-slate-500">
-          · {item.client.name} · échantillon {sampleRef(item.lineNumber, item.code)}
+          {item.client ? `· ${item.client.name} ` : ""}· échantillon {sampleRef(item.lineNumber, item.code)}
         </span>
       </p>
       <p className="mt-0.5 text-sm text-slate-500">
@@ -188,6 +203,9 @@ function RowDetails({
  * A dashboard view (`?vue=`, « Anomalies », « Résultats soumis ») may bring
  * samples already off the bench: their sheet opens read-only
  * (« Consulter »), and `empty` says what an empty view means.
+ *
+ * A technician's blind bench (re-ask 2.15) loads no client: the série and
+ * the row then name none (`client` absent).
  *
  * Every part of a row opens its sheet. A row with nothing to press is one
  * link; a free row's link is its reference, stretched over the card, with
@@ -221,7 +239,7 @@ export function WorkQueue({
         <section key={group.serialNumber} aria-label={`Série ${group.serialNumber}`}>
           <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span className="font-mono text-sm font-bold text-brand">Série {group.serialNumber}</span>
-            <span className="text-sm font-medium text-slate-700">{group.clientName}</span>
+            {group.clientName && <span className="text-sm font-medium text-slate-700">{group.clientName}</span>}
             <span className="text-xs text-slate-500">
               {group.items.length} échantillon{group.items.length > 1 ? "s" : ""}
             </span>

@@ -95,6 +95,8 @@ const TECHNICIAN_WRITES = [
   "api/samples/[id]/results/submit/route.ts POST",
   "api/samples/[id]/take/route.ts POST",
   "api/samples/[id]/take/route.ts DELETE",
+  // « Reprendre » a colleague's sample (re-ask 2.13, C3 — `TAKE_OVER_COLLEAGUE`).
+  "api/samples/[id]/take/route.ts PATCH",
   // The temperature readings of the equipment (/technicien/temperatures).
   "api/temperatures/route.ts POST",
   // His own password, like every laboratory account (compte-guard.test.ts).

@@ -20,6 +20,7 @@ import {
 } from "@/lib/interpretation";
 import { NOT_DONE_MESSAGE, benchConformity, isNotDoneText, singleValueEntry, suggestConformity } from "@/lib/result-value";
 import { resultAuthor, storedReading, typedUnits } from "@/lib/result-author";
+import { SHEET_SAVED_BY_COLLEAGUE, savedByOthersSince, sheetLoadedAt } from "@/lib/take-over-sheet";
 import type { Interpretation, ResultWorkStatus } from "@/generated/prisma/enums";
 import { Prisma } from "@/generated/prisma/client";
 
@@ -148,7 +149,11 @@ export async function PUT(
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
 
-  const { results } = (body ?? {}) as { results?: unknown };
+  const { results, loadedAt: rawLoadedAt } = (body ?? {}) as { results?: unknown; loadedAt?: unknown };
+  // When the sheet was rendered: a colleague's reading saved since is never
+  // written over by it (re-ask 2.13, `SHEET_SAVED_BY_COLLEAGUE` below).
+  const loadedAt = sheetLoadedAt(rawLoadedAt);
+  if (loadedAt === "invalid") return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   if (!Array.isArray(results)) {
     return NextResponse.json(
       { error: "Aucun résultat à enregistrer." },
@@ -351,6 +356,7 @@ export async function PUT(
   type Written =
     | { kind: "stale" }
     | { kind: "programme" }
+    | { kind: "colleague" }
     | { kind: "held"; holderName: string | null }
     | {
         kind: "ok";
@@ -398,6 +404,13 @@ export async function PUT(
       !locked.parameterHolderIds.includes(session.id)
     ) {
       return { kind: "held", holderName: locked.holderName };
+    }
+    // The sheet was rendered before someone else saved on it (a take-over
+    // and back, C3; the admin standing in): its stale lines would erase
+    // their readings under this save's name. Refused; the sheet re-renders
+    // with their readings and keeps the typing (`followServer`).
+    if (loadedAt && (await tx.result.count({ where: savedByOthersSince(sample.id, loadedAt, session.id) })) > 0) {
+      return { kind: "colleague" };
     }
     // The first typed result of a technician on a free sample takes it — and
     // so does a save that rewrites readings already typed there (by the admin
@@ -508,6 +521,9 @@ export async function PUT(
   }
   if (written.kind === "programme") {
     return NextResponse.json({ error: PROGRAMME_CHANGED }, { status: 409 });
+  }
+  if (written.kind === "colleague") {
+    return NextResponse.json({ error: SHEET_SAVED_BY_COLLEAGUE }, { status: 409 });
   }
   if (written.kind === "held") {
     return NextResponse.json(

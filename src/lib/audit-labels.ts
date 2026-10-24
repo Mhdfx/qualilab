@@ -60,6 +60,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // reception's « Libérer » (SAMPLE_RELEASED).
   SAMPLE_TAKEN: "Échantillon pris en charge",
   SAMPLE_UNTAKEN: "Échantillon remis dans « À prendre »",
+  // « Reprendre » the sample a colleague holds (re-ask 2.13, C3).
+  SAMPLE_TAKEN_OVER: "Échantillon repris à un collègue",
   SAMPLE_ANALYSIS_STARTED: "Analyse démarrée",
   RESULTS_SAVED: "Résultats enregistrés",
   RESULTS_SUBMITTED: "Résultats soumis à validation",
