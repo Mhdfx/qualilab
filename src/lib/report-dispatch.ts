@@ -753,6 +753,13 @@ const globalForSends = globalThis as unknown as { reportSends?: SingleFlight };
 const reportSends = (globalForSends.reportSends ??= new SingleFlight());
 
 /**
+ * Where a send comes from: the sample's own buttons, or a série action
+ * (re-ask 2.16) — its number then rides on REPORT_SENT and
+ * CONTAMINATION_ALERT_SENT (`viaSerie`), as on the signatures.
+ */
+export type DispatchContext = { viaSerie?: string };
+
+/**
  * Sends the report to the client and marks the sample `RAPPORT_ENVOYE`.
  * Never automatic since 16/10 (Q92): the approval's « Valider et envoyer »,
  * then « Envoyer au client » / « Renvoyer au client » — which is why it is
@@ -763,15 +770,16 @@ const reportSends = (globalForSends.reportSends ??= new SingleFlight());
  * while the first is under way (two people, two tabs) is refused instead of
  * e-mailing the client twice (full-db recette 12/10).
  */
-export async function sendReport(sampleId: string, actorId: string | null) {
-  const flight = await reportSends.run(sampleId, () => sendReportNow(sampleId, actorId));
+export async function sendReport(sampleId: string, actorId: string | null, context: DispatchContext = {}) {
+  const flight = await reportSends.run(sampleId, () => sendReportNow(sampleId, actorId, context));
   if (!flight.ran) {
-    return { ok: false as const, error: "Un envoi de ce rapport est déjà en cours : il ne part qu'une fois." };
+    // `inFlight`: the other send carries on — a série's send sets this one aside.
+    return { ok: false as const, error: "Un envoi de ce rapport est déjà en cours : il ne part qu'une fois.", inFlight: true as const };
   }
   return flight.value;
 }
 
-async function sendReportNow(sampleId: string, actorId: string | null) {
+async function sendReportNow(sampleId: string, actorId: string | null, context: DispatchContext) {
   const sample = await prisma.sample.findUnique({
     where: { id: sampleId },
     select: {
@@ -936,6 +944,7 @@ async function sendReportNow(sampleId: string, actorId: string | null) {
       version: report.version,
       to,
       status: result.status,
+      ...(context.viaSerie ? { viaSerie: context.viaSerie } : {}),
     },
   });
 
@@ -981,7 +990,8 @@ async function alertsAlreadySent(sampleId: string) {
  */
 export async function sendContaminationAlerts(
   sampleId: string,
-  actorId: string | null
+  actorId: string | null,
+  context: DispatchContext = {}
 ) {
   const sample = await prisma.sample.findUnique({
     where: { id: sampleId },
@@ -1158,6 +1168,7 @@ export async function sendContaminationAlerts(
           // (`alert-log-samples.ts`).
           ...(result.logId ? { emailLogId: result.logId } : {}),
           ...(amendment ? { amendment: true } : {}),
+          ...(context.viaSerie ? { viaSerie: context.viaSerie } : {}),
         },
       });
     }

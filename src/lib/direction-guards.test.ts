@@ -90,6 +90,12 @@ const DIRECTION_ADMITTED = [
   "validation/[id]/page.tsx metadata",
   "validation/[id]/page.tsx page",
   "api/samples/[id]/validation/route.ts POST",
+  // « Toute la série » (re-ask 2.16, plan D3 + D4): the two signatures and
+  // the send of a whole série, each sample under its own rules.
+  "api/series/[id]/validation/route.ts GET",
+  "api/series/[id]/validation/route.ts POST",
+  "api/series/[id]/reports/route.ts GET",
+  "api/series/[id]/reports/send/route.ts POST",
   "recherche/layout.tsx layout",
   "recherche/page.tsx page",
   "api/samples/route.ts GET",
@@ -251,7 +257,9 @@ describe("the Direction's guards (12/10) — read from every page and route", ()
 });
 
 describe("the approval route lets the Direction sign step 2 — under the same rules", () => {
-  const route = readFileSync(fileURLToPath(new URL("../app/api/samples/[id]/validation/route.ts", import.meta.url)), "utf8");
+  // The signatures live in validation-server.ts since the série's validation
+  // (re-ask 2.16, plan D4): the sample's route and the série's both call them.
+  const route = readFileSync(fileURLToPath(new URL("./validation-server.ts", import.meta.url)), "utf8");
 
   it("decides the approval with canApprove and the signer's own id (two different people)", () => {
     expect(route).toMatch(/canApprove\(sample, session\.role, session\.id\)/);

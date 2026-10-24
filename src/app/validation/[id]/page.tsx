@@ -43,6 +43,9 @@ import { SampleTimelineCard } from "@/components/validation/SampleTimelineCard";
 import { EmailSendsCard } from "@/components/validation/EmailSendsCard";
 import { earlyAlertSendsOf } from "@/lib/alert-log-samples-server";
 import { withEarlyAlerts } from "@/lib/alert-log-samples";
+import { SERIES_VALIDATION } from "@/lib/lab-proposals";
+import { serieBatchCounts } from "@/lib/serie-validation";
+import { SerieBatchActions } from "@/components/validation/SerieBatchActions";
 
 /** The sends listed under « Envois » (newest first). */
 const SENDS_SHOWN = 20;
@@ -175,7 +178,7 @@ export default async function ValidationDetailPage({
 
   // « Réglementation en vigueur » (slice I): proposed from what is known,
   // confirmed or changed by the validator.
-  const [regulations, settings, signedProtocols, timeline, reportSends, earlyAlerts, held] = await Promise.all([
+  const [regulations, settings, signedProtocols, timeline, reportSends, earlyAlerts, held, serieSamples] = await Promise.all([
     prisma.regulation.findMany({ where: { active: true }, select: { id: true, title: true }, orderBy: [{ sortOrder: "asc" }, { title: "asc" }] }),
     getLabSettings(),
     // Whether the visit's signed protocol was photographed — counted, never
@@ -198,8 +201,25 @@ export default async function ValidationDetailPage({
     // The invoice holding the sample, if one does: « Annuler » and « Corriger
     // les analyses » say what happens to it (billable from the programme).
     heldInvoices([sample.id]),
+    // « Toute la série » (re-ask 2.16): the série's samples at each step, for
+    // its buttons' counts — the dialog reads the plan itself.
+    SERIES_VALIDATION
+      ? prisma.sample.findMany({
+          where: { serieId: sample.serieId },
+          select: {
+            status: true,
+            validatedById: true,
+            report: { select: { amendmentPending: true, number: true, version: true, sentAt: true, amendedAt: true } },
+          },
+        })
+      : Promise.resolve([]),
   ]);
   const heldInvoice = held.get(sample.id) ?? null;
+  const serieBatch = serieBatchCounts(
+    serieSamples.map((row) => ({ ...row, serie: { id: sample.serieId, serialNumber: sample.serie.serialNumber } })),
+    session
+  ).get(sample.serie.serialNumber);
+  const serieBatchShown = serieBatch !== undefined && serieBatch.validate + serieBatch.approve + serieBatch.send > 0;
   const sends = withEarlyAlerts(reportSends, earlyAlerts);
   const protocolPhotoHref = signedProtocols > 0 ? `/api/series/${sample.serieId}/protocol-photo` : null;
   const proposedRegulationId = proposeRegulation(
@@ -495,6 +515,25 @@ export default async function ValidationDetailPage({
             chosenRegulation={sample.regulation?.title ?? null}
             amendment={amendment}
           />
+          {/* « Toute la série (N) » (re-ask 2.16, Q92 « avoir les deux
+              options »): the same step for the série's other samples too. */}
+          {serieBatchShown && (
+            <Card className="p-5">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Toute la série {sample.serie.serialNumber}
+              </h2>
+              <p className="mt-1 mb-3 text-xs text-slate-500">
+                Chaque échantillon de la série passe par les mêmes règles que celui-ci ; la fenêtre liste d&apos;abord ceux qui
+                seront traités et ceux qui restent tels quels.
+              </p>
+              <SerieBatchActions
+                serieId={sample.serieId}
+                serialNumber={sample.serie.serialNumber}
+                counts={serieBatch}
+                layout="stack"
+              />
+            </Card>
+          )}
           {report && printedNumber && (
             <Card className="p-5">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">

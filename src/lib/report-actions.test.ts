@@ -101,11 +101,20 @@ describe("approvalDispatch — no automatic send (16/10, Q92)", () => {
 
   describe("POST /api/samples/[id]/validation, action « approve »", () => {
     const route = source("../app/api/samples/[id]/validation/route.ts");
-    const approve = route.slice(route.indexOf('if (action === "approve")'), route.indexOf('if (action === "reject")'));
+    const approveRoute = route.slice(route.indexOf('if (action === "approve")'), route.indexOf('if (action === "reject")'));
+    // The approval itself lives in validation-server.ts (re-ask 2.16, plan
+    // D4), shared with « toute la série »: `approveSample`.
+    const server = source("./validation-server.ts");
+    const approve = server.slice(server.indexOf("export async function approveSample("), server.indexOf("export type ReportSendOutcome"));
 
     it("reads `send` through approvalDispatch, before the approval is written", () => {
-      expect(approve).toMatch(/const plan = approvalDispatch\(body\)/);
-      expect(approve.indexOf("approvalDispatch(body)")).toBeLessThan(approve.indexOf("prisma.sample.updateMany"));
+      expect(approveRoute).toMatch(/const plan = approvalDispatch\(body\)/);
+      expect(approveRoute.indexOf("approvalDispatch(body)")).toBeLessThan(approveRoute.indexOf("approveSample("));
+      expect(approve).toMatch(/prisma\.sample\.updateMany/);
+      // The série's approval reads it the same way, once for all its samples.
+      const serie = source("../app/api/series/[id]/validation/route.ts");
+      expect(serie.indexOf("approvalDispatch(body)")).toBeGreaterThan(0);
+      expect(serie.indexOf("approvalDispatch(body)")).toBeLessThan(serie.indexOf("runSerieValidation("));
     });
 
     it("sends the report only inside `if (plan.sendReport)`, the alerts outside it", () => {
@@ -119,10 +128,11 @@ describe("approvalDispatch — no automatic send (16/10, Q92)", () => {
         if (approve[end] === "}" && --depth === 0) break;
       }
       const gated = approve.slice(gate, end + 1);
-      expect(gated).toMatch(/sendReport\(sample\.id, session\.id\)/);
+      // `context`: the série's number when signed « toute la série » (re-ask 2.16).
+      expect(gated).toMatch(/sendReport\(sample\.id, session\.id, context\)/);
       expect(gated).not.toMatch(/sendContaminationAlerts/);
       expect([...approve.matchAll(/\bsendReport\(/g)]).toHaveLength(1);
-      expect(approve.slice(end)).toMatch(/sendContaminationAlerts\(sample\.id, session\.id\)/);
+      expect(approve.slice(end)).toMatch(/sendContaminationAlerts\(sample\.id, session\.id, context\)/);
     });
 
     it("journals which of the two buttons was used", () => {

@@ -13,6 +13,8 @@ import {
   type ValidationView,
 } from "@/lib/circuit-views";
 import { rechercheHref } from "@/lib/sample-search";
+import { SERIES_VALIDATION } from "@/lib/lab-proposals";
+import { serieBatchCounts, serieViewActions } from "@/lib/serie-validation";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
@@ -62,7 +64,8 @@ const ITEM_SELECT = {
   dueAt: true,
   receivedAt: true,
   client: { select: { name: true } },
-  serie: { select: { serialNumber: true } },
+  // `id`: the série's own actions (« toute la série », re-ask 2.16).
+  serie: { select: { id: true, serialNumber: true } },
   // « Analysé par »: who took it at the bench, then the technicians a
   // legacy programme handed parameters to (only those rows are read).
   technician: { select: { name: true } },
@@ -75,13 +78,25 @@ const ITEM_SELECT = {
   report: { select: { amendmentPending: true } },
 } satisfies Prisma.SampleSelect;
 
+/**
+ * A sample of a série shown, as the série buttons count it
+ * (`serieBatchCounts`): its report's number, version and sends say whether
+ * « Envoyer la série » takes it (`serieSendRefusal`, re-ask 2.16).
+ */
+const SERIE_COUNT_SELECT = {
+  status: true,
+  validatedById: true,
+  serie: { select: { id: true, serialNumber: true } },
+  report: { select: { amendmentPending: true, number: true, version: true, sentAt: true, amendedAt: true } },
+} satisfies Prisma.SampleSelect;
+
 export default async function ValidationPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   // Belt and braces with the layout guard: a page must be safe on its own.
-  await requireRole("VALIDATEUR", "DIRECTION", "ADMIN");
+  const session = await requireRole("VALIDATEUR", "DIRECTION", "ADMIN");
   // A tile is a sort (« comme un tri »): `?vue=` narrows the queue below to
   // exactly what that tile counts (`inValidationView`, one rule for both).
   const view = parseView((await searchParams)[VIEW_PARAM], VALIDATION_VIEWS);
@@ -114,6 +129,20 @@ export default async function ValidationPage({
   const toValidate = items.filter((item) => inValidationView("a_valider", item)).length;
   const awaitingAdmin = items.filter((item) => inValidationView("attente_admin", item)).length;
   const shown = view === "a_envoyer" ? (toSend ?? []) : view ? items.filter((item) => inValidationView(view, item)) : items;
+  // « Toute la série » (re-ask 2.16, `SERIES_VALIDATION`): per série shown,
+  // what its buttons would take for this person — counted over the whole
+  // série, as the dialog's plan reads it (« à envoyer » shows a page of
+  // lines, which may hold part of a série only), with the actions of the
+  // view's own step (`serieViewActions`).
+  const serieIds = [...new Set(shown.map((item) => item.serie.id))];
+  const serieRows =
+    SERIES_VALIDATION && serieIds.length > 0
+      ? await prisma.sample.findMany({
+          where: { serieId: { in: serieIds }, status: { in: ["RESULTATS_SAISIS", TO_SEND_STATUS] } },
+          select: SERIE_COUNT_SELECT,
+        })
+      : [];
+  const serieActions = SERIES_VALIDATION ? serieBatchCounts(serieRows, session, serieViewActions(view)) : null;
 
   return (
     <div>
@@ -177,7 +206,7 @@ export default async function ValidationPage({
         {view && (
           <ViewFilterNotice label={VALIDATION_VIEWS[view]} resetHref={viewHref(PATH, null, ANCHOR)} className="mb-3" />
         )}
-        <ValidationQueue items={shown} empty={view ? EMPTY[view] : undefined} now={now} />
+        <ValidationQueue items={shown} empty={view ? EMPTY[view] : undefined} now={now} serieActions={serieActions} />
         {view === "a_envoyer" && toSendCount > shown.length && (
           <p className="mt-4 text-sm text-slate-600">
             Les {TO_SEND_PAGE_SIZE} qui attendent depuis le plus longtemps sont affichés.{" "}

@@ -7,11 +7,13 @@ import { formatDate } from "@/lib/labels";
 import { labReference } from "@/lib/sample-select";
 import { approvalState, APPROVAL_LABELS } from "@/lib/sample-status";
 import { groupBySerie } from "@/lib/serie-groups";
+import type { SerieBatchCounts } from "@/lib/serie-validation";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { Card } from "@/components/ui/Card";
 import { TypeBadge } from "@/components/ui/TypeBadge";
+import { SerieBatchActions } from "./SerieBatchActions";
 
 export type ValidationItem = {
   id: string;
@@ -57,17 +59,21 @@ const DEFAULT_EMPTY = {
  * Samples whose results are submitted and awaiting one of the two approvals —
  * or, in the view « Validés — à envoyer » (16/10, Q92), approved and waiting
  * for « Envoyer au client » — grouped by série. `empty` says what an empty
- * dashboard view (`?vue=`) means.
+ * dashboard view (`?vue=`) means. `serieActions` (re-ask 2.16, switch
+ * `SERIES_VALIDATION`): each group's « toute la série » buttons.
  */
 export function ValidationQueue({
   items,
   empty = DEFAULT_EMPTY,
   now,
+  serieActions = null,
 }: {
   items: ValidationItem[];
   empty?: { title: string; text: string };
   /** The page's clock, for « En retard » on a report not sent past its promised date. */
   now?: Date;
+  /** Per série number, what « Valider / Envoyer la série » would take (`serieBatchCounts`); null: switched off. */
+  serieActions?: Map<string, SerieBatchCounts> | null;
 }) {
   if (items.length === 0) {
     return (
@@ -83,111 +89,120 @@ export function ValidationQueue({
 
   return (
     <div className="space-y-5">
-      {groupBySerie(items).map((group) => (
-        <section key={group.serialNumber} aria-label={`Série ${group.serialNumber}`}>
-          <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="font-mono text-sm font-bold text-brand">Série {group.serialNumber}</span>
-            <span className="text-sm font-medium text-slate-700">{group.clientName}</span>
-            <span className="text-xs text-slate-500">
-              {group.items.length} échantillon{group.items.length > 1 ? "s" : ""}
-            </span>
-          </div>
-          <ul className="space-y-3">
-            {group.items.map((item) => {
-              const state = approvalState(item);
-              const approved = state === "APPROVED";
-              const nonConformes = item.results.filter((r) => r.conform === false).length;
-              const anomalies = item.results.filter((r) => r.workStatus === "ANOMALIE").length;
-              // « Analysé par »: the taker, then any legacy parameter technician.
-              const analysedBy = reportTechnicianNames({ technician: item.technician, parameters: item.parameters ?? [] });
-              // Validated, not sent, past the promised date (16/10, Q92: nothing leaves on its own).
-              const late = now !== undefined && item.status !== undefined && isSendLate({ dueAt: item.dueAt ?? null, status: item.status }, now);
+      {groupBySerie(items).map((group) => {
+        const batch = serieActions?.get(group.serialNumber);
+        return (
+          <section key={group.serialNumber} aria-label={`Série ${group.serialNumber}`}>
+            <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="font-mono text-sm font-bold text-brand">Série {group.serialNumber}</span>
+              <span className="text-sm font-medium text-slate-700">{group.clientName}</span>
+              <span className="text-xs text-slate-500">
+                {group.items.length} échantillon{group.items.length > 1 ? "s" : ""}
+              </span>
+              {batch && batch.validate + batch.approve + batch.send > 0 && (
+                // A block: the buttons, and the dialog once opened, never inside phrasing content.
+                <div className="self-center sm:ml-auto">
+                  <SerieBatchActions serieId={batch.serieId} serialNumber={group.serialNumber} counts={batch} />
+                </div>
+              )}
+            </div>
+            <ul className="space-y-3">
+              {group.items.map((item) => {
+                const state = approvalState(item);
+                const approved = state === "APPROVED";
+                const nonConformes = item.results.filter((r) => r.conform === false).length;
+                const anomalies = item.results.filter((r) => r.workStatus === "ANOMALIE").length;
+                // « Analysé par »: the taker, then any legacy parameter technician.
+                const analysedBy = reportTechnicianNames({ technician: item.technician, parameters: item.parameters ?? [] });
+                // Validated, not sent, past the promised date (16/10, Q92: nothing leaves on its own).
+                const late = now !== undefined && item.status !== undefined && isSendLate({ dueAt: item.dueAt ?? null, status: item.status }, now);
 
-              return (
-                <li key={item.id}>
-                  <Link
-                    href={`/validation/${item.id}`}
-                    className="group block rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-sm font-semibold text-slate-900">
-                            {labReference(item)}
-                          </span>
-                          <TypeBadge type={item.type} />
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${
-                              approved
-                                ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                return (
+                  <li key={item.id}>
+                    <Link
+                      href={`/validation/${item.id}`}
+                      className="group block rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-sm font-semibold text-slate-900">
+                              {labReference(item)}
+                            </span>
+                            <TypeBadge type={item.type} />
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${
+                                approved
+                                  ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                                  : state === "AWAITING_ADMIN"
+                                    ? "bg-violet-50 text-violet-700 ring-violet-200"
+                                    : "bg-amber-50 text-amber-700 ring-amber-200"
+                              }`}
+                            >
+                              {approved ? (
+                                <Send className="h-3 w-3" aria-hidden="true" />
+                              ) : (
+                                <Clock className="h-3 w-3" aria-hidden="true" />
+                              )}
+                              {approved
+                                ? "Validé — rapport à envoyer"
                                 : state === "AWAITING_ADMIN"
-                                  ? "bg-violet-50 text-violet-700 ring-violet-200"
-                                  : "bg-amber-50 text-amber-700 ring-amber-200"
-                            }`}
-                          >
-                            {approved ? (
-                              <Send className="h-3 w-3" aria-hidden="true" />
-                            ) : (
-                              <Clock className="h-3 w-3" aria-hidden="true" />
+                                  ? "Validé techniquement — attente de la validation administrative"
+                                  : "À valider"}
+                            </span>
+                            {late && item.dueAt && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
+                                <Clock className="h-3 w-3" aria-hidden="true" />
+                                En retard — promis le {formatDate(item.dueAt)}
+                              </span>
                             )}
-                            {approved
-                              ? "Validé — rapport à envoyer"
-                              : state === "AWAITING_ADMIN"
-                                ? "Validé techniquement — attente de la validation administrative"
-                                : "À valider"}
-                          </span>
-                          {late && item.dueAt && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
-                              <Clock className="h-3 w-3" aria-hidden="true" />
-                              En retard — promis le {formatDate(item.dueAt)}
+                            {item.report?.amendmentPending && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
+                                <PencilLine className="h-3 w-3" aria-hidden="true" />
+                                Amendement
+                              </span>
+                            )}
+                            {nonConformes > 0 && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
+                                <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                                {nonConformes} non conforme{nonConformes > 1 ? "s" : ""}
+                              </span>
+                            )}
+                            {anomalies > 0 && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
+                                {anomalies} anomalie{anomalies > 1 ? "s" : ""}
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="mt-1.5 truncate font-semibold text-slate-800">
+                            {lineDesignation(item)}
+                            <span className="ml-1.5 font-normal text-slate-500">
+                              · {item.client.name} · échantillon {sampleRef(item.lineNumber, item.code)}
                             </span>
-                          )}
-                          {item.report?.amendmentPending && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
-                              <PencilLine className="h-3 w-3" aria-hidden="true" />
-                              Amendement
-                            </span>
-                          )}
-                          {nonConformes > 0 && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
-                              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-                              {nonConformes} non conforme{nonConformes > 1 ? "s" : ""}
-                            </span>
-                          )}
-                          {anomalies > 0 && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
-                              {anomalies} anomalie{anomalies > 1 ? "s" : ""}
-                            </span>
-                          )}
+                          </p>
+                          <p className="mt-0.5 text-sm text-slate-500">
+                            {item.results.length} résultat{item.results.length > 1 ? "s" : ""}
+                            {analysedBy ? ` · analysé par ${analysedBy}` : ""} · reçu le{" "}
+                            {item.receivedAt ? formatDate(item.receivedAt) : "—"}
+                            {approved && item.approvedAt ? ` · validé le ${formatDate(item.approvedAt)}` : ""}
+                          </p>
                         </div>
 
-                        <p className="mt-1.5 truncate font-semibold text-slate-800">
-                          {lineDesignation(item)}
-                          <span className="ml-1.5 font-normal text-slate-500">
-                            · {item.client.name} · échantillon {sampleRef(item.lineNumber, item.code)}
-                          </span>
-                        </p>
-                        <p className="mt-0.5 text-sm text-slate-500">
-                          {item.results.length} résultat{item.results.length > 1 ? "s" : ""}
-                          {analysedBy ? ` · analysé par ${analysedBy}` : ""} · reçu le{" "}
-                          {item.receivedAt ? formatDate(item.receivedAt) : "—"}
-                          {approved && item.approvedAt ? ` · validé le ${formatDate(item.approvedAt)}` : ""}
-                        </p>
+                        <span className="inline-flex shrink-0 items-center gap-1.5 self-center rounded-xl bg-brand-light px-3 py-2 text-sm font-semibold text-brand transition-colors group-hover:bg-brand group-hover:text-white">
+                          {approved ? "Ouvrir" : "Contrôler"}
+                          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                        </span>
                       </div>
-
-                      <span className="inline-flex shrink-0 items-center gap-1.5 self-center rounded-xl bg-brand-light px-3 py-2 text-sm font-semibold text-brand transition-colors group-hover:bg-brand group-hover:text-white">
-                        {approved ? "Ouvrir" : "Contrôler"}
-                        <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                      </span>
-                    </div>
-                    <p className="mt-2 text-xs text-slate-400">{APPROVAL_LABELS[state]}</p>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ))}
+                      <p className="mt-2 text-xs text-slate-400">{APPROVAL_LABELS[state]}</p>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
     </div>
   );
 }

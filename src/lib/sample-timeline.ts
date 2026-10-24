@@ -315,13 +315,16 @@ export function sampleTimeline(sample: TimelineSample, rows: readonly TimelineAu
     const spec = TIMELINE_ACTIONS[row.action];
     if (!spec) continue;
     const meta = parseMeta(row.metadata);
+    const note = spec.note ? spec.note(meta) : null;
+    // Signed or sent by a « toute la série » action (re-ask 2.16): said on the step.
+    const serie = text(meta.viaSerie);
     items.push({
       key: `audit-${row.id}`,
       kind: row.action,
       at: row.createdAt,
       label: typeof spec.label === "function" ? spec.label(meta) : spec.label,
       actor: row.actor?.name ?? null,
-      note: spec.note ? spec.note(meta) : null,
+      note: serie ? (note ? `${note} (toute la série ${serie})` : `Toute la série ${serie}`) : note,
       tone: typeof spec.tone === "function" ? spec.tone(meta) : spec.tone,
     });
   }
