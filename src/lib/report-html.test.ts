@@ -974,7 +974,8 @@ describe("frozenVersionInForce — the current version rendered first from its f
 
   it("is the path of every print of the current version (`loadReportData`), the live data only after it", () => {
     // Read from the source: report-dispatch.ts imports the database client.
-    const source = readFileSync(new URL("./report-dispatch.ts", import.meta.url), "utf8");
+    // Line ends normalised: a Windows checkout (core.autocrlf) holds CRLF.
+    const source = readFileSync(new URL("./report-dispatch.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
     const fn = (name: string) => {
       const start = source.indexOf(name);
       expect(start, name).toBeGreaterThan(0);
