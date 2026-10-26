@@ -40,7 +40,7 @@
 > `.ui-tests/v20-prix-prod.mjs` **57/57** + a JSON sweep of every route the
 > excluded roles reach — no money key).
 >
-> Last updated: **2026-10-24** (24/10: lot 2E committed and pushed, not
+> Last updated: **2026-10-26** (26/10: prices and invoices by role deployed — `e8cbfe1`, recette 57/57; the owner's decisions before the laboratory's trials — trial data and FAC / RAP counters reset before the go-live, Achat & Stock shown, `direction1` to create; 24/10: lot 2E deployed — `1b01a85`, recette 81/81 — after being committed and pushed, not
 > deployed — above; 23/10: F3 and D-19 on production; 21/10: the open debts closed before the
 > deploy — the go-live blocker (money's thousands separator), D-09, D-19's
 > concurrent edit, the server's idle bound (Q82), B2, the early alerts, the
