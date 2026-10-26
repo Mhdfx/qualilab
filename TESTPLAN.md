@@ -1168,7 +1168,7 @@ Built 21/10 on branch `lot2-retour-16-10`, on top of `d4bff04`, committed and pu
 - [ ] Still six migrations applied (none added on 21/10); the laboratory told to reload every tab (the 35-minute bound).
 - [ ] Then the production lines of V18-A to V18-H above, on « TEST UI » data only.
 
-## Checkpoint V20 — Prix et factures par profil (la règle du propriétaire, 24–25/10) — built locally 25/10, integrated 26/10, committed, **not deployed**
+## Checkpoint V20 — Prix et factures par profil (la règle du propriétaire, 24–25/10) — built locally 25/10, integrated 26/10, **deployed 26/10 (`e8cbfe1`), production 57/57**
 
 Prices, amounts, invoices and billing status for COMPTABLE, ADMIN, DIRECTION, GESTIONNAIRE only; the réception keeps the counter's advance (`src/lib/price-access.ts`, `HANDOFF.md` §3 « Prices and invoices »). Committed on `lot2-retour-16-10` on top of `1b01a85`: `fee0b1d` (code + tests), `22fbc53` (the CRLF-only test of HANDOFF §9), then the documents; **no migration**. Covered by vitest (`price-access-guards.test.ts`, `price-access.test.ts`, `price-access-routes.test.ts`, `price-access-clients-routes.test.ts`, `serie-document-advance.test.ts`, `programme-referential-prices.test.ts`).
 
@@ -1188,13 +1188,13 @@ Local (26/10, by `v20-prix-local.mjs`):
 - [x] No regression: `compta1` invoice list, sheet (450,00 HT / 540,00 TTC), PDF, a payment of 100,00 recorded (« 440,00 » left) then removed with a reason, the invoice cancelled; `commercial1` dashboard (« Factures émises »), client sheet with the invoice and its figures, invoice PDF, `/api/lab-services`; `admin` /admin/factures and /admin/catalogue; `recep1` deposit with an advance. Credit notes: v17 (H4) 78/78 on the same tree.
 - [x] `magasin1`: « Factures fournisseurs » still in his menu (pinned — the owner's decision, HANDOFF §3).
 
-Production (after the deploy — owner's rule of 21/10; « TEST UI » data only, every role signed in by its demo account, nothing typed as a password):
-- [ ] `param1` on a programmed « TEST UI » sample: no section 7, no price, no « facturation »; devtools: `"prices":{}` in the page and in `GET …/programme`.
-- [ ] A « TEST UI » sample on an issued test invoice: `param1`'s sheet foot and « Corriger les analyses » without the number; `valid1` « Annuler » « Déjà facturé : la comptabilité établira un avoir. » (closed unsaved); `admin` reads the number. Then the test invoice cancelled with a motif.
-- [ ] A « TEST UI » deposit with an advance: `recep1` and `admin` print « Avance : … — Espèces »; `valid1` prints it empty. Then the deposit cancelled.
-- [ ] `pre1`, `recep1`, `tech1`, `valid1`, `param1`: no menu entry towards the billing spaces; /comptabilite and /commercial redirect; `/api/invoices` and `/api/lab-services` 403.
-- [ ] No regression: `compta1` invoices and PDF; `commercial1` client sheet with its invoices.
-- [ ] The owner's two answers written in HANDOFF §3 (supplier invoices of the MAGASINIER; DIRECTION's invoice screens) — before or with the deploy.
+Production (26/10 ~02:25 server time, after the deploy of `e8cbfe1` — owner's rule of 21/10; « TEST UI » data only, every role signed in by clicking its demo account, nothing typed as a password; `.ui-tests/v20-prix-prod.mjs` **57/57**, screenshots and PDFs in `backups/recette-prod-v20/`; then `.ui-tests/v20-prix-sweep-prod.mjs`: 61 JSON answers of every GET route the six accounts reach walked for money keys — none, the only hits were `total` counts of samples):
+- [x] `param1` on a programmed « TEST UI » sample: no section 7, no « Prix catalogue », no DH amount, no « La facturation se prépare »; no `unitPrice` and no loaded price in the page's payload; `GET …/programme` `"prices":{}`; `tech1` 403; `admin` gets the prices (347 parameters) and section 7.
+- [ ] **Not run on production on purpose:** an issued test invoice would use a real FAC number. Covered locally (`v20-prix-local.mjs` E/F) and by `price-access-routes.test.ts`. A « TEST UI » sample on an issued test invoice: `param1`'s sheet foot and « Corriger les analyses » without the number; `valid1` « Annuler » « Déjà facturé : la comptabilité établira un avoir. » (closed unsaved); `admin` reads the number. Then the test invoice cancelled with a motif.
+- [x] A « TEST UI » deposit with an advance (série 49/26, 300 DH Espèces, typed by `recep1` — the answer carries no advance): `recep1`, `admin` and `commercial1` print « Avance : 300,00 DH — Espèces »; `valid1` prints it empty; `GET /api/series/[id]` carries no advance; the deposit's sample then cancelled by `admin` (motif « Autre »). `recep1`'s deposit form shows « Avance encaissée (DH) » + « Mode de paiement ». (COMPTABLE opens no bon — the route never admitted it, unchanged.)
+- [x] `pre1`, `recep1`, `param1`, `tech1`, `valid1`, `magasin1`: their pages show no DH amount, no FAC/AV number, no price wording; no menu entry towards the billing spaces; the five billing pages redirect; `/api/invoices`, `/api/invoices/stats`, `/api/invoices/export`, `/api/lab-services` 403; `GET /api/clients?q=` without `billedFor` (pre1, recep1, valid1).
+- [x] No regression: `compta1` invoice list with amounts and `/api/invoices`; `commercial1` dashboard « Factures émises » and `/api/lab-services` with prices; `admin` `/admin/catalogue` and `/admin/factures`; `billedFor` for commercial1, compta1, admin. `magasin1` keeps « Factures fournisseurs ».
+- [x] The owner's two answers written in HANDOFF §3 (26/10: the MAGASINIER keeps the supplier invoices; DIRECTION unchanged).
 
 
 ## Checkpoint V19 — Lot 2E (propositions 2.13 / 2.15 / 2.16 de la relance, numéros de rapport, scission des familles, lignes supprimées de l'ancien logiciel) — built and tested locally 23–24/10, committed, **not deployed**
