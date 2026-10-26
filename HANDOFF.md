@@ -520,6 +520,13 @@ from what the server loads and answers, never only hidden:
   but was **not** given new invoice screens (it still opens none; nobody
   asked for one — a read-only GET access is the change if the owner ever
   wants it).
+- **Owner's decisions, 26/10, before the laboratory tests on production:**
+  the laboratory tests freely on the server; **before the real go-live,
+  after a dump, the trial data is purged and the FAC and RAP counters are
+  reset** (the numbers drawn during the trials do not count — a go-live
+  operation to prepare, run only on the owner's go of that day); **the Achat
+  & Stock module is shown to the laboratory** (`magasin1` stays on the demo
+  panel — the « deployed hidden » guard of §8 2026-08-27 is lifted).
 - **Owner's answer, 26/10: the stock module's supplier invoices stay the
   MAGASINIER's** (« Garder au magasinier »: amounts, numbers, paid / to pay,
   the « Factures fournisseurs » menu, `/api/purchase-invoices`, the
