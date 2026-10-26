@@ -257,10 +257,17 @@ Sections, dans l'ordre :
    l'identification, et l'annulation selon l'étape (`programmeVerbsNote`,
    `cancellersLabel` — la réception et l'administrateur avant le programme,
    la validation, la Direction et l'administrateur ensuite).
-7. **Facturation** — lignes qui seront proposées au comptable : chaque
-   analyse programmée avec son prix du catalogue (`LabService` apparié par
-   nom de paramètre comme le fait `/api/clients/[id]/billable`), « prix à
-   saisir » sinon ; note pour le comptable (dans `programmeNote`).
+7. **Facturation** — pour l'administrateur seulement depuis le 25/10 (règle
+   du propriétaire : le responsable des paramètres ne voit aucun prix ni
+   aucune facture — `seesBilling`, `src/lib/price-access.ts`, HANDOFF §3) :
+   lignes qui seront proposées au comptable, chaque analyse programmée avec
+   son prix du catalogue (`LabService` apparié par nom de paramètre comme le
+   fait `/api/clients/[id]/billable`), « prix à saisir » sinon ; note pour le
+   comptable (dans `programmeNote`). Pour le responsable des paramètres la
+   section n'est pas rendue et son référentiel ne porte aucun prix ; un
+   échantillon déjà facturé lui est signalé sans numéro de facture
+   (« Échantillon déjà facturé : un changement d'analyses est à signaler à
+   la comptabilité. »).
 
 Pied : « Enregistrer le brouillon » (sans changer de statut) et
 « Confirmer le programme » (→ PROGRAMME, `programmedAt`, `programmedById`,
@@ -285,7 +292,10 @@ autre jour et déjà à la paillasse.
   filtre du dialogue ; `natureHome` — pour un échantillon seul sur « Autres
   analyses », le domaine où il peut revenir ; paramètres de la catégorie,
   profils, versions de norme par paramètre, prix du catalogue par
-  paramètre). Depuis le 13/10, ni la liste des techniciens ni leur charge.
+  paramètre — pour l'administrateur seulement depuis le 25/10 : `prices`
+  est vide pour le responsable des paramètres, `loadProgrammeReferential(…,
+  { withPrices: seesBilling(role) })`). Depuis le 13/10, ni la liste des
+  techniciens ni leur charge.
 - `GET /api/product-types?natureId=&category=&clientId=&all=1` : les
   familles de produits (`productTypeListWhere`, testé) — `natureId` garde un
   type d'analyse ; `category` garde les familles de cette catégorie **et
@@ -403,7 +413,10 @@ facturation au forfait, notification au technicien (e-mail), planning.
   soumission refusée tant que tech2 n'a pas terminé ; la dilution ×10
   transforme la lecture ; feuille de paillasse par technicien.
 - Facturation : la ligne PROGRAMME est proposée au comptable aux prix du
-  catalogue ; facture créée ; bandeau « Facturé avant résultat ».
+  catalogue ; facture créée ; bandeau « Facturé avant résultat ». param1 ne
+  voit ni la section 7 ni aucun prix (fiche et `GET …/programme`), ni le
+  numéro de la facture (pied de fiche, « Corriger les analyses ») — l'admin
+  les voit (25/10).
 - Rapport : deux techniciens imprimés, méthode programmée.
 - Rôles : param1 n'approuve pas, ne valide pas, n'accède pas à /admin ;
   l'admin programme à sa place.
