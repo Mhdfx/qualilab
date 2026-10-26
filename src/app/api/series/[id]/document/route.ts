@@ -9,6 +9,7 @@ import { DOC_TYPE_LABELS } from "@/lib/document-types";
 import { cartoucheTemplate } from "@/lib/cartouche-html";
 import { getLabSettings } from "@/lib/lab-settings";
 import { sampleRef } from "@/lib/reception-input";
+import { seesAdvance } from "@/lib/price-access";
 import {
   BON_MARGIN,
   PROTOCOL_MARGIN,
@@ -40,6 +41,10 @@ import {
  *
  * Never the bench (TECHNICIEN): both name the client and the site, and the
  * analysis is blind — like the photo of the signed protocol.
+ *
+ * The bon's « Avance » (the amount paid at the counter and its mode) prints
+ * for the réception and the billing roles only (`seesAdvance`, the owner's
+ * rule of 25/10): printed by the validateur, it stays empty like « Reste ».
  */
 export async function GET(
   _request: Request,
@@ -211,8 +216,8 @@ export async function GET(
     endedAt: serie.endedAt,
     arrivedAt: serie.arrivedAt,
     coolerTemperature: serie.coolerTemperature,
-    advanceAmount: serie.advanceAmount === null ? null : Number(serie.advanceAmount),
-    advanceMode: serie.advanceMode,
+    advanceAmount: seesAdvance(session.role) && serie.advanceAmount !== null ? Number(serie.advanceAmount) : null,
+    advanceMode: seesAdvance(session.role) ? serie.advanceMode : null,
     notes: serie.notes,
     lines,
   };

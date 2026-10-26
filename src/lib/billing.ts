@@ -126,7 +126,15 @@ export function holdsSamples(invoice: { kind: InvoiceKind; status: InvoiceStatus
 /** The invoice holding a sample (`holdingInvoiceItemWhere`): a draft (no number yet) or an issued invoice. */
 export type HeldInvoice = { invoiceId: string; number: string | null };
 
-/** « FAC-2026-00012 », or « brouillon » for a draft — as the journal and the screens write it. */
+/**
+ * What a screen is told of the invoice holding a sample (`heldInvoiceFor`,
+ * price-access.ts): whether it is issued — a draft otherwise — and its
+ * number, null for a draft and for an issued invoice shown to a role that
+ * does not see the billing (the owner's rule of 25/10).
+ */
+export type InvoiceFact = { number: string | null; issued: boolean };
+
+/** « FAC-2026-00012 », or « brouillon » for a draft — as the journal and the billing roles' screens write it. */
 export function heldInvoiceLabel(held: Pick<HeldInvoice, "number">): string {
   return held.number ?? "brouillon";
 }
@@ -149,11 +157,16 @@ export function billedAnalysesChanged(
  * What the screen says once the analyses of a sample an invoice holds have
  * changed (16/10: F6 on the programme, F8 and C5 at the bench): the invoice
  * still bills the former list, so the accountant is told — the invoice
- * sheet says it too (« Analyses modifiées après facturation »).
+ * sheet says it too (« Analyses modifiées après facturation »). An issued
+ * invoice told without its number (a role outside the billing, 25/10)
+ * keeps the warning, neither the number nor what the accountant will do.
  */
-export function billedAnalysesNotice(held: Pick<HeldInvoice, "number">): string {
+export function billedAnalysesNotice(held: InvoiceFact): string {
+  if (!held.issued) {
+    return "Échantillon sur un brouillon de facture : prévenez la comptabilité — ses lignes sont à corriger avant l'émission.";
+  }
   return held.number === null
-    ? "Échantillon sur un brouillon de facture : prévenez la comptabilité — ses lignes sont à corriger avant l'émission."
+    ? "Échantillon déjà facturé : prévenez la comptabilité."
     : `Échantillon déjà facturé (${held.number}) : prévenez la comptabilité — avoir pour une analyse retirée, facture complémentaire pour une analyse ajoutée.`;
 }
 

@@ -122,7 +122,7 @@ const CATALOGUE_WRITES = [
 
 /** A sample's analyses, its programme, its série and its other steps. Never the technician's. */
 const SAMPLE_WRITES = [
-  // The programme d'analyse — and its referential, prices included (RP3c).
+  // The programme d'analyse — and its referential (RP3c; its prices for the administrator only since 25/10).
   "api/samples/[id]/programme/route.ts PUT",
   "api/samples/[id]/programme/route.ts GET",
   // « Corriger la fiche »: analyses, famille, number of units.

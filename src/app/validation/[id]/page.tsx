@@ -39,6 +39,7 @@ import { canResendReport, reportVersionSent } from "@/lib/report-actions";
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { sampleTimelineFor } from "@/lib/sample-timeline-server";
 import { heldInvoices } from "@/lib/billing-hold";
+import { heldInvoiceFor } from "@/lib/price-access";
 import { SampleTimelineCard } from "@/components/validation/SampleTimelineCard";
 import { EmailSendsCard } from "@/components/validation/EmailSendsCard";
 import { earlyAlertSendsOf } from "@/lib/alert-log-samples-server";
@@ -414,7 +415,8 @@ export default async function ValidationDetailPage({
                   productTypeId: sample.productTypeId,
                   productTypeName: sample.productType?.name ?? null,
                   clientId: sample.clientId,
-                  invoiced: heldInvoice ? { number: heldInvoice.number } : null,
+                  // Its number for the Direction and the administrator only (25/10).
+                  invoiced: heldInvoice ? heldInvoiceFor(heldInvoice, session.role) : null,
                   alertsSentAt: sample.alertsSentAt?.toISOString() ?? null,
                 }}
               />

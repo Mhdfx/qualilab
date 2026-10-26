@@ -3,6 +3,7 @@ import { BENCH_STATUSES, isUnclaimed } from "@/lib/bench-access";
 import { pickCriterion } from "@/lib/interpretation";
 import { ANALYSIS_FAMILY_LABELS, CANCEL_REASON_LABELS, formatDateTime } from "@/lib/labels";
 import { roundMoney } from "@/lib/invoice-math";
+import type { InvoiceFact } from "@/lib/billing";
 import { normInForce } from "@/lib/parameter-caption";
 import { programmeNatureFamilies } from "@/lib/programme-input";
 import {
@@ -579,7 +580,7 @@ export function natureHint(family: Family, twin: SampleTwin | null, choices: num
     family === "AUTRE"
       ? `Parmi les autres analyses, ou dans ${split ? "le domaine de l'échantillon" : "l'un des deux domaines"} (${homes.map(label).join(" ou ")})`
       : `Dans le même domaine (${label(family)}) ou parmi les autres analyses`;
-  return `${scope}${split ? " : l'autre domaine fait l'objet d'un autre échantillon" : ""}. Changer de nature recharge les analyses, les profils et les prix ; la nature change à l'enregistrement du programme.`;
+  return `${scope}${split ? " : l'autre domaine fait l'objet d'un autre échantillon" : ""}. Changer de nature recharge les analyses et les profils ; la nature change à l'enregistrement du programme.`;
 }
 
 /**
@@ -724,7 +725,12 @@ export function unitWarning(draft: ProgrammeDraft, type: ProductTypeRef | undefi
 
 export type BillingLine = { parameterId: string; name: string; unitPrice: number | null };
 
-/** The lines the accountant will be proposed: each analysis at its catalogue price, flagged when it has none. */
+/**
+ * The lines the accountant will be proposed: each analysis at its catalogue
+ * price, flagged when it has none. Section 7 of the sheet, computed for a
+ * role that sees the billing only (`seesBilling`, the owner's rule of 25/10)
+ * — the others receive no price to compute it from.
+ */
 export function billingLines(
   draft: ProgrammeDraft,
   referential: ProgrammeReferentialData
@@ -738,6 +744,21 @@ export function billingLines(
     total: roundMoney(lines.reduce((sum, line) => sum + (line.unitPrice ?? 0), 0)),
     unpriced: lines.filter((line) => line.unitPrice === null).length,
   };
+}
+
+/**
+ * What the foot of an editable confirmed programme says while an invoice
+ * holds the sample (`heldInvoiceFor`): a change of its analyses never
+ * reaches that invoice by itself. The invoice's number and what the
+ * accountant will do for the administrator; the warning alone for the
+ * responsable des paramètres (the owner's rule of 25/10) — never the
+ * draft's sentence for an issued invoice.
+ */
+export function heldInvoiceNotice(invoiced: InvoiceFact): string {
+  if (!invoiced.issued) return "Échantillon sur un brouillon de facture : un changement d'analyses est à signaler à la comptabilité.";
+  return invoiced.number === null
+    ? "Échantillon déjà facturé : un changement d'analyses est à signaler à la comptabilité."
+    : `Échantillon déjà facturé (${invoiced.number}) : un changement d'analyses est à signaler à la comptabilité (avoir ou facture complémentaire).`;
 }
 
 /**

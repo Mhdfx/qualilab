@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SampleStatus } from "@/generated/prisma/enums";
 import { ROLES } from "@/lib/roles";
 import { verbsFor } from "@/lib/sample-verbs";
+import { heldInvoiceFor } from "@/lib/price-access";
 import { billedCorrectionWarning, cancelConsequences } from "@/components/samples/sample-verbs-logic";
 import { invoiceReadIds, summaryLineOf, verbSampleOf, verbsReadBilling, withVerbFacts } from "./reception-verbs";
 import type { ReceptionLineData } from "./SerieReceptionForm";
@@ -94,9 +95,17 @@ describe("withVerbFacts — the série's lines with the verbs' facts", () => {
       held,
       "ADMIN"
     );
-    expect(issued).toMatchObject({ invoiced: { number: "FAC-2026-00012" }, alertsSentAt: "2026-10-19T08:00:00.000Z", hasReport: false });
-    expect(draft).toMatchObject({ invoiced: { number: null }, alertsSentAt: null });
+    expect(issued).toMatchObject({ invoiced: { number: "FAC-2026-00012", issued: true }, alertsSentAt: "2026-10-19T08:00:00.000Z", hasReport: false });
+    expect(draft).toMatchObject({ invoiced: { number: null, issued: false }, alertsSentAt: null });
     expect(none).toMatchObject({ invoiced: null, alertsSentAt: null });
+  });
+
+  it("tells the invoice through `heldInvoiceFor`: never its id, its number for a billing role only (25/10)", () => {
+    const withId = new Map([["issued", { invoiceId: "inv-1", number: "FAC-2026-00012" }]]);
+    const [admin] = withVerbFacts([row("issued", "RESULTATS_SAISIS")], withId, "ADMIN");
+    expect(admin.invoiced).toEqual({ number: "FAC-2026-00012", issued: true });
+    // A role outside the billing that the verbs ever let read it would get the warning without the number.
+    expect(heldInvoiceFor({ number: "FAC-2026-00012" }, "RECEPTIONNISTE")).toEqual({ number: null, issued: true });
   });
 
   it("reduces the report to whether one exists, and keeps the rest of the line", () => {
@@ -166,7 +175,7 @@ const line: ReceptionLineData = {
 
 describe("verbSampleOf → « Annuler » on the reception page says what the validation page says", () => {
   it("an invoiced sample: the invoice is named, the line stays, an avoir follows", () => {
-    const sample = verbSampleOf({ ...line, hasReport: false, invoiced: { number: "FAC-2026-00012" }, alertsSentAt: null }, "c1");
+    const sample = verbSampleOf({ ...line, hasReport: false, invoiced: { number: "FAC-2026-00012", issued: true }, alertsSentAt: null }, "c1");
     expect(cancelConsequences(sample)).toEqual({
       text: "L'échantillon sort de toutes les files et du rapport.",
       warnings: ["Déjà facturé (FAC-2026-00012) : sa ligne reste sur la facture, la comptabilité établira un avoir."],
@@ -174,7 +183,7 @@ describe("verbSampleOf → « Annuler » on the reception page says what the val
   });
 
   it("on a draft, with an alert already sent: both are said", () => {
-    const sample = verbSampleOf({ ...line, invoiced: { number: null }, alertsSentAt: "2026-10-19T08:00:00.000Z" }, "c1");
+    const sample = verbSampleOf({ ...line, invoiced: { number: null, issued: false }, alertsSentAt: "2026-10-19T08:00:00.000Z" }, "c1");
     const { warnings } = cancelConsequences(sample);
     expect(warnings).toHaveLength(2);
     expect(warnings[0]).toContain("brouillon de facture");
@@ -192,7 +201,7 @@ describe("verbSampleOf → « Annuler » on the reception page says what the val
   });
 
   it("« Corriger les analyses » warns on the invoiced sample too", () => {
-    const sample = verbSampleOf({ ...line, invoiced: { number: "FAC-2026-00012" } }, "c1");
+    const sample = verbSampleOf({ ...line, invoiced: { number: "FAC-2026-00012", issued: true } }, "c1");
     expect(billedCorrectionWarning(sample, [])).toContain("FAC-2026-00012");
   });
 
@@ -233,7 +242,7 @@ describe("summaryLineOf — the summary read again after « Annuler » or « Cor
   });
 
   it("a programmed line keeps its step: « Annuler » names its draft invoice, not « …et de la facturation. »", () => {
-    const programmed: ReceptionLineData = { ...line, status: "PROGRAMME", invoiced: { number: null }, alertsSentAt: null };
+    const programmed: ReceptionLineData = { ...line, status: "PROGRAMME", invoiced: { number: null, issued: false }, alertsSentAt: null };
     const sample = verbSampleOf(programmed, "c1", summaryLineOf(programmed).status ?? "RECU");
     expect(sample.status).toBe("PROGRAMME");
     const { text, warnings } = cancelConsequences(sample);

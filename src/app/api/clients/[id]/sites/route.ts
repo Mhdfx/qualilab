@@ -4,6 +4,7 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { siegeSiteRefusal, validateSite } from "@/lib/site-input";
 import { createdSiteActive } from "@/lib/site-creation";
+import { siteForRole } from "@/lib/price-access";
 
 const SITE_SELECT = {
   id: true,
@@ -18,7 +19,11 @@ const SITE_SELECT = {
   billingClient: { select: { id: true, name: true } },
 } as const;
 
-/** A client's sampling sites — the list the préleveur picks from on site. */
+/**
+ * A client's sampling sites — the list the préleveur picks from on site.
+ * « Facturé à » (`billingClient`) for the billing roles only (`siteForRole`,
+ * the owner's rule of 25/10).
+ */
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -32,7 +37,7 @@ export async function GET(
     select: SITE_SELECT,
     orderBy: [{ active: "desc" }, { name: "asc" }],
   });
-  return NextResponse.json(sites);
+  return NextResponse.json(sites.map((site) => siteForRole(site, session.role)));
 }
 
 export async function POST(
@@ -93,5 +98,5 @@ export async function POST(
     metadata: { clientId: id, name: site.name, city: site.city },
   });
 
-  return NextResponse.json(site, { status: 201 });
+  return NextResponse.json(siteForRole(site, session.role), { status: 201 });
 }

@@ -19,8 +19,9 @@ import { PROGRAMMABLE_STATUSES } from "./sample-status";
  * line with its current programme, and the referential the fiche needs —
  * the product types the client may use with their criteria, the parameters
  * of the nature's category, the profiles, the norm versions of each
- * parameter, the catalogue prices. Shared by GET and PUT so the rules are
- * checked against exactly what the screen was offered.
+ * parameter, and — for the billing roles only (the owner's rule of 25/10,
+ * `seesBilling`) — the catalogue prices. Shared by GET and PUT so the rules
+ * are checked against exactly what the screen was offered.
  *
  * No technician is chosen here any more (« prise en charge libre », 13/10 —
  * PROGRAMME.md §10): the line carries who took it at the bench
@@ -366,6 +367,11 @@ export async function normVersionsForParameters(
  * give it (Q49): the parameters, profiles and prices then follow that
  * nature's category. A nature the line may not take falls back to the
  * current one; the GET route refuses it before calling this.
+ *
+ * `withPrices`: the catalogue price of each parameter (section 7 of the
+ * sheet), for a role that sees the billing (`seesBilling`). Without it the
+ * services are not even read and `prices` is empty — the referential is the
+ * page's RSC payload and the GET's JSON, readable whatever the screen hides.
  */
 export async function loadProgrammeReferential(
   sample: NatureLine & {
@@ -373,7 +379,7 @@ export async function loadProgrammeReferential(
     type: SampleType;
     parameters: { parameterId: string; normVersionId: string | null }[];
   },
-  options: { natureId?: string | null; natures?: ProgrammeNatureOption[] } = {}
+  options: { natureId?: string | null; natures?: ProgrammeNatureOption[]; withPrices: boolean }
 ) {
   const natures = selectableNatures(options.natures ?? (await loadProgrammeNatures(sample)), {
     family: sample.nature.family,
@@ -441,10 +447,12 @@ export async function loadProgrammeReferential(
       select: { id: true, name: true, clientId: true, unitCount: true, parameters: { select: { parameterId: true } } },
       orderBy: [{ clientId: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
     }),
-    prisma.labService.findMany({
-      where: { active: true, category },
-      select: { name: true, category: true, unitPrice: true, active: true },
-    }),
+    options.withPrices
+      ? prisma.labService.findMany({
+          where: { active: true, category },
+          select: { name: true, category: true, unitPrice: true, active: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   const normVersions = await normVersionsForParameters(
@@ -454,16 +462,19 @@ export async function loadProgrammeReferential(
 
   // The catalogue price of each parameter, matched by name like the invoice
   // proposal does (`/api/clients/[id]/billable`); null = « prix à saisir ».
-  const catalogue: CatalogueEntry[] = services.map((service) => ({
-    name: service.name,
-    category: service.category,
-    unitPrice: toMoney(service.unitPrice),
-    active: service.active,
-  }));
-  const index = buildCatalogueIndex(catalogue);
+  // None at all without `withPrices`: not a « prix à saisir » per parameter.
   const prices: Record<string, number | null> = {};
-  for (const parameter of parameters) {
-    prices[parameter.id] = index.get(catalogueKey(parameter.name, category))?.unitPrice ?? null;
+  if (options.withPrices) {
+    const catalogue: CatalogueEntry[] = services.map((service) => ({
+      name: service.name,
+      category: service.category,
+      unitPrice: toMoney(service.unitPrice),
+      active: service.active,
+    }));
+    const index = buildCatalogueIndex(catalogue);
+    for (const parameter of parameters) {
+      prices[parameter.id] = index.get(catalogueKey(parameter.name, category))?.unitPrice ?? null;
+    }
   }
 
   return {
@@ -520,6 +531,7 @@ export async function loadProgrammeReferential(
       parameterIds: profile.parameters.map((p) => p.parameterId),
     })),
     normVersions,
+    /** The catalogue price of each parameter (null = « prix à saisir ») — empty without `withPrices`. */
     prices,
   };
 }

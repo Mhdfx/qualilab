@@ -9,7 +9,7 @@ import type {
   SurfaceState,
 } from "@/generated/prisma/enums";
 import { BILLABLE_STATUSES } from "@/lib/billing-status";
-import { billedAnalysesNotice } from "@/lib/billing";
+import { billedAnalysesNotice, type InvoiceFact } from "@/lib/billing";
 import { CANCEL_REASON_LABELS, isExposedPlate } from "@/lib/labels";
 import { resultsToReset } from "@/lib/intake-input";
 import { cancellersLabel, type CorrectionRights } from "@/lib/sample-verbs";
@@ -64,11 +64,12 @@ export type VerbSample = {
   productTypeName?: string | null;
   clientId: string;
   /**
-   * The invoice holding it (`heldInvoices`): its number, null for a draft;
+   * The invoice holding it (`heldInvoices`, told through `heldInvoiceFor`):
+   * issued or a draft, its number for the billing roles only (25/10);
    * null = on no invoice; absent = not read by this page (the dialogs then
    * say what holds whatever the case).
    */
-  invoiced?: { number: string | null } | null;
+  invoiced?: InvoiceFact | null;
   /** When a contamination alert left for it (ISO); null = none; absent = not read. */
   alertsSentAt?: string | null;
 };
@@ -238,7 +239,8 @@ export function correctionBody(
  * après facturation »); and a contamination alert already sent stays with
  * the client, who will get no report for it. Before the programme nothing is
  * billable. A page that did not read the invoice says what happens if one
- * holds it.
+ * holds it. The invoice's number only for the billing roles (25/10): an
+ * issued invoice told without it keeps the warning.
  */
 export function cancelConsequences(
   sample: Pick<VerbSample, "status" | "invoiced" | "alertsSentAt">
@@ -250,10 +252,13 @@ export function cancelConsequences(
     text = "L'échantillon sort de toutes les files et du rapport ; s'il est déjà facturé, sa ligne reste sur la facture et la comptabilité établit un avoir.";
   } else if (billable && sample.invoiced) {
     text = "L'échantillon sort de toutes les files et du rapport.";
+    const { issued, number } = sample.invoiced;
     warnings.push(
-      sample.invoiced.number === null
+      !issued
         ? "Il est sur un brouillon de facture : la comptabilité retirera sa ligne avant l'émission."
-        : `Déjà facturé (${sample.invoiced.number}) : sa ligne reste sur la facture, la comptabilité établira un avoir.`
+        : number === null
+          ? "Déjà facturé : la comptabilité établira un avoir."
+          : `Déjà facturé (${number}) : sa ligne reste sur la facture, la comptabilité établira un avoir.`
     );
   }
   if (sample.alertsSentAt) {

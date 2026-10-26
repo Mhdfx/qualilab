@@ -10,8 +10,9 @@ import {
   type IntakeCurrent,
   type ResultsReset,
 } from "@/lib/intake-input";
-import { billedAnalysesChanged, billedAnalysesNotice, heldInvoiceLabel } from "@/lib/billing";
+import { billedAnalysesChanged, heldInvoiceLabel } from "@/lib/billing";
 import { heldInvoices } from "@/lib/billing-hold";
+import { billingAnswer } from "@/lib/price-access";
 import { CORRECTABLE_STATUSES } from "@/lib/sample-status";
 import { correctionRefusal, correctionRights } from "@/lib/sample-verbs";
 
@@ -87,7 +88,9 @@ const INTAKE_SELECT = {
  * journal line then names it (`billedOn`) — the invoice sheet reads it,
  * « Analyses modifiées après facturation » — and the answer carries
  * `billing.notice`, for the screen to tell the person to warn the
- * accountant.
+ * accountant: with the invoice's number (and `billing.invoice`) for the
+ * billing roles — the Direction and the administrator here — without them
+ * for the others (`billingAnswer`, the owner's rule of 25/10).
  *
  * A correction never changes who holds the sample at the bench (« prise
  * en charge libre », 13/10): `Sample.technicianId` / `assignedAt` are not
@@ -312,6 +315,6 @@ export async function PATCH(
   return NextResponse.json({
     ...updated,
     parameterIds: updated.parameters.map((p) => p.parameterId),
-    ...(held ? { billing: { invoice: heldInvoiceLabel(held), notice: billedAnalysesNotice(held) } } : {}),
+    ...(held ? { billing: billingAnswer(held, session.role) } : {}),
   });
 }

@@ -5,6 +5,7 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { findSimilarClients } from "@/lib/client-identity";
 import { LOCK_RETRIES, isLockConflict, lockRetryPause } from "@/lib/billing";
+import { clientForRole } from "@/lib/price-access";
 import {
   ARCHIVED_SCAN_LIMIT,
   ARCHIVING_ACTIONS,
@@ -127,6 +128,11 @@ async function traceFiches(
  * `archived=true`), by name, uncapped as before the 14/10: the owner's
  * scripts read the base through it (relecture du lot 1).
  *
+ * « Client facturé de » (`billedFor`, `billedForId` — which client pays,
+ * CLIENTS-FUSION.md §4) goes to the billing roles only (`clientForRole`,
+ * the owner's rule of 25/10): the préleveur, the réception and the
+ * validation desks pick a client, they never read who pays for it.
+ *
  * `GET ?q=` is the pickers' search, at most `CLIENT_SEARCH_LIMIT` rows, the
  * closest matches first. Besides the clients whose name, ICE or contact
  * matches, it answers the clients one of whose active sites matches, and
@@ -163,7 +169,7 @@ export async function GET(request: Request) {
 
   if (!search) {
     const clients = await prisma.client.findMany({ where: archivedFilter, orderBy: { name: "asc" }, include: CLIENT_INCLUDE });
-    return NextResponse.json(clients);
+    return NextResponse.json(clients.map((client) => clientForRole(client, session.role)));
   }
 
   // Four reads at once: the clients whose name starts with the text (the
@@ -212,7 +218,9 @@ export async function GET(request: Request) {
   const origins = await traceFiches(fiches, loader, sites.map((site) => site.clientId));
 
   return NextResponse.json(
-    clientSearchRows({ direct, sites, fiches, origins, clients: loader.clients, includeArchived, query: search })
+    clientSearchRows({ direct, sites, fiches, origins, clients: loader.clients, includeArchived, query: search }).map((row) =>
+      clientForRole(row, session.role)
+    )
   );
 }
 
@@ -373,7 +381,10 @@ export async function POST(request: Request) {
   }
 
   // The new client as the pickers carry it: its sites, to select at once.
-  return NextResponse.json({ ...client, sites: sites.map(({ id, name }) => ({ id, name })) }, { status: 201 });
+  return NextResponse.json(
+    clientForRole({ ...client, sites: sites.map(({ id, name }) => ({ id, name })) }, session.role),
+    { status: 201 }
+  );
 }
 
 /**

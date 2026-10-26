@@ -3,8 +3,9 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { SAMPLE_STATUS_LABELS } from "@/lib/labels";
-import { billedAnalysesChanged, billedAnalysesNotice, heldInvoiceLabel, isLockConflict } from "@/lib/billing";
+import { billedAnalysesChanged, heldInvoiceLabel, isLockConflict } from "@/lib/billing";
 import { heldInvoices } from "@/lib/billing-hold";
+import { billingAnswer, seesBilling } from "@/lib/price-access";
 import { TYPED_RESULT_WHERE } from "@/lib/bench-access";
 import { canTransition, PROGRAMMABLE_STATUSES } from "@/lib/sample-status";
 import {
@@ -31,18 +32,21 @@ class StaleProgramme extends Error {}
  *
  * GET — the line, its current programme and the referential the fiche
  * needs. Only the responsable des paramètres and the admin, who write it,
- * read it here: the referential carries every famille with its criteria,
- * the profiles and the catalogue prices, and no bench screen calls this
- * route — the bench reads the programme from its own pages (RETOUR-LABO-14-10
- * RP3c: « le technicien n'a pas les droits pour changer les paramètres »;
- * technician-guards.test.ts). The line carries who took it at the bench
- * (`technician`, `assignedAt`), read-only.
+ * read it here: the referential carries every famille with its criteria
+ * and the profiles, and no bench screen calls this route — the bench reads
+ * the programme from its own pages (RETOUR-LABO-14-10 RP3c: « le technicien
+ * n'a pas les droits pour changer les paramètres »; technician-guards.test.ts).
+ * The catalogue prices only for the administrator: the responsable des
+ * paramètres sees no price (the owner's rule of 25/10, `seesBilling`), so
+ * `referential.prices` is empty in his answer. The line carries who took it
+ * at the bench (`technician`, `assignedAt`), read-only.
  *
  * `?natureId=` computes the referential for another nature the line may
  * take (RETOUR-LABO-06-10.md §5, V3 — Q49 by default: an active nature of
  * the same family; since 16/10, Q129, also « Autres analyses » and back —
- * `programmeNatureFamilies`): its parameters, profiles and prices. The line
- * itself is unchanged until a PUT names that nature.
+ * `programmeNatureFamilies`): its parameters, profiles and — for the
+ * administrator — prices. The line itself is unchanged until a PUT names
+ * that nature.
  */
 export async function GET(
   request: Request,
@@ -60,7 +64,11 @@ export async function GET(
   const nature = resolveProgrammeNature({ natureId: requested }, programmeNatureContext(sample, natures));
   if (!nature.ok) return NextResponse.json({ error: nature.error }, { status: 400 });
 
-  const referential = await loadProgrammeReferential(sample, { natureId: nature.natureId, natures });
+  const referential = await loadProgrammeReferential(sample, {
+    natureId: nature.natureId,
+    natures,
+    withPrices: seesBilling(session.role),
+  });
   return NextResponse.json({ ...serializeProgramme(sample), referential });
 }
 
@@ -99,7 +107,9 @@ function namedParameters(input: unknown): string[] {
  * A confirmed programme is billable: an invoice may already hold the line.
  * A change of its analyses (or of its category) never reaches that invoice
  * by itself — the journal names it (`billedOn`, read by the invoice sheet)
- * and the answer carries `billing.notice` for the sheet to say so.
+ * and the answer carries `billing.notice` for the sheet to say so: with the
+ * invoice's number (and `billing.invoice`) for the administrator, without
+ * them for the responsable des paramètres (`billingAnswer`, 25/10).
  */
 export async function PUT(
   request: Request,
@@ -299,6 +309,6 @@ export async function PUT(
 
   return NextResponse.json({
     ...serializeProgramme(updated),
-    ...(held ? { billing: { invoice: heldInvoiceLabel(held), notice: billedAnalysesNotice(held) } } : {}),
+    ...(held ? { billing: billingAnswer(held, session.role) } : {}),
   });
 }

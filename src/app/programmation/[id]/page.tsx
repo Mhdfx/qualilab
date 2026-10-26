@@ -18,6 +18,7 @@ import { roleAllowed } from "@/lib/roles";
 import { BENCH_STATUSES } from "@/lib/bench-access";
 import { prisma } from "@/lib/prisma";
 import { heldInvoices } from "@/lib/billing-hold";
+import { heldInvoiceFor, seesBilling } from "@/lib/price-access";
 import { getLabSettings } from "@/lib/lab-settings";
 import {
   LINE_KIND_LABELS,
@@ -97,7 +98,9 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
   if (!row) notFound();
 
   const [referential, settings, identity, held] = await Promise.all([
-    loadProgrammeReferential(row),
+    // The catalogue prices (section 7) for the administrator only: the
+    // responsable des paramètres sees no price (the owner's rule of 25/10).
+    loadProgrammeReferential(row, { withPrices: seesBilling(session.role) }),
     getLabSettings(),
     prisma.sample.findUnique({ where: { id }, select: IDENTITY_SELECT }),
     // A confirmed programme is billable: the invoice holding it, if any.
@@ -105,7 +108,8 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
   ]);
   if (!identity) notFound();
   const heldInvoice = held.get(id) ?? null;
-  const invoiced = heldInvoice ? { number: heldInvoice.number } : null;
+  // Issued or a draft for both roles; the number for the administrator only.
+  const invoiced = heldInvoice ? heldInvoiceFor(heldInvoice, session.role) : null;
 
   // Dates become strings and decimals numbers: the client component reads
   // exactly what the API would have answered.

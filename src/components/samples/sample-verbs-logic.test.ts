@@ -12,6 +12,7 @@ import {
 import { correctionTouches, validateIntake, type IntakeCurrent } from "@/lib/intake-input";
 import { correctionRefusal, correctionRights } from "@/lib/sample-verbs";
 import { HANDS_STATE_CHOICES, SURFACE_AREA_CHOICES } from "@/lib/labels";
+import { heldInvoiceFor } from "@/lib/price-access";
 
 /**
  * « Corriger la fiche » ↔ `PATCH /api/samples/[id]/intake`: the body the
@@ -445,10 +446,28 @@ describe("cancelConsequences — what « Annuler » says (16/10, D1: the validat
   });
 
   it("invoiced or on a draft: the line stays, the accountant settles it", () => {
-    const issued = cancelConsequences({ status: "RESULTATS_SAISIS", invoiced: { number: "FAC-2026-00012" }, alertsSentAt: null });
+    const issued = cancelConsequences({ status: "RESULTATS_SAISIS", invoiced: { number: "FAC-2026-00012", issued: true }, alertsSentAt: null });
     expect(issued.text).toBe("L'échantillon sort de toutes les files et du rapport.");
     expect(issued.warnings).toEqual(["Déjà facturé (FAC-2026-00012) : sa ligne reste sur la facture, la comptabilité établira un avoir."]);
-    expect(cancelConsequences({ status: "PROGRAMME", invoiced: { number: null } }).warnings[0]).toContain("brouillon de facture");
+    expect(cancelConsequences({ status: "PROGRAMME", invoiced: { number: null, issued: false } }).warnings[0]).toContain("brouillon de facture");
+  });
+
+  it("an issued invoice told without its number (a role outside the billing, 25/10): the warning, never the draft's sentence", () => {
+    // The validateur's « Annuler » on /validation/[id]: `heldInvoiceFor` keeps `issued`, drops the number.
+    const told = heldInvoiceFor({ number: "FAC-2026-00012" }, "VALIDATEUR");
+    const { text, warnings } = cancelConsequences({ status: "RESULTATS_SAISIS", invoiced: told, alertsSentAt: null });
+    expect(text).toBe("L'échantillon sort de toutes les files et du rapport.");
+    expect(warnings).toEqual(["Déjà facturé : la comptabilité établira un avoir."]);
+    expect(warnings.join(" ")).not.toMatch(/FAC-|brouillon/);
+    // The Direction and the administrator keep the number.
+    for (const role of ["DIRECTION", "ADMIN"] as const) {
+      const full = cancelConsequences({ status: "RESULTATS_SAISIS", invoiced: heldInvoiceFor({ number: "FAC-2026-00012" }, role) });
+      expect(full.warnings[0], role).toContain("(FAC-2026-00012)");
+    }
+    // A draft stays a draft for everyone.
+    expect(cancelConsequences({ status: "PROGRAMME", invoiced: heldInvoiceFor({ number: null }, "VALIDATEUR") }).warnings[0]).toContain(
+      "brouillon de facture"
+    );
   });
 
   it("an alert already sent stays with the client", () => {
@@ -463,9 +482,19 @@ describe("cancelConsequences — what « Annuler » says (16/10, D1: the validat
 
 describe("billedCorrectionWarning — « Corriger les analyses » on an invoiced sample", () => {
   it("warns once the list on screen differs from the billed one", () => {
-    const sample = { parameterIds: ["p1", "p2"], invoiced: { number: "FAC-2026-00012" } };
+    const sample = { parameterIds: ["p1", "p2"], invoiced: { number: "FAC-2026-00012", issued: true } };
     expect(billedCorrectionWarning(sample, ["p2", "p1"])).toBeNull();
     expect(billedCorrectionWarning(sample, ["p1"])).toContain("FAC-2026-00012");
     expect(billedCorrectionWarning({ ...sample, invoiced: null }, ["p1"])).toBeNull();
+  });
+
+  it("for the responsable des paramètres (25/10): « déjà facturé » without the number, never the draft's sentence", () => {
+    const sample = { parameterIds: ["p1", "p2"], invoiced: heldInvoiceFor({ number: "FAC-2026-00012" }, "PROGRAMMATEUR") };
+    expect(billedCorrectionWarning(sample, ["p1"])).toBe("Échantillon déjà facturé : prévenez la comptabilité.");
+    const draft = { ...sample, invoiced: heldInvoiceFor({ number: null }, "PROGRAMMATEUR") };
+    expect(billedCorrectionWarning(draft, ["p1"])).toContain("brouillon de facture");
+    // The administrator, on the same sheet, keeps it.
+    const admin = { ...sample, invoiced: heldInvoiceFor({ number: "FAC-2026-00012" }, "ADMIN") };
+    expect(billedCorrectionWarning(admin, ["p1"])).toContain("(FAC-2026-00012)");
   });
 });

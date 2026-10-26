@@ -1,6 +1,7 @@
 import type { SampleStatus } from "@/generated/prisma/enums";
-import type { HeldInvoice } from "@/lib/billing";
+import type { HeldInvoice, InvoiceFact } from "@/lib/billing";
 import { BILLABLE_STATUSES } from "@/lib/billing-status";
+import { heldInvoiceFor } from "@/lib/price-access";
 import type { Role } from "@/lib/roles";
 import { verbsFor } from "@/lib/sample-verbs";
 import type { VerbSample } from "@/components/samples/sample-verbs-logic";
@@ -44,17 +45,22 @@ export function invoiceReadIds(samples: readonly { id: string; status: SampleSta
 export type ReceptionVerbFacts = {
   /** A report was issued (reopened for amendment): corrected by the amendment, never cancelled. */
   hasReport: boolean;
-  /** The invoice holding it — its number, null for a draft; null = on no invoice. Absent = not read for this person. */
-  invoiced?: { number: string | null } | null;
+  /**
+   * The invoice holding it, as this person is told of it (`heldInvoiceFor`:
+   * issued or a draft, the number for the billing roles only); null = on no
+   * invoice. Absent = not read for this person.
+   */
+  invoiced?: InvoiceFact | null;
   /** When a contamination alert left for it (ISO); null = none. Absent = not read for this person. */
   alertsSentAt?: string | null;
 };
 
 /**
  * The série's lines with the verbs' facts: the report reduced to whether
- * one exists; the invoice (from `held`) and the alert's date only where
- * `verbsReadBilling` — elsewhere the alert's date, selected with the série,
- * does not leave the server.
+ * one exists; the invoice (from `held`, told through `heldInvoiceFor` —
+ * its number for the billing roles only, 25/10) and the alert's date only
+ * where `verbsReadBilling` — elsewhere the alert's date, selected with the
+ * série, does not leave the server.
  */
 export function withVerbFacts<T extends { id: string; status: SampleStatus; alertsSentAt: Date | null; report: { id: string } | null }>(
   samples: readonly T[],
@@ -65,7 +71,7 @@ export function withVerbFacts<T extends { id: string; status: SampleStatus; aler
     const facts: ReceptionVerbFacts = { hasReport: report !== null };
     if (verbsReadBilling(line.status, role)) {
       const invoice = held.get(line.id);
-      facts.invoiced = invoice ? { number: invoice.number } : null;
+      facts.invoiced = invoice ? heldInvoiceFor(invoice, role) : null;
       facts.alertsSentAt = alertsSentAt?.toISOString() ?? null;
     }
     return { ...line, ...facts };

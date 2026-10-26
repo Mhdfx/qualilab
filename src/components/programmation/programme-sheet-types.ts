@@ -235,7 +235,11 @@ export type ProgrammeReferentialData = {
   profiles: ProfileRef[];
   /** The norm versions each parameter may be programmed with. */
   normVersions: Record<string, NormVersionRef[]>;
-  /** The catalogue price of each parameter; null = « prix à saisir ». */
+  /**
+   * The catalogue price of each parameter; null = « prix à saisir ». Empty
+   * for a role that does not see the billing (`seesBilling`, 25/10): the
+   * server never loads them for it.
+   */
   prices: Record<string, number | null>;
 };
 

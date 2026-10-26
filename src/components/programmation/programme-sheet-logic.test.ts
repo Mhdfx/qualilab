@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { formatDateTime } from "@/lib/labels";
 import { DEFAULT_THRESHOLDS } from "@/lib/reception-rules";
 import { verbsFor } from "@/lib/sample-verbs";
+import { heldInvoiceFor } from "@/lib/price-access";
 import {
   adoptReferential,
   applyProductType,
@@ -26,6 +27,7 @@ import {
   familyParameterRows,
   filterFamilies,
   groupParameters,
+  heldInvoiceNotice,
   initialDraft,
   natureChangeNotice,
   natureChangeOutcome,
@@ -824,6 +826,47 @@ describe("entry check and billing", () => {
   });
 });
 
+describe("prices and invoices on the programme sheet — the owner's rule of 25/10", () => {
+  const sheet = readFileSync(fileURLToPath(new URL("./ProgrammeSheet.tsx", import.meta.url)), "utf8");
+
+  it("renders section 7 « Facturation », and computes its lines, for a role that sees the billing only", () => {
+    expect(sheet).toContain("const billing = seesBilling(role) ? billingLines(draft, referential) : null;");
+    // The whole card — table, total, « prix à saisir », « Note pour le comptable » — sits behind it.
+    const gate = sheet.indexOf("{billing && (");
+    expect(gate).toBeGreaterThan(-1);
+    const end = sheet.indexOf("{/* Pied */}");
+    for (const text of ["Prix catalogue (HT)", "Total des lignes tarifées", "prix à saisir", "Note pour le comptable", "formatCurrency("]) {
+      const at = sheet.indexOf(text);
+      expect(at, text).toBeGreaterThan(gate);
+      expect(at, text).toBeLessThan(end);
+      // Nowhere else on the sheet.
+      expect(sheet.indexOf(text, end), text).toBe(-1);
+    }
+  });
+
+  it("keeps the billing out of the wording every role of the page reads", () => {
+    expect(sheet).not.toContain("remarques pour le comptable");
+    expect(sheet).not.toContain("par le comptable (section 7)");
+    expect(sheet).not.toContain("ouvre la facturation");
+  });
+
+  it("says at the foot what a change of analyses leaves on the invoice — its number for the administrator only", () => {
+    expect(sheet).toContain("{heldInvoiceNotice(invoiced)}");
+    const fac = { number: "FAC-2026-00012" };
+    expect(heldInvoiceNotice(heldInvoiceFor(fac, "ADMIN"))).toBe(
+      "Échantillon déjà facturé (FAC-2026-00012) : un changement d'analyses est à signaler à la comptabilité (avoir ou facture complémentaire)."
+    );
+    expect(heldInvoiceNotice(heldInvoiceFor(fac, "PROGRAMMATEUR"))).toBe(
+      "Échantillon déjà facturé : un changement d'analyses est à signaler à la comptabilité."
+    );
+    // A draft is said the same to both, and an issued invoice is never read as one.
+    const draft = "Échantillon sur un brouillon de facture : un changement d'analyses est à signaler à la comptabilité.";
+    expect(heldInvoiceNotice(heldInvoiceFor({ number: null }, "PROGRAMMATEUR"))).toBe(draft);
+    expect(heldInvoiceNotice(heldInvoiceFor({ number: null }, "ADMIN"))).toBe(draft);
+    expect(heldInvoiceNotice(heldInvoiceFor(fac, "PROGRAMMATEUR"))).not.toBe(draft);
+  });
+});
+
 describe("analyses grouped by family (RETOUR-LABO-06-10.md §5, V3)", () => {
   it("lists the line's own family first, flags the other, leaves out the empty groups", () => {
     const groups = groupParameters(referential, "MICRO");
@@ -1055,7 +1098,8 @@ describe("nature d'analyse (Q49 by default)", () => {
     });
 
     it("says where the other natures come from", () => {
-      const tail = " Changer de nature recharge les analyses, les profils et les prix ; la nature change à l'enregistrement du programme.";
+      // No « prix » since 25/10: only the responsable des paramètres and the administrator read it, and he sees no price.
+      const tail = " Changer de nature recharge les analyses et les profils ; la nature change à l'enregistrement du programme.";
       expect(natureHint("MICRO", "M", 3)).toBe(
         "Dans le même domaine (analyses microbiologiques) ou parmi les autres analyses : l'autre domaine fait l'objet d'un autre échantillon." + tail
       );

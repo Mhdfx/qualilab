@@ -541,9 +541,13 @@ describe("analyses changed on a billed sample (16/10 — F6, F8, C5)", () => {
   it("names the invoice, or the draft, and what the accountant does", () => {
     expect(heldInvoiceLabel({ number: "FAC-2026-00012" })).toBe("FAC-2026-00012");
     expect(heldInvoiceLabel({ number: null })).toBe("brouillon");
-    expect(billedAnalysesNotice({ number: "FAC-2026-00012" })).toBe(
+    expect(billedAnalysesNotice({ number: "FAC-2026-00012", issued: true })).toBe(
       "Échantillon déjà facturé (FAC-2026-00012) : prévenez la comptabilité — avoir pour une analyse retirée, facture complémentaire pour une analyse ajoutée."
     );
-    expect(billedAnalysesNotice({ number: null })).toContain("brouillon de facture");
+    expect(billedAnalysesNotice({ number: null, issued: false })).toContain("brouillon de facture");
+  });
+
+  it("an issued invoice told without its number (25/10): the warning alone, never the draft's sentence", () => {
+    expect(billedAnalysesNotice({ number: null, issued: true })).toBe("Échantillon déjà facturé : prévenez la comptabilité.");
   });
 });

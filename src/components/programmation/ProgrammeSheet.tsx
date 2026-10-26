@@ -21,6 +21,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ProgrammePriority } from "@/generated/prisma/enums";
+import type { InvoiceFact } from "@/lib/billing";
 import {
   ANALYSIS_FAMILY_LABELS,
   PROGRAMME_PRIORITY_LABELS,
@@ -30,6 +31,7 @@ import {
 import { criteriaCountLabel } from "@/lib/family-list";
 import { fmt } from "@/lib/interpretation";
 import { normInForce, parameterCaption } from "@/lib/parameter-caption";
+import { seesBilling } from "@/lib/price-access";
 import {
   DUE_AT_TOLERANCE_MS,
   MAX_PARAMETER_NOTE,
@@ -67,6 +69,7 @@ import {
   familyCheckLabel,
   familyParameterRows,
   groupParameters,
+  heldInvoiceNotice,
   initialDraft,
   natureChangeOutcome,
   natureChoices,
@@ -97,9 +100,13 @@ import type {
 } from "./programme-sheet-types";
 
 /**
- * The programme sheet (PROGRAMME.md §4): the seven sections the responsable
- * des paramètres fills before the bench, a draft that keeps the sample
- * received, and the confirmation that moves it to PROGRAMME. Once the bench
+ * The programme sheet (PROGRAMME.md §4): the sections the responsable des
+ * paramètres fills before the bench, a draft that keeps the sample
+ * received, and the confirmation that moves it to PROGRAMME. The seventh,
+ * « Facturation » (each analysis at its catalogue price), is for a role
+ * that sees the billing only — on this page the administrator: the
+ * responsable des paramètres sees no price (the owner's rule of 25/10,
+ * `seesBilling`), and his referential carries none. Once the bench
  * started the sheet is read-only — the responsable des paramètres changes
  * the analyses through « Corriger les analyses », with a reason (16/10,
  * Q128), and the identification is the reception's or the validation's.
@@ -108,10 +115,10 @@ import type {
  * d'analyse » is chosen here, within the sample's family — or, since 16/10
  * (Q129), among « Autres analyses » (« Analyse sensorielle » of a food) and
  * back to the family of the code's letter; the code and the N° de contrôle
- * never change (`natureChoices`). Choosing one
- * reloads the referential of that nature at once (`GET …/programme
- * ?natureId=` — its analyses, profiles and prices), drops the ticked
- * analyses it does not offer and says which; the sample takes the nature
+ * never change (`natureChoices`). Choosing one reloads the referential of
+ * that nature at once (`GET …/programme?natureId=` — its analyses, profiles
+ * and, for the administrator, prices), drops the ticked analyses it does
+ * not offer and says which; the sample takes the nature
  * when the programme is saved (`natureId` in the PUT). Nothing is written
  * before that save, so leaving the page keeps the old nature.
  *
@@ -132,12 +139,12 @@ type ProgrammeSheetProps = {
   /** The line as « Corriger la fiche » / « Annuler » edit it; null when the role has none of these verbs. */
   verbSample: VerbSample | null;
   /**
-   * The invoice holding the line (`heldInvoices`; number null = a draft), or
-   * null: a confirmed programme is billable, and a change of its analyses
-   * never reaches that invoice by itself — the sheet says so before and
-   * after the save.
+   * The invoice holding the line (`heldInvoiceFor`: issued or a draft, its
+   * number for the administrator only), or null: a confirmed programme is
+   * billable, and a change of its analyses never reaches that invoice by
+   * itself — the sheet says so before and after the save.
    */
-  invoiced?: { number: string | null } | null;
+  invoiced?: InvoiceFact | null;
 };
 
 type SavedState = Pick<ProgrammeSampleData, "status" | "analysisBlocked"> &
@@ -242,7 +249,8 @@ export function ProgrammeSheet({
     return parameter ? [parameter] : [];
   });
   const checks = entryChecks(sample, draft, referential, thresholds);
-  const billing = billingLines(draft, referential);
+  // Section 7, for a role that sees the billing only (25/10).
+  const billing = seesBilling(role) ? billingLines(draft, referential) : null;
   const warning = unitWarning(draft, type);
   const holderNotice = benchHolderNotice(saved.holder, saved);
 
@@ -1037,11 +1045,11 @@ export function ProgrammeSheet({
             onChange={(e) => patch({ programmeNote: e.target.value })}
             rows={3}
             maxLength={MAX_PROGRAMME_NOTE}
-            placeholder="Préparation, conservation, remarques pour le comptable…"
+            placeholder="Préparation, conservation, remarques pour la paillasse…"
             disabled={readOnly}
             className="input-field resize-none px-4 disabled:bg-slate-50"
           />
-          <p className="mt-1 text-xs text-slate-500">Lues par la paillasse et par le comptable (section 7).</p>
+          <p className="mt-1 text-xs text-slate-500">Lues par la paillasse.</p>
         </div>
       </Card>
 
@@ -1066,60 +1074,62 @@ export function ProgrammeSheet({
         )}
       </Card>
 
-      {/* 7 — Facturation */}
-      <Card className="p-4 sm:p-6">
-        <SectionTitle
-          index={7}
-          icon={ReceiptText}
-          title="Facturation"
-          hint="Les lignes proposées au comptable dès la confirmation : chaque analyse programmée à son prix du catalogue."
-        />
-        {billing.lines.length === 0 ? (
-          <p className="text-sm text-slate-500">Aucune analyse programmée : rien à facturer pour l&apos;instant.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th className="pb-2 pr-3 font-medium">Analyse</th>
-                  <th className="pb-2 text-right font-medium">Prix catalogue (HT)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {billing.lines.map((line) => (
-                  <tr key={line.parameterId} className="border-b border-slate-100">
-                    <td className="py-2 pr-3 text-slate-800">{line.name}</td>
-                    <td className="py-2 text-right tabular-nums">
-                      {line.unitPrice === null ? (
-                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">prix à saisir</span>
-                      ) : (
-                        <span className="text-slate-800">{formatCurrency(line.unitPrice)}</span>
-                      )}
-                    </td>
+      {/* 7 — Facturation: the billing roles only (25/10) */}
+      {billing && (
+        <Card className="p-4 sm:p-6">
+          <SectionTitle
+            index={7}
+            icon={ReceiptText}
+            title="Facturation"
+            hint="Les lignes proposées au comptable dès la confirmation : chaque analyse programmée à son prix du catalogue."
+          />
+          {billing.lines.length === 0 ? (
+            <p className="text-sm text-slate-500">Aucune analyse programmée : rien à facturer pour l&apos;instant.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <th className="pb-2 pr-3 font-medium">Analyse</th>
+                    <th className="pb-2 text-right font-medium">Prix catalogue (HT)</th>
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td className="pt-2 pr-3 text-sm font-semibold text-slate-700">Total des lignes tarifées</td>
-                  <td className="pt-2 text-right font-semibold tabular-nums text-slate-900">{formatCurrency(billing.total)}</td>
-                </tr>
-              </tfoot>
-            </table>
-            {billing.unpriced > 0 && (
-              <p className="mt-2 text-xs text-amber-700">
-                {billing.unpriced} analyse{billing.unpriced > 1 ? "s" : ""} sans prix au catalogue : le comptable saisira le prix à la facturation.
-              </p>
-            )}
+                </thead>
+                <tbody>
+                  {billing.lines.map((line) => (
+                    <tr key={line.parameterId} className="border-b border-slate-100">
+                      <td className="py-2 pr-3 text-slate-800">{line.name}</td>
+                      <td className="py-2 text-right tabular-nums">
+                        {line.unitPrice === null ? (
+                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">prix à saisir</span>
+                        ) : (
+                          <span className="text-slate-800">{formatCurrency(line.unitPrice)}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td className="pt-2 pr-3 text-sm font-semibold text-slate-700">Total des lignes tarifées</td>
+                    <td className="pt-2 text-right font-semibold tabular-nums text-slate-900">{formatCurrency(billing.total)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+              {billing.unpriced > 0 && (
+                <p className="mt-2 text-xs text-amber-700">
+                  {billing.unpriced} analyse{billing.unpriced > 1 ? "s" : ""} sans prix au catalogue : le comptable saisira le prix à la facturation.
+                </p>
+              )}
+            </div>
+          )}
+          <div className="mt-4 rounded-xl bg-slate-50 p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Note pour le comptable</p>
+            <p className="mt-1 whitespace-pre-line text-sm text-slate-700">
+              {draft.programmeNote.trim() || <span className="text-slate-400">Aucune — les consignes de la section 5 sont transmises telles quelles.</span>}
+            </p>
           </div>
-        )}
-        <div className="mt-4 rounded-xl bg-slate-50 p-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Note pour le comptable</p>
-          <p className="mt-1 whitespace-pre-line text-sm text-slate-700">
-            {draft.programmeNote.trim() || <span className="text-slate-400">Aucune — les consignes de la section 5 sont transmises telles quelles.</span>}
-          </p>
-        </div>
-      </Card>
+        </Card>
+      )}
 
       {/* Pied */}
       <Card className="p-4 sm:p-6">
@@ -1143,9 +1153,7 @@ export function ProgrammeSheet({
           confirmed &&
           !readOnly && (
             <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              {invoiced.number === null
-                ? "Échantillon sur un brouillon de facture : un changement d'analyses est à signaler à la comptabilité."
-                : `Échantillon déjà facturé (${invoiced.number}) : un changement d'analyses est à signaler à la comptabilité (avoir ou facture complémentaire).`}
+              {heldInvoiceNotice(invoiced)}
             </p>
           )
         )}
@@ -1175,7 +1183,7 @@ export function ProgrammeSheet({
         )}
         {!readOnly && !confirmed && (
           <p className="mt-2 text-xs text-slate-500">
-            Le brouillon laisse l&apos;échantillon « Reçu » ; la confirmation le passe à « Programmé », le place dans « À prendre » à la paillasse et ouvre la facturation.
+            Le brouillon laisse l&apos;échantillon « Reçu » ; la confirmation le passe à « Programmé », le place dans « À prendre » à la paillasse.
           </p>
         )}
       </Card>
