@@ -1,7 +1,9 @@
 # Réponses du laboratoire du 28/10 (le document du 18/10 annoté, l'e-mail, quatre fichiers Excel) — plan du lot 3
 
-> **Le plan en cours pour ces réponses. État au 01/11 : analysé ; le lot 3C
-> est construit sur la branche `lot3c` (§5, « Lot 3C — construit le 01/11 »).** Le 28/10, le laboratoire a renvoyé :
+> **Le plan en cours pour ces réponses. État au 01/11 (soir) : les cinq lots
+> 3A–3E construits, relus, corrigés et intégrés dans `lot2-retour-16-10`
+> (copie locale, recette V21 123/123 ; non poussé, non déployé — §5
+> « Intégration »).** Le 28/10, le laboratoire a renvoyé :
 > (a) un scan de 14 pages — les 12 pages de notre document du 18/10
 > « Suite de vos réponses du 16/10 »
 > (`backups/Qualilab-suite-reponses-16-10-2026-10-18.pdf`) annotées à la
@@ -293,9 +295,24 @@ unité et seuil non cités).
 
 ## 5. Le plan — lot 3
 
-État au 01/11 : lot 3A construit et relu, corrections de la relecture
-appliquées (copie locale, non déployé) ; 3B, 3C, 3D, 3E en cours — l'état de
-chaque lot est dans `LOT3-AVANCEMENT.md`.
+État au 01/11 (soir) : **les cinq lots construits, relus, corrigés et
+intégrés** dans `lot2-retour-16-10` (copie locale, non poussé, non déployé) ;
+L3 parqué (§8). Le journal de reprise est `LOT3-AVANCEMENT.md`.
+
+**Intégration (01/11 soir).** 3A `ec792dc`, 3D `cd9837c`, documents
+`78ebd20`, fusions de `lot3b` (`0d6ebc7`), `lot3c` (`7082811`), `lot3e`
+(`5f78071`). Huit migrations additives (aucune pour 3A). Contrôles : tsc 0,
+eslint 0, vitest 188 fichiers / 3 442 tests, build OK ; recettes locales
+v16-1 → v20 vertes et `.ui-tests/v21-lot3-local.mjs` **123/123**
+(`TESTPLAN.md` « Checkpoint V21 »). **Renumérotation :** la question de 3A
+sur Q71 portait le numéro R-28, déjà pris par 3B (2.11) : elle devient
+**R-30** (§6). **Statuts :** chaque élément ci-dessous est construit tel
+qu'écrit dans son lot ; ce qui attend une réponse est marqué « hypothèse, à
+confirmer par R-x » et, quand cela change un comportement non confirmé,
+porte un interrupteur de `src/lib/lab-proposals.ts` (liste complète :
+`HANDOFF.md` §9 « Lot 3 — switches and hypotheses »). Rien n'est en
+production : la production tourne toujours `e8cbfe1` ; les étapes sont
+dans `DEPLOY.md` « Lot 3 ».
 
 Lettres nouvelles : **I** réception, comptoir, terrain · **J** paillasse et
 interprétation · **K** rapport, envoi, alertes · **L** exports et
@@ -935,8 +952,14 @@ n'est créé tant qu'il ne l'a pas dit.** Ce n'est pas un travail du lot 3.
 5. **Lot 3D** (P2 puis P3) : M1 (une migration), M2, M3, M4 ; M5–M8 après
    R-23 / R-24.
 6. **Lot 3E** (P3) : après O-6 et R-22.
-7. **Recette** : un checkpoint par lot dans `TESTPLAN.md` (V21 pour le lot
-   3A), écrit quand le lot est construit.
+7. **Recette** : un checkpoint par lot dans `TESTPLAN.md` (V21-3A, V24
+   pour 3D, 3E), et le **Checkpoint V21** de l'ensemble.
+8. **Fait le 01/11** : les cinq lots construits, relus, corrigés, intégrés
+   et testés en local (§5 « Intégration »). **Reste** : contrôle final,
+   push, déploiement (`DEPLOY.md` « Lot 3 » : migrations, S1, S2, K5, L2,
+   L4, S3 par la route de l'application), recette en production sur
+   « TEST UI », prévenir le laboratoire ; la relance (§6, R-8 … R-30)
+   quand le propriétaire le décide.
 
 ## 10. Dépôt public
 

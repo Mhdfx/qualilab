@@ -7,13 +7,14 @@
 
 ## Où se trouve le travail
 
-| Lot | Contenu (RETOUR-LABO-28-10.md §5) | Arbre de travail | Branche | État au 01/11 17 h 20 |
+| Lot | Contenu (RETOUR-LABO-28-10.md §5) | Où | Commit | État au 01/11 soir |
 |---|---|---|---|---|
-| 3A | I1, K1, I2, I3, I4, I5, K2, G2, I7, drapeaux d'alerte (S3) | `C:\laragon\www\qualilab proto` | `lot2-retour-16-10` (non commité) | construit ; relecture et corrections **à faire** |
-| 3D | M1 à M8 (Achat & Stock) | `C:\laragon\www\qualilab proto` (même arbre que 3A) | `lot2-retour-16-10` (non commité) | construit ; relecture et corrections **à faire** |
-| 3B | O-12, J3, J1, J2, J4, G1, G4, G5 | `C:\laragon\www\qualilab-lot3b` | `lot3b` (8 commits + 5 fichiers non commités) | construction presque finie, interrompue ; **à terminer**, puis relecture |
-| 3C | I6, K5, K4, K6, L1, L2, L4, L5, I8 | `C:\laragon\www\qualilab-lot3c` | `lot3c` (1 commit + 45 fichiers non commités) | construction interrompue en cours ; **à terminer**, puis relecture |
-| 3E | N1, N2, N3 (ONSSA) | `C:\laragon\www\qualilab-lot3e` | `lot3e` (commit `832d23c`) | construit et relu ; corrections de la relecture **à appliquer** |
+| 3A | I1, K1, I2, I3, I4, I5, K2, G2, I7, drapeaux d'alerte (S3) | `lot2-retour-16-10` (arbre principal) | `ec792dc` | construit, relu (6), corrigé, **intégré** |
+| 3D | M1 à M8 (Achat & Stock) | `lot2-retour-16-10` (arbre principal) | `cd9837c` | construit, relu (7), corrigé, **intégré** |
+| 3B | O-12, J3, J1, J2, J4, G1, G4, G5 | branche `lot3b` → fusionnée | fusion `0d6ebc7` | construit, relu (7), corrigé, **intégré** |
+| 3C | I6, K5, K4, K6, L1, L2, L4, L5, I8 (+ K3) | branche `lot3c` → fusionnée | fusion `7082811` | construit, relu (10), corrigé, **intégré** |
+| 3E | N1, N2, N3 (ONSSA) | branche `lot3e` → fusionnée | fusion `5f78071` | construit, relu (10), corrigé, **intégré** |
+| Ensemble | documents `78ebd20` + documents de l'intégration | `lot2-retour-16-10` | — | tsc 0, eslint 0, vitest 3 442, build OK, recettes v16-1 → v20 vertes, **v21-lot3 123/123** ; **non poussé, non déployé** |
 
 Copies de sécurité du travail non commité (01/11 17 h 20) :
 `refs/wip/lot3-qualilab-proto-2026-11-01` (3A + 3D), `refs/wip/lot3-qualilab-lot3c-2026-11-01`,
@@ -24,7 +25,7 @@ jonction vers celui de l'arbre principal, `.env.local` copié, client Prisma gé
 dans chaque arbre). Les migrations sont additives et préfixées par lot
 (3A 202611011000xx, 3B …2000xx, 3C …3000xx, 3D …4000xx, 3E …5000xx).
 
-## Ordre restant
+## Ordre restant (étapes 1 à 3 faites le 01/11 ; reprendre à l'étape 4)
 
 1. Terminer 3B et 3C ; relire 3A, 3D ; appliquer les corrections de 3E (en parallèle).
 2. Relire 3B et 3C, corriger.
@@ -54,3 +55,7 @@ dans chaque arbre). Les migrations sont additives et préfixées par lot
 - 01/11 17 h 45 — relecture hostile du lot 3C (lecture seule, `lot3c` `c7e3203`) : tous les éléments présents, migration additive et conforme au schéma (prisma migrate diff), tsc 0 et vitest 3103/3103 relancés ; 10 constats à corriger, dont 3 moyens : valeurs des résultats du récapitulatif données à la réception et au programmateur (hors REPORT_READ_ROLES), logo d'accréditation et cachet relus à chaque impression (non figés), adresses « clients choisis » de L5 perdues à une fusion ou un rattachement de client.
 - 01/11 17 h 41 — corrections de la relecture de 3B : les 7 constats appliqués sur lot3b (commit 1c70f74 ; dilution plafonnée à 99 999 999, unité « UFC/<texte> » coupée à 191 caractères, fiche propre après une dilution réécrite, conclusion sans « de E. coli », cas « anomalie » écrit (R-28), fiche de programmation alignée sur la paillasse, interrupteur UNIT_MISMATCH_NOT_JUDGED + R-29, « Germe détecté — alerte »), tsc 0, eslint 0, vitest 160 fichiers / 3 124 tests.
 - 01/11 17 h 59 — corrections de la relecture 3C (`lot3c`, commit `6e3cb7d`) : les 10 constats corrigés — valeurs du récapitulatif réservées aux profils qui lisent les rapports (réception et programmation : C / NC, décision à confirmer R-21), logo et cachet figés par empreinte avec chaque version (table en ajout seul `ReportImageArchive`, migration 20261101300001), adresses « clients choisis » suivies à la fusion et au rattachement, marque de l'ancien logiciel retirée du nom une fois le statut enregistré, délai propre à un type d'analyse en option (migration 20261101300002), EMAIL_FROM « no-reply » ignoré, accord du client comparé à la minute et protégé des corrections concurrentes, piège de backup-db.sh sans effet sur le code de sortie (vérifié sous WSL), ligne K3 « Valider et envoyer », RETOUR §5 + DEPLOY « Lot 3C » ; tsc 0, eslint 0, vitest 168 fichiers / 3 130 tests, migrations appliquées en local ; reste pour l'intégrateur : lignes HANDOFF « où changer » K4, K5, L1, L2, L4, L5.
+- 01/11 18 h 11 — intégration, étape 1 : 3A (`ec792dc`), 3D (`cd9837c`) et leurs documents (`78ebd20`) commités séparément ; `lot3b` (`0d6ebc7`), `lot3c` (`7082811`), `lot3e` (`5f78071`) fusionnés en --no-ff, conflits résolus en gardant les deux côtés (contrôle ligne à ligne : aucune ligne perdue hors fusions voulues), relance Q71 de 3A renumérotée R-30 (R-28 = 3B), tsc 0 après chaque fusion ; copie de sécurité `refs/wip/lot3-qualilab-proto-avant-integration` ; reste : migrations, contrôles, recettes, documents.
+- 01/11 18 h 48 — intégration, étapes 2–4a : migrations (48, toutes appliquées, `migrate diff` vide, lot 3 additif), tsc 0, eslint src 0, vitest 188 fichiers / 3 442 tests, `npm run build` OK ; serveur :3210 trouvé arrêté, relancé depuis l'arbre principal (`npx next dev -p 3210`) ; recettes locales vertes : v16-1 64/64, v16-2 108/108, v16-3 68/68, v17 78/78, v18 53/53, v19 71/71, v19-serie 50/50, v20 99/99 (scripts adaptés aux seuls changements voulus : T° au prélèvement I2, « Prélevé le » facultatif I3, « Aseptisées / désinfectées » K1, premier envoi K2, « Tous exploitables et bien identifiés » I4, moyen de prélèvement K6, sans critère J3, rattachement 2.5, « Reste à payer » M6) ; reste : `.ui-tests/v21-lot3-local.mjs`, documents, commit.
+- 01/11 21 h 48 — intégration, étape 4b : nouvelle recette `.ui-tests/v21-lot3-local.mjs` (API, pages servies, PDF par pdftotext, en-têtes des exports Excel, Chrome sans tête) couvrant I1–I8, K1–K6, G1–G5, J1–J4, O-12, L1–L5, M1–M8, N1–N3 et S3 (essai) : **123/123** sur :3210, réglages remis à la fin ; reste : documents et commit.
+- 01/11 21 h 54 — intégration, étape 5 : documents à jour — HANDOFF (ligne « Lot 3 » au §1, gardes du lot 3 au §3, lignes « où changer » K4 K5 K6 K3 L1 L2 L4 L5 I6 I8 au §5, §8 « 2026-11-01 — lot 3 », §9 « Lot 3 — switches and hypotheses »), TESTPLAN « Checkpoint V21 » (local coché, lignes production), PROGRESS, RETOUR-LABO-28-10 (§5 « Intégration », R-30, §9), NEEDEDINFO (7 quater = R-30), DEPLOY « Lot 3 » complet (migrations, répertoire du journal des sauvegardes, EMAIL_FROM, S1 / S2 / K5 / S4, S3 par la route de l'application, recette, retour arrière), tableau d'état ci-dessus ; commit de l'intégration ensuite ; reste : contrôle final hostile, push, production.

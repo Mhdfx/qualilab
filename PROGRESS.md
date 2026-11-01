@@ -8,7 +8,15 @@
 
 ## ▶ NEXT ACTION
 
-**01/11 — LOT 3 EN COURS (retour du 28/10) : voir `LOT3-AVANCEMENT.md` en premier** (où est chaque lot, ce qui est fait, l'ordre restant, les copies de sécurité). Production inchangée (`e8cbfe1`).
+**01/11 (soir) — LOT 3 (retour du 28/10) CONSTRUIT, RELU, INTÉGRÉ ET TESTÉ EN LOCAL — NON POUSSÉ, NON DÉPLOYÉ.** Branche `lot2-retour-16-10` : 3A `ec792dc`, 3D `cd9837c`, documents `78ebd20`, fusions 3B `0d6ebc7`, 3C `7082811`, 3E `5f78071`, puis le commit de documents de l'intégration. Huit migrations additives (appliquées en local, `migrate diff` vide). tsc 0, eslint 0, vitest 188 fichiers / 3 442 tests, build OK ; recettes locales v16-1 64/64, v16-2 108/108, v16-3 68/68, v17 78/78, v18 53/53, v19 71/71, v19-serie 50/50, v20 99/99, **v21-lot3 123/123** (`TESTPLAN.md` « Checkpoint V21 »). La relance de 3A sur Q71 est renumérotée **R-30**. Journal de reprise : `LOT3-AVANCEMENT.md`. Production inchangée (`e8cbfe1`).
+Next, in this order:
+1. **Contrôle final hostile** de l'ensemble intégré (les interactions entre lots : rapport J3 + K4 + G2, alertes O-12 + K3 + L5, réception I3 + I7 + N1), corrections, puis **push** de `lot2-retour-16-10` (pas de fusion dans `master` avant le déploiement).
+2. **Propriétaire, avant le déploiement** : la décision `Invoice.clientSnapshot` (préalable de I5), L1 (valeurs aux seuls profils qui lisent les rapports, R-21), garder ou vider la proposition K5 (5 / 7 jours ouvrés).
+3. **Déploiement** : `DEPLOY.md` « Lot 3 » (tag `v1.6-avant-lot3`, dump, répertoire `journal/` des sauvegardes, `EMAIL_FROM`, migrations, réglages S1 / S2 / K5 / S4, S3 par la route de l'application `--dry-run` puis approbation), puis les lignes production du Checkpoint V21 sur « TEST UI », et prévenir le laboratoire (`RETOUR-LABO-28-10.md` §9).
+4. La relance R-8 … R-30 (`RETOUR-LABO-28-10.md` §6, `NEEDEDINFO.md`) quand le propriétaire le décide ; O-7 ; L3 parqué.
+5. Une fois tout fusionné : `git worktree remove` des arbres `qualilab-lot3b`, `qualilab-lot3c`, `qualilab-lot3e`.
+
+_Previous next action:_ **01/11 — LOT 3 EN COURS (retour du 28/10) : voir `LOT3-AVANCEMENT.md` en premier** (où est chaque lot, ce qui est fait, l'ordre restant, les copies de sécurité). Production inchangée (`e8cbfe1`).
 
 **01/11 — réponses du laboratoire du 28/10 analysées : plan du lot 3, `RETOUR-LABO-28-10.md` — RIEN construit.** Reçu le 28/10 : le document du 18/10 annoté en entier (14 pages, scan hors dépôt `backups/reponses-labo-28-10-scan.pdf` ; pages 13–14 = la copie du comptable du 19/10, rien de nouveau), l'e-mail (réponses du 12/10 déjà appliquées ; liste du personnel hors dépôt `backups/comptes-et-signataires-labo-2026-10-28.md` — comptes **parqués** par le propriétaire ; NB attestation de régularité fiscale / retenue à la source) et quatre modèles Excel **vides** (`backups/fichiers-labo-28-10/` : récapitulatif par site, rapport ONSSA, journal des achats, fiche de stock). Propositions construites d'avance : 2.1, 2.4, 2.13, 2.15 confirmées ; 2.6 changée ; 2.16 confirmée (série), changée (envoi sans le commercial, alerte plus à la validation technique) — HANDOFF §9. NEEDEDINFO : 28/10 noté sur chaque question, Q134–Q140 nouvelles, brouillon de relance §2 « Lot du 28/10 » (R-6 à R-27).
 Next, in this order:

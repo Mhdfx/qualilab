@@ -932,9 +932,126 @@ git checkout v1.5-lot2-16-10 && sudo -u qualilab bash scripts/deploy.sh`.
 The reprise (f) and the splits stay (data); undo them with their dumps
 (steps 4 and 1), which lose everything entered since.
 
-## Lot 3 (01/11) — after the deploy (in construction: the integrator completes this section)
+## Lot 3 (01/11) — the laboratory's answers of 28/10: deploy, the owner's settings, S3
 
-### S3 — the analyses that raise the contamination alert (operator, owner's approval first)
+Branch `lot2-retour-16-10` after `8970d0a`: lot 3A `ec792dc` (réception,
+comptoir, rapport), lot 3D `cd9837c` (Achat & Stock), the documents
+`78ebd20`, the merges of lot 3B `0d6ebc7` (paillasse), lot 3C `7082811`
+(réception, rapport, exports, exploitation) and lot 3E `5f78071` (rapport
+ONSSA), then the integration's documents (`HANDOFF.md` §8 « 2026-11-01 —
+lot 3 », `TESTPLAN.md` V21). Production runs `e8cbfe1`.
+
+**Eight additive migrations**, applied by the image's `migrate` service
+(`prisma migrate deploy`): `20261101200001_lot3b_alerte_sans_critere`,
+`20261101200002_lot3b_dilution_saisie`,
+`20261101300000_lot3c_reception_rapport_exports`,
+`20261101300001_lot3c_images_figees`, `20261101300002_lot3c_delai_par_type`,
+`20261101400000_lot3d_achat_stock` (its only MODIFY adds `ANNULEE` to
+`PurchaseInvoice.status`), `20261101400001_lot3d_retenue_base_attestation`,
+`20261101500000_lot3e_rapport_onssa`. New columns are nullable or have a
+default; new tables (`AlertCopyAddress`, `AlertCopyClient`,
+`ReportImageArchive`, `AchatStockSettings`, `PurchasePayment`,
+`OnssaProductGroup`) start empty. **What the migrations switch on by
+themselves:** `LabSettings.dueDaysMicro = 5`, `dueDaysChimie = 7` (K5 — the
+programme sheet proposes « à rendre le », step 4).
+
+**Changed outside `src/`:** `docker-compose.yml` (the app gets
+`BACKUP_JOURNAL_PATH` and a read-only mount of
+`${BACKUP_DIR:-/var/backups/qualilab}/journal`), `scripts/backup-db.sh`
+(one journal line per run, exit code unchanged), `.env.example`
+(`EMAIL_FROM` example, a real mailbox), the new
+`scripts/s3-contamination-alerts.mts`. No new package.
+
+The unconfirmed behaviours ship **behind switches** (`src/lib/lab-proposals.ts`,
+`HANDOFF.md` §9 « Lot 3 — switches and hypotheses »): flip one and redeploy
+— no row is rewritten.
+
+### 0. Before the window
+
+- Gates on the branch's head (green on 01/11: `npx tsc --noEmit -p .` 0,
+  `npx eslint src` 0, `npx vitest run` 188 files / 3 442 tests,
+  `npm run build` OK; e2e v16-1 → v20 and `v21-lot3-local.mjs` 123/123 on
+  the local copy).
+- **The owner decides first:** `Invoice.clientSnapshot` (`HANDOFF.md` §9 —
+  the prerequisite of I5, the gestionnaire attaching a client as a site);
+  L1's values for the report-reading roles only (R-21); keep or empty the
+  K5 proposal (step 4).
+- Tell the laboratory what changes for them (`RETOUR-LABO-28-10.md` §9):
+  the T° au prélèvement now required at the visit for a food, a water, a
+  surface (a blocking rule on the phones); « Prélevé le » optional at the
+  counter; « Tous exploitables et bien identifiés »; the first send of a
+  report is the validator's / the Direction's; the note of an analysis is
+  internal; the bench's « Dilution lue », quick buttons, « précédent /
+  suivant »; Achat & Stock (HT / TVA, payments, journals, imports); the
+  ONSSA screen.
+- Outside the laboratory's hours.
+
+### 1. Restore point
+
+- **Code:** `git tag v1.6-avant-lot3 e8cbfe1 && git push origin v1.6-avant-lot3`
+  (what production runs); then `git checkout master && git merge --ff-only
+  lot2-retour-16-10 && git push origin master`.
+- **Database:** `/var/backups/qualilab/qualilab_avant-lot3.sql.gz`, taken
+  with the app stopped, right before `deploy.sh` (the commands of « Lot 2
+  du 16/10 » step 2 with this name: `gzip -t`, « -- Dump completed »,
+  `chown qualilab:`).
+
+### 2. On the VPS, as root
+
+- `sudo -u qualilab git rev-parse --short HEAD` → `e8cbfe1`; the last
+  migration `20261020100000_retour_labo_19_10_comptes_clients`, none
+  unfinished; the eight counts written down (« Lot 2 du 16/10 » step 2).
+- **L2, before the pull:** `install -d -o qualilab -g qualilab -m 750
+  /var/backups/qualilab/journal` — the backup cron (`scripts/backup-db.sh`,
+  run as `qualilab`) appends to `journal/backup-journal.csv`, the app reads
+  it through the read-only mount; created by hand so Docker never creates
+  it as root.
+- **L4:** `grep EMAIL_FROM /opt/qualilab/.env` — a `no-reply@…` value is
+  skipped by the app, but replace it with a real mailbox of the laboratory
+  (R-20) or set « Envoi des e-mails » in /admin/entreprise after the deploy.
+- `sudo -u qualilab git pull --ff-only`; `docker compose build`;
+  `docker compose stop app`; the dump of step 1; `bash scripts/deploy.sh`.
+
+### 3. Checks right after
+
+```bash
+docker compose ps -a migrate                       # Exited (0)
+docker compose logs migrate | tail -15             # the eight 202611010… migrations applied
+curl -s localhost:3000/api/health                  # {"status":"ok","database":"connected"}
+docker compose logs app --since 10m                # no error
+docker compose exec app ls -l /app/backup-journal  # the mount is there (empty until the next backup)
+```
+
+- The eight counts again: equal.
+- Run the backup once by hand (`sudo -u qualilab bash scripts/backup-db.sh`):
+  it exits 0 and Administration → « Sauvegardes » lists the run.
+
+### 4. The owner's settings (Administration → Réglages, journalled)
+
+- **S1** — the kinds whose temperature is required at the reception: `ALIMENT, EAU`
+  (`LabSettings.temperatureRequiredKinds`), with I2.
+- **S2** — the contamination alert at the technical validation: **off**
+  (`alertAfterTechnicalValidation = false`): the alert leaves at the
+  administrative validation (K3 keeps `ALERTS_AT_VALIDATION` on).
+- **K5** — « Délais de rendu »: the migration set 5 (microbiologie) and 7
+  (physico-chimie) working days. Keep them, or empty the two fields until
+  the laboratory answers R-18. No type d'analyse has its own delay.
+- **S4** — /admin/documents: protocole PG04/EN01 version G, bon PG05/EN04
+  version H (unchanged from the plan, `RETOUR-LABO-28-10.md` §7).
+- **K4** — nothing until the laboratory sends the logo and the stamp: then
+  upload them in /admin/entreprise; each version issued after the upload
+  freezes them (`ReportImageArchive`, append-only — never purge it). Set the
+  parameters' accreditation in /admin/parametres (« Accréditation des
+  paramètres », proposed from the old marks).
+- **L5** — « Copies internes des alertes » in /admin/entreprise when the
+  laboratory confirms the addresses (R-16).
+- **Achat & Stock (admin, /magasin/reglages)** — the retenue à la source
+  stays « Aucun » until the accountant answers R-24; the expiry window 30
+  days.
+- **ONSSA (admin, /admin/onssa)** — « Proposer la liste » for the product
+  groups, then the correspondences (R-22 still open).
+
+### 5. S3 — the analyses that raise the contamination alert (operator, owner's approval first)
 
 `scripts/s3-contamination-alerts.mts` (RETOUR-LABO-28-10.md §5 3A, §7 S3)
 sets `alertOnExceed` through `PATCH /api/parameters/[id]` as the demo admin
@@ -956,30 +1073,20 @@ suggested conformity reads (`valueAgainstLimit`, `bench-reading.ts`). The
 4. The JSON report lands in `.ui-tests/` (git-ignored) — keep it with the
    deploy notes.
 
-## Lot 3C (01/11) — what the deploy changes by itself, and the operator's checks
+### 6. Production recette (demo accounts, « TEST UI » only)
 
-Three additive migrations (`20261101300000_lot3c_reception_rapport_exports`,
-`20261101300001_lot3c_images_figees`, `20261101300002_lot3c_delai_par_type`),
-applied by `prisma migrate deploy` with the image. The integrator folds these
-lines into the « Lot 3 » section.
+`TESTPLAN.md` « Checkpoint V21 », production lines: never a password typed
+on production (the demo panel), only the « TEST UI » client; then tell the
+owner.
 
-- **K5 switches on at the deploy**: the migration sets `LabSettings.dueDaysMicro = 5`
-  and `dueDaysChimie = 7` (working days) — every programme sheet of a received
-  sample without a promised date proposes one from then on (R-18 assumption).
-  To keep the old behaviour until the laboratory answers, empty the two fields
-  in Administration → Réglages → « Délais de rendu » right after the deploy.
-  No type d'analyse has its own delay (`AnalysisNature.dueDays` NULL).
-- **L4 — check `EMAIL_FROM` on the VPS** (`grep EMAIL_FROM .env`): production's
-  file was written from the old example (`no-reply@…`). The app now passes over
-  a no-reply `EMAIL_FROM` for the identity's e-mail, but replace it anyway with a
-  real mailbox of the laboratory (R-20), or set « Envoi des e-mails » in
-  /admin/entreprise; then `docker compose up -d` to reload the environment.
-- **K4** — nothing to do until the laboratory sends the files: the logo and the
-  stamp uploaded in /admin/entreprise are frozen with each version issued after
-  the upload (`ReportImageArchive`, append-only — never purge it).
-- **L2** — create the journal directory owned by the cron user before the first
-  run (« Backups »); a journal that cannot be written only warns, the backup's
-  exit code is unchanged.
+### 7. Rollback
+
+Code only is **not** clean: the old code does not know the new columns and
+tables (harmless — it never reads them) but the `ANNULEE` purchase status
+and the payments of lot 3D would be misread by the old screens. Prefer a
+fix forward. Full rollback = `git checkout v1.6-avant-lot3 && bash
+scripts/deploy.sh` + restore `qualilab_avant-lot3.sql.gz` (loses everything
+entered since). The `docker-compose.yml` mount is harmless to the old code.
 
 ## After every deploy — 5-minute check
 

@@ -1183,6 +1183,56 @@ Built 21/10 on branch `lot2-retour-16-10`, on top of `d4bff04`, committed and pu
 - [ ] Still six migrations applied (none added on 21/10); the laboratory told to reload every tab (the 35-minute bound).
 - [ ] Then the production lines of V18-A to V18-H above, on « TEST UI » data only.
 
+## Checkpoint V21 — Lot 3, retour du laboratoire du 28/10 (lots 3A–3E, `RETOUR-LABO-28-10.md` §5) — integrated and tested locally 01/11, **not pushed, not deployed**
+
+The five lots integrated on `lot2-retour-16-10` (3A `ec792dc`, 3D `cd9837c`, docs `78ebd20`, merges 3B `0d6ebc7`, 3C `7082811`, 3E `5f78071`, then the integration's docs commit). Per-lot detail lines: « Checkpoint V21-3A » (lot 3A), « Checkpoint V24 » (lot 3D), « Checkpoint 3E » (lot 3E); lots 3B and 3C are listed here.
+
+**Integration run (01/11, local):** 8 additive migrations applied (`migrate status` up to date, `migrate diff` empty); `npx tsc --noEmit -p .` 0, `npx eslint src` 0, `npx vitest run` 188 files / 3 442 tests, `npm run build` OK. Regression e2e on :3210 (git-ignored scripts, adapted to the intended changes only): v16-1 64/64, v16-2 108/108, v16-3 68/68, v17 78/78, v18 53/53 (`npx tsx`), v19 71/71, v19-serie 50/50, v20 99/99. **New: `.ui-tests/v21-lot3-local.mjs` 123/123** (`export BASE=http://localhost:3210 MSYS_NO_PATHCONV=1 && node .ui-tests/v21-lot3-local.mjs`; « TEST UI » client and « TEST UI V21 … » records only, every setting put back).
+
+Local (01/11, by `v21-lot3-local.mjs`):
+- [x] **I2** visit lines ALIMENT, EAU, SURFACE without « Température au prélèvement » → 400 « … obligatoire sur la visite … », nothing created; hands without it → 201; the phone form shows the star on a food line.
+- [x] **I3** a laboratory visit without « Prélevé le » → 400 « … obligatoire quand le laboratoire prélève. »; a visit sampled by a third party (« Autre ») and a deposit without it → 201, `samplingTimeDeclared = 0`; the protocole and the deposit's report print « Non déclarée ».
+- [x] **I1 / K1** phone chips « Aseptisées / désinfectées · En cours de travail · Lavées »; the hands report reads « Personne V21 — mains aseptisées / désinfectées ».
+- [x] **I4** reception screen (Chrome): « Tous exploitables et bien identifiés (3) » → all « Exploitable », the button at (0); « Non exploitable » preselects « Détruire ».
+- [x] **I5** commercial1: « Rattacher comme site » on a fiche, the preview → 200.
+- [x] **I7** a quantity not weighed accepted conforme without observation → 201; a temperature out of range → 400 « justifiez l'acceptation (C2 …) », with the observation → 201.
+- [x] **I8** the bon de réception has no « N° de fax » line.
+- [x] **K2** commercial1 first send → 403, valid1 → 200, commercial1 resend → 200; commercial1 série plan → 403.
+- [x] **G2** the note is stored, shown on /validation/[id], absent from the report.
+- [x] **S3** `scripts/s3-contamination-alerts.mts --dry-run` exits 0, writes its JSON, changes nothing.
+- [x] **O-12 / K3** a sensitive germ with neither criterion nor limit read « Présence » → `Result.detected = 1`, no verdict; the alert leaves at the technical validation; /validation/[id] « Germe détecté — alerte ».
+- [x] **J1 / J2** surface « couteau » → « UFC/couteau », biocollecteur → « UFC/m³ », boîte exposée 45 min → « UFC/boîte (exposée 45 min) », none judged by the UFC/cm² limit; the surface's report prints « UFC/couteau ».
+- [x] **J3** no criterion: no conformity written; the bench « Sans critère : le résultat figure au rapport sans interprétation. »; /validation « Sans interprétation »; the report's annex and conclusion « … communiqués sans interprétation : aucun critère n'est spécifié … ».
+- [x] **J4** dilution « 10-8 » → 400 (never 500); 3 read at « 1/100 » → `dilutionUsed` 100, value 300; /validation shows « 1/100 ».
+- [x] **G1** quick buttons « < 10 », « Absence », « Présence », no « Indénombrable » (Chrome).
+- [x] **G4** « Échantillon précédent / suivant » on the programme sheet and the bench; « suivant » opens the next line of the série (Chrome).
+- [x] **G5** /technicien?recus=0: the filter « Reçus depuis plus de N jours » and « reçu aujourd'hui / il y a N j ».
+- [x] **I6** the client's agreement after the reception: tech1 → 403, recep1 → 200 journalled `CLIENT_CONSULTATION_UPDATED`, the same agreement again → refused.
+- [x] **K4** accreditation refused to param1, set by admin; the report prints « Coliformes totaux * »; no stamp / logo frozen while none is uploaded; a malformed image → 400; /admin/parametres « Accréditation ».
+- [x] **K5** the programme sheet « Proposée d'après le délai du laboratoire : 5 jours ouvrés après l'arrivée — modifiable. »; 0 day → 400; /admin/reglages « Délais de rendu ».
+- [x] **K6** report: « Sachet stérile ou emballage d'origine » (food sampled by the laboratory), « Écouvillon » (surface), « N/A » (deposit).
+- [x] **L1** recap (.xlsx) « Site · Produit · Date de réception · N° de contrôle … Conformité »; recep1 gets C / NC only and no « La valeur » on /recherche; tech1 → 403.
+- [x] **L2** /admin/sauvegardes 200; the journal download answers (CSV, or 404 while the local copy has no journal); recep1 → 403.
+- [x] **L4** no-reply refused, a real mailbox saved, then put back; recep1 → 403.
+- [x] **L5** « clients choisis » without a client → 400; created, duplicate → 409, updated, removed; /admin/entreprise shows the three blocks.
+- [x] **M1 / M3 / M4 / M5** article with its location; a future movement → 400; an entry of yesterday (lot, expiry, price HT) and an exit → levels 10 then 6; the stock journal and its Excel (« Date · Libellé · Lot · Expiration · Entrée · Sortie · Stock · Prix unitaire (DH HT) … Lieu de stockage »); the dashboard's « Péremption à surveiller »; prices read by magasin1, recep1 → 403; the settings PUT is the administrator's (magasin1 → 403).
+- [x] **M2 / M6 / M7** a TTC-only invoice with the retenue on the TVA → 400 « … saisissez le montant HT. »; HT 1 000 + 20 % → TTC 1 200, retenue 150 (75 % without attestation); an EUR invoice; a partial payment keeps it to pay, the rest → PAYEE, « Rouvrir » cancels both; the purchase journal's 13 columns in order + « Net à payer », sheet « Retenues à la source »; compta1 → 403 (O-7 open).
+- [x] **M8** suppliers and stock imports: analyse writes nothing, import creates (term 45 days; opening stock one entry of 8); /magasin/import and /magasin/reglages open.
+- [x] **N1** official control without the body → 400; with body, establishment, origin → stored; an autocontrôle drops the body.
+- [x] **N2** proposed groups in one click; mappings refused to valid1, an unknown column → 400, saved by admin (then put back); /admin/onssa opens.
+- [x] **N3** the month's workbook (valid1): Feuil1, Feuil2, Feuil3, Notes; recep1 → 403; « 2026-13 » → 400; /qualite/onssa opens.
+- [x] No JavaScript error in the browser during the run.
+
+Still to look at by eye before the deploy (not automated): the per-lot browser lines of V21-3A, V24 and 3E above that the script does not reach (the printed protocole / bon hands phrase, the I4 review sequence, the ONSSA panels at the visit / counter / reception, the M7 settings screen's wording).
+
+Production (after the deploy, the owner — `DEPLOY.md` « Lot 3 »):
+- [ ] Tag + dump before; the 8 migrations applied by the image (`prisma migrate deploy`); row counts before = after; health ok.
+- [ ] The owner's two settings: reception temperature kinds `ALIMENT,EAU` (S1); no automatic alert at the technical validation (S2, `alertAfterTechnicalValidation` off).
+- [ ] K5: the 5 / 7 working-day proposal is ON by the migration — kept, or emptied in /admin/reglages until R-18.
+- [ ] L4: `EMAIL_FROM` on the VPS checked (no no-reply), or « Envoi des e-mails » set; L2: the journal directory created for the backup cron and mounted read-only.
+- [ ] S3: the script through the app route as the admin (`--base <prod> --dry-run` first, `--listeria none`), the owner approves the plan (it writes `limitValue 0` on detections without a limit), then the real run.
+- [ ] Production recette on « TEST UI » only with the demo accounts (no password typed on production): a visit (I2, I3), a deposit (I3, I7, I8), a circuit to the report (K1, K2, K6, G2, J3), the magasin (M1–M8 on « TEST UI » records), the ONSSA screen (N3); then the laboratory told what changed (`RETOUR-LABO-28-10.md` §9).
+
 ## Checkpoint V24 — Lot 3D Achat & Stock (`RETOUR-LABO-28-10.md` §5, M1–M8) — built locally 01/11, **not deployed**
 
 Built 01/11 in the main tree (uncommitted, for the integrator). **Two additive migrations** `20261101400000_lot3d_achat_stock` and, after the review of 01/11, `20261101400001_lot3d_retenue_base_attestation` (two nullable columns of `PurchaseInvoice`: `withholdingBase`, `taxCertificateState`) (applied on the local copy with `npx prisma migrate deploy`, client regenerated). vitest: `withholding`, `purchase-invoice`, `purchase-journal`, `stock-journal`, `lab-proposals-3d` (the switches turned), `stock-import`, `stock` (lot 3D part), `price-access-guards` (`STOCK_MODULE` + `api/stock/`, the administrator alone on `PUT api/stock/settings`); tsc 0, eslint 0 on the lot's files. An integration pass of the routes on the local database (handlers for real, guard stubbed, rows prefixed then removed): **17/17** — settings, supplier attestation, both imports, dated movements with levels, 4 concurrent exits, expiry / value, paged history and journal, journal export re-read with ExcelJS, HT / TVA / retenue on recording, partial then full payment, 3 concurrent full payments → one, payment cancelled, « Rouvrir », correction (refused once paid in part, then journalled), « Annuler la saisie », the purchase journal export (13 columns, 3 sheets), 403 for another role. Browser lines below: **to run by the integrator** (magasin1 and admin, « TEST UI » records only).
@@ -1200,7 +1250,7 @@ Built 01/11 in the main tree (uncommitted, for the integrator). **Two additive m
 - [ ] **M8** — /magasin/import: the laboratory's « Fiche de stock » (or a TEST UI copy) → « Analyser » lists articles, opening stock, lot / expiry, price; « Importer » creates them with one entry movement « Stock d'ouverture »; a second analysis → all « Déjà connus ». The « Journal Achat » saved as .xlsx → suppliers with their « Délai de paiement »; the .xls itself → the « enregistrez-le au format .xlsx » message.
 - [ ] Production (after the deploy, the owner): apply the migration; the laboratory told that the purchase invoices take the HT and the TVA, the attestation and the payment's day and mode; R-23 / R-24 asked (`RETOUR-LABO-28-10.md` §6).
 
-## Checkpoint V21 — Lot 3A (réponses du 28/10, `RETOUR-LABO-28-10.md` §5) — built locally 01/11, **not deployed**
+## Checkpoint V21-3A — détail du lot 3A (réponses du 28/10, `RETOUR-LABO-28-10.md` §5) — built locally 01/11, integrated 01/11 (see « Checkpoint V21 »), **not deployed**
 
 Built 01/11 in the main tree (uncommitted, for the integrator), **no migration**; vitest green for every rule of the lot (`serie-input`, `reception-rules`, `reception-complementary`, `reception-input`, `reception-logic`, `report-actions`, `serie-validation`, `client-merge-guards`, `direction-guards`, `document-html`, `result-note`, `contamination-alert-analyses`, `lab-proposals-off`), tsc 0, eslint 0 on the lot's files. Browser lines below: **to run by the integrator** (local copy, « TEST UI » records only). Switches: `HANDOFF.md` §9.
 
