@@ -33,6 +33,7 @@ const result = (over: Partial<OnssaResultInput> = {}): OnssaResultInput => ({
   normCode: null,
   value: "Absence",
   interpretation: "SATISFAISANT",
+  informalInterpretation: null,
   conform: true,
   ...over,
 });
@@ -92,15 +93,28 @@ describe("the unit rules", () => {
     expect(isDoneResult({ value: "  ", interpretation: null })).toBe(false);
     expect(isDoneResult({ value: null, interpretation: "NON_SATISFAISANT" })).toBe(true);
     expect(isDoneResult({ value: null, interpretation: null })).toBe(false);
+    // Read on fewer units than n: no official verdict, an indicative one.
+    expect(isDoneResult({ value: null, interpretation: null, informalInterpretation: "SATISFAISANT" })).toBe(true);
+    expect(isDoneResult({ value: "", interpretation: null, informalInterpretation: null })).toBe(false);
   });
 
   it("« NC » = Non satisfaisant, or non conforme without a verdict; Acceptable is conforme", () => {
     expect(isNonConformResult({ interpretation: "NON_SATISFAISANT", conform: true })).toBe(true);
     expect(isNonConformResult({ interpretation: "ACCEPTABLE", conform: false })).toBe(false);
     expect(isNonConformResult({ interpretation: "SATISFAISANT", conform: null })).toBe(false);
-    expect(isNonConformResult({ interpretation: "INCOMPLET", conform: false })).toBe(false);
     expect(isNonConformResult({ interpretation: null, conform: false })).toBe(true);
     expect(isNonConformResult({ interpretation: null, conform: null })).toBe(false);
+  });
+
+  it("without an official verdict, reads the indicative one and « non conforme », as the contamination alert (hypothèse R-22)", () => {
+    expect(isNonConformResult({ interpretation: null, conform: null, informalInterpretation: "NON_SATISFAISANT" })).toBe(true);
+    expect(isNonConformResult({ interpretation: null, conform: null, informalInterpretation: "ACCEPTABLE" })).toBe(false);
+    // « Incomplet » is no verdict: the same reading.
+    expect(isNonConformResult({ interpretation: "INCOMPLET", conform: false })).toBe(true);
+    expect(isNonConformResult({ interpretation: "INCOMPLET", conform: null, informalInterpretation: "NON_SATISFAISANT" })).toBe(true);
+    expect(isNonConformResult({ interpretation: "INCOMPLET", conform: null })).toBe(false);
+    // An official verdict wins over the indicative one.
+    expect(isNonConformResult({ interpretation: "SATISFAISANT", conform: true, informalInterpretation: "NON_SATISFAISANT" })).toBe(false);
   });
 
   it("the group is the family's, else the nature's", () => {
@@ -180,6 +194,41 @@ describe("buildOnssaReport", () => {
     expect(lait.officialAnalyses).toBe(4);
     expect(lait.selfAnalyses).toBe(2);
     expect(report.officialAnalyses + report.selfAnalyses).toBe(report.total.realisees);
+  });
+
+  it("counts a result read on fewer units than n, as done and with its indicative NC", () => {
+    const report = buildOnssaReport(
+      [
+        sample({
+          results: [
+            result({ value: null, interpretation: null, conform: null, informalInterpretation: "NON_SATISFAISANT" }),
+            result({ parameterColumn: "STAPHYLOCOQUES_37", value: null, interpretation: null, conform: null, informalInterpretation: "SATISFAISANT" }),
+          ],
+        }),
+      ],
+      GROUPS
+    );
+    expect(report.total).toEqual({ realisees: 2, nonConformes: 1 });
+    expect(report.unmapped.samples).toEqual([]);
+    expect(report.unmapped.parameters).toEqual([]);
+  });
+
+  it("groups Feuil1's rows case, accents and spaces aside, showing the first spelling met", () => {
+    const official = { controleOfficiel: true, etablissement: "Usine Test", siteName: null };
+    const report = buildOnssaReport(
+      [
+        sample({ ...official, organismePreleveur: "DR Onssa Test", origine: "Local" }),
+        sample({ ...official, organismePreleveur: "dr ONSSA  test", etablissement: "usine test", origine: "local" }),
+        sample({ origine: "Importé" }),
+        sample({ origine: "importe " }),
+      ],
+      GROUPS
+    );
+    const lait = report.groups.find((block) => block.group.id === LAIT.id)!;
+    expect(lait.official).toEqual([
+      { organisme: "DR Onssa Test", etablissement: "Usine Test", origine: "Local", analyses: 2, samples: 2 },
+    ]);
+    expect(lait.self).toEqual([{ origine: "Importé", analyses: 2, samples: 2 }]);
   });
 
   it("feeds the synthesis: food and water microbiology by group domain, chemistry by column", () => {

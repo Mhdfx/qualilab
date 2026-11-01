@@ -26,7 +26,13 @@ const base: Omit<OnssaSampleInput, "id" | "results"> = {
   etablissement: null,
   origine: "Local",
 };
-const ok = { normCode: null, value: "Absence", interpretation: "SATISFAISANT" as const, conform: true };
+const ok = {
+  normCode: null,
+  value: "Absence",
+  interpretation: "SATISFAISANT" as const,
+  informalInterpretation: null,
+  conform: true,
+};
 
 const report = buildOnssaReport(
   [
@@ -157,6 +163,20 @@ describe("the ONSSA workbook", () => {
     expect(all).toContain("Échantillons sans groupe de produits (non déclarés)");
     expect(all).toContain("Surfaces");
     expect(texts).toContain("2");
+    expect(all).toContain("pas encore validés");
+  });
+
+  it("Notes: no pending line when the month is counted by validation date", async () => {
+    const workbook = buildOnssaWorkbook(report, { ...meta, countBasis: "date de validation administrative", pendingSamples: null });
+    const buffer = await workbook.xlsx.writeBuffer();
+    const read = new ExcelJS.Workbook();
+    await read.xlsx.load(buffer as ArrayBuffer);
+    const texts: string[] = [];
+    read.getWorksheet("Notes")!.eachRow((row) => row.eachCell((cell) => texts.push(String(cell.value))));
+    const all = texts.join("\n");
+    expect(all).toContain("date de validation administrative");
+    expect(all).not.toContain("pas encore validés");
+    expect(all).toContain("Échantillons déclarés");
   });
 
   it("writes an empty month without a formula over an empty range", async () => {

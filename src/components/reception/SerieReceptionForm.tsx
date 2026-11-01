@@ -1177,7 +1177,13 @@ export function SerieReceptionForm({
             </a>
           </Card>
 
-          {ONSSA_OFFICIAL_CONTROL && <OnssaControlPanel serieId={serie.id} initial={serie} />}
+          {ONSSA_OFFICIAL_CONTROL && (
+            <OnssaControlPanel
+              serieId={serie.id}
+              initial={serie}
+              validatedSamples={serie.samples.some((s) => s.status === "VALIDE" || s.status === "RAPPORT_ENVOYE")}
+            />
+          )}
 
           <Card className="p-5">
             <div className="flex items-start gap-2 text-sm text-slate-600">
@@ -1414,7 +1420,11 @@ function ReceivedSummary({
       </Card>
       {ONSSA_OFFICIAL_CONTROL && (
         <div className="mt-4 max-w-xl">
-          <OnssaControlPanel serieId={serie.id} initial={serie} />
+          <OnssaControlPanel
+            serieId={serie.id}
+            initial={serie}
+            validatedSamples={serie.samples.some((s) => s.status === "VALIDE" || s.status === "RAPPORT_ENVOYE")}
+          />
         </div>
       )}
     </div>

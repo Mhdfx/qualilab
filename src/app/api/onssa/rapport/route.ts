@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { getCompany } from "@/lib/company-server";
-import { formatDateTime } from "@/lib/labels";
+import { formatDateTime, formatDecimal } from "@/lib/labels";
 import { ONSSA_COUNT_BY } from "@/lib/lab-proposals";
 import { onssaFileName, onssaMonth } from "@/lib/onssa-report";
 import { MAX_ONSSA_SAMPLES, loadOnssaMonth } from "@/lib/onssa-report-server";
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     const [data, company] = await Promise.all([loadOnssaMonth(month), getCompany()]);
     if (data.tooMany) {
       return NextResponse.json(
-        { error: `Plus de ${MAX_ONSSA_SAMPLES} échantillons ce mois-ci : le rapport ne peut pas être généré.` },
+        { error: `Plus de ${formatDecimal(MAX_ONSSA_SAMPLES, 0)} échantillons ce mois-ci : le rapport ne peut pas être généré.` },
         { status: 400 }
       );
     }

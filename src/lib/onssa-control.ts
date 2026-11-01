@@ -36,6 +36,7 @@ export const ONSSA_CONTROL_MESSAGES = {
   bodyMissing: "Contrôle officiel : indiquez la DR ONSSA ou l'organisme préleveur agréé.",
   invalidFlag: "« Contrôle officiel » doit être coché ou décoché.",
   tooLong: (label: string) => `${label} : ${ONSSA_TEXT_MAX} caractères au maximum.`,
+  notText: (label: string) => `${label} : texte attendu.`,
 } as const;
 
 /** The origins the screens suggest (free text all the same). */
@@ -53,7 +54,7 @@ export type OnssaControlResult = { ok: true; value: OnssaControl } | { ok: false
 
 function readText(value: unknown, key: TextKey): string | null | { error: string } {
   if (value === undefined || value === null) return null;
-  if (typeof value !== "string") return { error: ONSSA_CONTROL_MESSAGES.tooLong(LABELS[key]) };
+  if (typeof value !== "string") return { error: ONSSA_CONTROL_MESSAGES.notText(LABELS[key]) };
   const trimmed = value.trim().replace(/\s+/g, " ");
   if (trimmed.length > ONSSA_TEXT_MAX) return { error: ONSSA_CONTROL_MESSAGES.tooLong(LABELS[key]) };
   return trimmed || null;

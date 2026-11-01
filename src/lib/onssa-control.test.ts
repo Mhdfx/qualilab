@@ -81,7 +81,15 @@ describe("readOnssaControl — a new série", () => {
 
   it("refuses a box that is not a boolean, a text that is not a string or too long", () => {
     expect(readOnssaControl({ controleOfficiel: "oui" })).toEqual({ ok: false, error: ONSSA_CONTROL_MESSAGES.invalidFlag });
-    expect(readOnssaControl({ origine: 12 })).toMatchObject({ ok: false, error: expect.stringContaining("L'origine") });
+    expect(readOnssaControl({ origine: 12 })).toEqual({ ok: false, error: "L'origine : texte attendu." });
+    expect(readOnssaControl({ controleOfficiel: true, organismePreleveur: { nom: "DR Test" } })).toEqual({
+      ok: false,
+      error: "L'organisme préleveur : texte attendu.",
+    });
+    expect(patchOnssaControl(NO_ONSSA_CONTROL, { etablissement: 5 }, true)).toEqual({
+      ok: false,
+      error: "L'établissement : texte attendu.",
+    });
     expect(
       readOnssaControl({ controleOfficiel: true, organismePreleveur: "x".repeat(ONSSA_TEXT_MAX + 1) })
     ).toMatchObject({ ok: false, error: expect.stringContaining("191 caractères") });

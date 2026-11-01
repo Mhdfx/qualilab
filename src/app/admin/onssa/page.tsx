@@ -12,6 +12,11 @@ export const metadata = { title: "Correspondances ONSSA" };
  * laboratory sends its own, R-22), the group of each type d'analyse and
  * family, the canevas column of each parameter — « non déclaré » by
  * default, proposed from the names and aliases. Administrator only.
+ *
+ * The archived families and types d'analyse that still carry samples are
+ * listed too, labelled « archivée » / « archivé »: the report counts a
+ * sample whatever its family's state (after a reprise or a split, a sample
+ * of the month can name an archived family), so it must be classable here.
  */
 export default async function OnssaMappingsPage() {
   await requireRole("ADMIN");
@@ -22,14 +27,14 @@ export default async function OnssaMappingsPage() {
       select: { id: true, name: true, domain: true, sortOrder: true, active: true },
     }),
     prisma.analysisNature.findMany({
-      where: { active: true },
+      where: { OR: [{ active: true }, { samples: { some: {} } }] },
       orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
-      select: { id: true, label: true, onssaGroupId: true },
+      select: { id: true, label: true, onssaGroupId: true, active: true },
     }),
     prisma.productType.findMany({
-      where: { active: true },
+      where: { OR: [{ active: true }, { samples: { some: {} } }] },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, natureId: true, onssaGroupId: true, clientId: true },
+      select: { id: true, name: true, natureId: true, onssaGroupId: true, clientId: true, active: true },
     }),
     prisma.analysisParameter.findMany({
       orderBy: [{ category: "asc" }, { name: "asc" }],

@@ -249,6 +249,26 @@ const RULES: readonly { key: OnssaColumnKey; test: RegExp }[] = [
   { key: "MOISISSURES_25", test: /moisissure/ },
 ];
 
+/**
+ * The canevas' water columns (NM ISO 6222, 16266, 6461-2, 7899-2): a water
+ * parameter is proposed one of them only — the other columns carry a food
+ * method (« Flore totale » of a water is not the food's NM ISO 4833).
+ */
+const WATER_COLUMNS: ReadonlySet<OnssaColumnKey> = new Set([
+  "MOR_22",
+  "MOR_36",
+  "PSEUDOMONAS",
+  "CLOSTRIDIA",
+  "ENTEROCOQUES_INTESTINAUX",
+]);
+
+/** A ratio, or two germs joined by « / » (« Flore totale/Flore lactique »): not one count. */
+function isCombination(text: string): boolean {
+  if (/\bratio\b|\brapport\b/.test(text)) return true;
+  const parts = text.split("/").map((part) => part.trim()).filter(Boolean);
+  return parts.length > 1 && parts.filter((part) => RULES.some((rule) => rule.test.test(part))).length > 1;
+}
+
 export type ParameterToMatch = {
   name: string;
   aliases?: string | null;
@@ -261,7 +281,9 @@ export type ParameterToMatch = {
  * Chemistry: every CHIMIE parameter of the food category goes to « chimie
  * alimentaires » (the canevas has no water chemistry column: left to the
  * administrator). A microbiology name matching two different columns
- * (« Levures et moisissures ») proposes nothing: the administrator decides.
+ * (« Levures et moisissures »), a ratio or two germs joined by « / »
+ * propose nothing; a water parameter is proposed a water column only
+ * (`WATER_COLUMNS`): the administrator decides the rest.
  */
 export function proposeOnssaColumn(parameter: ParameterToMatch): OnssaColumnKey | null {
   if (parameter.family === "CHIMIE") return parameter.category === "ALIMENTAIRE" ? "CHIMIE_ALIMENTAIRE" : null;
@@ -277,7 +299,11 @@ export function proposeOnssaColumn(parameter: ParameterToMatch): OnssaColumnKey 
   // « Levures et moisissures » matches the yeasts only through the first
   // rule found: test it on both germs explicitly.
   if (texts.some((text) => /levure/.test(text) && /moisissure/.test(text))) return null;
-  return found.size === 1 ? [...found][0] : null;
+  if (texts.some(isCombination)) return null;
+  if (found.size !== 1) return null;
+  const [key] = found;
+  if (parameter.category === "EAU" && !WATER_COLUMNS.has(key)) return null;
+  return key;
 }
 
 // ---- The product groups (the laboratory's list is asked: R-22) ---------------

@@ -121,6 +121,27 @@ describe("proposeOnssaColumn — by name and alias", () => {
     expect(proposeOnssaColumn(micro("Salmonella", "Staphylocoques"))).toBeNull();
   });
 
+  it("proposes nothing for a ratio or two germs joined by « / » (catalogue names)", () => {
+    expect(proposeOnssaColumn(micro("Ratio flore totale/Flore lactique"))).toBeNull();
+    expect(proposeOnssaColumn(micro("Flore totale/Flore lactique"))).toBeNull();
+    expect(proposeOnssaColumn(micro("Rapport flore lactique"))).toBeNull();
+    // A « / » that does not join two germs keeps its proposal.
+    expect(proposeOnssaColumn(micro("Salmonella / 25 g"))).toBe("SALMONELLA");
+  });
+
+  it("proposes a water parameter a water column only (catalogue names)", () => {
+    expect(proposeOnssaColumn(micro("Flore totale", null, "EAU"))).toBeNull();
+    expect(proposeOnssaColumn(micro("Coliformes totaux", null, "EAU"))).toBeNull();
+    expect(proposeOnssaColumn(micro("Escherichia coli", null, "EAU"))).toBeNull();
+    expect(proposeOnssaColumn(micro("Micro-organismes revivifiables à 22 °C", null, "EAU"))).toBe("MOR_22");
+    expect(proposeOnssaColumn(micro("Micro-organismes revivifiables à 36°C", null, "EAU"))).toBe("MOR_36");
+    expect(proposeOnssaColumn(micro("Pseudomonas aeruginosa", null, "EAU"))).toBe("PSEUDOMONAS");
+    expect(proposeOnssaColumn(micro("Spores d'anaérobies sulfito-réducteurs", null, "EAU"))).toBe("CLOSTRIDIA");
+    expect(proposeOnssaColumn(micro("Entérocoques intestinaux", null, "EAU"))).toBe("ENTEROCOQUES_INTESTINAUX");
+    // The same food name keeps its food column.
+    expect(proposeOnssaColumn(micro("Flore totale"))).toBe("MICRO_ORGANISMES_30");
+  });
+
   it("puts the food chemistry in « chimie alimentaires », never the water's nor « Autre »", () => {
     expect(proposeOnssaColumn({ name: "Histamine", family: "CHIMIE", category: "ALIMENTAIRE" })).toBe("CHIMIE_ALIMENTAIRE");
     expect(proposeOnssaColumn({ name: "Nitrates", family: "CHIMIE", category: "EAU" })).toBeNull();

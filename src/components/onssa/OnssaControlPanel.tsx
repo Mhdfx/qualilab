@@ -26,12 +26,19 @@ export function OnssaControlPanel({
   initial,
   locked = false,
   lockedReason,
+  validatedSamples = false,
 }: {
   serieId: string;
   initial: Partial<OnssaControl>;
   /** Read-only (the préleveur's received série). */
   locked?: boolean;
   lockedReason?: string;
+  /**
+   * Some samples of the série are validated: their month may already have
+   * been exported to the ONSSA. A correction stays allowed (hypothèse, à
+   * confirmer par R-22; the journal keeps before and after) — the panel says so.
+   */
+  validatedSamples?: boolean;
 }) {
   const router = useRouter();
   const [saved, setSaved] = useState<OnssaDraft>(() => onssaDraftOf(initial));
@@ -105,6 +112,12 @@ export function OnssaControlPanel({
             </span>
           )}
         </div>
+      )}
+      {validatedSamples && !locked && (
+        <p className="mt-3 text-xs text-amber-800">
+          Des échantillons de cette série sont validés : une correction change les chiffres du rapport ONSSA de leur
+          mois, à générer de nouveau s&apos;il a déjà été exporté.
+        </p>
       )}
       {error && (
         <p role="alert" className="mt-2 text-sm text-rose-700">

@@ -61,6 +61,7 @@ async function loadSplit(db: Db, id: string) {
       clientId: true,
       regulationId: true,
       active: true,
+      onssaGroupId: true,
       nature: { select: NATURE_SELECT },
       criteria: {
         select: {
@@ -164,7 +165,15 @@ async function loadSplit(db: Db, id: string) {
     parameterIds: [...new Set([...(sample.parameters ?? []), ...sample.results].map((row) => row.parameterId))],
   });
 
-  return { source, criteria, natures, samples: open.map(toSplitSample), closedSamples: closed.map(toSplitSample) };
+  return {
+    source,
+    criteria,
+    natures,
+    samples: open.map(toSplitSample),
+    closedSamples: closed.map(toSplitSample),
+    // Lot 3E: the new family is counted in the same ONSSA group as its source.
+    onssaGroupId: type.onssaGroupId,
+  };
 }
 
 
@@ -279,6 +288,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             clientId: source.clientId,
             active: source.active,
             regulationId: source.regulationId,
+            // Lot 3E (N2): the same ONSSA group as the source, never « non déclaré » by surprise.
+            onssaGroupId: loaded.onssaGroupId,
           },
           select: { id: true, name: true, normalizedName: true, family: true, natureId: true, clientId: true, active: true, regulationId: true },
         });

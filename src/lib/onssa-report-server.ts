@@ -24,8 +24,12 @@ const COUNTED_STATUSES = ["VALIDE", "RAPPORT_ENVOYE"] as const;
 
 export type OnssaMonthData = {
   report: OnssaReport;
-  /** Samples of the month still waiting for their validation (RECEPTION basis only). */
-  pendingSamples: number;
+  /**
+   * Samples received in the month still waiting for their validation; null
+   * on the VALIDATION basis, where the figure has no meaning (a sample not
+   * yet validated belongs to no month yet).
+   */
+  pendingSamples: number | null;
   /** The month holds more samples than one report reads. */
   tooMany: boolean;
 };
@@ -66,6 +70,7 @@ export async function loadOnssaMonth(month: OnssaMonth): Promise<OnssaMonthData>
             parameterId: true,
             value: true,
             interpretation: true,
+            informalInterpretation: true,
             conform: true,
             parameter: { select: { name: true, onssaColumn: true } },
             normVersion: { select: { norm: { select: { code: true } } } },
@@ -80,7 +85,7 @@ export async function loadOnssaMonth(month: OnssaMonth): Promise<OnssaMonthData>
       ? prisma.sample.count({
           where: { receivedAt: range, status: { notIn: [...COUNTED_STATUSES, "ANNULE"] } },
         })
-      : Promise.resolve(0),
+      : Promise.resolve(null),
   ]);
 
   const tooMany = samples.length > MAX_ONSSA_SAMPLES;
@@ -106,6 +111,7 @@ export async function loadOnssaMonth(month: OnssaMonth): Promise<OnssaMonthData>
         normCode: result.normVersion?.norm.code ?? programmedNorm.get(result.parameterId) ?? null,
         value: result.value,
         interpretation: result.interpretation,
+        informalInterpretation: result.informalInterpretation,
         conform: result.conform,
       })),
     };

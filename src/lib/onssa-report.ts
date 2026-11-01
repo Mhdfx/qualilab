@@ -1,7 +1,7 @@
 import type { Interpretation, OnssaDomain } from "@/generated/prisma/enums";
 import { labDayStart } from "./lab-day-range";
 import { labDayOf } from "./lab-time";
-import { ONSSA_COLUMNS, onssaColumn, resolveOnssaColumn, type OnssaColumnKey } from "./onssa-canevas";
+import { ONSSA_COLUMNS, matchText, onssaColumn, resolveOnssaColumn, type OnssaColumnKey } from "./onssa-canevas";
 
 /**
  * Lot 3E, N3 — the ONSSA monthly activity report (RETOUR-LABO-28-10.md
@@ -15,14 +15,22 @@ import { ONSSA_COLUMNS, onssaColumn, resolveOnssaColumn, type OnssaColumnKey } f
  *   cancelled sample never counts;
  * - one « analyse » = one parameter of one sample with a result (the n
  *   units of a 3-class plan count once);
- * - « NC » = the parameter's verdict « Non satisfaisant », or « non
- *   conforme » where no plan gave one; « Acceptable » counts as conforme;
+ * - « NC » = the parameter's verdict « Non satisfaisant »; where no plan
+ *   gave a verdict — none, or « Incomplet » — the result's « non conforme »
+ *   or its indicative verdict « Non satisfaisant » (fewer units than the
+ *   plan's n), as the contamination alert reads them
+ *   (`raisesContaminationAlert`); « Acceptable » counts as conforme;
+ * - a result is an analysis done when it holds a value, a verdict or an
+ *   indicative verdict;
  * - a sample's group is its family's ONSSA group, else its type
  *   d'analyse's; a parameter's column is its ONSSA column (the method
  *   choosing among the yeasts' and moulds' columns). Only the analyses with
  *   a group AND a column are declared — the others are listed apart on the
  *   screen and in the workbook's « Notes », never silently dropped;
- * - « Contrôle officiel » / « Autocontrôle » is the série's box (N1).
+ * - « Contrôle officiel » / « Autocontrôle » is the série's box (N1);
+ * - Feuil1's rows group the bodies, establishments and origins as typed,
+ *   case, accents and spaces aside (« Local » = « local »): the first
+ *   spelling met is the one shown.
  */
 
 // ---- The month -------------------------------------------------------------
@@ -97,6 +105,8 @@ export type OnssaResultInput = {
   normCode: string | null;
   value: string | null;
   interpretation: Interpretation | null;
+  /** The indicative verdict of a result read on fewer units than the plan's n (`Result.informalInterpretation`). */
+  informalInterpretation: Interpretation | null;
   conform: boolean | null;
 };
 
@@ -125,15 +135,27 @@ export function onssaGroupOf(sample: {
   return sample.productType?.onssaGroupId ?? sample.nature.onssaGroupId ?? null;
 }
 
-/** A result is an analysis done when it holds a value or a verdict. */
-export function isDoneResult(result: Pick<OnssaResultInput, "value" | "interpretation">): boolean {
-  return Boolean(result.value?.trim()) || result.interpretation !== null;
+/** A result is an analysis done when it holds a value, a verdict or an indicative verdict. */
+export function isDoneResult(
+  result: Pick<OnssaResultInput, "value" | "interpretation"> & Partial<Pick<OnssaResultInput, "informalInterpretation">>
+): boolean {
+  return Boolean(result.value?.trim()) || result.interpretation !== null || Boolean(result.informalInterpretation);
 }
 
-/** « NC »: Non satisfaisant, or non conforme where no plan gave a verdict. Acceptable = conforme. */
-export function isNonConformResult(result: Pick<OnssaResultInput, "interpretation" | "conform">): boolean {
+/**
+ * « NC »: the verdict Non satisfaisant; without an official verdict (none,
+ * or Incomplet), non conforme or the indicative verdict Non satisfaisant —
+ * the contamination alert's reading (`raisesContaminationAlert`), so the
+ * report never counts fewer NC than the alerts sent. Acceptable = conforme.
+ * Hypothèse, à confirmer par R-22.
+ */
+export function isNonConformResult(
+  result: Pick<OnssaResultInput, "interpretation" | "conform"> & Partial<Pick<OnssaResultInput, "informalInterpretation">>
+): boolean {
   if (result.interpretation === "NON_SATISFAISANT") return true;
-  if (result.interpretation === null) return result.conform === false;
+  if (result.interpretation === null || result.interpretation === "INCOMPLET") {
+    return result.conform === false || result.informalInterpretation === "NON_SATISFAISANT";
+  }
   return false;
 }
 
@@ -192,6 +214,11 @@ function emptyColumns(): Record<OnssaColumnKey, OnssaCount> {
 }
 
 const collator = new Intl.Collator("fr", { sensitivity: "base", numeric: true });
+
+/** The grouping key of a typed text: case, accents and spaces aside (« DR Onssa » = « dr ONSSA »). */
+export function onssaFold(text: string): string {
+  return matchText(text);
+}
 
 /** The establishment as declared: the one typed, else the client and its site. */
 export function onssaEstablishment(sample: Pick<OnssaSampleInput, "etablissement" | "clientName" | "siteName">): string {
@@ -287,7 +314,7 @@ export function buildOnssaReport(samples: OnssaSampleInput[], groups: OnssaGroup
       block.officialAnalyses += declared;
       const organisme = sample.organismePreleveur?.trim() || "Non précisé";
       const etablissement = onssaEstablishment(sample);
-      const key = JSON.stringify([organisme, etablissement, origine]);
+      const key = JSON.stringify([onssaFold(organisme), onssaFold(etablissement), onssaFold(origine)]);
       const rows = official.get(group.id) ?? new Map<string, OnssaOfficialRow>();
       const row = rows.get(key) ?? { organisme, etablissement, origine, analyses: 0, samples: 0 };
       row.analyses += declared;
@@ -298,10 +325,11 @@ export function buildOnssaReport(samples: OnssaSampleInput[], groups: OnssaGroup
       selfAnalyses += declared;
       block.selfAnalyses += declared;
       const rows = self.get(group.id) ?? new Map<string, OnssaSelfRow>();
-      const row = rows.get(origine) ?? { origine, analyses: 0, samples: 0 };
+      const key = onssaFold(origine);
+      const row = rows.get(key) ?? { origine, analyses: 0, samples: 0 };
       row.analyses += declared;
       row.samples += 1;
-      rows.set(origine, row);
+      rows.set(key, row);
       self.set(group.id, rows);
     }
   }

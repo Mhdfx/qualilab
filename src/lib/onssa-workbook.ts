@@ -8,8 +8,10 @@ import type { OnssaReport } from "./onssa-report";
  * §3.2): « Feuil1 » (groupes de produits × contrôle officiel / autocontrôle),
  * « Feuil2 » (product groups × the 23 microbiology columns, « chimie
  * alimentaires », « Total », two rows each: « Réalisées », « NC »),
- * « Feuil3 » (the synthesis, its formulas pointing at Feuil2's figures in
- * place of the canevas' external « II-AT »), plus « Notes »: the counting
+ * « Feuil3 » (the synthesis: its samples, analyses and non-conformes are
+ * values the LIMS computes — the canevas read them from an external « II-AT »
+ * —, its conformes, totals and « Totaux » column are formulas over them;
+ * editing Feuil2 by hand does not move Feuil3), plus « Notes »: the counting
  * rules (hypothèses R-22), what was left out and why.
  *
  * The canevas' headers are written as they are there (their spelling
@@ -25,8 +27,12 @@ export type OnssaWorkbookMeta = {
   generatedAt: string;
   /** « date de réception » / « date de validation administrative ». */
   countBasis: string;
-  /** Samples of the month not yet validated (left out until they are). */
-  pendingSamples: number;
+  /**
+   * Samples received in the month not yet validated (left out until they
+   * are); null when the month is counted by validation date, where the
+   * figure has no meaning — the Notes then leave the line out.
+   */
+  pendingSamples: number | null;
 };
 
 /** A theme colour with its tint, as the canevas' fills (ExcelJS writes `tint`; its types omit it). */
@@ -327,11 +333,15 @@ function notes(workbook: ExcelJS.Workbook, report: OnssaReport, meta: OnssaWorkb
     "Règles appliquées",
     `• Échantillons du mois par ${meta.countBasis}, validation administrative signée ; un échantillon annulé ne compte jamais.`,
     "• Une analyse = un paramètre d'un échantillon avec un résultat (les n unités d'un plan comptent une fois).",
-    "• NC = verdict « Non satisfaisant », ou « non conforme » sans plan ; « Acceptable » compte comme conforme.",
+    "• NC = verdict « Non satisfaisant » ; sans verdict officiel (aucun, ou « Incomplet »), résultat « non conforme » ou verdict indicatif « Non satisfaisant » (moins d'unités que le n du plan), comme l'alerte de contamination ; « Acceptable » compte comme conforme.",
+    "• Une analyse est réalisée dès qu'elle porte une valeur, un verdict ou un verdict indicatif.",
+    "• Organismes, établissements et origines regroupés sans tenir compte des majuscules, des accents ni des espaces.",
     "• Groupe = celui de la famille de produits, sinon celui du type d'analyse ; colonne = celle du paramètre (la méthode départage les levures et les moisissures).",
     "• Contrôle officiel / autocontrôle = la case de la série ; l'établissement vide = le client et son site.",
     "",
-    [`Échantillons du mois pas encore validés (non comptés)`, meta.pendingSamples],
+    ...(meta.pendingSamples === null
+      ? []
+      : [[`Échantillons du mois pas encore validés (non comptés)`, meta.pendingSamples] as [string, number]]),
     [`Échantillons déclarés`, report.declaredSamples],
     "",
   ];

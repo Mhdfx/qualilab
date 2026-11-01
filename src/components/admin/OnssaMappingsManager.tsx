@@ -26,7 +26,8 @@ import type { ColumnLink, GroupLink, MappingBatch } from "@/lib/onssa-mapping";
  */
 
 export type OnssaGroupRow = { id: string; name: string; domain: OnssaDomain; sortOrder: number; active: boolean };
-export type OnssaNatureRow = { id: string; label: string; onssaGroupId: string | null };
+/** `active` false: an archived type d'analyse still carrying samples (the report counts them). */
+export type OnssaNatureRow = { id: string; label: string; onssaGroupId: string | null; active: boolean };
 export type OnssaFamilyRow = {
   id: string;
   name: string;
@@ -34,6 +35,8 @@ export type OnssaFamilyRow = {
   onssaGroupId: string | null;
   /** A client's own product (not the laboratory's catalogue). */
   clientOwn: boolean;
+  /** false: an archived family still carrying samples (the report counts them). */
+  active: boolean;
 };
 export type OnssaParameterRow = {
   id: string;
@@ -145,16 +148,19 @@ export function OnssaMappingsManager({
   const [familyQuery, setFamilyQuery] = useState("");
   const [familyNature, setFamilyNature] = useState<string>("TOUS");
   const [onlyUnmapped, setOnlyUnmapped] = useState(true);
+  const [withArchived, setWithArchived] = useState(true);
+  const archivedCount = types.filter((type) => !type.active).length;
   const [bulkGroup, setBulkGroup] = useState(NONE);
   const filteredTypes = useMemo(() => {
     const query = matchText(familyQuery);
     return types.filter(
       (type) =>
         (!onlyUnmapped || !type.onssaGroupId) &&
+        (withArchived || type.active) &&
         (familyNature === "TOUS" || (familyNature === "AUCUN" ? !type.natureId : type.natureId === familyNature)) &&
         (!query || matchText(type.name).includes(query))
     );
-  }, [types, familyQuery, familyNature, onlyUnmapped]);
+  }, [types, familyQuery, familyNature, onlyUnmapped, withArchived]);
   const shownTypes = filteredTypes.slice(0, FAMILY_PAGE);
   const bulkTargets = filteredTypes.filter((type) => !type.onssaGroupId);
 
@@ -311,6 +317,7 @@ export function OnssaMappingsManager({
             <div key={nature.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2">
               <label htmlFor={`onssa-nature-${nature.id}`} className="text-sm font-medium text-slate-800">
                 {nature.label}
+                {!nature.active && <span className="ml-1 text-xs font-normal text-slate-500">(archivé)</span>}
               </label>
               <select
                 id={`onssa-nature-${nature.id}`}
@@ -377,7 +384,23 @@ export function OnssaMappingsManager({
             />
             Sans groupe seulement
           </label>
+          {archivedCount > 0 && (
+            <label className="flex min-h-[44px] items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={withArchived}
+                onChange={(e) => setWithArchived(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              Familles archivées ({archivedCount})
+            </label>
+          )}
         </div>
+        {archivedCount > 0 && (
+          <p className="mt-2 text-xs text-slate-500">
+            Les familles archivées listées portent encore des échantillons : le rapport les compte, classez-les aussi.
+          </p>
+        )}
 
         {bulkTargets.length > 0 && (
           <div className="mt-4 flex flex-wrap items-end gap-3 rounded-xl bg-slate-50 p-3">
@@ -428,6 +451,7 @@ export function OnssaMappingsManager({
                     <th scope="row" className="py-2 pr-3 text-left font-medium text-slate-800">
                       <label htmlFor={`onssa-family-${type.id}`}>{type.name}</label>
                       {type.clientOwn && <span className="ml-1 text-xs font-normal text-slate-500">(produit d&apos;un client)</span>}
+                      {!type.active && <span className="ml-1 text-xs font-normal text-slate-500">(archivée)</span>}
                     </th>
                     <td className="py-2 pr-3 text-slate-600">{natureLabel(type.natureId)}</td>
                     <td className="py-2">
