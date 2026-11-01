@@ -281,4 +281,16 @@ describe("O-12 × J3 — a sensitive germ without criterion must be read in a no
     expect(read("../app/api/samples/[id]/results/submit/route.ts")).toContain("unreadableSensitiveReading(");
     expect(read("../components/technicien/ResultEntryForm.tsx")).toContain("unreadableSensitiveReading(line.value, line)");
   });
+
+  it("a line in ANOMALIE is no exception: the reading is decided, the anomaly goes in the note (hypothèse R-28)", () => {
+    // « boîte contaminée » typed as the value: still refused, whatever the work status…
+    expect(unreadableSensitiveReading("boîte contaminée", sensitive)).toBe(true);
+    // …and the way out is a reading the alert reads, never a Conforme / Non conforme choice.
+    expect(unreadableSensitiveReading("Présence", sensitive)).toBe(false);
+    expect(unreadableSensitiveReading("Absence", sensitive)).toBe(false);
+    expect(manualChoiceOffered(null)).toBe(false);
+    // The screen tells a technician in anomaly how to leave the line.
+    const form = read("../components/technicien/ResultEntryForm.tsx");
+    expect(form).toContain("Ligne en anomalie : décrivez l’anomalie dans la remarque et tranchez la lecture");
+  });
 });

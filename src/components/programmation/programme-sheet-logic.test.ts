@@ -15,6 +15,7 @@ import {
   checkAllOfType,
   confirmationNotice,
   criteriaOf,
+  criterionJudges,
   criterionUnit,
   defaultNormVersionId,
   entryChecks,
@@ -45,6 +46,7 @@ import {
   typeOf,
   typeUnitCount,
   uncheckAllOfType,
+  unitContextOf,
   unitWarning,
   updateSetting,
 } from "./programme-sheet-logic";
@@ -238,6 +240,62 @@ describe("product type", () => {
     expect(unitWarning(draft, referential.productTypes[1])).toMatch(/3 unités/);
     expect(unitWarning({ ...draft, unitCount: 5 }, referential.productTypes[1])).toBeNull();
     expect(unitWarning(draft, undefined)).toBeNull();
+  });
+});
+
+describe("J1 / J2 — the sheet sets aside the criteria the bench sets aside (unit of what was sampled)", () => {
+  /** A surface family: a criterion per cm² (n = 5) and a presence test per surface. */
+  const surfaces: ProductTypeRef = {
+    id: "type-surfaces",
+    name: "Surfaces",
+    family: "MICRO",
+    natureId: "nat",
+    clientId: null,
+    criteriaCount: 2,
+    criteria: [
+      { parameterId: "p-flore", parameterName: "Flore totale", n: 5, c: 2, mKind: "VALUE", m: 10, bigM: 100, unit: "UFC/cm²", normVersionId: null, normVersion: null },
+      // No unit of its own: read in the parameter's (« /25 g », no count) — it still judges.
+      { parameterId: "p-salm", parameterName: "Salmonelles", n: 1, c: null, mKind: "ABSENCE", m: null, bigM: null, unit: null, normVersionId: null, normVersion: null },
+    ],
+  };
+  const withSurfaces: ProgrammeReferentialData = { ...referential, productTypes: [...referential.productTypes, surfaces] };
+  const couteau = unitContextOf({ lineKind: "SURFACE", surfaceAreaNote: "couteau" });
+  const cm2 = unitContextOf({ lineKind: "SURFACE", surfaceAreaNote: null });
+
+  it("reads what was sampled from the line, an older payload as a plain line", () => {
+    expect(couteau).toEqual({ lineKind: "SURFACE", surfaceAreaNote: "couteau", airMethod: null, airExposureMin: null });
+    expect(unitContextOf({ lineKind: "AIR", airMethod: "BIOCOLLECTEUR", airExposureMin: null }).airMethod).toBe("BIOCOLLECTEUR");
+  });
+
+  it("a criterion per cm² neither asks n = 5 nor judges a couteau; it still does on a surface given in cm²", () => {
+    expect(typeUnitCount(surfaces, couteau, withSurfaces)).toBe(1);
+    expect(typeUnitCount(surfaces, cm2, withSurfaces)).toBe(5);
+    expect(typeUnitCount(surfaces)).toBe(5);
+    const rows = familyParameterRows({ ...initialDraft(received, withSurfaces), productTypeId: "type-surfaces" }, withSurfaces, couteau);
+    expect(rows.find((row) => row.parameterId === "p-flore")?.judges).toBe(false);
+    expect(rows.find((row) => row.parameterId === "p-salm")?.judges).toBe(true);
+    expect(criterionJudges(surfaces.criteria[0], cm2, withSurfaces)).toBe(true);
+  });
+
+  it("choosing the family proposes the n the bench will read, and warns only about it", () => {
+    const draft = applyProductType(initialDraft(received, withSurfaces), "type-surfaces", withSurfaces, couteau);
+    // The germs are still ticked: only the plan per cm² is set aside.
+    expect(draft.parameterIds).toEqual(expect.arrayContaining(["p-flore", "p-salm"]));
+    expect(draft.unitCount).toBe(1);
+    expect(unitWarning(draft, surfaces, couteau, withSurfaces)).toBeNull();
+    expect(unitWarning(draft, surfaces, cm2, withSurfaces)).toMatch(/attend n = 5/);
+    expect(applyProfile(draft, { id: "p", name: "P", clientId: null, unitCount: 1, parameterIds: ["p-flore"] }, withSurfaces, couteau).unitCount).toBe(1);
+  });
+
+  it("the sheet and the picker pass the line's context; the GET and the PUT load it", () => {
+    const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
+    const sheet = read("./ProgrammeSheet.tsx");
+    expect(sheet).toContain("const unitContext = useMemo(() => unitContextOf(sample), [sample]);");
+    expect(sheet).toContain("applyProductType(draft, typeId, referential, unitContext)");
+    expect(sheet).toContain("familyParameterRows(draft, referential, unitContext)");
+    expect(read("./FamilyPickerDialog.tsx")).toContain("familyParameterRows({ ...draft, productTypeId: preview.id }, referential, unitContext)");
+    const select = read("../../lib/programme-referential.ts");
+    for (const field of ["surfaceAreaNote: true,", "airMethod: true,", "airExposureMin: true,"]) expect(select).toContain(field);
   });
 });
 

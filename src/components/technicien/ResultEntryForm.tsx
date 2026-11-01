@@ -676,6 +676,9 @@ export function ResultEntryForm({
                     <span>
                       Lecture non reconnue pour un germe sensible sans critère : écrivez « Présence », « Absence » ou un
                       dénombrement, pour que l&apos;alerte de contamination puisse être décidée.
+                      {line.workStatus === "ANOMALIE"
+                        ? " Ligne en anomalie : décrivez l’anomalie dans la remarque et tranchez la lecture ; si la boîte ne peut pas être lue, laissez la ligne « En cours » le temps de refaire l’analyse."
+                        : null}
                     </span>
                   </p>
                 ) : reading.unreadable.length > 0 ? (

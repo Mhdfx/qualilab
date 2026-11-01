@@ -1,5 +1,6 @@
 import type { AirMethod, LineKind } from "@/generated/prisma/enums";
 import { AIR_EXPOSURE_MINUTES, isExposedPlate } from "./labels";
+import { UNIT_MISMATCH_NOT_JUDGED } from "./lab-proposals";
 
 /**
  * The unit a result is expressed in, from what was sampled — pure, shared by
@@ -24,7 +25,8 @@ import { AIR_EXPOSURE_MINUTES, isExposedPlate } from "./labels";
  * line (`unitJudges`): « UFC/cm² » on a couteau, « ufc/m3 » on an exposed
  * plate, « ufc/boite » on a biocollecteur. The line is then read without
  * them — « sans interprétation » (J3) — rather than against a limit it was
- * never expressed in.
+ * never expressed in. Hypothèse, à confirmer par R-29: behind the switch
+ * `UNIT_MISMATCH_NOT_JUDGED` (`lab-proposals.ts`, on).
  */
 export type UnitContext = {
   lineKind: LineKind | null;
@@ -59,6 +61,21 @@ export function airUnitText(method: AirMethod, minutes?: number | null): string 
   return isExposedPlate(method) ? `UFC/boîte (exposée ${minutes ?? AIR_EXPOSURE_MINUTES.default} min)` : "UFC/m³";
 }
 
+/** `Result.unit` VARCHAR(191) — counted in characters, as MariaDB counts them. */
+export const MAX_RESULT_UNIT = 191;
+
+/**
+ * A unit cut to fit `Result.unit`: a surface may be described in up to 191
+ * characters (`Sample.surfaceAreaNote`), and « UFC/ » before it would
+ * overflow the column (« Data too long » in strict mode, a 500 on every save
+ * of the sample). The end of the words gives way to « … ».
+ */
+function boundedUnit(unit: string): string {
+  const chars = Array.from(unit);
+  if (chars.length <= MAX_RESULT_UNIT) return unit;
+  return `${chars.slice(0, MAX_RESULT_UNIT - 1).join("").trimEnd()}…`;
+}
+
 /**
  * The unit the result of a line is expressed in: `base` (the criterion's,
  * else the parameter's — `benchUnit`), rewritten for a surface described in
@@ -67,7 +84,7 @@ export function airUnitText(method: AirMethod, minutes?: number | null): string 
 export function resultUnit(context: UnitContext, base: string | null): string | null {
   if (!isCountUnit(base)) return base;
   const surface = describedSurface(context);
-  if (surface) return `UFC/${surface}`;
+  if (surface) return boundedUnit(`UFC/${surface}`);
   if (context.lineKind === "AIR" && context.airMethod) return airUnitText(context.airMethod, context.airExposureMin);
   return base;
 }
@@ -77,7 +94,13 @@ export function resultUnit(context: UnitContext, base: string | null): string | 
  * not when the unit names another basis than the one sampled. A unit that
  * is no count (absent, « - », « mg/m³ ») never sets a limit aside.
  */
-export function unitJudges(context: UnitContext, unit: string | null | undefined): boolean {
+export function unitJudges(
+  context: UnitContext,
+  unit: string | null | undefined,
+  mismatchNotJudged: boolean = UNIT_MISMATCH_NOT_JUDGED
+): boolean {
+  // Switch off (hypothèse R-29 refused): every criterion and limit judges, as before lot 3B.
+  if (!mismatchNotJudged) return true;
   // Only a count is expressed per what was sampled; « mg/m³ », « % » judge as before.
   if (!isCountUnit(unit)) return true;
   if (describedSurface(context)) return !PER_AREA.test(unit);

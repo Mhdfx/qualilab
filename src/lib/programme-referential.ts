@@ -81,6 +81,10 @@ export const PROGRAMME_SAMPLE_SELECT = {
   // C7: the DLC of a food sample, in the entry check.
   expiryDate: true,
   analysisBlocked: true,
+  // What was sampled: a family's criterion per another basis judges nothing (J1, J2 — `unitJudges`).
+  surfaceAreaNote: true,
+  airMethod: true,
+  airExposureMin: true,
   unitCount: true,
   productTypeId: true,
   productType: { select: { id: true, name: true } },

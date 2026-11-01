@@ -1,6 +1,7 @@
 import type { CancelReason, Family, ProgrammePriority, SampleStatus } from "@/generated/prisma/enums";
 import { BENCH_STATUSES, isUnclaimed } from "@/lib/bench-access";
 import { pickCriterion } from "@/lib/interpretation";
+import { PLAIN_UNIT_CONTEXT, unitJudges, type UnitContext } from "@/lib/result-unit";
 import { ANALYSIS_FAMILY_LABELS, CANCEL_REASON_LABELS, formatDateTime } from "@/lib/labels";
 import { roundMoney } from "@/lib/invoice-math";
 import type { InvoiceFact } from "@/lib/billing";
@@ -117,9 +118,56 @@ export function criteriaOf(type: ProductTypeRef | undefined): CriterionRef[] {
   return picked.sort((a, b) => a.parameterName.localeCompare(b.parameterName, "fr"));
 }
 
-/** The units the type's plans read: the largest n of its criteria, 0 without criteria. */
-export function typeUnitCount(type: ProductTypeRef | undefined): number {
-  return criteriaOf(type).reduce((max, criterion) => Math.max(max, criterion.n), 0);
+/**
+ * What was sampled, as the unit of a result reads it (J1, J2 — lot 3B): the
+ * line's kind, its surface described in words, its air sampling means. A
+ * payload without them (an older API answer) reads as a plain line.
+ */
+export function unitContextOf(
+  sample: Pick<ProgrammeSampleData, "lineKind"> &
+    Partial<Pick<ProgrammeSampleData, "surfaceAreaNote" | "airMethod" | "airExposureMin">>
+): UnitContext {
+  return {
+    lineKind: sample.lineKind,
+    surfaceAreaNote: sample.surfaceAreaNote ?? null,
+    airMethod: sample.airMethod ?? null,
+    airExposureMin: sample.airExposureMin ?? null,
+  };
+}
+
+/** The unit of each parameter of the referential, for a criterion that gives none (`benchUnit`). */
+function parameterUnitIn(referential: Pick<ProgrammeReferentialData, "parameters"> | undefined) {
+  return (parameterId: string): string | null =>
+    referential?.parameters.find((parameter) => parameter.id === parameterId)?.unit ?? null;
+}
+
+/**
+ * Whether a family's criterion can judge this line — as the bench decides it
+ * (`loadBenchPlans`): not when its unit (else the parameter's) names another
+ * basis than what was sampled, « UFC/cm² » on a couteau, « ufc/m3 » on an
+ * exposed plate (`unitJudges`, switch `UNIT_MISMATCH_NOT_JUDGED`).
+ */
+export function criterionJudges(
+  criterion: Pick<CriterionRef, "parameterId" | "unit">,
+  context: UnitContext = PLAIN_UNIT_CONTEXT,
+  referential?: Pick<ProgrammeReferentialData, "parameters">
+): boolean {
+  return unitJudges(context, criterion.unit ?? parameterUnitIn(referential)(criterion.parameterId));
+}
+
+/**
+ * The units the type's plans read: the largest n of the criteria that can
+ * judge this line (`criterionJudges`), 0 without any — a criterion the bench
+ * sets aside never asks for R1 … Rn.
+ */
+export function typeUnitCount(
+  type: ProductTypeRef | undefined,
+  context: UnitContext = PLAIN_UNIT_CONTEXT,
+  referential?: Pick<ProgrammeReferentialData, "parameters">
+): number {
+  return criteriaOf(type)
+    .filter((criterion) => criterionJudges(criterion, context, referential))
+    .reduce((max, criterion) => Math.max(max, criterion.n), 0);
 }
 
 /**
@@ -242,7 +290,8 @@ function tickFamilyGerms(
 export function applyProductType(
   draft: ProgrammeDraft,
   typeId: string,
-  referential: ProgrammeReferentialData
+  referential: ProgrammeReferentialData,
+  context: UnitContext = PLAIN_UNIT_CONTEXT
 ): ProgrammeDraft {
   const previous = new Set(familyGermIds(typeOf(referential, draft.productTypeId || null), referential));
   const type = typeOf(referential, typeId || null);
@@ -251,7 +300,7 @@ export function applyProductType(
   const asked = new Set(draft.manualIds);
   const kept = draft.parameterIds.filter((id) => !previous.has(id) || next.has(id) || asked.has(id));
   const ticked = tickFamilyGerms({ ...draft, parameterIds: kept }, germs, type, referential, { criterionVersion: true });
-  const needed = typeUnitCount(type);
+  const needed = typeUnitCount(type, context, referential);
   return {
     ...draft,
     ...ticked,
@@ -326,6 +375,12 @@ export type FamilyParameterRow = {
   checked: boolean;
   /** False for a germ the nature on screen does not offer (another category): shown, never ticked. */
   available: boolean;
+  /**
+   * False when the criterion's unit names another basis than what was
+   * sampled (`criterionJudges`, J1 / J2): the bench reads the germ « sans
+   * interprétation », and its n does not count.
+   */
+  judges: boolean;
 };
 
 /** The unit an analysis is read in: the family's criterion's when it gives one (Q40), else the parameter's. */
@@ -337,7 +392,11 @@ export function criterionUnit(criterion: Pick<CriterionRef, "unit"> | undefined,
 }
 
 /** The chosen family as « Paramètres à rechercher »: germ · norme · unité du critère · n / c / m / M (F6). */
-export function familyParameterRows(draft: ProgrammeDraft, referential: ProgrammeReferentialData): FamilyParameterRow[] {
+export function familyParameterRows(
+  draft: ProgrammeDraft,
+  referential: ProgrammeReferentialData,
+  context: UnitContext = PLAIN_UNIT_CONTEXT
+): FamilyParameterRow[] {
   return criteriaOf(typeOf(referential, draft.productTypeId || null)).map((criterion) => {
     const parameter = referential.parameters.find((candidate) => candidate.id === criterion.parameterId);
     return {
@@ -348,6 +407,7 @@ export function familyParameterRows(draft: ProgrammeDraft, referential: Programm
       unit: criterionUnit(criterion, parameter),
       checked: draft.parameterIds.includes(criterion.parameterId),
       available: parameter !== undefined,
+      judges: criterionJudges(criterion, context, referential),
     };
   });
 }
@@ -356,7 +416,8 @@ export function familyParameterRows(draft: ProgrammeDraft, referential: Programm
 export function applyProfile(
   draft: ProgrammeDraft,
   profile: ProfileRef,
-  referential: ProgrammeReferentialData
+  referential: ProgrammeReferentialData,
+  context: UnitContext = PLAIN_UNIT_CONTEXT
 ): ProgrammeDraft {
   const known = new Set(referential.parameters.map((parameter) => parameter.id));
   const type = typeOf(referential, draft.productTypeId);
@@ -370,7 +431,7 @@ export function applyProfile(
     // Chosen by hand: a later change of family keeps the profile's analyses and its n.
     manualIds: [...new Set([...draft.manualIds, ...parameterIds])],
     profileUnitCount: profile.unitCount,
-    unitCount: clampUnits(Math.max(profile.unitCount, typeUnitCount(type))),
+    unitCount: clampUnits(Math.max(profile.unitCount, typeUnitCount(type, context, referential))),
   };
 }
 
@@ -717,8 +778,13 @@ export function natureChangeOutcome(
 }
 
 /** The warning of PROGRAMME.md §3 when the units read are fewer than the type's plans need. */
-export function unitWarning(draft: ProgrammeDraft, type: ProductTypeRef | undefined): string | null {
-  const needed = typeUnitCount(type);
+export function unitWarning(
+  draft: ProgrammeDraft,
+  type: ProductTypeRef | undefined,
+  context: UnitContext = PLAIN_UNIT_CONTEXT,
+  referential?: Pick<ProgrammeReferentialData, "parameters">
+): string | null {
+  const needed = typeUnitCount(type, context, referential);
   if (!type || needed === 0 || draft.unitCount >= needed) return null;
   return `La famille « ${type.name} » attend n = ${needed} ; avec ${draft.unitCount} unité${draft.unitCount > 1 ? "s" : ""} la paillasse lira en indicatif, sans verdict officiel.`;
 }

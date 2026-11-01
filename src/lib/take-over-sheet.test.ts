@@ -5,10 +5,13 @@ import {
   SHEET_SAVED_BY_COLLEAGUE,
   followServer,
   overlapNotice,
+  sameDilution,
   savedByOthersSince,
+  sheetDirty,
   sheetLoadedAt,
   type SheetLine,
 } from "./take-over-sheet";
+import { dilutionText } from "./dilution";
 
 /**
  * A bench sheet opened before a colleague saved on it (re-ask 2.13, C3 — the
@@ -169,5 +172,32 @@ describe("J4 — a dilution typed is kept across a refresh like any typing", () 
     const { lines } = followServer(fresh, typed, base);
     expect(lines[0].dilution).toBe("1/100");
     expect(lines[1].dilution).toBe("1/10");
+  });
+
+  it("a save that went through leaves the sheet clean, however the dilution was typed (G4 × J4)", () => {
+    for (const typedDilution of ["10-2", "100", "1:100", "10⁻²", "1/100"]) {
+      const base = [line("ecoli", "", { dilution: "1", calcFactor: 1 })];
+      const typed = [line("ecoli", "30", { dilution: typedDilution, calcFactor: 1 })];
+      // The server writes the dilution back in its own form.
+      const fresh = [line("ecoli", "30", { dilution: dilutionText(100), calcFactor: 1 })];
+      const { lines, overlap } = followServer(fresh, typed, base);
+      expect(sheetDirty(lines, fresh), typedDilution).toBe(false);
+      expect(lines[0].dilution, typedDilution).toBe("1/100");
+      expect(overlap).toHaveLength(0);
+    }
+    // « 1/1000 » is written back « 1/1 000 » (non-breaking space).
+    const fresh = [line("ecoli", "30", { dilution: dilutionText(1000), calcFactor: 1 })];
+    const typed = [line("ecoli", "30", { dilution: "1/1000", calcFactor: 1 })];
+    expect(sheetDirty(typed, fresh)).toBe(false);
+  });
+
+  it("an emptied dilution means the line's own factor, which the server writes out", () => {
+    const fresh = [line("ecoli", "30", { dilution: "1/10", calcFactor: 10 })];
+    expect(sheetDirty([line("ecoli", "30", { dilution: "", calcFactor: 10 })], fresh)).toBe(false);
+    // A different dilution, or one that cannot be read, is still typing not saved.
+    expect(sheetDirty([line("ecoli", "30", { dilution: "10-3", calcFactor: 10 })], fresh)).toBe(true);
+    expect(sheetDirty([line("ecoli", "30", { dilution: "1/", calcFactor: 10 })], fresh)).toBe(true);
+    expect(sameDilution("10-2", "1/100")).toBe(true);
+    expect(sameDilution("10-2", "1/1000")).toBe(false);
   });
 });

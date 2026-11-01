@@ -393,11 +393,11 @@ export default async function ValidationDetailPage({
                         ) : (
                           <span className="text-xs text-slate-400">—</span>
                         )}
-                        {/* O-12: a sensitive germ without any verdict, present — the alert follows. */}
+                        {/* O-12: a sensitive germ without any verdict, detected (presence or a count above zero) — the alert follows. */}
                         {result.parameter.alertOnExceed && carriesNoJudgement(result) && result.detected === true && (
                           <span className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-rose-700">
                             <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-                            Présence — alerte
+                            Germe détecté — alerte
                           </span>
                         )}
                       </td>

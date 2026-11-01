@@ -113,11 +113,19 @@ describe("the conclusion names the parameters left without interpretation", () =
   it("one parameter, several, each once", () => {
     expect(uninterpretedSentence([])).toBe("");
     expect(uninterpretedSentence(["Levures"])).toBe(
-      "Le résultat de Levures est communiqué sans interprétation : aucun critère n'est spécifié pour ce paramètre."
+      "Résultat communiqué sans interprétation (aucun critère n'est spécifié pour ce paramètre) : Levures."
     );
     expect(uninterpretedSentence(["Levures", "Moisissures", "Levures", "Flore totale"])).toBe(
-      "Les résultats de Levures, Moisissures et Flore totale sont communiqués sans interprétation : aucun critère n'est spécifié pour ces paramètres."
+      "Résultats communiqués sans interprétation (aucun critère n'est spécifié pour ces paramètres) : Levures, Moisissures et Flore totale."
     );
+  });
+
+  it("never writes « de » before a name that would need an elision", () => {
+    for (const names of [["E. coli"], ["Entérobactéries", "Anaérobies sulfito-réducteurs"]]) {
+      const sentence = uninterpretedSentence(names);
+      expect(sentence).not.toMatch(/\bde [AEIOUYÉÈÊaeiouyéèêh]/);
+      expect(sentence).toContain(names[names.length - 1]);
+    }
   });
 
   it("never says « conforme pour l'ensemble des paramètres » above a line not interpreted", () => {

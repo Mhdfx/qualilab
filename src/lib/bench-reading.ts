@@ -237,6 +237,14 @@ export function awaitsManualConformity(
  * unreadable repetition, it must be retyped (« Présence », « Absence », a
  * count) before the sheet leaves the bench: the screen says so and keeps
  * « Soumettre » closed, the submission refuses it.
+ *
+ * A line in ANOMALIE is no exception (review of lot 3B — hypothèse, à
+ * confirmer par R-28): before J3 the technician left such a line through the
+ * Conforme / Non conforme choice (C7), which no longer exists here. The
+ * technician now decides the reading (« Présence » / « Absence »), the
+ * anomaly being described in the note the save already requires; a plate
+ * that cannot be read at all stays « En cours » until the analysis is
+ * redone. The alert is never left undecided on a sensitive germ.
  */
 export function unreadableSensitiveReading(
   value: string | null | undefined,

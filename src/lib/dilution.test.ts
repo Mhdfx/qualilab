@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { dilutionText, dilutionToStore, effectiveFactor, parseDilution, readingFactor } from "./dilution";
+import { MAX_DILUTION, dilutionText, dilutionToStore, effectiveFactor, parseDilution, readingFactor } from "./dilution";
+import { MAX_DILUTION_FACTOR } from "./programme-input";
 import { singleValueEntry } from "./result-value";
 
 /**
@@ -58,6 +59,16 @@ describe("parseDilution — the dilution as the bench writes it", () => {
 
   it("never guesses: anything else is refused", () => {
     for (const typed of ["abc", "1/", "0", "1/0", "-", "10^", "1/100/2", "2e3", "0,00001", "1/10000000000"]) {
+      expect(parseDilution(typed), typed).toBe("invalid");
+    }
+  });
+
+  it("stays within the column, DECIMAL(12, 4): eight integer digits, as the programmed factor", () => {
+    expect(MAX_DILUTION).toBe(MAX_DILUTION_FACTOR);
+    expect(parseDilution("10-7")).toBe(10_000_000);
+    expect(parseDilution("99999999")).toBe(99_999_999);
+    // Out of range in MariaDB's strict mode: refused here, a 400 « Dilution illisible… ».
+    for (const typed of ["10-8", "10-9", "10⁻⁸", "-8", "1/100000000", "1/1000000000", "100000000", "99999999,99999"]) {
       expect(parseDilution(typed), typed).toBe("invalid");
     }
   });

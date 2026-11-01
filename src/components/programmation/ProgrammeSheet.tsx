@@ -85,6 +85,7 @@ import {
   toggleParameter,
   typeOf,
   uncheckAllOfType,
+  unitContextOf,
   unitWarning,
   updateSetting,
   type BenchHolder,
@@ -256,11 +257,13 @@ export function ProgrammeSheet({
   const checks = entryChecks(sample, draft, referential, thresholds);
   // Section 7, for a role that sees the billing only (25/10).
   const billing = seesBilling(role) ? billingLines(draft, referential) : null;
-  const warning = unitWarning(draft, type);
+  // What was sampled: a criterion per another basis judges nothing at the bench (J1, J2).
+  const unitContext = useMemo(() => unitContextOf(sample), [sample]);
+  const warning = unitWarning(draft, type, unitContext, referential);
   const holderNotice = benchHolderNotice(saved.holder, saved);
 
   // The family as « Paramètres à rechercher » (F6), and the analyses outside it.
-  const familyRows = familyParameterRows(draft, referential);
+  const familyRows = familyParameterRows(draft, referential, unitContext);
   const familyCount = familyCheckCount(draft, referential);
   const others = otherParameterGroups(groups, draft, referential);
   const othersTicked = others.reduce(
@@ -284,7 +287,7 @@ export function ProgrammeSheet({
   function chooseFamily(typeId: string) {
     setPickerOpen(false);
     if (readOnly || typeId === draft.productTypeId) return;
-    const next = applyProductType(draft, typeId, referential);
+    const next = applyProductType(draft, typeId, referential, unitContext);
     setDraft(next);
     setError("");
     setNotice("");
@@ -645,7 +648,13 @@ export function ProgrammeSheet({
           )}
         </p>
         {pickerOpen && (
-          <FamilyPickerDialog referential={referential} draft={draft} onChoose={chooseFamily} onClose={closePicker} />
+          <FamilyPickerDialog
+            referential={referential}
+            draft={draft}
+            unitContext={unitContext}
+            onChoose={chooseFamily}
+            onClose={closePicker}
+          />
         )}
         {lostType && !draft.productTypeId && (
           <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -722,7 +731,14 @@ export function ProgrammeSheet({
                           {!row.available && <span className="block text-xs text-slate-500">pas proposé pour cette nature</span>}
                         </td>
                         <td className="py-2 pr-3 align-top text-xs text-slate-500">{row.normLabel ?? "—"}</td>
-                        <td className="py-2 pr-3 align-top text-xs text-slate-600">{row.unit ?? "—"}</td>
+                        <td className="py-2 pr-3 align-top text-xs text-slate-600">
+                          {row.unit ?? "—"}
+                          {!row.judges && (
+                            <span className="mt-0.5 block text-amber-800">
+                              ne juge pas ce prélèvement : lu sans interprétation
+                            </span>
+                          )}
+                        </td>
                         <td className="py-2 pr-3 text-right align-top tabular-nums text-slate-700">{row.criterion.n}</td>
                         <td className="py-2 pr-3 text-right align-top tabular-nums text-slate-700">{row.criterion.c ?? "—"}</td>
                         <td className="py-2 pr-3 text-right align-top font-mono text-slate-700">{limits.m}</td>
@@ -765,7 +781,7 @@ export function ProgrammeSheet({
                   <button
                     key={profile.id}
                     type="button"
-                    onClick={() => setDraft((current) => applyProfile(current, profile, referential))}
+                    onClick={() => setDraft((current) => applyProfile(current, profile, referential, unitContext))}
                     aria-pressed={applied}
                     disabled={readOnly}
                     className={chip(applied)}

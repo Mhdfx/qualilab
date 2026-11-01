@@ -1,4 +1,5 @@
 import type { Prisma } from "@/generated/prisma/client";
+import { parseDilution } from "./dilution";
 
 /**
  * A bench sheet opened before a colleague saved on it (re-ask 2.13, C3 —
@@ -62,13 +63,33 @@ export type SheetLine = {
   units: string[];
   /** The dilution read at, as typed (lot 3B, J4); absent on a sheet without one. */
   dilution?: string;
+  /** The factor an empty dilution means (the programme's, else the catalogue's), as the bench reads it. */
+  calcFactor?: number;
 };
+
+/**
+ * A dilution as the multiplier it means (`parseDilution`): the server writes
+ * back « 1/100 » what was typed « 10-2 », « 100 » or « 1:100 » — the same
+ * dilution, never a change. A field left empty means the line's own factor
+ * (`calcFactor`), which the server then writes out (« 1 », « 1/10 »). Text
+ * that is no dilution compares as typed.
+ */
+function dilutionKey(text: string | undefined, calcFactor?: number): string {
+  const typed = (text ?? "").trim();
+  const factor = parseDilution(typed) ?? calcFactor ?? null;
+  return typeof factor === "number" ? `×${factor}` : typed;
+}
+
+/** Whether two dilutions mean the same multiplier, however written (an empty one: `calcFactor`). */
+export function sameDilution(a: string | undefined, b: string | undefined, calcFactor?: number): boolean {
+  return dilutionKey(a, calcFactor) === dilutionKey(b, calcFactor);
+}
 
 /** What is typed on a line, compared as text: a grid grown by empty units holds the same readings. */
 function typedOf(line: SheetLine): string {
   const units = line.units.map((unit) => unit.trim());
   while (units.length > 0 && units[units.length - 1] === "") units.pop();
-  return JSON.stringify([line.value.trim(), line.note.trim(), line.workStatus, line.manualConform, units, (line.dilution ?? "").trim()]);
+  return JSON.stringify([line.value.trim(), line.note.trim(), line.workStatus, line.manualConform, units, dilutionKey(line.dilution, line.calcFactor)]);
 }
 
 /**
@@ -115,7 +136,10 @@ export function followServer<L extends SheetLine>(
       workStatus: previous.workStatus,
       manualConform: previous.manualConform,
       units: line.units.map((unit, index) => previous.units[index] ?? unit),
-      ...(previous.dilution !== undefined ? { dilution: previous.dilution } : {}),
+      // The server's writing of the same dilution (« 1/100 » for « 10-2 ») replaces the typed one.
+      ...(previous.dilution !== undefined && !sameDilution(previous.dilution, line.dilution, line.calcFactor)
+        ? { dilution: previous.dilution }
+        : {}),
     };
     if (origin && typedOf(line) !== typedOf(origin) && typedOf(line) !== typedOf(kept)) overlap.push(line);
     return kept;

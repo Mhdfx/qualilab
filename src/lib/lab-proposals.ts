@@ -59,3 +59,19 @@ export const SERIES_VALIDATION = true;
  * submission waits for it, the report prints as before.
  */
 export const NO_CRITERION_NO_INTERPRETATION = true;
+
+/**
+ * Lot 3B, J1 / J2 (28/10, 2.3 and 2.17 — the laboratory answered on the
+ * unit only: « UFC/couteau », « UFC/m³ », « UFC/boîte »). A criterion of the
+ * family or a limit of the catalogue expressed per another basis than what
+ * was sampled — « UFC/cm² » on a surface described in words (« couteau »),
+ * « ufc/m3 » on an exposed plate, « ufc/boite » on a biocollecteur, « /cm² »
+ * on the air — no longer judges the line: the bench, the save, the
+ * submission and the programme sheet read it without them, « sans
+ * interprétation » (J3), rather than against a limit it was never expressed
+ * in (`unitJudges`, `result-unit.ts`). Hypothèse, à confirmer par R-29
+ * (RETOUR-LABO-28-10.md §6).
+ * Off: such a criterion or limit judges the line again, as before lot 3B;
+ * the unit printed stays the one of J1 / J2.
+ */
+export const UNIT_MISMATCH_NOT_JUDGED = true;

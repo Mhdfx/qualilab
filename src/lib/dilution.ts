@@ -1,4 +1,5 @@
 import { formatDecimal } from "./labels";
+import { MAX_DILUTION_FACTOR } from "./programme-input";
 
 /**
  * The multiplier applied to a bench reading (PROGRAMME.md §6).
@@ -22,8 +23,15 @@ export function effectiveFactor(
   return Number.isFinite(factor) && factor > 0 ? factor : calcFactor;
 }
 
-/** The ceiling of a dilution typed at the bench (1/1 000 000 000) — and of the column, DECIMAL(12, 4). */
-export const MAX_DILUTION = 1_000_000_000;
+/**
+ * The ceiling of a dilution typed at the bench: `Result.dilutionUsed` is a
+ * DECIMAL(12, 4), so eight integer digits at most (99 999 999,9999) — the
+ * same ceiling as the programmed factor on its identical column
+ * (`MAX_DILUTION_FACTOR`). « 10-8 » (1/100 000 000) and beyond are refused
+ * with the 400 « Dilution illisible… », never sent to MariaDB (« Out of
+ * range » in strict mode, a 500).
+ */
+export const MAX_DILUTION = MAX_DILUTION_FACTOR;
 
 const SUPERSCRIPT_DIGITS: Record<string, string> = {
   "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9", "⁻": "-",
@@ -51,9 +59,10 @@ export function parseDilution(raw: string | null | undefined): number | null | "
   else if (power) factor = 10 ** Number(power[1]);
   else if (exponent) factor = 10 ** Number(exponent[1]);
   else if (/^\d+(?:\.\d+)?$/.test(text)) factor = Number(text);
-  if (factor === null || !Number.isFinite(factor) || factor <= 0 || factor > MAX_DILUTION) return "invalid";
-  // Four decimals at most, as the column stores it.
-  return Math.round(factor * 10_000) / 10_000 || "invalid";
+  if (factor === null || !Number.isFinite(factor) || factor <= 0) return "invalid";
+  // Four decimals at most, as the column stores it — and within its eight integer digits.
+  const stored = Math.round(factor * 10_000) / 10_000;
+  return stored > 0 && stored <= MAX_DILUTION ? stored : "invalid";
 }
 
 /**

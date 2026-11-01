@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  MAX_RESULT_UNIT,
   PLAIN_UNIT_CONTEXT,
   airUnitText,
   judgingLimit,
@@ -10,6 +11,7 @@ import {
   unitJudges,
   type UnitContext,
 } from "./result-unit";
+import { UNIT_MISMATCH_NOT_JUDGED } from "./lab-proposals";
 
 const surface = (note: string | null): UnitContext => ({ ...PLAIN_UNIT_CONTEXT, lineKind: "SURFACE", surfaceAreaNote: note });
 const bio: UnitContext = { ...PLAIN_UNIT_CONTEXT, lineKind: "AIR", airMethod: "BIOCOLLECTEUR" };
@@ -34,6 +36,23 @@ describe("J1 — a surface described in words: « UFC/<surface> » (28/10, 2.3)"
     }
     expect(resultUnit(surface(null), "UFC/cm²")).toBe("UFC/cm²");
     expect(resultUnit(surface("   "), "UFC/cm²")).toBe("UFC/cm²");
+  });
+
+  it("fits `Result.unit` VARCHAR(191) even for a surface described in 191 characters", () => {
+    expect(MAX_RESULT_UNIT).toBe(191);
+    for (const length of [186, 187, 188, 191]) {
+      const note = "é".repeat(length);
+      const unit = resultUnit(surface(note), "UFC/cm²") ?? "";
+      expect(Array.from(unit).length, String(length)).toBeLessThanOrEqual(MAX_RESULT_UNIT);
+      expect(unit.startsWith("UFC/éé")).toBe(true);
+    }
+    // 187 characters still fit whole; beyond, the end gives way to « … ».
+    expect(resultUnit(surface("a".repeat(187)), "UFC/cm²")).toBe(`UFC/${"a".repeat(187)}`);
+    expect(resultUnit(surface("a".repeat(191)), "UFC/cm²")).toBe(`UFC/${"a".repeat(186)}…`);
+    // A character outside the BMP is never cut in half.
+    const emoji = resultUnit(surface("🧪".repeat(191)), "UFC/cm²") ?? "";
+    expect(Array.from(emoji)).toHaveLength(MAX_RESULT_UNIT);
+    expect(emoji).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
   });
 
   it("only a SURFACE line: hands and foods keep their unit", () => {
@@ -90,6 +109,19 @@ describe("J2 — the air's unit by its sampling means (28/10, 2.17, Q50)", () =>
       expect(resultUnit(PLAIN_UNIT_CONTEXT, unit)).toBe(unit);
       expect(unitJudges(PLAIN_UNIT_CONTEXT, unit)).toBe(true);
     }
+  });
+});
+
+describe("UNIT_MISMATCH_NOT_JUDGED — setting a criterion aside is a hypothèse (R-29), behind a switch", () => {
+  it("is on by default", () => {
+    expect(UNIT_MISMATCH_NOT_JUDGED).toBe(true);
+  });
+
+  it("off: every criterion and limit judges again, as before lot 3B — the unit printed stays J1 / J2's", () => {
+    expect(unitJudges(surface("couteau"), "UFC/cm²", false)).toBe(true);
+    expect(unitJudges(plate(30), "ufc/m3", false)).toBe(true);
+    expect(unitJudges(bio, "ufc/Boite", false)).toBe(true);
+    expect(resultUnit(surface("couteau"), "UFC/cm²")).toBe("UFC/couteau");
   });
 });
 

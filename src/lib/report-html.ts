@@ -968,16 +968,18 @@ export function buildConclusion(
  * The conclusion's sentence for the parameters left without interpretation
  * (28/10, 2.11 : « si on n'a pas de critère, nous ne faisons pas
  * d'interprétation », J3), named once each, in the report's order. Empty
- * when there is none.
+ * when there is none. The names close the sentence, after a colon, so no
+ * « de » ever sits before them (« de E. coli », « de Entérobactéries »
+ * would need an elision).
  */
 export function uninterpretedSentence(names: readonly string[]): string {
   const unique = [...new Set(names)];
   if (unique.length === 0) return "";
   if (unique.length === 1) {
-    return `Le résultat de ${unique[0]} est communiqué sans interprétation : aucun critère n'est spécifié pour ce paramètre.`;
+    return `Résultat communiqué sans interprétation (aucun critère n'est spécifié pour ce paramètre) : ${unique[0]}.`;
   }
   const list = `${unique.slice(0, -1).join(", ")} et ${unique[unique.length - 1]}`;
-  return `Les résultats de ${list} sont communiqués sans interprétation : aucun critère n'est spécifié pour ces paramètres.`;
+  return `Résultats communiqués sans interprétation (aucun critère n'est spécifié pour ces paramètres) : ${list}.`;
 }
 
 /**
