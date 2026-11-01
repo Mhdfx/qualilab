@@ -21,7 +21,8 @@ import { applyQuickEntry, quickEntries, type QuickEntry } from "@/lib/quick-entr
 import { repetitionLabel } from "@/lib/series";
 import { formatDecimal } from "@/lib/labels";
 import { lostSampleHolder } from "@/lib/take-over";
-import { SHEET_SAVED_BY_COLLEAGUE, followServer, overlapNotice } from "@/lib/take-over-sheet";
+import { SHEET_SAVED_BY_COLLEAGUE, followServer, overlapNotice, sheetDirty } from "@/lib/take-over-sheet";
+import { useUnsavedChanges } from "@/components/ui/unsaved-changes";
 import type { ResultWorkStatus } from "@/generated/prisma/enums";
 
 export type ParameterLine = {
@@ -225,6 +226,9 @@ export function ResultEntryForm({
     }
     if (colleagueSaved) setColleagueSaved(false);
   }
+
+  // Typing not saved: « Échantillon précédent / suivant » asks first (G4).
+  useUnsavedChanges(canEdit && sheetDirty(lines, laid.lines));
 
   const readings = useMemo<Reading[]>(
     () =>

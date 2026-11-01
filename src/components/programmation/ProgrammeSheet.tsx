@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useUnsavedChanges } from "@/components/ui/unsaved-changes";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -199,6 +200,9 @@ export function ProgrammeSheet({
   const router = useRouter();
   const [referential, setReferential] = useState<ProgrammeReferentialData>(initialReferential);
   const [draft, setDraft] = useState<ProgrammeDraft>(() => initialDraft(programme, initialReferential));
+  // The draft as the server last gave it: anything else is typing not saved,
+  // which « Échantillon précédent / suivant » asks about first (G4).
+  const [savedDraft, setSavedDraft] = useState(() => JSON.stringify(initialDraft(programme, initialReferential)));
   // The nature the sample carries in the database — the draft's may differ until the save.
   const [savedNatureId, setSavedNatureId] = useState(programme.natureId);
   // The nature being loaded, shown in the select while its referential travels.
@@ -235,6 +239,7 @@ export function ProgrammeSheet({
   const closePicker = useCallback(() => setPickerOpen(false), []);
 
   const readOnly = !saved.editable;
+  useUnsavedChanges(!readOnly && JSON.stringify(draft) !== savedDraft);
   const confirmed = saved.status === "PROGRAMME";
   const type = typeOf(referential, draft.productTypeId);
   const criteria = useMemo(() => criteriaOf(type), [type]);
@@ -300,7 +305,9 @@ export function ProgrammeSheet({
     setSavedNatureId(natureId);
     setPendingNature(null);
     natureRequest.current += 1;
-    setDraft(initialDraft(data.programme, marked));
+    const fresh = initialDraft(data.programme, marked);
+    setDraft(fresh);
+    setSavedDraft(JSON.stringify(fresh));
     setSaved({
       status: data.sample.status,
       analysisBlocked: data.sample.analysisBlocked,

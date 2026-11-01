@@ -72,6 +72,20 @@ function typedOf(line: SheetLine): string {
 }
 
 /**
+ * Whether the sheet holds typing not saved: a line typed on since the server
+ * last laid the sheet out (lot 3B, G4 — the guard of « Échantillon précédent
+ * / suivant »). Only the lines the viewer may type count.
+ */
+export function sheetDirty(current: readonly SheetLine[], laid: readonly SheetLine[]): boolean {
+  const before = new Map(laid.map((line) => [line.parameterId, line]));
+  return current.some((line) => {
+    if (!line.editable) return false;
+    const origin = before.get(line.parameterId);
+    return !origin || typedOf(origin) !== typedOf(line);
+  });
+}
+
+/**
  * The sheet the server just rendered (`fresh`), with the viewer's typing
  * (`typed`) carried over on each line they changed since the sheet was last
  * laid out (`base`, the server's previous rendering) — and still theirs,

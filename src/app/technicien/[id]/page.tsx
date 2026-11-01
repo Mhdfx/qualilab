@@ -45,6 +45,8 @@ import {
   type ParameterLine,
 } from "@/components/technicien/ResultEntryForm";
 import { ReleaseButton, TakeButton, TakeOverButton } from "@/components/technicien/BenchTakeActions";
+import { SerieNeighbourLinks } from "@/components/ui/SerieNeighbourLinks";
+import { serieNeighbours } from "@/lib/serie-neighbours";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   // Metadata renders alongside the layout's redirect: the sample's blind
@@ -123,6 +125,8 @@ export default async function AnalysePage({
       // The client's name is loaded below, only for a viewer who reads it:
       // a technician's blind bench never does (re-ask 2.15).
       clientId: true,
+      // « Échantillon précédent / suivant » in the série (G4).
+      serieId: true,
       serie: { select: { serialNumber: true } },
       parameters: {
         select: {
@@ -166,7 +170,7 @@ export default async function AnalysePage({
   // A send-back is current until the next submission (B2): the journal is
   // read only for a sample that may show one. The last bench row of the
   // journal says whether the holder took it over from a colleague (C3).
-  const [bench, submissions, client, holderRows] = await Promise.all([
+  const [bench, submissions, client, holderRows, siblings] = await Promise.all([
     loadBenchPlans(sample.id),
     maySendBack(sample) ? lastSubmissionsOf([sample.id]) : null,
     blind ? null : prisma.client.findUnique({ where: { id: sample.clientId }, select: { name: true } }),
@@ -178,7 +182,27 @@ export default async function AnalysePage({
           take: 1,
         })
       : [],
+    // The série's other samples this viewer may open here (G4): a
+    // technician's own and the shared bench (`canReadAtBench`), the admin's all.
+    prisma.sample.findMany({
+      where: { serieId: sample.serieId, status: { not: "ANNULE" } },
+      select: {
+        id: true,
+        lineNumber: true,
+        code: true,
+        controlCode: true,
+        status: true,
+        technicianId: true,
+        parameters: { select: { technicianId: true } },
+      },
+    }),
   ]);
+  const neighbours = serieNeighbours(
+    siblings.filter((sibling) => sibling.id === sample.id || !isTechnician || canReadAtBench(sibling, session.id)),
+    sample.id
+  );
+  const neighbourLink = (sibling: (typeof siblings)[number] | null) =>
+    sibling ? { href: `/technicien/${sibling.id}`, reference: labReference(sibling) } : null;
 
   // Who holds the sample (prise en charge libre, PROGRAMME.md §10).
   const free = isUnclaimed(sample);
@@ -296,6 +320,14 @@ export default async function AnalysePage({
       </Link>
 
       <PageHeader badge="Analyse" title={labReference(sample)} subtitle={subtitle} />
+
+      <SerieNeighbourLinks
+        serialNumber={sample.serie.serialNumber}
+        position={neighbours.position}
+        total={neighbours.total}
+        previous={neighbourLink(neighbours.previous)}
+        next={neighbourLink(neighbours.next)}
+      />
 
       {/* The previous holder reads « Repris par » instead (below). */}
       {heldByOther && !takenFromMe && (
