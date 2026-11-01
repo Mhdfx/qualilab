@@ -20,6 +20,8 @@ import { prisma } from "@/lib/prisma";
 import { heldInvoices } from "@/lib/billing-hold";
 import { heldInvoiceFor, seesBilling } from "@/lib/price-access";
 import { getLabSettings } from "@/lib/lab-settings";
+import { getDueDelays } from "@/lib/due-delays-server";
+import { dueHint, proposeDueAt } from "@/lib/due-date";
 import {
   LINE_KIND_LABELS,
   QUANTITY_UNIT_LABELS,
@@ -97,7 +99,7 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
   const row = await loadProgrammeSample(id);
   if (!row) notFound();
 
-  const [referential, settings, identity, held] = await Promise.all([
+  const [referential, settings, identity, held, delays] = await Promise.all([
     // The catalogue prices (section 7) for the administrator only: the
     // responsable des paramètres sees no price (the owner's rule of 25/10).
     loadProgrammeReferential(row, { withPrices: seesBilling(session.role) }),
@@ -105,6 +107,8 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
     prisma.sample.findUnique({ where: { id }, select: IDENTITY_SELECT }),
     // A confirmed programme is billable: the invoice holding it, if any.
     heldInvoices([id]),
+    // K5 (Q8): the laboratory's delays, to propose « à rendre le ».
+    getDueDelays(),
   ]);
   if (!identity) notFound();
   const heldInvoice = held.get(id) ?? null;
@@ -115,7 +119,16 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
   // exactly what the API would have answered.
   const data = JSON.parse(JSON.stringify(serializeProgramme(row))) as ProgrammeResponse;
   const referentialData = JSON.parse(JSON.stringify(referential)) as ProgrammeReferentialData;
-  const { sample, programme } = data;
+  const { sample, programme: stored } = data;
+  // K5 (Q8, « la date à rendre le se remplit seule et reste modifiable »):
+  // a programme not yet confirmed, without a promised date, gets the one its
+  // domain's delay gives from the arrival — shown on the sheet, saved only
+  // with it, changed or cleared at will.
+  const proposal =
+    stored.dueAt === null && stored.editable && sample.status === "RECU"
+      ? proposeDueAt({ family: row.nature.family, arrivedAt: row.serie.arrivedAt, receivedAt: row.receivedAt }, delays, new Date())
+      : null;
+  const programme = proposal?.dueAt ? { ...stored, dueAt: proposal.dueAt.toISOString() } : stored;
   // Who took it at the bench — the holder, else a legacy per-analysis technician (before 13/10).
   const holder = benchHolder(sample);
   // The responsable des paramètres changes the analyses here once the bench
@@ -270,6 +283,7 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
           thresholds={settings}
           role={session.role}
           invoiced={invoiced}
+          dueHint={proposal ? dueHint(proposal) : null}
           verbSample={
             hasVerbs
               ? {

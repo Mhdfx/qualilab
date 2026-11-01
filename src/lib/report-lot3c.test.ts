@@ -15,7 +15,7 @@ import type { DocumentRef } from "./document-types";
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
 const LOGO = "data:image/png;base64,QUNDUkVE";
 const STAMP = "data:image/png;base64,Q0FDSEVU";
-const reference: DocumentRef = { reference: "PG06/EN03", version: "M", createdOn: null, updatedOn: null };
+const reference: DocumentRef = { docType: "RAPPORT", reference: "PG06/EN03", version: "M", createdOn: null, updatedOn: null };
 
 const result = (parameter: string, extra: Partial<ReportData["results"][number]> = {}): ReportData["results"][number] => ({
   parameter,

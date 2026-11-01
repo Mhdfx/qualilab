@@ -101,6 +101,8 @@ const DIRECTION_ADMITTED = [
   "api/samples/route.ts GET",
   "api/samples/stats/route.ts GET",
   "api/samples/export/route.ts GET",
+  // Lot 3C L1: « Récapitulatif par site », beside the export, with its roles.
+  "api/samples/recap/route.ts GET",
   // The report: read, duplicata, versions, (re)send.
   "api/samples/[id]/report/route.ts GET",
   "api/samples/[id]/report/versions/route.ts GET",

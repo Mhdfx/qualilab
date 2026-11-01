@@ -186,6 +186,27 @@ without a deployment.
   #   gpg: gpg --output qualilab_2026-10-12_0200.sql.gz --decrypt qualilab_2026-10-12_0200.sql.gz.gpg
   DB_PASSWORD=... bash scripts/restore-db.sh /var/backups/qualilab/qualilab_2026-10-12_0200.sql.gz
   ```
+- **Journal of the runs — « Sauvegardes » (lot 3C, RETOUR-LABO-28-10.md
+  L2, Q97).** Every run, failed or not, appends one line to
+  `/var/backups/qualilab/journal/backup-journal.csv` (`BACKUP_JOURNAL_DIR`
+  to move it): date (UTC) ; statut ; fichier ; octets ; sha256 ; copie hors
+  site ; message. The app mounts **only that directory, read-only**
+  (`docker-compose.yml`: `${BACKUP_DIR:-/var/backups/qualilab}/journal:/app/backup-journal:ro`,
+  `BACKUP_JOURNAL_PATH`) and shows the last 30 runs in Administration →
+  « Sauvegardes », red when the last run failed, amber when it is older than
+  26 h, with « Télécharger le suivi » (CSV). **Before the first
+  `docker compose up` with this compose file**, create the directory as the
+  cron user — otherwise Docker creates it owned by root and the script can no
+  longer write its line:
+
+  ```bash
+  sudo -u qualilab mkdir -p /var/backups/qualilab/journal
+  sudo -u qualilab bash -c 'cd /opt/qualilab && set -a && . ./.env && set +a && bash scripts/backup-db.sh'
+  tail -n 2 /var/backups/qualilab/journal/backup-journal.csv   # the run just made
+  ```
+
+  Still open with the laboratory (R-19): where the off-site copy goes, who
+  holds the key and the access, the maintenance window.
 - **Test the restore once after setup** and note the date in this file:
   `./scripts/restore-db.sh /var/backups/qualilab/<dump>.sql.gz`
   — Last tested restore: **2026-08-26** (backup → restore → app healthy,

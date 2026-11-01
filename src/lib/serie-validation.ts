@@ -14,6 +14,7 @@ import { RESEND_REPORT_ROLES, reportVersionSent } from "./report-actions";
 import { amendedNumber } from "./report-amendment";
 import { labReference } from "./sample-select";
 import { sampleRef } from "./reception-input";
+import { ALERTS_AT_VALIDATION } from "./lab-proposals";
 
 /**
  * « Toute la série » at the validation desk (re-ask 2.16 — Q92 « avoir les
@@ -165,7 +166,9 @@ export function serieConclusion(results: readonly SerieJudgedResult[]): string {
  * step 2 with the alerts out at step 1, the approval only retries one that
  * failed (`approveSample`).
  */
-export function alertsLeaveAt(action: SerieValidationAction, alertsAtTechnical: boolean): boolean {
+export function alertsLeaveAt(action: SerieValidationAction, alertsAtTechnical: boolean, atValidation: boolean = ALERTS_AT_VALIDATION): boolean {
+  // K3 (2.16 (c), R-13): with the switch off no signature sends them — the report's send does.
+  if (!atValidation) return false;
   return action === "validate" ? alertsAtTechnical : !alertsAtTechnical;
 }
 
@@ -173,8 +176,16 @@ export function alertsLeaveAt(action: SerieValidationAction, alertsAtTechnical: 
  * The sentence above the dialog's list when samples of it raise an alert —
  * the sample's panel's words, for this step: whether the alerts leave now.
  */
-export function serieAlertNotice(action: SerieValidationAction, alertsAtTechnical: boolean, alerting: number): string {
+export function serieAlertNotice(
+  action: SerieValidationAction,
+  alertsAtTechnical: boolean,
+  alerting: number,
+  atValidation: boolean = ALERTS_AT_VALIDATION
+): string {
   const samples = `${alerting} échantillon${alerting > 1 ? "s" : ""} ci-dessous`;
+  if (!atValidation) {
+    return `Une alerte de contamination part avec le rapport (« Valider et envoyer », « Envoyer au client ») : ${samples} en déclenche${alerting > 1 ? "nt" : ""} une.`;
+  }
   if (alertsLeaveAt(action, alertsAtTechnical)) {
     return alertsAtTechnical
       ? `Une alerte de contamination est envoyée au client dès la validation technique : ${samples} en déclenche${alerting > 1 ? "nt" : ""} une à cette validation.`

@@ -41,7 +41,6 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   SAMPLE_AWAITING_CLIENT: "Échantillon en attente de l'avis du client",
   CLIENT_CONSULTED: "Accord du client enregistré",
   CLIENT_CONSULTATION_UPDATED: "Accord du client ajouté ou corrigé après la réception",
-  REPORT_RECAP_EXPORTED: "Récapitulatif par site exporté (Excel)",
   PARAMETER_ACCREDITATION_UPDATED: "Accréditation des paramètres modifiée",
   ALERT_COPY_CREATED: "Adresse en copie des alertes ajoutée",
   ALERT_COPY_UPDATED: "Adresse en copie des alertes modifiée",

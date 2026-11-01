@@ -983,7 +983,8 @@ Enums: `Role`(11: 9 core, `PROGRAMMATEUR` and `DIRECTION` included, + `CLIENT` +
 | `NEXT_PUBLIC_DEMO_MODE` | `false` hides the demo-accounts panel on the login page | **Set to `false`** once the lab's real accounts exist |
 | `CHROMIUM_PATH` | browser used to render report PDFs | Optional. On the VPS: `apt install chromium` — the default paths are tried first |
 | `RESEND_API_KEY` | mail provider key | **Absent → sends are journalised as `SIMULE`, not delivered.** Needs the client's DNS first |
-| `EMAIL_FROM` | sender address | e.g. `Qualilab International <no-reply@qualilabinternational.com>` |
+| `EMAIL_FROM` | sender address — a real mailbox, never a no-reply (lot 3C L4); the « Envoi des e-mails » setting of /admin/entreprise wins over it, the identity's e-mail is the last fallback | e.g. `Qualilab International <contact@qualilabinternational.com>` |
+| `BACKUP_JOURNAL_PATH` | where the app reads the backups' journal (lot 3C L2); set by `docker-compose.yml` to the read-only mount `/app/backup-journal/backup-journal.csv`; unset = « journal non accessible » on /admin/sauvegardes | `/app/backup-journal/backup-journal.csv` |
 | `BACKUP_REMOTE` | **backup cron only** (`scripts/backup-db.sh`, not the app container): off-site copy of each dump — an rclone `remote:path` (an rclone crypt remote is recommended) or `user@host:/path` (rsync over SSH) | Unset → `backup.log` says « offsite skipped (BACKUP_REMOTE not set) ». Since 2026-10-10 |
 | `BACKUP_SSH_KEY` | backup cron only: the dedicated key of the rsync form | Default `~/.ssh/qualilab_backup`; a path with spaces breaks rsync's `-e` (§9) |
 | `BACKUP_GPG_RECIPIENT` | backup cron only: encrypt each dump for this gpg key before upload | Optional; keep the private key off the VPS |

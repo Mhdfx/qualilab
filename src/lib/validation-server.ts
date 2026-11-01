@@ -5,6 +5,7 @@ import { logAudit } from "./audit";
 import { prisma } from "./prisma";
 import { canApprove, canValidateTechnically, signsAdministratively } from "./sample-status";
 import { issueReportFor, sendReport, sendContaminationAlerts, type IssuedReport } from "./report-dispatch";
+import { alertsAtApproval, alertsAtTechnicalValidation } from "./alert-moment";
 import { getLabSettings, type LabSettings } from "./lab-settings";
 import { needsRegulation, proposeRegulation } from "./regulation";
 import type { Role } from "./roles";
@@ -175,7 +176,8 @@ export async function validateTechnically(
   // does not send them again. Never blocks the validation itself.
   let dispatch: { alerts?: number; error?: string } | undefined;
   const settings = context.settings ?? (await getLabSettings());
-  if (settings.alertAfterTechnicalValidation) {
+  // K3 (`ALERTS_AT_VALIDATION`): off, the alerts wait for the report's send.
+  if (alertsAtTechnicalValidation(settings.alertAfterTechnicalValidation)) {
     const alerts = await sendContaminationAlerts(sample.id, session.id, context).catch((error) => {
       console.error("[validation] alert send failed", { error });
       return { ok: false as const, error: "Envoi des alertes impossible." };
@@ -270,12 +272,15 @@ export async function approveSample(
         dispatch = sent.ok ? { report: sent.status } : { error: sent.error };
       }
 
-      const alerts = await sendContaminationAlerts(sample.id, session.id, context).catch((error) => {
-        console.error("[validation] alert send failed", { error });
-        return { ok: false as const, error: "Envoi des alertes impossible." };
-      });
-      if (alerts.ok) dispatch.alerts = alerts.sent;
-      else dispatch.error = [dispatch.error, alerts.error].filter(Boolean).join(" ");
+      // K3 (`ALERTS_AT_VALIDATION`): off, only « Valider et envoyer » sends them here.
+      if (alertsAtApproval(plan.sendReport)) {
+        const alerts = await sendContaminationAlerts(sample.id, session.id, context).catch((error) => {
+          console.error("[validation] alert send failed", { error });
+          return { ok: false as const, error: "Envoi des alertes impossible." };
+        });
+        if (alerts.ok) dispatch.alerts = alerts.sent;
+        else dispatch.error = [dispatch.error, alerts.error].filter(Boolean).join(" ");
+      }
     } else {
       // The approval stands; the send retries the issue (`sendReport`).
       dispatch.error = "Le rapport n'a pas pu être émis : utilisez « Générer et envoyer le rapport » ou « Renvoyer au client ».";

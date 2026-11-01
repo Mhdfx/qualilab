@@ -4,6 +4,7 @@ import { normInForce } from "@/lib/parameter-caption";
 import { normVersionsForParameters } from "@/lib/programme-referential";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ParametersManager } from "@/components/admin/ParametersManager";
+import { AccreditationManager } from "@/components/admin/AccreditationManager";
 
 export const metadata = { title: "Paramètres d'analyse" };
 
@@ -23,6 +24,10 @@ export default async function ParametresPage() {
         badge="Configuration"
         title="Paramètres d'analyse"
         subtitle="Unités, seuils de référence, limites et domaine — ces valeurs décident de la conformité d'un résultat, des alertes de contamination et de l'échantillon (microbiologie ou physico-chimie) qui reçoit chaque analyse."
+      />
+      {/* K4 (Q14): the accreditation of each analysis — its mark on the report. */}
+      <AccreditationManager
+        parameters={parameters.map((p) => ({ id: p.id, name: p.name, category: p.category, accreditation: p.accreditation }))}
       />
       <ParametersManager
         parameters={parameters.map((parameter) => ({ ...parameter, normLabel: normInForce(versions[parameter.id] ?? []) }))}

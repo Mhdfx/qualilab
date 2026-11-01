@@ -76,6 +76,13 @@ services:
       # Only for HTTP-without-domain serving; unset (default) keeps Secure
       # cookies in production. See auth-server.ts advanced.useSecureCookies.
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-}
+      # The backups' journal (RETOUR-LABO-28-10.md L2), written by
+      # scripts/backup-db.sh and read by Administration → « Sauvegardes ».
+      BACKUP_JOURNAL_PATH: /app/backup-journal/backup-journal.csv
+    # Read-only: the app reads the journal, never a dump (only the journal
+    # directory is mounted, not the dumps beside it).
+    volumes:
+      - ${BACKUP_DIR:-/var/backups/qualilab}/journal:/app/backup-journal:ro
     ports:
       - "127.0.0.1:3000:3000"
     # Migrations already ran (migrate service above), so: just serve.
