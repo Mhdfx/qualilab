@@ -97,3 +97,24 @@ export const UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE = true;
  * observation again (A7, as before 01/11).
  */
 export const OBSERVATION_ONLY_DELAY_AND_TEMPERATURE = true;
+
+// ————— Lot 3D — Achat & Stock (RETOUR-LABO-28-10.md §5, M1–M8) —————
+
+/**
+ * Lot 3D, M6 (R-23 « des paiements partiels ? »): a supplier invoice may be
+ * paid in several payments, each with its day, method and reference; it is
+ * « Partiellement payée » until they reach the net à payer — hypothèse, à
+ * confirmer par R-23. Off: a payment always settles the whole remaining
+ * amount (the screen hides the amount, the route refuses another figure).
+ */
+export const PURCHASE_PARTIAL_PAYMENTS = true;
+
+/**
+ * Lot 3D, M7 (the NB of 28/10, R-24): a supplier invoice that no valid
+ * attestation de régularité fiscale covers is WARNED about on the list, the
+ * form and the payment (« avertissement ») — the payment is NOT blocked,
+ * as the plan proposes; hypothèse, à confirmer par R-24. On: the payment of
+ * such an invoice is refused until an attestation is recorded (on the
+ * invoice or on the supplier).
+ */
+export const PAYMENT_REQUIRES_TAX_CERTIFICATE = false;

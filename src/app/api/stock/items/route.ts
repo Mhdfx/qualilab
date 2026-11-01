@@ -4,7 +4,8 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { toMoney } from "@/lib/money";
 import { validateStockItem } from "@/lib/achat-validation";
-import { isLowStock } from "@/lib/stock";
+import { loadAchatSettings } from "@/lib/achat-settings";
+import { loadStockOverview } from "@/lib/stock-overview";
 
 /**
  * Stock articles. The quantity itself is never written here — it belongs to
@@ -18,18 +19,10 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const includeArchived = searchParams.get("archived") === "true";
 
-  const items = await prisma.stockItem.findMany({
-    where: includeArchived ? undefined : { archived: false },
-    orderBy: [{ category: "asc" }, { name: "asc" }],
-  });
-
-  return NextResponse.json(
-    items.map((item) => {
-      const quantity = toMoney(item.quantity);
-      const minQuantity = toMoney(item.minQuantity);
-      return { ...item, quantity, minQuantity, low: isLowStock(quantity, minQuantity) };
-    })
-  );
+  // Lot 3D: each article with its place, expiry (M4), last price and value (M5).
+  const settings = await loadAchatSettings();
+  const rows = await loadStockOverview({ includeArchived, expiryWarningDays: settings.expiryWarningDays });
+  return NextResponse.json(rows);
 }
 
 export async function POST(request: Request) {
@@ -66,11 +59,11 @@ export async function POST(request: Request) {
     action: "STOCK_ITEM_CREATED",
     entity: "StockItem",
     entityId: item.id,
-    metadata: { name: item.name, unit: item.unit, minQuantity: toMoney(item.minQuantity) },
+    metadata: { name: item.name, unit: item.unit, minQuantity: toMoney(item.minQuantity), location: item.location },
   });
 
   return NextResponse.json(
-    { ...item, quantity: 0, minQuantity: toMoney(item.minQuantity), low: false },
+    { ...item, quantity: 0, minQuantity: toMoney(item.minQuantity), low: false, expiry: null, lastUnitPrice: null, value: null },
     { status: 201 }
   );
 }

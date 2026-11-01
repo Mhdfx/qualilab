@@ -6,7 +6,7 @@ import { toMoney } from "@/lib/money";
 import { validateStockItem } from "@/lib/achat-validation";
 import { isLowStock } from "@/lib/stock";
 
-/** Edit (name, category, unit, threshold) or archive one stock article. */
+/** Edit (name, category, unit, threshold, place — lot 3D M1) or archive one stock article. */
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -50,6 +50,7 @@ export async function PATCH(
     category: existing.category,
     unit: existing.unit,
     minQuantity: toMoney(existing.minQuantity),
+    location: existing.location,
     ...input,
   });
   if (!validated.ok) {
@@ -81,8 +82,8 @@ export async function PATCH(
     entityId: id,
     metadata: {
       name: item.name,
-      before: { minQuantity: toMoney(existing.minQuantity) },
-      after: { minQuantity: toMoney(item.minQuantity) },
+      before: { minQuantity: toMoney(existing.minQuantity), location: existing.location },
+      after: { minQuantity: toMoney(item.minQuantity), location: item.location },
     },
   });
 

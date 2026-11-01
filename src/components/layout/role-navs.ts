@@ -135,8 +135,18 @@ export const magasinNav: NavSection[] = [
     items: [
       { label: "Tableau de bord", href: "/magasin", icon: LayoutDashboard },
       { label: "Stock", href: "/magasin/stock", icon: Boxes },
+      // Lot 3D (M3): the register of every article's movements.
+      { label: "Journal du stock", href: "/magasin/stock/journal", icon: History },
       { label: "Fournisseurs", href: "/magasin/fournisseurs", icon: Truck },
       { label: "Factures fournisseurs", href: "/magasin/factures", icon: ReceiptText },
+    ],
+  },
+  {
+    // Lot 3D (M8, M4, M7): the imports of the laboratory's lists, the settings.
+    title: "Configuration",
+    items: [
+      { label: "Import des listes", href: "/magasin/import", icon: PackagePlus },
+      { label: "Réglages", href: "/magasin/reglages", icon: Gauge },
     ],
   },
 ];

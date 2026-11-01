@@ -137,6 +137,16 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   STOCK_ITEM_ARCHIVED: "Article de stock archivé",
   STOCK_ITEM_RESTORED: "Article de stock réactivé",
   STOCK_MOVEMENT: "Mouvement de stock",
+  // Lot 3D — Achat & Stock (RETOUR-LABO-28-10.md M1–M8).
+  PURCHASE_INVOICE_PARTLY_PAID: "Facture fournisseur payée en partie",
+  PURCHASE_PAYMENT_CANCELLED: "Paiement d'une facture fournisseur annulé",
+  PURCHASE_INVOICE_CORRECTED: "Facture fournisseur corrigée",
+  PURCHASE_INVOICE_CANCELLED: "Saisie d'une facture fournisseur annulée",
+  PURCHASE_JOURNAL_EXPORTED: "Journal des achats exporté",
+  STOCK_JOURNAL_EXPORTED: "Journal du stock exporté",
+  STOCK_IMPORTED: "Articles de stock importés",
+  SUPPLIERS_IMPORTED: "Fournisseurs importés",
+  ACHAT_SETTINGS_UPDATED: "Réglages Achat & Stock modifiés",
 };
 
 /** The French wording of an action; an unknown code is shown as it was written. */

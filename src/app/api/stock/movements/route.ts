@@ -3,17 +3,24 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { toMoney } from "@/lib/money";
-import { applyMovement, isLowStock, type MovementType } from "@/lib/stock";
+import { applyMovement, isLowStock } from "@/lib/stock";
 import { isLockConflict } from "@/lib/billing";
-import { TEXT_MAX, parseFormDay } from "@/lib/achat-validation";
-
-const TYPES: MovementType[] = ["ENTREE", "SORTIE", "AJUSTEMENT"];
+import { validateMovement } from "@/lib/achat-validation";
+import { labDayOf } from "@/lib/lab-time";
+import { isoDayOf } from "@/lib/date-only";
+import { pageParams, toPage } from "@/lib/pagination";
 
 /**
  * One stock movement — the ONLY writer of an article's quantity, inside a
  * transaction whose update is guarded by the level it read: two
  * magasiniers moving the same article at the same instant cannot lose an
  * update, the second one simply retries.
+ *
+ * Lot 3D (RETOUR-LABO-28-10.md M1, M5): the movement carries its day
+ * (`movementDate`, today on the lab's clock by default, never in the
+ * future), the levels before and after it (written in the same guarded
+ * transaction, so they are exactly the levels the update moved between) and,
+ * for an entry, its unit price HT.
  */
 export async function POST(request: Request) {
   const session = await requireApiRole("MAGASINIER", "ADMIN");
@@ -26,51 +33,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
 
-  const { itemId, type, quantity, lot, expiryDate, note } = (body ?? {}) as {
-    itemId?: unknown;
-    type?: unknown;
-    quantity?: unknown;
-    lot?: unknown;
-    expiryDate?: unknown;
-    note?: unknown;
-  };
-
-  if (typeof itemId !== "string" || !itemId) {
-    return NextResponse.json({ error: "Article manquant." }, { status: 400 });
+  const validated = validateMovement((body ?? {}) as Record<string, unknown>, labDayOf(new Date()));
+  if (!validated.ok) {
+    return NextResponse.json({ error: validated.error }, { status: 400 });
   }
-  if (!TYPES.includes(type as MovementType)) {
-    return NextResponse.json({ error: "Type de mouvement invalide." }, { status: 400 });
-  }
-  // Two decimals, like the DECIMAL(12,2) column — the stored movement and
-  // the level delta must be the same figure.
-  const qty = Math.round(Number(String(quantity ?? "").replace(",", ".")) * 100) / 100;
-  if (!Number.isFinite(qty)) {
-    return NextResponse.json({ error: "Quantité illisible." }, { status: 400 });
-  }
-
-  let expiry: Date | null = null;
-  if (typeof expiryDate === "string" && expiryDate.trim()) {
-    // A calendar day: « 2027-02-30 » is refused, not rolled over to March.
-    expiry = parseFormDay(expiryDate.trim());
-    if (!expiry) {
-      return NextResponse.json({ error: "Date de péremption invalide." }, { status: 400 });
-    }
-  }
-  if (typeof lot === "string" && lot.trim().length > TEXT_MAX) {
-    return NextResponse.json({ error: `Le lot est trop long (${TEXT_MAX} caractères max).` }, { status: 400 });
-  }
-  // A TEXT column holds 65 535 bytes: a longer note was a 500.
-  if (typeof note === "string" && note.trim().length > 5000) {
-    return NextResponse.json({ error: "La note est trop longue (5 000 caractères max)." }, { status: 400 });
-  }
+  const input = validated.value;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const item = await prisma.stockItem.findUnique({ where: { id: itemId } });
+    const item = await prisma.stockItem.findUnique({ where: { id: input.itemId } });
     if (!item || item.archived) {
       return NextResponse.json({ error: "Article invalide ou archivé." }, { status: 400 });
     }
 
-    const result = applyMovement(toMoney(item.quantity), type as MovementType, qty);
+    const before = toMoney(item.quantity);
+    const result = applyMovement(before, input.type, input.quantity);
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
@@ -91,11 +67,15 @@ export async function POST(request: Request) {
         return tx.stockMovement.create({
           data: {
             itemId: item.id,
-            type: type as MovementType,
-            quantity: qty,
-            lot: typeof lot === "string" && lot.trim() ? lot.trim() : null,
-            expiryDate: expiry,
-            note: typeof note === "string" && note.trim() ? note.trim() : null,
+            type: input.type,
+            quantity: input.quantity,
+            lot: input.lot,
+            expiryDate: input.expiryDate,
+            note: input.note,
+            movementDate: input.movementDate,
+            levelBefore: before,
+            levelAfter: result.next,
+            unitPriceHT: input.unitPriceHT,
             createdById: session.id,
           },
         });
@@ -113,17 +93,19 @@ export async function POST(request: Request) {
       entityId: item.id,
       metadata: {
         name: item.name,
-        type,
-        quantity: qty,
-        from: toMoney(item.quantity),
+        type: input.type,
+        quantity: input.quantity,
+        from: before,
         to: result.next,
         lot: movement.lot,
+        day: isoDayOf(input.movementDate),
+        ...(input.unitPriceHT !== null ? { unitPriceHT: input.unitPriceHT } : {}),
       },
     });
 
     return NextResponse.json(
       {
-        movement: { ...movement, quantity: toMoney(movement.quantity) },
+        movement: serializeMovement(movement),
         item: {
           id: item.id,
           quantity: result.next,
@@ -140,7 +122,34 @@ export async function POST(request: Request) {
   );
 }
 
-/** Recent movements of one article — its explanation trail. */
+type StoredMovement = {
+  quantity: unknown;
+  levelBefore: unknown;
+  levelAfter: unknown;
+  unitPriceHT: unknown;
+  movementDate: Date | null;
+  createdAt: Date;
+};
+
+/** Decimals as numbers, the day as « AAAA-MM-JJ » (its recording day before lot 3D). */
+function serializeMovement<T extends StoredMovement>(movement: T) {
+  const optional = (value: unknown) => (value === null || value === undefined ? null : toMoney(value as string));
+  return {
+    ...movement,
+    quantity: toMoney(movement.quantity as string),
+    levelBefore: optional(movement.levelBefore),
+    levelAfter: optional(movement.levelAfter),
+    unitPriceHT: optional(movement.unitPriceHT),
+    day: movement.movementDate ? isoDayOf(movement.movementDate) : labDayOf(movement.createdAt),
+  };
+}
+
+/**
+ * The movements of one article — its explanation trail, newest first.
+ * Without a limit (lot 3D, M3): `?cursor=` pages through it, 50 at a time
+ * (`{ items, nextCursor }` with `?paged=1`; a bare array of the first page
+ * otherwise, as before).
+ */
 export async function GET(request: Request) {
   const session = await requireApiRole("MAGASINIER", "ADMIN");
   if (session instanceof NextResponse) return session;
@@ -150,18 +159,17 @@ export async function GET(request: Request) {
   if (!itemId) {
     return NextResponse.json({ error: "Article manquant." }, { status: 400 });
   }
+  const page = pageParams(request);
 
   const movements = await prisma.stockMovement.findMany({
     where: { itemId },
-    orderBy: { createdAt: "desc" },
-    take: 50,
+    orderBy: [{ movementDate: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }, { id: "desc" }],
+    take: page.take + 1,
+    ...(page.cursor ? { cursor: page.cursor, skip: page.skip } : {}),
     include: { createdBy: { select: { name: true } } },
   });
 
-  return NextResponse.json(
-    movements.map((movement) => ({
-      ...movement,
-      quantity: toMoney(movement.quantity),
-    }))
-  );
+  const { items, nextCursor } = toPage(movements, page.take);
+  const serialized = items.map(serializeMovement);
+  return NextResponse.json(searchParams.get("paged") === "1" ? { items: serialized, nextCursor } : serialized);
 }

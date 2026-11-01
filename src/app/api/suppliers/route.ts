@@ -3,6 +3,7 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { validateSupplier } from "@/lib/achat-validation";
+import { isoDayOf } from "@/lib/date-only";
 
 /**
  * Suppliers — Phase 6. Operated by the MAGASINIER (ADMIN keeps oversight,
@@ -29,6 +30,9 @@ export async function GET(request: Request) {
   return NextResponse.json(
     suppliers.map(({ _count, ...supplier }) => ({
       ...supplier,
+      // Lot 3D (M7): calendar days « AAAA-MM-JJ », as the forms read them.
+      taxCertificateDate: supplier.taxCertificateDate ? isoDayOf(supplier.taxCertificateDate) : null,
+      taxCertificateValidUntil: supplier.taxCertificateValidUntil ? isoDayOf(supplier.taxCertificateValidUntil) : null,
       unpaidInvoices: _count.invoices,
     }))
   );
@@ -68,7 +72,7 @@ export async function POST(request: Request) {
     action: "SUPPLIER_CREATED",
     entity: "Supplier",
     entityId: supplier.id,
-    metadata: { name: supplier.name, paymentTermDays: supplier.paymentTermDays },
+    metadata: { name: supplier.name, paymentTermDays: supplier.paymentTermDays, withholdingSubject: supplier.withholdingSubject },
   });
 
   return NextResponse.json(supplier, { status: 201 });

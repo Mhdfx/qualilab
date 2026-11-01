@@ -3,8 +3,9 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { validateSupplier } from "@/lib/achat-validation";
+import { isoDayOf } from "@/lib/date-only";
 
-/** Edit or archive one supplier. */
+/** Edit or archive one supplier (lot 3D, M7: « soumis à la retenue », the attestation de régularité fiscale). */
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -53,6 +54,9 @@ export async function PATCH(
     ice: existing.ice,
     paymentTermDays: existing.paymentTermDays,
     notes: existing.notes,
+    withholdingSubject: existing.withholdingSubject,
+    taxCertificateDate: existing.taxCertificateDate ? isoDayOf(existing.taxCertificateDate) : "",
+    taxCertificateValidUntil: existing.taxCertificateValidUntil ? isoDayOf(existing.taxCertificateValidUntil) : "",
     ...input,
   });
   if (!validated.ok) {
@@ -84,8 +88,18 @@ export async function PATCH(
     entityId: id,
     metadata: {
       name: supplier.name,
-      before: { paymentTermDays: existing.paymentTermDays },
-      after: { paymentTermDays: supplier.paymentTermDays },
+      before: {
+        paymentTermDays: existing.paymentTermDays,
+        withholdingSubject: existing.withholdingSubject,
+        taxCertificateDate: existing.taxCertificateDate ? isoDayOf(existing.taxCertificateDate) : null,
+        taxCertificateValidUntil: existing.taxCertificateValidUntil ? isoDayOf(existing.taxCertificateValidUntil) : null,
+      },
+      after: {
+        paymentTermDays: supplier.paymentTermDays,
+        withholdingSubject: supplier.withholdingSubject,
+        taxCertificateDate: supplier.taxCertificateDate ? isoDayOf(supplier.taxCertificateDate) : null,
+        taxCertificateValidUntil: supplier.taxCertificateValidUntil ? isoDayOf(supplier.taxCertificateValidUntil) : null,
+      },
     },
   });
 

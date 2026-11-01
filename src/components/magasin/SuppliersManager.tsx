@@ -1,10 +1,16 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Archive, ArchiveRestore, Pencil, Truck } from "lucide-react";
+import { Archive, ArchiveRestore, FileCheck2, Pencil, Truck } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { formatDateOnly, parseIsoDay } from "@/lib/date-only";
+import { certificateEndDay, withholdingApplies, type WithholdingScopeCode } from "@/lib/withholding";
 
-/** Suppliers and their payment conventions — the source of the due dates. */
+/**
+ * Suppliers and their payment conventions — the source of the due dates.
+ * Lot 3D (RETOUR-LABO-28-10.md M7): « soumis à la retenue à la source » and
+ * the last attestation de régularité fiscale, its date and the day it ends.
+ */
 
 export type SupplierRow = {
   id: string;
@@ -18,11 +24,44 @@ export type SupplierRow = {
   notes: string | null;
   archived: boolean;
   unpaidInvoices: number;
+  withholdingSubject: boolean;
+  /** « AAAA-MM-JJ ». */
+  taxCertificateDate: string | null;
+  taxCertificateValidUntil: string | null;
 };
+
+type CertificateContext = { today: string; certificateValidityMonths: number; withholdingScope: WithholdingScopeCode };
+
+const day = (iso: string) => formatDateOnly(parseIsoDay(iso) as Date);
+
+/** The supplier's attestation, as one line: valid until …, expired since …, or none. */
+function certificateLine(supplier: SupplierRow, context: CertificateContext): { text: string; ok: boolean } {
+  const end = certificateEndDay(
+    supplier.taxCertificateDate ? parseIsoDay(supplier.taxCertificateDate) : null,
+    supplier.taxCertificateValidUntil ? parseIsoDay(supplier.taxCertificateValidUntil) : null,
+    context.certificateValidityMonths
+  );
+  if (!end) return { text: "Aucune attestation fiscale enregistrée", ok: false };
+  return end >= context.today
+    ? { text: `Attestation fiscale valide jusqu'au ${day(end)}`, ok: true }
+    : { text: `Attestation fiscale expirée depuis le ${day(end)}`, ok: false };
+}
 
 const inputClass = "input-field px-3 text-sm" as const;
 
-export function SuppliersManager({ initialSuppliers }: { initialSuppliers: SupplierRow[] }) {
+export function SuppliersManager({
+  initialSuppliers,
+  today,
+  certificateValidityMonths,
+  withholdingScope,
+}: {
+  initialSuppliers: SupplierRow[];
+  /** The lab's today « AAAA-MM-JJ ». */
+  today: string;
+  certificateValidityMonths: number;
+  withholdingScope: WithholdingScopeCode;
+}) {
+  const context: CertificateContext = { today, certificateValidityMonths, withholdingScope };
   const [suppliers, setSuppliers] = useState(initialSuppliers);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -70,6 +109,7 @@ export function SuppliersManager({ initialSuppliers }: { initialSuppliers: Suppl
 
       {creating && (
         <SupplierForm
+          context={context}
           onDone={() => {
             setCreating(false);
             reload();
@@ -106,6 +146,17 @@ export function SuppliersManager({ initialSuppliers }: { initialSuppliers: Suppl
                       {supplier.unpaidInvoices > 0 &&
                         ` · ${supplier.unpaidInvoices} facture${supplier.unpaidInvoices > 1 ? "s" : ""} à payer`}
                     </p>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs">
+                      <CertificateBadge supplier={supplier} context={context} />
+                      {withholdingApplies(withholdingScope, supplier.withholdingSubject) && (
+                        <span className="rounded-full bg-violet-50 px-2 py-0.5 font-semibold text-violet-700 ring-1 ring-violet-200">
+                          retenue à la source
+                        </span>
+                      )}
+                      {supplier.withholdingSubject && withholdingScope !== "FOURNISSEURS_SOUMIS" && (
+                        <span className="text-slate-500">marqué « soumis à la retenue »</span>
+                      )}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -130,6 +181,7 @@ export function SuppliersManager({ initialSuppliers }: { initialSuppliers: Suppl
                   <div className="mt-3">
                     <SupplierForm
                       supplier={supplier}
+                      context={context}
                       onDone={() => {
                         setEditing(null);
                         reload();
@@ -173,12 +225,24 @@ export function SuppliersManager({ initialSuppliers }: { initialSuppliers: Suppl
   );
 }
 
+function CertificateBadge({ supplier, context }: { supplier: SupplierRow; context: CertificateContext }) {
+  const line = certificateLine(supplier, context);
+  return (
+    <span className={`inline-flex items-center gap-1 font-medium ${line.ok ? "text-emerald-700" : "text-amber-700"}`}>
+      <FileCheck2 className="h-3.5 w-3.5" aria-hidden="true" />
+      {line.text}
+    </span>
+  );
+}
+
 function SupplierForm({
   supplier,
+  context,
   onDone,
   onError,
 }: {
   supplier?: SupplierRow;
+  context: CertificateContext;
   onDone: () => void;
   onError: (message: string) => void;
 }) {
@@ -192,6 +256,10 @@ function SupplierForm({
     paymentTermDays: supplier ? String(supplier.paymentTermDays) : "30",
     notes: supplier?.notes ?? "",
   });
+  // Lot 3D (M7): the retenue and the attestation.
+  const [withholdingSubject, setWithholdingSubject] = useState(supplier?.withholdingSubject ?? false);
+  const [taxCertificateDate, setTaxCertificateDate] = useState(supplier?.taxCertificateDate ?? "");
+  const [taxCertificateValidUntil, setTaxCertificateValidUntil] = useState(supplier?.taxCertificateValidUntil ?? "");
   const [saving, setSaving] = useState(false);
 
   function set(field: keyof typeof values) {
@@ -209,7 +277,7 @@ function SupplierForm({
         {
           method: supplier ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(values),
+          body: JSON.stringify({ ...values, withholdingSubject, taxCertificateDate, taxCertificateValidUntil }),
         }
       );
       const data = await response.json();
@@ -252,6 +320,44 @@ function SupplierForm({
           </label>
         ))}
       </div>
+      <fieldset className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+        <legend className="px-1 text-sm font-semibold text-slate-700">Retenue à la source et attestation de régularité fiscale</legend>
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={withholdingSubject}
+              onChange={(event) => setWithholdingSubject(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
+            />
+            Soumis à la retenue à la source
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">Date de la dernière attestation</span>
+            <input
+              type="date"
+              value={taxCertificateDate}
+              max={context.today}
+              onChange={(event) => {
+                const next = event.target.value;
+                setTaxCertificateDate(next);
+                // Prefilled: the attestation's date + the settings' validity (editable).
+                if (next && !taxCertificateValidUntil) {
+                  setTaxCertificateValidUntil(certificateEndDay(parseIsoDay(next), null, context.certificateValidityMonths));
+                }
+              }}
+              className={`mt-1 ${inputClass}`}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">Valable jusqu&apos;au</span>
+            <input type="date" value={taxCertificateValidUntil} onChange={(event) => setTaxCertificateValidUntil(event.target.value)} className={`mt-1 ${inputClass}`} />
+          </label>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          Fin de validité vide : la date de l&apos;attestation + {context.certificateValidityMonths} mois (réglages).
+        </p>
+      </fieldset>
       <button
         type="button"
         onClick={save}

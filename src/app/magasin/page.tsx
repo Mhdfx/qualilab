@@ -6,52 +6,55 @@ import {
   ReceiptText,
   AlertTriangle,
   Clock,
+  CalendarX2,
+  Coins,
+  FileWarning,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { toMoney } from "@/lib/money";
-import { dueState, isLowStock, DUE_SOON_DAYS } from "@/lib/stock";
+import { DUE_SOON_DAYS, EXPIRY_STATE_LABELS, stockTotals } from "@/lib/stock";
 import { formatCurrency, formatDate } from "@/lib/labels";
+import { formatDateOnly } from "@/lib/date-only";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
 import { viewHref } from "@/lib/dashboard-view";
 import type { PurchaseInvoiceView } from "@/lib/management-views";
+import { loadAchatSettings } from "@/lib/achat-settings";
+import { loadStockOverview } from "@/lib/stock-overview";
+import { PURCHASE_INVOICE_INCLUDE, purchaseInvoiceView } from "@/lib/purchase-invoices-server";
+import { CERTIFICATE_STATE_LABELS } from "@/lib/withholding";
 
 export const metadata = { title: "Achat & Stock" };
 
 export default async function MagasinPage() {
   // Belt and braces with the layout guard: a page must be safe on its own.
   await requireRole("MAGASINIER", "ADMIN");
-  const [items, unpaid] = await Promise.all([
-    prisma.stockItem.findMany({
-      where: { archived: false },
-      orderBy: { name: "asc" },
-    }),
+  const settings = await loadAchatSettings();
+  const now = new Date();
+  const [items, unpaidRows] = await Promise.all([
+    loadStockOverview({ expiryWarningDays: settings.expiryWarningDays, now }),
     prisma.purchaseInvoice.findMany({
       where: { status: "A_PAYER" },
       orderBy: { dueDate: "asc" },
-      include: { supplier: { select: { name: true } } },
+      include: PURCHASE_INVOICE_INCLUDE,
     }),
   ]);
+  const unpaid = unpaidRows.map((invoice) => purchaseInvoiceView(invoice, settings.withholding.certificateValidityMonths, now));
 
-  const lowItems = items
-    .map((item) => ({
-      ...item,
-      quantityNum: toMoney(item.quantity),
-      minNum: toMoney(item.minQuantity),
-    }))
-    .filter((item) => isLowStock(item.quantityNum, item.minNum));
+  const lowItems = items.filter((item) => item.low);
+  // M4 — the expired first, then those expiring within the window.
+  const expiring = items
+    .filter((item) => item.expiry)
+    .sort((a, b) => (a.expiry!.expiryDay < b.expiry!.expiryDay ? -1 : 1));
+  // M5 — the stock's value at the last prices (HT).
+  const totals = stockTotals(items);
 
-  const withDue = unpaid.map((invoice) => ({
-    ...invoice,
-    due: dueState(invoice.dueDate),
-  }));
-  const overdue = withDue.filter((invoice) => invoice.due === "RETARD");
-  const dueSoon = withDue.filter((invoice) => invoice.due === "BIENTOT");
-  const unpaidTotal = unpaid.reduce(
-    (sum, invoice) => sum + toMoney(invoice.amount),
-    0
-  );
+  const overdue = unpaid.filter((invoice) => invoice.due === "RETARD");
+  const dueSoon = unpaid.filter((invoice) => invoice.due === "BIENTOT");
+  // What is left to pay: net à payer (TTC − retenue) less the payments.
+  const unpaidTotal = unpaid.reduce((sum, invoice) => sum + Math.round(invoice.remaining * 100), 0) / 100;
+  // M7 — the NB of 28/10: the unpaid invoices no valid attestation covers.
+  const withoutCertificate = unpaid.filter((invoice) => invoice.certificate !== "VALIDE");
   // Each figure opens exactly what it counts (« comme un tri »): the stock,
   // the card below, the supplier invoices still to pay — the ones the
   // amount adds up.
@@ -66,13 +69,21 @@ export default async function MagasinPage() {
       />
 
       <section aria-label="Indicateurs" className="mb-8">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <StatCard label="Articles en stock" value={items.length} icon={Boxes} accent="brand" href="/magasin/stock" />
           <StatCard label="Sous le seuil" value={lowItems.length} icon={PackageMinus} accent="amber" href="#sous-seuil" />
+          <StatCard label="Péremption à surveiller" value={expiring.length} icon={CalendarX2} accent="amber" href="#peremption" />
+          <StatCard
+            label={totals.unpriced > 0 ? `Valeur du stock (HT, ${totals.unpriced} sans prix)` : "Valeur du stock (HT)"}
+            value={formatCurrency(totals.value)}
+            icon={Coins}
+            accent="emerald"
+            href="/magasin/stock"
+          />
           <StatCard label="Factures à payer" value={unpaid.length} icon={ReceiptText} accent="blue" href={unpaidHref} />
           <StatCard
-            label="Montant à payer"
-            value={formatCurrency(Math.round(unpaidTotal * 100) / 100)}
+            label="Reste à payer"
+            value={formatCurrency(unpaidTotal)}
             icon={Clock}
             accent="violet"
             href={unpaidHref}
@@ -110,12 +121,58 @@ export default async function MagasinPage() {
                       )}
                     </div>
                     <p className="shrink-0 text-sm font-semibold tabular-nums text-amber-700">
-                      {item.quantityNum} / seuil {item.minNum} {item.unit}
+                      {item.quantity} / seuil {item.minQuantity} {item.unit}
                     </p>
                   </li>
                 ))}
               </ul>
             )}
+          </Card>
+        </section>
+
+        <section id="peremption" aria-labelledby="peremption-title" className="scroll-mt-24">
+          <Card className="h-full p-5">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 id="peremption-title" className="section-title">
+                <CalendarX2 className="h-4 w-4 text-amber-500" aria-hidden="true" />
+                Péremption ({settings.expiryWarningDays} jours)
+              </h2>
+              <Link
+                href="/magasin/stock/journal"
+                className="rounded text-sm font-medium text-brand transition hover:text-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              >
+                Journal du stock
+              </Link>
+            </div>
+            {expiring.length === 0 ? (
+              <p className="mt-4 rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                Rien de périmé ni d&apos;expirant dans les {settings.expiryWarningDays} prochains jours.
+              </p>
+            ) : (
+              <ul className="mt-3 divide-y divide-slate-100">
+                {expiring.map((item) => (
+                  <li key={item.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-800">{item.name}</p>
+                      <p className="text-xs text-slate-500">
+                        {item.expiry!.lot ? `Lot ${item.expiry!.lot} · ` : ""}
+                        {item.quantity} {item.unit} en stock
+                      </p>
+                    </div>
+                    <p
+                      className={`shrink-0 text-sm font-semibold ${
+                        item.expiry!.state === "PERIME" ? "text-rose-700" : "text-amber-700"
+                      }`}
+                    >
+                      {EXPIRY_STATE_LABELS[item.expiry!.state]} · {formatDateOnly(new Date(`${item.expiry!.expiryDay}T00:00:00Z`))}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-3 text-xs text-slate-500">
+              Le stock est suivi par article : les unités les plus anciennes sont supposées sorties les premières.
+            </p>
           </Card>
         </section>
 
@@ -151,16 +208,54 @@ export default async function MagasinPage() {
                       }`}
                     >
                       {invoice.due === "RETARD" ? "En retard — " : "Échéance "}
-                      {formatDate(invoice.dueDate)}
+                      {formatDate(new Date(invoice.dueDate))}
                     </p>
                   </div>
                   <p className="shrink-0 text-sm font-semibold tabular-nums text-slate-800">
-                    {formatCurrency(toMoney(invoice.amount))}
+                    {formatCurrency(invoice.remaining)}
                   </p>
                 </li>
               ))}
             </ul>
           )}
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="section-title">
+              <FileWarning className="h-4 w-4 text-amber-500" aria-hidden="true" />
+              Attestations de régularité fiscale
+            </h2>
+            <Link
+              href="/magasin/fournisseurs"
+              className="rounded text-sm font-medium text-brand transition hover:text-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
+              Fournisseurs
+            </Link>
+          </div>
+          {withoutCertificate.length === 0 ? (
+            <p className="mt-4 rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+              Chaque facture à payer est couverte par une attestation valide.
+            </p>
+          ) : (
+            <ul className="mt-3 divide-y divide-slate-100">
+              {withoutCertificate.slice(0, 8).map((invoice) => (
+                <li key={invoice.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <p className="min-w-0 truncate text-sm font-medium text-slate-800">
+                    {invoice.supplier.name}
+                    <span className="text-slate-400"> · {invoice.number}</span>
+                  </p>
+                  <p className="shrink-0 text-xs font-semibold text-amber-700">{CERTIFICATE_STATE_LABELS[invoice.certificate]}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+          {withoutCertificate.length > 8 && (
+            <p className="mt-2 text-xs text-slate-500">… et {withoutCertificate.length - 8} autre{withoutCertificate.length - 8 > 1 ? "s" : ""}.</p>
+          )}
+          <p className="mt-3 text-xs text-slate-500">
+            L&apos;attestation doit accompagner chaque facture pour appliquer correctement la retenue à la source.
+          </p>
         </Card>
       </div>
     </div>

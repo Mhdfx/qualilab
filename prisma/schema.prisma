@@ -1416,6 +1416,16 @@ model Supplier {
   archived        Boolean  @default(false)
   createdAt       DateTime @default(now())
 
+  // ---- Lot 3D (RETOUR-LABO-28-10.md M7) · retenue à la source
+  /// « Soumis à la retenue à la source » — read when the settings' scope is
+  /// FOURNISSEURS_SOUMIS (hypothèse, à confirmer par R-24).
+  withholdingSubject       Boolean   @default(false)
+  /// The supplier's last attestation de régularité fiscale: its date, and
+  /// the day it stops being valid (typed from the document; prefilled from
+  /// the settings' validity in months).
+  taxCertificateDate       DateTime? @db.Date
+  taxCertificateValidUntil DateTime? @db.Date
+
   invoices PurchaseInvoice[]
 
   @@index([archived, name])
@@ -1424,6 +1434,55 @@ model Supplier {
 enum PurchaseInvoiceStatus {
   A_PAYER
   PAYEE
+  /// Lot 3D (M1) — « Annuler la saisie »: an invoice entered by mistake,
+  /// never paid. Kept for the journal, out of every total and alert.
+  ANNULEE
+}
+
+/// Lot 3D (M7) — who the retenue à la source applies to (settings).
+enum WithholdingScope {
+  /// No retenue (the default until the accountant answers R-24).
+  AUCUN
+  /// Only the suppliers marked « soumis à la retenue ».
+  FOURNISSEURS_SOUMIS
+  /// Every supplier.
+  TOUS
+}
+
+/// Lot 3D (M7) — the amount the retenue's rate applies to.
+enum WithholdingBase {
+  HT
+  TVA
+  TTC
+}
+
+/// Lot 3D, M7 — whether a valid attestation de régularité fiscale covered a
+/// supplier invoice when its retenue was computed (review of 01/11).
+enum TaxCertificateState {
+  VALIDE
+  EXPIREE
+  ABSENTE
+}
+
+/// Lot 3D — the Achat & Stock settings (one row, id « magasin »): edited by
+/// the administrator on /magasin/reglages, read by the magasin. No rate of
+/// the retenue is written in the code: they come from the accountant (R-24).
+model AchatStockSettings {
+  id                                String           @id @default("magasin")
+  /// M4 — « expire bientôt » within this many days (« périmé » once past).
+  expiryWarningDays                 Int              @default(30)
+  /// M1 — the VAT rate a new supplier invoice starts with (%).
+  defaultVatRate                    Decimal          @default(20) @db.Decimal(5, 2)
+  /// M7 — the retenue à la source: scope, base and the two rates (%), with
+  /// and without a valid attestation de régularité fiscale. A null rate
+  /// withholds nothing.
+  withholdingScope                  WithholdingScope @default(AUCUN)
+  withholdingBase                   WithholdingBase  @default(TVA)
+  withholdingRateWithCertificate    Decimal?         @db.Decimal(5, 2)
+  withholdingRateWithoutCertificate Decimal?         @db.Decimal(5, 2)
+  /// M7 — how long an attestation stays valid (months), to prefill its end.
+  taxCertificateValidityMonths      Int              @default(3)
+  updatedAt                         DateTime         @updatedAt
 }
 
 /// A supplier invoice to pay — the source of the payment-due alerts.
@@ -1444,8 +1503,65 @@ model PurchaseInvoice {
   createdBy   User?                 @relation("PurchaseInvoiceCreatedBy", fields: [createdById], references: [id])
   createdAt   DateTime              @default(now())
 
+  // ---- Lot 3D (RETOUR-LABO-28-10.md M1, M6, M7). `amount` stays the TTC
+  // (the base every screen and alert reads); null below = an invoice
+  // recorded before lot 3D (TTC only).
+  /// M1 — HT, VAT rate (%) and VAT amount: TTC = HT + TVA, to the centime.
+  amountHT               Decimal?     @db.Decimal(12, 2)
+  vatRate                Decimal?     @db.Decimal(5, 2)
+  vatAmount              Decimal?     @db.Decimal(12, 2)
+  /// M6 — « Euro »: an invoice in a foreign currency (ISO code), its amount
+  /// in that currency and the rate used; the DH amounts stay the base.
+  currency               String?
+  amountForeign          Decimal?     @db.Decimal(12, 2)
+  exchangeRate           Decimal?     @db.Decimal(12, 6)
+  /// M1 — the method and reference of the payment that settled it.
+  paymentMethod          PaymentMode?
+  paymentReference       String?
+  /// M7 — the attestation de régularité fiscale given WITH this invoice
+  /// (the NB of 28/10), and its date.
+  taxCertificateProvided Boolean?
+  taxCertificateDate     DateTime?    @db.Date
+  /// M7 — the retenue à la source applied: rate (%, prefilled from the
+  /// settings, editable) and amount. Net à payer = TTC − retenue.
+  withholdingRate        Decimal?     @db.Decimal(5, 2)
+  withholdingAmount      Decimal?     @db.Decimal(12, 2)
+  /// M7 (review of 01/11) — the base the retenue was computed on and the
+  /// attestation's state then, so a later change of the settings or of the
+  /// supplier's attestation does not rewrite them; null = before.
+  withholdingBase        WithholdingBase?
+  taxCertificateState    TaxCertificateState?
+  /// M1 — the last audited correction, and « Annuler la saisie » (status
+  /// ANNULEE) with its reason.
+  correctedAt            DateTime?
+  cancelledAt            DateTime?
+  cancelReason           String?      @db.Text
+
+  payments PurchasePayment[]
+
   @@unique([supplierId, number])
   @@index([status, dueDate])
+  @@index([issueDate])
+}
+
+/// Lot 3D (M1, M6) — one payment of a supplier invoice: the day chosen (never
+/// in the future nor before the invoice), the amount (partial payments,
+/// hypothèse R-23), the method and its reference. The invoice is PAYEE once
+/// its payments reach the net à payer.
+model PurchasePayment {
+  id          String          @id @default(cuid())
+  invoiceId   String
+  invoice     PurchaseInvoice @relation(fields: [invoiceId], references: [id])
+  paidOn      DateTime        @db.Date
+  amount      Decimal         @db.Decimal(12, 2)
+  method      PaymentMode
+  reference   String?
+  /// Who recorded it (the journal names them too).
+  createdById String?
+  createdAt   DateTime        @default(now())
+
+  @@index([invoiceId])
+  @@index([paidOn])
 }
 
 /// A stock article. The quantity is the aggregate the movements maintain —
@@ -1462,6 +1578,9 @@ model StockItem {
   minQuantity Decimal  @default(0) @db.Decimal(12, 2)
   archived    Boolean  @default(false)
   createdAt   DateTime @default(now())
+  /// Lot 3D (M1) — « Lieu de stockage » (free text, the screen suggests the
+  /// places already used). Per article (hypothèse, à confirmer par R-23).
+  location    String?
 
   movements StockMovement[]
 
@@ -1492,7 +1611,20 @@ model StockMovement {
   createdBy   User?             @relation("StockMovementCreatedBy", fields: [createdById], references: [id])
   createdAt   DateTime          @default(now())
 
+  // ---- Lot 3D (RETOUR-LABO-28-10.md M1, M5). Null on a movement recorded
+  // before lot 3D: its day is then the day of `createdAt`.
+  /// M1 — the day of the movement (default today, never in the future).
+  movementDate DateTime? @db.Date
+  /// M1 — the article's level before and after, written in the guarded
+  /// transaction (the « Stock » column of the register).
+  levelBefore  Decimal?  @db.Decimal(12, 2)
+  levelAfter   Decimal?  @db.Decimal(12, 2)
+  /// M5 — an entry's unit price excluding VAT (DH); the register's « Prix
+  /// (dh/ht) » = this price and quantity × price (hypothèse R-23).
+  unitPriceHT  Decimal?  @db.Decimal(12, 2)
+
   @@index([itemId, createdAt])
+  @@index([movementDate])
 }
 
 // ————— Phase 7 · Système Qualité (métrologie, températures, EIL) —————

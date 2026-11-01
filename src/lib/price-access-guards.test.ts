@@ -178,7 +178,9 @@ const JOURNAL_ONLY: Record<string, string> = {
  * invoices »). Pinned to their roles of today so a widening — or the move —
  * shows here.
  */
-const STOCK_MODULE = ["magasin/", "api/purchase-invoices/", "api/suppliers/"];
+// Lot 3D (RETOUR-LABO-28-10.md M5): the stock's unit prices and value are
+// read by `api/stock/` too — the same two roles (owner, 26/10).
+const STOCK_MODULE = ["magasin/", "api/purchase-invoices/", "api/suppliers/", "api/stock/"];
 
 describe("prices and invoices (the owner's rule of 24–25/10) — read from every page and route", () => {
   it("finds the application's handlers and their guards", () => {
@@ -251,8 +253,30 @@ describe("prices and invoices (the owner's rule of 24–25/10) — read from eve
     expect(stock.length).toBeGreaterThan(5);
     for (const handler of stock) {
       expect(handler.guards.length, handler.at).toBeGreaterThan(0);
-      for (const roles of handler.guards) expect([...roles].sort(), handler.at).toEqual(["ADMIN", "MAGASINIER"]);
+      // The two roles — or the administrator alone (lot 3D: the settings of
+      // the retenue à la source are the administrator's, `PUT api/stock/settings`).
+      for (const roles of handler.guards) {
+        expect(roles.length, handler.at).toBeGreaterThan(0);
+        expect(roles.every((role) => role === "ADMIN" || role === "MAGASINIER"), handler.at).toBe(true);
+        expect(roles, handler.at).toContain("ADMIN");
+      }
     }
+    // Lot 3D — the stock's prices (M5), the purchase journal (M2), the payments and the imports stay inside.
+    for (const rel of [
+      "api/stock/items/route.ts",
+      "api/stock/journal/route.ts",
+      "api/stock/journal/export/route.ts",
+      "api/stock/import/route.ts",
+      "api/purchase-invoices/export/route.ts",
+      "api/purchase-invoices/[id]/payments/route.ts",
+      "api/suppliers/import/route.ts",
+      "magasin/stock/journal/page.tsx",
+      "magasin/reglages/page.tsx",
+      "magasin/import/page.tsx",
+    ]) {
+      expect(handlersOf(rel).length, rel).toBeGreaterThan(0);
+    }
+    expect(handlersOf("api/stock/settings/route.ts").find((handler) => handler.name === "PUT")?.guards).toEqual([["ADMIN"]]);
   });
 
   it("keeps the counter's advance to the réception: the deposit form and the bon, nothing else", () => {
