@@ -1001,7 +1001,7 @@ The unconfirmed behaviours ship **behind switches** (`src/lib/lab-proposals.ts`,
 - `sudo -u qualilab git rev-parse --short HEAD` → `e8cbfe1`; the last
   migration `20261020100000_retour_labo_19_10_comptes_clients`, none
   unfinished; the eight counts written down (« Lot 2 du 16/10 » step 2).
-- **L2, before the pull:** `install -d -o qualilab -g qualilab -m 750
+- **L2, before the pull:** `install -d -o qualilab -g qualilab -m 755
   /var/backups/qualilab/journal` — the backup cron (`scripts/backup-db.sh`,
   run as `qualilab`) appends to `journal/backup-journal.csv`, the app reads
   it through the read-only mount; created by hand so Docker never creates
