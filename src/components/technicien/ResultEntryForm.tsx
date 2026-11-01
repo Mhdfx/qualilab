@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Save,
@@ -17,6 +17,7 @@ import { factoredText, singleValueEntry, type ParsedValue } from "@/lib/result-v
 import { hasLimit, judgeUnits, type Plan, type Verdict as PlanVerdict } from "@/lib/interpretation";
 import { benchUnits, manualChoiceOffered, unitsAgainstLimit, valueAgainstLimit } from "@/lib/bench-reading";
 import { dilutionText, parseDilution } from "@/lib/dilution";
+import { applyQuickEntry, quickEntries, type QuickEntry } from "@/lib/quick-entries";
 import { repetitionLabel } from "@/lib/series";
 import { formatDecimal } from "@/lib/labels";
 import { lostSampleHolder } from "@/lib/take-over";
@@ -190,6 +191,15 @@ export function ResultEntryForm({
   const [revoked, setRevoked] = useState<{ holder: string; saved: boolean } | null>(null);
   // « Saisi par » follows the server's sheet, not the typing.
   const authors = new Map(initialLines.map((line) => [line.parameterId, line.enteredBy]));
+  // The quick-entry buttons (G1) write into the reading last focused on
+  // their line — its field and its cursor — else the first empty one.
+  const fields = useRef(new Map<string, HTMLInputElement>());
+  const [lastField, setLastField] = useState<{ parameterId: string; unitIndex: number | null } | null>(null);
+  const fieldKey = (parameterId: string, unitIndex: number | null) => `${parameterId}:${unitIndex ?? "valeur"}`;
+  const registerField = (parameterId: string, unitIndex: number | null) => (element: HTMLInputElement | null) => {
+    if (element) fields.current.set(fieldKey(parameterId, unitIndex), element);
+    else fields.current.delete(fieldKey(parameterId, unitIndex));
+  };
 
   // The page re-renders after every save (`router.refresh()`), each
   // rendering with its `loadedAt`. The lines are this form's state: on a new
@@ -292,6 +302,30 @@ export function ResultEntryForm({
     // A revoked sheet keeps saying why it no longer saves.
     if (revoked === null) setError("");
     setNotice("");
+  }
+
+  /**
+   * A quick-entry button pressed on a line (G1): the reading it writes into
+   * — the one last focused on this line, else the first empty one — takes
+   * the entry at its cursor, and keeps the focus with the cursor after it.
+   */
+  function pickQuickEntry(index: number, entry: QuickEntry) {
+    const line = lines[index];
+    const focused = lastField?.parameterId === line.parameterId ? lastField.unitIndex : undefined;
+    const unitIndex = line.perUnit
+      ? focused ?? Math.max(0, line.units.findIndex((unit) => unit.trim() === ""))
+      : null;
+    const current = unitIndex === null ? line.value : line.units[unitIndex] ?? "";
+    const element = fields.current.get(fieldKey(line.parameterId, unitIndex));
+    const known = element && element.value === current;
+    const next = applyQuickEntry(current, known ? element.selectionStart : null, known ? element.selectionEnd : null, entry);
+    if (unitIndex === null) update(index, { value: next.value });
+    else updateUnit(index, unitIndex, next.value);
+    setLastField({ parameterId: line.parameterId, unitIndex });
+    requestAnimationFrame(() => {
+      element?.focus();
+      element?.setSelectionRange(next.caret, next.caret);
+    });
   }
 
   function updateUnit(index: number, unitIndex: number, value: string) {
@@ -508,10 +542,12 @@ export function ResultEntryForm({
                               {repetitionLabel(unitIndex + 1)}
                             </span>
                             <input
+                              ref={registerField(line.parameterId, unitIndex)}
                               type="text"
                               inputMode="text"
                               aria-label={`${line.name} — ${repetitionLabel(unitIndex + 1)}`}
                               value={unit}
+                              onFocus={() => setLastField({ parameterId: line.parameterId, unitIndex })}
                               onChange={(e) => updateUnit(index, unitIndex, e.target.value)}
                               disabled={locked}
                               placeholder={line.plan?.mKind === "ABSENCE" ? "Absence" : line.plan ? "1,2.10²" : "Valeur"}
@@ -530,10 +566,12 @@ export function ResultEntryForm({
                         Valeur mesurée {line.unit && `(${line.unit})`}
                       </label>
                       <input
+                        ref={registerField(line.parameterId, null)}
                         id={`value-${line.parameterId}`}
                         type="text"
                         inputMode="text"
                         value={line.value}
+                        onFocus={() => setLastField({ parameterId: line.parameterId, unitIndex: null })}
                         onChange={(e) => update(index, { value: e.target.value })}
                         disabled={locked}
                         placeholder="Ex. : 8,9.10²  ·  < 10  ·  > 3.10⁵  ·  Absence"
@@ -601,6 +639,13 @@ export function ResultEntryForm({
                   </div>
                   </div>
                 </div>
+                {!locked && (
+                  <QuickEntryBar
+                    name={line.name}
+                    entries={quickEntries(line.plan)}
+                    onPick={(entry) => pickQuickEntry(index, entry)}
+                  />
+                )}
                 {factor === null && (
                   <p
                     id={`dilution-error-${line.parameterId}`}
@@ -754,6 +799,39 @@ export function ResultEntryForm({
           </p>
         )}
       </Card>
+    </div>
+  );
+}
+
+/**
+ * The quick-entry buttons of a line (G1, 2.20 (g)): one click per notation,
+ * written into the reading being typed. A pressed button never takes the
+ * focus from the field (`onMouseDown`), so the cursor stays where it was.
+ */
+function QuickEntryBar({
+  name,
+  entries,
+  onPick,
+}: {
+  name: string;
+  entries: QuickEntry[];
+  onPick: (entry: QuickEntry) => void;
+}) {
+  return (
+    <div role="group" aria-label={`Saisie rapide — ${name}`} className="mt-2 flex flex-wrap gap-1.5">
+      {entries.map((entry) => (
+        <button
+          key={entry.text}
+          type="button"
+          aria-label={entry.label}
+          title={entry.label}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onPick(entry)}
+          className="min-h-8 rounded-md bg-white px-2.5 py-1 font-mono text-xs font-semibold text-slate-700 ring-1 ring-slate-300 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        >
+          {entry.text.trim()}
+        </button>
+      ))}
     </div>
   );
 }
