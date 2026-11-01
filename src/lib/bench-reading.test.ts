@@ -190,11 +190,13 @@ describe("one rule for the screen and the server", () => {
 
   it("the entry screen asks with the helpers the submission checks with", () => {
     const form = read("../components/technicien/ResultEntryForm.tsx");
-    expect(form).toContain("valueAgainstLimit(line.value, line.calcFactor, line.limitValue)");
-    expect(form).toContain("unitsAgainstLimit(line.units, line.calcFactor, line.limitValue)");
+    expect(form).toContain("valueAgainstLimit(line.value, factor, line.limitValue)");
+    expect(form).toContain("unitsAgainstLimit(line.units, factor, line.limitValue)");
+    // The factor the save applies: the dilution typed (J4), else the programme's.
+    expect(form).toContain("const factor = lineFactor(line) ?? line.calcFactor;");
     const submit = read("../app/api/samples/[id]/results/submit/route.ts");
     expect(submit).toContain("awaitsManualConformity(result, {");
-    expect(submit).toContain("factor: effectiveFactor(line.dilutionFactor, parameter.calcFactor)");
+    expect(submit).toContain("factor: readingFactor(result?.dilutionUsed, line.dilutionFactor, parameter.calcFactor)");
   });
 
   it("the entry page shows the unit the sheet and the stored result use", () => {

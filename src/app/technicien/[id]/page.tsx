@@ -27,7 +27,7 @@ import { TAKE_OVER_COLLEAGUE } from "@/lib/lab-proposals";
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { isCurrentSendBack, maySendBack } from "@/lib/send-back";
 import { lastSubmissionsOf } from "@/lib/send-back-server";
-import { effectiveFactor } from "@/lib/dilution";
+import { dilutionText, effectiveFactor, readingFactor } from "@/lib/dilution";
 import { benchStartingReadings, benchUnit } from "@/lib/bench-reading";
 import { judgingLimit, judgingThreshold, resultUnit } from "@/lib/result-unit";
 import { formatDate, formatDateTime, PROGRAMME_PRIORITY_LABELS, surfaceAreaText } from "@/lib/labels";
@@ -246,6 +246,8 @@ export default async function AnalysePage({
       limitValue: judgingLimit(bench.context, parameter.limitValue, parameter.unit),
       // The programmed dilution of this sample replaces the catalogue's factor.
       calcFactor: effectiveFactor(line.dilutionFactor, parameter.calcFactor),
+      // « Dilution lue » (J4): the technician's own when stored, else the programme's.
+      dilution: dilutionText(readingFactor(existing?.dilutionUsed, line.dilutionFactor, parameter.calcFactor)),
       // When the stored value rewrote the entry (a factor, or the shorthand
       // « 3(-2) » printed « 3.10² »), the bench reading (rawValue) is what
       // the technician typed and re-edits; `value` holds the figure the

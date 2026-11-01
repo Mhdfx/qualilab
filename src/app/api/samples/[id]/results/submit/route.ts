@@ -8,7 +8,7 @@ import type { SampleStatus } from "@/generated/prisma/enums";
 import { TAKE_MESSAGES, canEnterParameter } from "@/lib/bench-access";
 import { lockTakeState } from "@/lib/bench-take-server";
 import { awaitsManualConformity } from "@/lib/bench-reading";
-import { effectiveFactor } from "@/lib/dilution";
+import { readingFactor } from "@/lib/dilution";
 import { isNotDoneText } from "@/lib/result-value";
 import { judgingLimit } from "@/lib/result-unit";
 
@@ -108,6 +108,8 @@ export async function POST(
         conform: true,
         interpretation: true,
         criterion: true,
+        // The dilution the technician read at (J4).
+        dilutionUsed: true,
         // value null + detected null = a reading the engine could not parse.
         units: { select: { unitIndex: true, rawValue: true, value: true, detected: true } },
       },
@@ -132,7 +134,7 @@ export async function POST(
         result.units.some((u) => u.value === null && u.detected === null) ||
         awaitsManualConformity(result, {
           unitCount: locked.unitCount,
-          factor: effectiveFactor(line.dilutionFactor, parameter.calcFactor),
+          factor: readingFactor(result?.dilutionUsed, line.dilutionFactor, parameter.calcFactor),
           limitValue: context ? judgingLimit(context, parameter.limitValue, parameter.unit) : parameter.limitValue,
         })
       ) {

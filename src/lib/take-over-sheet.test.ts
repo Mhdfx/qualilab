@@ -160,3 +160,14 @@ describe("the route and the sheet read these rules", () => {
     expect(form).not.toContain("function withTyping(");
   });
 });
+
+describe("J4 — a dilution typed is kept across a refresh like any typing", () => {
+  it("keeps the viewer's dilution on a line they changed, follows the server elsewhere", () => {
+    const base = [line("ecoli", "", { dilution: "1/10" }), line("coli", "", { dilution: "1" })];
+    const typed = [line("ecoli", "", { dilution: "1/100" }), line("coli", "", { dilution: "1" })];
+    const fresh = [line("ecoli", "", { dilution: "1/10" }), line("coli", "", { dilution: "1/10" })];
+    const { lines } = followServer(fresh, typed, base);
+    expect(lines[0].dilution).toBe("1/100");
+    expect(lines[1].dilution).toBe("1/10");
+  });
+});

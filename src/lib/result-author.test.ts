@@ -265,3 +265,30 @@ describe("« Saisi par » on the validation page (D-09)", () => {
     expect(page).toContain("Saisi par {result.enteredBy.name} le {formatDateTime(result.enteredAt)}");
   });
 });
+
+describe("J4 — the dilution read at is typing too (28/10, 2.12)", () => {
+  it("a dilution changed alone makes the saver the author", () => {
+    expect(readingChanged(stored({ dilution: null }), saved({ dilution: 100 }))).toBe(true);
+    expect(readingChanged(stored({ dilution: 100 }), saved({ dilution: 1000 }))).toBe(true);
+    expect(readingChanged(stored({ dilution: 100 }), saved({ dilution: null }))).toBe(true);
+  });
+
+  it("the same dilution, or a caller that does not read it, changes nothing", () => {
+    expect(readingChanged(stored({ dilution: 100 }), saved({ dilution: 100 }))).toBe(false);
+    expect(readingChanged(stored(), saved({ dilution: null }))).toBe(false);
+    expect(readingChanged(stored({ dilution: 100 }), saved())).toBe(false);
+  });
+
+  it("reads the stored column back as a number (a Prisma Decimal)", () => {
+    const row = { value: "3.10³", rawValue: "30", note: null, workStatus: "TERMINE" as const, conform: null, units: [] };
+    expect(storedReading({ ...row, dilutionUsed: { toString: () => "100.0000" } }).dilution).toBe(100);
+    expect(storedReading({ ...row, dilutionUsed: null }).dilution).toBeNull();
+    expect("dilution" in storedReading(row)).toBe(false);
+  });
+
+  it("the save compares it, from the column it stores", () => {
+    const route = readFileSync(fileURLToPath(new URL("../app/api/samples/[id]/results/route.ts", import.meta.url)), "utf8");
+    expect(route).toContain("dilution: data.dilutionUsed === null ? null : Number(data.dilutionUsed.toString()),");
+    expect(route).toMatch(/conform: true,\s+dilutionUsed: true,\s+enteredById: true,/);
+  });
+});

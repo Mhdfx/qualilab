@@ -16,6 +16,7 @@ import { VerdictBadge } from "@/components/samples/VerdictBadge";
 import { factoredText, singleValueEntry, type ParsedValue } from "@/lib/result-value";
 import { hasLimit, judgeUnits, type Plan, type Verdict as PlanVerdict } from "@/lib/interpretation";
 import { benchUnits, manualChoiceOffered, unitsAgainstLimit, valueAgainstLimit } from "@/lib/bench-reading";
+import { dilutionText, parseDilution } from "@/lib/dilution";
 import { repetitionLabel } from "@/lib/series";
 import { formatDecimal } from "@/lib/labels";
 import { lostSampleHolder } from "@/lib/take-over";
@@ -29,8 +30,18 @@ export type ParameterLine = {
   unit: string | null;
   threshold: string | null;
   limitValue: number | null;
-  /** Multiplier applied to the raw reading (dilution) — 1 means none. */
+  /**
+   * The multiplier the programme applies to the raw reading (its dilution,
+   * else the catalogue's factor) — 1 means none. The technician's own
+   * dilution (`dilution`) replaces it when typed (J4).
+   */
   calcFactor: number;
+  /**
+   * « Dilution lue » as typed (lot 3B, J4 — 28/10, 2.12): prefilled with the
+   * stored one, else the programme's (`dilutionText`), modifiable; the save
+   * stores it only when it differs from the programme's.
+   */
+  dilution: string;
   value: string;
   note: string;
   workStatus: ResultWorkStatus;
@@ -147,6 +158,17 @@ type Reading = {
 
 const NO_UNREADABLE: string[] = [];
 
+/**
+ * The factor a line is read with on screen — the dilution typed (J4), else
+ * the programme's — exactly as the save will apply it; null when the
+ * dilution typed cannot be read (the save refuses it).
+ */
+function lineFactor(line: ParameterLine): number | null {
+  const typed = parseDilution(line.dilution);
+  if (typed === "invalid") return null;
+  return typed ?? line.calcFactor;
+}
+
 /** The notations the bench accepts — the help line and the « non reconnue » message. */
 const ACCEPTED_NOTATIONS = "1,2.10², < 10, > 3.10⁵, Indénombrable (ou TNTC), Absence, Présence ou 3(-2)";
 
@@ -197,11 +219,14 @@ export function ResultEntryForm({
   const readings = useMemo<Reading[]>(
     () =>
       lines.map((line) => {
+        // An unreadable dilution reads the line as programmed until it is
+        // fixed; the line stays incomplete meanwhile (`completed`).
+        const factor = lineFactor(line) ?? line.calcFactor;
         if (line.perUnit) {
           // The same engine and the same dilution the server will apply, so
           // the verdict shown while typing is the verdict stored.
           if (line.plan) {
-            const { readings: units, typedUnits, unreadable } = benchUnits(line.units, line.calcFactor);
+            const { readings: units, typedUnits, unreadable } = benchUnits(line.units, factor);
             const judged = typedUnits > 0 ? judgeUnits(line.plan, units) : null;
             const verdict = judged ? judged.official ?? judged.informal : null;
             return { parsed: null, conform: null, needsManual: false, verdict, indicative: !!judged && !judged.official, typedUnits, unreadable, undecided: null, stored: null };
@@ -210,7 +235,7 @@ export function ResultEntryForm({
           // technician only decides when the reading is meaningful but not a
           // number (« Présence »), or a « > x » below the limit — the rule the
           // submission checks again (`awaitsManualConformity`).
-          const read = unitsAgainstLimit(line.units, line.calcFactor, line.limitValue);
+          const read = unitsAgainstLimit(line.units, factor, line.limitValue);
           return {
             parsed: read.parsed,
             conform: read.suggested ?? (read.needsManual ? line.manualConform : null),
@@ -226,8 +251,8 @@ export function ResultEntryForm({
         // The suggestion compares the FINAL value — raw reading × factor —
         // and the line shows the text the report will print, both exactly as
         // the server will store them.
-        const read = valueAgainstLimit(line.value, line.calcFactor, line.limitValue);
-        const entry = singleValueEntry(line.value, line.calcFactor);
+        const read = valueAgainstLimit(line.value, factor, line.limitValue);
+        const entry = singleValueEntry(line.value, factor);
         return {
           parsed: read.parsed,
           conform: read.suggested ?? (read.needsManual ? line.manualConform : null),
@@ -239,7 +264,7 @@ export function ResultEntryForm({
           undecided: read.undecided,
           stored:
             entry.value !== null && entry.rawValue !== null && entry.value !== entry.rawValue
-              ? { value: entry.value, factored: line.calcFactor !== 1 && factoredText(entry.parsed) !== null }
+              ? { value: entry.value, factored: factor !== 1 && factoredText(entry.parsed) !== null }
               : null,
         };
       }),
@@ -248,6 +273,7 @@ export function ResultEntryForm({
 
   const completed = lines.filter((line, index) => {
     if (line.workStatus === "EN_COURS") return false;
+    if (lineFactor(line) === null) return false;
     const reading = readings[index];
     if (line.perUnit && reading.typedUnits < line.units.length) return false;
     if (reading.unreadable.length > 0) return false;
@@ -287,6 +313,7 @@ export function ResultEntryForm({
               note: line.note,
               workStatus: line.workStatus,
               conform: line.plan ? undefined : readings[index].conform,
+              dilution: line.dilution,
             }
           : {
               parameterId: line.parameterId,
@@ -294,6 +321,7 @@ export function ResultEntryForm({
               note: line.note,
               workStatus: line.workStatus,
               conform: readings[index].conform,
+              dilution: line.dilution,
             },
       ];
     });
@@ -415,6 +443,7 @@ export function ResultEntryForm({
             // A parameter a legacy programme handed to a colleague is
             // read-only on my sheet (PROGRAMME.md §10.4).
             const locked = !canEdit || !line.editable;
+            const factor = lineFactor(line);
             return (
               <li
                 key={line.parameterId}
@@ -444,9 +473,9 @@ export function ResultEntryForm({
                       </>
                     )}
                     {/* Every line a factor multiplies says so, read per unit or as one value. */}
-                    {line.calcFactor !== 1 && (
+                    {factor !== null && factor !== 1 && (
                       <span className="ml-2 rounded-full bg-violet-50 px-2 py-0.5 font-medium text-violet-700">
-                        Facteur ×{line.calcFactor} — votre lecture sera multipliée
+                        Lu à {dilutionText(factor)} — votre lecture sera multipliée par {formatDecimal(factor, 4)}
                       </span>
                     )}
                   </p>
@@ -512,7 +541,7 @@ export function ResultEntryForm({
                       />
                       {reading.stored && (
                         <p className="mt-1 text-xs text-violet-700">
-                          {reading.stored.factored ? `Valeur finale (lecture ×${line.calcFactor}) : ` : "Au rapport : "}
+                          {reading.stored.factored ? `Valeur finale (lue à ${dilutionText(factor ?? line.calcFactor)}) : ` : "Au rapport : "}
                           <b className="font-mono">{reading.stored.value}</b>
                           {line.unit ? ` ${line.unit}` : ""}
                           {reading.stored.factored ? " — c'est elle qui figure au rapport." : "."}
@@ -521,6 +550,28 @@ export function ResultEntryForm({
                     </div>
                   )}
 
+                  <div className="flex gap-3">
+                  {/* J4 (28/10, 2.12): the dilution read at, prefilled by the programme. */}
+                  <div>
+                    <label
+                      htmlFor={`dilution-${line.parameterId}`}
+                      className="block text-xs font-medium text-slate-600"
+                    >
+                      Dilution lue
+                    </label>
+                    <input
+                      id={`dilution-${line.parameterId}`}
+                      type="text"
+                      inputMode="text"
+                      value={line.dilution}
+                      onChange={(e) => update(index, { dilution: e.target.value })}
+                      disabled={locked}
+                      placeholder={dilutionText(line.calcFactor)}
+                      aria-invalid={factor === null}
+                      aria-describedby={factor === null ? `dilution-error-${line.parameterId}` : undefined}
+                      className={`${INPUT} w-24`}
+                    />
+                  </div>
                   <div>
                     <label
                       htmlFor={`status-${line.parameterId}`}
@@ -548,7 +599,17 @@ export function ResultEntryForm({
                       ))}
                     </select>
                   </div>
+                  </div>
                 </div>
+                {factor === null && (
+                  <p
+                    id={`dilution-error-${line.parameterId}`}
+                    role="alert"
+                    className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900"
+                  >
+                    Dilution non reconnue : écrivez-la « 1/100 », « 10-2 » ou « 100 » (« 1 » sans dilution).
+                  </p>
+                )}
 
                 {reading.unreadable.length > 0 ? (
                   <p

@@ -60,13 +60,15 @@ export type SheetLine = {
   workStatus: string;
   manualConform: boolean | null;
   units: string[];
+  /** The dilution read at, as typed (lot 3B, J4); absent on a sheet without one. */
+  dilution?: string;
 };
 
 /** What is typed on a line, compared as text: a grid grown by empty units holds the same readings. */
 function typedOf(line: SheetLine): string {
   const units = line.units.map((unit) => unit.trim());
   while (units.length > 0 && units[units.length - 1] === "") units.pop();
-  return JSON.stringify([line.value.trim(), line.note.trim(), line.workStatus, line.manualConform, units]);
+  return JSON.stringify([line.value.trim(), line.note.trim(), line.workStatus, line.manualConform, units, (line.dilution ?? "").trim()]);
 }
 
 /**
@@ -99,6 +101,7 @@ export function followServer<L extends SheetLine>(
       workStatus: previous.workStatus,
       manualConform: previous.manualConform,
       units: line.units.map((unit, index) => previous.units[index] ?? unit),
+      ...(previous.dilution !== undefined ? { dilution: previous.dilution } : {}),
     };
     if (origin && typedOf(line) !== typedOf(origin) && typedOf(line) !== typedOf(kept)) overlap.push(line);
     return kept;
