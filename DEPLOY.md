@@ -186,6 +186,27 @@ without a deployment.
   #   gpg: gpg --output qualilab_2026-10-12_0200.sql.gz --decrypt qualilab_2026-10-12_0200.sql.gz.gpg
   DB_PASSWORD=... bash scripts/restore-db.sh /var/backups/qualilab/qualilab_2026-10-12_0200.sql.gz
   ```
+- **Journal of the runs — « Sauvegardes » (lot 3C, RETOUR-LABO-28-10.md
+  L2, Q97).** Every run, failed or not, appends one line to
+  `/var/backups/qualilab/journal/backup-journal.csv` (`BACKUP_JOURNAL_DIR`
+  to move it): date (UTC) ; statut ; fichier ; octets ; sha256 ; copie hors
+  site ; message. The app mounts **only that directory, read-only**
+  (`docker-compose.yml`: `${BACKUP_DIR:-/var/backups/qualilab}/journal:/app/backup-journal:ro`,
+  `BACKUP_JOURNAL_PATH`) and shows the last 30 runs in Administration →
+  « Sauvegardes », red when the last run failed, amber when it is older than
+  26 h, with « Télécharger le suivi » (CSV). **Before the first
+  `docker compose up` with this compose file**, create the directory as the
+  cron user — otherwise Docker creates it owned by root and the script can no
+  longer write its line:
+
+  ```bash
+  sudo -u qualilab mkdir -p /var/backups/qualilab/journal
+  sudo -u qualilab bash -c 'cd /opt/qualilab && set -a && . ./.env && set +a && bash scripts/backup-db.sh'
+  tail -n 2 /var/backups/qualilab/journal/backup-journal.csv   # the run just made
+  ```
+
+  Still open with the laboratory (R-19): where the off-site copy goes, who
+  holds the key and the access, the maintenance window.
 - **Test the restore once after setup** and note the date in this file:
   `./scripts/restore-db.sh /var/backups/qualilab/<dump>.sql.gz`
   — Last tested restore: **2026-08-26** (backup → restore → app healthy,
@@ -934,6 +955,31 @@ suggested conformity reads (`valueAgainstLimit`, `bench-reading.ts`). The
    answer: `--listeria all` (the genus as written) or `--listeria monocytogenes`.
 4. The JSON report lands in `.ui-tests/` (git-ignored) — keep it with the
    deploy notes.
+
+## Lot 3C (01/11) — what the deploy changes by itself, and the operator's checks
+
+Three additive migrations (`20261101300000_lot3c_reception_rapport_exports`,
+`20261101300001_lot3c_images_figees`, `20261101300002_lot3c_delai_par_type`),
+applied by `prisma migrate deploy` with the image. The integrator folds these
+lines into the « Lot 3 » section.
+
+- **K5 switches on at the deploy**: the migration sets `LabSettings.dueDaysMicro = 5`
+  and `dueDaysChimie = 7` (working days) — every programme sheet of a received
+  sample without a promised date proposes one from then on (R-18 assumption).
+  To keep the old behaviour until the laboratory answers, empty the two fields
+  in Administration → Réglages → « Délais de rendu » right after the deploy.
+  No type d'analyse has its own delay (`AnalysisNature.dueDays` NULL).
+- **L4 — check `EMAIL_FROM` on the VPS** (`grep EMAIL_FROM .env`): production's
+  file was written from the old example (`no-reply@…`). The app now passes over
+  a no-reply `EMAIL_FROM` for the identity's e-mail, but replace it anyway with a
+  real mailbox of the laboratory (R-20), or set « Envoi des e-mails » in
+  /admin/entreprise; then `docker compose up -d` to reload the environment.
+- **K4** — nothing to do until the laboratory sends the files: the logo and the
+  stamp uploaded in /admin/entreprise are frozen with each version issued after
+  the upload (`ReportImageArchive`, append-only — never purge it).
+- **L2** — create the journal directory owned by the cron user before the first
+  run (« Backups »); a journal that cannot be written only warns, the backup's
+  exit code is unchanged.
 
 ## After every deploy — 5-minute check
 

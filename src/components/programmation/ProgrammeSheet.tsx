@@ -147,6 +147,12 @@ type ProgrammeSheetProps = {
    * itself — the sheet says so before and after the save.
    */
   invoiced?: InvoiceFact | null;
+  /**
+   * K5 (Q8): where the proposed « Délai de rendu promis » comes from (the
+   * page filled an empty one from the laboratory's delays, `proposeDueAt`) —
+   * or why none was proposed; null when the delays say nothing.
+   */
+  dueHint?: string | null;
 };
 
 type SavedState = Pick<ProgrammeSampleData, "status" | "analysisBlocked"> &
@@ -197,6 +203,7 @@ export function ProgrammeSheet({
   role,
   verbSample,
   invoiced = null,
+  dueHint = null,
 }: ProgrammeSheetProps) {
   const router = useRouter();
   const [referential, setReferential] = useState<ProgrammeReferentialData>(initialReferential);
@@ -1057,6 +1064,7 @@ export function ProgrammeSheet({
               inputClassName="input-field px-3 disabled:bg-slate-50"
             />
             <p className="mt-1 text-xs text-slate-500">Facultatif — jamais dans le passé.</p>
+            {dueHint && <p className="mt-0.5 text-xs text-slate-500">{dueHint}</p>}
           </div>
         </div>
 

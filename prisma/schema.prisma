@@ -226,6 +226,17 @@ enum Interpretation {
   INCOMPLET
 }
 
+/// RETOUR-LABO-28-10.md K4 (Q14): the accreditation status of an analysis
+/// parameter — the report prints the legend's mark after its name (« * » non
+/// accrédité, « (SA) », « (SN) ») and the accreditation logo when at least
+/// one analysis of the report is accredited. Null = « à préciser ».
+enum AccreditationStatus {
+  ACCREDITE
+  NON_ACCREDITE
+  SOUS_TRAITE_ACCREDITE
+  SOUS_TRAITE_NON_ACCREDITE
+}
+
 /// Coded motif of a non-conformity declared at reception (bon de réception rules).
 enum NonConformityReason {
   CHAINE_FROID
@@ -434,6 +445,8 @@ model Client {
   productTypes   ProductType[]
   /// PORTAIL.md §1 — the portal (`CLIENT`) accounts of this client.
   portalUsers    User[]            @relation("PortalUserClient")
+  /// RETOUR-LABO-28-10.md L5: the laboratory's addresses copied on this client's alerts.
+  alertCopies    AlertCopyClient[]
 
   @@index([archived, name])
   @@index([mergedIntoId])
@@ -488,6 +501,10 @@ model AnalysisParameter {
   /// Chantier 2 — spelling variants of the workbook, one per line.
   aliases        String?                    @db.Text
   criteria       Criterion[]
+  /// RETOUR-LABO-28-10.md K4 (Q14): accredited, not, or subcontracted —
+  /// proposed from the old software's marks (« * », « (SA) », « (SN) ») and
+  /// confirmed in /admin/parametres. Null = « à préciser » (no mark printed).
+  accreditation  AccreditationStatus?
 }
 
 model LabService {
@@ -997,6 +1014,10 @@ model AnalysisNature {
   sortOrder       Int               @default(0)
   active          Boolean           @default(true)
   legacyId        Int?              @unique
+  /// Lot 3C, K5 (RETOUR-LABO-28-10.md): this type d'analyse's own delay of
+  /// « à rendre le », in days — wins over its domain's (`LabSettings.dueDays*`).
+  /// Null = the domain's delay.
+  dueDays         Int?
   samples         Sample[]
   profiles        AnalysisProfile[]
   /// The product families of this type d'analyse (RETOUR-LABO-16-10.md F1).
@@ -1308,6 +1329,17 @@ model InvoiceItem {
 }
 
 /// The laboratory's own identity — printed on every report, invoice and email.
+/// Lot 3C, K4 (RETOUR-LABO-28-10.md): every accreditation logo and stamp a
+/// report version was issued with, keyed by the SHA-256 of its data URI.
+/// Append-only — never updated nor deleted — so a duplicata, a portal
+/// download or a resend prints the image of its issue, even after the file
+/// is replaced or removed in /admin/entreprise.
+model ReportImageArchive {
+  hash      String   @id @db.VarChar(64)
+  dataUri   String   @db.LongText
+  createdAt DateTime @default(now())
+}
+
 /// One row, edited by the admin, so changing the ICE or the RIB is data entry
 /// rather than a deployment. `lib/company.ts` keeps the fallback defaults.
 model CompanySettings {
@@ -1337,6 +1369,20 @@ model CompanySettings {
   patente   String?
   cnss      String?
   fax       String?
+  /// RETOUR-LABO-28-10.md K4 (Q14): the accreditation logo and the stamp, as
+  /// data URIs (PNG/JPEG/SVG/WebP ≤ 300 KB), uploaded in /admin/entreprise.
+  /// Null until the laboratory sends the files: nothing is printed then. The
+  /// logo prints in the report's cartouche when the report carries at least
+  /// one accredited analysis; the stamp under « Direction ».
+  accreditationLogoData String? @db.LongText
+  stampData             String? @db.LongText
+  /// RETOUR-LABO-28-10.md L4 (« Nous n'utilisons pas d'adresse no-reply ! »):
+  /// the laboratory's real mailbox the e-mails leave from, the name shown
+  /// beside it, and the Reply-To. Null = `EMAIL_FROM`, else the identity's
+  /// e-mail address (`email-sender.ts`).
+  emailSenderAddress    String?
+  emailSenderName       String?
+  emailReplyTo          String?
   updatedAt DateTime @updatedAt
 }
 
@@ -1405,6 +1451,17 @@ model LabSettings {
   /// and the channel of the client's agreement are required before a
   /// non-conform sample is analysed (false: recorded when given).
   consultationRequired     Boolean  @default(false)
+
+  // ---- RETOUR-LABO-28-10.md K5 (Q8) — « à rendre le » proposée par type d'analyse
+  /// Days between the arrival and the promised report, per domain of the
+  /// sample's type d'analyse (Microbiologie / Physico-chimie / Autre). Null =
+  /// nothing proposed (the field stays empty, as before). Defaults 5 and 7:
+  /// an assumption until the laboratory gives its days (R-18).
+  dueDaysMicro             Int?     @default(5)
+  dueDaysChimie            Int?     @default(7)
+  dueDaysAutre             Int?
+  /// True: calendar days; false or null: working days (Monday to Friday).
+  dueCalendarDays          Boolean?
   updatedAt                DateTime @updatedAt
 }
 
@@ -1758,4 +1815,32 @@ model Regulation {
   clientProducts  ClientProduct[]
 
   @@index([normalizedTitle])
+}
+
+/// RETOUR-LABO-28-10.md L5 (Q93, reading to confirm by R-16): an address of
+/// the laboratory (direction, qualité…) copied on the contamination alerts —
+/// of every client (`allClients`), or of the clients chosen. Added to the
+/// identity's e-mail, always in copy. Edited in /admin/entreprise, journalled.
+model AlertCopyAddress {
+  id         String            @id @default(cuid())
+  email      String
+  /// « Direction », « Qualité » — shown in the list, never printed.
+  label      String?
+  allClients Boolean?          @default(true)
+  active     Boolean?          @default(true)
+  clients    AlertCopyClient[]
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+}
+
+/// A client chosen for an `AlertCopyAddress` that is not « tous les clients »
+/// — the client as a whole, so every one of its sites.
+model AlertCopyClient {
+  addressId String
+  clientId  String
+  address   AlertCopyAddress @relation(fields: [addressId], references: [id], onDelete: Cascade)
+  client    Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@id([addressId, clientId])
+  @@index([clientId])
 }

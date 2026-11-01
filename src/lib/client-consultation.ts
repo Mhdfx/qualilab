@@ -173,3 +173,94 @@ export function storedConsultation(row: {
 export function consultationText(consultation: StoredConsultation): string {
   return `accord de ${consultation.name} (${CONSULTATION_CHANNEL_SHORT[consultation.channel]}, ${formatDayTime(consultation.at)})`;
 }
+
+// ─── I6 (Q75) — the agreement added or corrected after the reception ──────────
+
+/** Who may add or correct it: the reception and the administrator. */
+export const CONSULTATION_EDIT_ROLES = ["RECEPTIONNISTE", "ADMIN"] as const;
+
+/** Received, not yet validated: from the reception to the technical validation. */
+export const CONSULTATION_EDITABLE_STATUSES = ["RECU", "PROGRAMME", "EN_ANALYSE", "RESULTATS_SAISIS"] as const;
+
+export const CONSULTATION_EDIT_MESSAGES = {
+  role: "Seuls la réception et l'administrateur ajoutent ou corrigent l'accord du client.",
+  conform: "Seul un échantillon non conforme à réception porte l'accord du client.",
+  held: "Cet échantillon attend l'avis du client : l'accord s'enregistre en le libérant (« Analyser »).",
+  status: "L'accord du client ne se modifie plus après la validation (ni sur un échantillon annulé).",
+  validated: "La validation technique est signée : l'accord du client ne se modifie plus.",
+  empty: "Indiquez le nom de la personne consultée et le canal : un accord enregistré ne s'efface pas, il se corrige.",
+  unchanged: "Rien n'a changé dans l'accord du client.",
+  stale: "Cet échantillon vient de changer (validé, libéré ou corrigé par quelqu'un d'autre) : rechargez la page.",
+} as const;
+
+export type ConsultationEditSample = {
+  status: string;
+  conformity: boolean | null;
+  analysisBlocked: boolean;
+  validatedById: string | null;
+};
+
+/**
+ * Why the agreement of this sample may not be added or corrected now by this
+ * role — null when it may: a non-conform sample received and not held,
+ * before its technical validation (the validator reads it on their page).
+ */
+export function consultationEditRefusal(role: string, sample: ConsultationEditSample): { status: number; error: string } | null {
+  if (!(CONSULTATION_EDIT_ROLES as readonly string[]).includes(role)) return { status: 403, error: CONSULTATION_EDIT_MESSAGES.role };
+  if (sample.conformity !== false) return { status: 409, error: CONSULTATION_EDIT_MESSAGES.conform };
+  if (!(CONSULTATION_EDITABLE_STATUSES as readonly string[]).includes(sample.status)) return { status: 409, error: CONSULTATION_EDIT_MESSAGES.status };
+  if (sample.analysisBlocked) return { status: 409, error: CONSULTATION_EDIT_MESSAGES.held };
+  if (sample.validatedById) return { status: 409, error: CONSULTATION_EDIT_MESSAGES.validated };
+  return null;
+}
+
+/** Whether a screen offers « Accord du client » on this sample (the same rule, the role aside). */
+export function consultationEditable(sample: ConsultationEditSample): boolean {
+  return consultationEditRefusal("ADMIN", sample) === null;
+}
+
+/** The agreement as the journal keeps it, before and after (`CLIENT_CONSULTATION_UPDATED`). */
+export type ConsultationRecord = { name: string | null; channel: ConsultationChannel | null; at: string | null; note: string | null };
+
+export function consultationRecord(row: {
+  clientConsultedName: string | null;
+  clientConsultationChannel: ConsultationChannel | null;
+  clientConsultedAt: Date | string | null;
+  clientConsultationNote: string | null;
+}): ConsultationRecord {
+  const at = row.clientConsultedAt;
+  return {
+    name: row.clientConsultedName,
+    channel: row.clientConsultationChannel,
+    at: at === null ? null : typeof at === "string" ? at : at.toISOString(),
+    note: row.clientConsultationNote,
+  };
+}
+
+/**
+ * Two instants of the agreement at the minute the editor shows (its field is
+ * « AAAA-MM-JJTHH:mm »): the stored one carries seconds, the corrected one
+ * never does — the same minute is the same moment.
+ */
+export function sameConsultationMinute(a: string | null, b: string | null): boolean {
+  if (a === null || b === null) return a === b;
+  const [x, y] = [new Date(a).getTime(), new Date(b).getTime()];
+  if (Number.isNaN(x) || Number.isNaN(y)) return a === b;
+  return Math.floor(x / 60_000) === Math.floor(y / 60_000);
+}
+
+/**
+ * The instant to store on a correction: the one already stored when the
+ * minute did not change (its seconds kept, the date never moved), else the
+ * one typed.
+ */
+export function correctedConsultationAt(stored: Date | null, typed: Date): Date {
+  return stored && sameConsultationMinute(stored.toISOString(), typed.toISOString()) ? stored : typed;
+}
+
+/** The fields that changed, by name; empty when the correction changes nothing (« at » to the minute). */
+export function consultationChanges(before: ConsultationRecord, after: ConsultationRecord): (keyof ConsultationRecord)[] {
+  return (Object.keys(after) as (keyof ConsultationRecord)[]).filter((key) =>
+    key === "at" ? !sameConsultationMinute(before.at, after.at) : before[key] !== after[key]
+  );
+}

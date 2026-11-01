@@ -27,6 +27,7 @@ import {
 import { ROLE_LABELS, type Role } from "@/lib/roles";
 import { validationBody, type ValidationAction } from "@/lib/report-actions";
 import { ResendReportButton } from "./ResendReportButton";
+import { ALERTS_AT_VALIDATION } from "@/lib/lab-proposals";
 
 /** Nothing to sign: before the results are submitted, or on a cancelled sample. */
 const NO_CONTROLS: ValidationControls = {
@@ -287,9 +288,11 @@ export function ValidationPanel({
           {alertables > 0
             ? amendment
               ? "Une alerte de contamination ne sera renvoyée au client que pour un résultat modifié depuis le rapport en vigueur."
-              : alertsAtTechnical
-                ? "Une alerte de contamination est envoyée au client dès la validation technique."
-                : "Une alerte de contamination sera envoyée au client après la validation administrative."
+              : !ALERTS_AT_VALIDATION
+                ? "Une alerte de contamination partira avec le rapport (« Valider et envoyer », « Envoyer au client »)."
+                : alertsAtTechnical
+                  ? "Une alerte de contamination est envoyée au client dès la validation technique."
+                  : "Une alerte de contamination sera envoyée au client après la validation administrative."
             : "Aucun paramètre sensible n'est dépassé : le rapport partira sans alerte de contamination."}
         </p>
       )}

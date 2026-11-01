@@ -14,6 +14,7 @@ import { ReportActions } from "@/components/validation/ReportActions";
 import { amendedNumber } from "@/lib/report-amendment";
 import { canReadReports, reportVersionSent } from "@/lib/report-actions";
 import { sampleLinkFor } from "@/lib/sample-verbs";
+import { RecapExportMenu } from "@/components/search/RecapExportMenu";
 
 export const metadata = { title: "Recherche des analyses" };
 
@@ -201,9 +202,14 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
               </Link>
             )}
             {canExport && (
+              <div className="ml-auto">
+                <RecapExportMenu query={searchQueryString(search)} withValues={canReport} />
+              </div>
+            )}
+            {canExport && (
               <a
                 href={`/api/samples/export?${searchQueryString(search)}`}
-                className="ml-auto inline-flex min-h-[42px] items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+                className="inline-flex min-h-[42px] items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
               >
                 <Download className="h-4 w-4" aria-hidden="true" />
                 Exporter en Excel

@@ -27,6 +27,17 @@
 # Only the dated dumps (qualilab_AAAA-MM-JJ_HHMM.sql.gz) rotate, here and
 # off-site: a dump named by hand — qualilab_avant-phase-9.sql.gz, the phase 9
 # restore point — is never pruned.
+#
+# Journal of the runs (RETOUR-LABO-28-10.md L2 — Q97 « Est-ce qu'on peut
+# récupérer un fichier de suivi de la sauvegarde ? »): every run, failed or
+# not, appends ONE line to $BACKUP_DIR/journal/backup-journal.csv
+# (BACKUP_JOURNAL_DIR to move it), separated by « ; »:
+#   date (UTC, ISO 8601) ; statut (ok | echec) ; fichier ; octets ; sha256 ;
+#   copie hors site (ok | ignoree | echec | non-tentee) ; message
+# The app mounts that directory read-only (docker-compose.yml) and shows the
+# last runs in Administration → « Sauvegardes », with a warning when the last
+# run failed or is older than 26 h; the file is downloadable there. The line
+# is written by the EXIT trap, so a run killed by `set -e` is journalled too.
 
 set -euo pipefail
 
@@ -35,12 +46,63 @@ RETENTION_DAYS="${RETENTION_DAYS:-30}"
 STAMP="$(date +%Y-%m-%d_%H%M)"
 ROTATING="qualilab_????-??-??_????.sql.gz"
 
-if ! [[ "$RETENTION_DAYS" =~ ^[0-9]+$ ]] || [ "$RETENTION_DAYS" -lt 1 ]; then
-  echo "RETENTION_DAYS must be a whole number of days ≥ 1 (got: $RETENTION_DAYS)" >&2
-  exit 1
-fi
-
 mkdir -p "$BACKUP_DIR"
+
+# ---- Journal of the run (L2) -------------------------------------------------
+
+JOURNAL_DIR="${BACKUP_JOURNAL_DIR:-$BACKUP_DIR/journal}"
+JOURNAL="$JOURNAL_DIR/backup-journal.csv"
+JOURNAL_HEADER="date;statut;fichier;octets;sha256;copie_hors_site;message"
+STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+RESULT_FILE=""
+RESULT_SIZE=""
+RESULT_SHA=""
+OFFSITE="non-tentee"
+MESSAGE=""
+CLEANUP=()
+
+# A field never carries the separator nor a line break.
+journal_field() {
+  printf '%s' "$1" | tr ';\r\n' ',  '
+}
+
+finish() {
+  local code=$?
+  # The trap runs under `set -e`: a journal that cannot be written (a
+  # directory Docker created as root) must never change the run's exit code
+  # nor stop the trap before `exit "$code"`.
+  set +e
+  local file
+  for file in "${CLEANUP[@]}"; do rm -f "$file"; done
+  local status="ok"
+  if [ "$code" -ne 0 ]; then
+    status="echec"
+    [ -n "$MESSAGE" ] || MESSAGE="échec inattendu (code $code)"
+  fi
+  if mkdir -p "$JOURNAL_DIR" 2>/dev/null; then
+    # Header then line, each write guarded: one warning when either fails.
+    if ! { { [ -s "$JOURNAL" ] || echo "$JOURNAL_HEADER" > "$JOURNAL"; } 2>/dev/null \
+      && printf '%s;%s;%s;%s;%s;%s;%s\n' "$STARTED" "$status" "$(journal_field "$RESULT_FILE")" "$RESULT_SIZE" "$RESULT_SHA" "$OFFSITE" \
+        "$(journal_field "$MESSAGE")" 2>/dev/null >> "$JOURNAL"; }; then
+      echo "backup journal not written: $JOURNAL" >&2
+    fi
+  else
+    echo "backup journal not written: cannot create $JOURNAL_DIR" >&2
+  fi
+  exit "$code"
+}
+trap finish EXIT
+
+# Stop the run with a message the journal keeps.
+fail() {
+  MESSAGE="$*"
+  echo "$*" >&2
+  exit 1
+}
+
+if ! [[ "$RETENTION_DAYS" =~ ^[0-9]+$ ]] || [ "$RETENTION_DAYS" -lt 1 ]; then
+  fail "RETENTION_DAYS must be a whole number of days ≥ 1 (got: $RETENTION_DAYS)"
+fi
 
 # Dockerised database (docker-compose.yml). For a bare-metal MySQL, replace
 # the docker exec with a plain mysqldump using ~/.my.cnf credentials.
@@ -49,7 +111,9 @@ mkdir -p "$BACKUP_DIR"
 # access-denied warning.
 FINAL="$BACKUP_DIR/qualilab_${STAMP}.sql.gz"
 TMP="$BACKUP_DIR/.qualilab_${STAMP}.partial.gz"
-trap 'rm -f "$TMP"' EXIT
+CLEANUP+=("$TMP")
+[ -n "${DB_PASSWORD:-}" ] || fail "DB_PASSWORD not set"
+MESSAGE="mysqldump a échoué (base injoignable ?)"
 
 # Dump to a temporary file: a mysqldump that dies halfway (db container down,
 # connection lost) must never leave a truncated-but-valid gzip under the
@@ -58,18 +122,19 @@ docker compose exec -T db   mysqldump --single-transaction --routines --triggers
 
 # Verify: valid gzip, real content, and mysqldump's own completion marker
 # on the last line — the proof the dump reached the end.
-gzip -t "$TMP"
+gzip -t "$TMP" || fail "backup is not a valid gzip — not kept"
+MESSAGE=""
 SIZE=$(stat -c%s "$TMP")
 if [ "$SIZE" -lt 1024 ]; then
-  echo "backup suspiciously small (${SIZE} bytes) — investigate" >&2
-  exit 1
+  fail "backup suspiciously small (${SIZE} bytes) — investigate"
 fi
 if ! gunzip -c "$TMP" | tail -c 300 | grep -q "Dump completed"; then
-  echo "backup incomplete: no 'Dump completed' marker — not kept" >&2
-  exit 1
+  fail "backup incomplete: no 'Dump completed' marker — not kept"
 fi
 mv "$TMP" "$FINAL"
-trap - EXIT
+RESULT_FILE="$(basename "$FINAL")"
+RESULT_SIZE="$SIZE"
+RESULT_SHA="$(sha256sum "$FINAL" | cut -d' ' -f1)"
 
 find "$BACKUP_DIR" -maxdepth 1 -name "$ROTATING" -mtime "+${RETENTION_DAYS}" -delete
 
@@ -78,11 +143,12 @@ echo "backup ok: $(basename "$FINAL") (${SIZE} bytes)"
 # ---- Off-site copy (opt-in) ------------------------------------------------
 
 offsite_fail() {
-  echo "offsite FAILED: $*" >&2
-  exit 1
+  OFFSITE="echec"
+  fail "offsite FAILED: $*"
 }
 
 if [ -z "${BACKUP_REMOTE:-}" ]; then
+  OFFSITE="ignoree"
   echo "offsite skipped (BACKUP_REMOTE not set)"
   exit 0
 fi
@@ -99,7 +165,7 @@ if [ -n "${BACKUP_GPG_RECIPIENT:-}" ]; then
   command -v gpg >/dev/null 2>&1 || offsite_fail "gpg is not installed (apt install gnupg)"
   UPLOAD="$FINAL.gpg"
   # The encrypted copy only exists to travel: removed whatever happens.
-  trap 'rm -f "$UPLOAD"' EXIT
+  CLEANUP+=("$UPLOAD")
   # --trust-model always: the recipient's key was imported on purpose by
   # the operator; there is no web of trust on a server.
   gpg --batch --yes --trust-model always --recipient "$BACKUP_GPG_RECIPIENT" \
@@ -143,4 +209,5 @@ else
     || offsite_fail "pruning $HOST:$RPATH (the copy itself succeeded: $NAME)"
 fi
 
+OFFSITE="ok"
 echo "offsite ok: $NAME ($LOCAL_SIZE bytes → $REMOTE)"

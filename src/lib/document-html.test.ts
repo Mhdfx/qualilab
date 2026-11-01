@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { pageCss } from "./cartouche-html";
 import { COMPANY } from "./company";
 import {
+  bonFaxLine,
   BON_MARGIN,
   PROTOCOL_MARGIN,
   buildBonHtml,
@@ -21,6 +22,7 @@ import {
   type SerieDocumentData,
 } from "./document-html";
 import { escapeHtml } from "./html-text";
+import { BON_WITHOUT_FAX } from "./lab-proposals";
 import { DEFAULT_THRESHOLDS, RECEPTION_RULES, receptionRuleLine } from "./reception-rules";
 
 const base: SerieDocumentData = {
@@ -212,13 +214,18 @@ describe("buildBonHtml — PG05/EN04 version H", () => {
     expect(html).not.toContain("N° de factures");
   });
 
-  it("frames the client as the paper: série, name, two address lines, phone, fax to fill by hand", () => {
+  it("frames the client as the paper: série, name, two address lines, phone — no fax since Q105 (I8)", () => {
     const box = html.slice(html.indexOf('<div class="client">'), html.indexOf("<table"));
     expect(box).toContain(field("N° de série :", "2754/26"));
     expect(box).toContain(field("Nom du client :", "Restaurant Le Palmier — Cuisine centrale"));
     expect(box).toContain(`${field("Adresse :", "12 rue des Orangers")}</div>\n    <div class="field"><span class="v"></span></div>`);
     expect(box).toContain(field("N° de tél :", "05 22 00 00 00"));
-    expect(box).toContain(field("N° de fax :", ""));
+    // « Annulé » (Q105, RETOUR-LABO-28-10.md I8): the fax line is gone…
+    expect(BON_WITHOUT_FAX).toBe(true);
+    expect(box).not.toContain("N° de fax");
+    // …and comes back, empty to fill by hand, with the switch off.
+    expect(bonFaxLine(false)).toContain(field("N° de fax :", ""));
+    expect(bonFaxLine(true)).toBe("");
   });
 
   it("keeps the paper's columns in its order, the N° de contrôle first", () => {

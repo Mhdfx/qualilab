@@ -12,7 +12,7 @@ import {
   type ClientFacts,
   type FillableField,
 } from "@/lib/client-merge-rules";
-import { moveEmails, movePlaces, moveProducts, moveTypesAndProfiles } from "@/lib/client-transfer";
+import { moveAlertCopies, moveEmails, movePlaces, moveProducts, moveTypesAndProfiles } from "@/lib/client-transfer";
 import { normalizeSiteName } from "@/lib/sites-import";
 import { PORTAL_ROLE } from "@/lib/roles";
 
@@ -34,7 +34,8 @@ import { PORTAL_ROLE } from "@/lib/roles";
  * documents now carry A's name); B's sites (merged into A's site of the same
  * normalised name, else moved); addresses, places and products memory
  * (src/lib/client-transfer.ts, the rules of the sites import); own product
- * types and profiles; the links that targeted B (`Client.billedForId`,
+ * types and profiles; the laboratory's alert copies « clients choisis » for
+ * B (lot 3C, L5: chosen for A); the links that targeted B (`Client.billedForId`,
  * `Site.billingClientId`); A's empty fields completed by B's. B is archived
  * with `mergedIntoId = A` — never deleted.
  *
@@ -104,6 +105,8 @@ type MergeCounts = {
   productsMerged: number;
   productTypes: number;
   profiles: number;
+  /** Lot 3C, L5: the laboratory's alert copy addresses chosen for B, now chosen for A. */
+  alertCopies: number;
   /** Clients billed for B, now billed for A. */
   billingClients: number;
   /** Sites billed to B, now billed to A. */
@@ -186,6 +189,7 @@ async function merge(tx: Prisma.TransactionClient, sourceId: string, targetId: s
     productsMerged: 0,
     productTypes: 0,
     profiles: 0,
+    alertCopies: 0,
     billingClients: 0,
     billedSites: 0,
   };
@@ -271,6 +275,8 @@ async function merge(tx: Prisma.TransactionClient, sourceId: string, targetId: s
   const owned = await moveTypesAndProfiles(tx, [sourceId], targetId);
   counts.productTypes = owned.productTypes;
   counts.profiles = owned.profiles;
+  // Lot 3C, L5: an alert copy chosen for B keeps receiving the alerts of B's samples, now A's.
+  counts.alertCopies = await moveAlertCopies(tx, [sourceId], targetId);
 
   // ---- the links that targeted B target A --------------------------------------------------
   counts.billingClients = (await tx.client.updateMany({ where: { billedForId: sourceId }, data: { billedForId: targetId } })).count;

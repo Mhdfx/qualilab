@@ -2,6 +2,7 @@ import { prisma } from "./prisma";
 import { COMPANY } from "./company";
 import type { EmailType } from "@/generated/prisma/enums";
 import { resolveRecipients, type RecipientKind, type RecipientPick } from "./email-recipients";
+import { EMPTY_SENDER_SETTINGS, senderHeaders, type SenderHeaders } from "./email-sender";
 
 /**
  * Sending mail.
@@ -41,8 +42,27 @@ export type SendResult = {
   logId: string | null;
 };
 
-function sender() {
-  return process.env.EMAIL_FROM ?? `${COMPANY.name} <onboarding@resend.dev>`;
+/**
+ * From and Reply-To (L4, « Nous n'utilisons pas d'adresse no-reply ! »): the
+ * laboratory's mailbox set in /admin/entreprise, else `EMAIL_FROM`, else the
+ * identity's e-mail (`senderHeaders`). Read at each real send only; a failed
+ * read falls back on the configuration, never blocks a message.
+ */
+async function sender(): Promise<SenderHeaders> {
+  const row = await prisma.companySettings
+    .findUnique({
+      where: { id: "company" },
+      select: { name: true, email: true, emailSenderAddress: true, emailSenderName: true, emailReplyTo: true },
+    })
+    .catch((error) => {
+      console.error("[email] sender settings unreadable, configuration used", { error });
+      return null;
+    });
+  return senderHeaders({
+    settings: row ?? EMPTY_SENDER_SETTINGS,
+    envFrom: process.env.EMAIL_FROM,
+    company: row ?? COMPANY,
+  });
 }
 
 export async function sendEmail(input: SendEmailInput): Promise<SendResult> {
@@ -99,6 +119,7 @@ async function deliver(
   }
 
   try {
+    const { from, replyTo } = await sender();
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -106,7 +127,8 @@ async function deliver(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: sender(),
+        from,
+        reply_to: replyTo ?? undefined,
         to: recipients,
         cc: input.cc?.length ? input.cc : undefined,
         subject: input.subject,

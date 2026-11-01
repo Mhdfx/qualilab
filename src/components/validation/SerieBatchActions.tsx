@@ -38,6 +38,8 @@ type PlanLine = {
   alertables?: number;
   /** This signature sends its contamination alert to the client. */
   alertNow?: boolean;
+  /** « Valider et envoyer » sends its alert (K3 switch off: only the send does). */
+  alertWithSend?: boolean;
   /** The report sent (« Envoyer la série »): the number of its version in force. */
   number?: string;
 };
@@ -351,11 +353,18 @@ function SerieBatchDialog({
                         </span>
                       )}
                       {flags && <span className="block text-xs font-medium text-rose-700">{flags}</span>}
-                      {line.alertNow && (
+                      {line.alertNow ? (
                         <span className="mt-0.5 flex items-start gap-1 text-xs font-medium text-rose-800">
                           <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
                           Alerte de contamination envoyée au client à cette validation
                         </span>
+                      ) : (
+                        line.alertWithSend && (
+                          <span className="mt-0.5 flex items-start gap-1 text-xs font-medium text-rose-800">
+                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                            Alerte de contamination envoyée au client avec le rapport (« Valider et envoyer »)
+                          </span>
+                        )
                       )}
                     </li>
                   );

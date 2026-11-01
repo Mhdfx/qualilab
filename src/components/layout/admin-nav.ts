@@ -23,6 +23,7 @@ import {
   ClipboardList,
   History,
   Mail,
+  DatabaseBackup,
 } from "lucide-react";
 import type { NavSection } from "./nav-types";
 
@@ -76,6 +77,7 @@ export const adminNav: NavSection[] = [
       { label: "Documents qualité", href: "/admin/documents", icon: FileText },
       { label: "Envois d'e-mails", href: "/admin/envois", icon: Mail },
       { label: "Journal d'audit", href: "/admin/journal", icon: BarChart3 },
+      { label: "Sauvegardes", href: "/admin/sauvegardes", icon: DatabaseBackup },
     ],
   },
 ];

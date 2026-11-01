@@ -4,6 +4,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { LabSettingsForm } from "@/components/admin/LabSettingsForm";
 import { ConclusionScaleForm } from "@/components/admin/ConclusionScaleForm";
 import { CountersForm } from "@/components/admin/CountersForm";
+import { DueDelaysForm } from "@/components/admin/DueDelaysForm";
+import { getDueDelays, getNatureDueDays } from "@/lib/due-delays-server";
 import { loadCounterRows } from "@/lib/counter-rows";
 import { prisma } from "@/lib/prisma";
 
@@ -28,6 +30,8 @@ export default async function ReglagesPage() {
             orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
           })}
         />
+        {/* K5 (Q8): « à rendre le » proposée par type d'analyse. */}
+        <DueDelaysForm initial={await getDueDelays()} natures={await getNatureDueDays()} />
         <ConclusionScaleForm initial={await prisma.conclusionScale.findMany()} />
         <CountersForm initial={await loadCounterRows(new Date().getFullYear())} />
       </div>

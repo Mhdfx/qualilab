@@ -16,6 +16,7 @@ import type {
   AirMethod,
   Cadre,
   CancelReason,
+  ConsultationChannel,
   Family,
   HandsState,
   LineKind,
@@ -75,6 +76,9 @@ import { futureFieldError } from "@/lib/device-time";
 import { SERIE_MESSAGES, arrivalRefusal, startIsDeclared } from "@/lib/serie-input";
 import { UNDECLARED_SAMPLING } from "@/lib/sample-search";
 import { Card } from "@/components/ui/Card";
+import { ConsultationEditor } from "./ConsultationEditor";
+import { CONSULTATION_AFTER_RECEPTION } from "@/lib/lab-proposals";
+import { consultationEditable } from "@/lib/client-consultation";
 import { LabDateTimeInput, dateTimePending } from "@/components/LabDateTimeInput";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -202,6 +206,12 @@ export type ReceptionLineData = {
   technician: { id: string; name: string } | null;
   /** When it was taken; optional on an older payload. */
   assignedAt?: string | null;
+  /** I6 (Q75): the client's agreement and the technical signature — read on a received série only. */
+  clientConsultedName?: string | null;
+  clientConsultationChannel?: ConsultationChannel | null;
+  clientConsultedAt?: string | null;
+  clientConsultationNote?: string | null;
+  validatedById?: string | null;
   // + the verbs' facts (`withVerbFacts`, D1): an issued report, the invoice
   // holding the sample and the alert already sent — read by the page for the
   // whole série; optional on an older payload.
@@ -1358,6 +1368,29 @@ function ReceivedSummary({
                     </tr>
                     <tr className="border-b border-slate-100">
                       <td colSpan={columns} className="pb-3">
+                        {/* I6 (Q75): the client's agreement, added or corrected after the reception. */}
+                        {CONSULTATION_AFTER_RECEPTION &&
+                          !justReceived &&
+                          source &&
+                          source.clientConsultedName !== undefined &&
+                          consultationEditable({
+                            status: source.status,
+                            conformity: source.conformity,
+                            analysisBlocked: source.analysisBlocked ?? false,
+                            validatedById: source.validatedById ?? null,
+                          }) && (
+                            <div className="mb-2">
+                              <ConsultationEditor
+                                sample={{
+                                  id: source.id,
+                                  clientConsultedName: source.clientConsultedName ?? null,
+                                  clientConsultationChannel: source.clientConsultationChannel ?? null,
+                                  clientConsultedAt: source.clientConsultedAt ?? null,
+                                  clientConsultationNote: source.clientConsultationNote ?? null,
+                                }}
+                              />
+                            </div>
+                          )}
                         {checklist ? (
                           <details className="group rounded-xl border border-slate-200 bg-slate-50/40">
                             <summary className="flex min-h-[44px] cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-0.5 rounded-xl px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand [&::-webkit-details-marker]:hidden">

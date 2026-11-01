@@ -17,6 +17,7 @@ import { userDocumentName } from "./document-name";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
 import { PAYMENT_MODE_LABELS } from "./invoice-lifecycle";
 import { toLabWallTime } from "./lab-time";
+import { BON_WITHOUT_FAX } from "./lab-proposals";
 import {
   ANALYSIS_FAMILY_LABELS,
   LINE_KIND_LABELS,
@@ -518,6 +519,15 @@ function bonDayAndHour(at: Date) {
   };
 }
 
+/**
+ * « N° de fax : » of the client's box, empty, to fill by hand — no longer
+ * printed since the laboratory crossed it out (Q105, read « Annulé »,
+ * RETOUR-LABO-28-10.md I8; `BON_WITHOUT_FAX`, to confirm by R-17).
+ */
+export function bonFaxLine(withoutFax: boolean = BON_WITHOUT_FAX): string {
+  return withoutFax ? "" : bonField("N° de fax :", "");
+}
+
 /** « Label : value » on a dotted line, as the paper prints its fields. */
 function bonField(label: string, value: string) {
   return `<div class="field"><span class="k">${label}</span><span class="v">${value}</span></div>`;
@@ -604,7 +614,7 @@ export function buildBonHtml(data: SerieDocumentData, thresholds: ReceptionThres
     ${bonField("Adresse :", filled(data.clientAddress))}
     <div class="field"><span class="v"></span></div>
     ${bonField("N° de tél :", filled(data.clientPhone))}
-    ${bonField("N° de fax :", "")}
+    ${bonFaxLine()}
   </div>
 </div>
 

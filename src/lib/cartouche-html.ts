@@ -81,19 +81,26 @@ export type CartoucheInput = {
   reference: DocumentRef;
   /** The laboratory's logo (`documentLogo()`); null leaves the cell blank. */
   logoDataUri: string | null;
+  /** A second logo beside it — the accreditation logo of a report (K4); null = none. */
+  secondaryLogoDataUri?: string | null;
   /** The ink of the grid and its text; the forms' navy (`CARTOUCHE_INK`) by default. */
   ink?: string;
 };
 
 /** Chromium's header template: the cartouche, with « Page n sur N » filled per page. */
-export function cartoucheTemplate({ title, reference, logoDataUri, ink }: CartoucheInput): string {
+export function cartoucheTemplate({ title, reference, logoDataUri, secondaryLogoDataUri, ink }: CartoucheInput): string {
   const CELL = cell(ink && INK.test(ink) ? ink : CARTOUCHE_INK);
   const text = (value: string) => escapeHtml(value.trim());
   const date = (value: Date | null) => (value ? formatDateOnly(value) : "");
+  const main = logoDataUri && IMAGE_DATA_URI.test(logoDataUri) ? logoDataUri : null;
+  const second = secondaryLogoDataUri && IMAGE_DATA_URI.test(secondaryLogoDataUri) ? secondaryLogoDataUri : null;
+  // Two logos share the cell side by side: the laboratory's, then the accreditation's.
   const logo =
-    logoDataUri && IMAGE_DATA_URI.test(logoDataUri)
-      ? `<img src="${logoDataUri}" alt="" style="display:block;margin:0 auto;max-width:100%;max-height:17mm;">`
-      : "";
+    main && second
+      ? `<div style="display:flex;align-items:center;justify-content:center;gap:1.5mm;"><img src="${main}" alt="" style="display:block;max-width:58%;max-height:17mm;"><img src="${second}" alt="" style="display:block;max-width:38%;max-height:17mm;"></div>`
+      : main || second
+        ? `<img src="${main ?? second}" alt="" style="display:block;margin:0 auto;max-width:100%;max-height:17mm;">`
+        : "";
 
   return `<div style="width:100%;box-sizing:border-box;padding:2mm ${PAGE_SIDE} 0;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
 <table style="width:100%;border-collapse:collapse;table-layout:fixed;">

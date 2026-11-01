@@ -231,3 +231,15 @@ describe("who merges and who attaches (16/10, Q117 — E4)", () => {
     expect(canAttachAsSite("RECEPTIONNISTE")).toBe(false);
   });
 });
+
+describe("the alert copies moved (lot 3C, L5)", () => {
+  it("say which internal copy addresses now follow the kept fiche", () => {
+    expect(mergeSummary({ ...ZERO_MERGE, alertCopies: 1 }, "B", "A").details).toContain(
+      "1 adresse du laboratoire en copie des alertes : désormais pour « A »"
+    );
+    expect(
+      attachSummary({ series: 0, samples: 0, emails: 0, places: 0, products: 0, productTypes: 0, profiles: 0, invoicesKept: 0, alertCopies: 2 }, "B", "A", { name: "S", created: false }).details
+    ).toContain("2 adresses du laboratoire en copie des alertes : désormais pour « A »");
+    expect(mergeSummary(ZERO_MERGE, "B", "A").details.some((line) => line.includes("copie des alertes"))).toBe(false);
+  });
+});
