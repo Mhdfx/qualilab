@@ -27,8 +27,9 @@ import { TAKE_OVER_COLLEAGUE } from "@/lib/lab-proposals";
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { isCurrentSendBack, maySendBack } from "@/lib/send-back";
 import { lastSubmissionsOf } from "@/lib/send-back-server";
-import { effectiveFactor } from "@/lib/dilution";
+import { dilutionText, effectiveFactor, readingFactor } from "@/lib/dilution";
 import { benchStartingReadings, benchUnit } from "@/lib/bench-reading";
+import { judgingLimit, judgingThreshold, resultUnit } from "@/lib/result-unit";
 import { formatDate, formatDateTime, PROGRAMME_PRIORITY_LABELS, surfaceAreaText } from "@/lib/labels";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
@@ -44,6 +45,8 @@ import {
   type ParameterLine,
 } from "@/components/technicien/ResultEntryForm";
 import { ReleaseButton, TakeButton, TakeOverButton } from "@/components/technicien/BenchTakeActions";
+import { SerieNeighbourLinks } from "@/components/ui/SerieNeighbourLinks";
+import { serieNeighbours } from "@/lib/serie-neighbours";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   // Metadata renders alongside the layout's redirect: the sample's blind
@@ -122,6 +125,8 @@ export default async function AnalysePage({
       // The client's name is loaded below, only for a viewer who reads it:
       // a technician's blind bench never does (re-ask 2.15).
       clientId: true,
+      // « Échantillon précédent / suivant » in the série (G4).
+      serieId: true,
       serie: { select: { serialNumber: true } },
       parameters: {
         select: {
@@ -141,6 +146,8 @@ export default async function AnalysePage({
               threshold: true,
               limitValue: true,
               calcFactor: true,
+              // O-12 × J3: a sensitive germ without criterion must be read in a notation the alert reads.
+              alertOnExceed: true,
             },
           },
         },
@@ -165,7 +172,7 @@ export default async function AnalysePage({
   // A send-back is current until the next submission (B2): the journal is
   // read only for a sample that may show one. The last bench row of the
   // journal says whether the holder took it over from a colleague (C3).
-  const [bench, submissions, client, holderRows] = await Promise.all([
+  const [bench, submissions, client, holderRows, siblings] = await Promise.all([
     loadBenchPlans(sample.id),
     maySendBack(sample) ? lastSubmissionsOf([sample.id]) : null,
     blind ? null : prisma.client.findUnique({ where: { id: sample.clientId }, select: { name: true } }),
@@ -177,7 +184,27 @@ export default async function AnalysePage({
           take: 1,
         })
       : [],
+    // The série's other samples this viewer may open here (G4): a
+    // technician's own and the shared bench (`canReadAtBench`), the admin's all.
+    prisma.sample.findMany({
+      where: { serieId: sample.serieId, status: { not: "ANNULE" } },
+      select: {
+        id: true,
+        lineNumber: true,
+        code: true,
+        controlCode: true,
+        status: true,
+        technicianId: true,
+        parameters: { select: { technicianId: true } },
+      },
+    }),
   ]);
+  const neighbours = serieNeighbours(
+    siblings.filter((sibling) => sibling.id === sample.id || !isTechnician || canReadAtBench(sibling, session.id)),
+    sample.id
+  );
+  const neighbourLink = (sibling: (typeof siblings)[number] | null) =>
+    sibling ? { href: `/technicien/${sibling.id}`, reference: labReference(sibling) } : null;
 
   // Who holds the sample (prise en charge libre, PROGRAMME.md §10).
   const free = isUnclaimed(sample);
@@ -237,11 +264,16 @@ export default async function AnalysePage({
       name: parameter.name,
       // The criterion's unit, as the bench sheet, the stored result and the
       // report print it (« /1 g » rather than the parameter's « /25 g »).
-      unit: benchUnit(plan, parameter.unit),
-      threshold: parameter.threshold,
-      limitValue: parameter.limitValue,
+      // « UFC/couteau » for a surface described in words (J1), the air's by
+      // its means (J2) — `resultUnit`, as the save stores it.
+      unit: resultUnit(bench.context, benchUnit(plan, parameter.unit)),
+      // Only a limit whose unit can judge what was sampled (`unitJudges`).
+      threshold: judgingThreshold(bench.context, parameter.threshold, parameter.unit),
+      limitValue: judgingLimit(bench.context, parameter.limitValue, parameter.unit),
       // The programmed dilution of this sample replaces the catalogue's factor.
       calcFactor: effectiveFactor(line.dilutionFactor, parameter.calcFactor),
+      // « Dilution lue » (J4): the technician's own when stored, else the programme's.
+      dilution: dilutionText(readingFactor(existing?.dilutionUsed, line.dilutionFactor, parameter.calcFactor)),
       // When the stored value rewrote the entry (a factor, or the shorthand
       // « 3(-2) » printed « 3.10² »), the bench reading (rawValue) is what
       // the technician typed and re-edits; `value` holds the figure the
@@ -250,6 +282,7 @@ export default async function AnalysePage({
       note: existing?.note ?? "",
       workStatus: existing?.workStatus ?? "EN_COURS",
       manualConform: existing?.conform ?? null,
+      sensitive: parameter.alertOnExceed,
       // Mine, or any of a free sample (the first save takes it) — the rule
       // the save applies (`canEnterParameter`); the admin stands in for anyone.
       editable: !isTechnician || canEnterParameter(sample, line, session.id),
@@ -290,6 +323,14 @@ export default async function AnalysePage({
       </Link>
 
       <PageHeader badge="Analyse" title={labReference(sample)} subtitle={subtitle} />
+
+      <SerieNeighbourLinks
+        serialNumber={sample.serie.serialNumber}
+        position={neighbours.position}
+        total={neighbours.total}
+        previous={neighbourLink(neighbours.previous)}
+        next={neighbourLink(neighbours.next)}
+      />
 
       {/* The previous holder reads « Repris par » instead (below). */}
       {heldByOther && !takenFromMe && (

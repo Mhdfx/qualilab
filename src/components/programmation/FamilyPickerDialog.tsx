@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Check, Package, Search, X } from "lucide-react";
 import { criteriaCountLabel } from "@/lib/family-list";
 import { fmt } from "@/lib/interpretation";
+import type { UnitContext } from "@/lib/result-unit";
 import {
   familyFilterFor,
   familyParameterRows,
@@ -44,6 +45,8 @@ type FamilyPickerDialogProps = {
   referential: ProgrammeReferentialData;
   /** The sheet's draft, read only: its nature presets the filter, its family is the current one. */
   draft: ProgrammeDraft;
+  /** What was sampled: a criterion per another basis is shown as judging nothing (J1, J2). */
+  unitContext?: UnitContext;
   /** Hands the chosen family to the sheet; "" = « Aucune famille ». */
   onChoose: (typeId: string) => void;
   onClose: () => void;
@@ -65,7 +68,7 @@ function limits(criterion: CriterionRef): { m: string; bigM: string } {
   };
 }
 
-export function FamilyPickerDialog({ referential, draft, onChoose, onClose }: FamilyPickerDialogProps) {
+export function FamilyPickerDialog({ referential, draft, unitContext, onChoose, onClose }: FamilyPickerDialogProps) {
   const id = useId();
   const titleId = `${id}-title`;
   const introId = `${id}-intro`;
@@ -116,8 +119,8 @@ export function FamilyPickerDialog({ referential, draft, onChoose, onClose }: Fa
   const chosen = visible ? highlighted : null;
   const preview = chosen ? typeOf(referential, chosen) : undefined;
   const rows = useMemo(
-    () => (preview ? familyParameterRows({ ...draft, productTypeId: preview.id }, referential) : []),
-    [draft, preview, referential]
+    () => (preview ? familyParameterRows({ ...draft, productTypeId: preview.id }, referential, unitContext) : []),
+    [draft, preview, referential, unitContext]
   );
 
   // The page behind does not scroll; Échap closes; Tab stays inside
@@ -411,7 +414,14 @@ export function FamilyPickerDialog({ referential, draft, onChoose, onClose }: Fa
                                   )}
                                 </td>
                                 <td className="py-2 pr-3 text-xs text-slate-500">{row.normLabel ?? "—"}</td>
-                                <td className="py-2 pr-3 text-xs text-slate-600">{row.unit ?? "—"}</td>
+                                <td className="py-2 pr-3 text-xs text-slate-600">
+                                  {row.unit ?? "—"}
+                                  {!row.judges && (
+                                    <span className="mt-0.5 block text-amber-800">
+                                      ne juge pas ce prélèvement : lu sans interprétation
+                                    </span>
+                                  )}
+                                </td>
                                 <td className="py-2 pr-3 text-right tabular-nums text-slate-700">{row.criterion.n}</td>
                                 <td className="py-2 pr-3 text-right tabular-nums text-slate-700">{row.criterion.c ?? "—"}</td>
                                 <td className="py-2 pr-3 text-right font-mono text-slate-700">{cells.m}</td>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Save,
@@ -15,12 +15,15 @@ import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { VerdictBadge } from "@/components/samples/VerdictBadge";
 import { factoredText, singleValueEntry, type ParsedValue } from "@/lib/result-value";
 import { hasLimit, judgeUnits, type Plan, type Verdict as PlanVerdict } from "@/lib/interpretation";
-import { benchUnits, unitsAgainstLimit, valueAgainstLimit } from "@/lib/bench-reading";
+import { benchUnits, manualChoiceOffered, unitsAgainstLimit, unreadableSensitiveReading, valueAgainstLimit } from "@/lib/bench-reading";
+import { dilutionText, parseDilution } from "@/lib/dilution";
+import { applyQuickEntry, quickEntries, type QuickEntry } from "@/lib/quick-entries";
 import { repetitionLabel } from "@/lib/series";
 import { formatDecimal } from "@/lib/labels";
 import { lostSampleHolder } from "@/lib/take-over";
-import { SHEET_SAVED_BY_COLLEAGUE, followServer, overlapNotice } from "@/lib/take-over-sheet";
+import { SHEET_SAVED_BY_COLLEAGUE, followServer, overlapNotice, sheetDirty } from "@/lib/take-over-sheet";
 import { INTERNAL_NOTE_HINT, INTERNAL_NOTE_LABEL, showsNoteField } from "@/lib/result-note";
+import { useUnsavedChanges } from "@/components/ui/unsaved-changes";
 import type { ResultWorkStatus } from "@/generated/prisma/enums";
 
 export type ParameterLine = {
@@ -30,13 +33,29 @@ export type ParameterLine = {
   unit: string | null;
   threshold: string | null;
   limitValue: number | null;
-  /** Multiplier applied to the raw reading (dilution) — 1 means none. */
+  /**
+   * The multiplier the programme applies to the raw reading (its dilution,
+   * else the catalogue's factor) — 1 means none. The technician's own
+   * dilution (`dilution`) replaces it when typed (J4).
+   */
   calcFactor: number;
+  /**
+   * « Dilution lue » as typed (lot 3B, J4 — 28/10, 2.12): prefilled with the
+   * stored one, else the programme's (`dilutionText`), modifiable; the save
+   * stores it only when it differs from the programme's.
+   */
+  dilution: string;
   value: string;
   note: string;
   workStatus: ResultWorkStatus;
   /** Only used when the value cannot be read as a number. */
   manualConform: boolean | null;
+  /**
+   * A sensitive germ (`alertOnExceed`): read without criterion nor limit, its
+   * alert rests on the reading alone (O-12) — a text the engine cannot read
+   * is refused (`unreadableSensitiveReading`).
+   */
+  sensitive: boolean;
   /** Read per unit (R1 … Rn) rather than as one value. */
   perUnit: boolean;
   /** The criterion of the sample's product type (CRITERES.md): null = none. */
@@ -148,6 +167,17 @@ type Reading = {
 
 const NO_UNREADABLE: string[] = [];
 
+/**
+ * The factor a line is read with on screen — the dilution typed (J4), else
+ * the programme's — exactly as the save will apply it; null when the
+ * dilution typed cannot be read (the save refuses it).
+ */
+function lineFactor(line: ParameterLine): number | null {
+  const typed = parseDilution(line.dilution);
+  if (typed === "invalid") return null;
+  return typed ?? line.calcFactor;
+}
+
 /** The notations the bench accepts — the help line and the « non reconnue » message. */
 const ACCEPTED_NOTATIONS = "1,2.10², < 10, > 3.10⁵, Indénombrable (ou TNTC), Absence, Présence ou 3(-2)";
 
@@ -171,6 +201,15 @@ export function ResultEntryForm({
   const [revoked, setRevoked] = useState<{ holder: string; saved: boolean } | null>(null);
   // « Saisi par » follows the server's sheet, not the typing.
   const authors = new Map(initialLines.map((line) => [line.parameterId, line.enteredBy]));
+  // The quick-entry buttons (G1) write into the reading last focused on
+  // their line — its field and its cursor — else the first empty one.
+  const fields = useRef(new Map<string, HTMLInputElement>());
+  const [lastField, setLastField] = useState<{ parameterId: string; unitIndex: number | null } | null>(null);
+  const fieldKey = (parameterId: string, unitIndex: number | null) => `${parameterId}:${unitIndex ?? "valeur"}`;
+  const registerField = (parameterId: string, unitIndex: number | null) => (element: HTMLInputElement | null) => {
+    if (element) fields.current.set(fieldKey(parameterId, unitIndex), element);
+    else fields.current.delete(fieldKey(parameterId, unitIndex));
+  };
 
   // The page re-renders after every save (`router.refresh()`), each
   // rendering with its `loadedAt`. The lines are this form's state: on a new
@@ -197,14 +236,20 @@ export function ResultEntryForm({
     if (colleagueSaved) setColleagueSaved(false);
   }
 
+  // Typing not saved: « Échantillon précédent / suivant » asks first (G4).
+  useUnsavedChanges(canEdit && sheetDirty(lines, laid.lines));
+
   const readings = useMemo<Reading[]>(
     () =>
       lines.map((line) => {
+        // An unreadable dilution reads the line as programmed until it is
+        // fixed; the line stays incomplete meanwhile (`completed`).
+        const factor = lineFactor(line) ?? line.calcFactor;
         if (line.perUnit) {
           // The same engine and the same dilution the server will apply, so
           // the verdict shown while typing is the verdict stored.
           if (line.plan) {
-            const { readings: units, typedUnits, unreadable } = benchUnits(line.units, line.calcFactor);
+            const { readings: units, typedUnits, unreadable } = benchUnits(line.units, factor);
             const judged = typedUnits > 0 ? judgeUnits(line.plan, units) : null;
             const verdict = judged ? judged.official ?? judged.informal : null;
             return { parsed: null, conform: null, needsManual: false, verdict, indicative: !!judged && !judged.official, typedUnits, unreadable, undecided: null, stored: null };
@@ -213,7 +258,7 @@ export function ResultEntryForm({
           // technician only decides when the reading is meaningful but not a
           // number (« Présence »), or a « > x » below the limit — the rule the
           // submission checks again (`awaitsManualConformity`).
-          const read = unitsAgainstLimit(line.units, line.calcFactor, line.limitValue);
+          const read = unitsAgainstLimit(line.units, factor, line.limitValue);
           return {
             parsed: read.parsed,
             conform: read.suggested ?? (read.needsManual ? line.manualConform : null),
@@ -229,8 +274,8 @@ export function ResultEntryForm({
         // The suggestion compares the FINAL value — raw reading × factor —
         // and the line shows the text the report will print, both exactly as
         // the server will store them.
-        const read = valueAgainstLimit(line.value, line.calcFactor, line.limitValue);
-        const entry = singleValueEntry(line.value, line.calcFactor);
+        const read = valueAgainstLimit(line.value, factor, line.limitValue);
+        const entry = singleValueEntry(line.value, factor);
         return {
           parsed: read.parsed,
           conform: read.suggested ?? (read.needsManual ? line.manualConform : null),
@@ -242,7 +287,7 @@ export function ResultEntryForm({
           undecided: read.undecided,
           stored:
             entry.value !== null && entry.rawValue !== null && entry.value !== entry.rawValue
-              ? { value: entry.value, factored: line.calcFactor !== 1 && factoredText(entry.parsed) !== null }
+              ? { value: entry.value, factored: factor !== 1 && factoredText(entry.parsed) !== null }
               : null,
         };
       }),
@@ -251,6 +296,8 @@ export function ResultEntryForm({
 
   const completed = lines.filter((line, index) => {
     if (line.workStatus === "EN_COURS") return false;
+    if (lineFactor(line) === null) return false;
+    if (!line.perUnit && !line.plan && unreadableSensitiveReading(line.value, line)) return false;
     const reading = readings[index];
     if (line.perUnit && reading.typedUnits < line.units.length) return false;
     if (reading.unreadable.length > 0) return false;
@@ -269,6 +316,30 @@ export function ResultEntryForm({
     // A revoked sheet keeps saying why it no longer saves.
     if (revoked === null) setError("");
     setNotice("");
+  }
+
+  /**
+   * A quick-entry button pressed on a line (G1): the reading it writes into
+   * — the one last focused on this line, else the first empty one — takes
+   * the entry at its cursor, and keeps the focus with the cursor after it.
+   */
+  function pickQuickEntry(index: number, entry: QuickEntry) {
+    const line = lines[index];
+    const focused = lastField?.parameterId === line.parameterId ? lastField.unitIndex : undefined;
+    const unitIndex = line.perUnit
+      ? focused ?? Math.max(0, line.units.findIndex((unit) => unit.trim() === ""))
+      : null;
+    const current = unitIndex === null ? line.value : line.units[unitIndex] ?? "";
+    const element = fields.current.get(fieldKey(line.parameterId, unitIndex));
+    const known = element && element.value === current;
+    const next = applyQuickEntry(current, known ? element.selectionStart : null, known ? element.selectionEnd : null, entry);
+    if (unitIndex === null) update(index, { value: next.value });
+    else updateUnit(index, unitIndex, next.value);
+    setLastField({ parameterId: line.parameterId, unitIndex });
+    requestAnimationFrame(() => {
+      element?.focus();
+      element?.setSelectionRange(next.caret, next.caret);
+    });
   }
 
   function updateUnit(index: number, unitIndex: number, value: string) {
@@ -290,6 +361,7 @@ export function ResultEntryForm({
               note: line.note,
               workStatus: line.workStatus,
               conform: line.plan ? undefined : readings[index].conform,
+              dilution: line.dilution,
             }
           : {
               parameterId: line.parameterId,
@@ -297,6 +369,7 @@ export function ResultEntryForm({
               note: line.note,
               workStatus: line.workStatus,
               conform: readings[index].conform,
+              dilution: line.dilution,
             },
       ];
     });
@@ -418,6 +491,7 @@ export function ResultEntryForm({
             // A parameter a legacy programme handed to a colleague is
             // read-only on my sheet (PROGRAMME.md §10.4).
             const locked = !canEdit || !line.editable;
+            const factor = lineFactor(line);
             return (
               <li
                 key={line.parameterId}
@@ -440,12 +514,16 @@ export function ResultEntryForm({
                         {line.normLabel && <span className="ml-2 text-slate-400">{line.normLabel}</span>}
                       </>
                     ) : (
-                      <>Seuil : {line.threshold ?? "non défini"}</>
+                      <>
+                        {line.limitValue === null && !manualChoiceOffered(line.limitValue)
+                          ? "Sans critère — sans interprétation"
+                          : `Seuil : ${line.threshold ?? "non défini"}`}
+                      </>
                     )}
                     {/* Every line a factor multiplies says so, read per unit or as one value. */}
-                    {line.calcFactor !== 1 && (
+                    {factor !== null && factor !== 1 && (
                       <span className="ml-2 rounded-full bg-violet-50 px-2 py-0.5 font-medium text-violet-700">
-                        Facteur ×{line.calcFactor} — votre lecture sera multipliée
+                        Lu à {dilutionText(factor)} — votre lecture sera multipliée par {formatDecimal(factor, 4)}
                       </span>
                     )}
                   </p>
@@ -478,10 +556,12 @@ export function ResultEntryForm({
                               {repetitionLabel(unitIndex + 1)}
                             </span>
                             <input
+                              ref={registerField(line.parameterId, unitIndex)}
                               type="text"
                               inputMode="text"
                               aria-label={`${line.name} — ${repetitionLabel(unitIndex + 1)}`}
                               value={unit}
+                              onFocus={() => setLastField({ parameterId: line.parameterId, unitIndex })}
                               onChange={(e) => updateUnit(index, unitIndex, e.target.value)}
                               disabled={locked}
                               placeholder={line.plan?.mKind === "ABSENCE" ? "Absence" : line.plan ? "1,2.10²" : "Valeur"}
@@ -500,10 +580,12 @@ export function ResultEntryForm({
                         Valeur mesurée {line.unit && `(${line.unit})`}
                       </label>
                       <input
+                        ref={registerField(line.parameterId, null)}
                         id={`value-${line.parameterId}`}
                         type="text"
                         inputMode="text"
                         value={line.value}
+                        onFocus={() => setLastField({ parameterId: line.parameterId, unitIndex: null })}
                         onChange={(e) => update(index, { value: e.target.value })}
                         disabled={locked}
                         placeholder="Ex. : 8,9.10²  ·  < 10  ·  > 3.10⁵  ·  Absence"
@@ -511,7 +593,7 @@ export function ResultEntryForm({
                       />
                       {reading.stored && (
                         <p className="mt-1 text-xs text-violet-700">
-                          {reading.stored.factored ? `Valeur finale (lecture ×${line.calcFactor}) : ` : "Au rapport : "}
+                          {reading.stored.factored ? `Valeur finale (lue à ${dilutionText(factor ?? line.calcFactor)}) : ` : "Au rapport : "}
                           <b className="font-mono">{reading.stored.value}</b>
                           {line.unit ? ` ${line.unit}` : ""}
                           {reading.stored.factored ? " — c'est elle qui figure au rapport." : "."}
@@ -520,6 +602,28 @@ export function ResultEntryForm({
                     </div>
                   )}
 
+                  <div className="flex gap-3">
+                  {/* J4 (28/10, 2.12): the dilution read at, prefilled by the programme. */}
+                  <div>
+                    <label
+                      htmlFor={`dilution-${line.parameterId}`}
+                      className="block text-xs font-medium text-slate-600"
+                    >
+                      Dilution lue
+                    </label>
+                    <input
+                      id={`dilution-${line.parameterId}`}
+                      type="text"
+                      inputMode="text"
+                      value={line.dilution}
+                      onChange={(e) => update(index, { dilution: e.target.value })}
+                      disabled={locked}
+                      placeholder={dilutionText(line.calcFactor)}
+                      aria-invalid={factor === null}
+                      aria-describedby={factor === null ? `dilution-error-${line.parameterId}` : undefined}
+                      className={`${INPUT} w-24`}
+                    />
+                  </div>
                   <div>
                     <label
                       htmlFor={`status-${line.parameterId}`}
@@ -547,9 +651,40 @@ export function ResultEntryForm({
                       ))}
                     </select>
                   </div>
+                  </div>
                 </div>
+                {!locked && (
+                  <QuickEntryBar
+                    name={line.name}
+                    entries={quickEntries(line.plan)}
+                    onPick={(entry) => pickQuickEntry(index, entry)}
+                  />
+                )}
+                {factor === null && (
+                  <p
+                    id={`dilution-error-${line.parameterId}`}
+                    role="alert"
+                    className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900"
+                  >
+                    Dilution non reconnue : écrivez-la « 1/100 », « 10-2 » ou « 100 » (« 1 » sans dilution).
+                  </p>
+                )}
 
-                {reading.unreadable.length > 0 ? (
+                {!line.perUnit && !line.plan && unreadableSensitiveReading(line.value, line) ? (
+                  <p
+                    role="alert"
+                    className="mt-2.5 flex flex-wrap items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900"
+                  >
+                    <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>
+                      Lecture non reconnue pour un germe sensible sans critère : écrivez « Présence », « Absence » ou un
+                      dénombrement, pour que l&apos;alerte de contamination puisse être décidée.
+                      {line.workStatus === "ANOMALIE"
+                        ? " Ligne en anomalie : décrivez l’anomalie dans la remarque et tranchez la lecture ; si la boîte ne peut pas être lue, laissez la ligne « En cours » le temps de refaire l’analyse."
+                        : null}
+                    </span>
+                  </p>
+                ) : reading.unreadable.length > 0 ? (
                   <p
                     role="alert"
                     className="mt-2.5 flex flex-wrap items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900"
@@ -713,6 +848,39 @@ export function ResultEntryForm({
 }
 
 /**
+ * The quick-entry buttons of a line (G1, 2.20 (g)): one click per notation,
+ * written into the reading being typed. A pressed button never takes the
+ * focus from the field (`onMouseDown`), so the cursor stays where it was.
+ */
+function QuickEntryBar({
+  name,
+  entries,
+  onPick,
+}: {
+  name: string;
+  entries: QuickEntry[];
+  onPick: (entry: QuickEntry) => void;
+}) {
+  return (
+    <div role="group" aria-label={`Saisie rapide — ${name}`} className="mt-2 flex flex-wrap gap-1.5">
+      {entries.map((entry) => (
+        <button
+          key={entry.text}
+          type="button"
+          aria-label={entry.label}
+          title={entry.label}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onPick(entry)}
+          className="min-h-8 rounded-md bg-white px-2.5 py-1 font-mono text-xs font-semibold text-slate-700 ring-1 ring-slate-300 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        >
+          {entry.text.trim()}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
  * Conformity is arithmetic, so it is computed rather than asked for — the
  * technician only decides when the entry cannot be read as a number.
  */
@@ -776,9 +944,18 @@ function Verdict({
 
   const numeric = reading.parsed.numeric;
   const kind = reading.parsed.kind;
+  const conform = reading.conform;
+  // No criterion and no limit: the line is reported « sans interprétation »
+  // (28/10, 2.11, J3) — nothing to choose, whatever the reading.
+  if (conform === null && limitValue === null && !manualChoiceOffered(limitValue)) {
+    return (
+      <p className="mt-2.5 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        Sans critère : le résultat figure au rapport sans interprétation.
+      </p>
+    );
+  }
   if (numeric === null && kind !== "uncountable") return null;
 
-  const conform = reading.conform;
   // « 1 800 » with the interface's no-break space (formatDecimal), three
   // decimals at most as before.
   const shown = numeric === null ? "" : `${formatDecimal(numeric, 3)}${unit ? ` ${unit}` : ""}`;

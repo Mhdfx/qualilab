@@ -19,7 +19,9 @@
  * adds the switches of what the laboratory has not confirmed yet, each with
  * the re-ask that will settle it (`COMMERCIAL_RESENDS_REPORTS` R-13,
  * `UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE` R-15,
- * `OBSERVATION_ONLY_DELAY_AND_TEMPERATURE` Q71 / R-28); lot 3D those of
+ * `OBSERVATION_ONLY_DELAY_AND_TEMPERATURE` Q71 / R-30); lot 3B those of
+ * the bench (`NO_CRITERION_NO_INTERPRETATION` R-28,
+ * `UNIT_MISMATCH_NOT_JUDGED` R-29); lot 3D those of
  * Achat & Stock, last in this file.
  */
 
@@ -93,10 +95,46 @@ export const UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE = true;
  * the DLC (C7) and the molluscs between 25 and 50 g are warnings only: the
  * row stays « à vérifier », its motif at hand, nothing to write. ON (our
  * reading of the answer; the « critères » of the plan — hypothèse, à
- * confirmer par R-28). Off: every « à vérifier » row needs the
+ * confirmer par R-30). Off: every « à vérifier » row needs the
  * observation again (A7, as before 01/11).
  */
 export const OBSERVATION_ONLY_DELAY_AND_TEMPERATURE = true;
+
+// ————— Lot 3B — paillasse et rapport (RETOUR-LABO-28-10.md §5) —————
+
+/**
+ * Lot 3B, J3 (28/10, 2.11 : « si on n'a pas de critère, nous ne faisons pas
+ * d'interprétation »). A line with neither a criterion of the sample's
+ * family nor a limit in the catalogue (`AnalysisParameter.limitValue`) is
+ * no longer judged: the bench asks no « Conforme / Non conforme » for it
+ * (« Présence », « Indénombrable », a text), the submission no longer waits
+ * for one, and the report says « Sans interprétation » in the annex and in
+ * the conclusion. The catalogue's limit still counts as a criterion
+ * (hypothèse, à confirmer par R-28, RETOUR-LABO-28-10.md §6 — a line with a limit
+ * keeps its computed conformity and, for « Présence » or a « > x » below
+ * the limit, the technician's choice). A sensitive germ left without any
+ * verdict alerts on its presence (rule O-12, `contamination-alert.ts`),
+ * whichever way this switch is set.
+ * Off: the bench asks the technician's choice again on those lines, the
+ * submission waits for it, the report prints as before.
+ */
+export const NO_CRITERION_NO_INTERPRETATION = true;
+
+/**
+ * Lot 3B, J1 / J2 (28/10, 2.3 and 2.17 — the laboratory answered on the
+ * unit only: « UFC/couteau », « UFC/m³ », « UFC/boîte »). A criterion of the
+ * family or a limit of the catalogue expressed per another basis than what
+ * was sampled — « UFC/cm² » on a surface described in words (« couteau »),
+ * « ufc/m3 » on an exposed plate, « ufc/boite » on a biocollecteur, « /cm² »
+ * on the air — no longer judges the line: the bench, the save, the
+ * submission and the programme sheet read it without them, « sans
+ * interprétation » (J3), rather than against a limit it was never expressed
+ * in (`unitJudges`, `result-unit.ts`). Hypothèse, à confirmer par R-29
+ * (RETOUR-LABO-28-10.md §6).
+ * Off: such a criterion or limit judges the line again, as before lot 3B;
+ * the unit printed stays the one of J1 / J2.
+ */
+export const UNIT_MISMATCH_NOT_JUDGED = true;
 
 // ————— Lot 3D — Achat & Stock (RETOUR-LABO-28-10.md §5, M1–M8) —————
 

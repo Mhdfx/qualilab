@@ -1,4 +1,5 @@
 import type {
+  AirMethod,
   CancelReason,
   Family,
   LimitKind,
@@ -85,6 +86,14 @@ export type ProgrammeSampleData = {
   /** C7: the DLC (ISO string of the stored calendar day); optional on an older payload. */
   expiryDate?: string | null;
   analysisBlocked: boolean;
+  /**
+   * What was sampled, as the unit of a result reads it (lot 3B, J1 / J2): a
+   * surface described in words, the air's sampling means and exposure.
+   * Optional on an older payload (read as a plain line).
+   */
+  surfaceAreaNote?: string | null;
+  airMethod?: AirMethod | null;
+  airExposureMin?: number | null;
   unitCount: number;
   productTypeId: string | null;
   productType: { id: string; name: string } | null;

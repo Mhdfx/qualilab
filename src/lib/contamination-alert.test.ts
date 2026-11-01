@@ -1,7 +1,14 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { ALERT_RESULT_WHERE, raisesContaminationAlert, type AlertCandidate } from "./contamination-alert";
+import {
+  ALERT_RESULT_WHERE,
+  carriesNoJudgement,
+  raisesContaminationAlert,
+  readingsShowGerm,
+  valueShowsGerm,
+  type AlertCandidate,
+} from "./contamination-alert";
 import {
   judgeUnits,
   parseUnitReading,
@@ -11,6 +18,7 @@ import {
   type Plan,
 } from "./interpretation";
 import { benchConformity, parseLabValue, suggestConformity } from "./result-value";
+import { limitConformity } from "./bench-reading";
 import type { Interpretation } from "@/generated/prisma/enums";
 
 /**
@@ -23,6 +31,8 @@ import type { Interpretation } from "@/generated/prisma/enums";
 
 type StoredRow = AlertCandidate & { numericValue: number | null; value: string | null; interpretation: Interpretation | null };
 
+const ROUTE_SOURCE = () => readFileSync(fileURLToPath(new URL("../app/api/samples/[id]/results/route.ts", import.meta.url)), "utf8");
+
 /** What the results route stores for one germ read per unit against its plan. */
 function storedFromBench(plan: Plan, typed: string[], alertOnExceed = true): StoredRow {
   const readings = typed.map(parseUnitReading);
@@ -34,6 +44,7 @@ function storedFromBench(plan: Plan, typed: string[], alertOnExceed = true): Sto
     interpretation: judged.official?.verdict ?? null,
     informalInterpretation: judged.informal?.verdict ?? null,
     conform: verdictToConform(judged.official?.verdict ?? null),
+    detected: readingsShowGerm(readings),
     parameter: { alertOnExceed },
   };
 }
@@ -99,10 +110,15 @@ describe("an « Indénombrable » plate raises the contamination alert", () => {
 
 describe("the filter and the screen's rule are the same rule", () => {
   const cases: AlertCandidate[] = [];
+  const verdicts = [null, "SATISFAISANT", "ACCEPTABLE", "NON_SATISFAISANT", "INCOMPLET"] as const;
   for (const alertOnExceed of [true, false]) {
     for (const conform of [true, false, null]) {
-      for (const informalInterpretation of [null, "SATISFAISANT", "ACCEPTABLE", "NON_SATISFAISANT", "INCOMPLET"] as const) {
-        cases.push({ conform, informalInterpretation, parameter: { alertOnExceed } });
+      for (const interpretation of verdicts) {
+        for (const informalInterpretation of verdicts) {
+          for (const detected of [true, false, null]) {
+            cases.push({ conform, interpretation, informalInterpretation, detected, parameter: { alertOnExceed } });
+          }
+        }
       }
     }
   }
@@ -137,6 +153,7 @@ describe("without a criterion, the server's own judgement keeps the alert", () =
         interpretation: null,
         informalInterpretation: null,
         conform: benchConformity(suggestConformity(parsed.numeric, limit, parsed.kind), true),
+        detected: valueShowsGerm(typed),
         parameter: { alertOnExceed: true },
       };
       expect(row.conform, typed).toBe(false);
@@ -154,6 +171,7 @@ describe("without a criterion, the server's own judgement keeps the alert", () =
       interpretation: null,
       informalInterpretation: null,
       conform: benchConformity(suggestUnitsConformity(readings, limit), null),
+      detected: readingsShowGerm(readings),
       parameter: { alertOnExceed: true },
     };
     expect(row.numericValue).toBeNull();
@@ -162,9 +180,123 @@ describe("without a criterion, the server's own judgement keeps the alert", () =
   });
 
   it("the results route stores that judgement, not the request's", () => {
-    const source = readFileSync(fileURLToPath(new URL("../app/api/samples/[id]/results/route.ts", import.meta.url)), "utf8");
+    const source = ROUTE_SOURCE();
     expect(source).not.toMatch(/conform:\s*typeof raw\.conform/);
-    expect(source).toContain("benchConformity(suggestUnitsConformity(readings, parameter.limitValue), raw.conform)");
-    expect(source).toContain("benchConformity(suggestConformity(parsed.numeric, parameter.limitValue, parsed.kind), raw.conform)");
+    expect(source).toContain("limitConformity(suggestUnitsConformity(readings, parameter.limitValue), raw.conform, parameter.limitValue)");
+    expect(source).toContain("limitConformity(suggestConformity(parsed.numeric, parameter.limitValue, parsed.kind), raw.conform, parameter.limitValue)");
+  });
+
+  it("with a limit, the stored conformity is exactly the old one (`benchConformity`), J3 on or off", () => {
+    for (const suggested of [true, false, null]) {
+      for (const chosen of [true, false, null, "oui", undefined]) {
+        for (const j3 of [true, false]) {
+          expect(limitConformity(suggested, chosen, 100, j3)).toBe(benchConformity(suggested, chosen));
+        }
+      }
+    }
+  });
+});
+
+/**
+ * Rule O-12 (RETOUR-LABO-28-10.md §5, lot 3B), written and tested BEFORE J3
+ * removes the technician's « Conforme / Non conforme » from the lines without
+ * criterion: a sensitive germ left without any verdict alerts as soon as its
+ * reading shows it. Before J3, a « Présence » of Salmonella on a surface
+ * without criterion alerted only through the technician's « Non conforme »;
+ * after J3 nobody chooses — the presence itself must alert.
+ */
+describe("O-12 — a sensitive germ without any judgement alerts on its presence", () => {
+  /** What the results route stores for a line without criterion nor limit, once nobody chooses (J3). */
+  function unjudged(typed: string, alertOnExceed = true): StoredRow {
+    const parsed = parseLabValue(typed);
+    return {
+      value: typed,
+      numericValue: parsed.numeric,
+      interpretation: null,
+      informalInterpretation: null,
+      conform: benchConformity(suggestConformity(parsed.numeric, null, parsed.kind), null),
+      detected: valueShowsGerm(typed),
+      parameter: { alertOnExceed },
+    };
+  }
+
+  it("« Présence », a count above zero, « > x » and « Indénombrable » alert, with no number needed", () => {
+    for (const typed of ["Présence", "présent", "Positif", "3", "1,2.10²", "3(-2)", "> 3.10²", "Indénombrable", "TNTC"]) {
+      const row = unjudged(typed);
+      expect(row.conform, typed).toBeNull();
+      expect(row.detected, typed).toBe(true);
+      expect(raisesContaminationAlert(row), typed).toBe(true);
+      expect(matches(ALERT_RESULT_WHERE, row), typed).toBe(true);
+    }
+  });
+
+  it("an absence never alerts", () => {
+    for (const typed of ["Absence", "absent", "< 10", "0", "0(-1)", "ND"]) {
+      const row = unjudged(typed);
+      expect(row.detected, typed).toBe(false);
+      expect(raisesContaminationAlert(row), typed).toBe(false);
+      expect(matches(ALERT_RESULT_WHERE, row), typed).toBe(false);
+    }
+  });
+
+  it("a text the engine cannot read is never guessed: no presence stored, no alert", () => {
+    const row = unjudged("voir remarque");
+    expect(row.detected).toBeNull();
+    expect(raisesContaminationAlert(row)).toBe(false);
+  });
+
+  it("a germ that is not sensitive never alerts on its presence", () => {
+    const row = unjudged("Présence", false);
+    expect(raisesContaminationAlert(row)).toBe(false);
+    expect(matches(ALERT_RESULT_WHERE, row)).toBe(false);
+  });
+
+  it("a germ judged conforme keeps no alert though it is present (its limit decided)", () => {
+    const row = { ...unjudged("50"), conform: true };
+    expect(row.detected).toBe(true);
+    expect(carriesNoJudgement(row)).toBe(false);
+    expect(raisesContaminationAlert(row)).toBe(false);
+    expect(matches(ALERT_RESULT_WHERE, row)).toBe(false);
+  });
+
+  it("a germ satisfaisant under its criterion keeps no alert", () => {
+    const row = storedFromBench(salmonellaLike, ["50"]);
+    expect(row.interpretation).toBe("SATISFAISANT");
+    expect(row.detected).toBe(true);
+    expect(raisesContaminationAlert(row)).toBe(false);
+  });
+
+  it("a « Non spécifié » criterion without any limit judges nothing: a presence alerts", () => {
+    const unspecified: Plan = { n: 1, c: null, mKind: "UNSPECIFIED", m: null, bigM: null };
+    const row = storedFromBench(unspecified, ["Présence"]);
+    expect(row).toMatchObject({ interpretation: null, informalInterpretation: null, conform: null, detected: true });
+    expect(raisesContaminationAlert(row)).toBe(true);
+    expect(matches(ALERT_RESULT_WHERE, row)).toBe(true);
+  });
+
+  it("per unit: one repetition present is enough; all absent is no alert", () => {
+    expect(readingsShowGerm(["Absence", "Présence", "Absence"].map(parseUnitReading))).toBe(true);
+    expect(readingsShowGerm(["Absence", "< 10", "0"].map(parseUnitReading))).toBe(false);
+    expect(readingsShowGerm(["", ""].map(parseUnitReading))).toBeNull();
+    // A repetition left empty or unreadable says nothing; the others decide.
+    expect(readingsShowGerm(["", "abc", "20"].map(parseUnitReading))).toBe(true);
+  });
+
+  it("a row saved before lot 3B (no presence stored) keeps the old rule exactly", () => {
+    const old: AlertCandidate = { conform: null, interpretation: null, informalInterpretation: null, detected: null, parameter: { alertOnExceed: true } };
+    expect(raisesContaminationAlert(old)).toBe(false);
+    expect(raisesContaminationAlert({ ...old, conform: false })).toBe(true);
+  });
+
+  it("the results route stores the presence on all three paths", () => {
+    const source = ROUTE_SOURCE();
+    expect(source.match(/detected: readingsShowGerm\(readings\)/g)).toHaveLength(2);
+    expect(source).toContain("detected: valueShowsGerm(value)");
+  });
+
+  it("the validation screens read the stored presence", () => {
+    const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
+    expect(read("./validation-server.ts")).toMatch(/detected: true/);
+    expect(read("../app/validation/[id]/page.tsx")).toMatch(/detected: true/);
   });
 });

@@ -22,7 +22,9 @@ import { repetitionLabel } from "@/lib/series";
 import { VerdictBadge } from "@/components/samples/VerdictBadge";
 import { SampleVerbs } from "@/components/samples/SampleVerbs";
 import { formatDateTime, surfaceAreaText } from "@/lib/labels";
-import { raisesContaminationAlert } from "@/lib/contamination-alert";
+import { carriesNoJudgement, raisesContaminationAlert } from "@/lib/contamination-alert";
+import { NO_CRITERION_NO_INTERPRETATION } from "@/lib/lab-proposals";
+import { dilutionText, readingFactor } from "@/lib/dilution";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
 import { approvalState } from "@/lib/sample-status";
@@ -110,7 +112,8 @@ export default async function ValidationDetailPage({
       product: { select: { regulationId: true } },
       nature: { select: { family: true } },
       // « Analysé par »: the legacy per-parameter technicians, after the taker.
-      parameters: { select: { parameterId: true, technician: { select: { name: true } } } },
+      // The programmed dilution: « lu à 1/100 » beside each result (J4).
+      parameters: { select: { parameterId: true, dilutionFactor: true, technician: { select: { name: true } } } },
       // The reception's decision (motif, agreement of the client) and its
       // observation (A7, A9).
       ...RECEPTION_NON_CONFORMITY_SELECT,
@@ -144,13 +147,19 @@ export default async function ValidationDetailPage({
           threshold: true,
           interpretation: true,
           informalInterpretation: true,
+          // A sensitive germ without any verdict alerts on its presence (O-12).
+          detected: true,
           // D-09: who typed this reading, kept across a colleague's later saves.
           enteredBy: { select: { name: true } },
           enteredAt: true,
           normVersion: { select: { label: true } },
           units: { select: { unitIndex: true, rawValue: true }, orderBy: { unitIndex: "asc" } },
+          // What the technician read, and at which dilution (J4, 28/10 2.12).
+          rawValue: true,
+          dilutionUsed: true,
+          parameterId: true,
           parameter: {
-            select: { name: true, threshold: true, limitValue: true, alertOnExceed: true },
+            select: { name: true, threshold: true, limitValue: true, alertOnExceed: true, calcFactor: true },
           },
         },
       },
@@ -158,6 +167,12 @@ export default async function ValidationDetailPage({
   });
 
   if (!sample) notFound();
+
+  // The factor each reading was multiplied by: the technician's dilution (J4),
+  // else the programme's, else the catalogue's — « lu à 1/100 » when not 1.
+  const programmedDilution = new Map(sample.parameters.map((line) => [line.parameterId, line.dilutionFactor]));
+  const readFactorOf = (result: (typeof sample.results)[number]) =>
+    readingFactor(result.dilutionUsed, programmedDilution.get(result.parameterId), result.parameter.calcFactor);
 
   const state = approvalState(sample);
   // AMENDEMENT.md: the number printed on the version in force (« -A1 »…),
@@ -326,6 +341,12 @@ export default async function ValidationDetailPage({
                         {result.unit && (
                           <span className="text-xs text-slate-500"> {result.unit}</span>
                         )}
+                        {readFactorOf(result) !== 1 && (
+                          <span className="mt-0.5 block font-sans text-xs text-slate-500">
+                            {result.rawValue && result.units.length === 0 ? `lecture ${result.rawValue}, ` : ""}lu à{" "}
+                            {dilutionText(readFactorOf(result))}
+                          </span>
+                        )}
                         {result.units.length > 0 && (
                           <span className="mt-1 flex flex-wrap gap-1">
                             {result.units.map((u) => (
@@ -338,7 +359,8 @@ export default async function ValidationDetailPage({
                         )}
                       </td>
                       <td className="py-2.5 pr-3 text-slate-600">
-                        {result.threshold ?? result.parameter.threshold ?? "—"}
+                        {/* A line nothing judged shows no catalogue limit: its unit may not even judge it (J1, J2, J3). */}
+                        {result.threshold ?? (carriesNoJudgement(result) ? null : result.parameter.threshold) ?? "—"}
                         {result.normVersion && (
                           <span className="mt-0.5 block text-xs text-slate-400">{result.normVersion.label}</span>
                         )}
@@ -366,8 +388,18 @@ export default async function ValidationDetailPage({
                             <XCircle className="h-3 w-3" aria-hidden="true" />
                             Non conforme
                           </span>
+                        ) : NO_CRITERION_NO_INTERPRETATION && result.value ? (
+                          // No criterion, no limit (28/10, 2.11, J3): reported « sans interprétation ».
+                          <span className="text-xs text-slate-500">Sans interprétation</span>
                         ) : (
                           <span className="text-xs text-slate-400">—</span>
+                        )}
+                        {/* O-12: a sensitive germ without any verdict, detected (presence or a count above zero) — the alert follows. */}
+                        {result.parameter.alertOnExceed && carriesNoJudgement(result) && result.detected === true && (
+                          <span className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-rose-700">
+                            <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                            Germe détecté — alerte
+                          </span>
                         )}
                       </td>
                     </tr>

@@ -7,8 +7,8 @@ import { canTransition } from "@/lib/sample-status";
 import { loadBenchPlans } from "@/lib/bench-plan";
 import { TYPED_RESULT_WHERE, canEnterParameter, hasTypedResult } from "@/lib/bench-access";
 import { lockTakeState } from "@/lib/bench-take-server";
-import { effectiveFactor } from "@/lib/dilution";
-import { benchUnit, unitsAgainstLimit, valueAgainstLimit } from "@/lib/bench-reading";
+import { dilutionToStore, effectiveFactor, parseDilution } from "@/lib/dilution";
+import { benchUnit, limitConformity, unitsAgainstLimit, valueAgainstLimit } from "@/lib/bench-reading";
 import {
   applyUnitFactor,
   judgeUnits,
@@ -18,7 +18,9 @@ import {
   verdictToConform,
   type UnitReading,
 } from "@/lib/interpretation";
-import { NOT_DONE_MESSAGE, benchConformity, isNotDoneText, singleValueEntry, suggestConformity } from "@/lib/result-value";
+import { readingsShowGerm, valueShowsGerm } from "@/lib/contamination-alert";
+import { judgingLimit, judgingThreshold, resultUnit } from "@/lib/result-unit";
+import { NOT_DONE_MESSAGE, isNotDoneText, singleValueEntry, suggestConformity } from "@/lib/result-value";
 import { resultAuthor, storedReading, typedUnits } from "@/lib/result-author";
 import { SHEET_SAVED_BY_COLLEAGUE, savedByOthersSince, sheetLoadedAt } from "@/lib/take-over-sheet";
 import type { Interpretation, ResultWorkStatus } from "@/generated/prisma/enums";
@@ -51,6 +53,8 @@ type IncomingResult = {
   note?: unknown;
   workStatus?: unknown;
   conform?: unknown;
+  /** The dilution read at, as typed (« 1/100 »; J4) — absent or empty = the programmed one. */
+  dilution?: unknown;
 };
 
 type Entry = {
@@ -68,6 +72,16 @@ type Entry = {
   /** The plan, frozen with the result for the report (slice C). */
   criterion: Prisma.InputJsonValue | typeof Prisma.DbNull;
   normVersionId: string | null;
+  /**
+   * The reading shows the germ (`readingsShowGerm`): what a sensitive germ
+   * left without any verdict alerts on (rule O-12, `contamination-alert.ts`).
+   */
+  detected: boolean | null;
+  /**
+   * The dilution typed when it differs from the programmed one (J4,
+   * `dilutionToStore`); null = the programmed one, else the catalogue's.
+   */
+  dilutionUsed: Prisma.Decimal | null;
   /** The readings per unit (R1 … Rn); null = single value. */
   units: UnitReading[] | null;
   /**
@@ -183,7 +197,13 @@ export async function PUT(
       // the sheet on screen is stale, not wrong (the form reloads on 409).
       return NextResponse.json({ error: PROGRAMME_CHANGED }, { status: 409 });
     }
-    const parameter = line.parameter;
+    // The limit and its threshold only where their unit can judge what was
+    // sampled (« UFC/cm² » never judges a couteau, J1; the air by its means, J2).
+    const parameter = {
+      ...line.parameter,
+      limitValue: judgingLimit(bench.context, line.parameter.limitValue, line.parameter.unit),
+      threshold: judgingThreshold(bench.context, line.parameter.threshold, line.parameter.unit),
+    };
     // The same germ twice in one payload would write itself over silently.
     if (seen.has(parameterId)) {
       return NextResponse.json(
@@ -202,8 +222,19 @@ export async function PUT(
         { status: 403 }
       );
     }
-    // The programmed dilution of this sample, else the catalogue's factor.
-    const factor = effectiveFactor(line.dilutionFactor, parameter.calcFactor);
+    // The dilution the technician read at (J4, 28/10 2.12), else the
+    // programmed one of this sample, else the catalogue's factor.
+    const programmedFactor = effectiveFactor(line.dilutionFactor, parameter.calcFactor);
+    const typedDilution = parseDilution(typeof raw.dilution === "string" ? raw.dilution : null);
+    if (typedDilution === "invalid") {
+      return NextResponse.json(
+        { error: `Dilution illisible pour ${parameter.name} : écrivez-la « 1/100 », « 10-2 » ou « 100 ».` },
+        { status: 400 }
+      );
+    }
+    const factor = typedDilution ?? programmedFactor;
+    const stored = dilutionToStore(typedDilution, programmedFactor);
+    const dilutionUsed = stored === null ? null : new Prisma.Decimal(stored);
 
     const note = typeof raw.note === "string" ? raw.note.trim() : "";
     const workStatus = WORK_STATUSES.includes(raw.workStatus as ResultWorkStatus)
@@ -258,7 +289,8 @@ export async function PUT(
           value: summary.value,
           rawValue: null,
           numericValue: summary.numeric,
-          unit: benchUnit(plan, parameter.unit),
+          // « UFC/couteau », « UFC/m³ »… (J1, J2, `resultUnit`).
+          unit: resultUnit(bench.context, benchUnit(plan, parameter.unit)),
           threshold: plan.label,
           conform: verdictToConform(judged.official?.verdict ?? null),
           workStatus,
@@ -268,6 +300,8 @@ export async function PUT(
           criterion: { ...plan.plan },
           // The method of the report: the programmed version, else the criterion's.
           normVersionId: line.normVersionId ?? plan.normVersionId,
+          detected: readingsShowGerm(readings),
+          dilutionUsed,
           units: readings,
           conformChosen: false,
         });
@@ -279,17 +313,20 @@ export async function PUT(
           value: summary.value,
           rawValue: null,
           numericValue: summary.numeric,
-          unit: parameter.unit,
+          unit: resultUnit(bench.context, parameter.unit),
           threshold: parameter.threshold,
           // The worst unit against the limit, as the screen computes it;
           // the technician's choice only where the screen asks for one.
-          conform: benchConformity(suggestUnitsConformity(readings, parameter.limitValue), raw.conform),
+          // Without a limit either, nothing to choose (J3, `limitConformity`).
+          conform: limitConformity(suggestUnitsConformity(readings, parameter.limitValue), raw.conform, parameter.limitValue),
           workStatus,
           note: note || null,
           interpretation: null,
           informalInterpretation: null,
           criterion: Prisma.DbNull,
           normVersionId: line.normVersionId,
+          detected: readingsShowGerm(readings),
+          dilutionUsed,
           units: readings,
           conformChosen: unitsAgainstLimit(units, factor, parameter.limitValue).needsManual,
         });
@@ -316,25 +353,28 @@ export async function PUT(
       );
     }
     if (isNotDoneText(value)) return notDone(parameter.name, value);
-    const stored = singleValueEntry(value, factor);
-    const parsed = stored.parsed;
+    const entry = singleValueEntry(value, factor);
+    const parsed = entry.parsed;
 
     entries.push({
       parameterId,
-      value: stored.value,
-      rawValue: stored.rawValue,
+      value: entry.value,
+      rawValue: entry.rawValue,
       numericValue: parsed.numeric,
-      unit: parameter.unit,
+      unit: resultUnit(bench.context, parameter.unit),
       threshold: parameter.threshold,
       // The final value against the limit, as the screen computes it; the
       // technician's choice only where the screen asks for one.
-      conform: benchConformity(suggestConformity(parsed.numeric, parameter.limitValue, parsed.kind), raw.conform),
+      // Without a limit either, nothing to choose (J3, `limitConformity`).
+      conform: limitConformity(suggestConformity(parsed.numeric, parameter.limitValue, parsed.kind), raw.conform, parameter.limitValue),
       workStatus,
       note: note || null,
       interpretation: null,
       informalInterpretation: null,
       criterion: Prisma.DbNull,
       normVersionId: line.normVersionId,
+      detected: valueShowsGerm(value),
+      dilutionUsed,
       units: null,
       conformChosen: valueAgainstLimit(value, factor, parameter.limitValue).needsManual,
     });
@@ -438,6 +478,7 @@ export async function PUT(
         note: true,
         workStatus: true,
         conform: true,
+        dilutionUsed: true,
         enteredById: true,
         enteredAt: true,
         units: { select: { unitIndex: true, rawValue: true } },
@@ -459,6 +500,7 @@ export async function PUT(
           note: data.note,
           workStatus: data.workStatus,
           conform: data.conform,
+          dilution: data.dilutionUsed === null ? null : Number(data.dilutionUsed.toString()),
           perUnit: units !== null,
           conformChosen,
         },

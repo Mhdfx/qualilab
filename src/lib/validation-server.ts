@@ -369,6 +369,8 @@ const SERIE_SAMPLE_SELECT = {
       workStatus: true,
       interpretation: true,
       informalInterpretation: true,
+      // A sensitive germ without any verdict alerts on its presence (O-12).
+      detected: true,
       parameter: { select: { alertOnExceed: true } },
     },
   },

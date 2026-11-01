@@ -377,7 +377,7 @@ comportement d'avant le 01/11, aucune ligne réécrite) :
   (C7), mollusques 25–50 g : avertissements seulement (`rowNeedsJustification`,
   `reception-rules.ts`) — interrupteur `OBSERVATION_ONLY_DELAY_AND_TEMPERATURE`
   (notre lecture de « Oui, voir les critères », Q71 — **hypothèse, à
-  confirmer par R-28** ; OFF : toute ligne « à vérifier » exige
+  confirmer par R-30** ; OFF : toute ligne « à vérifier » exige
   l'observation, comme avant).
 - **K1** — sur le rapport seulement : « Nom — mains <état> »
   (`reportDesignation`, `document-html.ts`) ; versions émises à partir du
@@ -454,6 +454,21 @@ comportement d'avant le 01/11, aucune ligne réécrite) :
 | J2 | 2.17 / Q50 — unité de l'air par moyen | biocollecteur : UFC/m³ ; boîte exposée : « UFC/boîte (exposée N min) », N = `airExposureMin` ; dans la colonne unité du rapport, la paillasse et la validation ; vérifier en lecture les unités des paramètres et critères d'air repris par F3. Pas de volume en litres | `api/samples/[id]/results`, `report-dispatch.ts`, `report-html.ts`, `labels.ts` (`airMethodText`) | M | non | P2 |
 | J3 | 2.11 — sans critère, pas d'interprétation | les lignes sans critère : plus de Conforme / Non conforme à choisir (retirer `awaitsManualConformity` et le contrôle C7 pour elles), « sans interprétation » sur le rapport et dans la conclusion ; décider si la limite du catalogue (`limitValue`) compte comme critère. **Attention (leçon de l'audit)** : l'alerte de contamination repose sur `conform = false` — sans verdict, une Salmonella sur surface sans critère ne déclencherait plus d'alerte. Écrire une règle explicite (ex. « Présence » ou dépassement d'un germe `alertOnExceed` déclenche l'alerte même sans critère, O-12) et la tester avant tout le reste | `bench-reading.ts`, `results/submit`, `results`, `interpretation.ts`, `report-dispatch.ts`, `contamination-alert.ts`, `ResultEntryForm.tsx` | L | non | P2 |
 | J4 | 2.12 — dilution saisie par le technicien | après R-12 : le technicien saisit sa lecture et la dilution utilisée (préremplie par le programme, modifiable) ; le logiciel calcule ; `Result.dilutionUsed` ; paillasse et validation (« lu à 1/100 ») | `schema.prisma`, `api/samples/[id]/results`, `ResultEntryForm.tsx`, `dilution.ts` | M | oui (additive) | P3 |
+
+**Lot 3B — construit le 01/11 en local (branche `lot3b`, neuf commits de construction et un de corrections de la relecture, deux
+migrations additives), non déployé.** Ordre suivi : O-12 d'abord, avec ses
+tests, puis J3, puis le reste.
+
+| # | Construit | Hypothèse (à confirmer) / interrupteur |
+|---|---|---|
+| O-12 | Un germe `alertOnExceed` **sans aucun verdict** (ni critère, ni limite, ni conformité) déclenche l'alerte dès que sa lecture le montre : présence, dénombrement > 0, « > x », « Indénombrable ». La présence est enregistrée avec le résultat (`Result.detected`, migration `20261101200001`) ; une seule règle pour l'envoi (`ALERT_RESULT_WHERE`) et les compteurs de la validation (`raisesContaminationAlert`) ; « Germe détecté — alerte » sur la fiche de validation (présence ou dénombrement supérieur à zéro) ; « Sans critère » dans la colonne limite de l'alerte. Les lignes enregistrées avant gardent l'ancienne règle (colonne nulle, aucune reprise). Garde-fou (avec J3) : un germe sensible sans critère ni limite, lu dans un texte que la règle ne sait pas lire (« voir remarque », « douteux »), est refusé comme une répétition illisible — la paillasse le dit et garde « Soumettre » fermé, la soumission le refuse (`unreadableSensitiveReading`) — pour que l'alerte ne reste jamais indécise. **Une ligne en anomalie n'y échappe pas** (hypothèse, à confirmer par R-28) : avant J3, une boîte contaminée sortait par Conforme / Non conforme (C7) ; désormais le technicien tranche « Présence » ou « Absence » (l'anomalie décrite dans la remarque, déjà obligatoire), ou laisse la ligne « En cours » le temps de refaire l'analyse — l'écran le dit sur une telle ligne | règle du propriétaire (§7, O-12) appliquée telle que proposée ; pas d'interrupteur : elle ne fait qu'ajouter des alertes, et J3 en dépend |
+| J3 | Sans critère de la famille ni limite du catalogue : plus de « Conforme / Non conforme » à la paillasse, ni à l'enregistrement (`limitConformity`), ni à la soumission ; « Sans interprétation » à la validation, dans les critères de l'annexe (versions figées avant : inchangées) et dans la conclusion, qui nomme ces paramètres et ne dit plus « conforme pour l'ensemble des paramètres » au-dessus d'eux | **la limite du catalogue (`limitValue`) compte comme un critère** (hypothèse, à confirmer par R-28) ; interrupteur `NO_CRITERION_NO_INTERPRETATION` (`src/lib/lab-proposals.ts`, activé) |
+| J1 | Surface décrite en texte → unité « UFC/<texte> » (« UFC/couteau »), coupée avec « … » pour tenir dans les 191 caractères de la colonne ; un critère ou une limite en UFC/cm² ne la juge pas → sans interprétation, à la paillasse comme sur la fiche de programmation (le n de ce critère n'est plus proposé ; la ligne dit « ne juge pas ce prélèvement ») | une unité de dénombrement seulement (« UFC… », « /cm² ») ; `src/lib/result-unit.ts`. **Écarter le critère est une hypothèse, à confirmer par R-29** (le laboratoire n'a répondu que sur l'unité ; avant le lot, le couteau était jugé contre le critère en UFC/cm²) : interrupteur `UNIT_MISMATCH_NOT_JUDGED` (`src/lib/lab-proposals.ts`, activé ; désactivé, tout critère et toute limite jugent de nouveau, l'unité de J1 reste) |
+| J2 | Air : « UFC/m³ » au biocollecteur, « UFC/boîte (exposée N min) » à la boîte exposée ; un critère « ufc/m3 » ne juge pas une boîte exposée, ni « ufc/boite » un biocollecteur, ni « /cm² » l'air (paillasse et fiche de programmation) | unités du catalogue relues sur la copie locale : « ufc/m3 », « ufc/Boite », « UFC/cm² » ; pas de volume en litres. Écarter le critère : **hypothèse, à confirmer par R-29**, même interrupteur `UNIT_MISMATCH_NOT_JUDGED` que J1 |
+| J4 | « Dilution lue » sur chaque ligne de la paillasse, préremplie (la sienne, sinon celle du programme, sinon le facteur du catalogue), modifiable (« 1/100 », « 10-2 », « 100 ») ; la valeur finale calculée est imprimée ; `Result.dilutionUsed` (migration `20261101200002`), écrite seulement si elle diffère du programme ; « lu à 1/100 » à la validation | **hypothèse, à confirmer par R-12** : lecture 30 au 1/100 → « 3.10³ » au rapport (notation du laboratoire déjà en place, pas « 3,0·10³ »). Pas d'interrupteur : le calcul est celui d'avant le lot (le facteur du programme appliqué à la lecture), seule la saisie de la dilution est nouvelle. Dilution plafonnée à 1/99 999 999 (huit chiffres entiers de la colonne, comme la programmation) : « 10-8 » est refusé (« Dilution illisible… ») |
+| G1 | Boutons de saisie rapide sous chaque lecture, selon le plan (« < 10 », « > », « .10² » … « .10⁶ » ; « Absence » / « Présence » ; les deux sans critère) ; pas de bouton « Indénombrable » | — |
+| G4 | « Échantillon précédent / suivant » dans la série, fiche de programme et fiche de paillasse, avec la question avant de quitter une saisie non enregistrée (une dilution est comparée par sa valeur : « 10-2 » enregistré puis réécrit « 1/100 » n'est pas une modification) | la paillasse ne propose que les échantillons que la personne peut y ouvrir ; la programmation, ceux reçus et non annulés |
+| G5 | Filtre « Reçus depuis plus de N jours » (`?recus=N`, gardé avec la vue d'une tuile) et « reçu il y a N j » sur chaque ligne | « plus de N jours » = strictement plus de N jours calendaires (heure du laboratoire) ; les tuiles comptent toute la paillasse |
 
 ### Lot 3C — réception, rapport, exports, exploitation (P2)
 
@@ -707,8 +722,18 @@ accord, et ce qui est confirmé.
   « Écouvillon » (surfaces, mains), « Flacon stérile » (eaux), « Sachet
   stérile ou emballage d'origine » (aliments) ; « N/A » quand le client ou un
   tiers prélève : d'accord ?
-
-- **R-28 — Q71** : « Oui, voir les critères » : nous l'avons lu ainsi —
+- **R-28 — 2.11 (lot 3B, J3)** : « si on n'a pas de critère, nous ne faisons
+  pas d'interprétation » : une analyse sans critère de la famille mais avec
+  une limite dans le catalogue (exemple : ≤ 100 UFC/g) est-elle jugée contre
+  cette limite (construit ainsi), ou elle aussi sans interprétation ? Et une
+  boîte contaminée (ligne en anomalie) d'un germe sensible sans critère : le
+  technicien doit-il trancher présence ou absence, ou refaire l'analyse
+  (construit ainsi) ?
+- **R-29 — 2.3 et 2.17 (lot 3B, J1 / J2)** : un critère exprimé dans une
+  autre unité que ce qui est prélevé (« ≤ 100 UFC/cm² » sur un couteau,
+  « ufc/m³ » sur une boîte exposée) : la ligne est-elle sans interprétation
+  (construit ainsi), ou jugée quand même contre ce critère ?
+- **R-30 — Q71** : « Oui, voir les critères » : nous l'avons lu ainsi —
   l'observation de réception n'est exigée que pour la température (C2) et le
   délai (C1) ; quantité non pesée, DLC et mollusques 25–50 g ne sont que des
   avertissements. Est-ce bien cela ?

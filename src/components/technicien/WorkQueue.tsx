@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight, FlaskConical, AlertTriangle, Inbox, Undo2, UserCheck, Zap } from "lucide-react";
 import type { AirMethod, LineKind, ProgrammePriority, SampleStatus, SampleType, SurfaceState } from "@/generated/prisma/client";
 import { formatDate, formatDateTime } from "@/lib/labels";
+import { receivedAgeText, receivedDaysAgo } from "@/lib/received-age";
 import { labReference } from "@/lib/sample-select";
 import { groupBySerie } from "@/lib/serie-groups";
 import { BENCH_STATUSES, isOnBenchOf, isUnclaimed, splitParameters } from "@/lib/bench-access";
@@ -130,12 +131,15 @@ function RowDetails({
   holder,
   done,
   mine,
+  now,
 }: {
   item: WorkItem;
   reference: ReactNode;
   holder: ReactNode;
   done: number;
   mine: number;
+  /** The instant the page was rendered: « reçu il y a N j » counts from it (G5). */
+  now: Date;
 }) {
   const total = item.parameters.length;
   return (
@@ -179,8 +183,16 @@ function RowDetails({
         <span className="font-medium text-slate-600">{item.nature.label}</span>
         {" · "}
         {done} / {total} paramètre{total > 1 ? "s" : ""} saisi{total > 1 ? "s" : ""}
-        {mine < total ? ` · ${mine} pour vous` : ""} · reçu le{" "}
-        {item.receivedAt ? formatDate(item.receivedAt) : "—"}
+        {mine < total ? ` · ${mine} pour vous` : ""} ·{" "}
+        {/* G5 (2.20 (k)): calendar days on the laboratory's clock. */}
+        {item.receivedAt ? (
+          <span title={`Reçu le ${formatDate(item.receivedAt)}`}>
+            <span className="font-medium text-slate-600">{receivedAgeText(receivedDaysAgo(item.receivedAt, now))}</span>
+            {` (le ${formatDate(item.receivedAt)})`}
+          </span>
+        ) : (
+          "reçu le —"
+        )}
         {item.dueAt ? ` · à rendre le ${formatDate(item.dueAt)}` : ""}
       </p>
     </div>
@@ -216,10 +228,13 @@ export function WorkQueue({
   items,
   viewerId = null,
   empty = DEFAULT_EMPTY,
+  now = new Date(),
 }: {
   items: WorkItem[];
   viewerId?: string | null;
   empty?: { title: string; text: string };
+  /** The page's instant, so every row counts « reçu il y a N j » from the same one. */
+  now?: Date;
 }) {
   if (items.length === 0) {
     return (
@@ -262,6 +277,7 @@ export function WorkQueue({
                   // My own rows need no holder: they are « Mes analyses ».
                   holder={mine ? null : <HolderChip item={item} free={free} />}
                   done={done}
+                  now={now}
                   // On a line programmed before 13/10, how many of its parameters are mine.
                   mine={mine ? splitParameters(item, viewerId).mine.length : total}
                 />

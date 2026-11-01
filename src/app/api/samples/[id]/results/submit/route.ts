@@ -7,9 +7,10 @@ import { canTransition } from "@/lib/sample-status";
 import type { SampleStatus } from "@/generated/prisma/enums";
 import { TAKE_MESSAGES, canEnterParameter } from "@/lib/bench-access";
 import { lockTakeState } from "@/lib/bench-take-server";
-import { awaitsManualConformity } from "@/lib/bench-reading";
-import { effectiveFactor } from "@/lib/dilution";
+import { awaitsManualConformity, unreadableSensitiveReading } from "@/lib/bench-reading";
+import { readingFactor } from "@/lib/dilution";
 import { isNotDoneText } from "@/lib/result-value";
+import { judgingLimit } from "@/lib/result-unit";
 
 /**
  * Submits the completed sheet to quality validation:
@@ -90,8 +91,14 @@ export async function POST(
         technicianId: true,
         // The programmed dilution, the factor and the limit the reading is judged with.
         dilutionFactor: true,
-        parameter: { select: { id: true, name: true, limitValue: true, calcFactor: true } },
+        parameter: { select: { id: true, name: true, limitValue: true, unit: true, calcFactor: true, alertOnExceed: true } },
       },
+    });
+    // What was sampled: a limit expressed per another basis judges nothing
+    // here (J1, J2) — the screen and the save read it the same way.
+    const context = await tx.sample.findUnique({
+      where: { id },
+      select: { lineKind: true, surfaceAreaNote: true, airMethod: true, airExposureMin: true },
     });
     const results = await tx.result.findMany({
       where: { sampleId: id },
@@ -104,6 +111,8 @@ export async function POST(
         interpretation: true,
         criterion: true,
         note: true,
+        // The dilution the technician read at (J4).
+        dilutionUsed: true,
         // value null + detected null = a reading the engine could not parse.
         units: { select: { unitIndex: true, rawValue: true, value: true, detected: true } },
       },
@@ -128,9 +137,17 @@ export async function POST(
         result.units.some((u) => u.value === null && u.detected === null) ||
         awaitsManualConformity(result, {
           unitCount: locked.unitCount,
-          factor: effectiveFactor(line.dilutionFactor, parameter.calcFactor),
-          limitValue: parameter.limitValue,
-        })
+          factor: readingFactor(result?.dilutionUsed, line.dilutionFactor, parameter.calcFactor),
+          limitValue: context ? judgingLimit(context, parameter.limitValue, parameter.unit) : parameter.limitValue,
+        }) ||
+        // A sensitive germ nothing judges, read in a text the alert cannot
+        // read (O-12 × J3): to be retyped, as an unreadable repetition is.
+        (result.criterion === null &&
+          result.units.length === 0 &&
+          unreadableSensitiveReading(result.rawValue ?? result.value, {
+            limitValue: context ? judgingLimit(context, parameter.limitValue, parameter.unit) : parameter.limitValue,
+            sensitive: parameter.alertOnExceed,
+          }))
       ) {
         if (session.role === "TECHNICIEN" && !canEnterParameter(bench, line, session.id)) {
           foreign.push(parameter.name);

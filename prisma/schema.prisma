@@ -728,6 +728,17 @@ model Result {
   /// The criterion the result was judged against, frozen for the report:
   /// { n, c, mKind, m, bigM } (RETOUR-LABO-29-09.md, slice C).
   criterion              Json?
+  /// The reading shows the germ — a presence, a count above zero, « > x »,
+  /// « Indénombrable » — false when every reading says it is absent, null
+  /// when nothing readable was typed (and on the rows saved before lot 3B).
+  /// A sensitive germ without any judgement alerts on it (rule O-12,
+  /// RETOUR-LABO-28-10.md §5, `contamination-alert.ts`).
+  detected               Boolean?
+  /// The dilution the technician read at (lot 3B, J4), as its multiplier —
+  /// ×100 for « 1/100 » — written only when it differs from the programmed
+  /// one (`SampleParameter.dilutionFactor`, else the catalogue's
+  /// `calcFactor`); null = that one, as before (`readingFactor`).
+  dilutionUsed           Decimal?         @db.Decimal(12, 4)
   units                  ResultUnit[]
 
   enteredById String?

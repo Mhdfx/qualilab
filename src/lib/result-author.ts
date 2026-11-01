@@ -42,6 +42,11 @@ export type TypedReading = {
   note: string | null;
   workStatus: ResultWorkStatus;
   conform: boolean | null;
+  /**
+   * The dilution the technician typed (lot 3B, J4), as stored: null = the
+   * programmed one. Absent where a caller does not read it — then never compared.
+   */
+  dilution?: number | null;
 };
 
 /** The author of a line as stored: null on a line never typed on. */
@@ -90,6 +95,7 @@ export function storedReading(row: {
   workStatus: ResultWorkStatus;
   conform: boolean | null;
   units: { unitIndex: number; rawValue: string }[];
+  dilutionUsed?: { toString(): string } | number | null;
 }): TypedReading {
   return {
     typed: row.rawValue ?? row.value,
@@ -97,6 +103,7 @@ export function storedReading(row: {
     note: row.note,
     workStatus: row.workStatus,
     conform: row.conform,
+    ...(row.dilutionUsed !== undefined ? { dilution: row.dilutionUsed === null ? null : Number(row.dilutionUsed.toString()) } : {}),
   };
 }
 
@@ -123,6 +130,8 @@ export function readingChanged(before: TypedReading | null, after: SavedReading)
   // A computed conformity follows the reading (or the catalogue): only the
   // technician's own « Conforme / Non conforme » is typing.
   if (after.conformChosen && was.conform !== after.conform) return true;
+  // The dilution read at is typed too (J4) — compared when both sides carry it.
+  if (after.dilution !== undefined && (was.dilution ?? null) !== (after.dilution ?? null)) return true;
   return false;
 }
 

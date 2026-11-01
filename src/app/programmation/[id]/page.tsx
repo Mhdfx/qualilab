@@ -42,6 +42,8 @@ import { TypeBadge } from "@/components/ui/TypeBadge";
 import { ReceptionObservation } from "@/components/samples/ReceptionObservation";
 import { ReceptionNonConformity } from "@/components/samples/ReceptionNonConformity";
 import { ProgrammeSheet } from "@/components/programmation/ProgrammeSheet";
+import { SerieNeighbourLinks } from "@/components/ui/SerieNeighbourLinks";
+import { serieNeighbours } from "@/lib/serie-neighbours";
 import { benchHolder } from "@/components/programmation/programme-sheet-logic";
 import type { ProgrammeReferentialData, ProgrammeResponse } from "@/components/programmation/programme-sheet-types";
 
@@ -86,6 +88,8 @@ const IDENTITY_SELECT = {
   awaitingClientSince: true,
   // « Annuler » says whether an alert already reached the client (D1).
   alertsSentAt: true,
+  // « Échantillon précédent / suivant » in the série (G4).
+  serieId: true,
 } as const;
 
 /** The programme sheet of one sample (PROGRAMME.md §4). */
@@ -108,6 +112,15 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
   ]);
   if (!identity) notFound();
   const heldInvoice = held.get(id) ?? null;
+  // The série's received samples, in its order (G4): a line not received
+  // yet has no programme to open, a cancelled one no programme to change.
+  const siblings = await prisma.sample.findMany({
+    where: { serieId: identity.serieId, status: { notIn: ["PRELEVE", "ANNULE"] } },
+    select: { id: true, lineNumber: true, code: true, controlCode: true },
+  });
+  const neighbours = serieNeighbours(siblings, id);
+  const neighbourLink = (sibling: (typeof siblings)[number] | null) =>
+    sibling ? { href: `/programmation/${sibling.id}`, reference: labReference(sibling) } : null;
   // Issued or a draft for both roles; the number for the administrator only.
   const invoiced = heldInvoice ? heldInvoiceFor(heldInvoice, session.role) : null;
 
@@ -149,6 +162,14 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
               ? "Programme confirmé — modifiable tant que la paillasse n'a pas commencé."
               : "Programme de l'échantillon, en consultation."
         }
+      />
+
+      <SerieNeighbourLinks
+        serialNumber={sample.serie.serialNumber}
+        position={neighbours.position}
+        total={neighbours.total}
+        previous={neighbourLink(neighbours.previous)}
+        next={neighbourLink(neighbours.next)}
       />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px_1fr]">

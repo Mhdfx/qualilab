@@ -3,7 +3,7 @@ import { FlaskConical, ClipboardCheck, AlertTriangle, CheckCircle2, Inbox, type 
 import type { Prisma } from "@/generated/prisma/client";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { VIEW_PARAM, parseView, viewHref } from "@/lib/dashboard-view";
+import { VIEW_PARAM, parseView } from "@/lib/dashboard-view";
 import { BENCH_VIEWS, benchViewWhere, type BenchView } from "@/lib/circuit-views";
 import { UNCLAIMED_WHERE, benchHidesClient, benchQueueWhereFor, takenByOthersWhere } from "@/lib/bench-access";
 import { TAKE_OVER_COLLEAGUE } from "@/lib/lab-proposals";
@@ -14,6 +14,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard, type StatAccent } from "@/components/ui/StatCard";
 import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
 import { WorkQueue, type WorkItem } from "@/components/technicien/WorkQueue";
+import { ReceivedAgeFilter } from "@/components/technicien/ReceivedAgeFilter";
+import { RECEIVED_AGE_PARAM, parseReceivedAge, receivedAgeHref, receivedBefore } from "@/lib/received-age";
 
 export const metadata = { title: "Saisie des résultats" };
 
@@ -139,7 +141,15 @@ export default async function TechnicienPage({
   const blind = benchHidesClient(session.role);
   // A tile is a sort (« comme un tri »): `?vue=` narrows the page to exactly
   // the list that tile counts — one definition each, `circuit-views.ts`.
-  const view = parseView((await searchParams)[VIEW_PARAM], BENCH_VIEWS);
+  const params = await searchParams;
+  const view = parseView(params[VIEW_PARAM], BENCH_VIEWS);
+  // « Reçus depuis plus de N jours » (G5, 2.20 (k)): narrows every list of
+  // the page, calendar days on the laboratory's clock (`received-age.ts`).
+  // The tiles keep counting the whole bench.
+  const age = parseReceivedAge(params[RECEIVED_AGE_PARAM]);
+  const now = new Date();
+  const aged = (where: Prisma.SampleWhereInput): Prisma.SampleWhereInput =>
+    age === null ? where : { AND: [where, { receivedAt: { lt: receivedBefore(age, now) } }] };
 
   // Prise en charge libre (PROGRAMME.md §10): nobody assigns a technician.
   // A confirmed programme puts the sample in « À prendre », shared by every
@@ -150,8 +160,8 @@ export default async function TechnicienPage({
   const count = (tile: BenchView) => prisma.sample.count({ where: benchViewWhere(tile, session) });
   const list = (where: Prisma.SampleWhereInput, orderBy = BENCH_ORDER): Promise<Omit<WorkItem, "sentBack" | "takenOverAt">[]> =>
     blind
-      ? prisma.sample.findMany({ where, select: BLIND_WORK_ITEM_SELECT, orderBy, take: LIST_LIMIT })
-      : prisma.sample.findMany({ where, select: WORK_ITEM_SELECT, orderBy, take: LIST_LIMIT });
+      ? prisma.sample.findMany({ where: aged(where), select: BLIND_WORK_ITEM_SELECT, orderBy, take: LIST_LIMIT })
+      : prisma.sample.findMany({ where: aged(where), select: WORK_ITEM_SELECT, orderBy, take: LIST_LIMIT });
   const none: Promise<Omit<WorkItem, "sentBack" | "takenOverAt">[]> = Promise.resolve([]);
 
   // Every list and every count in one round of parallel queries. With a
@@ -212,7 +222,7 @@ export default async function TechnicienPage({
                 value={values[tile.view]}
                 icon={tile.icon}
                 accent={tile.accent}
-                href={viewHref(PATH, tile.view, ANCHOR)}
+                href={receivedAgeHref(PATH, tile.view, age, ANCHOR)}
                 active={view === tile.view}
               />
             </div>
@@ -220,12 +230,14 @@ export default async function TechnicienPage({
         </div>
       </section>
 
+      <ReceivedAgeFilter path={PATH} view={view} days={age} anchor={ANCHOR} />
+
       {view ? (
         <BenchList
           id={ANCHOR}
           title={BENCH_VIEWS[view]}
           count={viewItems.length}
-          notice={<ViewFilterNotice label={BENCH_VIEWS[view]} resetHref={viewHref(PATH, null, ANCHOR)} className="mb-3" />}
+          notice={<ViewFilterNotice label={BENCH_VIEWS[view]} resetHref={receivedAgeHref(PATH, null, age, ANCHOR)} className="mb-3" />}
           truncated={
             viewItems.length === LIST_LIMIT
               ? view === "anomalies"
@@ -237,6 +249,7 @@ export default async function TechnicienPage({
           <WorkQueue
             items={withSendBack(viewItems)}
             viewerId={viewerId}
+            now={now}
             empty={(!isTechnician && ADMIN_EMPTY[view]) || EMPTY[view]}
           />
         </BenchList>
@@ -249,7 +262,7 @@ export default async function TechnicienPage({
             description="Programme confirmé, personne ne les a pris : les urgents d'abord, puis les plus anciens."
             truncated={free.length === LIST_LIMIT ? `La liste est limitée aux ${LIST_LIMIT} premiers échantillons.` : null}
           >
-            <WorkQueue items={withSendBack(free)} viewerId={viewerId} empty={EMPTY.a_prendre} />
+            <WorkQueue items={withSendBack(free)} viewerId={viewerId} now={now} empty={EMPTY.a_prendre} />
           </BenchList>
 
           <BenchList
@@ -263,7 +276,7 @@ export default async function TechnicienPage({
             }
             truncated={held.length === LIST_LIMIT ? `La liste est limitée aux ${LIST_LIMIT} premiers échantillons.` : null}
           >
-            <WorkQueue items={withSendBack(held)} viewerId={viewerId} empty={isTechnician ? undefined : TAKEN_EMPTY} />
+            <WorkQueue items={withSendBack(held)} viewerId={viewerId} now={now} empty={isTechnician ? undefined : TAKEN_EMPTY} />
           </BenchList>
 
           {isTechnician && (
@@ -280,7 +293,7 @@ export default async function TechnicienPage({
                 colleagues.length === LIST_LIMIT ? `La liste est limitée aux ${LIST_LIMIT} premiers échantillons.` : null
               }
             >
-              <WorkQueue items={withSendBack(colleagues)} viewerId={viewerId} empty={COLLEAGUES_EMPTY} />
+              <WorkQueue items={withSendBack(colleagues)} viewerId={viewerId} now={now} empty={COLLEAGUES_EMPTY} />
             </BenchList>
           )}
         </div>
