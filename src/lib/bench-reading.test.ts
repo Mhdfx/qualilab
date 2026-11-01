@@ -9,6 +9,7 @@ import {
   limitConformity,
   manualChoiceOffered,
   unitsAgainstLimit,
+  unreadableSensitiveReading,
   valueAgainstLimit,
   type StoredResult,
 } from "./bench-reading";
@@ -251,5 +252,33 @@ describe("J3 — no criterion, no limit: no interpretation (28/10, 2.11)", () =>
     expect(awaitsManualConformity({ ...stored, units }, { unitCount: 2, factor: 1, limitValue: null })).toBe(false);
     // …but still waits where a limit asks it (the « > x » the technician reads again).
     expect(awaitsManualConformity({ ...stored, value: "> 50" }, { unitCount: 1, factor: 1, limitValue: 100 })).toBe(true);
+  });
+});
+
+describe("O-12 × J3 — a sensitive germ without criterion must be read in a notation the alert understands", () => {
+  const sensitive = { limitValue: null, sensitive: true };
+  const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
+
+  it("refuses a text that says neither presence nor absence", () => {
+    for (const typed of ["voir remarque", "présente", "douteux"]) {
+      expect(unreadableSensitiveReading(typed, sensitive), typed).toBe(true);
+    }
+  });
+
+  it("accepts every reading the alert rule reads", () => {
+    for (const typed of ["Présence", "Absence", "50", "< 10", "> 3.10²", "Indénombrable", "3(-2)", "Positif", ""]) {
+      expect(unreadableSensitiveReading(typed, sensitive), typed).toBe(false);
+    }
+  });
+
+  it("concerns only a sensitive germ with no limit, and only while J3 is on", () => {
+    expect(unreadableSensitiveReading("voir remarque", { limitValue: null, sensitive: false })).toBe(false);
+    expect(unreadableSensitiveReading("voir remarque", { limitValue: 100, sensitive: true })).toBe(false);
+    expect(unreadableSensitiveReading("voir remarque", sensitive, false)).toBe(false);
+  });
+
+  it("the submission and the screen apply it", () => {
+    expect(read("../app/api/samples/[id]/results/submit/route.ts")).toContain("unreadableSensitiveReading(");
+    expect(read("../components/technicien/ResultEntryForm.tsx")).toContain("unreadableSensitiveReading(line.value, line)");
   });
 });

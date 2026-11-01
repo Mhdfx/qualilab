@@ -15,7 +15,7 @@ import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { VerdictBadge } from "@/components/samples/VerdictBadge";
 import { factoredText, singleValueEntry, type ParsedValue } from "@/lib/result-value";
 import { hasLimit, judgeUnits, type Plan, type Verdict as PlanVerdict } from "@/lib/interpretation";
-import { benchUnits, manualChoiceOffered, unitsAgainstLimit, valueAgainstLimit } from "@/lib/bench-reading";
+import { benchUnits, manualChoiceOffered, unitsAgainstLimit, unreadableSensitiveReading, valueAgainstLimit } from "@/lib/bench-reading";
 import { dilutionText, parseDilution } from "@/lib/dilution";
 import { applyQuickEntry, quickEntries, type QuickEntry } from "@/lib/quick-entries";
 import { repetitionLabel } from "@/lib/series";
@@ -49,6 +49,12 @@ export type ParameterLine = {
   workStatus: ResultWorkStatus;
   /** Only used when the value cannot be read as a number. */
   manualConform: boolean | null;
+  /**
+   * A sensitive germ (`alertOnExceed`): read without criterion nor limit, its
+   * alert rests on the reading alone (O-12) — a text the engine cannot read
+   * is refused (`unreadableSensitiveReading`).
+   */
+  sensitive: boolean;
   /** Read per unit (R1 … Rn) rather than as one value. */
   perUnit: boolean;
   /** The criterion of the sample's product type (CRITERES.md): null = none. */
@@ -288,6 +294,7 @@ export function ResultEntryForm({
   const completed = lines.filter((line, index) => {
     if (line.workStatus === "EN_COURS") return false;
     if (lineFactor(line) === null) return false;
+    if (!line.perUnit && !line.plan && unreadableSensitiveReading(line.value, line)) return false;
     const reading = readings[index];
     if (line.perUnit && reading.typedUnits < line.units.length) return false;
     if (reading.unreadable.length > 0) return false;
@@ -660,7 +667,18 @@ export function ResultEntryForm({
                   </p>
                 )}
 
-                {reading.unreadable.length > 0 ? (
+                {!line.perUnit && !line.plan && unreadableSensitiveReading(line.value, line) ? (
+                  <p
+                    role="alert"
+                    className="mt-2.5 flex flex-wrap items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900"
+                  >
+                    <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>
+                      Lecture non reconnue pour un germe sensible sans critère : écrivez « Présence », « Absence » ou un
+                      dénombrement, pour que l&apos;alerte de contamination puisse être décidée.
+                    </span>
+                  </p>
+                ) : reading.unreadable.length > 0 ? (
                   <p
                     role="alert"
                     className="mt-2.5 flex flex-wrap items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900"

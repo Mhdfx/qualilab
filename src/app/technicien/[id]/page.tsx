@@ -146,6 +146,8 @@ export default async function AnalysePage({
               threshold: true,
               limitValue: true,
               calcFactor: true,
+              // O-12 × J3: a sensitive germ without criterion must be read in a notation the alert reads.
+              alertOnExceed: true,
             },
           },
         },
@@ -280,6 +282,7 @@ export default async function AnalysePage({
       note: existing?.note ?? "",
       workStatus: existing?.workStatus ?? "EN_COURS",
       manualConform: existing?.conform ?? null,
+      sensitive: parameter.alertOnExceed,
       // Mine, or any of a free sample (the first save takes it) — the rule
       // the save applies (`canEnterParameter`); the admin stands in for anyone.
       editable: !isTechnician || canEnterParameter(sample, line, session.id),

@@ -7,7 +7,7 @@ import { canTransition } from "@/lib/sample-status";
 import type { SampleStatus } from "@/generated/prisma/enums";
 import { TAKE_MESSAGES, canEnterParameter } from "@/lib/bench-access";
 import { lockTakeState } from "@/lib/bench-take-server";
-import { awaitsManualConformity } from "@/lib/bench-reading";
+import { awaitsManualConformity, unreadableSensitiveReading } from "@/lib/bench-reading";
 import { readingFactor } from "@/lib/dilution";
 import { isNotDoneText } from "@/lib/result-value";
 import { judgingLimit } from "@/lib/result-unit";
@@ -89,7 +89,7 @@ export async function POST(
         technicianId: true,
         // The programmed dilution, the factor and the limit the reading is judged with.
         dilutionFactor: true,
-        parameter: { select: { id: true, name: true, limitValue: true, unit: true, calcFactor: true } },
+        parameter: { select: { id: true, name: true, limitValue: true, unit: true, calcFactor: true, alertOnExceed: true } },
       },
     });
     // What was sampled: a limit expressed per another basis judges nothing
@@ -136,7 +136,15 @@ export async function POST(
           unitCount: locked.unitCount,
           factor: readingFactor(result?.dilutionUsed, line.dilutionFactor, parameter.calcFactor),
           limitValue: context ? judgingLimit(context, parameter.limitValue, parameter.unit) : parameter.limitValue,
-        })
+        }) ||
+        // A sensitive germ nothing judges, read in a text the alert cannot
+        // read (O-12 × J3): to be retyped, as an unreadable repetition is.
+        (result.criterion === null &&
+          result.units.length === 0 &&
+          unreadableSensitiveReading(result.rawValue ?? result.value, {
+            limitValue: context ? judgingLimit(context, parameter.limitValue, parameter.unit) : parameter.limitValue,
+            sensitive: parameter.alertOnExceed,
+          }))
       ) {
         if (session.role === "TECHNICIEN" && !canEnterParameter(bench, line, session.id)) {
           foreign.push(parameter.name);

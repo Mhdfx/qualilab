@@ -227,3 +227,23 @@ export function awaitsManualConformity(
   }
   return valueAgainstLimit(result.rawValue ?? result.value ?? "", line.factor, line.limitValue).needsManual;
 }
+
+/**
+ * A sensitive germ (`alertOnExceed`) read as one value, with neither
+ * criterion nor limit, whose text the engine cannot read (« voir remarque »,
+ * « présente ») — while J3 is on. Nobody judges such a line any more, and its
+ * contamination alert rests on the reading alone (rule O-12): a text that
+ * says neither presence nor absence would leave the alert undecided. Like an
+ * unreadable repetition, it must be retyped (« Présence », « Absence », a
+ * count) before the sheet leaves the bench: the screen says so and keeps
+ * « Soumettre » closed, the submission refuses it.
+ */
+export function unreadableSensitiveReading(
+  value: string | null | undefined,
+  line: { limitValue: number | null | undefined; sensitive: boolean },
+  noCriterionNoInterpretation: boolean = NO_CRITERION_NO_INTERPRETATION
+): boolean {
+  const text = (value ?? "").trim();
+  if (!text || !line.sensitive || manualChoiceOffered(line.limitValue, noCriterionNoInterpretation)) return false;
+  return parseUnitReading(text).kind === "unreadable";
+}
