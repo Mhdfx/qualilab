@@ -68,6 +68,15 @@ import { LabDateTimeInput, dateTimePending } from "@/components/LabDateTimeInput
 import { LineEditor } from "@/components/preleveur/LineEditor";
 import { ClientPicker, type PickedClient } from "@/components/commercial/ClientPicker";
 import { SitePicker, withNewSite } from "@/components/commercial/SitePicker";
+import { OnssaControlFields } from "@/components/onssa/OnssaControlFields";
+import { ONSSA_OFFICIAL_CONTROL } from "@/lib/lab-proposals";
+import {
+  EMPTY_ONSSA_DRAFT,
+  formatOnssaControl,
+  onssaDraftError,
+  onssaPayload,
+  type OnssaDraft,
+} from "@/lib/onssa-control";
 import {
   duplicateDraft,
   emptyLine,
@@ -293,6 +302,9 @@ export function DepositForm({
   // A choice, never deduced from who sampled, none preselected (V1).
   const [cadre, setCadre] = useState<Cadre | null>(null);
   const [cadreNote, setCadreNote] = useState("");
+  // Lot 3E, N1: contrôle officiel / autocontrôle, beside the cadre.
+  const [onssa, setOnssa] = useState<OnssaDraft>(EMPTY_ONSSA_DRAFT);
+  const [onssaInvalid, setOnssaInvalid] = useState(false);
   const [samplerName, setSamplerName] = useState("");
   const [interlocutor, setInterlocutor] = useState("");
   const [clientReference, setClientReference] = useState("");
@@ -617,6 +629,12 @@ export function DepositForm({
       return setStepError("Indiquez qui a effectué le prélèvement.");
     }
     if (!cadre) return setStepError(SERIE_MESSAGES.cadreMissing);
+    const onssaProblem = ONSSA_OFFICIAL_CONTROL ? onssaDraftError(onssa) : null;
+    if (onssaProblem) {
+      setOnssaInvalid(true);
+      reveal("deposit-onssa");
+      return setStepError(onssaProblem);
+    }
     // An unfinished or invalid date-time before any check of the times: the
     // form still holds the value from before it (the field gets the focus,
     // its own message stays under it). « Prélevé le » (skipped while
@@ -727,6 +745,7 @@ export function DepositForm({
           samplerKind,
           cadre,
           cadreNote: cadre === "AUTRE" ? cadreNote.trim() || undefined : undefined,
+          ...(ONSSA_OFFICIAL_CONTROL ? onssaPayload(onssa) : {}),
           samplerName: samplerKind === "CLIENT" ? undefined : samplerName,
           interlocutor,
           clientReference,
@@ -1044,6 +1063,20 @@ export function DepositForm({
                   </p>
                 )}
               </div>
+
+              {ONSSA_OFFICIAL_CONTROL && (
+                <div id="deposit-onssa">
+                  <OnssaControlFields
+                    idPrefix="deposit-onssa"
+                    value={onssa}
+                    onChange={(next) => {
+                      setOnssa(next);
+                      if (onssaInvalid && !onssaDraftError(next)) setOnssaInvalid(false);
+                    }}
+                    invalid={onssaInvalid}
+                  />
+                </div>
+              )}
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -1479,6 +1512,7 @@ export function DepositForm({
               <Row label="Site" value={selectedSite?.name ?? "Siège"} />
               <Row label="Prélèvement" value={samplerKind === "CLIENT" ? "Par le client" : `${SAMPLER_KIND_LABELS[samplerKind]} — ${samplerName}`} />
               <Row label="Cadre" value={cadre ? formatCadre(cadre, cadreNote) : "—"} />
+              {ONSSA_OFFICIAL_CONTROL && <Row label="Rapport ONSSA" value={formatOnssaControl(onssaPayload(onssa))} />}
               {interlocutor && <Row label="Déposé par" value={interlocutor} />}
               <Row
                 label="Prélevé le"

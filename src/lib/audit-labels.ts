@@ -72,6 +72,11 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   REPORT_DOWNLOADED: "Rapport téléchargé",
   CONTAMINATION_ALERT_SENT: "Alerte de contamination envoyée",
   INVOICES_EXPORTED: "Export du journal des ventes",
+  // Lot 3E — the ONSSA monthly report and its correspondences.
+  ONSSA_REPORT_EXPORTED: "Rapport mensuel ONSSA exporté (Excel)",
+  ONSSA_GROUP_CREATED: "Groupe de produits ONSSA créé",
+  ONSSA_GROUP_UPDATED: "Groupe de produits ONSSA modifié",
+  ONSSA_MAPPING_UPDATED: "Correspondances ONSSA modifiées",
   // Entries written before FACTURATION.md (kept readable in the journal).
   INVOICE_CREATED: "Facture émise (ancien circuit)",
   INVOICE_DOWNLOADED: "Facture téléchargée",

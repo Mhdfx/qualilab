@@ -1030,6 +1030,18 @@ browser pane as `param1`, on a client « TEST UI 2026-10-06 » purged afterwards
 - The germs of a chosen type are listed « non programmé » when a profile chip replaces the ticked analyses afterwards: visible and deliberate, but the lab may prefer the type's germs to stay ticked (to confirm).
 - Q41 (« les nombres », numbering) and Q42 (one sample split between technicians) in NEEDEDINFO.
 
+## Checkpoint 3E — Lot 3E, rapport mensuel ONSSA (`RETOUR-LABO-28-10.md` §5, N1–N3) — built and unit-tested locally 01/11 on branch `lot3e`, **not browser-checked, not deployed**
+
+Automated (01/11): `onssa-control`, `onssa-canevas`, `onssa-mapping`, `onssa-report`, `onssa-workbook`, `onssa-guards` tests; the month's loader run against the local copy then put back. To check in the browser (integrator):
+
+- [ ] **N1, visite** (`pre1`): « Nouvelle visite » shows « Rapport ONSSA » under the cadre; « Contrôle officiel » unticked by default; ticked without « DR ONSSA / organisme préleveur agréé » → « Contrôle officiel : indiquez la DR ONSSA ou l'organisme préleveur agréé. », the field ringed; filled → the recap line « Rapport ONSSA : Contrôle officiel — … »; saved.
+- [ ] **N1, dépôt** (`recep1`): same block on « Nouveau dépôt »; an autocontrôle with « Origine des produits » = « Local » saved.
+- [ ] **N1, réception** (`recep1`): the série's page shows the panel « Rapport ONSSA » beside « La glacière » (before) and under the summary (after the reception); a change saved → « Enregistré », journal « Visite complétée » with `onssa` avant / après.
+- [ ] **N1, préleveur** (`pre1`): his visit's page shows the panel, editable until the reception, then read-only with « le laboratoire seul peut encore changer le contrôle officiel ».
+- [ ] **N1, imprimé nulle part**: the protocol, the bon de réception, the report and the labels of that série show nothing of it.
+- [ ] **N2** (`admin`, `/admin/onssa`, menu « Correspondances ONSSA »): « Créer la liste proposée (9 groupes) »; rename / reorder / archive / restore a group; a type d'analyse (Eaux) → « Eaux »; families filtered « Sans groupe seulement », bulk « Classer »; « Appliquer les N propositions » for the parameters; each change in the journal (« Correspondances ONSSA modifiées », « Groupe de produits ONSSA créé / modifié »).
+- [ ] **N3** (`valid1`, a Direction account, `admin`; `/qualite/onssa`, menu « Rapport ONSSA »): the previous month by default; the warning of samples still to validate; the table per group, the synthesis, « Non déclaré »; « Télécharger l'Excel » → `Rapport-ONSSA-AAAA-MM.xlsx` with Feuil1, Feuil2, Feuil3, Notes (headers at the extract's cells, totals recomputed by Excel); journal « Rapport mensuel ONSSA exporté (Excel) ». `tech1`, `recep1`, `compta1`: `/qualite/onssa` redirected, `/api/onssa/rapport?mois=2026-10` 403.
+
 ## Checkpoint V17 — Lot 2C (plan du 19/10, `RETOUR-LABO-19-10.md` §3–§4) — built and tested locally 20/10, **not deployed**
 
 Built 20/10 on branch `lot2-retour-16-10`: the migration `c5db24e` (`20261020100000`), then `7b1b540` (H1), `f057892` (H2, H3), `a83ec7e` (H4), `5666f3b` (D-15–D-18), `1cb4a4f` (D-19). One deploy carries lot 2A (V16) and lot 2C — `DEPLOY.md` « Lot 2 du 16/10 ».

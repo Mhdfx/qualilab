@@ -62,6 +62,11 @@ const SERIE_COMMON = {
   cadre: true,
   cadreNote: true,
   clientReference: true,
+  // Lot 3E, N1: the ONSSA report's fields (`onssa-control.ts`).
+  controleOfficiel: true,
+  organismePreleveur: true,
+  etablissement: true,
+  origine: true,
   startedAt: true,
   endedAt: true,
   arrivedAt: true,

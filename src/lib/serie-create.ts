@@ -242,6 +242,8 @@ export async function createSerie(
           cadre: input.cadre,
           cadreNote: input.cadre === "AUTRE" ? input.cadreNote : null,
           clientReference: input.clientReference,
+          // Lot 3E, N1: the ONSSA report's fields, printed nowhere.
+          ...input.onssa,
           startedAt: input.startedAt,
           endedAt: input.endedAt,
           // C1: a deposit says whether its sampling time was given (null on a visit).
@@ -385,6 +387,7 @@ export async function createSerie(
       samplerUserId,
       cadre: input.cadre,
       cadreNote: input.cadre === "AUTRE" ? input.cadreNote : null,
+      ...(input.onssa.controleOfficiel || input.onssa.origine ? { onssa: input.onssa } : {}),
       analysesMicro,
       analysesChimie,
       ...(isDeposit

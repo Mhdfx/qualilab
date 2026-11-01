@@ -32,6 +32,8 @@ import { LabDateTimeInput, dateTimePending } from "@/components/LabDateTimeInput
 import { futureFieldError } from "@/lib/device-time";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { protocolPhotoHref } from "@/lib/protocol-photo-access";
+import { OnssaControlPanel } from "@/components/onssa/OnssaControlPanel";
+import { ONSSA_OFFICIAL_CONTROL } from "@/lib/lab-proposals";
 import { fromLocalInput, lineDesignation, toLocalInput } from "./visit-types";
 import { familiesLabel, groupByLine, sampleFamily } from "./visit-samples";
 
@@ -80,6 +82,11 @@ export type VisitData = {
   cadreNote?: string | null;
   receivedAt: string | null;
   clientReference: string | null;
+  /** Lot 3E, N1: the ONSSA report's fields; optional on an older payload. */
+  controleOfficiel?: boolean;
+  organismePreleveur?: string | null;
+  etablissement?: string | null;
+  origine?: string | null;
   startedAt: string;
   endedAt: string | null;
   arrivedAt: string | null;
@@ -538,6 +545,16 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
               </PrimaryButton>
             </div>
           </Card>
+          {ONSSA_OFFICIAL_CONTROL && (
+            <div className="mt-4">
+              <OnssaControlPanel
+                serieId={visit.id}
+                initial={visit}
+                locked={cadreLocked}
+                lockedReason="La série est réceptionnée : le laboratoire seul peut encore changer le contrôle officiel."
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

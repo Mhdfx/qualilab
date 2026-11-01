@@ -32,6 +32,7 @@ import { LINE_FAMILIES, familiesFor, familyOfNature, natureFor, type LineFamily 
 import { EXPLOITABLE_MESSAGES, RECEPTION_NOTE_MAX, RECEPTION_NOTE_MESSAGES } from "./reception-rules";
 import { COMPLEMENTARY_MESSAGES, STORAGE_CLASSES, TEMPERATURE_SOURCES, parseChoice } from "./reception-complementary";
 import { twinFor, type SampleTwin } from "./sample-code";
+import { readOnssaControl, type OnssaControl } from "./onssa-control";
 import {
   CONSULTATION_MESSAGES,
   consultationMissing,
@@ -325,6 +326,8 @@ export type CleanSerie = {
   /** The precision of « Autre »; always null for the other cadres. */
   cadreNote: string | null;
   clientReference: string | null;
+  /** Lot 3E, N1: contrôle officiel or autocontrôle, separate from the cadre (`onssa-control.ts`). */
+  onssa: OnssaControl;
   startedAt: Date;
   endedAt: Date | null;
   /**
@@ -769,6 +772,11 @@ export function validateSerie(
   }
   const cadreNote = cadre === "AUTRE" ? text(input.cadreNote) || null : null;
 
+  // Lot 3E, N1: the ONSSA report's « contrôle officiel » — beside the cadre,
+  // never deduced from it nor from who sampled.
+  const onssa = readOnssaControl(input);
+  if (!onssa.ok) return fail(onssa.error);
+
   const now = Date.now();
 
   // The arrival first (16/10, Q118): a deposit whose sampling time the
@@ -858,6 +866,7 @@ export function validateSerie(
       cadre,
       cadreNote,
       clientReference: text(input.clientReference) || null,
+      onssa: onssa.value,
       startedAt,
       endedAt,
       // C1: « Non déclarée » only when the client did not know (16/10).

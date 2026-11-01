@@ -131,6 +131,9 @@ const DIRECTION_ADMITTED = [
   "qualite/metrologie/page.tsx page",
   "qualite/temperatures/page.tsx page",
   "qualite/eil/page.tsx page",
+  // Lot 3E, N3 — the monthly ONSSA report and its Excel (RETOUR-LABO-28-10.md §5).
+  "qualite/onssa/page.tsx page",
+  "api/onssa/rapport/route.ts GET",
   "api/equipments/route.ts GET",
   "api/equipments/route.ts POST",
   "api/equipments/[id]/route.ts PATCH",

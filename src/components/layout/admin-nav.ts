@@ -23,6 +23,7 @@ import {
   ClipboardList,
   History,
   Mail,
+  Landmark,
 } from "lucide-react";
 import type { NavSection } from "./nav-types";
 
@@ -68,6 +69,9 @@ export const adminNav: NavSection[] = [
       { label: "Normes", href: "/admin/normes", icon: BookOpen },
       { label: "Réglementations", href: "/admin/reglementations", icon: Scale },
       { label: "Système Qualité", href: "/qualite", icon: Gauge },
+      // Lot 3E — the monthly ONSSA report (N3) and its correspondences (N2).
+      { label: "Rapport ONSSA", href: "/qualite/onssa", icon: Landmark },
+      { label: "Correspondances ONSSA", href: "/admin/onssa", icon: Landmark },
       { label: "Achat & Stock", href: "/magasin", icon: Boxes },
       { label: "Catalogue", href: "/admin/catalogue", icon: Users },
       { label: "Réglages du circuit", href: "/admin/reglages", icon: SlidersHorizontal },
