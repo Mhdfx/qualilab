@@ -22,7 +22,8 @@ import { repetitionLabel } from "@/lib/series";
 import { VerdictBadge } from "@/components/samples/VerdictBadge";
 import { SampleVerbs } from "@/components/samples/SampleVerbs";
 import { formatDateTime, surfaceAreaText } from "@/lib/labels";
-import { raisesContaminationAlert } from "@/lib/contamination-alert";
+import { carriesNoJudgement, raisesContaminationAlert } from "@/lib/contamination-alert";
+import { NO_CRITERION_NO_INTERPRETATION } from "@/lib/lab-proposals";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
 import { approvalState } from "@/lib/sample-status";
@@ -367,8 +368,18 @@ export default async function ValidationDetailPage({
                             <XCircle className="h-3 w-3" aria-hidden="true" />
                             Non conforme
                           </span>
+                        ) : NO_CRITERION_NO_INTERPRETATION && result.value ? (
+                          // No criterion, no limit (28/10, 2.11, J3): reported « sans interprétation ».
+                          <span className="text-xs text-slate-500">Sans interprétation</span>
                         ) : (
                           <span className="text-xs text-slate-400">—</span>
+                        )}
+                        {/* O-12: a sensitive germ without any verdict, present — the alert follows. */}
+                        {result.parameter.alertOnExceed && carriesNoJudgement(result) && result.detected === true && (
+                          <span className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-rose-700">
+                            <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                            Présence — alerte
+                          </span>
                         )}
                       </td>
                     </tr>

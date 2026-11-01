@@ -18,6 +18,7 @@ import {
   type Plan,
 } from "./interpretation";
 import { benchConformity, parseLabValue, suggestConformity } from "./result-value";
+import { limitConformity } from "./bench-reading";
 import type { Interpretation } from "@/generated/prisma/enums";
 
 /**
@@ -181,8 +182,18 @@ describe("without a criterion, the server's own judgement keeps the alert", () =
   it("the results route stores that judgement, not the request's", () => {
     const source = ROUTE_SOURCE();
     expect(source).not.toMatch(/conform:\s*typeof raw\.conform/);
-    expect(source).toContain("benchConformity(suggestUnitsConformity(readings, parameter.limitValue), raw.conform)");
-    expect(source).toContain("benchConformity(suggestConformity(parsed.numeric, parameter.limitValue, parsed.kind), raw.conform)");
+    expect(source).toContain("limitConformity(suggestUnitsConformity(readings, parameter.limitValue), raw.conform, parameter.limitValue)");
+    expect(source).toContain("limitConformity(suggestConformity(parsed.numeric, parameter.limitValue, parsed.kind), raw.conform, parameter.limitValue)");
+  });
+
+  it("with a limit, the stored conformity is exactly the old one (`benchConformity`), J3 on or off", () => {
+    for (const suggested of [true, false, null]) {
+      for (const chosen of [true, false, null, "oui", undefined]) {
+        for (const j3 of [true, false]) {
+          expect(limitConformity(suggested, chosen, 100, j3)).toBe(benchConformity(suggested, chosen));
+        }
+      }
+    }
   });
 });
 

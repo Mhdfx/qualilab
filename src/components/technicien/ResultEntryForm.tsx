@@ -15,7 +15,7 @@ import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { VerdictBadge } from "@/components/samples/VerdictBadge";
 import { factoredText, singleValueEntry, type ParsedValue } from "@/lib/result-value";
 import { hasLimit, judgeUnits, type Plan, type Verdict as PlanVerdict } from "@/lib/interpretation";
-import { benchUnits, unitsAgainstLimit, valueAgainstLimit } from "@/lib/bench-reading";
+import { benchUnits, manualChoiceOffered, unitsAgainstLimit, valueAgainstLimit } from "@/lib/bench-reading";
 import { repetitionLabel } from "@/lib/series";
 import { formatDecimal } from "@/lib/labels";
 import { lostSampleHolder } from "@/lib/take-over";
@@ -437,7 +437,11 @@ export function ResultEntryForm({
                         {line.normLabel && <span className="ml-2 text-slate-400">{line.normLabel}</span>}
                       </>
                     ) : (
-                      <>Seuil : {line.threshold ?? "non défini"}</>
+                      <>
+                        {line.limitValue === null && !manualChoiceOffered(line.limitValue)
+                          ? "Sans critère — sans interprétation"
+                          : `Seuil : ${line.threshold ?? "non défini"}`}
+                      </>
                     )}
                     {/* Every line a factor multiplies says so, read per unit or as one value. */}
                     {line.calcFactor !== 1 && (
@@ -757,9 +761,18 @@ function Verdict({
 
   const numeric = reading.parsed.numeric;
   const kind = reading.parsed.kind;
+  const conform = reading.conform;
+  // No criterion and no limit: the line is reported « sans interprétation »
+  // (28/10, 2.11, J3) — nothing to choose, whatever the reading.
+  if (conform === null && limitValue === null && !manualChoiceOffered(limitValue)) {
+    return (
+      <p className="mt-2.5 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        Sans critère : le résultat figure au rapport sans interprétation.
+      </p>
+    );
+  }
   if (numeric === null && kind !== "uncountable") return null;
 
-  const conform = reading.conform;
   // « 1 800 » with the interface's no-break space (formatDecimal), three
   // decimals at most as before.
   const shown = numeric === null ? "" : `${formatDecimal(numeric, 3)}${unit ? ` ${unit}` : ""}`;

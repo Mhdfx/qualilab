@@ -41,3 +41,21 @@ export const TAKE_OVER_COLLEAGUE = true;
  * /validation and their routes answer 404 — sample by sample only, as before.
  */
 export const SERIES_VALIDATION = true;
+
+/**
+ * Lot 3B, J3 (28/10, 2.11 : « si on n'a pas de critère, nous ne faisons pas
+ * d'interprétation »). A line with neither a criterion of the sample's
+ * family nor a limit in the catalogue (`AnalysisParameter.limitValue`) is
+ * no longer judged: the bench asks no « Conforme / Non conforme » for it
+ * (« Présence », « Indénombrable », a text), the submission no longer waits
+ * for one, and the report says « Sans interprétation » in the annex and in
+ * the conclusion. The catalogue's limit still counts as a criterion
+ * (hypothèse, à confirmer par R-28, RETOUR-LABO-28-10.md §6 — a line with a limit
+ * keeps its computed conformity and, for « Présence » or a « > x » below
+ * the limit, the technician's choice). A sensitive germ left without any
+ * verdict alerts on its presence (rule O-12, `contamination-alert.ts`),
+ * whichever way this switch is set.
+ * Off: the bench asks the technician's choice again on those lines, the
+ * submission waits for it, the report prints as before.
+ */
+export const NO_CRITERION_NO_INTERPRETATION = true;

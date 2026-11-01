@@ -8,6 +8,7 @@ import {
   type UnitReading,
 } from "./interpretation";
 import { repetitionLabel } from "./series";
+import { NO_CRITERION_NO_INTERPRETATION } from "./lab-proposals";
 
 /**
  * How a line of the bench reads — pure, shared by the entry screen
@@ -25,6 +26,35 @@ export function benchUnit(plan: { unit: string | null } | null | undefined, para
   return plan?.unit ?? parameterUnit;
 }
 
+/**
+ * Whether the bench may ask « Conforme / Non conforme » on a line judged
+ * against the parameter's own limit (no criterion): always while it has a
+ * limit; without one, only when the switch J3 is off (28/10, 2.11 : « si on
+ * n'a pas de critère, nous ne faisons pas d'interprétation »). The screen,
+ * the save (`PUT …/results`) and the submission read this one rule.
+ */
+export function manualChoiceOffered(
+  limitValue: number | null | undefined,
+  noCriterionNoInterpretation: boolean = NO_CRITERION_NO_INTERPRETATION
+): boolean {
+  return (limitValue !== null && limitValue !== undefined) || !noCriterionNoInterpretation;
+}
+
+/**
+ * The conformity stored for a line without criterion: the reading's own
+ * (`suggestConformity`, `suggestUnitsConformity`), and the technician's choice
+ * only where the bench offers one (`manualChoiceOffered`) — a stale page or a
+ * forged request can no longer judge a line without criterion nor limit.
+ */
+export function limitConformity(
+  suggested: boolean | null,
+  chosen: unknown,
+  limitValue: number | null | undefined,
+  noCriterionNoInterpretation: boolean = NO_CRITERION_NO_INTERPRETATION
+): boolean | null {
+  return suggested ?? (manualChoiceOffered(limitValue, noCriterionNoInterpretation) && typeof chosen === "boolean" ? chosen : null);
+}
+
 /** A line judged against the parameter's own limit — no criterion. */
 export type LimitReading = {
   /** The final reading (the worst unit when read per unit); null while nothing is typed. */
@@ -37,7 +67,8 @@ export type LimitReading = {
    * The technician chooses « Conforme » / « Non conforme »: the reading is
    * meaningful but not a number (« Présence », « Indénombrable » without a
    * limit, a text the engine cannot read on a single value), or a « > x »
-   * below the limit.
+   * below the limit. Never on a line without limit while J3 is on
+   * (`manualChoiceOffered`): it is « sans interprétation ».
    */
   needsManual: boolean;
 };
@@ -67,7 +98,12 @@ export function benchUnits(units: string[], factor: number): UnitsRead {
  * FINAL value — the reading × the factor — exactly as `PUT …/results`
  * stores it.
  */
-export function valueAgainstLimit(value: string, factor: number, limitValue: number | null | undefined): LimitReading {
+export function valueAgainstLimit(
+  value: string,
+  factor: number,
+  limitValue: number | null | undefined,
+  noCriterionNoInterpretation: boolean = NO_CRITERION_NO_INTERPRETATION
+): LimitReading {
   const text = value.trim();
   if (!text) return { parsed: null, suggested: null, undecided: null, needsManual: false };
   const parsed = applyCalcFactor(parseLabValue(text), factor);
@@ -80,7 +116,10 @@ export function valueAgainstLimit(value: string, factor: number, limitValue: num
     parsed,
     suggested,
     undecided,
-    needsManual: suggested === null && (parsed.numeric === null || undecided !== null),
+    needsManual:
+      manualChoiceOffered(limitValue, noCriterionNoInterpretation) &&
+      suggested === null &&
+      (parsed.numeric === null || undecided !== null),
   };
 }
 
@@ -92,7 +131,8 @@ export function valueAgainstLimit(value: string, factor: number, limitValue: num
 export function unitsAgainstLimit(
   units: string[],
   factor: number,
-  limitValue: number | null | undefined
+  limitValue: number | null | undefined,
+  noCriterionNoInterpretation: boolean = NO_CRITERION_NO_INTERPRETATION
 ): UnitsRead & LimitReading {
   const read = benchUnits(units, factor);
   const summary = summariseReadings(read.readings);
@@ -105,6 +145,7 @@ export function unitsAgainstLimit(
     suggested,
     undecided,
     needsManual:
+      manualChoiceOffered(limitValue, noCriterionNoInterpretation) &&
       read.typedUnits > 0 &&
       read.unreadable.length === 0 &&
       suggested === null &&

@@ -1,7 +1,9 @@
 import { COMPANY, type CompanyInfo } from "./company";
 import { airMethodText } from "./labels";
 import type { AirMethod, Interpretation, LineKind, SampleType, TemperatureSource } from "@/generated/prisma/client";
-import { fmt, singleLimit, type Plan } from "./interpretation";
+import { fmt, singleLimit, storedPlan, type Plan } from "./interpretation";
+import { carriesNoJudgement } from "./contamination-alert";
+import { NO_CRITERION_NO_INTERPRETATION } from "./lab-proposals";
 import { repetitionLabel } from "./series";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
 import { isUncountableText } from "./result-value";
@@ -106,6 +108,12 @@ export type ReportData = {
     /** The plan the result was judged against, frozen with it; null = none. */
     criterion: Plan | null;
     units: ReportUnit[];
+    /**
+     * No criterion, no limit, no verdict (28/10, 2.11, J3): the annex prints
+     * « Sans interprétation » in its criteria. Absent on the versions frozen
+     * before lot 3B, and on any judged line.
+     */
+    uninterpreted?: boolean;
   }[];
   /** An amended version (AMENDEMENT.md §2.3): the version it cancels and
    *  replaces, and the reason. Absent or null on an original report. */
@@ -254,10 +262,15 @@ const IC = "<sup>(IC)</sup>";
 
 type Row = ReportData["results"][number];
 
+/** What the annex prints in the criteria of a line without any interpretation (J3). */
+export const UNINTERPRETED_LABEL = "Sans interprétation";
+
 /** The two criteria cells (m | M) and the plan beneath, as the annex prints them. */
 function criteriaCells(row: Row): string {
   const plan = row.criterion;
   if (!plan) {
+    // No criterion, no limit, no verdict (J3): said, never a limit it was not judged against.
+    if (row.uninterpreted) return `<td class="crit" colspan="2">${UNINTERPRETED_LABEL}</td>`;
     // No criterion for this germ: its catalogue limit when it has one.
     return `<td class="crit" colspan="2">${row.threshold ? show(row.threshold) : "Non spécifié"}</td>`;
   }
@@ -930,18 +943,59 @@ export function reportPdfParts(input: ReportPdfInput): ReportPdfOutput {
   };
 }
 
-/** The sentence printed under "Conclusion", derived from the results. */
+/**
+ * The sentence printed under "Conclusion", derived from the results.
+ * `partial`: some parameters carry no interpretation (J3) — the sample is
+ * then never said conform « pour l'ensemble des paramètres recherchés ».
+ */
 export function buildConclusion(
-  results: { conform: boolean | null; parameter: string }[]
+  results: { conform: boolean | null; parameter: string }[],
+  { partial = false }: { partial?: boolean } = {}
 ): string {
   const nonConformes = results.filter((r) => r.conform === false);
 
   if (nonConformes.length === 0) {
-    return "L'échantillon analysé est conforme aux critères microbiologiques de référence pour l'ensemble des paramètres recherchés.";
+    return partial
+      ? "L'échantillon analysé est conforme aux critères microbiologiques de référence pour les paramètres interprétés."
+      : "L'échantillon analysé est conforme aux critères microbiologiques de référence pour l'ensemble des paramètres recherchés.";
   }
 
   const names = nonConformes.map((r) => r.parameter).join(", ");
   return `L'échantillon analysé est NON CONFORME aux critères microbiologiques de référence pour : ${names}. Une action corrective est recommandée.`;
+}
+
+/**
+ * The conclusion's sentence for the parameters left without interpretation
+ * (28/10, 2.11 : « si on n'a pas de critère, nous ne faisons pas
+ * d'interprétation », J3), named once each, in the report's order. Empty
+ * when there is none.
+ */
+export function uninterpretedSentence(names: readonly string[]): string {
+  const unique = [...new Set(names)];
+  if (unique.length === 0) return "";
+  if (unique.length === 1) {
+    return `Le résultat de ${unique[0]} est communiqué sans interprétation : aucun critère n'est spécifié pour ce paramètre.`;
+  }
+  const list = `${unique.slice(0, -1).join(", ")} et ${unique[unique.length - 1]}`;
+  return `Les résultats de ${list} sont communiqués sans interprétation : aucun critère n'est spécifié pour ces paramètres.`;
+}
+
+/**
+ * A line the report says « sans interprétation » (J3): nothing judged it —
+ * no criterion, no limit, no verdict — and the switch is on. A criterion
+ * « non spécifié » prints its own words: only a line without criterion.
+ */
+export function isUninterpreted(
+  result: {
+    criterion: unknown;
+    conform: boolean | null;
+    interpretation: Interpretation | null;
+    informalInterpretation: Interpretation | null;
+    value: string | null;
+  },
+  noCriterionNoInterpretation: boolean = NO_CRITERION_NO_INTERPRETATION
+): boolean {
+  return noCriterionNoInterpretation && result.value !== null && storedPlan(result.criterion) === null && carriesNoJudgement(result);
 }
 
 /* ------------------------------ frozen versions ----------------------------- */

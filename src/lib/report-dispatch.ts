@@ -4,6 +4,8 @@ import {
   REPORT_LAYOUT_ALIGNED,
   buildConclusion,
   frozenVersionInForce,
+  isUninterpreted,
+  uninterpretedSentence,
   germFingerprints,
   germsToRealert,
   printedReceptionAt,
@@ -18,7 +20,8 @@ import { renderReportPdf } from "./report-pdf";
 import { analysisStart, receptionInstant, reportSampler } from "./report-template";
 import { INTERPRETATION_LABELS, indicativeVerdict, legacyFailures, nothingJudged, sampleVerdict, storedPlan, unitStoredDisplay } from "./interpretation";
 import { getLabSettings } from "./lab-settings";
-import { ALERT_RESULT_WHERE } from "./contamination-alert";
+import { ALERT_RESULT_WHERE, carriesNoJudgement } from "./contamination-alert";
+import { NO_CRITERION_NO_INTERPRETATION } from "./lab-proposals";
 import { proposeRegulation } from "./regulation";
 import { sendEmail, recipientsFor } from "./email";
 import { otherSitesMessage } from "./email-recipients";
@@ -124,6 +127,8 @@ const REPORT_SAMPLE_SELECT = {
       conform: true,
       note: true,
       interpretation: true,
+      // With `conform` and `interpretation`: a line nothing judged (J3).
+      informalInterpretation: true,
       criterion: true,
       // « Date d'analyse » ends with the last result entered.
       enteredAt: true,
@@ -248,6 +253,10 @@ function toReportData(
       ),
       criterion: storedPlan(result.criterion),
       units: result.units.map((u) => ({ display: unitStoredDisplay(u), value: u.value, detected: u.detected })),
+      // No criterion, no limit, no verdict (28/10, 2.11, J3): « Sans
+      // interprétation » in the annex. Written only when true, so a judged
+      // line keeps the data of before key for key.
+      ...(isUninterpreted(result) ? { uninterpreted: true } : {}),
     })),
     amendment: fields.amendment ?? null,
     sampledByLab: sample.serie.samplerKind === "QUALILAB",
@@ -374,16 +383,22 @@ async function computeReportFields(sampleId: string): Promise<ReportFields | nul
       ? `Paramètres hors des limites de référence : ${legacy.join(", ")}. Une action corrective est recommandée.`
       : "";
   const indicativeOnly = verdict === null && sample.results.some((r) => r.interpretation === null && r.informalInterpretation);
+  // The parameters nothing judged (28/10, 2.11, J3): named after the
+  // sentence of the others, never covered by « l'ensemble des paramètres ».
+  const uninterpreted = NO_CRITERION_NO_INTERPRETATION
+    ? sample.results.filter(carriesNoJudgement).map((r) => r.parameter.name)
+    : [];
   const historical = buildConclusion(
-    sample.results.map((r) => ({ conform: r.conform, parameter: r.parameter.name }))
+    sample.results.map((r) => ({ conform: r.conform, parameter: r.parameter.name })),
+    { partial: uninterpreted.length > 0 }
   );
   const conclusion = scale
-    ? [scale.sentence, legacySentence].filter(Boolean).join(" ")
+    ? [scale.sentence, legacySentence, uninterpretedSentence(uninterpreted)].filter(Boolean).join(" ")
     : indicativeOnly
       ? [NO_OFFICIAL_VERDICT, legacySentence].filter(Boolean).join(" ")
       : nothingJudged(sample.results)
         ? NO_CRITERION
-        : historical;
+        : [historical, uninterpretedSentence(uninterpreted)].filter(Boolean).join(" ");
 
   // « Réglementation en vigueur »: the one the technical validator chose for
   // this sample (slice I); a sample validated without one (no criteria, or

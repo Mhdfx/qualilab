@@ -8,7 +8,7 @@ import { loadBenchPlans } from "@/lib/bench-plan";
 import { TYPED_RESULT_WHERE, canEnterParameter, hasTypedResult } from "@/lib/bench-access";
 import { lockTakeState } from "@/lib/bench-take-server";
 import { effectiveFactor } from "@/lib/dilution";
-import { benchUnit, unitsAgainstLimit, valueAgainstLimit } from "@/lib/bench-reading";
+import { benchUnit, limitConformity, unitsAgainstLimit, valueAgainstLimit } from "@/lib/bench-reading";
 import {
   applyUnitFactor,
   judgeUnits,
@@ -19,7 +19,7 @@ import {
   type UnitReading,
 } from "@/lib/interpretation";
 import { readingsShowGerm, valueShowsGerm } from "@/lib/contamination-alert";
-import { NOT_DONE_MESSAGE, benchConformity, isNotDoneText, singleValueEntry, suggestConformity } from "@/lib/result-value";
+import { NOT_DONE_MESSAGE, isNotDoneText, singleValueEntry, suggestConformity } from "@/lib/result-value";
 import { resultAuthor, storedReading, typedUnits } from "@/lib/result-author";
 import { SHEET_SAVED_BY_COLLEAGUE, savedByOthersSince, sheetLoadedAt } from "@/lib/take-over-sheet";
 import type { Interpretation, ResultWorkStatus } from "@/generated/prisma/enums";
@@ -290,7 +290,8 @@ export async function PUT(
           threshold: parameter.threshold,
           // The worst unit against the limit, as the screen computes it;
           // the technician's choice only where the screen asks for one.
-          conform: benchConformity(suggestUnitsConformity(readings, parameter.limitValue), raw.conform),
+          // Without a limit either, nothing to choose (J3, `limitConformity`).
+          conform: limitConformity(suggestUnitsConformity(readings, parameter.limitValue), raw.conform, parameter.limitValue),
           workStatus,
           note: note || null,
           interpretation: null,
@@ -336,7 +337,8 @@ export async function PUT(
       threshold: parameter.threshold,
       // The final value against the limit, as the screen computes it; the
       // technician's choice only where the screen asks for one.
-      conform: benchConformity(suggestConformity(parsed.numeric, parameter.limitValue, parsed.kind), raw.conform),
+      // Without a limit either, nothing to choose (J3, `limitConformity`).
+      conform: limitConformity(suggestConformity(parsed.numeric, parameter.limitValue, parsed.kind), raw.conform, parameter.limitValue),
       workStatus,
       note: note || null,
       interpretation: null,

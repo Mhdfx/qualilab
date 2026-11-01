@@ -6,6 +6,8 @@ import {
   benchStartingReadings,
   benchUnit,
   benchUnits,
+  limitConformity,
+  manualChoiceOffered,
   unitsAgainstLimit,
   valueAgainstLimit,
   type StoredResult,
@@ -43,8 +45,9 @@ describe("valueAgainstLimit — one value against the parameter's limit", () => 
 
   it("asks a choice for a reading that is not a number", () => {
     expect(valueAgainstLimit("Présence", 1, 100)).toMatchObject({ suggested: null, needsManual: true });
-    expect(valueAgainstLimit("voir cahier", 1, null)).toMatchObject({ needsManual: true });
-    expect(valueAgainstLimit("Indénombrable", 1, null)).toMatchObject({ suggested: null, needsManual: true });
+    // Without a limit, only when J3 is off (28/10, 2.11 — see the J3 block below).
+    expect(valueAgainstLimit("voir cahier", 1, null, false)).toMatchObject({ needsManual: true });
+    expect(valueAgainstLimit("Indénombrable", 1, null, false)).toMatchObject({ suggested: null, needsManual: true });
     expect(valueAgainstLimit("Indénombrable", 1, 100)).toMatchObject({ suggested: false, needsManual: false });
   });
 
@@ -198,5 +201,53 @@ describe("one rule for the screen and the server", () => {
     expect(read("../app/technicien/[id]/page.tsx")).toContain("unit: benchUnit(plan, parameter.unit)");
     expect(read("../app/api/bench-sheet/route.ts")).toContain("unit: benchUnit(plan, parameter.unit)");
     expect(read("../app/api/samples/[id]/results/route.ts")).toContain("unit: benchUnit(plan, parameter.unit)");
+  });
+});
+
+describe("J3 — no criterion, no limit: no interpretation (28/10, 2.11)", () => {
+  it("is on by default (the switch of lab-proposals.ts)", () => {
+    expect(manualChoiceOffered(null)).toBe(false);
+    expect(manualChoiceOffered(undefined)).toBe(false);
+  });
+
+  it("asks no choice for « Présence », « Indénombrable » or a text without a limit", () => {
+    for (const typed of ["Présence", "Indénombrable", "voir cahier", "Positif"]) {
+      expect(valueAgainstLimit(typed, 1, null), typed).toMatchObject({ suggested: null, needsManual: false });
+      expect(unitsAgainstLimit([typed, "10"], 1, null), typed).toMatchObject({ suggested: null, needsManual: false });
+    }
+  });
+
+  it("keeps the choice wherever the catalogue gives a limit — the limit counts as a criterion", () => {
+    expect(manualChoiceOffered(100)).toBe(true);
+    expect(manualChoiceOffered(0)).toBe(true);
+    expect(valueAgainstLimit("Présence", 1, 100)).toMatchObject({ needsManual: true });
+    expect(valueAgainstLimit("> 50", 1, 100)).toMatchObject({ needsManual: true });
+    expect(unitsAgainstLimit(["10", "Présence"], 1, 100)).toMatchObject({ needsManual: true });
+  });
+
+  it("off, the bench asks it again exactly as before", () => {
+    expect(manualChoiceOffered(null, false)).toBe(true);
+    expect(valueAgainstLimit("Présence", 1, null, false)).toMatchObject({ needsManual: true });
+    expect(unitsAgainstLimit(["Présence"], 1, null, false)).toMatchObject({ needsManual: true });
+  });
+
+  it("stores no conformity on such a line, whatever a stale page or a forged request sends", () => {
+    for (const chosen of [true, false, null, undefined]) {
+      expect(limitConformity(null, chosen, null)).toBeNull();
+    }
+    // Off: the technician's choice, as before.
+    expect(limitConformity(null, false, null, false)).toBe(false);
+    // A reading that decides on its own is never overridden.
+    expect(limitConformity(false, true, 100)).toBe(false);
+    expect(limitConformity(true, false, 100)).toBe(true);
+  });
+
+  it("the submission no longer waits for a choice on such a line", () => {
+    const stored: StoredResult = { criterion: null, conform: null, value: "Présence", rawValue: null, units: [] };
+    expect(awaitsManualConformity(stored, { unitCount: 1, factor: 1, limitValue: null })).toBe(false);
+    const units = [{ unitIndex: 1, rawValue: "Présence" }, { unitIndex: 2, rawValue: "Indénombrable" }];
+    expect(awaitsManualConformity({ ...stored, units }, { unitCount: 2, factor: 1, limitValue: null })).toBe(false);
+    // …but still waits where a limit asks it (the « > x » the technician reads again).
+    expect(awaitsManualConformity({ ...stored, value: "> 50" }, { unitCount: 1, factor: 1, limitValue: 100 })).toBe(true);
   });
 });
