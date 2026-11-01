@@ -19,6 +19,7 @@ import {
   type UnitReading,
 } from "@/lib/interpretation";
 import { readingsShowGerm, valueShowsGerm } from "@/lib/contamination-alert";
+import { judgingLimit, judgingThreshold, resultUnit } from "@/lib/result-unit";
 import { NOT_DONE_MESSAGE, isNotDoneText, singleValueEntry, suggestConformity } from "@/lib/result-value";
 import { resultAuthor, storedReading, typedUnits } from "@/lib/result-author";
 import { SHEET_SAVED_BY_COLLEAGUE, savedByOthersSince, sheetLoadedAt } from "@/lib/take-over-sheet";
@@ -189,7 +190,13 @@ export async function PUT(
       // the sheet on screen is stale, not wrong (the form reloads on 409).
       return NextResponse.json({ error: PROGRAMME_CHANGED }, { status: 409 });
     }
-    const parameter = line.parameter;
+    // The limit and its threshold only where their unit can judge what was
+    // sampled (« UFC/cm² » never judges a couteau, J1; the air by its means, J2).
+    const parameter = {
+      ...line.parameter,
+      limitValue: judgingLimit(bench.context, line.parameter.limitValue, line.parameter.unit),
+      threshold: judgingThreshold(bench.context, line.parameter.threshold, line.parameter.unit),
+    };
     // The same germ twice in one payload would write itself over silently.
     if (seen.has(parameterId)) {
       return NextResponse.json(
@@ -264,7 +271,8 @@ export async function PUT(
           value: summary.value,
           rawValue: null,
           numericValue: summary.numeric,
-          unit: benchUnit(plan, parameter.unit),
+          // « UFC/couteau », « UFC/m³ »… (J1, J2, `resultUnit`).
+          unit: resultUnit(bench.context, benchUnit(plan, parameter.unit)),
           threshold: plan.label,
           conform: verdictToConform(judged.official?.verdict ?? null),
           workStatus,
@@ -286,7 +294,7 @@ export async function PUT(
           value: summary.value,
           rawValue: null,
           numericValue: summary.numeric,
-          unit: parameter.unit,
+          unit: resultUnit(bench.context, parameter.unit),
           threshold: parameter.threshold,
           // The worst unit against the limit, as the screen computes it;
           // the technician's choice only where the screen asks for one.
@@ -333,7 +341,7 @@ export async function PUT(
       value: stored.value,
       rawValue: stored.rawValue,
       numericValue: parsed.numeric,
-      unit: parameter.unit,
+      unit: resultUnit(bench.context, parameter.unit),
       threshold: parameter.threshold,
       // The final value against the limit, as the screen computes it; the
       // technician's choice only where the screen asks for one.

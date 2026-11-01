@@ -29,6 +29,7 @@ import { isCurrentSendBack, maySendBack } from "@/lib/send-back";
 import { lastSubmissionsOf } from "@/lib/send-back-server";
 import { effectiveFactor } from "@/lib/dilution";
 import { benchStartingReadings, benchUnit } from "@/lib/bench-reading";
+import { judgingLimit, judgingThreshold, resultUnit } from "@/lib/result-unit";
 import { formatDate, formatDateTime, PROGRAMME_PRIORITY_LABELS, surfaceAreaText } from "@/lib/labels";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
@@ -237,9 +238,12 @@ export default async function AnalysePage({
       name: parameter.name,
       // The criterion's unit, as the bench sheet, the stored result and the
       // report print it (« /1 g » rather than the parameter's « /25 g »).
-      unit: benchUnit(plan, parameter.unit),
-      threshold: parameter.threshold,
-      limitValue: parameter.limitValue,
+      // « UFC/couteau » for a surface described in words (J1), the air's by
+      // its means (J2) — `resultUnit`, as the save stores it.
+      unit: resultUnit(bench.context, benchUnit(plan, parameter.unit)),
+      // Only a limit whose unit can judge what was sampled (`unitJudges`).
+      threshold: judgingThreshold(bench.context, parameter.threshold, parameter.unit),
+      limitValue: judgingLimit(bench.context, parameter.limitValue, parameter.unit),
       // The programmed dilution of this sample replaces the catalogue's factor.
       calcFactor: effectiveFactor(line.dilutionFactor, parameter.calcFactor),
       // When the stored value rewrote the entry (a factor, or the shorthand

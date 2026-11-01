@@ -1033,6 +1033,8 @@ export async function sendContaminationAlerts(
           threshold: true,
           conform: true,
           interpretation: true,
+          // A germ nothing judged alerts on its presence (O-12): no limit to print.
+          informalInterpretation: true,
           parameter: {
             select: { name: true, limitValue: true, unit: true, threshold: true },
           },
@@ -1130,10 +1132,13 @@ export async function sendContaminationAlerts(
     // The criterion the verdict came from when there is one (stored on the
     // result), otherwise the parameter's catalogue threshold — its unit
     // moves into the column header with the result's.
-    const limite =
-      result.threshold ??
-      result.parameter.threshold ??
-      (result.parameter.limitValue !== null ? String(result.parameter.limitValue) : "—");
+    // A germ alerting on its presence, judged by nothing (O-12), names no
+    // limit: the catalogue's may be expressed per another basis (J1, J2).
+    const limite = carriesNoJudgement(result)
+      ? "Sans critère"
+      : result.threshold ??
+        result.parameter.threshold ??
+        (result.parameter.limitValue !== null ? String(result.parameter.limitValue) : "—");
     const row: AlertRow = {
       produit: designation,
       site,

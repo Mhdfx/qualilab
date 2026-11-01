@@ -12,6 +12,7 @@ import { formatIsoDay } from "@/lib/labels";
 import { labDayBounds } from "@/lib/lab-day-range";
 import { labReference } from "@/lib/sample-select";
 import { loadBenchPlans } from "@/lib/bench-plan";
+import { judgingThreshold, resultUnit } from "@/lib/result-unit";
 import { benchQueueWhereFor, canEditParameter } from "@/lib/bench-access";
 import { benchUnit } from "@/lib/bench-reading";
 import { reportTechnicianNames } from "@/lib/report-programme";
@@ -112,8 +113,11 @@ export async function GET(request: Request) {
           const norm = normVersion?.label ?? plan?.normLabel ?? null;
           return {
             name: parameter.name,
-            unit: benchUnit(plan, parameter.unit),
-            threshold: plan ? `${plan.label}${norm ? ` · ${norm}` : ""}` : parameter.threshold,
+            // « UFC/couteau », « UFC/m³ »… as the result will store it (J1, J2).
+            unit: resultUnit(bench.context, benchUnit(plan, parameter.unit)),
+            threshold: plan
+              ? `${plan.label}${norm ? ` · ${norm}` : ""}`
+              : judgingThreshold(bench.context, parameter.threshold, parameter.unit),
           };
         }),
       };

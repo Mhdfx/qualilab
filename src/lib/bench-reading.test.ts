@@ -198,9 +198,9 @@ describe("one rule for the screen and the server", () => {
   });
 
   it("the entry page shows the unit the sheet and the stored result use", () => {
-    expect(read("../app/technicien/[id]/page.tsx")).toContain("unit: benchUnit(plan, parameter.unit)");
-    expect(read("../app/api/bench-sheet/route.ts")).toContain("unit: benchUnit(plan, parameter.unit)");
-    expect(read("../app/api/samples/[id]/results/route.ts")).toContain("unit: benchUnit(plan, parameter.unit)");
+    expect(read("../app/technicien/[id]/page.tsx")).toContain("unit: resultUnit(bench.context, benchUnit(plan, parameter.unit))");
+    expect(read("../app/api/bench-sheet/route.ts")).toContain("unit: resultUnit(bench.context, benchUnit(plan, parameter.unit))");
+    expect(read("../app/api/samples/[id]/results/route.ts")).toContain("unit: resultUnit(bench.context, benchUnit(plan, parameter.unit))");
   });
 });
 

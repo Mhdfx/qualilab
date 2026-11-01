@@ -340,7 +340,8 @@ export default async function ValidationDetailPage({
                         )}
                       </td>
                       <td className="py-2.5 pr-3 text-slate-600">
-                        {result.threshold ?? result.parameter.threshold ?? "—"}
+                        {/* A line nothing judged shows no catalogue limit: its unit may not even judge it (J1, J2, J3). */}
+                        {result.threshold ?? (carriesNoJudgement(result) ? null : result.parameter.threshold) ?? "—"}
                         {result.normVersion && (
                           <span className="mt-0.5 block text-xs text-slate-400">{result.normVersion.label}</span>
                         )}

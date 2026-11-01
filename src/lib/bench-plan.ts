@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "./prisma";
 import { pickCriterion, planLabel, type Plan } from "./interpretation";
+import { PLAIN_UNIT_CONTEXT, unitJudges, type UnitContext } from "./result-unit";
 
 /**
  * The criteria a sample is judged against, one per germ: the bench grid,
@@ -22,6 +23,12 @@ export type BenchPlans = {
   unitCount: number;
   productType: { id: string; name: string } | null;
   plans: Map<string, BenchPlan>;
+  /**
+   * What was sampled, for the unit of each result (`resultUnit`: J1
+   * « UFC/couteau », J2 « UFC/m³ ») and the limits that can judge it
+   * (`unitJudges`).
+   */
+  context: UnitContext;
 };
 
 export async function loadBenchPlans(sampleId: string): Promise<BenchPlans> {
@@ -29,6 +36,10 @@ export async function loadBenchPlans(sampleId: string): Promise<BenchPlans> {
     where: { id: sampleId },
     select: {
       unitCount: true,
+      lineKind: true,
+      surfaceAreaNote: true,
+      airMethod: true,
+      airExposureMin: true,
       productType: {
         select: {
           id: true,
@@ -44,6 +55,8 @@ export async function loadBenchPlans(sampleId: string): Promise<BenchPlans> {
               m: true,
               bigM: true,
               unit: true,
+              // A criterion without a unit is read in the parameter's (`benchUnit`).
+              parameter: { select: { unit: true } },
               normVersionId: true,
               normVersion: { select: { label: true, current: true, version: true } },
             },
@@ -53,7 +66,13 @@ export async function loadBenchPlans(sampleId: string): Promise<BenchPlans> {
     },
   });
   const plans = new Map<string, BenchPlan>();
-  if (!sample) return { unitCount: 1, productType: null, plans };
+  if (!sample) return { unitCount: 1, productType: null, plans, context: PLAIN_UNIT_CONTEXT };
+  const context: UnitContext = {
+    lineKind: sample.lineKind,
+    surfaceAreaNote: sample.surfaceAreaNote,
+    airMethod: sample.airMethod,
+    airExposureMin: sample.airExposureMin,
+  };
 
   const byParameter = new Map<string, typeof sample.productType extends { criteria: infer C } | null ? C : never>();
   for (const criterion of sample.productType?.criteria ?? []) {
@@ -64,6 +83,10 @@ export async function loadBenchPlans(sampleId: string): Promise<BenchPlans> {
   for (const [parameterId, list] of byParameter) {
     const criterion = pickCriterion(list);
     if (!criterion) continue;
+    // Expressed per another basis than what was sampled (« UFC/cm² » on a
+    // couteau, « ufc/m3 » on an exposed plate): it cannot judge this line,
+    // which is read without it — sans interprétation (J1, J2, J3).
+    if (!unitJudges(context, criterion.unit ?? criterion.parameter.unit)) continue;
     const plan: Plan = { n: criterion.n, c: criterion.c, mKind: criterion.mKind, m: criterion.m, bigM: criterion.bigM };
     plans.set(parameterId, {
       parameterId,
@@ -78,5 +101,6 @@ export async function loadBenchPlans(sampleId: string): Promise<BenchPlans> {
     unitCount: sample.unitCount,
     productType: sample.productType ? { id: sample.productType.id, name: sample.productType.name } : null,
     plans,
+    context,
   };
 }

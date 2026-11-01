@@ -10,6 +10,7 @@ import { lockTakeState } from "@/lib/bench-take-server";
 import { awaitsManualConformity } from "@/lib/bench-reading";
 import { effectiveFactor } from "@/lib/dilution";
 import { isNotDoneText } from "@/lib/result-value";
+import { judgingLimit } from "@/lib/result-unit";
 
 /**
  * Submits the completed sheet to quality validation:
@@ -88,8 +89,14 @@ export async function POST(
         technicianId: true,
         // The programmed dilution, the factor and the limit the reading is judged with.
         dilutionFactor: true,
-        parameter: { select: { id: true, name: true, limitValue: true, calcFactor: true } },
+        parameter: { select: { id: true, name: true, limitValue: true, unit: true, calcFactor: true } },
       },
+    });
+    // What was sampled: a limit expressed per another basis judges nothing
+    // here (J1, J2) — the screen and the save read it the same way.
+    const context = await tx.sample.findUnique({
+      where: { id },
+      select: { lineKind: true, surfaceAreaNote: true, airMethod: true, airExposureMin: true },
     });
     const results = await tx.result.findMany({
       where: { sampleId: id },
@@ -126,7 +133,7 @@ export async function POST(
         awaitsManualConformity(result, {
           unitCount: locked.unitCount,
           factor: effectiveFactor(line.dilutionFactor, parameter.calcFactor),
-          limitValue: parameter.limitValue,
+          limitValue: context ? judgingLimit(context, parameter.limitValue, parameter.unit) : parameter.limitValue,
         })
       ) {
         if (session.role === "TECHNICIEN" && !canEnterParameter(bench, line, session.id)) {
