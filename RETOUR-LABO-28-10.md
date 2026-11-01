@@ -327,6 +327,21 @@ S4.
 | J3 | 2.11 — sans critère, pas d'interprétation | les lignes sans critère : plus de Conforme / Non conforme à choisir (retirer `awaitsManualConformity` et le contrôle C7 pour elles), « sans interprétation » sur le rapport et dans la conclusion ; décider si la limite du catalogue (`limitValue`) compte comme critère. **Attention (leçon de l'audit)** : l'alerte de contamination repose sur `conform = false` — sans verdict, une Salmonella sur surface sans critère ne déclencherait plus d'alerte. Écrire une règle explicite (ex. « Présence » ou dépassement d'un germe `alertOnExceed` déclenche l'alerte même sans critère, O-12) et la tester avant tout le reste | `bench-reading.ts`, `results/submit`, `results`, `interpretation.ts`, `report-dispatch.ts`, `contamination-alert.ts`, `ResultEntryForm.tsx` | L | non | P2 |
 | J4 | 2.12 — dilution saisie par le technicien | après R-12 : le technicien saisit sa lecture et la dilution utilisée (préremplie par le programme, modifiable) ; le logiciel calcule ; `Result.dilutionUsed` ; paillasse et validation (« lu à 1/100 ») | `schema.prisma`, `api/samples/[id]/results`, `ResultEntryForm.tsx`, `dilution.ts` | M | oui (additive) | P3 |
 
+**Lot 3B — construit le 01/11 en local (branche `lot3b`, sept commits, deux
+migrations additives), non déployé.** Ordre suivi : O-12 d'abord, avec ses
+tests, puis J3, puis le reste.
+
+| # | Construit | Hypothèse (à confirmer) / interrupteur |
+|---|---|---|
+| O-12 | Un germe `alertOnExceed` **sans aucun verdict** (ni critère, ni limite, ni conformité) déclenche l'alerte dès que sa lecture le montre : présence, dénombrement > 0, « > x », « Indénombrable ». La présence est enregistrée avec le résultat (`Result.detected`, migration `20261101200001`) ; une seule règle pour l'envoi (`ALERT_RESULT_WHERE`) et les compteurs de la validation (`raisesContaminationAlert`) ; « Présence — alerte » sur la fiche de validation ; « Sans critère » dans la colonne limite de l'alerte. Les lignes enregistrées avant gardent l'ancienne règle (colonne nulle, aucune reprise) | règle du propriétaire (§7, O-12) appliquée telle que proposée ; pas d'interrupteur : elle ne fait qu'ajouter des alertes, et J3 en dépend |
+| J3 | Sans critère de la famille ni limite du catalogue : plus de « Conforme / Non conforme » à la paillasse, ni à l'enregistrement (`limitConformity`), ni à la soumission ; « Sans interprétation » à la validation, dans les critères de l'annexe (versions figées avant : inchangées) et dans la conclusion, qui nomme ces paramètres et ne dit plus « conforme pour l'ensemble des paramètres » au-dessus d'eux | **la limite du catalogue (`limitValue`) compte comme un critère** (hypothèse, à confirmer par R-28) ; interrupteur `NO_CRITERION_NO_INTERPRETATION` (`src/lib/lab-proposals.ts`, activé) |
+| J1 | Surface décrite en texte → unité « UFC/<texte> » (« UFC/couteau ») ; un critère ou une limite en UFC/cm² ne la juge pas → sans interprétation | une unité de dénombrement seulement (« UFC… », « /cm² ») ; `src/lib/result-unit.ts` |
+| J2 | Air : « UFC/m³ » au biocollecteur, « UFC/boîte (exposée N min) » à la boîte exposée ; un critère « ufc/m3 » ne juge pas une boîte exposée, ni « ufc/boite » un biocollecteur, ni « /cm² » l'air | unités du catalogue relues sur la copie locale : « ufc/m3 », « ufc/Boite », « UFC/cm² » ; pas de volume en litres |
+| J4 | « Dilution lue » sur chaque ligne de la paillasse, préremplie (la sienne, sinon celle du programme, sinon le facteur du catalogue), modifiable (« 1/100 », « 10-2 », « 100 ») ; la valeur finale calculée est imprimée ; `Result.dilutionUsed` (migration `20261101200002`), écrite seulement si elle diffère du programme ; « lu à 1/100 » à la validation | **hypothèse, à confirmer par R-12** : lecture 30 au 1/100 → « 3.10³ » au rapport (notation du laboratoire déjà en place, pas « 3,0·10³ ») |
+| G1 | Boutons de saisie rapide sous chaque lecture, selon le plan (« < 10 », « > », « .10² » … « .10⁶ » ; « Absence » / « Présence » ; les deux sans critère) ; pas de bouton « Indénombrable » | — |
+| G4 | « Échantillon précédent / suivant » dans la série, fiche de programme et fiche de paillasse, avec la question avant de quitter une saisie non enregistrée | la paillasse ne propose que les échantillons que la personne peut y ouvrir ; la programmation, ceux reçus et non annulés |
+| G5 | Filtre « Reçus depuis plus de N jours » (`?recus=N`, gardé avec la vue d'une tuile) et « reçu il y a N j » sur chaque ligne | « plus de N jours » = strictement plus de N jours calendaires (heure du laboratoire) ; les tuiles comptent toute la paillasse |
+
 ### Lot 3C — réception, rapport, exports, exploitation (P2)
 
 | # | Quoi | Ce qu'il faut faire | Où | Effort | Migration | Priorité |
@@ -447,6 +462,10 @@ accord, et ce qui est confirmé.
   « Écouvillon » (surfaces, mains), « Flacon stérile » (eaux), « Sachet
   stérile ou emballage d'origine » (aliments) ; « N/A » quand le client ou un
   tiers prélève : d'accord ?
+- **R-28 — 2.11 (lot 3B, J3)** : « si on n'a pas de critère, nous ne faisons
+  pas d'interprétation » : une analyse sans critère de la famille mais avec
+  une limite dans le catalogue (exemple : ≤ 100 UFC/g) est-elle jugée contre
+  cette limite (construit ainsi), ou elle aussi sans interprétation ?
 
 Les comptes et les signataires ne sont **pas** dans la relance (parqués, §8).
 
