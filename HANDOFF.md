@@ -160,7 +160,10 @@ src/
       product-types/           GET — the familles de produits (`productTypeListWhere`: `?natureId=` one type d'analyse; `?category=` that category's AND those « à préciser »; `?all=1` archived + every client's, PROGRAMMATEUR/ADMIN only; capped at 400) · POST (PROGRAMMATEUR, ADMIN — 16/10 Q125)
       product-types/[id]/      GET · PATCH (PROGRAMMATEUR, ADMIN: name, type d'analyse, domain, client, activity, regulation — PRODUCT_TYPE_UPDATED before/after)
       product-types/[id]/criteria/  PUT the whole grid (PROGRAMMATEUR, ADMIN; rows left out are deleted — CRITERIA_UPDATED; 409 on a grid opened before a change, `version`, since 24/10)
-      product-types/[id]/split/     GET the preview · POST « Scinder par domaine » (ADMIN; one transaction, rows copied then deactivated on the source; 409 on a stale preview — `family-split.ts`, 24/10)
+      product-types/[id]/split/     GET the preview · POST « Scinder par domaine » (ADMIN; one transaction, rows copied then deactivated on the source; 409 on a stale preview — `family-split.ts`, 24/10; the new family keeps the source's ONSSA group — lot 3E)
+      onssa/rapport/           GET ?mois=AAAA-MM — the ONSSA monthly report as Excel (VALIDATEUR, DIRECTION, ADMIN; journal ONSSA_REPORT_EXPORTED — lot 3E, N3)
+      admin/onssa/groups/ + [id]/  POST (create one or the proposed list) · PATCH (rename, domain, order, archive) the ONSSA product groups (ADMIN — lot 3E, N2)
+      admin/onssa/mappings/    PATCH the groups of families / types d'analyse and the canevas columns of parameters, one transaction (ADMIN; ONSSA_MAPPING_UPDATED before / after — lot 3E, N2)
       admin/import/legacy/     POST (ADMIN) « Catalogue de l'ancien logiciel »: analyse (summary + `planHash`) · commit (one transaction; 409 on a stale plan, look-alike parameters without `confirmSimilar`, samples in progress without `confirmInFlight`) — `legacy-catalogue-import.ts`
       lab-services/ + [id]/    read · PATCH (label, price, active)
       invoices/  invoices/[id]/   invoice CRUD (COMPTABLE + ADMIN)
@@ -174,7 +177,8 @@ src/
     validation/                queue + [id] control view (two-step approval) ✅
     commercial/                client base + [id] fiche 360° + nouveau + [id]/modifier ✅
     comptabilite/              dashboard + factures (list/nouvelle/[id]) ✅
-    admin/                     dashboard + factures + parametres + utilisateurs + catalogue + entreprise + journal (filtered) + envois (e-mail journal)
+    admin/                     dashboard + factures + parametres + utilisateurs + catalogue + entreprise + journal (filtered) + envois (e-mail journal) + onssa (« Correspondances ONSSA », lot 3E N2; archived families / natures still carrying samples listed too)
+    qualite/onssa/             « Rapport ONSSA » (Direction, administrator, validateur — lot 3E N3): the month's counts, the « non déclaré » list, the Excel
   components/
     layout/  RoleShell (one shell for every role: `navFor(role)` picks the
              nav, `activeHref` = longest matching prefix), DashboardShell,
@@ -268,7 +272,7 @@ src/
     serie-sampler.ts   whom a Qualilab série names as sampler (D-05): qualilabSampler (pure, tested)
     bench-reading.ts   how a bench line reads, screen and submit alike (C4, C6, C7): benchUnit, benchUnits, valueAgainstLimit, awaitsManualConformity (pure, tested)
     billing-hold.ts    the invoice that holds a sample, and the analyses changed while it did (final verification 19/10, server) — rules in billing.ts / invoice-notices.ts
-    lab-proposals.ts   ★ the switches of the re-ask proposals built before the answer (24/10): BLIND_BENCH_SCREENS (2.15), TAKE_OVER_COLLEAGUE (2.13), SERIES_VALIDATION (2.16) — confirmed 28/10; lot 3A (01/11): COMMERCIAL_RESENDS_REPORTS (R-13), UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE (R-15), OBSERVATION_ONLY_DELAY_AND_TEMPERATURE (Q71 / R-30); lot 3B: NO_CRITERION_NO_INTERPRETATION (J3, 2.11), UNIT_MISMATCH_NOT_JUDGED (J1/J2, hypothèse R-29); lot 3D: PURCHASE_PARTIAL_PAYMENTS (R-23), PAYMENT_REQUIRES_TAX_CERTIFICATE (R-24, off) — §9
+    lab-proposals.ts   ★ the switches of the re-ask proposals built before the answer (24/10): BLIND_BENCH_SCREENS (2.15), TAKE_OVER_COLLEAGUE (2.13), SERIES_VALIDATION (2.16) — confirmed 28/10; lot 3A (01/11): COMMERCIAL_RESENDS_REPORTS (R-13), UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE (R-15), OBSERVATION_ONLY_DELAY_AND_TEMPERATURE (Q71 / R-30); lot 3B: NO_CRITERION_NO_INTERPRETATION (J3, 2.11), UNIT_MISMATCH_NOT_JUDGED (J1/J2, hypothèse R-29); lot 3C (01/11): CONSULTATION_AFTER_RECEPTION (I6, R-8), SAMPLING_MEANS_BY_KIND (K6, R-27), ACCREDITATION_LOGO_ON_MIXED_REPORT (K4, R-18), ALERTS_AT_VALIDATION (K3, R-13), BON_WITHOUT_FAX (I8, R-17); lot 3E (01/11): ONSSA_OFFICIAL_CONTROL (O-6), ONSSA_COUNT_BY (R-22); lot 3D: PURCHASE_PARTIAL_PAYMENTS (R-23), PAYMENT_REQUIRES_TAX_CERTIFICATE (R-24, off) — §9
     contamination-alert-analyses.ts  S3 (2.21, 28/10): which parameters raise the contamination alert — Salmonella, Listeria, E. coli; food, water, surfaces (pure, tested); applied by scripts/s3-contamination-alerts.mts
     result-note.ts     G2 (2.20 (h)): the analysis note is internal — the bench's field and its wording (pure, tested)
     result-unit.ts     lot 3B J1/J2: the unit of a result from what was sampled (« UFC/couteau », « UFC/m³ », « UFC/boîte (exposée N min) ») and which criteria/limits can judge it (`unitJudges`) — pure, tested
@@ -280,6 +284,10 @@ src/
     validation-server.ts ★ one sample's signatures and send — validateTechnically, approveSample, sendReportWithAlerts — and the série's runs (runSerieValidation, runSerieSend)
     session-revocation.ts / -server.ts  the sign-in notice of a session closed on purpose: causes, `?motif=`, wording / the Verification markers (written, read, verified token)
     family-split.ts    « Scinder par domaine »: planFamilySplit, decideSplit, movedCriteria / copiedCriterion, splitJournal (pure, tested); fingerprint.ts the version a preview or a grid was read at
+    onssa-control.ts   lot 3E N1: « Contrôle officiel » / autocontrôle of a série — readOnssaControl, patchOnssaControl, the screens' draft (pure, tested); printed nowhere (onssa-guards.test.ts)
+    onssa-canevas.ts   lot 3E N2: the canevas' 24 columns and methods (ONSSA_COLUMNS), resolveOnssaColumn (yeasts / moulds by norm), proposeOnssaColumn (names / aliases; water parameters → water columns only), PROPOSED_ONSSA_GROUPS (pure, tested)
+    onssa-mapping.ts   lot 3E N2: the checks of the correspondences batch and of the groups (pure, tested)
+    onssa-report.ts    ★ lot 3E N3: the month and the counting rules (buildOnssaReport, isDoneResult, isNonConformResult — the alert's reading of an indicative verdict) (pure, tested); onssa-report-server.ts loadOnssaMonth (the month's read); onssa-workbook.ts the Excel (Feuil1/2/3 + Notes); onssa-access.ts who reads it
   generated/prisma/    ★ generated Prisma client — DO NOT edit, gitignored
 prisma/
   schema.prisma  ·  seed.ts (9 demo users)  ·  migrations/ (39 on branch `lot2-retour-16-10`; 34 in production)  ·  disable-demo-accounts.ts (go-live)
@@ -477,6 +485,19 @@ default; OFF puts the screens and the API back as they were, no row rewritten
   `/api/series/[id]/reports(/send)` the send's (`RESEND_REPORT_ROLES`);
   each sample is still signed by `canValidateTechnically` / `canApprove`
   (never the same person twice) through `validation-server.ts`.
+
+**The ONSSA report's switches (lot 3E, 01/11 — built, not deployed).** Also in
+`src/lib/lab-proposals.ts`:
+- `ONSSA_OFFICIAL_CONTROL` (O-6, ON): the « Contrôle officiel » box, the
+  sampling body, the establishment and the origin on the visit, the
+  deposit, the reception and the préleveur's visit. OFF: the fields leave
+  the screens, the API ignores them (`readOnssaControl` /
+  `patchOnssaControl`), the report counts every série as an autocontrôle;
+  stored values are kept, no row rewritten.
+- `ONSSA_COUNT_BY` (R-22, « RECEPTION »): the day that puts a validated
+  sample in a month — its reception, or « VALIDATION » (its administrative
+  validation; the « pas encore validés » count is then left out of the
+  screen and the Notes sheet).
 
 **Prices and invoices — the owner's rule (24–25/10; built 25/10, integrated
 and committed 26/10 — `fee0b1d` —, deployed 26/10 with `e8cbfe1`).** The prices of the analyses and services (`LabService.unitPrice`,
@@ -725,7 +746,18 @@ value. No column for the rest of lot 2C: an address's site is the existing
 parameter back from the line's wording, and `Client.invoiceLayout` waits
 for R-1 (H4); D-19 changes `AnalysisParameter.family` through the screen.
 
-Enums: `Role`(11: 9 core, `PROGRAMMATEUR` and `DIRECTION` included, + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) ·
+Since 2026-11-01 (migration `20261101500000_lot3e_rapport_onssa`, lot 3E,
+additive, **applied locally only**): table `OnssaProductGroup` (name, domain
+`OnssaDomain` ALIMENTAIRE|EAU, sortOrder, active — archived, never deleted);
+`ProductType.onssaGroupId` and `AnalysisNature.onssaGroupId` (nullable,
+ON DELETE SET NULL; the family's wins); `AnalysisParameter.onssaColumn`
+(nullable key of `ONSSA_COLUMNS`); `Serie.controleOfficiel` (default false)
++ `organismePreleveur` / `etablissement` / `origine` (nullable). Null =
+« non déclaré »: a **new family** (creation, criteria import) starts
+without a group and is classed on `/admin/onssa`; a family born of
+« Scinder par domaine » keeps its source's.
+
+Enums: `Role`(11: 9 core, `PROGRAMMATEUR` and `DIRECTION` included, + `CLIENT` + `MAGASINIER`) · `SampleType`(ALIMENTAIRE|EAU|AMBIANCE) · `OnssaDomain`(ALIMENTAIRE|EAU, lot 3E) ·
 `SampleStatus`(6) · `ResultWorkStatus`(EN_COURS|TERMINE|ANOMALIE) ·
 `ReportSendStatus` · `InvoiceStatus`.
 
@@ -976,7 +1008,7 @@ Enums: `Role`(11: 9 core, `PROGRAMMATEUR` and `DIRECTION` included, + `CLIENT` +
 
 | I want to change… | Go to |
 |---|---|
-| A re-ask proposal built before the laboratory answered — turn it off if they answer otherwise | `src/lib/lab-proposals.ts`: `BLIND_BENCH_SCREENS` (2.15 — off: the technician's screens name the client again), `TAKE_OVER_COLLEAGUE` (2.13 — off: a colleague's sample is read-only again, PATCH /take answers 403), `SERIES_VALIDATION` (2.16 — off: the série buttons leave /validation, the série routes answer 404); lot 3A: `COMMERCIAL_RESENDS_REPORTS` (off: the gestionnaire neither sends nor resends), `UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE` (off: C1 « à vérifier » for an undeclared time), `OBSERVATION_ONLY_DELAY_AND_TEMPERATURE` (off: every « à vérifier » row needs the observation); lot 3B: `NO_CRITERION_NO_INTERPRETATION` (J3, 2.11 — off: the bench asks « Conforme / Non conforme » again on a line without criterion nor limit, the report prints as before), `UNIT_MISMATCH_NOT_JUDGED` (J1/J2 — off: a criterion or limit in another unit judges the line again); lot 3D: `PURCHASE_PARTIAL_PAYMENTS`, `PAYMENT_REQUIRES_TAX_CERTIFICATE`. Pure constants read by the server, the screens and the tests; no row is rewritten either way (`lab-proposals-off.test.ts`) |
+| A re-ask proposal built before the laboratory answered — turn it off if they answer otherwise | `src/lib/lab-proposals.ts`: `BLIND_BENCH_SCREENS` (2.15 — off: the technician's screens name the client again), `TAKE_OVER_COLLEAGUE` (2.13 — off: a colleague's sample is read-only again, PATCH /take answers 403), `SERIES_VALIDATION` (2.16 — off: the série buttons leave /validation, the série routes answer 404); lot 3A: `COMMERCIAL_RESENDS_REPORTS` (off: the gestionnaire neither sends nor resends), `UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE` (off: C1 « à vérifier » for an undeclared time), `OBSERVATION_ONLY_DELAY_AND_TEMPERATURE` (off: every « à vérifier » row needs the observation); lot 3B: `NO_CRITERION_NO_INTERPRETATION` (J3, 2.11 — off: the bench asks « Conforme / Non conforme » again on a line without criterion nor limit, the report prints as before), `UNIT_MISMATCH_NOT_JUDGED` (J1/J2 — off: a criterion or limit in another unit judges the line again); lot 3C: `CONSULTATION_AFTER_RECEPTION` (I6 — off: the agreement only at the reception, the route answers 404), `SAMPLING_MEANS_BY_KIND` (K6 — off: « N/A » outside the air), `ACCREDITATION_LOGO_ON_MIXED_REPORT` (K4 — off: the logo only when every analysis is accredited), `ALERTS_AT_VALIDATION` (K3 — off: the alerts leave with the report only), `BON_WITHOUT_FAX` (I8 — off: the fax line is back on the bon); lot 3E: `ONSSA_OFFICIAL_CONTROL` (O-6 — off: the official-control fields hidden, the API ignores them, the report counts everything as autocontrôle), `ONSSA_COUNT_BY` (R-22 — « RECEPTION » or « VALIDATION »: the day that puts a sample in the ONSSA month); lot 3D: `PURCHASE_PARTIAL_PAYMENTS`, `PAYMENT_REQUIRES_TAX_CERTIFICATE`. Pure constants read by the server, the screens and the tests; no row is rewritten either way (`lab-proposals-off.test.ts`) |
 | Who sends / resends a report (K2) | `src/lib/report-actions.ts`: `SEND_REPORT_ROLES` (first send, sample and série), `RESEND_REPORT_ROLES` (the per-sample route's guard), `reportSendRefusal`, `canResendReport(role, status, amendmentPending, sent)` |
 | « Prélevé le » required or not (I3), the visit's T° au prélèvement (I2) | `src/lib/serie-input.ts`: `samplingTimeRequired`, `SAMPLING_TEMPERATURE_KINDS` / `visitRequiresSamplingTemperature`, `UNDECLARED_SAMPLING_HINT`; C1's wording `UNDECLARED_DELAY_DETAIL` (`reception-complementary.ts`) |
 | Which doubts need the « Observation de réception » (I7) | `src/lib/reception-rules.ts`: `JUSTIFIED_ROW_KEYS`, `rowNeedsJustification`, `rowToJustify` |
@@ -994,6 +1026,17 @@ Enums: `Role`(11: 9 core, `PROGRAMMATEUR` and `DIRECTION` included, + `CLIENT` +
 | The old software's deleted rows (OBSOLETE = 2) and the reprise's step (f) | `deriveRawPlan` (only OBSOLETE = 0 imported; `REASON_OBSOLETE`, `REASON_DELETED`) and step (f) in `planLegacyCatalogue` (`retirements`, `reprise.retired { rows, families, leftActive }`, `ParameterResolver.reach`, `splitOrigin`) in `src/lib/legacy-catalogue.ts`; written by `importLegacyCatalogue` (`created.retired`, `metadata.retired` on `LEGACY_CATALOGUE_REPRISE`, in `planHash`) in `legacy-catalogue-import.ts`; shown on « Catalogue de l'ancien logiciel » (`ImportLegacy.tsx`: the counter and « laissées actives — à décocher ») |
 | A figure on a screen (thousands, decimals) | `formatDecimal` / `formatCurrency` in `src/lib/labels.ts` only — `src/lib/screen-figures.test.ts` fails on any `toLocaleString(` or `new Intl.NumberFormat(` elsewhere |
 | The labels of « Corriger la fiche » / « Annuler » / « Réactiver » (each tied to its field) | `htmlFor` / `id` in `src/components/samples/SampleVerbs.tsx`, pinned by `sample-verbs-labels.test.ts` |
+
+**Added 2026-11-01 (lot 3E — the ONSSA monthly report, N1–N3 of `RETOUR-LABO-28-10.md` §5; branch `lot3e`, local, not deployed; the rules still to confirm by R-22 are written there as « hypothèse »):**
+
+| I want to change… | Go to |
+|---|---|
+| « Contrôle officiel » / autocontrôle of a série (N1): the rules, the words | `src/lib/onssa-control.ts` (`readOnssaControl` at creation through `validateSerie`, `patchOnssaControl` in `PATCH /api/series/[id]` — the cadre's rule: the préleveur until the reception, the laboratory after; journal `SERIE_UPDATED` `onssa` avant / après); fields `OnssaControlFields.tsx` (visit, deposit), correction panel `OnssaControlPanel.tsx` (reception before / after, the préleveur's visit); switch `ONSSA_OFFICIAL_CONTROL` in `src/lib/lab-proposals.ts`. Printed nowhere (`onssa-guards.test.ts`) |
+| The canevas' columns, their methods, the name / alias proposals, the proposed groups | `src/lib/onssa-canevas.ts` (`ONSSA_COLUMNS`, `resolveOnssaColumn`, `proposeOnssaColumn`, `PROPOSED_ONSSA_GROUPS`) |
+| The correspondences (groups, natures, families, parameters → canevas) | `/admin/onssa` (`OnssaMappingsManager.tsx`); routes `POST /api/admin/onssa/groups`, `PATCH /api/admin/onssa/groups/[id]`, `PATCH /api/admin/onssa/mappings` (one transaction, journalled before / after); checks `src/lib/onssa-mapping.ts` |
+| How the ONSSA report counts (month, unit, NC, groups) | `src/lib/onssa-report.ts` (pure, tested); the month's read `src/lib/onssa-report-server.ts`; the day that puts a sample in a month: `ONSSA_COUNT_BY` in `lab-proposals.ts` |
+| The ONSSA Excel's layout (Feuil1/2/3 + Notes) | `src/lib/onssa-workbook.ts`; route `GET /api/onssa/rapport?mois=AAAA-MM` (journal `ONSSA_REPORT_EXPORTED`); screen `/qualite/onssa`; who: `src/lib/onssa-access.ts` (Direction, administrator, validateur; correspondences administrator only). Feuil3's samples, analyses and NC are values, only conformes and totals are formulas |
+| A new family counted in the ONSSA report | it starts « non déclaré » (product-types POST and the criteria import set no group): class it on `/admin/onssa`; « Scinder par domaine » copies the source's group (`api/product-types/[id]/split`) |
 
 ## 6. Environment variables
 
@@ -1369,6 +1412,16 @@ Found by the end-to-end recette of 06/10 (`RECETTE-06-10-PARCOURS.md`).
 - **Gates (lot 3B tree):** `npx tsc --noEmit -p .` 0, eslint 0 on the changed files, `npx vitest run` 160 files / 3 108 tests; migrations applied on the shared local DB and the alert filter run against it. Not run here (the integrator's): `npm run build`, the browser recette.
 - **Review of lot 3B (01/11), seven findings applied** (no migration): dilution capped to the column (J4, no more 500 on « 10-8 »); « UFC/<texte> » cut to 191 characters (J1, no more 500 on a long surface note); the G4 guard compares dilutions by value; the conclusion's sentence without « de » before the names (« Résultats communiqués sans interprétation (…) : E. coli et Entérobactéries. »); the ANOMALIE case of the O-12 × J3 safeguard written as intended; the programme sheet reads the criteria as the bench does; J1/J2's setting aside behind `UNIT_MISMATCH_NOT_JUDGED` (R-29). Gates: tsc 0, eslint 0 on the changed files, vitest 160 files / 3 124 tests.
 
+### 2026-11-01 — lot 3E, le rapport mensuel ONSSA (`RETOUR-LABO-28-10.md` §3.2 et §5, N1–N3) — as built (branch `lot3e`, local, not deployed)
+- **Context.** The laboratory sent on 28/10 an extract of the ONSSA monthly canevas (three sheets, no comment); the owner said on 01/11 « implement everything now »: O-6 taken as yes, each R-22 rule built with the most reasonable default, written as « hypothèse, à confirmer par R-22 » in `RETOUR-LABO-28-10.md` §5.
+- **Decision — the official control beside the cadre, not in it.** `Serie.controleOfficiel` (false = autocontrôle, every old série), `organismePreleveur`, `etablissement`, `origine` — V1 of 07/10 (the commercial cadre) is not undone; switch `ONSSA_OFFICIAL_CONTROL`. The origin is per série, not per sample (hypothesis).
+- **Decision — the groups are a table, the columns a constant.** The laboratory's list of product groups is unknown (R-22): `OnssaProductGroup`, kept by the administrator (a proposed list in one click). The 24 canevas columns are fixed by the official form: `ONSSA_COLUMNS`; a parameter's column is a key, the norm of its result picks among the yeasts' / moulds' columns.
+- **Decision — nothing dropped silently.** Only the analyses with a group and a column are declared (same totals on the three sheets); the others are listed on the screen and in the workbook's « Notes ».
+- **Decision — `/api/onssa/rapport`**, not `/api/reports/onssa` as planned: `/api/reports/` is the analysis reports' space, closed to the Direction (`direction-guards.test.ts`).
+- **Migration** `20261101500000_lot3e_rapport_onssa`, additive (one table, columns nullable or with a default, no data written).
+- **Gates (local).** `npx tsc --noEmit -p .` 0, eslint 0 on the changed files, `npx vitest run` 161 files / 3 092 tests; the month's loader run against the local copy (proposals applied to 595 of 819 parameters, October counted: 127 samples, 151 analyses, 12 NC, the unmapped listed), then every ONSSA value put back to null. Not browser-checked (the integrator's dev server is the main tree's).
+- **Review corrections (01/11, same branch).** The hostile review's findings applied: the indicative verdict (`Result.informalInterpretation`) read as the contamination alert reads it — a result with only that verdict is done, NC when « Non satisfaisant », and « Incomplet » is no verdict (hypothèses R-22); `/admin/onssa` lists the archived families and types d'analyse that still carry samples; no proposal for a ratio or two germs joined by « / », water parameters proposed water columns only; « Scinder par domaine » copies the ONSSA group; Feuil3's wording corrected (values, not formulas over Feuil2); the Notes leave out the pending count on the VALIDATION basis; Feuil1 groups bodies / establishments / origins case and accents aside; « texte attendu » for a non-text field; the correction panel warns on a série with validated samples. Gates: tsc 0, eslint 0 on the changed files, vitest 161 files / 3 098 tests.
+
 ## 8c. A lesson written down (2026-08-25)
 
 Importing anything that touches Prisma from a **client** component drags the
@@ -1391,6 +1444,11 @@ importing a server module.
   - **Watch-out for J3 (2.11 « pas de critère → pas d'interprétation »):** contamination alerts rely on `conform = false` (`contamination-alert.ts`); removing the verdict on lines without a criterion would silently stop alerts for sensitive germs without a criterion (2.21 extends alerts to waters and surfaces). Write the explicit alert rule (owner decision O-12) and its tests before the change — the lesson of the round-1 audit.
   - **Conflict to decide (O-6):** the ONSSA monthly report (Excel of 28/10) counts « Contrôle officiel » vs « Autocontrôle », removed from `Cadre` on 07/10 (V1) — it needs a separate flag, not the commercial cadre back.
   - The `lab-proposals.ts` comments now say « CONFIRMED on 28/10 » for 2.13, 2.15 and 2.16 (a)(d) (lot 3A).
+- **Lot 3E (01/11, ONSSA report) — watch-outs (branch `lot3e`, local, not deployed).**
+  - **New families start « non déclaré ».** `POST /api/product-types` and the criteria import set no ONSSA group: until the administrator classes them on `/admin/onssa`, their samples fall back to the type d'analyse's group or stay in the report's « non déclaré » list (never dropped silently). « Scinder par domaine » copies the source's group. Visit `/admin/onssa` after a reprise, an import or new families.
+  - **Archived families still count.** The report reads a sample whatever its family's state (30 samples since 01/09 on the local copy name an archived family after the reprise (f) and the splits): `/admin/onssa` lists the archived families and types d'analyse that carry samples (« archivée », filter « Familles archivées »).
+  - **Corrections after the export.** The official-control fields stay correctable after the validation and after `ONSSA_REPORT_EXPORTED` (hypothèse R-22; journal before / after): a month exported again can give other Feuil1 figures. The correction panel warns when the série has validated samples.
+  - **NC and the alerts read the same way** (`isNonConformResult` ≈ `raisesContaminationAlert`): without an official verdict (none or « Incomplet »), NC = « non conforme » or the indicative verdict « Non satisfaisant »; a result with only an indicative verdict counts as done. Hypothèses R-22 (`RETOUR-LABO-28-10.md` §5 N3).
 - **Lot 2E (24/10) — three re-ask proposals built before the laboratory's answer, each behind a switch of `src/lib/lab-proposals.ts` (ON; built, tested locally, committed and pushed, not deployed — §8 « 2026-10-24 »).** If the laboratory answers otherwise, set the switch to `false` and redeploy — nothing else changes, no row is rewritten:
   - `BLIND_BENCH_SCREENS` (re-ask 2.15, Q55 — plan C2): ON, a technician's bench lists, sheet, /recherche and `GET /api/samples` show no client, site, client's place nor the client's person who agreed, and his free-text search does not match them; **OFF**: his screens name the client and the site again, his search matches them again (the bench sheet PDF stays without client either way — C1).
   - `TAKE_OVER_COLLEAGUE` (2.13, Q107 — C3): ON, any technician may « Reprendre » a sample a colleague holds (journal `SAMPLE_TAKEN_OVER`); **OFF**: a colleague's sample is read-only again, `PATCH /api/samples/[id]/take` answers 403, only its holder (or the administrator) types on it. The « Saisi par » under each reading and the 409 on a stale sheet stay either way.

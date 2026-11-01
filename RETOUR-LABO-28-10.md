@@ -664,6 +664,125 @@ accord du laboratoire, derrière un interrupteur de
 | N2 | Correspondances ONSSA | `ProductType.onssaGroup` et `AnalysisParameter.onssaColumn`, modifiables dans l'administration, « non déclaré » par défaut, préremplis par nom / alias ; la liste des non-correspondants affichée sur l'écran ONSSA | `schema.prisma`, /admin/parametres, familles, `family-catalogue.ts` | M | oui (additive) | P3 |
 | N3 | L'export mensuel | écran « Rapport ONSSA » (Direction, administrateur, validateur), choix du mois, Excel au format du canevas (trois feuilles), règles de comptage confirmées par R-22 ; de préférence, remplir leur vrai canevas (feuille II-AT) pour garder leurs formules. Fonction d'agrégation pure + tests | nouveau `src/lib/onssa-report.ts`, `api/reports/onssa`, page | L | non | P3 |
 
+**Lot 3E construit le 01/11 (branche `lot3e`, local, non déployé)** — le
+propriétaire a dit « tout maintenant » : O-6 pris pour un oui, chaque règle
+que R-22 doit confirmer est construite avec le choix le plus raisonnable,
+écrit ci-dessous (« hypothèse, à confirmer par R-22 »), et, quand il change un
+comportement, derrière un interrupteur de `src/lib/lab-proposals.ts`.
+Migration additive `20261101500000_lot3e_rapport_onssa` (une table, quatre
+colonnes sur `Serie`, une sur `AnalysisParameter`, une sur `ProductType` et
+sur `AnalysisNature`).
+
+- **N1 — construit.** La série porte une case « Contrôle officiel » (décochée
+  = autocontrôle, valeur de toutes les séries existantes), « DR ONSSA /
+  organisme préleveur agréé », « Nom de l'établissement » et « Origine des
+  produits » : saisis à la visite (`VisitForm`), au comptoir (`DepositForm`),
+  corrigeables à la réception (avant et après la réception) et sur la visite
+  du préleveur tant que la série n'est pas réceptionnée — la règle du cadre
+  (`PATCH /api/series/[id]`, journal `SERIE_UPDATED` avant / après). Séparé
+  du cadre commercial (la décision V1 du 07/10 reste). **Imprimé nulle part**
+  (test `onssa-guards.test.ts`). Interrupteur `ONSSA_OFFICIAL_CONTROL`
+  (allumé ; éteint : les champs quittent les écrans, l'API les ignore, le
+  rapport compte tout en autocontrôle). Règles : `src/lib/onssa-control.ts`.
+  - *Hypothèse, à confirmer par R-22* : l'organisme préleveur est obligatoire
+    pour un contrôle officiel ; l'établissement est facultatif (vide = le
+    client et son site dans le rapport) ; l'autocontrôle n'a ni organisme ni
+    établissement.
+  - *Hypothèse, à confirmer par R-22* : « Origine » = la provenance des
+    produits (« Local », « Importé », « Destiné à l'export » proposés, texte
+    libre), **une par série** et non par échantillon (`Serie.origine` au lieu
+    de `Sample.origine`) ; vide = « Non précisée ». Si R-22 la veut par
+    échantillon : une colonne nullable de plus, la série la préremplit.
+  - *Hypothèse, à confirmer par R-22* : la case, l'organisme,
+    l'établissement et l'origine restent corrigeables par la réception et
+    l'administrateur **après** la validation et même après l'export du mois
+    (le journal garde l'avant et l'après) ; générer de nouveau le mois donne
+    alors d'autres chiffres en « Feuil1 ». Le panneau de correction le dit
+    quand des échantillons de la série sont validés.
+- **N2 — construit.** Écran administrateur « Correspondances ONSSA »
+  (`/admin/onssa`) : les groupes de produits (table `OnssaProductGroup`,
+  domaine alimentaire / eaux, ordre, archivage, jamais supprimés), le groupe
+  de chaque type d'analyse (`AnalysisNature.onssaGroupId`) et de chaque
+  famille (`ProductType.onssaGroupId`, qui l'emporte), la colonne du canevas
+  de chaque paramètre (`AnalysisParameter.onssaColumn`) ; « non déclaré » par
+  défaut ; tout est journalisé (`ONSSA_GROUP_CREATED`, `ONSSA_GROUP_UPDATED`,
+  `ONSSA_MAPPING_UPDATED` avec avant / après). Les 23 colonnes et « chimie
+  alimentaires » sont celles de l'extrait du 28/10, dans leur ordre, avec
+  leurs méthodes (`src/lib/onssa-canevas.ts`). Propositions par nom et alias
+  (« Appliquer les N propositions » ; sur la copie locale : 595 des 819
+  paramètres) ; la méthode du résultat choisit entre les colonnes des levures
+  et des moisissures (NM 08.0.123, NM ISO 21527-1, -2).
+  - *Hypothèse, à confirmer par R-22* : la liste des groupes (« liste
+    proposée » en un clic : lait, viandes, volailles et ovoproduits, pêche,
+    plats cuisinés, pâtisserie, végétaux, autres denrées, eaux), à remplacer
+    par la leur.
+  - *Hypothèse, à confirmer par R-22* : surfaces, mains et air ne sont pas
+    déclarés (aucun groupe proposé pour ces types d'analyse) ; la chimie des
+    eaux n'a pas de colonne (aucune proposition) ; « Levures et
+    moisissures » en un seul paramètre n'est pas proposé (à classer à la
+    main), ni un ratio ou deux germes joints par « / » (« Ratio flore
+    totale/Flore lactique ») ; un paramètre des **eaux** ne se voit proposer
+    que les colonnes des eaux (MOR 22 °C, MOR 36 °C, Pseudomonas,
+    Clostridia, entérocoques) : « Flore totale », coliformes et E. coli des
+    eaux restent à classer à la main (les autres colonnes portent une
+    méthode des aliments).
+  - Les familles et types d'analyse **archivés** qui portent encore des
+    échantillons sont listés sur `/admin/onssa` (« archivée » / « archivé »,
+    filtre « Familles archivées ») : le rapport compte un échantillon quel
+    que soit l'état de sa famille. Une famille **nouvelle** (création,
+    import de critères) commence « non déclaré » : à classer sur
+    `/admin/onssa` ; une famille née d'un « Scinder par domaine » reprend le
+    groupe de sa famille d'origine.
+- **N3 — construit.** Écran « Rapport ONSSA » (`/qualite/onssa`, menu
+  Système qualité : Direction, administrateur, validateur) : choix du mois
+  (le précédent par défaut), indicateurs, tableau par groupe (contrôle
+  officiel / autocontrôle), synthèse, et la liste de ce qui n'est **pas
+  déclaré** (échantillons sans groupe, paramètres sans colonne). L'Excel
+  (`GET /api/onssa/rapport?mois=AAAA-MM`, journal `ONSSA_REPORT_EXPORTED`) :
+  « Feuil1 », « Feuil2 », « Feuil3 » à la mise en page de l'extrait (mêmes
+  cellules d'en-tête, leurs intitulés tels quels), totaux en formules ; en
+  « Feuil3 », échantillons, analyses et non conformes sont des **valeurs
+  calculées par le LIMS** (le canevas les lisait dans « II-AT »), conformes
+  et totaux des formules sur ces valeurs — retoucher « Feuil2 » à la main ne
+  change pas « Feuil3 » ; plus une feuille « Notes » (règles, échantillons
+  en attente — ligne omise quand le mois se compte à la validation —, non
+  déclarés).
+  Agrégation pure `src/lib/onssa-report.ts`, classeur `onssa-workbook.ts`.
+  La route est `/api/onssa/rapport` et non `api/reports/onssa` :
+  `/api/reports/` est l'espace des rapports d'analyses, fermé à la Direction.
+  - *Hypothèse, à confirmer par R-22* : un mois = les échantillons **reçus**
+    dans le mois (interrupteur `ONSSA_COUNT_BY`, « RECEPTION » ;
+    « VALIDATION » = le jour de la validation administrative), comptés une
+    fois leur validation administrative signée ; l'écran dit combien
+    attendent encore. Un annulé ne compte jamais.
+  - *Hypothèse, à confirmer par R-22* : une analyse = un paramètre d'un
+    échantillon avec un résultat (les n unités comptent une fois) ; « NC » =
+    « Non satisfaisant », ou « non conforme » sans plan ; **« Acceptable » =
+    conforme** ; la feuille 3 compte conformes et non conformes par analyse,
+    comme les formules du canevas.
+  - *Hypothèse, à confirmer par R-22* : un résultat lu sur **moins d'unités
+    que le n du plan** (pas de verdict officiel, un verdict indicatif) est
+    une analyse réalisée ; il est NC quand son verdict indicatif est « Non
+    satisfaisant » ou qu'il est « non conforme » — la lecture de l'alerte
+    de contamination, pour que le rapport ne compte jamais moins de NC que
+    les alertes envoyées.
+  - *Hypothèse, à confirmer par R-22* : un verdict **« Incomplet »** (une
+    dilution plus forte à lire, un critère sans m ou M) n'est pas un
+    verdict : même lecture (NC si « non conforme » ou verdict indicatif
+    « Non satisfaisant », conforme sinon).
+  - *Hypothèse, à confirmer par R-22* : « Feuil1 » = une ligne par groupe ×
+    (organisme, établissement, origine) pour le contrôle officiel et par
+    groupe × origine pour l'autocontrôle, le nombre d'analyses dans « total » ;
+    organismes, établissements et origines regroupés sans tenir compte des
+    majuscules, des accents ni des espaces (« Local » = « local »), la
+    première graphie rencontrée affichée.
+  - *Hypothèse, à confirmer par R-22* : seules les analyses qui ont un groupe
+    ET une colonne sont déclarées (mêmes totaux sur les trois feuilles) ;
+    les autres sont listées à part, jamais perdues sans le dire.
+  - Pas fait faute du fichier : remplir **leur** canevas complet (feuille
+    II-AT et ses formules) — dès qu'il arrive (R-22), le classeur peut y
+    écrire ses chiffres aux mêmes lignes.
+
 ### Rien à construire
 
 Q111–Q130 cochées (partie 1), Q128, Q89/Q90, 2.4, 2.13, 2.15, 2.16 (a)(d),

@@ -45,7 +45,10 @@ describe("the words of the screens (Q120)", () => {
   });
 
   it("never says « Type de produit », « Types de produits » or « Types du client »", () => {
-    expect(hits(/\btypes? de produits?\b|\btypes? du client\b/i)).toEqual([]);
+    // One exception: the ONSSA canevas' own header (lot 3E, « Feuil2 » A6),
+    // the official form's word, written as it is there.
+    const canevasHeader = /^lib\/onssa-workbook\.ts:\d+: sheet\.getCell\("A6"\)\.value = "Types de produits";$/;
+    expect(hits(/\btypes? de produits?\b|\btypes? du client\b/i).filter((hit) => !canevasHeader.test(hit))).toEqual([]);
   });
 
   it("calls Microbiologie / Physico-chimie a « domaine », never a « famille d'analyses »", () => {

@@ -505,6 +505,12 @@ model AnalysisParameter {
   /// proposed from the old software's marks (« * », « (SA) », « (SN) ») and
   /// confirmed in /admin/parametres. Null = « à préciser » (no mark printed).
   accreditation  AccreditationStatus?
+  /// Lot 3E, N2 (RETOUR-LABO-28-10.md §3.2): the column of the ONSSA monthly
+  /// report (feuille « II-AT ») this parameter is counted in — a key of
+  /// `ONSSA_COLUMNS` (`src/lib/onssa-canevas.ts`). Null = « non déclaré »:
+  /// left out of the report and listed on its screen. Chosen in /admin/onssa
+  /// (proposed from the name and the aliases).
+  onssaColumn    String?                    @db.VarChar(40)
 }
 
 model LabService {
@@ -965,6 +971,23 @@ model Serie {
   receivedAt         DateTime?
   samples            Sample[]
 
+  // ---- Lot 3E, N1 — contrôle officiel / autocontrôle (RETOUR-LABO-28-10.md
+  // §3.2, O-6). Separate from the commercial `cadre` (V1 of 07/10 stands):
+  // read by the ONSSA monthly report only, printed nowhere.
+  /// True = a « contrôle officiel » (sampled by or for the ONSSA); false =
+  /// an autocontrôle — every série entered before this column.
+  controleOfficiel   Boolean      @default(false)
+  /// « DR ONSSA / Organisme préleveur agréé » of an official control; null
+  /// on an autocontrôle.
+  organismePreleveur String?      @db.VarChar(191)
+  /// « Nom de l'établissement » controlled; null on an autocontrôle — when
+  /// empty, the report names the client (and its site).
+  etablissement      String?      @db.VarChar(191)
+  /// « Origine » of the série's products (hypothèse, R-22 : « Local »,
+  /// « Importé »…), official control and autocontrôle alike; null = « Non
+  /// précisée ».
+  origine            String?      @db.VarChar(191)
+
   @@index([clientId, createdAt])
   @@index([kind, createdAt])
   @@index([createdById, createdAt])
@@ -1022,8 +1045,13 @@ model AnalysisNature {
   profiles        AnalysisProfile[]
   /// The product families of this type d'analyse (RETOUR-LABO-16-10.md F1).
   productTypes    ProductType[]
+  /// Lot 3E, N2: the ONSSA product group of this type d'analyse's samples
+  /// when their family names none (water, typically). Null = none.
+  onssaGroupId    String?
+  onssaGroup      OnssaProductGroup? @relation(fields: [onssaGroupId], references: [id], onDelete: SetNull)
 
   @@index([active, sortOrder])
+  @@index([onssaGroupId])
 }
 
 /// A set of parameters proposed in one click (« Micro aliments standard »).
@@ -1134,8 +1162,13 @@ model ProductType {
   updatedAt         DateTime        @updatedAt
   criteria          Criterion[]
   samples           Sample[]
+  /// Lot 3E, N2: the « groupe de produits » of the ONSSA monthly report its
+  /// samples are counted in. Null = the nature's group, else « non déclaré ».
+  onssaGroupId      String?
+  onssaGroup        OnssaProductGroup? @relation(fields: [onssaGroupId], references: [id], onDelete: SetNull)
 
   @@index([normalizedName])
+  @@index([onssaGroupId])
   @@index([clientId, active])
   // The family pickers filter by type d'analyse (F5) among the active families.
   @@index([natureId, active])
@@ -1843,4 +1876,32 @@ model AlertCopyClient {
 
   @@id([addressId, clientId])
   @@index([clientId])
+}
+
+// ---- Lot 3E · rapport mensuel d'activité ONSSA (RETOUR-LABO-28-10.md §3.2, N2)
+
+/// The canevas' two microbiology domains a product group belongs to (its
+/// synthesis sheet: microbiologie alimentaire / des eaux). The chemistry is
+/// the « chimie alimentaires » column, whatever the group.
+enum OnssaDomain {
+  ALIMENTAIRE
+  EAU
+}
+
+/// A « groupe de produits » / « type de produits » of the ONSSA monthly
+/// report. The laboratory's own list is still asked (R-22): the
+/// administrator keeps it in /admin/onssa (a proposed list in one click).
+/// Archived, never deleted.
+model OnssaProductGroup {
+  id           String           @id @default(cuid())
+  name         String           @unique @db.VarChar(191)
+  domain       OnssaDomain      @default(ALIMENTAIRE)
+  sortOrder    Int              @default(0)
+  active       Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  productTypes ProductType[]
+  natures      AnalysisNature[]
+
+  @@index([active, sortOrder])
 }

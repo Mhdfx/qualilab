@@ -8,6 +8,7 @@ import { serieSelectFor, serializeSerie } from "@/lib/serie-select";
 import { arrivalChangeRefusal, arrivalRefusal, endRefusal } from "@/lib/serie-input";
 import { serieStatus } from "@/lib/series";
 import { IMAGE_DATA_URI, MAX_IMAGE_CHARS, canSeeProtocolPhoto } from "@/lib/protocol-photo-access";
+import { formatOnssaControl, patchOnssaControl } from "@/lib/onssa-control";
 
 // Never TECHNICIEN: a série names the client, the site and the interlocutor,
 // and the bench works blind (as for the protocol photo).
@@ -61,6 +62,11 @@ export async function GET(
  * arrival at the lab, cooler temperature, photo of the signed sheet, the
  * cadre and its precision), and that the réception may correct. The lines themselves are corrected through
  * the sample routes.
+ *
+ * Lot 3E, N1: « Contrôle officiel », the sampling body, the establishment and
+ * the origin (`patchOnssaControl`) — by the préleveur until the série is
+ * received, by the laboratory (reception, administrator) at any time, as the
+ * cadre; journalled before / after.
  */
 export async function PATCH(
   request: Request,
@@ -77,6 +83,10 @@ export async function PATCH(
       createdById: true,
       cadre: true,
       cadreNote: true,
+      controleOfficiel: true,
+      organismePreleveur: true,
+      etablissement: true,
+      origine: true,
       startedAt: true,
       samplingTimeDeclared: true,
       endedAt: true,
@@ -199,6 +209,22 @@ export async function PATCH(
     if (noteChanged) data.cadreNote = nextNote;
   }
 
+  // Lot 3E, N1 — the ONSSA report's fields, beside the cadre (same rule).
+  const onssaBefore = {
+    controleOfficiel: serie.controleOfficiel,
+    organismePreleveur: serie.organismePreleveur,
+    etablissement: serie.etablissement,
+    origine: serie.origine,
+  };
+  const onssa = patchOnssaControl(onssaBefore, input);
+  if (!onssa.ok) return fail(onssa.error);
+  if (onssa.changed) {
+    if (session.role === "PRELEVEUR" && serie.receivedAt) {
+      return fail("La série est réceptionnée : le laboratoire seul peut changer le contrôle officiel.");
+    }
+    for (const key of onssa.fields) data[key] = onssa.value[key];
+  }
+
   if (Object.keys(data).length === 0) return fail("Rien à modifier.");
 
   const updated = await prisma.serie.update({
@@ -221,6 +247,10 @@ export async function PATCH(
         cadreChanged || noteChanged
           ? { avant: formatCadre(serie.cadre, serie.cadreNote), apres: formatCadre(nextCadre, nextNote) }
           : undefined,
+      // The ONSSA report counts by it (N1): before / after in clear.
+      onssa: onssa.ok && onssa.changed
+        ? { avant: formatOnssaControl(onssaBefore), apres: formatOnssaControl(onssa.value) }
+        : undefined,
       // The arrival is printed on the report (lot 1b): before / after too.
       arrivedAt: arrivalChanged
         ? { avant: serie.arrivedAt?.toISOString() ?? null, apres: finalArrived?.toISOString() ?? null }

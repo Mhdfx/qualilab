@@ -83,6 +83,8 @@ import { LabDateTimeInput, dateTimePending } from "@/components/LabDateTimeInput
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
+import { OnssaControlPanel } from "@/components/onssa/OnssaControlPanel";
+import { ONSSA_OFFICIAL_CONTROL } from "@/lib/lab-proposals";
 import { fromLocalInput, localInputDate, toLocalInput } from "@/components/preleveur/visit-types";
 import {
   AllExploitableBar,
@@ -231,6 +233,11 @@ export type ReceptionSerieData = {
   /** The precision of « Autre » (V1); optional on an older payload. */
   cadreNote?: string | null;
   clientReference: string | null;
+  /** Lot 3E, N1: the ONSSA report's fields; optional on an older payload. */
+  controleOfficiel?: boolean;
+  organismePreleveur?: string | null;
+  etablissement?: string | null;
+  origine?: string | null;
   startedAt: string;
   /** false: « Prélevé le » left empty — `startedAt` is a stand-in (28/10, I3); optional on an older payload. */
   samplingTimeDeclared?: boolean | null;
@@ -1192,6 +1199,14 @@ export function SerieReceptionForm({
             </a>
           </Card>
 
+          {ONSSA_OFFICIAL_CONTROL && (
+            <OnssaControlPanel
+              serieId={serie.id}
+              initial={serie}
+              validatedSamples={serie.samples.some((s) => s.status === "VALIDE" || s.status === "RAPPORT_ENVOYE")}
+            />
+          )}
+
           <Card className="p-5">
             <div className="flex items-start gap-2 text-sm text-slate-600">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden="true" />
@@ -1448,6 +1463,15 @@ function ReceivedSummary({
           </SecondaryButton>
         </div>
       </Card>
+      {ONSSA_OFFICIAL_CONTROL && (
+        <div className="mt-4 max-w-xl">
+          <OnssaControlPanel
+            serieId={serie.id}
+            initial={serie}
+            validatedSamples={serie.samples.some((s) => s.status === "VALIDE" || s.status === "RAPPORT_ENVOYE")}
+          />
+        </div>
+      )}
     </div>
   );
 }

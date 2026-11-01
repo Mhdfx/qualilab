@@ -17,6 +17,7 @@ import {
   Award,
   PackagePlus,
   Search,
+  Landmark,
 } from "lucide-react";
 import { viewHref } from "@/lib/dashboard-view";
 import type { BenchView, ValidationView } from "@/lib/circuit-views";
@@ -164,6 +165,8 @@ export const qualiteNav: NavSection[] = [
       { label: "Métrologie", href: "/qualite/metrologie", icon: Gauge },
       { label: "Températures", href: "/qualite/temperatures", icon: Thermometer },
       { label: "EIL", href: "/qualite/eil", icon: Award },
+      // Lot 3E, N3 — the monthly report for the ONSSA.
+      { label: "Rapport ONSSA", href: "/qualite/onssa", icon: Landmark },
     ],
   },
 ];

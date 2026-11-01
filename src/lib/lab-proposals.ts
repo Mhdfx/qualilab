@@ -24,7 +24,9 @@
  * `UNIT_MISMATCH_NOT_JUDGED` R-29); lot 3C those of the reception, the
  * report and the exploitation (`CONSULTATION_AFTER_RECEPTION` R-8,
  * `SAMPLING_MEANS_BY_KIND` R-27, `ACCREDITATION_LOGO_ON_MIXED_REPORT` R-18,
- * `ALERTS_AT_VALIDATION` R-13, `BON_WITHOUT_FAX` R-17); lot 3D those of
+ * `ALERTS_AT_VALIDATION` R-13, `BON_WITHOUT_FAX` R-17); lot 3E those of the
+ * ONSSA report (`ONSSA_OFFICIAL_CONTROL` O-6; `ONSSA_COUNT_BY` R-22, a
+ * choice of two values rather than an on / off); lot 3D those of
  * Achat & Stock, last in this file.
  */
 
@@ -189,6 +191,32 @@ export const ALERTS_AT_VALIDATION = true;
  * back, empty, to be filled by hand.
  */
 export const BON_WITHOUT_FAX = true;
+
+// ————— Lot 3E — rapport mensuel ONSSA (RETOUR-LABO-28-10.md §3.2 et §5) —————
+// The owner's go of 01/11 (O-6 taken as yes): built before the laboratory
+// answered R-22, each rule written as an « hypothèse, à confirmer par R-22 »
+// in RETOUR-LABO-28-10.md §5.
+
+/**
+ * O-6 / N1: the série carries a « Contrôle officiel » box (unticked =
+ * autocontrôle), the « DR ONSSA / Organisme préleveur agréé », the
+ * « Nom de l'établissement » and the « Origine » of its products — at the
+ * visit, at the counter and at the reception, separate from the commercial
+ * cadre (V1 of 07/10 is not undone). Printed nowhere: the ONSSA report reads
+ * them. Off: the fields leave the screens, the API ignores them, nothing is
+ * rewritten — and the report counts every série as an autocontrôle.
+ */
+export const ONSSA_OFFICIAL_CONTROL = true;
+
+/**
+ * R-22 « l'unité et la date de comptage »: which day puts a sample in a
+ * month of the ONSSA report. "RECEPTION" (proposed): the day it was
+ * received — the month's activity, counted once its results are validated
+ * (the screen lists those still waiting). "VALIDATION": the day of its
+ * administrative validation — every sample counted in the month it was
+ * completed.
+ */
+export const ONSSA_COUNT_BY: "RECEPTION" | "VALIDATION" = "RECEPTION";
 
 // ————— Lot 3D — Achat & Stock (RETOUR-LABO-28-10.md §5, M1–M8) —————
 

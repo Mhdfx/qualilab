@@ -46,6 +46,15 @@ import { Card } from "@/components/ui/Card";
 import { ClientPicker, type PickedClient } from "@/components/commercial/ClientPicker";
 import { SitePicker, withNewSite } from "@/components/commercial/SitePicker";
 import { LineEditor } from "./LineEditor";
+import { OnssaControlFields } from "@/components/onssa/OnssaControlFields";
+import { ONSSA_OFFICIAL_CONTROL } from "@/lib/lab-proposals";
+import {
+  EMPTY_ONSSA_DRAFT,
+  formatOnssaControl,
+  onssaDraftError,
+  onssaPayload,
+  type OnssaDraft,
+} from "@/lib/onssa-control";
 import {
   draftLineDetails,
   duplicateDraft,
@@ -185,6 +194,9 @@ export function VisitForm({ me }: { me: Preleveur }) {
   // Le cadre est un choix obligatoire, sans présélection ni déduction (V1).
   const [cadre, setCadre] = useState<Cadre | null>(null);
   const [cadreNote, setCadreNote] = useState("");
+  // Lot 3E, N1: contrôle officiel / autocontrôle, beside the cadre.
+  const [onssa, setOnssa] = useState<OnssaDraft>(EMPTY_ONSSA_DRAFT);
+  const [onssaInvalid, setOnssaInvalid] = useState(false);
   const [profiles, setProfiles] = useState<ProfileOption[]>([]);
   const [memory, setMemory] = useState<ClientMemory>({ places: [], products: [] });
 
@@ -366,6 +378,12 @@ export function VisitForm({ me }: { me: Preleveur }) {
       reveal("visit-cadre");
       return setStepError(SERIE_MESSAGES.cadreMissing);
     }
+    const onssaProblem = ONSSA_OFFICIAL_CONTROL ? onssaDraftError(onssa) : null;
+    if (onssaProblem) {
+      setOnssaInvalid(true);
+      reveal("visit-onssa");
+      return setStepError(onssaProblem);
+    }
     if (samplerKind === "QUALILAB" && !samplerUserId) return setStepError("Indiquez qui a effectué le prélèvement.");
     if (samplerKind !== "QUALILAB" && !samplerName.trim()) return setStepError("Indiquez qui a effectué le prélèvement.");
     if (endedAt && startedAt && localInputDate(endedAt)! < localInputDate(startedAt)!) return setFieldError("visit-ended", "L'heure de fin précède le début du prélèvement.");
@@ -401,6 +419,7 @@ export function VisitForm({ me }: { me: Preleveur }) {
           samplerName: samplerKind === "QUALILAB" ? undefined : samplerName,
           cadre,
           cadreNote: cadre === "AUTRE" ? cadreNote.trim() || undefined : undefined,
+          ...(ONSSA_OFFICIAL_CONTROL ? onssaPayload(onssa) : {}),
           startedAt: fromLocalInput(startedAt) ?? undefined,
           endedAt: fromLocalInput(endedAt) ?? undefined,
           notes,
@@ -626,6 +645,20 @@ export function VisitForm({ me }: { me: Preleveur }) {
                 </div>
               </div>
 
+              {ONSSA_OFFICIAL_CONTROL && (
+                <div id="visit-onssa">
+                  <OnssaControlFields
+                    idPrefix="visit-onssa"
+                    value={onssa}
+                    onChange={(next) => {
+                      setOnssa(next);
+                      if (onssaInvalid && !onssaDraftError(next)) setOnssaInvalid(false);
+                    }}
+                    invalid={onssaInvalid}
+                  />
+                </div>
+              )}
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="visit-started" className="section-title mb-2">
@@ -832,6 +865,7 @@ export function VisitForm({ me }: { me: Preleveur }) {
               <Row label="Client" value={selectedClient?.name ?? "—"} />
               <Row label="Site de prélèvement" value={selectedSite?.name ?? "Siège"} />
               <Row label="Cadre" value={cadre ? formatCadre(cadre, cadreNote) : "—"} />
+              {ONSSA_OFFICIAL_CONTROL && <Row label="Rapport ONSSA" value={formatOnssaControl(onssaPayload(onssa))} />}
               {interlocutor && <Row label="Interlocuteur" value={interlocutor} />}
               <Row
                 label="Prélevé le"
