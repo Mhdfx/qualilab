@@ -291,7 +291,11 @@ unité et seuil non cités).
   l'air (K6, R-27).
 - Partout ailleurs, la lecture du scan confirme la transcription.
 
-## 5. Le plan — lot 3 (rien n'est construit)
+## 5. Le plan — lot 3
+
+État au 01/11 : lot 3A construit et relu, corrections de la relecture
+appliquées (copie locale, non déployé) ; 3B, 3C, 3D, 3E en cours — l'état de
+chaque lot est dans `LOT3-AVANCEMENT.md`.
 
 Lettres nouvelles : **I** réception, comptoir, terrain · **J** paillasse et
 interprétation · **K** rapport, envoi, alertes · **L** exports et
@@ -314,6 +318,130 @@ les noms donnés le 18/10 (`RETOUR-LABO-16-10.md`, 2.20).
 
 Avec ce lot, en production (propriétaire, §7) : S1, S2, S3 (la part sûre),
 S4.
+
+**Lot 3A construit le 01/11 (copie locale, non déployé ; décision du
+propriétaire du 01/11 : tout construire maintenant).** Ce qui attendait une
+relance est construit avec le défaut le plus raisonnable, écrit ici comme
+**hypothèse, à confirmer par R-x**, et, quand il change un comportement que
+le laboratoire n'a pas confirmé, derrière un interrupteur de
+`src/lib/lab-proposals.ts` (ON = la proposition du plan ; OFF = le
+comportement d'avant le 01/11, aucune ligne réécrite) :
+
+- **I1** — « Aseptisées / désinfectées » et « mains aseptisées /
+  désinfectées » (`labels.ts`) ; aucune ligne réécrite.
+- **I2** — « Température au prélèvement » obligatoire sur la visite pour
+  aliment, eau et surface (`SAMPLING_TEMPERATURE_KINDS`,
+  `serie-input.ts`) : message, étoile, contrôle de l'écran. Mains et
+  « Autre » : facultatif (**hypothèse, à confirmer par R-14** pour
+  « Autre ») ; l'air n'a pas le champ, sa T° ambiante (obligatoire) en tient
+  lieu (**hypothèse, R-14**). Ni le comptoir ni « Corriger la fiche » ne
+  bloquent. S1 (`temperatureRequiredKinds` → « ALIMENT,EAU ») reste un
+  réglage du propriétaire.
+- **I3** — « Prélevé le » obligatoire si et seulement si le laboratoire
+  prélève (`samplingTimeRequired` : `samplerKind === "QUALILAB"`). Le client :
+  facultatif, vide = « Non déclarée », l'instant de prélèvement est
+  l'arrivée. Un tiers (« Autre ») : facultatif comme le client, au comptoir
+  comme sur la visite (**hypothèse, à confirmer par R-15**). La case
+  « Heure de prélèvement inconnue du client » disparaît
+  (`SAMPLING_TIME_UNKNOWN` supprimé ; celle d'une page ouverte avant se lit
+  comme un champ vide). « Arrivé le » reste obligatoire à l'écran
+  (prérempli) ; l'API garde « absent = l'instant de l'enregistrement » pour
+  un appel sans le champ. Une visite « Autre » sans heure est aussi « Non
+  déclarée » (`samplingTimeDeclared = false`, écrit désormais sur la visite).
+  C1 d'une heure non déclarée : « Délai non évaluable : heure de prélèvement
+  non déclarée », sans objet, aucune observation exigée — interrupteur
+  `UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE` (**hypothèse, à confirmer par
+  R-15** ; OFF : « à vérifier », observation obligatoire, comme avant).
+  Une heure non déclarée n'est jamais comparée ni affichée (relecture du
+  01/11) : son début est un substitut (l'arrivée, ou l'instant de
+  l'enregistrement d'une visite) — la fin du prélèvement et l'arrivée saisies
+  ensuite (fiche de la visite, en-tête de la série, réception) ne sont pas
+  refusées parce qu'elles le précèdent, l'arrivée reste bornée par une fin
+  saisie (`startIsDeclared`, `endRefusal`, `arrivalRefusal`,
+  `serie-input.ts`) ; le protocole PDF, la fiche de la visite, la
+  confirmation de la visite et l'écran de réception affichent « Non
+  déclarée » au lieu de l'heure d'enregistrement.
+- **I4** — « Tous exploitables et bien identifiés (N) » répond aussi C5
+  « identification correcte » là où elle est vide, à la réception et au
+  comptoir ; un « Non exploitable » présélectionne « Détruire » (modifiable ;
+  repasser « Exploitable » remet « Analyser » — seulement si « Détruire »
+  avait été présélectionné : un « Détruire » choisi à la main reste,
+  `destroyPreselected` / `decisionChosen`, `reception-logic.ts`). « Rejeté » :
+  après R-9.
+- **I5** — « Rattacher comme site de… » ouvert au gestionnaire commercial
+  (`ATTACH_ROLES` = `MERGE_ROLES`), garde de la route, page, journal (le rôle
+  est écrit), tests ; `CLIENTS-FUSION.md` §3. Préalable en production
+  inchangé : la décision `Invoice.clientSnapshot`.
+- **I7** — l'« Observation de réception » n'est exigée que pour la
+  température (règle 6 et C2) et le délai (C1) ; quantité non pesée, DLC
+  (C7), mollusques 25–50 g : avertissements seulement (`rowNeedsJustification`,
+  `reception-rules.ts`) — interrupteur `OBSERVATION_ONLY_DELAY_AND_TEMPERATURE`
+  (notre lecture de « Oui, voir les critères », Q71 — **hypothèse, à
+  confirmer par R-28** ; OFF : toute ligne « à vérifier » exige
+  l'observation, comme avant).
+- **K1** — sur le rapport seulement : « Nom — mains <état> »
+  (`reportDesignation`, `document-html.ts`) ; versions émises à partir du
+  01/11 (les versions figées gardent leur texte) ; ni l'e-mail, ni l'alerte,
+  ni l'étiquette, ni la paillasse, ni le portail ; protocole et bon
+  inchangés.
+- **K2** — premier envoi d'un rapport (échantillon et série) : validateur,
+  Direction, administrateur (`SEND_REPORT_ROLES`) ; les routes de la série
+  refusent le gestionnaire commercial ; la route de l'échantillon décide avec
+  `reportSendRefusal`. Le gestionnaire garde le **renvoi** d'une version déjà
+  partie — interrupteur `COMMERCIAL_RESENDS_REPORTS` (**hypothèse, à
+  confirmer par R-13 (b)** ; OFF : il n'envoie ni ne renvoie). La tuile
+  « Validés — à envoyer » n'est que sur /validation (pas d'accès commercial) :
+  rien à changer.
+- **G2** — « + Ajouter une note » sur chaque analyse à la paillasse ;
+  libellé « Note interne », aide « Non imprimée sur le rapport : lue par le
+  validateur… » ; `Result.note` n'est plus imprimée sur un nouveau rapport
+  (les versions figées gardent la leur, et un rapport émis avant le lot 1b,
+  rendu depuis les données, l'imprime comme avant — même garde que K1) ;
+  le validateur la lit (« Note
+  interne : … ») ; le parcours compte les notes internes de la soumission
+  (« 2 notes internes »).
+- **S3 / #35** — la liste des analyses qui déclenchent l'alerte est décidée
+  par `src/lib/contamination-alert-analyses.ts` (testé) : Salmonella,
+  Listeria, E. coli, microbiologie, catégories ALIMENTAIRE, EAU, AMBIANCE
+  (surfaces ; l'air partage la catégorie), nom ou alias, jumeaux F3 compris.
+  « Listeria » attend R-14 (§7 S3 « Listeria après R-14 ») : le script ne
+  pose **aucun** Listeria par défaut (`--listeria none`) — ils sont listés
+  « en attente », jamais posés ni décochés ; `--listeria all` (le genre tel
+  qu'écrit) ou `--listeria monocytogenes` (L. monocytogenes seule) après la
+  réponse. Le script `scripts/s3-contamination-alerts.mts` (suivi par git ;
+  son rapport JSON reste dans `.ui-tests/`, ignoré) pose
+  `alertOnExceed` par la route d'administration (`PATCH
+  /api/parameters/[id]`, journal `PARAMETER_UPDATED` avant / après), connecté
+  comme l'administrateur de démonstration (panneau de démonstration hors
+  localhost) ; `--base` (local par défaut), `--dry-run`, rapport JSON. Les
+  paramètres déjà marqués que la réponse ne nomme pas (entérocoques,
+  Pseudomonas…) sont **listés, pas décochés** (`--unset-others` sur
+  décision : décocher fait taire des alertes). La route refuse un paramètre
+  sensible sans limite : une **détection** (unité « /25 g », « /5 L »,
+  « /cm² », sans UFC) reçoit la limite 0 (« Absence », comme les détections
+  déjà marquées) avec son drapeau — **le script écrit donc aussi une limite,
+  pas seulement le drapeau** : cette limite 0 est aussi celle que lit la
+  conformité proposée à la paillasse (`valueAgainstLimit`,
+  `bench-reading.ts`), et le **propriétaire doit l'approuver** avant
+  l'exécution en production (`DEPLOY.md` « Lot 3 ») ; un **dénombrement** sans limite (UFC/g,
+  UFC/cm², UFC/mains) n'est **pas** marqué — sa limite ou son critère est au
+  laboratoire, jamais inventé (**à demander avec R-14**). Copie locale, le
+  01/11 (avec `--listeria all`, avant la relecture) : 9 paramètres marqués
+  (dont 9 limites 0 de détection), 5 l'étaient
+  déjà, 4 dénombrements en attente d'une limite (E. coli surfaces, E. coli
+  présumés, E. coli mains, Listeria eaux), 3 paramètres de test marqués
+  laissés tels quels ; journal `PARAMETER_UPDATED` ; rapport
+  `.ui-tests/s3-contamination-alerts.localhost.json`. Tant que R-14 n'a pas
+  donné leur limite, ces quatre dénombrements ne déclenchent **aucune**
+  alerte (la question est dans R-14, §6). En production :
+  l'opérateur du propriétaire, `--dry-run` d'abord (la liste y sera
+  différente).
+- Commentaires de `lab-proposals.ts` : 2.13, 2.15, 2.16 (a)(d) confirmés le
+  28/10 (interrupteurs gardés ON comme retour arrière).
+- À prévenir au laboratoire au déploiement (inchangé) : T° au prélèvement
+  obligatoire sur la visite (aliment, eau, surface), plus de « Prélevé le »
+  obligatoire pour un dépôt du client, le commercial n'envoie plus les
+  rapports (il les renvoie), la note d'analyse n'est plus imprimée.
 
 ### Lot 3B — paillasse et interprétation (P2)
 
@@ -355,6 +483,135 @@ S4.
 | M6 | Devise (« Euro ») | après R-23 : `currency`, `amountForeign`, `exchangeRate` ; les montants en DH restent la base | `schema.prisma`, `achat-validation.ts`, `PurchaseInvoicesManager.tsx` | S | oui | P3 |
 | M7 | Attestation de régularité fiscale, retenue à la source | après R-24 (le comptable) : par fournisseur « soumis à la retenue » + date de la dernière attestation ; par facture : attestation fournie (oui/non, date, scan facultatif), taux appliqué (prérempli, modifiable), montant retenu, net à payer = TTC − retenue ; avertissement (ou blocage du paiement) sans attestation ; colonnes dans M2 ; état mensuel des retenues. **Aucun taux codé en dur** : les taux viennent du comptable, dans les réglages | `schema.prisma`, nouveau `src/lib/withholding.ts`, `api/purchase-invoices/*`, `api/suppliers/*`, écrans du magasin | L | oui | P3 |
 | M8 | Imports articles et fournisseurs | quand le laboratoire envoie ses listes remplies : import « créer seulement » (analyse → essai → import, journalisé), stock d'ouverture en mouvement d'entrée | `csv.ts`, nouveau `stock-import.ts`, /admin/import | M | non | P3 |
+
+**Lot 3D construit le 01/11 (copie locale, non déployé ; décision du
+propriétaire du 01/11 : tout construire maintenant).** Une migration
+additive : `prisma/migrations/20261101400000_lot3d_achat_stock` (colonnes
+facultatives ou à valeur par défaut, la valeur `ANNULEE` de
+`PurchaseInvoiceStatus`, les tables `PurchasePayment` et
+`AchatStockSettings`, deux index ; aucune ligne réécrite), puis, après la
+relecture du 01/11, `20261101400001_lot3d_retenue_base_attestation` (deux
+colonnes facultatives de `PurchaseInvoice` : la base de la retenue et
+l'état de l'attestation à la saisie). Les gardes
+restent **magasinier + administrateur** (décision du 26/10) ; seul
+l'administrateur modifie les réglages (`PUT /api/stock/settings`). La
+règle d'écriture du stock est inchangée : la quantité n'est écrite que par
+`POST /api/stock/movements`, dans la transaction gardée par le niveau lu
+(et l'import, qui crée l'article avec son stock d'ouverture et le
+mouvement d'entrée correspondant dans une seule transaction). Ce qui
+attendait R-23 / R-24 est construit avec le défaut le plus raisonnable,
+écrit ici comme **hypothèse**, et, quand le comportement change sans
+accord du laboratoire, derrière un interrupteur de
+`src/lib/lab-proposals.ts` :
+
+- **M1 — stock** : `StockMovement.movementDate` (jour du mouvement,
+  aujourd'hui par défaut, jamais dans le futur ; un mouvement daté d'avant
+  reste permis), `levelBefore` / `levelAfter` écrits dans la transaction
+  gardée, `StockItem.location` (« Lieu de stockage », suggestions des lieux
+  déjà saisis). Lieu **par article**, pas par lot (**hypothèse, à confirmer
+  par R-23**). Un mouvement d'avant le 01/11 se lit au jour de son
+  enregistrement, sans niveau.
+- **M1 — achats** : `amountHT`, `vatRate` (défaut des réglages, 20 %),
+  `vatAmount` (HT × taux au centime, ou saisi à la main : arrondi du
+  fournisseur, plusieurs taux sur une facture — **hypothèse, R-23**) ;
+  TTC = HT + TVA ; `amount` reste le TTC (une facture d'avant le 01/11
+  garde son TTC seul ; l'API accepte encore un TTC seul). Paiement : jour
+  choisi (aujourd'hui par défaut, ni futur ni avant la facture), mode
+  (obligatoire : espèces, chèque, effet, carte, virement) et référence ;
+  « Rouvrir » annule les paiements (après confirmation ; jamais sur une
+  facture annulée entre-temps). **Règle du 27/08 mise à jour** : une
+  facture à payer **sans aucun paiement** se corrige (motif obligatoire,
+  journal `PURCHASE_INVOICE_CORRECTED` avant / après) ou s'annule
+  (« Annuler la saisie », motif, statut `ANNULEE` : gardée, hors des totaux,
+  des alertes et du journal des achats) ; ce qui est payé, même en partie,
+  ne se réécrit pas.
+- **M2 — journal des achats** : `GET /api/purchase-invoices/export`
+  (`?mois=AAAA-MM`, `?annee=AAAA` ou `?du=&au=`), leurs 13 colonnes dans leur
+  ordre — « TVA 20 % » devient « TVA », le taux ayant sa colonne —, puis les
+  nôtres (taux de TVA, devise, retenue, net à payer, payé, reste,
+  attestation, référence, libellé), filtre automatique, ligne de totaux ;
+  feuilles « Retenues à la source » (l'état mensuel, M7) et « Paiements ».
+  La liste n'a plus de plafond : filtres (statut, fournisseur, mois,
+  numéro) et pages. « Mois » = « octobre 2026 » (**hypothèse**).
+- **M3 — journal du stock** : /magasin/stock/journal et
+  `GET /api/stock/journal` (+ `/export`), tous les articles, filtres
+  période / article / type, colonnes de la fiche de stock dans leur ordre ;
+  « Stock » = le niveau juste après le mouvement, **au moment de sa
+  saisie** (**hypothèse, à confirmer par R-23** — relecture du 01/11) : il
+  n'est pas recalculé pour un mouvement antidaté (daté avant des mouvements
+  déjà saisis), dont la ligne garde le niveau du jour où il a été tapé ; la
+  colonne ne suit donc pas un solde cumulé jour par jour pour cet article ;
+  un ajustement
+  d'inventaire montre son écart en entrée ou en sortie. L'historique d'un
+  article n'a plus de plafond (pages de 50).
+- **M4 — péremption** : « Périmé » / « Expire bientôt » (fenêtre des
+  réglages, 30 jours par défaut) sur le tableau de bord et la liste. Sans
+  stock par lot (pas de table `StockLot` : **hypothèse, à confirmer par
+  R-23**), les unités en rayon sont estimées **premier entré, premier
+  sorti** : le niveau actuel est fait des entrées les plus récentes ; la
+  péremption la plus proche parmi elles est signalée.
+- **M5 — prix** : `StockMovement.unitPriceHT` sur une entrée ; les deux
+  sous-colonnes de « Prix (dh/ht) » = **prix unitaire HT et montant
+  (quantité × prix)** ; valeur du stock = niveau × **dernier prix d'achat**
+  (pas un coût moyen pondéré) — **hypothèses, à confirmer par R-23** ;
+  réservés au magasinier et à l'administrateur (`api/stock/` ajouté au
+  test de gardes `STOCK_MODULE`).
+- **M6 — paiements, statuts, devise** : paiements partiels (table
+  `PurchasePayment`) — interrupteur `PURCHASE_PARTIAL_PAYMENTS` (ON,
+  **hypothèse, à confirmer par R-23** ; OFF : un paiement règle tout le
+  reste) ; statuts « À payer », « En retard », « Partiellement payée »,
+  « Payée », « Annulée » (**hypothèse, R-23**) ; « Euro » = le montant en
+  euros d'une facture saisie en EUR (`currency`, `amountForeign`,
+  `exchangeRate` facultatif), une autre devise va dans « Devise » /
+  « Montant en devise » ; les montants en DH restent la base (**hypothèse,
+  R-23**).
+- **M7 — retenue à la source, attestation** (le « NB ») : par fournisseur
+  « soumis à la retenue », date de la dernière attestation et fin de
+  validité (préremplie : date + N mois des réglages, 3 par défaut) ; par
+  facture : attestation fournie avec la facture (oui / non, date), taux
+  appliqué (proposé : taux « avec » ou « sans » attestation valide, selon
+  qu'une attestation — celle de la facture ou celle du fournisseur — est
+  encore valide au jour de la facture ; modifiable), montant retenu, net à
+  payer = TTC − retenue, payé contre ce net. Relecture du 01/11 :
+  « valide au jour de la facture » = datée **au plus tard** ce jour-là et
+  pas encore échue — une attestation postérieure à la facture ne la couvre
+  pas (**hypothèse, à confirmer par R-24**) ; la base de la retenue et
+  l'état de l'attestation au moment de la saisie sont gardés avec la
+  facture (une attestation plus récente du fournisseur ne « découvre » pas
+  une facture couverte à sa saisie ; une facture saisie sans attestation
+  n'est couverte ensuite que par une attestation valide au jour de la
+  facture) ; une retenue sur le HT ou la TVA d'une facture saisie au TTC
+  seul est **refusée** (« saisissez le montant HT ») au lieu de retenir 0 ;
+  une retenue qui absorbe tout le TTC est refusée (et 100 % sur le TTC dans
+  les réglages). **Aucun taux dans le code** :
+  champ d'application (aucun — défaut —, fournisseurs soumis, tous), base
+  (HT, TVA — défaut —, TTC) et les deux taux sont des réglages de
+  l'administrateur, vides jusqu'à la réponse du comptable (**hypothèses, à
+  confirmer par R-24**). Sans attestation valide : **avertissement** sur la
+  liste, le tableau de bord, le formulaire et le paiement — interrupteur
+  `PAYMENT_REQUIRES_TAX_CERTIFICATE` (OFF ; ON : paiement refusé tant
+  qu'aucune attestation valide n'est enregistrée). Le scan de l'attestation
+  n'est pas stocké (facultatif au plan ; à ajouter si le laboratoire le
+  demande).
+- **M8 — imports** : /magasin/import (magasinier et administrateur, comme
+  la création d'un article ou d'un fournisseur ; pas /admin/import),
+  `POST /api/stock/import` et `POST /api/suppliers/import`, .xlsx ou .csv
+  (un .xls est refusé avec le conseil de l'enregistrer en .xlsx), analyse
+  puis import, « créer seulement » (un nom déjà connu, casse et accents
+  ignorés, est signalé et laissé), journalisé (`STOCK_IMPORTED`,
+  `SUPPLIERS_IMPORTED`). Articles depuis la « Fiche de stock » : un article
+  par libellé, stock d'ouverture = la colonne « Stock » de sa dernière ligne
+  (sinon entrées − sorties), une entrée datée du jour de l'import avec le
+  lot, la péremption et le prix de sa dernière entrée ; unité « unité »
+  quand le fichier n'en a pas (**hypothèse, R-23**). Fournisseurs depuis le
+  « Journal Achat » : un par nom, son délai (« 60 jours », « Comptant » ;
+  30 jours si vide) ; les factures du journal ne sont pas importées.
+- **Tests** : `withholding.test.ts`, `purchase-invoice.test.ts`,
+  `purchase-journal.test.ts`, `stock-journal.test.ts`,
+  `stock-import.test.ts`, `stock.test.ts` (lot 3D), le test de gardes des
+  prix ; un passage d'intégration des routes sur la base locale (hors
+  dépôt : paiements partiels et concurrents, correction, annulation,
+  exports relus avec ExcelJS, imports, mouvements concurrents).
 
 ### Lot 3E — rapport ONSSA (fichier 3.2) — P3, après O-6 et R-22
 
@@ -398,7 +655,10 @@ accord, et ce qui est confirmé.
   rapport déjà envoyé ?
 - **R-14 — 2.21 et 2.2** : « Listeria » = Listeria monocytogenes seulement,
   ou aussi Listeria spp. ? La T° au prélèvement pour la nature « Autre » ?
-  Pour l'air, la T° ambiante tient-elle lieu de T° au prélèvement ?
+  Pour l'air, la T° ambiante tient-elle lieu de T° au prélèvement ? Pour
+  E. coli (surfaces, mains, « présumés ») et Listeria (eaux) en
+  dénombrement : quelle limite déclenche l'alerte ? (sans elle, ces
+  analyses ne déclenchent aucune alerte.)
 - **R-15 — 2.6** : un dépôt sans heure de prélèvement : le délai
   d'acheminement n'est pas évaluable — d'accord pour ne pas exiger
   d'observation ? Et un prélèvement fait par un tiers (service vétérinaire,
@@ -447,6 +707,11 @@ accord, et ce qui est confirmé.
   « Écouvillon » (surfaces, mains), « Flacon stérile » (eaux), « Sachet
   stérile ou emballage d'origine » (aliments) ; « N/A » quand le client ou un
   tiers prélève : d'accord ?
+
+- **R-28 — Q71** : « Oui, voir les critères » : nous l'avons lu ainsi —
+  l'observation de réception n'est exigée que pour la température (C2) et le
+  délai (C1) ; quantité non pesée, DLC et mollusques 25–50 g ne sont que des
+  avertissements. Est-ce bien cela ?
 
 Les comptes et les signataires ne sont **pas** dans la relance (parqués, §8).
 

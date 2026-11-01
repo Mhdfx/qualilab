@@ -67,10 +67,15 @@ les a déjà, ICE de B vide…), dont :
   leur ouvrirait les rapports de A) : ils n'ouvrent plus le portail, et
   l'aperçu le dit (`portalAccountsWarning`, compteur `portalAccounts`).
 
-## 3. Rattacher B comme site de A (« Rattacher comme site de… », ADMIN)
+## 3. Rattacher B comme site de A (« Rattacher comme site de… », GESTIONNAIRE et ADMIN)
 
-Reste à l'administrateur seul (`ATTACH_ROLES`) jusqu'à la réponse au point
-2.5 de la relance du 18/10.
+Ouvert au gestionnaire commercial le 01/11 (lot 3A, I5) : le laboratoire a
+répondu « Oui » au point 2.5 de la relance du 18/10 (réponses du 28/10,
+`RETOUR-LABO-28-10.md`). Même liste que la fusion (`ATTACH_ROLES` =
+`MERGE_ROLES`) ; le journal `CLIENT_ATTACHED_AS_SITE` (et `SITE_CREATED`
+quand le site est créé) porte le rôle de qui a rattaché, à côté de la
+personne. Préalable en production : la décision `Invoice.clientSnapshot`
+(`HANDOFF.md` §9) — les factures de B restent à son nom.
 
 `POST /api/clients/[id]/attach-as-site` — `[id]` = B, corps
 `{ parentId: A, siteName?: string, existingSiteId?: string, mode }`.

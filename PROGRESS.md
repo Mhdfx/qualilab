@@ -8,6 +8,8 @@
 
 ## ▶ NEXT ACTION
 
+**01/11 — LOT 3 EN COURS (retour du 28/10) : voir `LOT3-AVANCEMENT.md` en premier** (où est chaque lot, ce qui est fait, l'ordre restant, les copies de sécurité). Production inchangée (`e8cbfe1`).
+
 **01/11 — réponses du laboratoire du 28/10 analysées : plan du lot 3, `RETOUR-LABO-28-10.md` — RIEN construit.** Reçu le 28/10 : le document du 18/10 annoté en entier (14 pages, scan hors dépôt `backups/reponses-labo-28-10-scan.pdf` ; pages 13–14 = la copie du comptable du 19/10, rien de nouveau), l'e-mail (réponses du 12/10 déjà appliquées ; liste du personnel hors dépôt `backups/comptes-et-signataires-labo-2026-10-28.md` — comptes **parqués** par le propriétaire ; NB attestation de régularité fiscale / retenue à la source) et quatre modèles Excel **vides** (`backups/fichiers-labo-28-10/` : récapitulatif par site, rapport ONSSA, journal des achats, fiche de stock). Propositions construites d'avance : 2.1, 2.4, 2.13, 2.15 confirmées ; 2.6 changée ; 2.16 confirmée (série), changée (envoi sans le commercial, alerte plus à la validation technique) — HANDOFF §9. NEEDEDINFO : 28/10 noté sur chaque question, Q134–Q140 nouvelles, brouillon de relance §2 « Lot du 28/10 » (R-6 à R-27).
 Next, in this order:
 1. **Owner, now, no code** (`RETOUR-LABO-28-10.md` §7): S2 — `alertAfterTechnicalValidation` → false in /admin/reglages (2.16 c « Non ») ; **O-1 — Q19, numbers overlapping the old software (urgent)** ; decide when to send the 28/10 re-ask (`NEEDEDINFO.md` §2).

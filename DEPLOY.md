@@ -911,6 +911,30 @@ git checkout v1.5-lot2-16-10 && sudo -u qualilab bash scripts/deploy.sh`.
 The reprise (f) and the splits stay (data); undo them with their dumps
 (steps 4 and 1), which lose everything entered since.
 
+## Lot 3 (01/11) — after the deploy (in construction: the integrator completes this section)
+
+### S3 — the analyses that raise the contamination alert (operator, owner's approval first)
+
+`scripts/s3-contamination-alerts.mts` (RETOUR-LABO-28-10.md §5 3A, §7 S3)
+sets `alertOnExceed` through `PATCH /api/parameters/[id]` as the demo admin
+(panel login, no password typed). **It writes more than the flag**: a
+detection parameter (« /25 g », « /5 L », « /cm² », no UFC) that has no
+limit receives `limitValue: 0` (« Absence ») — the admin route refuses a
+sensitive parameter without one — and that limit is also what the bench's
+suggested conformity reads (`valueAgainstLimit`, `bench-reading.ts`). The
+**owner approves** that list (the dry run's output) before the real run.
+
+1. `npx tsx scripts/s3-contamination-alerts.mts --base <prod url> --dry-run`
+   — read the plan: « To set » (with « limite 0 » marks), « Enumeration without a limit »
+   (enumerations, never flagged — R-14), « Already set », « Flagged, not named »
+   (left as they are), « Listeria … waiting for R-14 » (never touched).
+2. The owner approves → the same command without `--dry-run`; read back
+   « 0 left to set »; `PARAMETER_UPDATED` rows in the journal.
+3. Listeria: **not** before R-14 — the default is `--listeria none`. After the
+   answer: `--listeria all` (the genus as written) or `--listeria monocytogenes`.
+4. The JSON report lands in `.ui-tests/` (git-ignored) — keep it with the
+   deploy notes.
+
 ## After every deploy — 5-minute check
 
 1. `/api/health` answers `ok`.
