@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { raisesContaminationAlert } from "./contamination-alert";
 import { ONSSA_COUNT_BY } from "./lab-proposals";
 import { toLabWallTime } from "./lab-time";
 import {
@@ -115,6 +116,34 @@ describe("the unit rules", () => {
     expect(isNonConformResult({ interpretation: "INCOMPLET", conform: null })).toBe(false);
     // An official verdict wins over the indicative one.
     expect(isNonConformResult({ interpretation: "SATISFAISANT", conform: true, informalInterpretation: "NON_SATISFAISANT" })).toBe(false);
+  });
+
+  it("O-12: a sensitive germ detected with no verdict at all counts NC, as it alerts (hypothèse R-22)", () => {
+    const none = { interpretation: null, conform: null, informalInterpretation: null } as const;
+    expect(isNonConformResult({ ...none, detected: true, sensitive: true })).toBe(true);
+    expect(isNonConformResult({ ...none, detected: true, sensitive: false })).toBe(false);
+    expect(isNonConformResult({ ...none, detected: false, sensitive: true })).toBe(false);
+    expect(isNonConformResult({ ...none, detected: null, sensitive: true })).toBe(false);
+    // A verdict, even indicative, decides instead (the alert's reading too).
+    expect(isNonConformResult({ interpretation: "SATISFAISANT", conform: true, informalInterpretation: null, detected: true, sensitive: true })).toBe(false);
+    expect(isNonConformResult({ interpretation: null, conform: null, informalInterpretation: "SATISFAISANT", detected: true, sensitive: true })).toBe(false);
+  });
+
+  it("never counts fewer NC than the alerts sent: every result that alerts and carries no Acceptable / Satisfaisant verdict is NC", () => {
+    const interpretations = [null, "INCOMPLET", "NON_SATISFAISANT"] as const;
+    const informal = [null, "SATISFAISANT", "ACCEPTABLE", "NON_SATISFAISANT"] as const;
+    for (const interpretation of interpretations)
+      for (const informalInterpretation of informal)
+        for (const conform of [null, true, false])
+          for (const detected of [null, true, false])
+            for (const sensitive of [true, false]) {
+              const candidate = { interpretation, informalInterpretation, conform, detected, parameter: { alertOnExceed: sensitive } };
+              if (!raisesContaminationAlert(candidate)) continue;
+              expect(
+                isNonConformResult({ interpretation, informalInterpretation, conform, detected, sensitive }),
+                JSON.stringify(candidate)
+              ).toBe(true);
+            }
   });
 
   it("the group is the family's, else the nature's", () => {

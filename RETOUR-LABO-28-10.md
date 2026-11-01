@@ -433,17 +433,23 @@ comportement d'avant le 01/11, aucune ligne réécrite) :
   localhost) ; `--base` (local par défaut), `--dry-run`, rapport JSON. Les
   paramètres déjà marqués que la réponse ne nomme pas (entérocoques,
   Pseudomonas…) sont **listés, pas décochés** (`--unset-others` sur
-  décision : décocher fait taire des alertes). La route refuse un paramètre
-  sensible sans limite : une **détection** (unité « /25 g », « /5 L »,
-  « /cm² », sans UFC) reçoit la limite 0 (« Absence », comme les détections
-  déjà marquées) avec son drapeau — **le script écrit donc aussi une limite,
-  pas seulement le drapeau** : cette limite 0 est aussi celle que lit la
-  conformité proposée à la paillasse (`valueAgainstLimit`,
-  `bench-reading.ts`), et le **propriétaire doit l'approuver** avant
-  l'exécution en production (`DEPLOY.md` « Lot 3 ») ; un **dénombrement** sans limite (UFC/g,
+  décision : décocher fait taire des alertes). **Depuis le contrôle final
+  (01/11), le script ne pose que le drapeau** : une **détection** (unité
+  « /25 g », « /5 L », « /cm² », sans UFC) sans limite reste sans limite —
+  sans critère, elle n'est pas interprétée (J3) et l'alerte part sur la
+  seule détection du germe (O-12) ; une limite 0 en aurait fait une ligne
+  jugée « Non conforme » que le laboratoire n'a jamais demandée. La route
+  d'administration accepte donc un paramètre sensible sans limite tant que
+  `NO_CRITERION_NO_INTERPRETATION` est allumé (`sensitiveNeedsLimit`,
+  `parameter-validation.ts`) — *hypothèse, à confirmer par R-28* (la limite
+  du catalogue compte comme critère) ; interrupteur éteint, le refus revient
+  et le script pose de nouveau la limite 0 (« Absence ») avec le drapeau. Le
+  **propriétaire approuve** le plan (essai) avant l'exécution en production
+  (`DEPLOY.md` « Lot 3 », étape 5) ; un **dénombrement** sans limite (UFC/g,
   UFC/cm², UFC/mains) n'est **pas** marqué — sa limite ou son critère est au
   laboratoire, jamais inventé (**à demander avec R-14**). Copie locale, le
-  01/11 (avec `--listeria all`, avant la relecture) : 9 paramètres marqués
+  01/11 (avec `--listeria all`, avant la relecture et avant le contrôle final
+  qui a retiré la limite 0) : 9 paramètres marqués
   (dont 9 limites 0 de détection), 5 l'étaient
   déjà, 4 dénombrements en attente d'une limite (E. coli surfaces, E. coli
   présumés, E. coli mains, Listeria eaux), 3 paramètres de test marqués
@@ -523,7 +529,7 @@ sont corrigés dans le tableau ci-dessous.
 | I8 | Le bon de réception n'imprime plus la ligne « N° de fax : » | hypothèse, à confirmer par R-17 : le mot de Q105 est « Annulé » | `BON_WITHOUT_FAX = true` |
 | K3 | Le moment des alertes : par défaut inchangé (à la validation que dit le réglage ; S2 reste le geste du propriétaire) ; éteint, aucune validation ne les envoie, elles partent avec le rapport (« Valider et envoyer », « Envoyer au client »), une seule fois (`alertsSentAt`) ; textes des panneaux alignés — et, éteint, chaque ligne de « Valider la série » dit que l'alerte part avec « Valider et envoyer » (`alertWithSend`) | hypothèse, à confirmer par R-13 : S2 suffit | `ALERTS_AT_VALIDATION = true` (`alert-moment.ts`) |
 | K4 | Statut d'accréditation par paramètre (`AnalysisParameter.accreditation`, « à préciser » par défaut) dans /admin/parametres (« Accréditation des paramètres »), proposé d'après les marques « * », « (SA) », « (SN) » des noms de l'ancien logiciel, appliqué à la main et journalisé ; marque imprimée après le nom (page 1 et annexe) ; logo d'accréditation (cartouche, à côté du logo du laboratoire) et cachet (sous « Direction ») téléversés dans /admin/entreprise — imprimés seulement si le fichier existe à l'émission (et, pour le logo, si le rapport porte au moins une analyse accréditée) ; **l'image elle-même est figée avec chaque version émise** (son empreinte SHA-256 dans la version, l'image dans la table en ajout seul `ReportImageArchive`) : remplacer ou retirer un fichier ne change ni un duplicata, ni un téléchargement du portail, ni un renvoi ; une fois le statut enregistré, la marque de l'ancien logiciel restée dans le nom (« Chlore (SA) ») n'est plus imprimée — seule celle du statut (« Chlore » accrédité, « Chlore * » non accrédité), et /admin/parametres signale le nom contradictoire | hypothèse, à confirmer par R-18 : un rapport mixte porte le logo ; un nom sans marque n'est jamais proposé « accrédité » | `ACCREDITATION_LOGO_ON_MIXED_REPORT = true` ; les fichiers : en attente |
-| K5 | Un délai par domaine du type d'analyse (microbiologie, physico-chimie, autre) dans /admin/reglages, jours ouvrés (lundi–vendredi) ou calendaires, **et, en option, un délai propre à un type d'analyse** (air, aliments, effet aseptisant…, `AnalysisNature.dueDays`) qui l'emporte sur celui de son domaine ; la fiche de programme d'un échantillon reçu, sans date promise, propose « Délai de rendu promis » depuis l'arrivée (jamais une date passée), modifiable ou effaçable, enregistrée avec le programme | hypothèse, à confirmer par R-18 : 5 jours ouvrés en microbiologie, 7 en physico-chimie, rien pour « autre », aucun type n'a de délai propre (la réponse peut venir par domaine ou par type : les deux se saisissent) ; les jours fériés ne sont pas décomptés. **Au déploiement, les valeurs 5 et 7 de la migration allument la proposition** (DEPLOY « Lot 3C ») | réglage `LabSettings.dueDays*` + `AnalysisNature.dueDays` |
+| K5 | Un délai par domaine du type d'analyse (microbiologie, physico-chimie, autre) dans /admin/reglages, jours ouvrés (lundi–vendredi) ou calendaires, **et, en option, un délai propre à un type d'analyse** (air, aliments, effet aseptisant…, `AnalysisNature.dueDays`) qui l'emporte sur celui de son domaine ; la fiche de programme d'un échantillon reçu, sans date promise, propose « Délai de rendu promis » depuis l'arrivée (jamais une date passée), modifiable ou effaçable, enregistrée avec le programme | hypothèse, à confirmer par R-18 : 5 jours ouvrés en microbiologie, 7 en physico-chimie, rien pour « autre », aucun type n'a de délai propre (la réponse peut venir par domaine ou par type : les deux se saisissent) ; les jours fériés ne sont pas décomptés. **Au déploiement, les valeurs 5 et 7 de la migration allument la proposition** (`DEPLOY.md` « Lot 3 », étape 4) | réglage `LabSettings.dueDays*` + `AnalysisNature.dueDays` |
 | K6 | « Moyen de prélèvement » quand le laboratoire prélève : « Écouvillon » (surfaces, mains), « Flacon stérile » (eaux), « Sachet stérile ou emballage d'origine » (aliments) ; « N/A » quand le client ou un tiers prélève ; l'air garde sa méthode ; figé à l'émission (les versions émises avant gardent « N/A ») | hypothèse, à confirmer par R-27 : la liste des moyens | `SAMPLING_MEANS_BY_KIND = true` |
 | L1 | « Récapitulatif par site » sur /recherche, à côté de « Exporter en Excel » : mêmes filtres, mêmes rôles, journal `SAMPLES_EXPORTED` (`kind`) ; une ligne par échantillon, groupées par site (« Siège » d'abord) — sans client choisi, d'abord par client, avec une colonne « Client » (les sites de deux clients ne se mélangent jamais) ; une colonne par paramètre présent (ordre du catalogue, alias et jumeaux fusionnés) ; « Conformité » ; titre (client, site, période) ; options : date de réception et N° de contrôle, C / NC au lieu de la valeur ; les valeurs n'apparaissent qu'une fois l'échantillon validé | hypothèse, à confirmer par R-21 : la valeur colorée par verdict par défaut ; « acceptable » compte comme C ; un résultat sans verdict garde sa valeur ; sans client choisi, une colonne « Client » en tête et les lignes regroupées par client (lecture du constructeur, R-21 « pour qui ») — **décision du propriétaire à confirmer** : les valeurs sont le contenu du rapport, réservées aux profils qui lisent les rapports (`REPORT_READ_ROLES` : validation, Direction, gestion commerciale, comptabilité, administration) ; la réception et la programmation reçoivent C / NC seulement (« — » pour un résultat sans verdict), sans choix offert sur /recherche (`recapAccess`) | `RECAP_DEFAULT_MODE = "valeur"` (`sample-recap.ts`) |
 | L2 | `backup-db.sh` écrit une ligne par passage (réussi ou non) dans `journal/backup-journal.csv` ; le répertoire est monté en lecture seule dans l'application ; page administrateur « Sauvegardes » (30 derniers passages, « Télécharger le suivi »), rouge si le dernier passage a échoué, orange au-delà de 26 h ; un journal impossible à écrire (répertoire créé par Docker en root) ne change jamais le code de sortie du passage : un avertissement seulement (vérifié sous WSL, répertoire en lecture seule) | la copie hors site, la clé, le créneau : R-19 | `DEPLOY.md` « Backups » (créer le répertoire avant le premier `docker compose up`) |
@@ -783,6 +789,9 @@ sur `AnalysisNature`).
     satisfaisant » ou qu'il est « non conforme » — la lecture de l'alerte
     de contamination, pour que le rapport ne compte jamais moins de NC que
     les alertes envoyées.
+  - *Hypothèse, à confirmer par R-22* : une alerte O-12 (germe sensible
+    détecté sans critère) compte NC — même sans verdict, puisqu'elle
+    alerte le client (`isNonConformResult`, contrôle final du 01/11).
   - *Hypothèse, à confirmer par R-22* : un verdict **« Incomplet »** (une
     dilution plus forte à lire, un critère sans m ou M) n'est pas un
     verdict : même lecture (NC si « non conforme » ou verdict indicatif

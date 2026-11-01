@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { NO_CRITERION_NO_INTERPRETATION } from "./lab-proposals";
 import {
   checkParameterVersion,
   DEFAULT_PARAMETER_FAMILY,
@@ -8,6 +9,7 @@ import {
   PARAMETER_FORM_KEYS,
   PARAMETER_PAGE_OUTDATED_ERROR,
   parameterVersion,
+  sensitiveNeedsLimit,
   validateParameter,
   parseLimit,
   type CleanParameter,
@@ -61,15 +63,24 @@ describe("validateParameter", () => {
     expect(validateParameter({ ...valid, category: "AUTRE" }).ok).toBe(false);
   });
 
-  it("refuses a sensitive parameter with no limit", () => {
-    // Otherwise the system would promise an alert it can never raise.
+  it("accepts a sensitive parameter with no limit while J3 is on: it alerts on detection (O-12)", () => {
+    expect(NO_CRITERION_NO_INTERPRETATION).toBe(true);
+    expect(sensitiveNeedsLimit()).toBe(false);
     const result = validateParameter({
       ...valid,
       limitValue: "",
       alertOnExceed: true,
     });
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toContain("limite");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.alertOnExceed).toBe(true);
+      expect(result.value.limitValue).toBeNull();
+    }
+  });
+
+  it("switch J3 off: a sensitive parameter needs a limit again (the bench judges every line)", () => {
+    expect(sensitiveNeedsLimit(false)).toBe(true);
+    expect(sensitiveNeedsLimit(true)).toBe(false);
   });
 
   it("allows no limit when no alert is expected", () => {

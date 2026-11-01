@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   accreditationFromLegacyName,
   accreditationContradictsName,
+  conclusionParameterName,
   markedParameterName,
   nameWithoutLegacyMark,
   parseAccreditationUpdates,
   reportCarriesAccreditationLogo,
 } from "./accreditation";
 import { ACCREDITATION_LOGO_ON_MIXED_REPORT } from "./lab-proposals";
+import { buildConclusion, uninterpretedSentence } from "./report-html";
 
 describe("accreditationFromLegacyName (K4, the old software's marks)", () => {
   it("reads « (SA) », « (SN) » and a trailing « * »", () => {
@@ -104,5 +106,21 @@ describe("parseAccreditationUpdates", () => {
     expect(parseAccreditationUpdates(null).ok).toBe(false);
     expect(parseAccreditationUpdates({ updates: [{ id: "p1", accreditation: "OUI" }] })).toEqual({ ok: false, error: "Statut d'accréditation inconnu." });
     expect(parseAccreditationUpdates({ updates: [{ id: "p1" }, { id: "p1" }] })).toEqual({ ok: false, error: "Un paramètre figure deux fois." });
+  });
+});
+
+describe("conclusionParameterName (K4 × J3: the conclusion names a parameter as its table does)", () => {
+  it("drops the old software's mark once a status is saved, keeps the name as typed before", () => {
+    expect(conclusionParameterName({ name: "Chlore (SA)", accreditation: "ACCREDITE" })).toBe("Chlore");
+    expect(conclusionParameterName({ name: "Chlore (SA)", accreditation: "NON_ACCREDITE" })).toBe("Chlore");
+    expect(conclusionParameterName({ name: "Chlore (SA)", accreditation: null })).toBe("Chlore (SA)");
+    expect(conclusionParameterName({ name: "E. coli", accreditation: "ACCREDITE" })).toBe("E. coli");
+  });
+
+  it("the conclusion built from it reads « … : Chlore. », never « Chlore (SA) »", () => {
+    const chlore = conclusionParameterName({ name: "Chlore (SA)", accreditation: "ACCREDITE" });
+    expect(uninterpretedSentence([chlore])).toMatch(/: Chlore\.$/);
+    expect(buildConclusion([{ conform: false, parameter: chlore }])).toContain("pour : Chlore.");
+    expect(buildConclusion([{ conform: false, parameter: chlore }])).not.toContain("(SA)");
   });
 });

@@ -1,4 +1,5 @@
 import type { Family, SampleType } from "@/generated/prisma/client";
+import { NO_CRITERION_NO_INTERPRETATION } from "./lab-proposals";
 
 /**
  * Validating an analysis parameter.
@@ -64,6 +65,16 @@ export function parseLimit(value: unknown): number | null | "invalid" {
   return amount;
 }
 
+/**
+ * Does a sensitive parameter (`alertOnExceed`) need a limit? Only when the
+ * switch J3 is off: on, a line without criterion nor limit is never judged
+ * and O-12 alerts on the germ's detection alone (RETOUR-LABO-28-10.md §5
+ * S3 — hypothèse, à confirmer par R-28).
+ */
+export function sensitiveNeedsLimit(noCriterionNoInterpretation: boolean = NO_CRITERION_NO_INTERPRETATION): boolean {
+  return !noCriterionNoInterpretation;
+}
+
 export function validateParameter(input: ParameterInput): ParameterResult {
   const name = text(input.name);
   if (!name) {
@@ -97,8 +108,12 @@ export function validateParameter(input: ParameterInput): ParameterResult {
 
   const alertOnExceed = input.alertOnExceed === true;
 
-  // A parameter that promises an alert but has no limit could never raise one.
-  if (alertOnExceed && limit === null) {
+  // Before lot 3B a sensitive parameter without a limit could never alert.
+  // Since O-12 (`contamination-alert.ts`) a sensitive germ left without any
+  // verdict alerts on its detection, so the limit is no longer required —
+  // as long as the bench leaves such a line unjudged (J3). Switch off, the
+  // technician judges every line again and the old refusal comes back.
+  if (alertOnExceed && limit === null && sensitiveNeedsLimit()) {
     return {
       ok: false,
       error:

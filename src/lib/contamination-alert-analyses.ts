@@ -1,4 +1,5 @@
 import type { Family, SampleType } from "@/generated/prisma/enums";
+import { sensitiveNeedsLimit } from "./parameter-validation";
 
 /**
  * The analyses that raise the contamination alert (re-ask 2.21, the
@@ -21,13 +22,18 @@ import type { Family, SampleType } from "@/generated/prisma/enums";
  * `MONOCYTOGENES` narrows it; a Listeria outside the scope is `deferred`
  * too. The functions' own default stays `ALL` (the answer as written).
  *
- * The admin route refuses a sensitive parameter without a limit
- * (`validateParameter`). A DETECTION (presence / absence: a unit « /25 g »,
- * « /5 L », « /cm² » — no « UFC ») without one is given the limit 0 with its
- * flag — « Absence », as the detections already flagged carry it. An
- * ENUMERATION (UFC/g, UFC/cm², UFC/mains…) without a limit is not flagged:
- * its limit (or its criterion) is the laboratory's to give, never invented
- * here — listed `needsLimit`.
+ * A DETECTION (presence / absence: a unit « /25 g », « /5 L », « /cm² » —
+ * no « UFC ») without a limit gets the flag ONLY: with J3 on
+ * (`NO_CRITERION_NO_INTERPRETATION`) such a line is never judged and O-12
+ * alerts on the germ's detection alone, so no criterion is invented — a
+ * limit 0 would turn every such detection into a judged « Non conforme »
+ * line the laboratory never asked for (« si on n'a pas de critère, nous ne
+ * faisons pas d'interprétation »). Switch J3 off, the admin route refuses a
+ * sensitive parameter without a limit again (`sensitiveNeedsLimit`), and the
+ * plan gives the detection the limit 0 (« Absence ») with its flag, as
+ * before. An ENUMERATION (UFC/g, UFC/cm², UFC/mains…) without a limit is not
+ * flagged either way: its limit (or its criterion) is the laboratory's to
+ * give, never invented here — listed `needsLimit`.
  */
 
 export type AlertGerm = "SALMONELLA" | "LISTERIA" | "E_COLI";
@@ -107,7 +113,7 @@ export type AlertPlanRow = Pick<AlertParameter, "id" | "name" | "category"> & {
   unit?: string | null;
 };
 
-/** A row to set, with the body of its PATCH: the flag, and the limit 0 of a detection without one. */
+/** A row to set, with the body of its PATCH: the flag — and, switch J3 off only, the limit 0 of a detection without one. */
 export type AlertPlanWrite = AlertPlanRow & { patch: { alertOnExceed: true; limitValue?: 0 } };
 
 export type AlertPlan = {
@@ -131,7 +137,11 @@ export type AlertPlan = {
 };
 
 /** What setting the answer's list would change on this catalogue. */
-export function contaminationAlertPlan(parameters: readonly AlertParameter[], listeria: ListeriaScope = "ALL"): AlertPlan {
+export function contaminationAlertPlan(
+  parameters: readonly AlertParameter[],
+  listeria: ListeriaScope = "ALL",
+  limitZeroOnDetection: boolean = sensitiveNeedsLimit()
+): AlertPlan {
   const plan: AlertPlan = { toSet: [], needsLimit: [], alreadySet: [], othersFlagged: [], deferred: [] };
   const byName = [...parameters].sort((a, b) => a.name.localeCompare(b.name, "fr") || a.category.localeCompare(b.category));
   for (const parameter of byName) {
@@ -148,7 +158,9 @@ export function contaminationAlertPlan(parameters: readonly AlertParameter[], li
     }
     const limited = parameter.limitValue !== null && parameter.limitValue !== undefined && parameter.limitValue !== "";
     if (limited) plan.toSet.push({ ...row, patch: { alertOnExceed: true } });
-    else if (isDetection(parameter.unit)) plan.toSet.push({ ...row, patch: { alertOnExceed: true, limitValue: 0 } });
+    else if (isDetection(parameter.unit)) {
+      plan.toSet.push({ ...row, patch: limitZeroOnDetection ? { alertOnExceed: true, limitValue: 0 } : { alertOnExceed: true } });
+    }
     else plan.needsLimit.push(row);
   }
   return plan;

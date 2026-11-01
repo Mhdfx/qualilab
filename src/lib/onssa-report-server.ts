@@ -72,7 +72,8 @@ export async function loadOnssaMonth(month: OnssaMonth): Promise<OnssaMonthData>
             interpretation: true,
             informalInterpretation: true,
             conform: true,
-            parameter: { select: { name: true, onssaColumn: true } },
+            detected: true,
+            parameter: { select: { name: true, onssaColumn: true, alertOnExceed: true } },
             normVersion: { select: { norm: { select: { code: true } } } },
           },
         },
@@ -113,6 +114,8 @@ export async function loadOnssaMonth(month: OnssaMonth): Promise<OnssaMonthData>
         interpretation: result.interpretation,
         informalInterpretation: result.informalInterpretation,
         conform: result.conform,
+        detected: result.detected,
+        sensitive: result.parameter.alertOnExceed,
       })),
     };
   });

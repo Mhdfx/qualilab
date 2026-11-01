@@ -140,7 +140,9 @@ describe("the conclusion names the parameters left without interpretation", () =
 
   it("the report's fields build it that way (read from the source: the module imports the database)", () => {
     const source = readFileSync(new URL("./report-dispatch.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
-    expect(source).toContain("sample.results.filter(carriesNoJudgement).map((r) => r.parameter.name)");
+    expect(source).toContain("sample.results.filter(carriesNoJudgement).map((r) => printed(r.parameter))");
+    // K4: the conclusion names a parameter as its table does (no « (SA) » once a status is saved).
+    expect(source).toContain("const printed = conclusionParameterName;");
     expect(source).toContain("{ partial: uninterpreted.length > 0 }");
     expect(source).toContain("[scale.sentence, legacySentence, uninterpretedSentence(uninterpreted)]");
     expect(source).toContain("[historical, uninterpretedSentence(uninterpreted)]");

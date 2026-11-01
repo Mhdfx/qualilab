@@ -1055,15 +1055,18 @@ docker compose exec app ls -l /app/backup-journal  # the mount is there (empty u
 
 `scripts/s3-contamination-alerts.mts` (RETOUR-LABO-28-10.md §5 3A, §7 S3)
 sets `alertOnExceed` through `PATCH /api/parameters/[id]` as the demo admin
-(panel login, no password typed). **It writes more than the flag**: a
-detection parameter (« /25 g », « /5 L », « /cm² », no UFC) that has no
-limit receives `limitValue: 0` (« Absence ») — the admin route refuses a
-sensitive parameter without one — and that limit is also what the bench's
-suggested conformity reads (`valueAgainstLimit`, `bench-reading.ts`). The
-**owner approves** that list (the dry run's output) before the real run.
+(panel login, no password typed). **It sets the flag only** (final review,
+01/11): a detection parameter (« /25 g », « /5 L », « /cm² », no UFC)
+without a limit stays without one — unjudged (J3) and alerting on the
+germ's detection alone (O-12); the admin route accepts a sensitive
+parameter without a limit while `NO_CRITERION_NO_INTERPRETATION` is on
+(hypothèse R-28). Only with that switch off would the script also write
+`limitValue: 0` (« Absence ») — then judged at the bench
+(`valueAgainstLimit`). The **owner approves** the plan (the dry run's
+output) before the real run.
 
 1. `npx tsx scripts/s3-contamination-alerts.mts --base <prod url> --dry-run`
-   — read the plan: « To set » (with « limite 0 » marks), « Enumeration without a limit »
+   — read the plan: « To set » (no « limite 0 » mark while J3 is on), « Enumeration without a limit »
    (enumerations, never flagged — R-14), « Already set », « Flagged, not named »
    (left as they are), « Listeria … waiting for R-14 » (never touched).
 2. The owner approves → the same command without `--dry-run`; read back

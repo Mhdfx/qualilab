@@ -6,7 +6,7 @@ import { AlertTriangle, ArrowRight, Check, ListChecks, Pencil, Plus, RotateCcw, 
 import { Card } from "@/components/ui/Card";
 import { Dialog } from "@/components/invoices/InvoiceDialogs";
 import { FAMILY_SHORT_LABELS as FAMILY_LABELS, SAMPLE_TYPE_LABELS } from "@/lib/labels";
-import { DEFAULT_PARAMETER_FAMILY, PARAMETER_CHANGED_ERROR, PARAMETER_FAMILIES, parameterVersion } from "@/lib/parameter-validation";
+import { DEFAULT_PARAMETER_FAMILY, PARAMETER_CHANGED_ERROR, PARAMETER_FAMILIES, parameterVersion, sensitiveNeedsLimit } from "@/lib/parameter-validation";
 import { parameterMatches, RECLASSIFY_FAMILY_LABELS as TARGET_LABELS, type ReclassifyPlan } from "@/lib/parameter-reclassify";
 import type { Family, SampleType } from "@/generated/prisma/client";
 
@@ -872,7 +872,10 @@ function ParameterForm({
           <span className="mt-0.5 block text-xs text-slate-500">
             Un dépassement de la limite déclenche une alerte de contamination
             au client, à la validation technique ou administrative selon les
-            réglages du circuit. Nécessite une limite.
+            réglages du circuit.{" "}
+            {sensitiveNeedsLimit()
+              ? "Nécessite une limite."
+              : "Sans limite ni critère, l’alerte part dès que le germe est détecté."}
           </span>
         </span>
       </label>

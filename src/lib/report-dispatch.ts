@@ -38,7 +38,7 @@ import { REOPENED_STATUS, amendedNumber, reopenRefusal, reopensReports } from ".
 import type { Role } from "./roles";
 import { SingleFlight } from "./single-flight";
 import { samplingMeansText } from "./sampling-means";
-import { reportCarriesAccreditationLogo } from "./accreditation";
+import { conclusionParameterName, reportCarriesAccreditationLogo } from "./accreditation";
 import { freezeReportImages, type IssuedReportImages } from "./report-images";
 import { alertCopyRecipients } from "./alert-copies";
 import { loadAlertCopies } from "./alert-copies-server";
@@ -409,11 +409,18 @@ async function computeReportFields(sampleId: string): Promise<ReportFields | nul
       product: { select: { regulationId: true } },
       productType: { select: { regulationId: true } },
       results: {
-        select: { conform: true, interpretation: true, informalInterpretation: true, parameter: { select: { name: true } } },
+        select: {
+          conform: true,
+          interpretation: true,
+          informalInterpretation: true,
+          parameter: { select: { name: true, accreditation: true } },
+        },
       },
     },
   });
   if (!sample) return null;
+  // K4: the conclusion names a parameter as its table does — never « Chlore (SA) » above « Chlore ».
+  const printed = conclusionParameterName;
 
   // Under criteria the conclusion is the scale's sentence for the worst
   // verdict (CRITERES.md §2 rule 5); otherwise the historical wording. A
@@ -425,7 +432,7 @@ async function computeReportFields(sampleId: string): Promise<ReportFields | nul
   // still over its old limit.
   const verdict = sampleVerdict(sample.results);
   const scale = verdict ? await prisma.conclusionScale.findUnique({ where: { interpretation: verdict } }) : null;
-  const legacy = legacyFailures(sample.results).map((r) => r.parameter.name);
+  const legacy = legacyFailures(sample.results).map((r) => printed(r.parameter));
   const legacySentence =
     legacy.length > 0
       ? `Paramètres hors des limites de référence : ${legacy.join(", ")}. Une action corrective est recommandée.`
@@ -434,10 +441,10 @@ async function computeReportFields(sampleId: string): Promise<ReportFields | nul
   // The parameters nothing judged (28/10, 2.11, J3): named after the
   // sentence of the others, never covered by « l'ensemble des paramètres ».
   const uninterpreted = NO_CRITERION_NO_INTERPRETATION
-    ? sample.results.filter(carriesNoJudgement).map((r) => r.parameter.name)
+    ? sample.results.filter(carriesNoJudgement).map((r) => printed(r.parameter))
     : [];
   const historical = buildConclusion(
-    sample.results.map((r) => ({ conform: r.conform, parameter: r.parameter.name })),
+    sample.results.map((r) => ({ conform: r.conform, parameter: printed(r.parameter) })),
     { partial: uninterpreted.length > 0 }
   );
   const conclusion = scale

@@ -6,10 +6,12 @@
 //
 // WHAT IT WRITES — the owner approves it before a production run (DEPLOY.md « Lot 3 »):
 //   - `alertOnExceed: true` on each parameter the answer names;
-//   - AND `limitValue: 0` (« Absence ») on a DETECTION (unit « /25 g », « /5 L »,
-//     « /cm² », no UFC) that has no limit yet — the admin route refuses a sensitive
-//     parameter without one. That limit is also what the bench's suggested
-//     conformity reads (bench-reading.ts `valueAgainstLimit`), not only the alert.
+//   - NOTHING ELSE while J3 is on (`NO_CRITERION_NO_INTERPRETATION`, lab-proposals.ts):
+//     a DETECTION (unit « /25 g », « /5 L », « /cm² », no UFC) without a limit gets the
+//     flag only — it stays unjudged (J3) and alerts on detection (O-12); no criterion
+//     is invented. Switch J3 off only, the admin route needs a limit again, and the
+//     script also writes `limitValue: 0` (« Absence ») on such a detection — a limit
+//     the bench's suggested conformity then reads (bench-reading.ts `valueAgainstLimit`).
 //   - An ENUMERATION without a limit is never flagged (listed « needs a limit »).
 //
 // Run (from the repo root):

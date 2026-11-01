@@ -88,19 +88,32 @@ describe("contaminationAlertPlan — what setting the list changes", () => {
     p("E. coli", { id: "e-chem", family: "CHIMIE", limitValue: 1 }),
   ];
 
-  it("to set (the limit 0 for a detection without one), an enumeration without a limit apart, already set, the others listed", () => {
+  it("to set (the flag only, even on a detection without a limit — J3 + O-12), an enumeration without a limit apart, already set, the others listed", () => {
     const plan = contaminationAlertPlan(catalogue);
     expect(plan.toSet.map((r) => [r.id, r.germ, r.patch])).toEqual([
       ["e-food", "E_COLI", { alertOnExceed: true }],
-      ["l-food", "LISTERIA", { alertOnExceed: true, limitValue: 0 }],
-      ["s-water-2", "SALMONELLA", { alertOnExceed: true, limitValue: 0 }],
+      ["l-food", "LISTERIA", { alertOnExceed: true }],
+      ["s-water-2", "SALMONELLA", { alertOnExceed: true }],
       ["s-food", "SALMONELLA", { alertOnExceed: true }],
     ]);
+    // No criterion invented: never a limit in any body while J3 is on.
+    expect(plan.toSet.some((r) => "limitValue" in r.patch)).toBe(false);
     // Never an invented limit for an enumeration: the laboratory's to give.
     expect(plan.needsLimit.map((r) => [r.id, r.germ])).toEqual([["e-surface", "E_COLI"]]);
     expect(plan.alreadySet.map((r) => r.id)).toEqual(["s-water"]);
     // Listed, never cleared by the plan (clearing silences alerts).
     expect(plan.othersFlagged.map((r) => [r.id, r.germ])).toEqual([["ent-water", null]]);
+  });
+
+  it("switch J3 off (a sensitive parameter needs a limit again): the detection gets the limit 0 with its flag", () => {
+    const plan = contaminationAlertPlan(catalogue, "ALL", true);
+    expect(plan.toSet.map((r) => [r.id, r.patch])).toEqual([
+      ["e-food", { alertOnExceed: true }],
+      ["l-food", { alertOnExceed: true, limitValue: 0 }],
+      ["s-water-2", { alertOnExceed: true, limitValue: 0 }],
+      ["s-food", { alertOnExceed: true }],
+    ]);
+    expect(plan.needsLimit.map((r) => r.id)).toEqual(["e-surface"]);
   });
 
   it("is idempotent: once set, nothing left to set", () => {

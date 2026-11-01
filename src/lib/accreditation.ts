@@ -83,6 +83,17 @@ export function markedParameterName(name: string, status: AccreditationStatus | 
 }
 
 /**
+ * The name the report's conclusion gives a parameter (K4 × J3): once its
+ * status is saved, without the old software's mark — the name the tables
+ * print (`markedParameterName`) minus the status's own mark, which belongs
+ * to the table and its legend. No status yet: the name as typed, as the
+ * tables print it too. Frozen with the conclusion (`Report.conclusion`).
+ */
+export function conclusionParameterName(parameter: { name: string; accreditation: AccreditationStatus | null | undefined }): string {
+  return parameter.accreditation ? nameWithoutLegacyMark(parameter.name) : parameter.name;
+}
+
+/**
  * The status recorded contradicts the mark the name still carries from the
  * old software (« Chlore (SA) » set « accrédité »): /admin/parametres warns,
  * the report prints the status's mark only (`markedParameterName`).

@@ -7,14 +7,14 @@
 
 ## Où se trouve le travail
 
-| Lot | Contenu (RETOUR-LABO-28-10.md §5) | Où | Commit | État au 01/11 soir |
+| Lot | Contenu (RETOUR-LABO-28-10.md §5) | Où | Commit | État au 01/11 (fin de soirée) |
 |---|---|---|---|---|
-| 3A | I1, K1, I2, I3, I4, I5, K2, G2, I7, drapeaux d'alerte (S3) | `lot2-retour-16-10` (arbre principal) | `ec792dc` | construit, relu (6), corrigé, **intégré** |
-| 3D | M1 à M8 (Achat & Stock) | `lot2-retour-16-10` (arbre principal) | `cd9837c` | construit, relu (7), corrigé, **intégré** |
-| 3B | O-12, J3, J1, J2, J4, G1, G4, G5 | branche `lot3b` → fusionnée | fusion `0d6ebc7` | construit, relu (7), corrigé, **intégré** |
-| 3C | I6, K5, K4, K6, L1, L2, L4, L5, I8 (+ K3) | branche `lot3c` → fusionnée | fusion `7082811` | construit, relu (10), corrigé, **intégré** |
-| 3E | N1, N2, N3 (ONSSA) | branche `lot3e` → fusionnée | fusion `5f78071` | construit, relu (10), corrigé, **intégré** |
-| Ensemble | documents `78ebd20` + documents de l'intégration | `lot2-retour-16-10` | — | tsc 0, eslint 0, vitest 3 442, build OK, recettes v16-1 → v20 vertes, **v21-lot3 123/123** ; **non poussé, non déployé** |
+| 3A | I1, K1, I2, I3, I4, I5, K2, G2, I7, drapeaux d'alerte (S3) | `lot2-retour-16-10` (arbre principal) | `ec792dc` | construit, relu (6), corrigé, **intégré, testé en local, prêt pour la production** |
+| 3D | M1 à M8 (Achat & Stock) | `lot2-retour-16-10` (arbre principal) | `cd9837c` | construit, relu (7), corrigé, **intégré, testé en local, prêt pour la production** |
+| 3B | O-12, J3, J1, J2, J4, G1, G4, G5 | branche `lot3b` → fusionnée | fusion `0d6ebc7` | construit, relu (7), corrigé, **intégré, testé en local, prêt pour la production** |
+| 3C | I6, K5, K4, K6, L1, L2, L4, L5, I8 (+ K3) | branche `lot3c` → fusionnée | fusion `7082811` | construit, relu (10), corrigé, **intégré, testé en local, prêt pour la production** |
+| 3E | N1, N2, N3 (ONSSA) | branche `lot3e` → fusionnée | fusion `5f78071` | construit, relu (10), corrigé, **intégré, testé en local, prêt pour la production** |
+| Ensemble | documents `78ebd20`, intégration `9bef86b`, contrôle final (4 constats corrigés) | `lot2-retour-16-10` | — | **intégré, testé en local, prêt pour la production** : tsc 0, eslint 0, vitest 189 fichiers / 3 450, build OK, recettes v16-1 → v20 vertes, **v21-lot3 126/126** ; **poussé** (`lot2-retour-16-10`, `lot3b`, `lot3c`, `lot3e`), `master` intact, **non déployé** |
 
 Copies de sécurité du travail non commité (01/11 17 h 20) :
 `refs/wip/lot3-qualilab-proto-2026-11-01` (3A + 3D), `refs/wip/lot3-qualilab-lot3c-2026-11-01`,
@@ -25,7 +25,7 @@ jonction vers celui de l'arbre principal, `.env.local` copié, client Prisma gé
 dans chaque arbre). Les migrations sont additives et préfixées par lot
 (3A 202611011000xx, 3B …2000xx, 3C …3000xx, 3D …4000xx, 3E …5000xx).
 
-## Ordre restant (étapes 1 à 3 faites le 01/11 ; reprendre à l'étape 4)
+## Ordre restant (étapes 1 à 4 faites le 01/11 ; reprendre à l'étape 5)
 
 1. Terminer 3B et 3C ; relire 3A, 3D ; appliquer les corrections de 3E (en parallèle).
 2. Relire 3B et 3C, corriger.
@@ -60,3 +60,5 @@ dans chaque arbre). Les migrations sont additives et préfixées par lot
 - 01/11 21 h 48 — intégration, étape 4b : nouvelle recette `.ui-tests/v21-lot3-local.mjs` (API, pages servies, PDF par pdftotext, en-têtes des exports Excel, Chrome sans tête) couvrant I1–I8, K1–K6, G1–G5, J1–J4, O-12, L1–L5, M1–M8, N1–N3 et S3 (essai) : **123/123** sur :3210, réglages remis à la fin ; reste : documents et commit.
 - 01/11 21 h 54 — intégration, étape 5 : documents à jour — HANDOFF (ligne « Lot 3 » au §1, gardes du lot 3 au §3, lignes « où changer » K4 K5 K6 K3 L1 L2 L4 L5 I6 I8 au §5, §8 « 2026-11-01 — lot 3 », §9 « Lot 3 — switches and hypotheses »), TESTPLAN « Checkpoint V21 » (local coché, lignes production), PROGRESS, RETOUR-LABO-28-10 (§5 « Intégration », R-30, §9), NEEDEDINFO (7 quater = R-30), DEPLOY « Lot 3 » complet (migrations, répertoire du journal des sauvegardes, EMAIL_FROM, S1 / S2 / K5 / S4, S3 par la route de l'application, recette, retour arrière), tableau d'état ci-dessus ; commit de l'intégration ensuite ; reste : contrôle final hostile, push, production.
 - 01/11 21 h 55 — intégration terminée : documents commités (`9bef86b`), arbre propre ; serveur :3210 relancé en processus détaché depuis l'arbre principal (/login 200). Reprendre à « Ordre restant » étape 4 : contrôle final hostile, push, production.
+- 01/11 22 h 03 — contrôle final hostile (lecture seule, arbre principal, `8970d0a..68ba0d7`) : tous les éléments de RETOUR §5 présents et reliés (L3 parqué), migrations additives et conformes (`migrate diff` vide, 48 appliquées), aucun nom réel dans les lignes ajoutées, tsc 0, vitest 188 fichiers / 3 442 tests, v20-prix 99/99, v21-lot3 123/123 relancés ; 4 constats à corriger avant le push : le rapport ONSSA ne compte pas en NC les alertes O-12 (germe sensible détecté sans verdict), le refus « paramètre sensible sans limite » et la limite 0 du script S3 contredisent O-12 et J3 (décision du propriétaire), la conclusion du rapport garde la marque de l’ancien logiciel que K4 retire du tableau, renvoi RETOUR §5 K5 vers une section DEPLOY « Lot 3C » disparue.
+- 01/11 22 h 15 — PDF de présentation du lot 3 pour le laboratoire lancé en parallèle (workflow wf_48e98e16-544, dossier scratchpad presentation/lot3, sortie backups/Qualilab-presentation-lot3-2026-11-02.pdf, captures sur la copie locale).

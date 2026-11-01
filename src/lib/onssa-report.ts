@@ -1,4 +1,5 @@
 import type { Interpretation, OnssaDomain } from "@/generated/prisma/enums";
+import { carriesNoJudgement } from "./contamination-alert";
 import { labDayStart } from "./lab-day-range";
 import { labDayOf } from "./lab-time";
 import { ONSSA_COLUMNS, matchText, onssaColumn, resolveOnssaColumn, type OnssaColumnKey } from "./onssa-canevas";
@@ -108,6 +109,10 @@ export type OnssaResultInput = {
   /** The indicative verdict of a result read on fewer units than the plan's n (`Result.informalInterpretation`). */
   informalInterpretation: Interpretation | null;
   conform: boolean | null;
+  /** The reading shows the germ (`Result.detected`, O-12); null = unknown. */
+  detected?: boolean | null;
+  /** The parameter is a sensitive germ (`AnalysisParameter.alertOnExceed`). */
+  sensitive?: boolean;
 };
 
 export type OnssaSampleInput = {
@@ -146,17 +151,29 @@ export function isDoneResult(
  * « NC »: the verdict Non satisfaisant; without an official verdict (none,
  * or Incomplet), non conforme or the indicative verdict Non satisfaisant —
  * the contamination alert's reading (`raisesContaminationAlert`), so the
- * report never counts fewer NC than the alerts sent. Acceptable = conforme.
+ * report never counts fewer NC than the alerts sent — including rule O-12:
+ * a sensitive germ detected with no verdict at all (no criterion, J3) alerts,
+ * so it counts NC too. Acceptable = conforme.
  * Hypothèse, à confirmer par R-22.
  */
 export function isNonConformResult(
-  result: Pick<OnssaResultInput, "interpretation" | "conform"> & Partial<Pick<OnssaResultInput, "informalInterpretation">>
+  result: Pick<OnssaResultInput, "interpretation" | "conform"> &
+    Partial<Pick<OnssaResultInput, "informalInterpretation" | "detected" | "sensitive">>
 ): boolean {
   if (result.interpretation === "NON_SATISFAISANT") return true;
   if (result.interpretation === null || result.interpretation === "INCOMPLET") {
-    return result.conform === false || result.informalInterpretation === "NON_SATISFAISANT";
+    if (result.conform === false || result.informalInterpretation === "NON_SATISFAISANT") return true;
   }
-  return false;
+  // O-12: the same reading as `ALERT_RESULT_WHERE`'s third branch.
+  return (
+    result.sensitive === true &&
+    result.detected === true &&
+    carriesNoJudgement({
+      conform: result.conform ?? null,
+      interpretation: result.interpretation ?? null,
+      informalInterpretation: result.informalInterpretation ?? null,
+    })
+  );
 }
 
 // ---- The output ------------------------------------------------------------

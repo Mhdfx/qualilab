@@ -8,13 +8,15 @@
 
 ## ▶ NEXT ACTION
 
-**01/11 (soir) — LOT 3 (retour du 28/10) CONSTRUIT, RELU, INTÉGRÉ ET TESTÉ EN LOCAL — NON POUSSÉ, NON DÉPLOYÉ.** Branche `lot2-retour-16-10` : 3A `ec792dc`, 3D `cd9837c`, documents `78ebd20`, fusions 3B `0d6ebc7`, 3C `7082811`, 3E `5f78071`, puis le commit de documents de l'intégration. Huit migrations additives (appliquées en local, `migrate diff` vide). tsc 0, eslint 0, vitest 188 fichiers / 3 442 tests, build OK ; recettes locales v16-1 64/64, v16-2 108/108, v16-3 68/68, v17 78/78, v18 53/53, v19 71/71, v19-serie 50/50, v20 99/99, **v21-lot3 123/123** (`TESTPLAN.md` « Checkpoint V21 »). La relance de 3A sur Q71 est renumérotée **R-30**. Journal de reprise : `LOT3-AVANCEMENT.md`. Production inchangée (`e8cbfe1`).
+**01/11 (fin de soirée) — LOT 3 (retour du 28/10) INTÉGRÉ, CONTRÔLE FINAL APPLIQUÉ, TESTÉ EN LOCAL ET POUSSÉ — PRÊT POUR LA PRODUCTION, NON DÉPLOYÉ.** Branche `lot2-retour-16-10` poussée (avec `lot3b`, `lot3c`, `lot3e`), `master` intact. Contrôle final hostile : 4 constats corrigés — le rapport ONSSA compte en NC les alertes O-12 ; un paramètre sensible sans limite est accepté tant que J3 est allumé et le script S3 ne pose plus que le drapeau (plus de limite 0 inventée) ; la conclusion du rapport nomme le paramètre sans la marque de l'ancien logiciel (K4) ; renvoi K5 vers DEPLOY « Lot 3 » étape 4. tsc 0, eslint 0, vitest 189 fichiers / 3 450 tests, build OK ; recettes locales v16-1 64/64, v16-2 108/108, v16-3 68/68, v17 78/78, v18 53/53, v19 71/71, v19-serie 50/50, v20 99/99, **v21-lot3 126/126**. Journal de reprise : `LOT3-AVANCEMENT.md`. Production inchangée (`e8cbfe1`).
 Next, in this order:
-1. **Contrôle final hostile** de l'ensemble intégré (les interactions entre lots : rapport J3 + K4 + G2, alertes O-12 + K3 + L5, réception I3 + I7 + N1), corrections, puis **push** de `lot2-retour-16-10` (pas de fusion dans `master` avant le déploiement).
-2. **Propriétaire, avant le déploiement** : la décision `Invoice.clientSnapshot` (préalable de I5), L1 (valeurs aux seuls profils qui lisent les rapports, R-21), garder ou vider la proposition K5 (5 / 7 jours ouvrés).
-3. **Déploiement** : `DEPLOY.md` « Lot 3 » (tag `v1.6-avant-lot3`, dump, répertoire `journal/` des sauvegardes, `EMAIL_FROM`, migrations, réglages S1 / S2 / K5 / S4, S3 par la route de l'application `--dry-run` puis approbation), puis les lignes production du Checkpoint V21 sur « TEST UI », et prévenir le laboratoire (`RETOUR-LABO-28-10.md` §9).
-4. La relance R-8 … R-30 (`RETOUR-LABO-28-10.md` §6, `NEEDEDINFO.md`) quand le propriétaire le décide ; O-7 ; L3 parqué.
-5. Une fois tout fusionné : `git worktree remove` des arbres `qualilab-lot3b`, `qualilab-lot3c`, `qualilab-lot3e`.
+1. **Propriétaire, avant le déploiement** : la décision `Invoice.clientSnapshot` (préalable de I5), L1 (valeurs aux seuls profils qui lisent les rapports, R-21), garder ou vider la proposition K5 (5 / 7 jours ouvrés) ; approuver le plan S3 (drapeau seul) à l'étape 5.
+2. **Déploiement** : `DEPLOY.md` « Lot 3 » (tag `v1.6-avant-lot3`, fusion ff de `lot2-retour-16-10` dans `master`, dump, répertoire `journal/` des sauvegardes, `EMAIL_FROM`, migrations, réglages S1 / S2 / K5 / S4, S3 par la route de l'application `--dry-run` puis approbation), puis les lignes production du Checkpoint V21 sur « TEST UI », et prévenir le laboratoire (`RETOUR-LABO-28-10.md` §9).
+3. Lignes navigateur non automatisées : V21-3A (phrase des mains sur protocole et bon, séquence I4), Checkpoint 3E (panneaux ONSSA visite / comptoir / réception), V24 (libellés de l'écran M7).
+4. La relance R-8 … R-30 (`RETOUR-LABO-28-10.md` §6, `NEEDEDINFO.md`) quand le propriétaire le décide ; O-7 ; L3 parqué ; logo et cachet à recevoir.
+5. Une fois déployé : `git worktree remove` des arbres `qualilab-lot3b`, `qualilab-lot3c`, `qualilab-lot3e`.
+
+_Previous next action:_ **01/11 (soir) — LOT 3 (retour du 28/10) CONSTRUIT, RELU, INTÉGRÉ ET TESTÉ EN LOCAL — NON POUSSÉ, NON DÉPLOYÉ.** Branche `lot2-retour-16-10` : 3A `ec792dc`, 3D `cd9837c`, documents `78ebd20`, fusions 3B `0d6ebc7`, 3C `7082811`, 3E `5f78071`, puis le commit de documents de l'intégration. Huit migrations additives (appliquées en local, `migrate diff` vide). tsc 0, eslint 0, vitest 188 fichiers / 3 442 tests, build OK ; recettes locales v16-1 64/64, v16-2 108/108, v16-3 68/68, v17 78/78, v18 53/53, v19 71/71, v19-serie 50/50, v20 99/99, **v21-lot3 123/123** (`TESTPLAN.md` « Checkpoint V21 »). La relance de 3A sur Q71 est renumérotée **R-30**. Journal de reprise : `LOT3-AVANCEMENT.md`. Production inchangée (`e8cbfe1`).
 
 _Previous next action:_ **01/11 — LOT 3 EN COURS (retour du 28/10) : voir `LOT3-AVANCEMENT.md` en premier** (où est chaque lot, ce qui est fait, l'ordre restant, les copies de sécurité). Production inchangée (`e8cbfe1`).
 
@@ -405,6 +407,10 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-11-01 (late evening) — lot 3: final hostile check applied, pushed — ready for production, not deployed
+- Four findings of the final check fixed on `lot2-retour-16-10`: ONSSA « NC » counts O-12 alerts (`isNonConformResult` + `detected` / `alertOnExceed` in `onssa-report-server.ts`); a sensitive parameter without a limit accepted while J3 is on (`sensitiveNeedsLimit`), the S3 plan sets the flag only (limit 0 only with J3 off), /admin/parametres hint; the conclusion names a parameter without the old software's mark once its K4 status is saved (`conclusionParameterName`); RETOUR §5 K5 points at DEPLOY « Lot 3 » step 4. Docs: RETOUR §5 S3 / N3, DEPLOY « Lot 3 » step 5, HANDOFF §1 / §5 / §8 / §9, TESTPLAN, LOT3-AVANCEMENT.
+- Gates: tsc 0, eslint 0, vitest 189 files / 3 450, build OK; e2e on :3210 v16-1 64/64, v16-2 108/108, v16-3 68/68, v17 78/78, v18 53/53, v19 71/71, v19-serie 50/50, v20 99/99, v21 126/126. Pushed `lot2-retour-16-10`, `lot3b`, `lot3c`, `lot3e`; `master` and the server untouched.
 
 ### 2026-11-01 — réponses du laboratoire du 28/10 analysées (lot 3 planned) — nothing built
 - Inputs: the 14-page scan (18/10 document annotated by hand + the comptable's copy of pages 9–10), the e-mail screenshot, four Excel files (all empty templates, made 27/10 by a « Qualité & Achat » Windows profile). Read with zoomed crops; four analysts' slices merged; Q118, Q93, Q97, 2.16 re-read on the page images.
