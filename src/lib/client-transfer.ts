@@ -15,7 +15,9 @@ import { isEmail } from "./client-validation";
  *   - addresses: an address the target already has is not moved (kept on
  *     the source, or deleted); the others move, optionally onto a site,
  *     labelled with its name, boxes unticked;
- *   - the samples of a merged row follow the row it joined.
+ *   - the samples of a merged row follow the row it joined;
+ *   - the laboratory's alert copies « clients choisis » (lot 3C, L5): an
+ *     address chosen for a source is chosen for the target.
  *
  * Every function takes the caller's transaction and returns its counts;
  * `byClient` counts, per source client, the rows it gave (moved or merged).
@@ -285,4 +287,26 @@ export async function moveTypesAndProfiles(
   const productTypes = (await tx.productType.updateMany({ where: { clientId: { in: fromClientIds } }, data: { clientId: toClientId } })).count;
   const profiles = (await tx.analysisProfile.updateMany({ where: { clientId: { in: fromClientIds } }, data: { clientId: toClientId } })).count;
   return { productTypes, profiles };
+}
+
+/**
+ * Lot 3C, L5 (RETOUR-LABO-28-10.md): an internal copy address set to
+ * « clients choisis » for a source client is chosen for the target — its
+ * samples now carry the target's id, so the address keeps receiving their
+ * alerts. A link the target already has is not written twice; the sources'
+ * links are deleted (the source is archived). Returns the addresses newly
+ * linked to the target.
+ */
+export async function moveAlertCopies(tx: Tx, fromClientIds: string[], toClientId: string): Promise<number> {
+  const sources = fromClientIds.filter((id) => id !== toClientId);
+  if (sources.length === 0) return 0;
+  const links = await tx.alertCopyClient.findMany({ where: { clientId: { in: sources } }, select: { addressId: true } });
+  if (links.length === 0) return 0;
+  const addressIds = [...new Set(links.map((link) => link.addressId))];
+  const created = await tx.alertCopyClient.createMany({
+    data: addressIds.map((addressId) => ({ addressId, clientId: toClientId })),
+    skipDuplicates: true,
+  });
+  await tx.alertCopyClient.deleteMany({ where: { clientId: { in: sources } } });
+  return created.count;
 }

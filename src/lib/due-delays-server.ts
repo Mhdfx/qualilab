@@ -18,3 +18,15 @@ export async function getDueDelays(): Promise<DueDelays> {
     return { dueDaysMicro: null, dueDaysChimie: null, dueDaysAutre: null, dueCalendarDays: null };
   }
 }
+
+/** A type d'analyse and its own delay (K5), for /admin/reglages. */
+export type NatureDueDays = { id: string; label: string; family: "MICRO" | "CHIMIE" | "AUTRE"; dueDays: number | null };
+
+/** The active types d'analyse with their own delay, in the screens' order (plus any inactive one that still has a delay). */
+export async function getNatureDueDays(): Promise<NatureDueDays[]> {
+  return prisma.analysisNature.findMany({
+    where: { OR: [{ active: true }, { dueDays: { not: null } }] },
+    select: { id: true, label: true, family: true, dueDays: true },
+    orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
+  });
+}

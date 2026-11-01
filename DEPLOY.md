@@ -932,6 +932,31 @@ git checkout v1.5-lot2-16-10 && sudo -u qualilab bash scripts/deploy.sh`.
 The reprise (f) and the splits stay (data); undo them with their dumps
 (steps 4 and 1), which lose everything entered since.
 
+## Lot 3C (01/11) — what the deploy changes by itself, and the operator's checks
+
+Three additive migrations (`20261101300000_lot3c_reception_rapport_exports`,
+`20261101300001_lot3c_images_figees`, `20261101300002_lot3c_delai_par_type`),
+applied by `prisma migrate deploy` with the image. The integrator folds these
+lines into the « Lot 3 » section.
+
+- **K5 switches on at the deploy**: the migration sets `LabSettings.dueDaysMicro = 5`
+  and `dueDaysChimie = 7` (working days) — every programme sheet of a received
+  sample without a promised date proposes one from then on (R-18 assumption).
+  To keep the old behaviour until the laboratory answers, empty the two fields
+  in Administration → Réglages → « Délais de rendu » right after the deploy.
+  No type d'analyse has its own delay (`AnalysisNature.dueDays` NULL).
+- **L4 — check `EMAIL_FROM` on the VPS** (`grep EMAIL_FROM .env`): production's
+  file was written from the old example (`no-reply@…`). The app now passes over
+  a no-reply `EMAIL_FROM` for the identity's e-mail, but replace it anyway with a
+  real mailbox of the laboratory (R-20), or set « Envoi des e-mails » in
+  /admin/entreprise; then `docker compose up -d` to reload the environment.
+- **K4** — nothing to do until the laboratory sends the files: the logo and the
+  stamp uploaded in /admin/entreprise are frozen with each version issued after
+  the upload (`ReportImageArchive`, append-only — never purge it).
+- **L2** — create the journal directory owned by the cron user before the first
+  run (« Backups »); a journal that cannot be written only warns, the backup's
+  exit code is unchanged.
+
 ## After every deploy — 5-minute check
 
 1. `/api/health` answers `ok`.

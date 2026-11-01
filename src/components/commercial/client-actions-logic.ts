@@ -53,6 +53,8 @@ export type MergeCounts = {
   /** Optional extras: the links that pointed at B and now point at A. */
   billingClients?: number;
   billedSites?: number;
+  /** Lot 3C, L5: the laboratory's alert copy addresses chosen for B, now chosen for A. */
+  alertCopies?: number;
 };
 
 /** The counts `POST /api/clients/[id]/attach-as-site` returns. */
@@ -64,6 +66,8 @@ export type AttachCounts = {
   products: number;
   productTypes: number;
   profiles: number;
+  /** Lot 3C, L5: the laboratory's alert copy addresses chosen for B, now chosen for the principal. */
+  alertCopies?: number;
   invoicesKept: number;
 };
 
@@ -98,7 +102,8 @@ function memoryDetails(counts: {
   products?: number;
   productTypes?: number;
   profiles?: number;
-}): string[] {
+  alertCopies?: number;
+}, targetName: string): string[] {
   const details: string[] = [];
   if (n(counts.emails) > 0) details.push(countLabel(n(counts.emails), "adresse e-mail", "adresses e-mail"));
   const memory = [
@@ -111,6 +116,11 @@ function memoryDetails(counts: {
     n(counts.profiles) > 0 ? countLabel(n(counts.profiles), "profil d'analyse", "profils d'analyse") : "",
   ].filter(Boolean);
   if (settings.length > 0) details.push(frenchList(settings));
+  if (n(counts.alertCopies) > 0) {
+    details.push(
+      `${countLabel(n(counts.alertCopies), "adresse du laboratoire en copie des alertes", "adresses du laboratoire en copie des alertes")} : désormais pour ${q(targetName)}`
+    );
+  }
   return details;
 }
 
@@ -137,7 +147,7 @@ export function mergeSummary(counts: Partial<MergeCounts>, sourceName: string, t
       : "",
   ].filter(Boolean);
   if (sites.length > 0) details.push(frenchList(sites));
-  details.push(...memoryDetails(counts));
+  details.push(...memoryDetails(counts, targetName));
   if (n(counts.emailsDeleted) > 0) {
     details.push(
       `${countLabel(n(counts.emailsDeleted), "adresse e-mail", "adresses e-mail")} déjà ${n(counts.emailsDeleted) > 1 ? "connues" : "connue"} de ${q(targetName)} : ${n(counts.emailsDeleted) > 1 ? "supprimées" : "supprimée"} sur ${q(sourceName)}`
@@ -188,7 +198,7 @@ export function attachSummary(
       ? `Le site ${q(site.name)} sera créé chez ${q(parentName)}.`
       : `Le site ${q(site.name)} existe déjà chez ${q(parentName)} : il sera utilisé.`,
   ];
-  const memory = memoryDetails(counts);
+  const memory = memoryDetails(counts, parentName);
   details.push(...memory);
   if (n(counts.emails) > 0) {
     details.push("Les adresses e-mail rejoignent le site avec les cases « rapports » et « alertes » décochées.");

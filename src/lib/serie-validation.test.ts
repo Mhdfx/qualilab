@@ -281,6 +281,19 @@ describe("serieValidationPlan — what the dialog lists", () => {
     expect(serieValidationPlan([candidate({ nonConformes: 3 })], "validate", VALID1, AT_TECHNICAL).eligible[0].alertNow).toBe(false);
   });
 
+  it("alertWithSend: with the K3 switch off, only « Valider et envoyer » at the approval sends the alert", () => {
+    const alerting = candidate({ alertables: 1, validatedById: VALID1.id });
+    const fresh = candidate({ alertables: 1 });
+    const off = (settings: { alertsAtTechnical: boolean }) => ({ ...settings, atValidation: false });
+    const approve = serieValidationPlan([alerting], "approve", DIR1, off(AT_APPROVAL)).eligible[0];
+    expect(approve).toMatchObject({ alertNow: false, alertWithSend: true });
+    expect(serieValidationPlan([alerting], "approve", DIR1, off(AT_TECHNICAL)).eligible[0]).toMatchObject({ alertNow: false, alertWithSend: true });
+    expect(serieValidationPlan([fresh], "validate", VALID1, off(AT_TECHNICAL)).eligible[0]).toMatchObject({ alertNow: false, alertWithSend: false });
+    // Switch on: the send changes nothing.
+    expect(serieValidationPlan([alerting], "approve", DIR1, AT_APPROVAL).eligible[0]).toMatchObject({ alertNow: true, alertWithSend: true });
+    expect(serieValidationPlan([alerting], "approve", DIR1, AT_TECHNICAL).eligible[0]).toMatchObject({ alertNow: false, alertWithSend: false });
+  });
+
   it("serieLine names « 2M » / « 2P » for the two samples of a two-family line", () => {
     expect(serieLine({ id: "x", code: "S-2026-0004-2P", controlCode: null, lineNumber: 2, designation: "—" }).line).toBe("2P");
     expect(serieLine({ id: "x", code: "S-2026-0004-3", controlCode: null, lineNumber: 3, designation: "—" }).line).toBe("3");

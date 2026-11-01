@@ -53,17 +53,44 @@ export function accreditationFromLegacyName(name: string): AccreditationStatus |
   return null;
 }
 
+/** A trailing mark of the old software in a name: « * », « (SA) », « (SN) ». */
+const LEGACY_MARK = /\s*(?:\(\s*S[AN]\s*\)|\*)\s*$/i;
+
+/** The name without the old software's trailing marks (« Chlore (SA) » → « Chlore »). */
+export function nameWithoutLegacyMark(name: string): string {
+  let text = name.trimEnd();
+  while (LEGACY_MARK.test(text)) {
+    const next = text.replace(LEGACY_MARK, "").trimEnd();
+    if (!next) break; // a name made only of a mark stays as it is
+    text = next;
+  }
+  return text;
+}
+
 /**
- * The name as the report prints it: « Levures * », « Plomb (SA) ». A name that
- * already ends with its mark (taken over from the old software) is not
- * marked twice.
+ * The name as the report prints it: « Levures * », « Plomb (SA) ». Once a
+ * status is recorded, it alone decides the mark (ISO 17025 §7.8): a mark
+ * of the old software left in the name (« Chlore (SA) ») is removed first,
+ * so an analysis set « accrédité » prints « Chlore » and one set « non
+ * accrédité » prints « Chlore * » — never a mark contradicting its status.
+ * « À préciser » prints the name as it is.
  */
 export function markedParameterName(name: string, status: AccreditationStatus | null | undefined): string {
-  const mark = status ? ACCREDITATION_MARKS[status] : null;
-  if (!mark) return name;
-  const trimmed = name.trimEnd();
-  if (trimmed.toUpperCase().endsWith(mark.toUpperCase())) return name;
-  return `${trimmed} ${mark}`;
+  if (!status) return name;
+  const bare = nameWithoutLegacyMark(name);
+  const mark = ACCREDITATION_MARKS[status];
+  return mark ? `${bare} ${mark}` : bare;
+}
+
+/**
+ * The status recorded contradicts the mark the name still carries from the
+ * old software (« Chlore (SA) » set « accrédité »): /admin/parametres warns,
+ * the report prints the status's mark only (`markedParameterName`).
+ */
+export function accreditationContradictsName(name: string, status: AccreditationStatus | null | undefined): boolean {
+  if (!status) return false;
+  const legacy = accreditationFromLegacyName(name);
+  return legacy !== null && legacy !== status;
 }
 
 /**

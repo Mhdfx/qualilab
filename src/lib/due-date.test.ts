@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DUE_DELAYS_DEFAULTS, addDueDays, dueDaysFor, dueHint, parseDueDelays, proposeDueAt } from "./due-date";
+import { DUE_DELAYS_DEFAULTS, addDueDays, dueDaysFor, dueHint, parseDueDelays, parseNatureDueDays, proposeDueAt } from "./due-date";
 
 // After 20/09/2026 the laboratory's clock is UTC: wall time = ISO time.
 const at = (iso: string) => new Date(`${iso}Z`);
@@ -31,6 +31,46 @@ describe("dueDaysFor", () => {
     expect(dueDaysFor("CHIMIE", DUE_DELAYS_DEFAULTS)).toBe(7);
     expect(dueDaysFor("AUTRE", DUE_DELAYS_DEFAULTS)).toBeNull();
     expect(dueDaysFor("MICRO", { ...DUE_DELAYS_DEFAULTS, dueDaysMicro: 0 })).toBeNull();
+  });
+
+  it("lets a type d'analyse's own delay win over its domain's (R-18 « par type d'analyse »)", () => {
+    expect(dueDaysFor("MICRO", DUE_DELAYS_DEFAULTS, 3)).toBe(3);
+    expect(dueDaysFor("AUTRE", DUE_DELAYS_DEFAULTS, 4)).toBe(4);
+    expect(dueDaysFor("CHIMIE", DUE_DELAYS_DEFAULTS, null)).toBe(7);
+    expect(dueDaysFor("CHIMIE", DUE_DELAYS_DEFAULTS, 0)).toBe(7);
+    const proposal = proposeDueAt(
+      { family: "MICRO", natureDueDays: 3, arrivedAt: at("2026-10-28T10:15:00"), receivedAt: null },
+      DUE_DELAYS_DEFAULTS,
+      at("2026-10-29T08:00:00")
+    );
+    expect(proposal).toEqual({ dueAt: at("2026-11-02T10:15:00"), days: 3, calendar: false, past: false });
+  });
+
+  it("keeps the assumption of 01/11 (5 and 7 working days, the migration's defaults — they apply at the deploy)", () => {
+    expect(DUE_DELAYS_DEFAULTS).toEqual({ dueDaysMicro: 5, dueDaysChimie: 7, dueDaysAutre: null, dueCalendarDays: null });
+  });
+});
+
+describe("parseNatureDueDays", () => {
+  it("reads whole days per type, empty as the domain's delay, absent as nothing", () => {
+    expect(parseNatureDueDays(undefined)).toEqual({ ok: true, value: [] });
+    expect(parseNatureDueDays({ air: 3, aliments: "5", aseptisant: "", eaux: null })).toEqual({
+      ok: true,
+      value: [
+        { id: "air", dueDays: 3 },
+        { id: "aliments", dueDays: 5 },
+        { id: "aseptisant", dueDays: null },
+        { id: "eaux", dueDays: null },
+      ],
+    });
+  });
+
+  it("refuses a fraction, zero, too many days or a malformed body", () => {
+    expect(parseNatureDueDays({ air: 2.5 }).ok).toBe(false);
+    expect(parseNatureDueDays({ air: 0 }).ok).toBe(false);
+    expect(parseNatureDueDays({ air: 121 }).ok).toBe(false);
+    expect(parseNatureDueDays([3]).ok).toBe(false);
+    expect(parseNatureDueDays("3").ok).toBe(false);
   });
 });
 

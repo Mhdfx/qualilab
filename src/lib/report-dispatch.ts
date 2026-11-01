@@ -36,7 +36,7 @@ import type { Role } from "./roles";
 import { SingleFlight } from "./single-flight";
 import { samplingMeansText } from "./sampling-means";
 import { reportCarriesAccreditationLogo } from "./accreditation";
-import { reportImagesPresent } from "./report-images";
+import { freezeReportImages, type IssuedReportImages } from "./report-images";
 import { alertCopyRecipients } from "./alert-copies";
 import { loadAlertCopies } from "./alert-copies-server";
 
@@ -203,8 +203,8 @@ function toReportData(
     amendment?: ReportAmendment | null;
     issuedAt?: Date | null;
     layout?: typeof REPORT_LAYOUT_ALIGNED;
-    /** At an issue (lot 3C, K4): which of the accreditation logo and the stamp are uploaded. */
-    images?: { accreditationLogo: boolean; stamp: boolean };
+    /** At an issue (lot 3C, K4): which of the accreditation logo and the stamp are uploaded, and their archived hash. */
+    images?: IssuedReportImages;
   }
 ): ReportData {
   const programmedNorm = new Map(sample.parameters.map((p) => [p.parameterId, p.normVersion?.label ?? null]));
@@ -288,8 +288,9 @@ function toReportData(
  */
 function issuedSinceLot3C(
   sample: ReportSample,
-  images: { accreditationLogo: boolean; stamp: boolean } = { accreditationLogo: false, stamp: false }
-): Pick<ReportData, "samplingMeans" | "accreditationLogo" | "stamp"> {
+  images: IssuedReportImages = { accreditationLogo: false, stamp: false }
+): Pick<ReportData, "samplingMeans" | "accreditationLogo" | "stamp" | "accreditationLogoHash" | "stampHash"> {
+  const logo = images.accreditationLogo && reportCarriesAccreditationLogo(sample.results.map((r) => r.parameter.accreditation));
   return {
     samplingMeans: samplingMeansText({
       lineKind: sample.lineKind,
@@ -297,9 +298,11 @@ function issuedSinceLot3C(
       airMethod: sample.airMethod,
       airExposureMin: sample.airExposureMin,
     }),
-    accreditationLogo:
-      images.accreditationLogo && reportCarriesAccreditationLogo(sample.results.map((r) => r.parameter.accreditation)),
+    accreditationLogo: logo,
     stamp: images.stamp,
+    // The image itself is frozen too: its hash in `ReportImageArchive`.
+    ...(logo && images.accreditationLogoHash ? { accreditationLogoHash: images.accreditationLogoHash } : {}),
+    ...(images.stamp && images.stampHash ? { stampHash: images.stampHash } : {}),
   };
 }
 
@@ -496,7 +499,7 @@ export async function createReportFor(sampleId: string): Promise<IssuedReport | 
       where: { id: sampleId },
       select: { ...REPORT_SAMPLE_SELECT, approvedAt: true, approvedById: true },
     }),
-    reportImagesPresent(),
+    freezeReportImages(),
   ]);
   if (!fields || !sample) return null;
   // One instant for the version, for the « Date d'édition » it prints and
@@ -596,7 +599,7 @@ export async function amendReportFor(sampleId: string, actorId: string | null): 
     issuedAt,
     amendment: { previousNumber, previousIssuedAt, note },
     layout: REPORT_LAYOUT_ALIGNED,
-    images: await reportImagesPresent(),
+    images: await freezeReportImages(),
   });
 
   try {

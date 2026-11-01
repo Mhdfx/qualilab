@@ -88,7 +88,7 @@ export function ReportImagesForm({ initial }: { initial: Images }) {
         <BadgeCheck className="h-4 w-4 text-brand" aria-hidden="true" />
         Accréditation et cachet (rapport d&apos;essai)
       </h2>
-      <p className="mt-1 text-sm text-slate-500">PNG, JPEG, SVG ou WebP, 300 Ko maximum. Tant qu&apos;un fichier manque, rien n&apos;est imprimé à sa place.</p>
+      <p className="mt-1 text-sm text-slate-500">PNG, JPEG, SVG ou WebP, 300 Ko maximum. Tant qu&apos;un fichier manque, rien n&apos;est imprimé à sa place. Chaque rapport garde l&apos;image de son émission : remplacer ou retirer un fichier ne change pas les rapports déjà émis.</p>
       <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2">
         {SLOTS.map((slot) => {
           const Icon = slot.icon;

@@ -7,12 +7,15 @@ import { fromLabWallTime, toLabWallTime } from "./lab-time";
  * by /admin/reglages, its route and the programme sheet.
  *
  * One delay per domain of the sample's type d'analyse (Microbiologie,
- * Physico-chimie, Autre), counted from the arrival at the laboratory, in
- * working days (Monday to Friday) or calendar days. The days themselves are
- * an assumption — 5 working days in microbiology, 7 in physico-chimistry —
- * until the laboratory gives its own (relance R-18): /admin/reglages changes
- * them without code, and an empty delay proposes nothing (the field stays
- * empty, as before). The proposal only fills an empty field of a programme
+ * Physico-chimie, Autre), and optionally one of the type d'analyse itself
+ * (air, aliments, effet aseptisant…) that wins over its domain's — R-18 asks
+ * the days « par type d'analyse », the answer may come either way. Counted
+ * from the arrival at the laboratory, in working days (Monday to Friday) or
+ * calendar days. The days themselves are an assumption — 5 working days in
+ * microbiology, 7 in physico-chimistry, no type of its own — until the
+ * laboratory gives its own (relance R-18): /admin/reglages changes them
+ * without code, and an empty delay proposes nothing (the field stays empty,
+ * as before). The proposal only fills an empty field of a programme
  * not yet confirmed; whoever programmes may change it or clear it.
  *
  * Public holidays are not counted (none is known to the software): a promise
@@ -39,11 +42,17 @@ export const DUE_DELAY_FIELDS: { key: "dueDaysMicro" | "dueDaysChimie" | "dueDay
   { key: "dueDaysAutre", family: "AUTRE", label: "Autres analyses" },
 ];
 
-/** The delay of a sample's domain, or null when none is set. */
-export function dueDaysFor(family: Family, delays: DueDelays): number | null {
+const validDays = (days: unknown): days is number => typeof days === "number" && Number.isInteger(days) && days > 0;
+
+/**
+ * The delay of a sample: its type d'analyse's own (`natureDays`) when set,
+ * else its domain's, or null when none is set.
+ */
+export function dueDaysFor(family: Family, delays: DueDelays, natureDays?: number | null): number | null {
+  if (validDays(natureDays)) return natureDays;
   const field = DUE_DELAY_FIELDS.find((f) => f.family === family);
   const days = field ? delays[field.key] : null;
-  return typeof days === "number" && Number.isInteger(days) && days > 0 ? days : null;
+  return validDays(days) ? days : null;
 }
 
 /** Saturday or Sunday of a wall-clock day « AAAA-MM-JJ ». */
@@ -86,18 +95,18 @@ export type DueProposal = {
 };
 
 /**
- * The proposal for one sample: its domain's delay from the arrival (else
- * the reception). Nothing when no delay is set, when the sample has not
+ * The proposal for one sample: its type d'analyse's delay, else its
+ * domain's, from the arrival (else the reception). Nothing when no delay is set, when the sample has not
  * arrived, or when the date is already past (« jamais dans le passé », the
  * sheet's own rule — a late programme is promised by hand).
  */
 export function proposeDueAt(
-  input: { family: Family; arrivedAt: Date | null; receivedAt: Date | null },
+  input: { family: Family; arrivedAt: Date | null; receivedAt: Date | null; natureDueDays?: number | null },
   delays: DueDelays,
   now: Date
 ): DueProposal {
   const calendar = delays.dueCalendarDays === true;
-  const days = dueDaysFor(input.family, delays);
+  const days = dueDaysFor(input.family, delays, input.natureDueDays);
   const from = input.arrivedAt ?? input.receivedAt;
   if (days === null || !from) return { dueAt: null, days, calendar, past: false };
   const dueAt = addDueDays(from, days, calendar);
@@ -141,6 +150,33 @@ export function parseDueDelays(input: Record<string, unknown>): DueDelaysRead {
   if ("dueCalendarDays" in input && input.dueCalendarDays !== undefined) {
     if (typeof input.dueCalendarDays !== "boolean") return { ok: false, error: "Le type de jours doit être « ouvrés » ou « calendaires »." };
     value.dueCalendarDays = input.dueCalendarDays;
+  }
+  return { ok: true, value };
+}
+
+export type NatureDueDaysRead = { ok: true; value: { id: string; dueDays: number | null }[] } | { ok: false; error: string };
+
+/**
+ * The delays of the types d'analyse as /admin/reglages sends them
+ * (`natures: { [natureId]: days | "" | null }`): empty or null = the
+ * domain's delay, otherwise a whole number of days from 1 to
+ * `DUE_DAYS_MAX`. Absent = nothing changed.
+ */
+export function parseNatureDueDays(input: unknown): NatureDueDaysRead {
+  if (input === undefined) return { ok: true, value: [] };
+  if (!input || typeof input !== "object" || Array.isArray(input)) return { ok: false, error: "Requête invalide." };
+  const value: { id: string; dueDays: number | null }[] = [];
+  for (const [id, raw] of Object.entries(input as Record<string, unknown>)) {
+    if (!id) return { ok: false, error: "Requête invalide." };
+    if (raw === null || (typeof raw === "string" && raw.trim() === "")) {
+      value.push({ id, dueDays: null });
+      continue;
+    }
+    const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+    if (!Number.isInteger(n) || n < 1 || n > DUE_DAYS_MAX) {
+      return { ok: false, error: `Délai d'un type d'analyse : un nombre entier de jours entre 1 et ${DUE_DAYS_MAX}, ou vide.` };
+    }
+    value.push({ id, dueDays: n });
   }
   return { ok: true, value };
 }

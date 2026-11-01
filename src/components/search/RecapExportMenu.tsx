@@ -10,8 +10,11 @@ import { RECAP_DEFAULT_MODE, type RecapMode } from "@/lib/sample-recap";
  * choices R-21 still asks the laboratory — the value or C / NC per
  * parameter, and the date and N° de contrôle columns.
  */
-export function RecapExportMenu({ query }: { query: string }) {
-  const [mode, setMode] = useState<RecapMode>(RECAP_DEFAULT_MODE);
+export function RecapExportMenu({ query, withValues }: { query: string; withValues: boolean }) {
+  // A role that may not read reports (réception, programmation) gets C / NC
+  // only: no choice offered, the route decides again (`recapAccess`).
+  const [chosen, setMode] = useState<RecapMode>(RECAP_DEFAULT_MODE);
+  const mode: RecapMode = withValues ? chosen : "cnc";
   const [details, setDetails] = useState(false);
   const params = new URLSearchParams(query);
   if (mode !== RECAP_DEFAULT_MODE) params.set("mode", mode);
@@ -29,17 +32,21 @@ export function RecapExportMenu({ query }: { query: string }) {
         <p className="text-slate-600">
           Une ligne par échantillon, regroupées par site ; une colonne par paramètre. Mêmes filtres que la recherche.
         </p>
-        <fieldset className="mt-3">
-          <legend className="font-medium text-slate-700">Pour chaque paramètre</legend>
-          <label className="mt-1.5 flex items-center gap-2">
-            <input type="radio" name="recap-mode" checked={mode === "valeur"} onChange={() => setMode("valeur")} className="h-4 w-4 accent-brand" />
-            La valeur, colorée selon le verdict
-          </label>
-          <label className="mt-1 flex items-center gap-2">
-            <input type="radio" name="recap-mode" checked={mode === "cnc"} onChange={() => setMode("cnc")} className="h-4 w-4 accent-brand" />
-            C / NC (conforme, non conforme)
-          </label>
-        </fieldset>
+        {withValues ? (
+          <fieldset className="mt-3">
+            <legend className="font-medium text-slate-700">Pour chaque paramètre</legend>
+            <label className="mt-1.5 flex items-center gap-2">
+              <input type="radio" name="recap-mode" checked={mode === "valeur"} onChange={() => setMode("valeur")} className="h-4 w-4 accent-brand" />
+              La valeur, colorée selon le verdict
+            </label>
+            <label className="mt-1 flex items-center gap-2">
+              <input type="radio" name="recap-mode" checked={mode === "cnc"} onChange={() => setMode("cnc")} className="h-4 w-4 accent-brand" />
+              C / NC (conforme, non conforme)
+            </label>
+          </fieldset>
+        ) : (
+          <p className="mt-3 text-slate-700">Pour chaque paramètre : C / NC (conforme, non conforme). Les valeurs sont réservées aux profils qui lisent les rapports.</p>
+        )}
         <label className="mt-3 flex items-center gap-2">
           <input type="checkbox" checked={details} onChange={(e) => setDetails(e.target.checked)} className="h-4 w-4 accent-brand" />
           Ajouter la date de réception et le N° de contrôle
@@ -50,7 +57,7 @@ export function RecapExportMenu({ query }: { query: string }) {
         >
           Télécharger (Excel)
         </a>
-        <p className="mt-2 text-xs text-slate-500">Les valeurs n&apos;apparaissent qu&apos;une fois l&apos;échantillon validé.</p>
+        <p className="mt-2 text-xs text-slate-500">{withValues ? "Les valeurs n’apparaissent qu’une fois l’échantillon validé." : "Les verdicts n’apparaissent qu’une fois l’échantillon validé."}</p>
       </div>
     </details>
   );

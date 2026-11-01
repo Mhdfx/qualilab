@@ -27,6 +27,19 @@ export const RECAP_MODES: readonly RecapMode[] = ["valeur", "cnc"];
 /** The reading proposed until R-21: the value, coloured by verdict. */
 export const RECAP_DEFAULT_MODE: RecapMode = "valeur";
 
+/**
+ * Who reads the values (RETOUR-LABO-28-10.md §5 L1 — owner's decision, to
+ * confirm with R-21): the recap is offered with the export's roles, but the
+ * export gives only each sample's conclusion while the recap's values are
+ * the report's content. So only the roles that may read a report
+ * (`REPORT_READ_ROLES`, checked by the route with `canReadReports`) get the
+ * values; the others (réception, programmation) get C / NC and « — » where a
+ * result has no verdict — never a value.
+ */
+export function recapAccess(canReadValues: boolean, requested: RecapMode): { mode: RecapMode; withValues: boolean } {
+  return canReadValues ? { mode: requested, withValues: true } : { mode: "cnc", withValues: false };
+}
+
 /** The « Siège » of a client: the séries without a site. */
 export const RECAP_SIEGE = "Siège";
 
@@ -133,8 +146,11 @@ export function buildSiteRecap(
   samples: readonly RecapSample[],
   catalogue: readonly RecapCatalogueEntry[],
   mode: RecapMode = RECAP_DEFAULT_MODE,
-  byClient: boolean = false
+  byClient: boolean = false,
+  /** False for a role that may not read reports (`recapAccess`): C / NC, never a value. */
+  withValues: boolean = true
 ): RecapTable {
+  if (!withValues) mode = "cnc";
   const { columnOf, columns } = recapColumns(catalogue);
   const present = new Set<string>();
   for (const sample of samples) {
@@ -161,7 +177,7 @@ export function buildSiteRecap(
         const verdicts = results.map(resultVerdict);
         const verdict: RecapVerdict = verdicts.includes("NC") ? "NC" : verdicts.some((v) => v === "C") ? "C" : null;
         const values = results.map((r) => r.value?.trim()).filter((v): v is string => Boolean(v));
-        const text = mode === "cnc" && verdict ? verdict : values.join(" / ") || "—";
+        const text = mode === "cnc" && verdict ? verdict : (withValues && values.join(" / ")) || "—";
         cells[at] = { text, verdict, acceptable: verdict === "C" && results.some((r) => r.interpretation === "ACCEPTABLE") };
       }
     }

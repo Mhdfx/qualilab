@@ -8,6 +8,12 @@ import { DUE_DAYS_MAX, DUE_DELAY_FIELDS, type DueDelays } from "@/lib/due-date";
 
 type Draft = { dueDaysMicro: string; dueDaysChimie: string; dueDaysAutre: string; dueCalendarDays: boolean };
 
+/** A type d'analyse and its own delay (`getNatureDueDays`). */
+export type NatureDueDaysRow = { id: string; label: string; family: "MICRO" | "CHIMIE" | "AUTRE"; dueDays: number | null };
+
+const natureDraft = (rows: NatureDueDaysRow[]): Record<string, string> =>
+  Object.fromEntries(rows.map((row) => [row.id, row.dueDays?.toString() ?? ""]));
+
 const toDraft = (delays: DueDelays): Draft => ({
   dueDaysMicro: delays.dueDaysMicro?.toString() ?? "",
   dueDaysChimie: delays.dueDaysChimie?.toString() ?? "",
@@ -21,11 +27,13 @@ const toDraft = (delays: DueDelays): Draft => ({
  * modifiable »). The days, counted from the arrival, propose « Délai de
  * rendu promis » on the programme sheet; an empty delay proposes nothing.
  * The days shown first (5 and 7 working days) are an assumption until the
- * laboratory gives its own (R-18).
+ * laboratory gives its own (R-18). A type d'analyse may have its own delay,
+ * which wins over its domain's (R-18 asks the days « par type d'analyse »).
  */
-export function DueDelaysForm({ initial }: { initial: DueDelays }) {
+export function DueDelaysForm({ initial, natures = [] }: { initial: DueDelays; natures?: NatureDueDaysRow[] }) {
   const router = useRouter();
   const [draft, setDraft] = useState<Draft>(toDraft(initial));
+  const [natureDays, setNatureDays] = useState<Record<string, string>>(natureDraft(natures));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
@@ -40,14 +48,15 @@ export function DueDelaysForm({ initial }: { initial: DueDelays }) {
       const response = await fetch("/api/admin/due-delays", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
+        body: JSON.stringify({ ...draft, natures: natureDays }),
       });
-      const data = (await response.json().catch(() => ({}))) as Partial<DueDelays> & { error?: string };
+      const data = (await response.json().catch(() => ({}))) as Partial<DueDelays> & { error?: string; natures?: NatureDueDaysRow[] };
       if (!response.ok) {
         setError(data.error ?? "Enregistrement impossible.");
         return;
       }
       setDraft(toDraft({ dueDaysMicro: data.dueDaysMicro ?? null, dueDaysChimie: data.dueDaysChimie ?? null, dueDaysAutre: data.dueDaysAutre ?? null, dueCalendarDays: data.dueCalendarDays ?? null }));
+      if (data.natures) setNatureDays(natureDraft(data.natures));
       setSaved(true);
       router.refresh();
     } catch {
@@ -90,6 +99,46 @@ export function DueDelaysForm({ initial }: { initial: DueDelays }) {
             </div>
           ))}
         </div>
+        {natures.length > 0 && (
+          <details className="mt-4 rounded-xl border border-slate-200 px-4 py-3">
+            <summary className="cursor-pointer text-sm font-medium text-slate-700">
+              Un délai propre à un type d&apos;analyse ({natures.filter((n) => n.dueDays !== null).length} défini{natures.filter((n) => n.dueDays !== null).length > 1 ? "s" : ""})
+            </summary>
+            <p className="mt-2 text-sm text-slate-500">
+              Il l&apos;emporte sur le délai de son domaine. Vide : le délai du domaine.
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {natures.map((nature) => {
+                const domain = DUE_DELAY_FIELDS.find((f) => f.family === nature.family);
+                const fallback = domain ? draft[domain.key] : "";
+                return (
+                  <div key={nature.id} className="flex items-center justify-between gap-3">
+                    <label htmlFor={`due-nature-${nature.id}`} className="text-sm text-slate-700">
+                      {nature.label}
+                      <span className="block text-xs text-slate-500">
+                        {domain?.label ?? "Autre"} : {fallback ? `${fallback} jours` : "rien de proposé"}
+                      </span>
+                    </label>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <input
+                        id={`due-nature-${nature.id}`}
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={DUE_DAYS_MAX}
+                        step={1}
+                        value={natureDays[nature.id] ?? ""}
+                        onChange={(e) => setNatureDays({ ...natureDays, [nature.id]: e.target.value })}
+                        className="input-field w-20 px-3"
+                      />
+                      <span className="text-sm text-slate-600">jours</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+        )}
         <fieldset className="mt-4">
           <legend className="text-sm font-medium text-slate-700">Jours comptés</legend>
           <div className="mt-1.5 flex flex-wrap gap-4 text-sm">

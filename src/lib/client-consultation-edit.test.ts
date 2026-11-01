@@ -7,6 +7,8 @@ import {
   consultationEditRefusal,
   consultationEditable,
   consultationRecord,
+  correctedConsultationAt,
+  sameConsultationMinute,
 } from "./client-consultation";
 import { CONSULTATION_AFTER_RECEPTION } from "./lab-proposals";
 
@@ -68,6 +70,22 @@ describe("consultationChanges", () => {
       "at",
     ]);
   });
+
+  it("compares « at » to the minute the editor shows, and keeps the stored instant then", () => {
+    const stored = new Date("2026-10-30T10:00:37.512Z");
+    const before = consultationRecord({ ...row, clientConsultedAt: stored });
+    // The editor sends « 2026-10-30T10:00 » back: nothing changed, the save is refused as unchanged.
+    const typed = new Date("2026-10-30T10:00:00.000Z");
+    expect(consultationChanges(before, { ...before, at: typed.toISOString() })).toEqual([]);
+    expect(correctedConsultationAt(stored, typed)).toBe(stored);
+    // Another minute: changed, and the typed instant is stored.
+    const later = new Date("2026-10-30T10:01:00.000Z");
+    expect(consultationChanges(before, { ...before, at: later.toISOString() })).toEqual(["at"]);
+    expect(correctedConsultationAt(stored, later)).toBe(later);
+    expect(correctedConsultationAt(null, typed)).toBe(typed);
+    expect(sameConsultationMinute(null, null)).toBe(true);
+    expect(sameConsultationMinute(null, typed.toISOString())).toBe(false);
+  });
 });
 
 describe("PUT /api/samples/[id]/consultation", () => {
@@ -82,6 +100,11 @@ describe("PUT /api/samples/[id]/consultation", () => {
   it("re-checks the state in the UPDATE and journals before → after", () => {
     expect(route).toMatch(/updateMany\(\{\s*where: \{\s*id: sample\.id,\s*status: \{ in: \[\.\.\.CONSULTATION_EDITABLE_STATUSES\] \},\s*conformity: false,\s*analysisBlocked: false,\s*validatedById: null,/);
     expect(route).toMatch(/action: "CLIENT_CONSULTATION_UPDATED"/);
+    // The agreement as read is in the WHERE: a concurrent correction gets the 409.
+    expect(route).toMatch(
+      /validatedById: null,[\s\S]*?clientConsultedName: sample\.clientConsultedName,\s*clientConsultationChannel: sample\.clientConsultationChannel,\s*clientConsultedAt: sample\.clientConsultedAt,\s*clientConsultationNote: sample\.clientConsultationNote,\s*\},\s*data:/
+    );
+    expect(route).toMatch(/const at = correctedConsultationAt\(sample\.clientConsultedAt, consultation\.at\)/);
     expect(route).toMatch(/before,\s*after,/);
   });
 });

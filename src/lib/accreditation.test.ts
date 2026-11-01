@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   accreditationFromLegacyName,
+  accreditationContradictsName,
   markedParameterName,
+  nameWithoutLegacyMark,
   parseAccreditationUpdates,
   reportCarriesAccreditationLogo,
 } from "./accreditation";
@@ -36,6 +38,30 @@ describe("markedParameterName", () => {
   it("does not mark twice a name that already carries its mark", () => {
     expect(markedParameterName("Plomb (SA)", "SOUS_TRAITE_ACCREDITE")).toBe("Plomb (SA)");
     expect(markedParameterName("Levures *", "NON_ACCREDITE")).toBe("Levures *");
+  });
+
+  it("prints only the mark of the status recorded, never the old software's mark left in the name", () => {
+    expect(markedParameterName("Chlore (SA)", "ACCREDITE")).toBe("Chlore");
+    expect(markedParameterName("Chlore (SA)", "NON_ACCREDITE")).toBe("Chlore *");
+    expect(markedParameterName("Bacillus cereus (SA)", "SOUS_TRAITE_NON_ACCREDITE")).toBe("Bacillus cereus (SN)");
+    expect(markedParameterName("Levures *", "ACCREDITE")).toBe("Levures");
+    expect(markedParameterName("Plomb (sa) *", "SOUS_TRAITE_ACCREDITE")).toBe("Plomb (SA)");
+    // « À préciser »: the name as it is.
+    expect(markedParameterName("Chlore (SA)", null)).toBe("Chlore (SA)");
+  });
+
+  it("strips the trailing marks only, and never empties a name", () => {
+    expect(nameWithoutLegacyMark("Chlore (SA)")).toBe("Chlore");
+    expect(nameWithoutLegacyMark("Germes (SA) *  ")).toBe("Germes");
+    expect(nameWithoutLegacyMark("Salmonella (SA) spp.")).toBe("Salmonella (SA) spp.");
+    expect(nameWithoutLegacyMark("*")).toBe("*");
+  });
+
+  it("flags a status contradicting the name's old mark (/admin/parametres warns)", () => {
+    expect(accreditationContradictsName("Chlore (SA)", "ACCREDITE")).toBe(true);
+    expect(accreditationContradictsName("Chlore (SA)", "SOUS_TRAITE_ACCREDITE")).toBe(false);
+    expect(accreditationContradictsName("Chlore (SA)", null)).toBe(false);
+    expect(accreditationContradictsName("Chlore", "NON_ACCREDITE")).toBe(false);
   });
 });
 

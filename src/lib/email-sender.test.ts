@@ -21,6 +21,24 @@ describe("senderHeaders (L4 — « Nous n'utilisons pas d'adresse no-reply ! »)
     expect(senderHeaders({ settings: EMPTY_SENDER_SETTINGS, envFrom: undefined, company }).from).not.toMatch(/resend\.dev|no-?reply/i);
   });
 
+  it("passes over an EMAIL_FROM still set to a no-reply, for the identity's mailbox", () => {
+    expect(senderHeaders({ settings: EMPTY_SENDER_SETTINGS, envFrom: "Qualilab <no-reply@labo.test>", company })).toEqual({
+      from: "Labo Démo <contact@labo.test>",
+      replyTo: null,
+    });
+    expect(senderHeaders({ settings: EMPTY_SENDER_SETTINGS, envFrom: "noreply@labo.test", company }).from).toBe("Labo Démo <contact@labo.test>");
+  });
+
+  it("never builds « Nom <> » when the identity has no e-mail", () => {
+    const blank = { name: "Labo Démo", email: "  " };
+    expect(senderHeaders({ settings: EMPTY_SENDER_SETTINGS, envFrom: "Qualilab <labo@labo.test>", company: blank }).from).toBe("Qualilab <labo@labo.test>");
+    // Only a no-reply configured: it is still an address — better than none.
+    expect(senderHeaders({ settings: EMPTY_SENDER_SETTINGS, envFrom: "no-reply@labo.test", company: blank }).from).toBe("no-reply@labo.test");
+    const none = senderHeaders({ settings: EMPTY_SENDER_SETTINGS, envFrom: null, company: blank }).from;
+    expect(none).not.toMatch(/<\s*>/);
+    expect(none).toMatch(/<[^>\s]+@[^>\s]+>$/);
+  });
+
   it("answers to the Reply-To set, else the identity's e-mail when it differs from the sender", () => {
     const settings = { emailSenderAddress: "rapports@labo.test", emailSenderName: "Qualilab — Rapports", emailReplyTo: "qualite@labo.test" };
     expect(senderHeaders({ settings, envFrom: null, company })).toEqual({ from: "Qualilab — Rapports <rapports@labo.test>", replyTo: "qualite@labo.test" });

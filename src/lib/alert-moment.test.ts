@@ -27,4 +27,15 @@ describe("alert moment (K3, 2.16 (c) — R-13)", () => {
     );
     expect(serieAlertNotice("validate", true, 1)).toContain("dès la validation technique");
   });
+
+  it("switch off: « Valider et envoyer » on a série sends the alert, « Valider » does not — the dialog's line says so", () => {
+    // As alertsAtApproval: the approval that sends the report sends the alert.
+    expect(alertsLeaveAt("approve", false, false, true)).toBe(alertsAtApproval(true, false));
+    expect(alertsLeaveAt("approve", true, false, true)).toBe(true);
+    expect(alertsLeaveAt("approve", false, false, false)).toBe(alertsAtApproval(false, false));
+    expect(alertsLeaveAt("validate", true, false, true)).toBe(false);
+    // Switch on: the send changes nothing (the settings decide).
+    expect(alertsLeaveAt("approve", true, true, true)).toBe(false);
+    expect(alertsLeaveAt("approve", false, true, false)).toBe(true);
+  });
 });

@@ -8,6 +8,7 @@ import {
   CONSULTATION_EDIT_MESSAGES,
   consultationChanges,
   consultationEditRefusal,
+  correctedConsultationAt,
   consultationRecord,
   parseConsultation,
 } from "@/lib/client-consultation";
@@ -23,8 +24,11 @@ import {
  * The reception and the administrator only. An agreement is never erased,
  * only corrected (ISO/IEC 17025 §7.4.3: the consultation stays recorded);
  * the journal keeps what it said before and after
- * (`CLIENT_CONSULTATION_UPDATED`). The write re-checks the sample's state in
- * the UPDATE: a validation or a release racing it gets a clean 409.
+ * (`CLIENT_CONSULTATION_UPDATED`). The write re-checks in the UPDATE the
+ * sample's state and the agreement as read: a validation, a release or
+ * another correction racing it gets a clean 409, and the journal's « before »
+ * is always what was replaced. « at » is compared to the minute (the editor's
+ * precision): the same minute keeps the instant stored.
  */
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!CONSULTATION_AFTER_RECEPTION) return NextResponse.json({ error: "Introuvable." }, { status: 404 });
@@ -67,10 +71,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   if (!consultation) return NextResponse.json({ error: CONSULTATION_EDIT_MESSAGES.empty }, { status: 400 });
 
   const before = consultationRecord(sample);
+  // The same minute as stored: the stored instant, seconds included — never moved by up to 59 s.
+  const at = correctedConsultationAt(sample.clientConsultedAt, consultation.at);
   const after = consultationRecord({
     clientConsultedName: consultation.name,
     clientConsultationChannel: consultation.channel,
-    clientConsultedAt: consultation.at,
+    clientConsultedAt: at,
     clientConsultationNote: consultation.note,
   });
   const changed = consultationChanges(before, after);
@@ -83,11 +89,16 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       conformity: false,
       analysisBlocked: false,
       validatedById: null,
+      // The agreement as read: a concurrent correction gets the 409, not a silent overwrite.
+      clientConsultedName: sample.clientConsultedName,
+      clientConsultationChannel: sample.clientConsultationChannel,
+      clientConsultedAt: sample.clientConsultedAt,
+      clientConsultationNote: sample.clientConsultationNote,
     },
     data: {
       clientConsultedName: consultation.name,
       clientConsultationChannel: consultation.channel,
-      clientConsultedAt: consultation.at,
+      clientConsultedAt: at,
       clientConsultationNote: consultation.note,
     },
   });

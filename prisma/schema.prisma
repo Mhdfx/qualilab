@@ -1003,6 +1003,10 @@ model AnalysisNature {
   sortOrder       Int               @default(0)
   active          Boolean           @default(true)
   legacyId        Int?              @unique
+  /// Lot 3C, K5 (RETOUR-LABO-28-10.md): this type d'analyse's own delay of
+  /// « à rendre le », in days — wins over its domain's (`LabSettings.dueDays*`).
+  /// Null = the domain's delay.
+  dueDays         Int?
   samples         Sample[]
   profiles        AnalysisProfile[]
   /// The product families of this type d'analyse (RETOUR-LABO-16-10.md F1).
@@ -1314,6 +1318,17 @@ model InvoiceItem {
 }
 
 /// The laboratory's own identity — printed on every report, invoice and email.
+/// Lot 3C, K4 (RETOUR-LABO-28-10.md): every accreditation logo and stamp a
+/// report version was issued with, keyed by the SHA-256 of its data URI.
+/// Append-only — never updated nor deleted — so a duplicata, a portal
+/// download or a resend prints the image of its issue, even after the file
+/// is replaced or removed in /admin/entreprise.
+model ReportImageArchive {
+  hash      String   @id @db.VarChar(64)
+  dataUri   String   @db.LongText
+  createdAt DateTime @default(now())
+}
+
 /// One row, edited by the admin, so changing the ICE or the RIB is data entry
 /// rather than a deployment. `lib/company.ts` keeps the fallback defaults.
 model CompanySettings {

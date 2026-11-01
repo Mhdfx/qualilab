@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { REPORT_LAYOUT_ALIGNED, buildReportHtml, reportDataFromJson, reportDataToJson, reportPdfParts, type ReportData } from "./report-html";
+import { REPORT_LAYOUT_ALIGNED, buildReportHtml, frozenReportImages, reportDataFromJson, reportDataToJson, reportPdfParts, type ReportData } from "./report-html";
 import { cartoucheTemplate } from "./cartouche-html";
 import { COMPANY } from "./company";
 import type { DocumentRef } from "./document-types";
@@ -113,9 +113,25 @@ describe("K4 — accreditation marks, logo and stamp", () => {
   });
 
   it("freezes and revives the new fields with the version", () => {
-    const revived = reportDataFromJson(reportDataToJson(issued));
-    expect(revived).toMatchObject({ samplingMeans: "Écouvillon", accreditationLogo: true, stamp: true });
+    const revived = reportDataFromJson(reportDataToJson({ ...issued, accreditationLogoHash: "h-logo", stampHash: "h-stamp" }));
+    expect(revived).toMatchObject({ samplingMeans: "Écouvillon", accreditationLogo: true, stamp: true, accreditationLogoHash: "h-logo", stampHash: "h-stamp" });
     expect(revived?.results[1].accreditation).toBe("NON_ACCREDITE");
+  });
+
+  it("prints the archived image of the hash the version froze — never the file of the day", () => {
+    const archive = new Map([
+      ["h-logo", LOGO],
+      ["h-stamp", STAMP],
+      ["h-new", PNG],
+    ]);
+    const frozen = { ...issued, accreditationLogoHash: "h-logo", stampHash: "h-stamp" };
+    expect(frozenReportImages(frozen, archive)).toEqual({ accreditationLogoDataUri: LOGO, stampDataUri: STAMP });
+    // A flag off prints nothing, whatever the archive holds.
+    expect(frozenReportImages({ ...frozen, stamp: false }, archive).stampDataUri).toBeNull();
+    // No hash frozen (local versions issued before the fix): nothing, not the current file.
+    expect(frozenReportImages({ ...issued }, archive)).toEqual({ accreditationLogoDataUri: null, stampDataUri: null });
+    // A hash missing from the archive prints nothing.
+    expect(frozenReportImages({ ...frozen, stampHash: "h-gone" }, archive).stampDataUri).toBeNull();
   });
 });
 
@@ -127,8 +143,16 @@ describe("the issue freezes them (report-dispatch)", () => {
     expect(source).toMatch(/\.\.\.\(aligned \? \{ accreditation: result\.parameter\.accreditation \?\? null \} : \{\}\)/);
   });
 
-  it("reads which files exist at both issues (first version and amendment)", () => {
-    expect((source.match(/reportImagesPresent\(\)/g) ?? []).length).toBe(2);
+  it("freezes the files (flag and archived hash) at both issues (first version and amendment)", () => {
+    expect((source.match(/freezeReportImages\(\)/g) ?? []).length).toBe(2);
     expect(source).toMatch(/images\.accreditationLogo && reportCarriesAccreditationLogo\(/);
+    expect(source).toMatch(/accreditationLogoHash: images\.accreditationLogoHash/);
+    expect(source).toMatch(/stampHash: images\.stampHash/);
+  });
+
+  it("renders every PDF from the frozen images (report-pdf)", () => {
+    const pdf = readFileSync(join(process.cwd(), "src/lib/report-pdf.ts"), "utf8");
+    expect(pdf).toMatch(/issuedReportImages\(data\)/);
+    expect(pdf).not.toMatch(/getReportImages/);
   });
 });

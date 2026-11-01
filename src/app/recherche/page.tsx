@@ -203,7 +203,7 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
             )}
             {canExport && (
               <div className="ml-auto">
-                <RecapExportMenu query={searchQueryString(search)} />
+                <RecapExportMenu query={searchQueryString(search)} withValues={canReport} />
               </div>
             )}
             {canExport && (

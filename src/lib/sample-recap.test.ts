@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { RECAP_DEFAULT_MODE, buildSiteRecap, parseRecapOptions, recapColumns, resultVerdict, type RecapSample } from "./sample-recap";
+import { RECAP_DEFAULT_MODE, buildSiteRecap, parseRecapOptions, recapAccess, recapColumns, resultVerdict, type RecapSample } from "./sample-recap";
+import { REPORT_READ_ROLES, canReadReports } from "./report-actions";
 
 const catalogue = [
   { id: "fmat", name: "FMAT", aliases: "Flore mésophile aérobie totale" },
@@ -139,7 +140,46 @@ describe("buildSiteRecap", () => {
   });
 });
 
+describe("who reads the values (L1 — owner's decision to confirm)", () => {
+  const exportRoles = ["RECEPTIONNISTE", "PROGRAMMATEUR", "VALIDATEUR", "DIRECTION", "GESTIONNAIRE", "COMPTABLE", "ADMIN"];
+
+  it("gives the values to the roles that read reports, and only to them", () => {
+    const withValues = exportRoles.filter((role) => recapAccess(canReadReports(role), "valeur").withValues);
+    expect(withValues).toEqual(["VALIDATEUR", "DIRECTION", "GESTIONNAIRE", "COMPTABLE", "ADMIN"]);
+    expect([...withValues].sort()).toEqual([...REPORT_READ_ROLES].sort());
+    expect(recapAccess(false, "valeur")).toEqual({ mode: "cnc", withValues: false });
+    expect(recapAccess(true, "cnc")).toEqual({ mode: "cnc", withValues: true });
+  });
+
+  it("never prints a value without the right — not even where a result has no verdict", () => {
+    const table = buildSiteRecap(
+      [
+        sample({
+          code: "S9",
+          results: [
+            { parameterId: "salm", value: "Absence", conform: true, interpretation: null },
+            { parameterId: "chlore", value: "0,4", conform: null, interpretation: null },
+          ],
+        }),
+      ],
+      catalogue,
+      "valeur",
+      false,
+      false
+    );
+    expect(table.rows[0].cells.map((c) => c?.text)).toEqual(["C", "—"]);
+  });
+});
+
 describe("GET /api/samples/recap", () => {
+  it("decides the values with canReadReports, and /recherche hides the choice", () => {
+    const route = readFileSync(join(process.cwd(), "src/app/api/samples/recap/route.ts"), "utf8");
+    expect(route).toMatch(/recapAccess\(canReadReports\(session\.role\)/);
+    expect(route).toMatch(/buildSiteRecap\([^)]*access\.withValues\)/);
+    const page = readFileSync(join(process.cwd(), "src/app/recherche/page.tsx"), "utf8");
+    expect(page).toMatch(/<RecapExportMenu [^>]*withValues=\{canReport\}/);
+  });
+
   it("has the export's roles, filters and journal", () => {
     const route = readFileSync(join(process.cwd(), "src/app/api/samples/recap/route.ts"), "utf8");
     const exportRoute = readFileSync(join(process.cwd(), "src/app/api/samples/export/route.ts"), "utf8");

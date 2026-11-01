@@ -5,7 +5,8 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { formatDayShort, formatIsoDay } from "@/lib/labels";
 import { SIEGE, parseSampleSearch, sampleConclusion, sampleSearchWhere, searchReceptionAt } from "@/lib/sample-search";
-import { RECAP_SIEGE, buildSiteRecap, parseRecapOptions, type RecapSample } from "@/lib/sample-recap";
+import { RECAP_SIEGE, buildSiteRecap, parseRecapOptions, recapAccess, type RecapSample } from "@/lib/sample-recap";
+import { canReadReports } from "@/lib/report-actions";
 
 /**
  * « Récapitulatif par site » in Excel (RETOUR-LABO-28-10.md L1 — Q115 and
@@ -16,6 +17,11 @@ import { RECAP_SIEGE, buildSiteRecap, parseRecapOptions, type RecapSample } from
  * value (R-21), `details=1` adds the reception date and the N° de contrôle.
  * Without a client chosen, a « Client » column comes first (rows grouped by
  * client, then by site).
+ *
+ * The values are the report's content: only a role that may read reports
+ * (`canReadReports`) gets them; réception and programmation get C / NC and
+ * « — » where a result has no verdict (`recapAccess`, RETOUR §5 L1 — owner's
+ * decision to confirm).
  */
 
 const MAX_ROWS = 5_000;
@@ -29,7 +35,9 @@ export async function GET(request: Request) {
 
   const params = new URL(request.url).searchParams;
   const search = parseSampleSearch(params);
-  const options = parseRecapOptions(params);
+  const requested = parseRecapOptions(params);
+  const access = recapAccess(canReadReports(session.role), requested.mode);
+  const options = { ...requested, mode: access.mode };
   // A cancelled line is not an analysis: left out unless asked for, as the export.
   const excludeCancelled = search.state === null && search.status === null;
   const where = { ...sampleSearchWhere(search), ...(excludeCancelled ? { NOT: { status: "ANNULE" as const } } : {}) };
@@ -77,7 +85,7 @@ export async function GET(request: Request) {
     conclusion: sampleConclusion(s),
     results: s.results,
   }));
-  const table = buildSiteRecap(rows, catalogue, options.mode, byClient);
+  const table = buildSiteRecap(rows, catalogue, options.mode, byClient, access.withValues);
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Qualilab";
@@ -164,6 +172,7 @@ export async function GET(request: Request) {
     metadata: {
       kind: "recapitulatif-par-site",
       mode: options.mode,
+      withValues: access.withValues,
       details: options.details,
       byClient,
       clientId: search.clientId,

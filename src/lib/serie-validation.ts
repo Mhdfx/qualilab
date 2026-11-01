@@ -164,11 +164,18 @@ export function serieConclusion(results: readonly SerieJudgedResult[]): string {
  * (LabSettings.alertAfterTechnicalValidation): the technical validation when
  * the laboratory wants them out at step 1, else the administrative one. At
  * step 2 with the alerts out at step 1, the approval only retries one that
- * failed (`approveSample`).
+ * failed (`approveSample`). With the K3 switch off, only the approval that
+ * also sends the report (« Valider et envoyer », `sendReport`) sends them —
+ * as `alertsAtApproval`.
  */
-export function alertsLeaveAt(action: SerieValidationAction, alertsAtTechnical: boolean, atValidation: boolean = ALERTS_AT_VALIDATION): boolean {
+export function alertsLeaveAt(
+  action: SerieValidationAction,
+  alertsAtTechnical: boolean,
+  atValidation: boolean = ALERTS_AT_VALIDATION,
+  sendReport: boolean = false
+): boolean {
   // K3 (2.16 (c), R-13): with the switch off no signature sends them — the report's send does.
-  if (!atValidation) return false;
+  if (!atValidation) return action === "approve" && sendReport;
   return action === "validate" ? alertsAtTechnical : !alertsAtTechnical;
 }
 
@@ -217,7 +224,8 @@ export type SerieValidationPlan = {
    * Signed by the action, each with the regulation it records
    * (`regulationId`: posted; null keeps the recorded one), the conclusion
    * its report will print, what its panel would warn about, and whether
-   * this signature sends its alert (`alertNow`).
+   * this signature sends its alert: « Valider » (`alertNow`) and « Valider
+   * et envoyer » (`alertWithSend` — differs only with the K3 switch off).
    */
   eligible: (SerieLine &
     SerieResultCounts & {
@@ -225,6 +233,7 @@ export type SerieValidationPlan = {
       regulation: string | null;
       conclusion: string;
       alertNow: boolean;
+      alertWithSend: boolean;
     })[];
   /** Left untouched, each with its reason. */
   skipped: (SerieLine & { reason: string })[];
@@ -242,8 +251,9 @@ export function serieValidationPlan(
   samples: readonly SerieValidationCandidate[],
   action: SerieValidationAction,
   signer: { id: string; role: Role },
-  settings: { alertsAtTechnical: boolean }
+  settings: { alertsAtTechnical: boolean; atValidation?: boolean }
 ): SerieValidationPlan {
+  const atValidation = settings.atValidation ?? ALERTS_AT_VALIDATION;
   const plan: SerieValidationPlan = { action, alertsAtTechnical: settings.alertsAtTechnical, eligible: [], skipped: [] };
   for (const sample of samples) {
     const line = serieLine(sample);
@@ -262,7 +272,8 @@ export function serieValidationPlan(
       anomalies: sample.anomalies,
       alertables: sample.alertables,
       conclusion: sample.conclusion,
-      alertNow: sample.alertables > 0 && alertsLeaveAt(action, settings.alertsAtTechnical),
+      alertNow: sample.alertables > 0 && alertsLeaveAt(action, settings.alertsAtTechnical, atValidation, false),
+      alertWithSend: sample.alertables > 0 && alertsLeaveAt(action, settings.alertsAtTechnical, atValidation, action === "approve"),
       regulationId: sample.proposedRegulation?.id ?? null,
       // Without a proposal (a sample judged without criteria), posting null
       // keeps the one recorded, if any: said so rather than « sans ».

@@ -62,7 +62,7 @@ export const PROGRAMME_SAMPLE_SELECT = {
     },
   },
   natureId: true,
-  nature: { select: { id: true, code: true, label: true, family: true, legacyType: true, defaultLineKind: true, active: true } },
+  nature: { select: { id: true, code: true, label: true, family: true, legacyType: true, defaultLineKind: true, active: true, dueDays: true } },
   produit: true,
   numeroLot: true,
   lieu: true,

@@ -71,6 +71,18 @@ describe("the script writes it", () => {
     expect(script).toMatch(/RESULT_SHA="\$\(sha256sum "\$FINAL" \| cut -d' ' -f1\)"/);
   });
 
+  it("never lets a journal it cannot write change the run's exit code (read-only directory, checked under WSL on 01/11)", () => {
+    const script = readFileSync(join(process.cwd(), "scripts/backup-db.sh"), "utf8");
+    const finish = script.slice(script.indexOf("finish() {"), script.indexOf("trap finish EXIT"));
+    // errexit off inside the trap, before any write; the code kept for the end.
+    expect(finish).toMatch(/local code=\$\?\s[\s\S]*?set \+e/);
+    expect(finish.indexOf("set +e")).toBeLessThan(finish.indexOf("JOURNAL_HEADER"));
+    // The header write is guarded like the line, one warning when either fails.
+    expect(finish).toMatch(/if ! \{ \{ \[ -s "\$JOURNAL" \] \|\| echo "\$JOURNAL_HEADER" > "\$JOURNAL"; \} 2>\/dev\/null/);
+    expect(finish).toMatch(/echo "backup journal not written: \$JOURNAL" >&2/);
+    expect(finish.trimEnd()).toMatch(/exit "\$code"\s*\}$/);
+  });
+
   it("is mounted read-only in the app", () => {
     const compose = readFileSync(join(process.cwd(), "docker-compose.yml"), "utf8");
     expect(compose).toMatch(/\/app\/backup-journal:ro/);

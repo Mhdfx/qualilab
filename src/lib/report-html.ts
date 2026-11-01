@@ -169,17 +169,37 @@ export type ReportData = {
   accreditationLogo?: boolean;
   /** K4: the stamp prints under « Direction » — it was uploaded at the issue. */
   stamp?: boolean;
+  /** K4: the SHA-256 of the logo printed at the issue (`ReportImageArchive`):
+   *  every later print of this version shows that very image. */
+  accreditationLogoHash?: string;
+  /** K4: the SHA-256 of the stamp printed at the issue. */
+  stampHash?: string;
 };
 
 /**
- * The images a print adds from /admin/entreprise (K4): read at each print,
- * printed only where the issued version says so (`accreditationLogo`,
- * `stamp`) and while the file is still there.
+ * The images a print adds (K4): those frozen with the issued version — the
+ * file uploaded in /admin/entreprise at the issue, kept by its hash in the
+ * append-only `ReportImageArchive` (`frozenReportImages`). Replacing or
+ * removing the file afterwards never changes an issued version's print.
  */
 export type ReportImages = {
   accreditationLogoDataUri?: string | null;
   stampDataUri?: string | null;
 };
+
+/**
+ * The images an issued version prints: the archived image of each hash it
+ * froze, only where its flag says so. A version without a hash (issued
+ * before the images were frozen — local test data only, lot 3C was never
+ * deployed before this) prints none: never the file of the day.
+ */
+export function frozenReportImages(
+  data: Pick<ReportData, "accreditationLogo" | "stamp" | "accreditationLogoHash" | "stampHash">,
+  archive: ReadonlyMap<string, string>
+): ReportImages {
+  const pick = (flag: boolean | undefined, hash: string | undefined) => (flag && hash ? (archive.get(hash) ?? null) : null);
+  return { accreditationLogoDataUri: pick(data.accreditationLogo, data.accreditationLogoHash), stampDataUri: pick(data.stamp, data.stampHash) };
+}
 
 /**
  * The layout marker of the report aligned on the laboratory's own (excerpt of
@@ -718,7 +738,7 @@ export async function printReport(
 /** An image data URI as the upload accepts it — the whole string, so nothing can close the attribute. */
 const IMAGE_DATA_URI = /^data:image\/(png|jpe?g|svg\+xml|webp);base64,[A-Za-z0-9+/]+=*$/;
 
-/** The stamp under « Direction » (K4): on a version issued with it, while the file is still uploaded. */
+/** The stamp under « Direction » (K4): on a version issued with it, the image of its issue. */
 function stampHtml(data: ReportData, images: ReportImages): string {
   const uri = images.stampDataUri;
   if (!data.stamp || !uri || !IMAGE_DATA_URI.test(uri)) return "";

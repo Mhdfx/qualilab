@@ -9,11 +9,17 @@
  * shown beside it is the one set there, else the laboratory's name. The
  * replies go to the « Adresse de réponse » when set, else to the identity's
  * e-mail when it differs from the sender. A « no-reply » address is refused
- * on the screen, and never used as the fallback any more.
+ * on the screen, and never used as the fallback any more: an `EMAIL_FROM`
+ * still set to a no-reply (production's .env was written from the old
+ * example) is skipped for the identity's e-mail. A header without an
+ * address (« Nom <> ») is never built: with no address anywhere, the
+ * configuration as it is, else the default identity (`COMPANY`).
  *
  * The provider (Resend) only sends from a domain whose DNS records it
  * verified (NEEDEDINFO item 2, R-20): until then every send stays SIMULE.
  */
+
+import { COMPANY } from "./company";
 
 export type SenderSettings = {
   emailSenderAddress: string | null;
@@ -54,14 +60,20 @@ export function senderHeaders(input: {
   const { settings, company } = input;
   const companyEmail = company.email.trim();
   const configured = settings.emailSenderAddress?.trim();
-  const env = input.envFrom?.trim();
+  const env = input.envFrom?.trim() || null;
+  // A no-reply EMAIL_FROM is passed over for the identity's real mailbox.
+  const envUsable = env && !isNoReply(addressOf(env)) ? env : null;
+  const name = displayName(settings.emailSenderName?.trim() || company.name || COMPANY.name);
   let from: string;
   if (configured) {
-    from = `${displayName(settings.emailSenderName?.trim() || company.name)} <${configured}>`;
-  } else if (env) {
-    from = env;
+    from = `${name} <${configured}>`;
+  } else if (envUsable) {
+    from = envUsable;
+  } else if (companyEmail) {
+    from = `${name} <${companyEmail}>`;
   } else {
-    from = `${displayName(settings.emailSenderName?.trim() || company.name)} <${companyEmail}>`;
+    // No address anywhere: never « Nom <> ».
+    from = env ?? `${name} <${COMPANY.email}>`;
   }
   const fromAddress = addressOf(from).toLowerCase();
   const reply = settings.emailReplyTo?.trim() || companyEmail;

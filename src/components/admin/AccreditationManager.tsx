@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BadgeCheck, Check, ChevronRight, Wand2 } from "lucide-react";
 import type { AccreditationStatus, SampleType } from "@/generated/prisma/enums";
-import { ACCREDITATION_LABELS, ACCREDITATION_STATUSES, accreditationFromLegacyName } from "@/lib/accreditation";
+import { ACCREDITATION_LABELS, ACCREDITATION_STATUSES, accreditationContradictsName, accreditationFromLegacyName, markedParameterName } from "@/lib/accreditation";
 import { SAMPLE_TYPE_LABELS } from "@/lib/labels";
 import { Card } from "@/components/ui/Card";
 
@@ -138,6 +138,11 @@ export function AccreditationManager({ parameters }: { parameters: Accreditation
                         {row.name}
                         {proposal && !edited && (
                           <span className="block text-xs text-slate-500">Ancien logiciel : {ACCREDITATION_LABELS[proposal]}</span>
+                        )}
+                        {accreditationContradictsName(row.name, statusOf(row)) && (
+                          <span className="block text-xs text-amber-700">
+                            Le nom porte encore la marque de l&apos;ancien logiciel : le rapport imprime « {markedParameterName(row.name, statusOf(row))} ».
+                          </span>
                         )}
                       </td>
                       <td className="px-3 py-2 text-slate-600">{SAMPLE_TYPE_LABELS[row.category]}</td>

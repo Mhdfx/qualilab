@@ -5,7 +5,7 @@ import { documentLogo } from "./document-logo";
 import { getDocumentReference } from "./document-reference";
 import { renderPdf } from "./pdf";
 import { printReport, type ReportData, type ReportMarks } from "./report-html";
-import { getReportImages } from "./report-images";
+import { issuedReportImages } from "./report-images";
 
 /**
  * The report as a PDF — the one path for the download, the duplicata, an
@@ -23,11 +23,11 @@ export async function renderReportPdf(
   data: ReportData,
   options: { marks?: ReportMarks; company?: CompanyInfo } = {}
 ): Promise<Buffer> {
-  // The accreditation logo and the stamp (K4) are read only for a version issued with them.
+  // The accreditation logo and the stamp (K4): those frozen with the version, never the files of the day.
   const [company, reference, images] = await Promise.all([
     options.company ?? getCompany(),
     getDocumentReference("RAPPORT"),
-    data.accreditationLogo || data.stamp ? getReportImages() : Promise.resolve({}),
+    issuedReportImages(data),
   ]);
   return printReport(
     { data, company, reference, logoDataUri: await documentLogo(company), marks: options.marks, images },

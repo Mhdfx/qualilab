@@ -68,6 +68,10 @@ journal_field() {
 
 finish() {
   local code=$?
+  # The trap runs under `set -e`: a journal that cannot be written (a
+  # directory Docker created as root) must never change the run's exit code
+  # nor stop the trap before `exit "$code"`.
+  set +e
   local file
   for file in "${CLEANUP[@]}"; do rm -f "$file"; done
   local status="ok"
@@ -76,9 +80,12 @@ finish() {
     [ -n "$MESSAGE" ] || MESSAGE="échec inattendu (code $code)"
   fi
   if mkdir -p "$JOURNAL_DIR" 2>/dev/null; then
-    [ -s "$JOURNAL" ] || echo "$JOURNAL_HEADER" > "$JOURNAL"
-    printf '%s;%s;%s;%s;%s;%s;%s\n' "$STARTED" "$status" "$(journal_field "$RESULT_FILE")" "$RESULT_SIZE" "$RESULT_SHA" "$OFFSITE" \
-      "$(journal_field "$MESSAGE")" >> "$JOURNAL" || echo "backup journal not written: $JOURNAL" >&2
+    # Header then line, each write guarded: one warning when either fails.
+    if ! { { [ -s "$JOURNAL" ] || echo "$JOURNAL_HEADER" > "$JOURNAL"; } 2>/dev/null \
+      && printf '%s;%s;%s;%s;%s;%s;%s\n' "$STARTED" "$status" "$(journal_field "$RESULT_FILE")" "$RESULT_SIZE" "$RESULT_SHA" "$OFFSITE" \
+        "$(journal_field "$MESSAGE")" 2>/dev/null >> "$JOURNAL"; }; then
+      echo "backup journal not written: $JOURNAL" >&2
+    fi
   else
     echo "backup journal not written: cannot create $JOURNAL_DIR" >&2
   fi

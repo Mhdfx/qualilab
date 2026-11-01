@@ -237,7 +237,30 @@ export function consultationRecord(row: {
   };
 }
 
-/** The fields that changed, by name; empty when the correction changes nothing. */
+/**
+ * Two instants of the agreement at the minute the editor shows (its field is
+ * « AAAA-MM-JJTHH:mm »): the stored one carries seconds, the corrected one
+ * never does — the same minute is the same moment.
+ */
+export function sameConsultationMinute(a: string | null, b: string | null): boolean {
+  if (a === null || b === null) return a === b;
+  const [x, y] = [new Date(a).getTime(), new Date(b).getTime()];
+  if (Number.isNaN(x) || Number.isNaN(y)) return a === b;
+  return Math.floor(x / 60_000) === Math.floor(y / 60_000);
+}
+
+/**
+ * The instant to store on a correction: the one already stored when the
+ * minute did not change (its seconds kept, the date never moved), else the
+ * one typed.
+ */
+export function correctedConsultationAt(stored: Date | null, typed: Date): Date {
+  return stored && sameConsultationMinute(stored.toISOString(), typed.toISOString()) ? stored : typed;
+}
+
+/** The fields that changed, by name; empty when the correction changes nothing (« at » to the minute). */
 export function consultationChanges(before: ConsultationRecord, after: ConsultationRecord): (keyof ConsultationRecord)[] {
-  return (Object.keys(after) as (keyof ConsultationRecord)[]).filter((key) => before[key] !== after[key]);
+  return (Object.keys(after) as (keyof ConsultationRecord)[]).filter((key) =>
+    key === "at" ? !sameConsultationMinute(before.at, after.at) : before[key] !== after[key]
+  );
 }

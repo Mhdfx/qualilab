@@ -122,11 +122,15 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
   const { sample, programme: stored } = data;
   // K5 (Q8, « la date à rendre le se remplit seule et reste modifiable »):
   // a programme not yet confirmed, without a promised date, gets the one its
-  // domain's delay gives from the arrival — shown on the sheet, saved only
+  // type d'analyse's delay (else its domain's) gives from the arrival — shown on the sheet, saved only
   // with it, changed or cleared at will.
   const proposal =
     stored.dueAt === null && stored.editable && sample.status === "RECU"
-      ? proposeDueAt({ family: row.nature.family, arrivedAt: row.serie.arrivedAt, receivedAt: row.receivedAt }, delays, new Date())
+      ? proposeDueAt(
+          { family: row.nature.family, natureDueDays: row.nature.dueDays, arrivedAt: row.serie.arrivedAt, receivedAt: row.receivedAt },
+          delays,
+          new Date()
+        )
       : null;
   const programme = proposal?.dueAt ? { ...stored, dueAt: proposal.dueAt.toISOString() } : stored;
   // Who took it at the bench — the holder, else a legacy per-analysis technician (before 13/10).
