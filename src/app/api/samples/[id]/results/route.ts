@@ -18,6 +18,7 @@ import {
   verdictToConform,
   type UnitReading,
 } from "@/lib/interpretation";
+import { readingsShowGerm, valueShowsGerm } from "@/lib/contamination-alert";
 import { NOT_DONE_MESSAGE, benchConformity, isNotDoneText, singleValueEntry, suggestConformity } from "@/lib/result-value";
 import { resultAuthor, storedReading, typedUnits } from "@/lib/result-author";
 import { SHEET_SAVED_BY_COLLEAGUE, savedByOthersSince, sheetLoadedAt } from "@/lib/take-over-sheet";
@@ -68,6 +69,11 @@ type Entry = {
   /** The plan, frozen with the result for the report (slice C). */
   criterion: Prisma.InputJsonValue | typeof Prisma.DbNull;
   normVersionId: string | null;
+  /**
+   * The reading shows the germ (`readingsShowGerm`): what a sensitive germ
+   * left without any verdict alerts on (rule O-12, `contamination-alert.ts`).
+   */
+  detected: boolean | null;
   /** The readings per unit (R1 … Rn); null = single value. */
   units: UnitReading[] | null;
   /**
@@ -268,6 +274,7 @@ export async function PUT(
           criterion: { ...plan.plan },
           // The method of the report: the programmed version, else the criterion's.
           normVersionId: line.normVersionId ?? plan.normVersionId,
+          detected: readingsShowGerm(readings),
           units: readings,
           conformChosen: false,
         });
@@ -290,6 +297,7 @@ export async function PUT(
           informalInterpretation: null,
           criterion: Prisma.DbNull,
           normVersionId: line.normVersionId,
+          detected: readingsShowGerm(readings),
           units: readings,
           conformChosen: unitsAgainstLimit(units, factor, parameter.limitValue).needsManual,
         });
@@ -335,6 +343,7 @@ export async function PUT(
       informalInterpretation: null,
       criterion: Prisma.DbNull,
       normVersionId: line.normVersionId,
+      detected: valueShowsGerm(value),
       units: null,
       conformChosen: valueAgainstLimit(value, factor, parameter.limitValue).needsManual,
     });

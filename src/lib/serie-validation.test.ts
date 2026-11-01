@@ -511,7 +511,9 @@ describe("what the dialog warns about before a signature (the sample's panel's w
   const result = (overrides: Partial<Parameters<typeof serieResultCounts>[0][number]> = {}) => ({
     conform: true as boolean | null,
     workStatus: "SAISI",
+    interpretation: null,
     informalInterpretation: null,
+    detected: null as boolean | null,
     parameter: { alertOnExceed: false },
     ...overrides,
   });
@@ -524,9 +526,14 @@ describe("what the dialog warns about before a signature (the sample's panel's w
         result({ workStatus: "ANOMALIE", conform: null }),
         // Judged only indicatively over its limit, on a sensitive germ: alerts all the same.
         result({ conform: null, informalInterpretation: "NON_SATISFAISANT", parameter: { alertOnExceed: true } }),
+        // No criterion, no limit, no verdict — present on a sensitive germ: alerts (O-12, 28/10).
+        result({ conform: null, detected: true, parameter: { alertOnExceed: true } }),
+        // …but not once absent, nor on a germ that is not sensitive.
+        result({ conform: null, detected: false, parameter: { alertOnExceed: true } }),
+        result({ conform: null, detected: true }),
         result(),
       ])
-    ).toEqual({ nonConformes: 2, anomalies: 1, alertables: 2 });
+    ).toEqual({ nonConformes: 2, anomalies: 1, alertables: 3 });
   });
 
   it("serieConclusion: the report's conclusion, as the page and the e-mail word it", () => {
@@ -713,7 +720,7 @@ describe("a série signs each sample through the per-sample signature — never 
 
   it("reads what the panel warns about with the dispatch's own alert rule", () => {
     expect(server).toMatch(/\.\.\.serieResultCounts\(sample\.results\)/);
-    expect(server).toMatch(/informalInterpretation: true,\s+parameter: \{ select: \{ alertOnExceed: true \} \}/);
+    expect(server).toMatch(/informalInterpretation: true,\s+(\/\/[^\n]*\s+)?detected: true,\s+parameter: \{ select: \{ alertOnExceed: true \} \}/);
   });
 
   it("the sample's route signs through the same two functions", () => {

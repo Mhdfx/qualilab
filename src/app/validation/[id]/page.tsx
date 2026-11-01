@@ -144,6 +144,8 @@ export default async function ValidationDetailPage({
           threshold: true,
           interpretation: true,
           informalInterpretation: true,
+          // A sensitive germ without any verdict alerts on its presence (O-12).
+          detected: true,
           // D-09: who typed this reading, kept across a colleague's later saves.
           enteredBy: { select: { name: true } },
           enteredAt: true,
