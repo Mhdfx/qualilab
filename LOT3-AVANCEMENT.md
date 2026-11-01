@@ -2,19 +2,19 @@
 
 > Journal de reprise. **À lire en premier si le travail s'est arrêté.** Chaque
 > étape terminée ajoute une ligne en bas (« Journal des étapes »). Spécification :
-> `RETOUR-LABO-28-10.md` §5. Rien n'est en production : la production tourne
-> toujours `e8cbfe1`.
+> `RETOUR-LABO-28-10.md` §5. **Lot 3 en production depuis le 01/11 23 h 40 (`16c1d56`)**,
+> recette de production V21 111/113 le 02/11, puis **113/113** après le correctif serveur L2 (02/11 00 h 25).
 
 ## Où se trouve le travail
 
-| Lot | Contenu (RETOUR-LABO-28-10.md §5) | Où | Commit | État au 01/11 (fin de soirée) |
+| Lot | Contenu (RETOUR-LABO-28-10.md §5) | Où | Commit | État au 02/11 |
 |---|---|---|---|---|
-| 3A | I1, K1, I2, I3, I4, I5, K2, G2, I7, drapeaux d'alerte (S3) | `lot2-retour-16-10` (arbre principal) | `ec792dc` | construit, relu (6), corrigé, **intégré, testé en local, prêt pour la production** |
-| 3D | M1 à M8 (Achat & Stock) | `lot2-retour-16-10` (arbre principal) | `cd9837c` | construit, relu (7), corrigé, **intégré, testé en local, prêt pour la production** |
-| 3B | O-12, J3, J1, J2, J4, G1, G4, G5 | branche `lot3b` → fusionnée | fusion `0d6ebc7` | construit, relu (7), corrigé, **intégré, testé en local, prêt pour la production** |
-| 3C | I6, K5, K4, K6, L1, L2, L4, L5, I8 (+ K3) | branche `lot3c` → fusionnée | fusion `7082811` | construit, relu (10), corrigé, **intégré, testé en local, prêt pour la production** |
-| 3E | N1, N2, N3 (ONSSA) | branche `lot3e` → fusionnée | fusion `5f78071` | construit, relu (10), corrigé, **intégré, testé en local, prêt pour la production** |
-| Ensemble | documents `78ebd20`, intégration `9bef86b`, contrôle final (4 constats corrigés) | `lot2-retour-16-10` | — | **intégré, testé en local, prêt pour la production** : tsc 0, eslint 0, vitest 189 fichiers / 3 450, build OK, recettes v16-1 → v20 vertes, **v21-lot3 126/126** ; **poussé** (`lot2-retour-16-10`, `lot3b`, `lot3c`, `lot3e`), `master` intact, **non déployé** |
+| 3A | I1, K1, I2, I3, I4, I5, K2, G2, I7, drapeaux d'alerte (S3) | `lot2-retour-16-10` (arbre principal) | `ec792dc` | construit, relu (6), corrigé, intégré, **déployé le 01/11 (`16c1d56`), recetté en production le 02/11** |
+| 3D | M1 à M8 (Achat & Stock) | `lot2-retour-16-10` (arbre principal) | `cd9837c` | construit, relu (7), corrigé, intégré, **déployé le 01/11 (`16c1d56`), recetté en production le 02/11** |
+| 3B | O-12, J3, J1, J2, J4, G1, G4, G5 | branche `lot3b` → fusionnée | fusion `0d6ebc7` | construit, relu (7), corrigé, intégré, **déployé le 01/11 (`16c1d56`), recetté en production le 02/11** |
+| 3C | I6, K5, K4, K6, L1, L2, L4, L5, I8 (+ K3) | branche `lot3c` → fusionnée | fusion `7082811` | construit, relu (10), corrigé, intégré, **déployé le 01/11 (`16c1d56`), recetté en production le 02/11** |
+| 3E | N1, N2, N3 (ONSSA) | branche `lot3e` → fusionnée | fusion `5f78071` | construit, relu (10), corrigé, intégré, **déployé le 01/11 (`16c1d56`), recetté en production le 02/11** |
+| Ensemble | documents `78ebd20`, intégration `9bef86b`, contrôle final (4 constats corrigés) | `lot2-retour-16-10` | — | **déployé en production le 01/11 23 h 40 (`16c1d56`) ; recette de production V21 111/113 (02/11) puis 113/113 après le correctif serveur L2 (dossier journal 755), contre-vérification hostile confirmée** — en local : tsc 0, eslint 0, vitest 189 fichiers / 3 450, build OK, recettes v16-1 → v20 vertes, **v21-lot3 126/126** ; **poussé** (`lot2-retour-16-10`, `lot3b`, `lot3c`, `lot3e`), `master` = `lot2-retour-16-10` |
 
 Copies de sécurité du travail non commité (01/11 17 h 20) :
 `refs/wip/lot3-qualilab-proto-2026-11-01` (3A + 3D), `refs/wip/lot3-qualilab-lot3c-2026-11-01`,
@@ -25,7 +25,7 @@ jonction vers celui de l'arbre principal, `.env.local` copié, client Prisma gé
 dans chaque arbre). Les migrations sont additives et préfixées par lot
 (3A 202611011000xx, 3B …2000xx, 3C …3000xx, 3D …4000xx, 3E …5000xx).
 
-## Ordre restant (étapes 1 à 4 faites le 01/11 ; reprendre à l'étape 5)
+## Ordre restant (étapes 1 à 5 faites — production le 01/11, recette le 02/11, L2 corrigé sur le serveur ; reste l'étape 6)
 
 1. Terminer 3B et 3C ; relire 3A, 3D ; appliquer les corrections de 3E (en parallèle).
 2. Relire 3B et 3C, corriger.
@@ -64,3 +64,7 @@ dans chaque arbre). Les migrations sont additives et préfixées par lot
 - 01/11 22 h 15 — PDF de présentation du lot 3 pour le laboratoire lancé en parallèle (workflow wf_48e98e16-544, dossier scratchpad presentation/lot3, sortie backups/Qualilab-presentation-lot3-2026-11-02.pdf, captures sur la copie locale).
 - 01/11 22 h 27 — contrôle final, corrections et push : les 4 constats corrigés et commités (`2a41044` : NC ONSSA des alertes O-12, paramètre sensible sans limite accepté sous J3 et script S3 sans limite 0, conclusion sans la marque de l’ancien logiciel, renvoi K5) ; tsc 0, eslint 0, vitest 189 fichiers / 3 450, build OK, recettes v16-1 → v20 vertes et v21-lot3 126/126 ; `lot2-retour-16-10`, `lot3b`, `lot3c`, `lot3e` poussés, `master` et serveur intacts — état : intégré, testé en local, prêt pour la production ; reprendre à « Ordre restant » étape 5 (production, après les décisions du propriétaire).
 - 01/11 23 h 40 — **DÉPLOYÉ en production : `16c1d56`** (tag de retour `v1.6-avant-lot3` sur e8cbfe1, master avancé et poussé ; dump `qualilab_avant-lot3.sql.gz` vérifié ; 8 migrations lot 3 appliquées, migrate sorti 0 ; santé ok ; 9 comptes identiques avant/après — Sample 115, Serie 50, Report 11, Client 1530, User 14, EmailLog 24, ProductType 535, Criterion 4117, Invoice 10 ; aucune erreur ; dossier journal des sauvegardes créé, sauvegarde manuelle ok — une ligne « echec DB_PASSWORD not set » d'un premier essai lancé sans .env reste dans le journal, sans conséquence). S3 en production par la route admin (panneau de démo) : 4 drapeaux posés (E. coli O157:H7, 3 Salmonelles), 6 déjà posés, Listeria en attente de R-14, 2 dénombrements E. coli sans limite non marqués. Reste : réglages S1/S2/K5/S4 du propriétaire, recette de production V21.
+- 02/11 00 h 05 — réglages du propriétaire appliqués en production à sa demande (« you do it »), par les routes admin (démo admin cliqué, journalisé) : S1 températures exigées à la réception ALIMENT, EAU ; S2 pas d'alerte à la validation technique ; versions des documents protocole PG04/EN01 G et bon PG05/EN04 H, mise à jour 01/01/2026 (année à confirmer, Q103) ; délais K5 laissés à 5 / 7 jours ouvrés (valeurs de la migration). Script `.ui-tests/settings-2611-prod.mjs`.
+- 02/11 (horloge du poste 01/11 23 h 05) — recette de production V21 (lot 3) : nouveau script `.ui-tests/v21-lot3-prod.mjs` (connexion par le panneau de démonstration, aucune SQL, réglages d'administration lus seulement), répété en local 111/111 puis **production 111/113** — 3A, 3B, 3C, 3D, 3E et prix par profil verts ; **2 échecs L2** : « Sauvegardes » affiche « Le journal des sauvegardes n'est pas accessible depuis l'application (fichier non monté ou absent) » et « Télécharger le suivi » répond 404 (montage ou droits du dossier journal sur le VPS, pas le code) ; numéros utilisés : séries 51/26–55/26, RAP-2026-00012 à 00015 (4 rapports TEST UI émis, envoi simulé), facture fournisseur de test annulée, article et fournisseur de test archivés, 7 échantillons annulés ; `v20-prix-prod.mjs` relancé 57/57 (attente du script alignée sur M6 : « Reste à payer » du magasinier ; dépôts 56/26 et 57/26 annulés) ; captures et PDF dans `backups/recette-prod-v21/`.
+- 02/11 00 h 25 — correctif serveur L2 : le dossier `/var/backups/qualilab/journal` passé de 750 à 755 (et le fichier 644) — l'application tourne dans le conteneur sous l'uid 997, pas 1001 ; « Sauvegardes » lisible (dernier passage réussi) et « Télécharger le suivi » 200 text/csv en production : les 2 échecs de la recette sont levés (113/113). DEPLOY « Lot 3 » étape 2 à corriger : `-m 755`.
+- 02/11 (horloge du poste ~00 h 15) — contre-vérification hostile de la recette de production V21 (lecture seule, démo cliquée) : script v21-lot3-prod.mjs relu (aucune tautologie ; vérifications faibles notées : verdicts lus par ?., drapeau simulated de K2, absence de « Prélevé » sur le bon) ; 11 affirmations revérifiées en production, toutes confirmées (S3, mode démonstration, échec L2 réel 404, lab-services 403, L1 C/NC sur 81 lignes, compta1 403, N3, facture FF-V21-fjak6 ANNULEE 0 paiement, article et fournisseur archivés, séries 51/26–57/26 annulées sauf les 4 rapports émis RAP-2026-00012 à 00015 relus) ; tableaux de bord de 10 profils sans page d'erreur, direction1 absent de la production (« Identifiants incorrects », connu depuis le 26/10) ; L2 revérifié après le correctif serveur de 00 h 25 : « Sauvegardes » montre le tableau (« Résultat », une « Réussie »), « Télécharger le suivi » 200 text/csv (3 lignes, dont l'« echec » connu du premier essai), recep1 403 ; verdict : recette confirmée, **113/113 avec le correctif L2** ; HANDOFF, TESTPLAN V21 production, PROGRESS et tableau d'état mis à jour.

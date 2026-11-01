@@ -1183,7 +1183,7 @@ Built 21/10 on branch `lot2-retour-16-10`, on top of `d4bff04`, committed and pu
 - [ ] Still six migrations applied (none added on 21/10); the laboratory told to reload every tab (the 35-minute bound).
 - [ ] Then the production lines of V18-A to V18-H above, on « TEST UI » data only.
 
-## Checkpoint V21 — Lot 3, retour du laboratoire du 28/10 (lots 3A–3E, `RETOUR-LABO-28-10.md` §5) — integrated and tested locally 01/11, **not pushed, not deployed**
+## Checkpoint V21 — Lot 3, retour du laboratoire du 28/10 (lots 3A–3E, `RETOUR-LABO-28-10.md` §5) — integrated and tested locally 01/11, **deployed 01/11 (`16c1d56`), production recette 111/113, 113/113 after the L2 server fix (02/11)**
 
 The five lots integrated on `lot2-retour-16-10` (3A `ec792dc`, 3D `cd9837c`, docs `78ebd20`, merges 3B `0d6ebc7`, 3C `7082811`, 3E `5f78071`, then the integration's docs commit). Per-lot detail lines: « Checkpoint V21-3A » (lot 3A), « Checkpoint V24 » (lot 3D), « Checkpoint 3E » (lot 3E); lots 3B and 3C are listed here.
 
@@ -1225,13 +1225,17 @@ Local (01/11, by `v21-lot3-local.mjs`):
 
 Still to look at by eye before the deploy (not automated): the per-lot browser lines of V21-3A, V24 and 3E above that the script does not reach (the printed protocole / bon hands phrase, the I4 review sequence, the ONSSA panels at the visit / counter / reception, the M7 settings screen's wording).
 
-Production (after the deploy, the owner — `DEPLOY.md` « Lot 3 »):
-- [ ] Tag + dump before; the 8 migrations applied by the image (`prisma migrate deploy`); row counts before = after; health ok.
-- [ ] The owner's two settings: reception temperature kinds `ALIMENT,EAU` (S1); no automatic alert at the technical validation (S2, `alertAfterTechnicalValidation` off).
-- [ ] K5: the 5 / 7 working-day proposal is ON by the migration — kept, or emptied in /admin/reglages until R-18.
-- [ ] L4: `EMAIL_FROM` on the VPS checked (no no-reply), or « Envoi des e-mails » set; L2: the journal directory created for the backup cron and mounted read-only.
-- [ ] S3: the script through the app route as the admin (`--base <prod> --dry-run` first, `--listeria none`), the owner approves the plan (the flag only — no `limitValue 0` while J3 is on), then the real run.
-- [ ] Production recette on « TEST UI » only with the demo accounts (no password typed on production): a visit (I2, I3), a deposit (I3, I7, I8), a circuit to the report (K1, K2, K6, G2, J3), the magasin (M1–M8 on « TEST UI » records), the ONSSA screen (N3); then the laboratory told what changed (`RETOUR-LABO-28-10.md` §9).
+Production (deployed 01/11 23 h 40, `16c1d56` — `DEPLOY.md` « Lot 3 »; recette 02/11 by `.ui-tests/v21-lot3-prod.mjs`, demo accounts clicked, « TEST UI » client and « TEST UI V21 PROD fjak6 » records only — **111/113**, log `.ui-tests/v21-lot3-prod.log`, results `backups/recette-prod-v21/v21-results.json`):
+- [x] Tag `v1.6-avant-lot3` + dump `qualilab_avant-lot3.sql.gz` before; the 8 migrations applied (migrate exit 0); 9 row counts before = after; health ok.
+- [x] The owner's two settings, applied 02/11 00 h 05 at his request through the admin routes: reception temperature kinds `ALIMENT,EAU` (S1); no automatic alert at the technical validation (S2).
+- [x] K5: the 5 / 7 working-day proposal kept (the programme sheet reads « Proposée d'après le délai du laboratoire : 5 jours ouvrés après l'arrivée — modifiable. »).
+- [x] L4: the app is in « Mode démonstration » (no mail provider) — sends simulated, « Envoi des e-mails » present on /admin/entreprise (read only).
+- [x] **L2 — failed in the recette run (2 lines), fixed on the server 02/11 00 h 25** (journal directory 750 → 755, file 644: the app runs in the container as uid 997, not the directory's owner; `DEPLOY.md` « Lot 3 » step 2 to say `-m 755`) and **re-verified on production**: /admin/sauvegardes shows the table (« Résultat », one « Réussie »), « Télécharger le suivi » 200 text/csv, recep1 403. What the run saw: « Le journal des sauvegardes n'est pas accessible depuis l'application (fichier non monté ou absent) », `GET /api/admin/backups/journal` → 404 (recep1 → 403 OK). Deployment, not code.
+- [x] S3 through the app route as the admin: 4 flags set (E. coli O157:H7, 3 Salmonelles), 6 already set, Listeria deferred (R-14); read back by the recette — O157:H7 flagged without a limit, 6 Salmonella parameters flagged, Listeria /25 g not flagged.
+- [x] Production recette 111/113: 3A (I2, I3, N1 refusals creating nothing; visit « Autre » `samplingTimeDeclared` false and « Non déclarée » on the protocole; phone chips I1 and star I2; I7; I8; I4 on the reception screen, nothing saved; G2; K1; K2), 3B (G1, J4, J1 / J2, J3, G4, G5), 3C (I6, K5, K6, L1, read-only K4 / L4 / K5 pages), 3D (test article, test supplier, test purchase invoice HT 1 000 + 20 % → TTC 1 200, payments, both exports, compta1 403), 3E (ONSSA panels, official control without body refused, /admin/onssa read only, monthly workbook), prices by role; no page error, no 5xx. Numbers used: séries 51/26–55/26, RAP-2026-00012 to 00015 (four TEST UI reports issued, simulated sends), FF-V21-fjak6 (cancelled). Clean-up: invoice ANNULEE with 0 payment, article at 0 and archived, supplier archived, 7 samples cancelled.
+- [x] Hostile re-check of the recette (02/11, read only, demo clicks): the script read for tautologies (none; a few weak checks noted — verdict maps read with `?.`, the K2 `simulated` flag, the « Prélevé » absence on the bon), 11 claims re-verified on production — S3 flags, demo send mode, L2 (the run's failure real at the time; after the server fix: table, CSV 200, recep1 403), tech1 `/api/lab-services` 403, L1 (tech1 403; recep1 asking « valeur » gets only C / — on 81 real rows), compta1 purchase journal 403, N3 (400 / 403 / four sheets), the test invoice ANNULEE with 0 payment, article and supplier archived (none active), séries 51/26–57/26 all on the TEST UI client with only the 4 issued samples not cancelled, the four reports re-read (J3, K1, K6, no G2 note); every role's dashboard loads without an error page (direction1 excepted: its demo button answers « Identifiants incorrects » — the account is absent from production, known since 26/10).
+- [ ] Not run on production on purpose (covered locally by `v21-lot3-local.mjs`): settings writes (K4, L4, L5, K5 0-day, magasin, ONSSA mappings), O-12 (needs a test parameter), I5 (needs a new client), the S3 script itself, M7 retenue (production « Aucun »), the EUR invoice, M8 imports, the autocontrôle that drops the body, « Non déclarée » on a deposit's report.
+- [ ] The laboratory told what changed (`RETOUR-LABO-28-10.md` §9).
 
 ## Checkpoint V24 — Lot 3D Achat & Stock (`RETOUR-LABO-28-10.md` §5, M1–M8) — built locally 01/11, **not deployed**
 
