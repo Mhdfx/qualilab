@@ -28,7 +28,15 @@ import {
   formatCadre,
   formatDateTime,
 } from "@/lib/labels";
-import { SERIE_MESSAGES, sampleLineMessage } from "@/lib/serie-input";
+import {
+  SERIE_MESSAGES,
+  UNDECLARED_SAMPLING_HINT,
+  sampleLineMessage,
+  samplingTimeRequired,
+  startIsDeclared,
+  visitRequiresSamplingTemperature,
+} from "@/lib/serie-input";
+import { UNDECLARED_SAMPLING } from "@/lib/sample-search";
 import { LabDateTimeInput, dateTimePending } from "@/components/LabDateTimeInput";
 import { futureFieldError } from "@/lib/device-time";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
@@ -69,6 +77,8 @@ type CreatedSerie = {
   client: { name: string };
   site: { name: string } | null;
   startedAt: string;
+  /** false: « Prélevé le » left empty — `startedAt` is the save instant, never shown (28/10, I3). */
+  samplingTimeDeclared?: boolean | null;
   samples: {
     code: string;
     lineNumber: number;
@@ -328,10 +338,13 @@ export function VisitForm({ me }: { me: Preleveur }) {
         return setStepError(pending);
       }
     }
-    // « Prélevé le » is pre-filled and required (16/10, Q118): an emptied
-    // field is refused here and by the API — never replaced by the instant
-    // of the save.
-    if (!startedAt) return setFieldError("visit-started", SERIE_MESSAGES.startedMissing);
+    // « Prélevé le » is pre-filled and required when the laboratory samples
+    // (28/10, I3): an emptied field is refused here and by the API — never
+    // replaced by the instant of the save. Sampled by « Autre », it may be
+    // left empty: « Non déclarée ».
+    if (!startedAt && samplingTimeRequired(samplerKind)) {
+      return setFieldError("visit-started", SERIE_MESSAGES.startedMissing);
+    }
     // « Dans le futur » first, next to the field, as the server would refuse
     // it (§8.1): the commonest slip on a device whose clock is off.
     const now = new Date();
@@ -358,10 +371,11 @@ export function VisitForm({ me }: { me: Preleveur }) {
     if (endedAt && startedAt && localInputDate(endedAt)! < localInputDate(startedAt)!) return setFieldError("visit-ended", "L'heure de fin précède le début du prélèvement.");
     for (const [i, line] of lines.entries()) {
       // Families, place, designation, surface state, hands state, air method
-      // and plate duration, the T° ambiante (required on the visit, 16/10 —
+      // and plate duration, the T° au prélèvement (food, water, surface —
+      // 28/10, I2) and the T° ambiante (required on the visit, 16/10 —
       // Q113) — no analysis is required any more: the programme sheet fixes
       // them (V6).
-      const problem = lineDraftError(line, natures, { requireAmbient: true });
+      const problem = lineDraftError(line, natures, { requireAmbient: true, requireSamplingTemperature: true });
       if (problem) return setStepError(sampleLineMessage(i + 1, problem), i + 1);
     }
     setError("");
@@ -436,7 +450,10 @@ export function VisitForm({ me }: { me: Preleveur }) {
           <h2 className="text-xl font-semibold text-slate-900">Visite enregistrée</h2>
           <p className="mt-1 text-sm text-slate-500">
             {created.client.name}
-            {created.site ? ` · ${created.site.name}` : ""} · {formatDateTime(created.startedAt)}
+            {created.site ? ` · ${created.site.name}` : ""} ·{" "}
+            {startIsDeclared(created.samplingTimeDeclared)
+              ? formatDateTime(created.startedAt)
+              : `heure de prélèvement ${UNDECLARED_SAMPLING.toLocaleLowerCase("fr")}`}
           </p>
           <div className="mx-auto mt-5 inline-block rounded-2xl bg-brand px-6 py-4 text-white shadow-lg shadow-brand/20">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">N° de série</p>
@@ -614,14 +631,18 @@ export function VisitForm({ me }: { me: Preleveur }) {
                   <label htmlFor="visit-started" className="section-title mb-2">
                     <Clock className="h-4 w-4" />
                     Prélevé le … à …
-                    <span className="-ml-1 text-rose-600" aria-hidden="true">*</span>
-                    <span className="sr-only">(obligatoire)</span>
+                    {samplingTimeRequired(samplerKind) && (
+                      <>
+                        <span className="-ml-1 text-rose-600" aria-hidden="true">*</span>
+                        <span className="sr-only">(obligatoire)</span>
+                      </>
+                    )}
                   </label>
                   {isMounted ? (
                     <LabDateTimeInput
                       id="visit-started"
                       value={startedAt}
-                      required
+                      required={samplingTimeRequired(samplerKind)}
                       onChange={(v) => {
                         setStartedAt(v);
                         clearFieldError("visit-started");
@@ -633,6 +654,9 @@ export function VisitForm({ me }: { me: Preleveur }) {
                     <div className="input-field px-4" aria-hidden="true" />
                   )}
                   {fieldError("visit-started")}
+                  {!samplingTimeRequired(samplerKind) && !startedAt && errorField !== "visit-started" && (
+                    <p className="mt-1 text-xs text-slate-500">{UNDECLARED_SAMPLING_HINT}</p>
+                  )}
                 </div>
                 <div>
                   <label htmlFor="visit-ended" className="section-title mb-2">
@@ -759,6 +783,7 @@ export function VisitForm({ me }: { me: Preleveur }) {
                   profiles={profiles}
                   showProfiles={false}
                   ambientRequired
+                  productTemperatureRequired={visitRequiresSamplingTemperature(line.lineKind)}
                 />
               </div>
             );
@@ -808,7 +833,10 @@ export function VisitForm({ me }: { me: Preleveur }) {
               <Row label="Site de prélèvement" value={selectedSite?.name ?? "Siège"} />
               <Row label="Cadre" value={cadre ? formatCadre(cadre, cadreNote) : "—"} />
               {interlocutor && <Row label="Interlocuteur" value={interlocutor} />}
-              <Row label="Prélevé le" value={isMounted && startedAt ? formatDateTime(localInputDate(startedAt)!) : "—"} />
+              <Row
+                label="Prélevé le"
+                value={!startedAt ? "Non déclarée" : isMounted ? formatDateTime(localInputDate(startedAt)!) : "—"}
+              />
               <Row label="Heure de fin" value={isMounted && endedAt ? formatDateTime(localInputDate(endedAt)!) : "—"} />
               <Row label="Prélèvement effectué par" value={samplerLabel} />
               {clientReference && <Row label="Référence client" value={clientReference} />}

@@ -994,3 +994,10 @@ describe("frozenVersionInForce — the current version rendered first from its f
     expect(fn("async function sendReportNow(")).toContain("receivedAt: printedReceptionAt(data),");
   });
 });
+
+describe("the analysis note on a report issued before (28/10, G2 — gated as K1)", () => {
+  it("a report rendered from the live data without a layout keeps its printed note", () => {
+    const old: ReportData = { ...base, results: [{ ...base.results[0], note: "Boîte refaite" }, ...base.results.slice(1)] };
+    expect(buildReportHtml(old)).toContain('<span class="note">Boîte refaite</span>');
+  });
+});

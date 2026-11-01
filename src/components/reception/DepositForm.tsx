@@ -57,7 +57,13 @@ import {
   type ReceptionDecision,
 } from "@/lib/client-consultation";
 import { sampleRef } from "@/lib/reception-input";
-import { SAMPLING_TIME_UNKNOWN, SERIE_MESSAGES, arrivalRefusal, sampleLineMessage } from "@/lib/serie-input";
+import {
+  SERIE_MESSAGES,
+  UNDECLARED_SAMPLING_HINT,
+  arrivalRefusal,
+  sampleLineMessage,
+  samplingTimeRequired,
+} from "@/lib/serie-input";
 import { repetitionRange } from "@/lib/series";
 import { futureFieldError } from "@/lib/device-time";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
@@ -102,6 +108,8 @@ import {
 } from "./reception-widgets";
 import {
   allExploitableNotice,
+  decisionChosen,
+  exploitableAnswer,
   answerAllExploitable,
   countLabel,
   depositLineChecklist,
@@ -143,6 +151,8 @@ type LineIntake = {
   receptionNote: string;
   /** Non-conform only: analyse anyway, wait for the client, or destroy (A9). */
   decision: ReceptionDecision;
+  /** « Détruire » preselected by « Non exploitable » (I4), not chosen by hand. */
+  destroyPreselected?: boolean;
   /** « Accord du client », for « Analyser malgré tout » (A9). */
   consultation: ConsultationDraft;
 };
@@ -255,11 +265,11 @@ function depositLine(natures: readonly NatureOption[], previous?: LineDraft): Li
  * §3.2). The client is searched on the server (`ClientPicker`), never the
  * whole base loaded up front; its sites come with the client picked.
  *
- * The times (16/10, Q118): « Prélevé le » is required — the client who
- * truly does not know ticks « Heure de prélèvement inconnue du client »
- * (proposal of the re-ask 2.6, `SAMPLING_TIME_UNKNOWN`) — and « Arrivé le »
- * too, pre-filled with the instant the form opened: the live delay (C1),
- * the recap and the bon read it.
+ * The times (re-ask 2.6, answer of 28/10 — I3): « Prélevé le » is optional
+ * at the counter — the client or a third party sampled
+ * (`samplingTimeRequired`): left empty, the série is « Non déclarée » —, and
+ * « Arrivé le » is required, pre-filled with the instant the form opened:
+ * the live delay (C1), the recap and the bon read it.
  */
 export function DepositForm({
   thresholds,
@@ -297,10 +307,9 @@ export function DepositForm({
   const [interlocutor, setInterlocutor] = useState("");
   const [clientReference, setClientReference] = useState("");
   // LEGAL wall time ("YYYY-MM-DDTHH:mm"): LabDateTimeInput converts a drifting device's hour.
-  // « Prélevé le », required (16/10, Q118): empty until the client gives it —
-  // never « now » —, or « inconnue du client » ticked on purpose (re-ask 2.6).
+  // « Prélevé le », optional at the counter (28/10, I3): empty until the
+  // client gives it — never « now » —; left empty, « Non déclarée ».
   const [startedAt, setStartedAt] = useState("");
-  const [samplingUnknown, setSamplingUnknown] = useState(false);
   // The counter's clock: the reception instant (C7) and the arrival of an
   // emptied « Arrivé le » (C1); null on the server and during hydration.
   const now = useMinuteClock();
@@ -438,19 +447,15 @@ export function DepositForm({
    * with the motif of rule (1); « Exploitable » afterwards drops that motif.
    */
   function answerExploitable(key: string, exploitable: boolean) {
-    const current = intakeOf(key);
-    updateIntake(
-      key,
-      exploitable
-        ? { exploitable, reason: current.reason === "NON_EXPLOITABLE" ? "" : current.reason }
-        : { exploitable, reason: "NON_EXPLOITABLE" }
-    );
+    // « Non exploitable » preselects « Détruire » (2.7, 28/10 — I4), changeable.
+    updateIntake(key, exploitableAnswer(intakeOf(key), exploitable));
   }
 
   /**
-   * « Tous exploitables » (16/10, Q64): rule (1) « Exploitable » on every
-   * line still unanswered — a « Non exploitable » already chosen stays, and
-   * an unanswered line carries no rule (1) motif, so nothing else moves.
+   * « Tous exploitables et bien identifiés » (16/10, Q64; 28/10, I4): rule
+   * (1) « Exploitable » and C5 « identification correcte » on every line
+   * where still unanswered — an answer already chosen stays, and an
+   * unanswered line carries no motif of either, so nothing else moves.
    */
   function answerAllLines() {
     const { lines: answered, count } = answerAllExploitable(lines.map((line) => intakeOf(line.key)));
@@ -537,7 +542,7 @@ export function DepositForm({
     const twins = samples.length > 1;
     const extra = intakeOf(line.key);
     const chimieUnit = extra.chimieQuantityUnit ?? line.quantityUnit;
-    const typedStart = samplingUnknown ? null : localInputDate(startedAt);
+    const typedStart = localInputDate(startedAt);
     const typedArrival = localInputDate(arrivedAt);
     const productType = productTypes.find((t) => t.id === line.productTypeId);
     const { rows, proposal } = depositLineChecklist(
@@ -561,16 +566,15 @@ export function DepositForm({
         expiryDate: line.lineKind === "ALIMENT" && line.expiryDate ? parseIsoDay(line.expiryDate) : null,
         // Typed at the counter: measured on the sample.
         temperatureSource: extra.temperature.trim() ? "ECHANTILLON" : null,
-        // C1, as POST /api/series computes it (16/10, Q118): the arrival
-        // typed; the sampling typed — or, unknown to the client, the arrival
-        // and « non déclarée ». An empty « Prélevé le » is not an answer yet:
-        // the delay waits (« non calculé »).
+        // C1, as POST /api/series computes it (28/10, I3): the arrival
+        // typed; the sampling typed — or, left empty, the arrival and
+        // « non déclarée » (the delay is then not evaluable).
         serie: now
           ? {
-              startedAt: samplingUnknown ? (typedArrival ?? now) : typedStart,
+              startedAt: typedStart ?? typedArrival ?? now,
               endedAt: null,
               arrivedAt: typedArrival ?? now,
-              samplingTimeDeclared: !samplingUnknown,
+              samplingTimeDeclared: typedStart !== null,
               receivedAt: now,
             }
           : null,
@@ -642,21 +646,21 @@ export function DepositForm({
         return false;
       }
     }
-    // Both times are required (16/10, Q118) — the sampling one unless the
-    // client does not know it —, then the server's own checks (5 min of
-    // tolerance; the arrival never before the sampling), told next to their
-    // field before « Continuer » (§8.1).
-    const startedProblem = samplingUnknown
-      ? null
-      : startedAt
-        ? futureFieldError("L'heure du prélèvement", startedAt)
-        : SERIE_MESSAGES.depositStartedMissing;
+    // « Arrivé le » is required, « Prélevé le » only when the laboratory
+    // sampled (28/10, I3 — never at the counter in practice); then the
+    // server's own checks (5 min of tolerance; the arrival never before the
+    // sampling), told next to their field before « Continuer » (§8.1).
+    const startedProblem = startedAt
+      ? futureFieldError("L'heure du prélèvement", startedAt)
+      : samplingTimeRequired(samplerKind)
+        ? SERIE_MESSAGES.startedMissing
+        : null;
     setStartedError(startedProblem);
     if (startedProblem) {
       reveal("deposit-started");
       return setStepError(startedProblem);
     }
-    const typedStart = samplingUnknown ? null : localInputDate(startedAt);
+    const typedStart = localInputDate(startedAt);
     const arrival = localInputDate(arrivedAt);
     const arrivedProblem = !arrivedAt
       ? SERIE_MESSAGES.arrivalMissing
@@ -730,9 +734,8 @@ export function DepositForm({
           samplerName: samplerKind === "CLIENT" ? undefined : samplerName,
           interlocutor,
           clientReference,
-          // Unknown to the client: the box, never an empty time (16/10, Q118).
-          startedAt: samplingUnknown ? undefined : (fromLocalInput(startedAt) ?? undefined),
-          samplingTimeUnknown: samplingUnknown || undefined,
+          // Left empty: « Non déclarée » (28/10, I3).
+          startedAt: fromLocalInput(startedAt) ?? undefined,
           // Untouched: the API's own save instant, the minute shown.
           arrivedAt: editedArrival === null ? undefined : (fromLocalInput(arrivedAt) ?? undefined),
           notes,
@@ -1076,22 +1079,26 @@ export function DepositForm({
                 </div>
               </div>
 
-              {/* The two times of the série, both required (16/10, Q118). */}
+              {/* The two times of the série: « Arrivé le » required, « Prélevé le »
+                  only when the laboratory sampled (28/10, I3). */}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="deposit-started" className="section-title mb-2">
                     <Clock className="h-4 w-4" />
                     Prélevé le
-                    <span className="-ml-1 text-rose-600" aria-hidden="true">*</span>
-                    <span className="sr-only">(obligatoire)</span>
+                    {samplingTimeRequired(samplerKind) && (
+                      <>
+                        <span className="-ml-1 text-rose-600" aria-hidden="true">*</span>
+                        <span className="sr-only">(obligatoire)</span>
+                      </>
+                    )}
                   </label>
                   {/* Rendered once mounted: the field reads the device's clock (drift hint). */}
                   {isMounted ? (
                     <LabDateTimeInput
                       id="deposit-started"
                       value={startedAt}
-                      required={!samplingUnknown}
-                      disabled={samplingUnknown}
+                      required={samplingTimeRequired(samplerKind)}
                       onChange={(legalWall) => {
                         setStartedAt(legalWall);
                         if (startedError) {
@@ -1104,37 +1111,12 @@ export function DepositForm({
                   ) : (
                     <div className="input-field px-4" aria-hidden="true" />
                   )}
-                  {SAMPLING_TIME_UNKNOWN.allowed && (
-                    <label className="mt-2 flex min-h-[44px] cursor-pointer items-center gap-2 text-sm text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={samplingUnknown}
-                        onChange={(e) => {
-                          const unknown = e.target.checked;
-                          setSamplingUnknown(unknown);
-                          // « Inconnue » and a time shown together would contradict each other.
-                          if (unknown) setStartedAt("");
-                          setStartedError(null);
-                          clearError();
-                        }}
-                        className="h-5 w-5 rounded border-slate-300 text-brand focus:ring-brand"
-                      />
-                      {SAMPLING_TIME_UNKNOWN.label}
-                    </label>
-                  )}
                   {startedError ? (
                     <p id="deposit-started-error" className="mt-1 text-xs font-medium text-rose-700">
                       {startedError}
                     </p>
-                  ) : samplingUnknown ? (
-                    <p className="mt-1 text-xs text-amber-800">
-                      Imprimé « Non déclarée » ; le délai prélèvement → laboratoire (C1) sera « à vérifier » et
-                      l&apos;observation de réception obligatoire pour accepter un échantillon conforme.
-                    </p>
                   ) : (
-                    !startedAt && (
-                      <p className="mt-1 text-xs text-slate-500">Demandez au client la date et l&apos;heure du prélèvement.</p>
-                    )
+                    !startedAt && <p className="mt-1 text-xs text-slate-500">{UNDECLARED_SAMPLING_HINT}</p>
                   )}
                 </div>
                 <div>
@@ -1401,7 +1383,7 @@ export function DepositForm({
                       legend={`Décision pour ${twins ? "ces deux échantillons" : "cet échantillon"}`}
                       legendClassName="text-sm font-semibold text-slate-700"
                       value={decision}
-                      onChange={(chosen) => updateIntake(line.key, { decision: chosen })}
+                      onChange={(chosen) => updateIntake(line.key, decisionChosen(chosen))}
                     />
                   )}
                   {!conformity && decision === "ANALYSER" && (
@@ -1483,9 +1465,9 @@ export function DepositForm({
               <Row
                 label="Prélevé le"
                 value={
-                  samplingUnknown
-                    ? "Heure inconnue du client — « Non déclarée »"
-                    : isMounted && startedAt
+                  !startedAt
+                    ? "Non déclarée"
+                    : isMounted
                       ? formatDateTime(localInputDate(startedAt)!)
                       : "—"
                 }

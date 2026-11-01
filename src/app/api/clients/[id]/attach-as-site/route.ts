@@ -8,7 +8,8 @@ import { moveEmails, movePlaces, moveProducts, moveTypesAndProfiles } from "@/li
 import { normalizeSiteName } from "@/lib/sites-import";
 
 /**
- * « Rattacher comme site de… » (CLIENTS-FUSION.md §3, ADMIN) — `[id]` = B, a
+ * « Rattacher comme site de… » (CLIENTS-FUSION.md §3, GESTIONNAIRE and ADMIN
+ * since the answer of 28/10 to the re-ask 2.5 — `ATTACH_ROLES`) — `[id]` = B, a
  * point of sale recorded as a client, becomes a site of A (`parentId`).
  *
  *   POST { parentId, siteName?, existingSiteId?, mode: "preview" | "commit" }
@@ -179,7 +180,7 @@ async function attach(
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireApiRole("ADMIN");
+  const session = await requireApiRole("GESTIONNAIRE", "ADMIN");
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;
@@ -234,10 +235,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       action: "SITE_CREATED",
       entity: "Site",
       entityId: outcome.site.id,
-      metadata: { clientId: outcome.parent.id, name: outcome.site.name, city: null, source: "attach", fromClientId: outcome.source.id },
+      metadata: {
+        clientId: outcome.parent.id,
+        name: outcome.site.name,
+        city: null,
+        source: "attach",
+        fromClientId: outcome.source.id,
+        role: session.role,
+      },
     });
   }
-  const shared = { siteId: outcome.site.id, site: outcome.site.name, siteCreated: outcome.site.created, counts: outcome.counts };
+  // Who attached: the person (actorId) and the role, as for the merge (28/10, I5).
+  const shared = {
+    role: session.role,
+    siteId: outcome.site.id,
+    site: outcome.site.name,
+    siteCreated: outcome.site.created,
+    counts: outcome.counts,
+  };
   await logAudit({
     actorId: session.id,
     action: "CLIENT_ATTACHED_AS_SITE",

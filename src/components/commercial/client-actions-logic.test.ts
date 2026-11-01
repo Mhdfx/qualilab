@@ -224,10 +224,10 @@ describe("who merges and who attaches (16/10, Q117 — E4)", () => {
     }
   });
 
-  it("the attachment as a site stays the administrator's until the re-ask 2.5", () => {
-    expect(ATTACH_ROLES).toEqual(["ADMIN"]);
+  it("the attachment as a site: the gestionnaire commercial and the administrator (2.5, « Oui » of 28/10)", () => {
+    expect(ATTACH_ROLES).toEqual(["GESTIONNAIRE", "ADMIN"]);
     expect(canAttachAsSite("ADMIN")).toBe(true);
-    expect(canAttachAsSite("GESTIONNAIRE")).toBe(false);
+    expect(canAttachAsSite("GESTIONNAIRE")).toBe(true);
     expect(canAttachAsSite("RECEPTIONNISTE")).toBe(false);
   });
 });

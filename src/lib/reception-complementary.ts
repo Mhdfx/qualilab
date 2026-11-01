@@ -2,6 +2,7 @@ import type { Family, LineKind, SerieKind, StorageClass, TemperatureSource } fro
 import { formatDateOnly, isoDayOf } from "./date-only";
 import { STORAGE_CLASS_LABELS, TEMPERATURE_SOURCE_LABELS, formatDecimal } from "./labels";
 import { labDayOf } from "./lab-time";
+import { UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE } from "./lab-proposals";
 import type { ChecklistRow, ChecklistStatus } from "./reception-rules";
 
 /**
@@ -150,6 +151,9 @@ export function identificationHint(lineKind: LineKind, answer: boolean | null): 
 
 // ---- C1 — délai prélèvement → laboratoire ----------------------------------------
 
+/** C1 of a série whose sampling time was not declared (28/10, I3 — switch `UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE`). */
+export const UNDECLARED_DELAY_DETAIL = "Délai non évaluable : heure de prélèvement non déclarée";
+
 /** Whole minutes from the end of the sampling to the arrival; never negative. */
 export function delayMinutes(sampledEnd: Date, arrival: Date): number {
   return Math.max(0, Math.floor((arrival.getTime() - sampledEnd.getTime()) / 60000));
@@ -191,7 +195,13 @@ function delayRow(line: ComplementaryLine, serie: ComplementarySerie | null, thr
   });
   if (limit === null) return row("SANS_OBJET", "Pas de délai fixé", false);
   if (serie === null || serie.startedAt === null) return row("SANS_OBJET", "Délai non calculé", false);
-  if (serie.samplingTimeDeclared === false) return row("A_VERIFIER", "Heure de prélèvement non déclarée");
+  // « Prélevé le » left empty (client or third party, 28/10 — I3): the
+  // delay is not evaluable — nothing to justify (switch, R-15).
+  if (serie.samplingTimeDeclared === false) {
+    return UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE
+      ? row("SANS_OBJET", UNDECLARED_DELAY_DETAIL, false)
+      : row("A_VERIFIER", "Heure de prélèvement non déclarée");
+  }
   const minutes = serieDelayMinutes(serie);
   if (minutes === null) return row("SANS_OBJET", "Arrivée au laboratoire non renseignée", false);
   if (minutes <= limit * 60) return row("CONFORME", `Délai ${formatDelay(minutes)}`);

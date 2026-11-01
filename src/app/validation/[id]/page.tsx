@@ -175,7 +175,7 @@ export default async function ValidationDetailPage({
   // Validated, not sent (16/10, Q92): the panel offers « Envoyer au client »;
   // once this version has left, « Renvoyer » is on the report card.
   const sent = report ? reportVersionSent(report) : false;
-  const sendable = report !== null && canResendReport(session.role, sample.status, report.amendmentPending);
+  const sendable = report !== null && canResendReport(session.role, sample.status, report.amendmentPending, sent);
 
   // « Réglementation en vigueur » (slice I): proposed from what is known,
   // confirmed or changed by the validator.
@@ -310,7 +310,8 @@ export default async function ValidationDetailPage({
                         )}
                         {result.note && (
                           <span className="mt-0.5 block text-xs text-slate-500">
-                            {result.note}
+                            {/* Internal since 28/10 (2.20 (h), G2): never printed on the report. */}
+                            {result.workStatus === "ANOMALIE" ? "Anomalie" : "Note interne"} : {result.note}
                           </span>
                         )}
                         {/* D-09: the author of the reading (a line left empty names nobody). */}

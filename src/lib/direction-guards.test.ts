@@ -179,8 +179,8 @@ const ADMIN_ONLY = [
   // The attachment of a client as a site, the silent conclusion edit,
   // reactivation (reopening for amendment is the Direction's and the
   // validateur's too since 16/10, Q13; merging two fiches the gestionnaire
-  // commercial's too since 16/10, Q117 — client-merge-guards.test.ts).
-  "api/clients/[id]/attach-as-site/route.ts POST",
+  // commercial's too since 16/10, Q117, and the attachment as a site since
+  // 28/10, re-ask 2.5 — client-merge-guards.test.ts).
   "api/reports/[id]/admin-edit/route.ts GET",
   "api/reports/[id]/admin-edit/route.ts PATCH",
   "api/samples/[id]/reactivate/route.ts POST",
@@ -330,9 +330,9 @@ describe("the decisions behind the screens, for the Direction", () => {
 
   it("reads, duplicates, resends and reopens reports (16/10, Q13), never edits a conclusion", () => {
     expect(canReadReports("DIRECTION")).toBe(true);
-    expect(canResendReport("DIRECTION", "VALIDE", false)).toBe(true);
-    expect(canResendReport("DIRECTION", "RAPPORT_ENVOYE", false)).toBe(true);
-    expect(canResendReport("DIRECTION", "RAPPORT_ENVOYE", true)).toBe(false);
+    expect(canResendReport("DIRECTION", "VALIDE", false, false)).toBe(true);
+    expect(canResendReport("DIRECTION", "RAPPORT_ENVOYE", false, true)).toBe(true);
+    expect(canResendReport("DIRECTION", "RAPPORT_ENVOYE", true, true)).toBe(false);
     expect(canEditConclusion("DIRECTION", false)).toBe(false);
     expect(canReopen("VALIDE", "DIRECTION")).toBe(true);
     expect(canReopen("RAPPORT_ENVOYE", "DIRECTION")).toBe(true);

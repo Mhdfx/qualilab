@@ -152,37 +152,100 @@ export function receptionTemperatureSource(line: {
   return line.temperatureTouched ? "ECHANTILLON" : "GLACIERE";
 }
 
-// ---- « Tous exploitables » (16/10, Q64) -----------------------------------------
+// ---- « Tous exploitables et bien identifiés » (16/10, Q64; 28/10, 2.7 — I4) -----
+
+/** What the série-level button reads: rule (1) and C5, each `null` until answered. */
+type BulkAnswers = { exploitable: boolean | null; identificationOk: boolean | null };
+
+/** Whether the button still has something to answer on this sample. */
+function bulkPending(line: BulkAnswers): boolean {
+  return line.exploitable === null || line.identificationOk === null;
+}
 
 /**
- * The série-level button of rule (1): « Exploitable » on every sample still
- * unanswered, in one deliberate click (« un bouton général avec possibilité
- * de cliquer sur chaque échantillon »). It fills the unanswered samples only
- * and never touches a « Non exploitable » already chosen; each card keeps its
- * own buttons, and the API still receives one answer per sample. `count` is
- * the number of samples it answered — 0 when there was nothing left to answer
- * (the lines are then returned as they were).
+ * The série-level button, in one deliberate click (« un bouton général avec
+ * possibilité de cliquer sur chaque échantillon », 16/10; « Oui » to the
+ * re-ask 2.7, 28/10): rule (1) « Exploitable » AND C5 « identification
+ * correcte » on every sample where they are still unanswered. It fills the
+ * unanswered answers only and never touches one already chosen — a « Non
+ * exploitable », an identification « Non » keep theirs, and their motifs;
+ * each card keeps its own buttons, and the API still receives one answer per
+ * sample. `count` is the number of samples it answered something on — 0
+ * when there was nothing left to answer (the lines are then returned as they
+ * were).
  */
-export function answerAllExploitable<T extends { exploitable: boolean | null }>(
-  lines: readonly T[]
-): { lines: T[]; count: number } {
+export function answerAllExploitable<T extends BulkAnswers>(lines: readonly T[]): { lines: T[]; count: number } {
   let count = 0;
   const answered = lines.map((line) => {
-    if (line.exploitable !== null) return line;
+    if (!bulkPending(line)) return line;
     count += 1;
-    return { ...line, exploitable: true };
+    return {
+      ...line,
+      exploitable: line.exploitable ?? true,
+      identificationOk: line.identificationOk ?? true,
+    };
   });
   return { lines: answered, count };
 }
 
-/** How many samples « Tous exploitables » would answer — the N of its label. */
-export function unansweredExploitableCount(lines: readonly { exploitable: boolean | null }[]): number {
-  return lines.filter((line) => line.exploitable === null).length;
+/** How many samples the button would answer — the N of its label. */
+export function unansweredExploitableCount(lines: readonly BulkAnswers[]): number {
+  return lines.filter(bulkPending).length;
 }
 
-/** The confirmation read out after the click: « 3 échantillons marqués exploitables — modifiable sur chaque échantillon ». */
+/** The button's label: « Tous exploitables et bien identifiés (3) ». */
+export function allExploitableLabel(count: number): string {
+  return `Tous exploitables et bien identifiés (${count})`;
+}
+
+/** The confirmation read out after the click: « 3 échantillons marqués exploitables et bien identifiés — modifiable sur chaque échantillon ». */
 export function allExploitableNotice(count: number): string {
-  return `${countLabel(count, "échantillon marqué exploitable", "échantillons marqués exploitables")} — modifiable sur chaque échantillon`;
+  return `${countLabel(
+    count,
+    "échantillon marqué exploitable et bien identifié",
+    "échantillons marqués exploitables et bien identifiés"
+  )} — modifiable sur chaque échantillon`;
+}
+
+/**
+ * Rule (1) answered on one card. « Non exploitable » makes the sample non
+ * conform with the motif of rule (1) and preselects « Détruire » (re-ask
+ * 2.7, 28/10 — I4), still changeable: an « Analyser » (the default) becomes
+ * « Détruire » and the card remembers it preselected it
+ * (`destroyPreselected`); a decision chosen otherwise (« En attente du
+ * client », or a « Détruire » chosen by hand) stays. « Exploitable »
+ * afterwards drops that motif — the rules propose again — and only the
+ * « Détruire » it had preselected goes back to « Analyser ». A decision
+ * changed by hand clears the mark (`decisionChosen`). « Rejeté » waits for
+ * R-9.
+ */
+export function exploitableAnswer<R extends string, D extends string>(
+  current: { reason: R; decision: D; destroyPreselected?: boolean },
+  exploitable: boolean
+): {
+  exploitable: boolean;
+  reason: R | "NON_EXPLOITABLE" | "";
+  decision: D | "ANALYSER" | "DETRUIRE";
+  destroyPreselected: boolean;
+} {
+  const preselected = current.destroyPreselected === true && (current.decision as string) === "DETRUIRE";
+  if (!exploitable) {
+    if ((current.decision as string) === "ANALYSER") {
+      return { exploitable, reason: "NON_EXPLOITABLE", decision: "DETRUIRE", destroyPreselected: true };
+    }
+    return { exploitable, reason: "NON_EXPLOITABLE", decision: current.decision, destroyPreselected: preselected };
+  }
+  return {
+    exploitable,
+    reason: current.reason === "NON_EXPLOITABLE" ? "" : current.reason,
+    decision: preselected ? "ANALYSER" : current.decision,
+    destroyPreselected: false,
+  };
+}
+
+/** A decision chosen by hand on a card: never a preselection any more (I4). */
+export function decisionChosen<D extends string>(decision: D): { decision: D; destroyPreselected: false } {
+  return { decision, destroyPreselected: false };
 }
 
 /** The cooler's reading outside the chilled range: the hint under « T° de la glacière » (screen only). */

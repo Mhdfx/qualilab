@@ -27,6 +27,7 @@ import {
 } from "@/lib/client-consultation";
 import type { ConsultationChannel, LineKind, StorageClass } from "@/generated/prisma/enums";
 import { LabDateTimeInput } from "@/components/LabDateTimeInput";
+import { allExploitableLabel } from "./reception-logic";
 
 const MINUTE_MS = 60_000;
 
@@ -161,11 +162,13 @@ export function Checklist({
 }
 
 /**
- * « Tous exploitables (N) » above the samples (16/10, Q64): one deliberate
- * click answers rule (1) « Exploitable » on every sample still unanswered
- * (`answerAllExploitable`) — never over a « Non exploitable », never a
- * pre-answer —, and each card keeps its own buttons. Disabled once nothing
- * is left to answer; the confirmation is read out (`role="status"`, polite).
+ * « Tous exploitables et bien identifiés (N) » above the samples (16/10,
+ * Q64; 28/10, 2.7 — I4): one deliberate click answers rule (1)
+ * « Exploitable » and C5 « identification correcte » wherever they are still
+ * unanswered (`answerAllExploitable`) — never over an answer already given,
+ * never a pre-answer —, and each card keeps its own buttons. Disabled once
+ * nothing is left to answer; the confirmation is read out (`role="status"`,
+ * polite).
  */
 export function AllExploitableBar({
   count,
@@ -187,10 +190,11 @@ export function AllExploitableBar({
         className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-500"
       >
         <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-        Tous exploitables ({count})
+        {allExploitableLabel(count)}
       </button>
       <p role="status" aria-live="polite" className="text-xs text-slate-600">
-        {notice || "Règle (1) : « Exploitable » pour les échantillons sans réponse ; chacun reste modifiable sur sa carte."}
+        {notice ||
+          "Règle (1) « Exploitable » et C5 « identification correcte » pour les réponses encore vides ; chacune reste modifiable sur sa carte."}
       </p>
     </div>
   );
@@ -304,7 +308,8 @@ function AnswerChips({
 
 /**
  * « Observation de réception » (A7), under the checklist of every sample:
- * optional, until a row « à vérifier » is accepted conforme — then it is the
+ * optional, until a row « à vérifier » that matters — the temperature or
+ * the delay since 28/10 (Q71, I7) — is accepted conforme: then it is the
  * justification, required (`rowToJustify`), and the hint names the row.
  */
 export function ReceptionNoteField({

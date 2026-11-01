@@ -13,8 +13,8 @@ import {
 /**
  * Who merges duplicate clients (answer of 16/10, Q117 « Admin ou
  * commercial » — RETOUR-LABO-16-10.md E4): the gestionnaire commercial and
- * the administrator. « Rattacher comme site de… » stays the administrator's
- * until the laboratory confirms it (re-ask 2.5). Both are irreversible; the
+ * the administrator. « Rattacher comme site de… » too since the laboratory's
+ * « Oui » to the re-ask 2.5 (28/10, lot 3A I5). Both are irreversible; the
  * reception and the préleveur, who may now create clients (E1), never merge
  * one. The guards are read from the routes, the page's decision from its
  * source: the three must agree.
@@ -61,10 +61,21 @@ describe("« Fusionner avec… » — the gestionnaire commercial and the admin 
   });
 });
 
-describe("« Rattacher comme site de… » — still the admin's alone (re-ask 2.5)", () => {
-  it("the attach route admits ADMIN only, the list the page decides with", () => {
-    expect([...ATTACH_ROLES]).toEqual(["ADMIN"]);
-    expect(postGuard("api/clients/[id]/attach-as-site/route.ts")).toEqual(["ADMIN"]);
+describe("« Rattacher comme site de… » — the gestionnaire commercial and the admin (2.5, 28/10)", () => {
+  it("the attach route admits exactly GESTIONNAIRE and ADMIN, the list the page decides with", () => {
+    expect([...ATTACH_ROLES].sort()).toEqual(["ADMIN", "GESTIONNAIRE"]);
+    expect(postGuard("api/clients/[id]/attach-as-site/route.ts")).toEqual([...ATTACH_ROLES].sort());
+  });
+
+  it("never admits the counter roles, the comptable, the Direction or the bench", () => {
+    const roles = postGuard("api/clients/[id]/attach-as-site/route.ts");
+    for (const role of NEVER) expect(roles, role).not.toContain(role);
+  });
+
+  it("journals the role of who attached, beside the person", () => {
+    const route = read("api/clients/[id]/attach-as-site/route.ts");
+    expect(route).toMatch(/const shared = \{\s*role: session\.role,/);
+    expect(route).toMatch(/source: "attach",[\s\S]{0,80}role: session\.role,/);
   });
 });
 
@@ -75,7 +86,8 @@ describe("the client fiche offers what the routes allow", () => {
       expect(canAttachAsSite(role), role).toBe((ATTACH_ROLES as readonly string[]).includes(role));
     }
     expect(canMergeClients("GESTIONNAIRE")).toBe(true);
-    expect(canAttachAsSite("GESTIONNAIRE")).toBe(false);
+    expect(canAttachAsSite("GESTIONNAIRE")).toBe(true);
+    expect(canAttachAsSite("RECEPTIONNISTE")).toBe(false);
   });
 
   it("/commercial/[id] shows the actions with canMergeClients, the attachment with canAttachAsSite", () => {

@@ -304,6 +304,25 @@ describe("validateReception — the arrival never precedes the sampling (A2)", (
     expect(validateReception({ ...good, arrivedAt: "2026-09-13T08:00:00.000Z" }, candidates, DEFAULT_THRESHOLDS, open).ok).toBe(true);
   });
 
+  it("never compares the arrival with an undeclared start — a stand-in (28/10, I3): the end alone", () => {
+    // « Prélevé le » left empty on a visit sampled by « Autre »: the start is the save instant (08:00).
+    const undeclared = { startedAt: times.startedAt, endedAt: null, samplingTimeDeclared: false };
+    expect(validateReception({ ...good, arrivedAt: "2026-09-13T07:30:00.000Z" }, candidates, DEFAULT_THRESHOLDS, undeclared).ok).toBe(true);
+    // A typed end still bounds it.
+    const ended = { ...undeclared, endedAt: new Date("2026-09-13T07:45:00.000Z") };
+    expect(validateReception({ ...good, arrivedAt: "2026-09-13T07:30:00.000Z" }, candidates, DEFAULT_THRESHOLDS, ended)).toEqual({
+      ok: false,
+      error: "L'arrivée au laboratoire précède la fin du prélèvement.",
+    });
+    // Declared (true, or null on a typed visit): compared, as before.
+    for (const samplingTimeDeclared of [true, null]) {
+      expect(
+        validateReception({ ...good, arrivedAt: "2026-09-13T07:30:00.000Z" }, candidates, DEFAULT_THRESHOLDS, { ...undeclared, samplingTimeDeclared }),
+        String(samplingTimeDeclared)
+      ).toEqual({ ok: false, error: "L'arrivée au laboratoire précède le prélèvement." });
+    }
+  });
+
   it("accepts an arrival equal to the end, and no arrival at all (the reception instant)", () => {
     const equal = validate({ ...good, arrivedAt: "2026-09-13T09:30:00.000Z" });
     expect(equal.ok && equal.value.arrivedAt?.toISOString()).toBe("2026-09-13T09:30:00.000Z");
@@ -565,14 +584,13 @@ describe("validateReception — « Observation de réception », the justificati
   /** Line 1 weighed nothing: rule (2) « à vérifier » (quantity not given). */
   const unweighed = { ...good.lines[0], quantity: "", quantityUnit: "" };
 
-  it("refuses a doubt accepted conforme without an observation, naming the first doubtful row", () => {
-    expect(validate({ ...good, lines: [unweighed, good.lines[1]] })).toEqual({
-      ok: false,
-      error:
-        "Échantillon 1 : justifiez l'acceptation (règle 2 à vérifier).",
-      lineNumber: 1,
-      ref: "1",
-    });
+  it("a quantity not weighed is a warning only since 28/10 (Q71, I7): accepted conforme without an observation", () => {
+    const result = validate({ ...good, lines: [unweighed, good.lines[1]] });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.lines[0].checklist.find((r) => r.n === 2)).toMatchObject({ status: "A_VERIFIER" });
+      expect(result.value.lines[0].receptionNote).toBeNull();
+    }
   });
 
   it("names a contrôle complémentaire by its code — the message of the plan", () => {
@@ -747,12 +765,10 @@ describe("validateReception — the laboratory's answers of 12/10", () => {
       );
     }
 
+    // Between 25 and 50 g: « à vérifier », a warning only since 28/10 (Q71, I7) —
+    // accepted without an observation, which stays possible.
     const small = { lines: [{ ...accepted, quantity: "40", receptionTemperature: "4" }, surface] };
-    expect(validateReception(small, mussels, thresholds, sameDay)).toMatchObject({
-      ok: false,
-      ref: "1",
-      error: "Échantillon 1 : justifiez l'acceptation (règle 8 à vérifier).",
-    });
+    expect(validateReception(small, mussels, thresholds, sameDay)).toMatchObject({ ok: true });
     const justifiedSmall = validateReception(
       { lines: [{ ...small.lines[0], receptionNote: "Petites moules : 14 individus comptés" }, surface] },
       mussels,

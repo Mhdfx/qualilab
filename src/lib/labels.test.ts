@@ -62,7 +62,7 @@ describe("the hands' states (16/10, Q109, Q110)", () => {
   it("offers the laboratory's three choices, in its order", () => {
     expect(HANDS_STATE_CHOICES).toEqual(["ASEPTISEES", "NON_LAVEES", "LAVEES"]);
     expect(HANDS_STATE_CHOICES.map((s) => HANDS_STATE_LABELS[s])).toEqual([
-      "Aseptisées ou désinfectées",
+      "Aseptisées / désinfectées",
       "En cours de travail",
       "Lavées",
     ]);
@@ -71,7 +71,7 @@ describe("the hands' states (16/10, Q109, Q110)", () => {
   it("prints its own phrases — an old « non lavées » reads « mains en cours de travail »", () => {
     expect(HANDS_STATE_PHRASES.NON_LAVEES).toBe("mains en cours de travail");
     expect(HANDS_STATE_PHRASES.LAVEES).toBe("mains lavées");
-    expect(HANDS_STATE_PHRASES.ASEPTISEES).toBe("mains aseptisées ou désinfectées");
+    expect(HANDS_STATE_PHRASES.ASEPTISEES).toBe("mains aseptisées / désinfectées");
     // Never the surface's words.
     expect(Object.values(HANDS_STATE_PHRASES)).not.toContain(SURFACE_STATE_PHRASES.EN_COURS_DE_TRAVAIL);
   });

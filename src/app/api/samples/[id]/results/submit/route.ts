@@ -50,6 +50,8 @@ type Outcome =
       anomalies: number;
       nonConformes: number;
       nonSatisfaisants: number;
+      /** Analyses carrying an internal note (2.20 (h), G2) — the parcours says it. */
+      notes: number;
     };
 
 export async function POST(
@@ -101,6 +103,7 @@ export async function POST(
         conform: true,
         interpretation: true,
         criterion: true,
+        note: true,
         // value null + detected null = a reading the engine could not parse.
         units: { select: { unitIndex: true, rawValue: true, value: true, detected: true } },
       },
@@ -177,6 +180,7 @@ export async function POST(
       anomalies: results.filter((r) => r.workStatus === "ANOMALIE").length,
       nonConformes: results.filter((r) => r.conform === false).length,
       nonSatisfaisants: results.filter((r) => r.interpretation === "NON_SATISFAISANT").length,
+      notes: results.filter((r) => r.workStatus !== "ANOMALIE" && (r.note ?? "").trim() !== "").length,
     };
   });
 
@@ -198,6 +202,7 @@ export async function POST(
       anomalies: outcome.anomalies,
       nonConformes: outcome.nonConformes,
       nonSatisfaisants: outcome.nonSatisfaisants,
+      notes: outcome.notes,
     },
   });
 

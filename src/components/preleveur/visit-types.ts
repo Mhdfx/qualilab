@@ -25,7 +25,7 @@ import {
   type LineFamily,
   type NatureRef,
 } from "@/lib/nature-family";
-import { SERIE_MESSAGES, SURFACE_AREA_DEFAULT_CM2 } from "@/lib/serie-input";
+import { SERIE_MESSAGES, SURFACE_AREA_DEFAULT_CM2, visitRequiresSamplingTemperature } from "@/lib/serie-input";
 
 /** Shapes shared by the visit screens (client side). No Prisma client here:
  * a server page imports `lineDesignation` from this module too. */
@@ -575,12 +575,14 @@ const SURFACE_AREA_NOTE_MAX = 191;
  * (RETOUR-LABO-06-10.md §5, V6). `requirePlace: false` at the counter, where
  * the place defaults to « Dépôt au laboratoire ». `requireAmbient: true` on
  * the préleveur's visit only (16/10, Q113): the T° ambiante, every type, the
- * air included — the counter keeps it optional.
+ * air included — the counter keeps it optional. `requireSamplingTemperature`
+ * on the visit too (28/10, I2): the T° au prélèvement of a food, a water or a
+ * surface (`visitRequiresSamplingTemperature`), as the API decides.
  */
 export function lineDraftError(
   line: LineDraft,
   natures: readonly NatureRef[],
-  options: { requirePlace?: boolean; requireAmbient?: boolean } = {}
+  options: { requirePlace?: boolean; requireAmbient?: boolean; requireSamplingTemperature?: boolean } = {}
 ): string | null {
   const families = lineFamilies(line);
   if (families.length === 0) return "Cochez au moins un domaine d'analyses (microbiologiques ou physico-chimiques).";
@@ -611,6 +613,13 @@ export function lineDraftError(
       if (exposure) return exposure;
       break;
     }
+  }
+  if (
+    options.requireSamplingTemperature &&
+    visitRequiresSamplingTemperature(line.lineKind) &&
+    !line.productTemperature.trim()
+  ) {
+    return SERIE_MESSAGES.productTemperatureMissing;
   }
   if (options.requireAmbient && !line.ambientTemperature.trim()) return SERIE_MESSAGES.ambientMissing;
   return null;

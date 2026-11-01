@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Family, LineKind } from "@/generated/prisma/enums";
+import { OBSERVATION_ONLY_DELAY_AND_TEMPERATURE } from "./lab-proposals";
 import {
   BIVALVE_MOLLUSC_WORDS,
   DEFAULT_THRESHOLDS,
@@ -15,6 +16,8 @@ import {
   proposedConformity,
   receptionChecklist,
   receptionRuleLine,
+  JUSTIFIED_ROW_KEYS,
+  rowNeedsJustification,
   rowToJustify,
   requestsHistamine,
   requestsSalmonella,
@@ -432,12 +435,12 @@ describe("checklistSummary", () => {
 
 describe("rowToJustify / justifyAcceptanceMessage — an accepted doubt is justified (A7)", () => {
   const rows = [
-    { n: 2, text: "poids minimal", status: "CONFORME" as const },
-    { n: 2, code: "C2", text: "température de transport", status: "A_VERIFIER" as const },
-    { n: 7, code: "C7", text: "DLC", status: "A_VERIFIER" as const },
+    { n: 2, key: "ALIMENT_MICRO" as const, text: "poids minimal", status: "A_VERIFIER" as const },
+    { n: 2, key: "TRANSPORT_TEMP" as const, code: "C2", text: "température de transport", status: "A_VERIFIER" as const },
+    { n: 7, key: "DLC" as const, code: "C7", text: "DLC", status: "A_VERIFIER" as const },
   ];
 
-  it("returns the first « à vérifier » row of a conform sample without observation", () => {
+  it("returns the first « à vérifier » row that matters of a conform sample without observation", () => {
     expect(rowToJustify(rows, true, "")).toBe(rows[1]);
     expect(rowToJustify(rows, true, "   ")).toBe(rows[1]);
     expect(rowToJustify(rows, true, null)).toBe(rows[1]);
@@ -445,10 +448,43 @@ describe("rowToJustify / justifyAcceptanceMessage — an accepted doubt is justi
     expect(justifyAcceptanceMessage(rows[0])).toBe("Justifiez l'acceptation (règle 2 à vérifier).");
   });
 
-  it("asks nothing once written, of a non-conform sample, or without doubt", () => {
+  it("asks nothing once written, of a non-conform sample, or without such a doubt", () => {
     expect(rowToJustify(rows, true, "Vu avec le responsable")).toBeNull();
     expect(rowToJustify(rows, false, "")).toBeNull();
-    expect(rowToJustify([rows[0]], true, "")).toBeNull();
+    expect(rowToJustify([{ ...rows[1], status: "CONFORME" as const }], true, "")).toBeNull();
+  });
+});
+
+describe("Q71 — the observation only for the temperature and the delay (28/10, I7)", () => {
+  const row = (key: ChecklistRow["key"], status: ChecklistRow["status"] = "A_VERIFIER") => ({ key, status });
+
+  it("the switch is ON: the temperature (rule 6, C2) and the delay (C1) only", () => {
+    expect(OBSERVATION_ONLY_DELAY_AND_TEMPERATURE).toBe(true);
+    expect([...JUSTIFIED_ROW_KEYS]).toEqual(["TEMPERATURE", "TRANSPORT_TEMP", "DELAI"]);
+    for (const key of JUSTIFIED_ROW_KEYS) expect(rowNeedsJustification(row(key)), key).toBe(true);
+  });
+
+  it("a quantity not weighed, the DLC (C7), the molluscs: warnings only", () => {
+    for (const key of ["ALIMENT_MICRO", "ALIMENT_CHIMIE", "EAU_MICRO", "EAU_CHIMIE", "HISTAMINE", "MOLLUSQUES", "DLC"] as const) {
+      expect(rowNeedsJustification(row(key)), key).toBe(false);
+    }
+    expect(rowToJustify([row("ALIMENT_MICRO"), row("DLC"), row("MOLLUSQUES")], true, "")).toBeNull();
+    // A temperature after them is still found.
+    expect(rowToJustify([row("DLC"), row("TEMPERATURE")], true, "")).toMatchObject({ key: "TEMPERATURE" });
+  });
+
+  it("only an « à vérifier » row; a row without its key is not justified while the switch is on", () => {
+    expect(rowNeedsJustification(row("TEMPERATURE", "CONFORME"))).toBe(false);
+    expect(rowNeedsJustification(row("DELAI", "SANS_OBJET"))).toBe(false);
+    expect(rowNeedsJustification({ status: "A_VERIFIER" })).toBe(false);
+  });
+
+  it("off: every « à vérifier » row needs the observation again (A7, before 01/11)", () => {
+    for (const key of ["ALIMENT_MICRO", "DLC", "MOLLUSQUES", "TEMPERATURE"] as const) {
+      expect(rowNeedsJustification(row(key), false), key).toBe(true);
+    }
+    expect(rowToJustify([row("DLC"), row("TEMPERATURE")], true, "", false)).toMatchObject({ key: "DLC" });
+    expect(rowNeedsJustification({ status: "A_VERIFIER" }, false)).toBe(true);
   });
 });
 
@@ -582,7 +618,9 @@ describe("rule (8) — live bivalve molluscs (note (8) of the bon version H, 12/
       detail: "Poids 40 g : au moins 50 g, 25 g pour les animaux de petite taille · au moins 10 individus : à vérifier",
     });
     expect(proposedConformity(rows)).toMatchObject({ conformity: true, forced: false, reason: "QUANTITE_INSUFFISANTE" });
-    expect(rowToJustify(rows, true, "")).toMatchObject({ n: 8 });
+    // A warning only since 28/10 (Q71, I7): nothing to justify; the old rule off the switch.
+    expect(rowToJustify(rows, true, "")).toBeNull();
+    expect(rowToJustify(rows, true, "", false)).toMatchObject({ n: 8 });
     expect(justifyAcceptanceMessage(row(rows, 8))).toBe("Justifiez l'acceptation (règle 8 à vérifier).");
     // The boundaries: 25 g is « à vérifier », 50 g conforme.
     expect(row(checklist(oysters({ quantity: 25 }), true, thresholds), 8).status).toBe("A_VERIFIER");

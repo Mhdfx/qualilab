@@ -1,6 +1,7 @@
 import type { SampleStatus } from "@/generated/prisma/enums";
 import type { Role } from "./roles";
 import { formatDecimal } from "./labels";
+import { COMMERCIAL_RESENDS_REPORTS } from "./lab-proposals";
 
 /**
  * The actions on an issued report that are not part of the double
@@ -11,12 +12,51 @@ import { formatDecimal } from "./labels";
  */
 
 /**
- * Who may send or resend a report: the gestionnaire commercial (the client
- * relationship is theirs), the validator, the Direction and the
- * administrator — exactly the guard of `POST /api/samples/[id]/report/send`
- * (checked by its test).
+ * Who sends a report to the client — the FIRST send of a version, sample by
+ * sample (« Envoyer au client ») or a whole série: the validator, the
+ * Direction and the administrator. The laboratory struck « le gestionnaire
+ * commercial » from the senders (re-ask 2.16 (b), answer of 28/10 —
+ * RETOUR-LABO-28-10.md K2). The guard of the série's send
+ * (`POST /api/series/[id]/reports/send`, its plan `GET …/reports`), checked
+ * by the tests.
  */
-export const RESEND_REPORT_ROLES = ["GESTIONNAIRE", "VALIDATEUR", "DIRECTION", "ADMIN"] as const satisfies readonly Role[];
+export const SEND_REPORT_ROLES = ["VALIDATEUR", "DIRECTION", "ADMIN"] as const satisfies readonly Role[];
+
+/**
+ * Who may reach `POST /api/samples/[id]/report/send` at all: the senders,
+ * plus the gestionnaire commercial for the RESEND of a version already sent
+ * (finalversion.md:116, V11) — kept by default until the re-ask R-13 (b)
+ * answers, behind `COMMERCIAL_RESENDS_REPORTS`. The route then decides with
+ * `reportSendRefusal` on the report it reads.
+ */
+export const RESEND_REPORT_ROLES = ["GESTIONNAIRE", ...SEND_REPORT_ROLES] as const satisfies readonly Role[];
+
+/** Whether this role sends a version never sent (`SEND_REPORT_ROLES`). */
+export function sendsReports(role: string): boolean {
+  return (SEND_REPORT_ROLES as readonly string[]).includes(role);
+}
+
+/**
+ * Why this role may not send this report now, or null when it may — the
+ * per-sample route's decision after its guard. The senders always may (the
+ * dispatch then checks the status, the amendment, the addresses); the
+ * gestionnaire commercial only resends the version in force once it has
+ * left (`reportVersionSent`), never while an amendment is pending (the
+ * send would issue and send the amended version: a first send), and not at
+ * all when `COMMERCIAL_RESENDS_REPORTS` is off.
+ */
+export function reportSendRefusal(
+  role: string,
+  report: { sentAt: Date | null; amendedAt: Date | null; amendmentPending: boolean } | null,
+  commercialResends: boolean = COMMERCIAL_RESENDS_REPORTS
+): string | null {
+  if (sendsReports(role)) return null;
+  if (role !== "GESTIONNAIRE" || !commercialResends) return "Votre profil n'est pas autorisé à envoyer les rapports.";
+  if (!report || report.amendmentPending || !reportVersionSent(report)) {
+    return "Le premier envoi d'un rapport revient au validateur, à la direction ou à l'administrateur ; le gestionnaire commercial le renvoie une fois parti.";
+  }
+  return null;
+}
 
 /**
  * Who may read an issued report — download, duplicata, older versions:
@@ -37,10 +77,20 @@ export const SENDABLE_STATUSES: readonly SampleStatus[] = ["VALIDE", "RAPPORT_EN
  * Whether « Envoyer / Renvoyer au client » is offered. Never while an
  * amendment is pending: the version in force is being replaced, and the
  * amended report is issued at the new administrative validation — to be
- * sent then.
+ * sent then. `sent` is `reportVersionSent` of the version in force: the
+ * gestionnaire commercial is offered « Renvoyer » only (28/10, K2 —
+ * `reportSendRefusal`, the route's own decision).
  */
-export function canResendReport(role: string, status: SampleStatus, amendmentPending: boolean): boolean {
-  return (RESEND_REPORT_ROLES as readonly string[]).includes(role) && SENDABLE_STATUSES.includes(status) && !amendmentPending;
+export function canResendReport(
+  role: string,
+  status: SampleStatus,
+  amendmentPending: boolean,
+  sent: boolean,
+  commercialResends: boolean = COMMERCIAL_RESENDS_REPORTS
+): boolean {
+  if (!SENDABLE_STATUSES.includes(status) || amendmentPending) return false;
+  if (sendsReports(role)) return true;
+  return role === "GESTIONNAIRE" && commercialResends && sent;
 }
 
 /**

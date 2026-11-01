@@ -501,9 +501,15 @@ export default async function ClientDetailPage({
                         >
                           {amendedNumber(sample.report.number, sample.report.version)}
                         </a>
-                        {/* The client relationship is the gestionnaire's: the
-                            report is resent from here (finalversion.md:116). */}
-                        {canResendReport(session.role, sample.status, sample.report.amendmentPending) && (
+                        {/* The client relationship is the gestionnaire's: a report
+                            already sent is resent from here (finalversion.md:116);
+                            its first send is the validation's (28/10, K2). */}
+                        {canResendReport(
+                          session.role,
+                          sample.status,
+                          sample.report.amendmentPending,
+                          reportVersionSent(sample.report)
+                        ) && (
                           <span className="px-2">
                             <ResendReportButton
                               compact

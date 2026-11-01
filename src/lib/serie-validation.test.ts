@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { SampleStatus } from "@/generated/prisma/enums";
 import { ROLES, type Role } from "./roles";
 import { SERIES_VALIDATION } from "./lab-proposals";
+import { SEND_REPORT_ROLES } from "./report-actions";
 import { approvalState, validationControls } from "./sample-status";
 import { sampleTimeline, type TimelineSample } from "./sample-timeline";
 import {
@@ -135,10 +136,20 @@ describe("serieActionRefusal — who may run each action at all (403 otherwise)"
     }
   });
 
-  it("the send: the roles of « Envoyer au client » (RESEND_REPORT_ROLES)", () => {
+  it("the send: the senders of a first report (SEND_REPORT_ROLES) — never the gestionnaire since 28/10 (K2)", () => {
     for (const role of ROLES) {
-      const allowed = ["GESTIONNAIRE", "VALIDATEUR", "DIRECTION", "ADMIN"].includes(role);
+      const allowed = ["VALIDATEUR", "DIRECTION", "ADMIN"].includes(role);
       expect(serieActionRefusal("send", role) === null, role).toBe(allowed);
+    }
+    expect(serieActionRefusal("send", "GESTIONNAIRE")).toBe("Votre profil n'est pas autorisé à envoyer les rapports.");
+  });
+
+  it("the série's send routes admit exactly SEND_REPORT_ROLES", () => {
+    for (const route of ["../app/api/series/[id]/reports/route.ts", "../app/api/series/[id]/reports/send/route.ts"]) {
+      const calls = [...source(route).matchAll(/requireApiRole\(([^)]*)\)/g)].map((m) =>
+        [...m[1].matchAll(/["']([A-Z_]+)["']/g)].map((r) => r[1]).sort()
+      );
+      expect(calls, route).toEqual([[...SEND_REPORT_ROLES].sort()]);
     }
   });
 });

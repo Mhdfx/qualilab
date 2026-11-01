@@ -10,7 +10,7 @@ import {
 } from "./sample-status";
 import { needsRegulation } from "./regulation";
 import { raisesContaminationAlert, type AlertCandidate } from "./contamination-alert";
-import { RESEND_REPORT_ROLES, reportVersionSent } from "./report-actions";
+import { SEND_REPORT_ROLES, reportVersionSent } from "./report-actions";
 import { amendedNumber } from "./report-amendment";
 import { labReference } from "./sample-select";
 import { sampleRef } from "./reception-input";
@@ -75,7 +75,7 @@ export function serieActionRefusal(action: SerieBatchAction, role: Role): string
       ? null
       : "Seule la direction ou un administrateur peut donner la validation administrative.";
   }
-  return (RESEND_REPORT_ROLES as readonly string[]).includes(role)
+  return (SEND_REPORT_ROLES as readonly string[]).includes(role)
     ? null
     : "Votre profil n'est pas autorisé à envoyer les rapports.";
 }

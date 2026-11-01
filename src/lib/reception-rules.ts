@@ -7,6 +7,7 @@ import type {
   TemperatureSource,
 } from "@/generated/prisma/enums";
 import { formatDecimal } from "./labels";
+import { OBSERVATION_ONLY_DELAY_AND_TEMPERATURE } from "./lab-proposals";
 import {
   DEFAULT_COMPLEMENTARY_THRESHOLDS,
   temperatureSourceSuffix,
@@ -790,19 +791,41 @@ export const RECEPTION_NOTE_MESSAGES = {
 } as const;
 
 /**
- * The row whose doubt an acceptance must justify (A7): a sample declared
- * conforme while a row is « à vérifier » — the paper's rules first, then the
- * contrôles complémentaires — needs an « Observation de réception ». Returns
- * the first such row when the observation is empty, null otherwise (a
- * non-conform sample, no doubt, or an observation written).
+ * The rows whose doubt the « Observation de réception » must justify since
+ * the answer of 28/10 to Q71 (lot 3A, I7): the temperature — rule (6) and
+ * C2 — and the delay, C1. Any other « à vérifier » row (a quantity not
+ * weighed, the DLC C7, the molluscs between the two minimums) is a warning
+ * only.
  */
-export function rowToJustify<Row extends Pick<ChecklistRow, "status">>(
+export const JUSTIFIED_ROW_KEYS: readonly (ReceptionRuleKey | ComplementaryKey)[] = ["TEMPERATURE", "TRANSPORT_TEMP", "DELAI"];
+
+/** Whether an accepted « à vérifier » on this row needs the observation (I7, switch `OBSERVATION_ONLY_DELAY_AND_TEMPERATURE`). */
+export function rowNeedsJustification(
+  row: Pick<ChecklistRow, "status"> & { key?: ChecklistRow["key"] },
+  onlyDelayAndTemperature: boolean = OBSERVATION_ONLY_DELAY_AND_TEMPERATURE
+): boolean {
+  if (row.status !== "A_VERIFIER") return false;
+  if (!onlyDelayAndTemperature) return true;
+  return row.key !== undefined && JUSTIFIED_ROW_KEYS.includes(row.key);
+}
+
+/**
+ * The row whose doubt an acceptance must justify (A7): a sample declared
+ * conforme while a row that matters is « à vérifier » (`rowNeedsJustification`
+ * — since 28/10, Q71, the temperature and the delay only) — the paper's
+ * rules first, then the contrôles complémentaires — needs an « Observation
+ * de réception ». Returns the first such row when the observation is empty,
+ * null otherwise (a non-conform sample, no such doubt, or an observation
+ * written).
+ */
+export function rowToJustify<Row extends Pick<ChecklistRow, "status"> & { key?: ChecklistRow["key"] }>(
   rows: readonly Row[],
   conformity: boolean,
-  receptionNote: string | null | undefined
+  receptionNote: string | null | undefined,
+  onlyDelayAndTemperature: boolean = OBSERVATION_ONLY_DELAY_AND_TEMPERATURE
 ): Row | null {
   if (!conformity || (receptionNote ?? "").trim()) return null;
-  return rows.find((row) => row.status === "A_VERIFIER") ?? null;
+  return rows.find((row) => rowNeedsJustification(row, onlyDelayAndTemperature)) ?? null;
 }
 
 /**

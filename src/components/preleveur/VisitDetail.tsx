@@ -24,6 +24,8 @@ import {
   surfaceAreaText,
 } from "@/lib/labels";
 import { SERIE_STATUS_LABELS, type SerieProgress, type SerieStatus } from "@/lib/series";
+import { startIsDeclared } from "@/lib/serie-input";
+import { UNDECLARED_SAMPLING } from "@/lib/sample-search";
 import type { LineFamily } from "@/lib/nature-family";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -81,6 +83,8 @@ export type VisitData = {
   receivedAt: string | null;
   clientReference: string | null;
   startedAt: string;
+  /** false: « Prélevé le » left empty — `startedAt` is a stand-in, shown « Non déclarée » (28/10, I3). */
+  samplingTimeDeclared?: boolean | null;
   endedAt: string | null;
   arrivedAt: string | null;
   coolerTemperature: number | null;
@@ -286,7 +290,9 @@ export function VisitDetail({ visit: initial }: { visit: VisitData }) {
               <Info label="Cadre">{formatCadre(visit.cadre, visit.cadreNote)}</Info>
               <Info label="Interlocuteur">{visit.interlocutor ?? "—"}</Info>
               <Info label="Référence client">{visit.clientReference ?? "—"}</Info>
-              <Info label="Début">{formatDateTime(visit.startedAt)}</Info>
+              <Info label="Début">
+                {startIsDeclared(visit.samplingTimeDeclared) ? formatDateTime(visit.startedAt) : UNDECLARED_SAMPLING}
+              </Info>
               <Info label="Fin">{visit.endedAt ? formatDateTime(visit.endedAt) : "—"}</Info>
               <Info label="Arrivée au laboratoire">{visit.arrivedAt ? formatDateTime(visit.arrivedAt) : "—"}</Info>
               <Info label="T° à l'arrivée">

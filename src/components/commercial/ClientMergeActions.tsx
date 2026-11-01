@@ -35,7 +35,7 @@ export function ClientMergeActions({
 }: {
   clientId: string;
   clientName: string;
-  /** « Rattacher comme site de… » is offered (the administrator). */
+  /** « Rattacher comme site de… » is offered (`canAttachAsSite`: the gestionnaire commercial and the administrator). */
   canAttach: boolean;
 }) {
   const router = useRouter();

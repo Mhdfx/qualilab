@@ -29,7 +29,7 @@ import { reportMethod, reportTechnicianNames } from "./report-programme";
 import type { Prisma } from "@/generated/prisma/client";
 import type { Interpretation } from "@/generated/prisma/enums";
 import { CONTENTION_CODES, retryOnDuplicate } from "./retry-unique";
-import { sampleDesignation } from "./document-html";
+import { reportDesignation, sampleDesignation } from "./document-html";
 import { REOPENED_SAMPLE_FIELDS, amendmentIssueRefusal, canTransition } from "./sample-status";
 import { REOPENED_STATUS, amendedNumber, reopenRefusal, reopensReports } from "./report-amendment";
 import type { Role } from "./roles";
@@ -94,6 +94,8 @@ const REPORT_SAMPLE_SELECT = {
     },
   },
   ...DESIGNATION_SELECT,
+  // The state of the hands, printed after the name — on the report only (K1).
+  handsState: true,
   numeroLot: true,
   lieu: true,
   type: true,
@@ -207,7 +209,10 @@ function toReportData(
     serialNumber: sample.serie.serialNumber,
     client: sample.client,
     siteName: sample.serie.site?.name ?? null,
-    produit: sampleDesignation(sample),
+    // « Personne — mains lavées » on a version issued from now on (28/10,
+    // 2.1 — K1); a report issued before and rendered from the live data
+    // (no `layout`) prints as it did.
+    produit: aligned ? reportDesignation(sample) : sampleDesignation(sample),
     lineKind: sample.lineKind,
     numeroLot: sample.numeroLot,
     lieu: sample.lieu,
@@ -237,7 +242,13 @@ function toReportData(
       unit: result.unit,
       threshold: result.threshold,
       conform: result.conform,
-      note: result.note,
+      // The note of an analysis is INTERNAL since 28/10 (2.20 (h), G2): the
+      // bench and the validator read it, a version issued from now on (the
+      // aligned layout) never prints it — what is for the client goes in the
+      // conclusion. A version issued before keeps its frozen note
+      // (`Report.data`), and a report issued before lot 1b, rendered from
+      // the live data (no `layout`), prints it as it did — the gate of K1.
+      note: aligned ? null : result.note,
       interpretation: result.interpretation,
       // « Méthode » (PROGRAMME.md §6): the programmed version, else the one
       // the result was read under (the criterion's), else the parameter's.

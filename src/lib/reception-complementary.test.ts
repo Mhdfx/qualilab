@@ -13,6 +13,7 @@ import {
   labDayOf,
   parseChoice,
   STABLE_FOOD_STORAGE_LABEL,
+  UNDECLARED_DELAY_DETAIL,
   STORAGE_CLASSES,
   TEMPERATURE_SOURCES,
   serieDelayMinutes,
@@ -109,12 +110,11 @@ describe("C1 — délai prélèvement → laboratoire", () => {
     expect(byCode(rows({}, {}, { arrivedAt: null, receivedAt: null }), "C1")).toMatchObject({ status: "SANS_OBJET", rules: [] });
   });
 
-  it("says « heure de prélèvement non déclarée » for a deposit without its sampling time", () => {
-    expect(byCode(rows({}, {}, { samplingTimeDeclared: false }), "C1")).toMatchObject({
-      status: "A_VERIFIER",
-      reason: "DELAI",
-      detail: "Heure de prélèvement non déclarée",
-    });
+  it("a série whose sampling time was not declared: « délai non évaluable », nothing to justify (28/10, I3 — switch ON)", () => {
+    const c1 = byCode(rows({}, {}, { samplingTimeDeclared: false }), "C1");
+    expect(c1).toMatchObject({ status: "SANS_OBJET", detail: UNDECLARED_DELAY_DETAIL, rules: [] });
+    expect(c1.reason).toBeUndefined();
+    expect(UNDECLARED_DELAY_DETAIL).toBe("Délai non évaluable : heure de prélèvement non déclarée");
   });
 
   it("reads the limit of the family: physico-chemistry without a limit is « sans objet »", () => {

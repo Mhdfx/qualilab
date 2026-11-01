@@ -16,11 +16,12 @@ import type { Role } from "@/lib/roles";
 export const MERGE_ROLES = ["GESTIONNAIRE", "ADMIN"] as const satisfies readonly Role[];
 
 /**
- * Who attaches a fiche as a site of another client: still the administrator
- * alone, until the laboratory confirms it for the gestionnaire too (re-ask
- * 2.5 of 18/10). The guard of `POST /api/clients/[id]/attach-as-site`.
+ * Who attaches a fiche as a site of another client: the gestionnaire
+ * commercial and the administrator, as for the merge — the laboratory's
+ * « Oui » to the re-ask 2.5 of 18/10 (28/10, RETOUR-LABO-28-10.md I5). The
+ * guard of `POST /api/clients/[id]/attach-as-site`.
  */
-export const ATTACH_ROLES = ["ADMIN"] as const satisfies readonly Role[];
+export const ATTACH_ROLES = ["GESTIONNAIRE", "ADMIN"] as const satisfies readonly Role[];
 
 /** « Fusionner avec… » on the client fiche. */
 export function canMergeClients(role: Role): boolean {

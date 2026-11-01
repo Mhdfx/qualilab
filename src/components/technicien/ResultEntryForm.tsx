@@ -20,6 +20,7 @@ import { repetitionLabel } from "@/lib/series";
 import { formatDecimal } from "@/lib/labels";
 import { lostSampleHolder } from "@/lib/take-over";
 import { SHEET_SAVED_BY_COLLEAGUE, followServer, overlapNotice } from "@/lib/take-over-sheet";
+import { INTERNAL_NOTE_HINT, INTERNAL_NOTE_LABEL, showsNoteField } from "@/lib/result-note";
 import type { ResultWorkStatus } from "@/generated/prisma/enums";
 
 export type ParameterLine = {
@@ -160,6 +161,8 @@ export function ResultEntryForm({
 }: ResultEntryFormProps) {
   const router = useRouter();
   const [lines, setLines] = useState<ParameterLine[]>(initialLines);
+  // « Ajouter une note » opened on these analyses (2.20 (h), G2).
+  const [notesOpened, setNotesOpened] = useState<ReadonlySet<string>>(() => new Set());
   const [busy, setBusy] = useState<"save" | "submit" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -582,7 +585,7 @@ export function ResultEntryForm({
                   />
                 )}
 
-                {(line.workStatus === "ANOMALIE" || line.note) && (
+                {showsNoteField(line, notesOpened.has(line.parameterId)) ? (
                   <div className="mt-3">
                     <label
                       htmlFor={`note-${line.parameterId}`}
@@ -594,18 +597,34 @@ export function ResultEntryForm({
                           <span className="text-rose-600">*</span>
                         </>
                       ) : (
-                        "Note"
+                        INTERNAL_NOTE_LABEL
                       )}
                     </label>
                     <textarea
                       id={`note-${line.parameterId}`}
                       value={line.note}
                       onChange={(e) => update(index, { note: e.target.value })}
+                      // Emptying a note being written keeps its field open.
+                      onFocus={() => setNotesOpened((opened) => new Set(opened).add(line.parameterId))}
                       disabled={locked}
                       rows={2}
+                      aria-describedby={`note-hint-${line.parameterId}`}
                       className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50"
                     />
+                    <p id={`note-hint-${line.parameterId}`} className="mt-1 text-xs text-slate-500">
+                      {INTERNAL_NOTE_HINT}
+                    </p>
                   </div>
+                ) : (
+                  !locked && (
+                    <button
+                      type="button"
+                      onClick={() => setNotesOpened((opened) => new Set(opened).add(line.parameterId))}
+                      className="mt-3 inline-flex min-h-[44px] items-center rounded-lg px-2 text-xs font-medium text-brand transition hover:bg-brand-light focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                    >
+                      + Ajouter une note
+                    </button>
+                  )
                 )}
               </li>
             );

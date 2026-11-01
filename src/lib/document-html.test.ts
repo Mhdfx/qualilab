@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { pageCss } from "./cartouche-html";
 import { COMPANY } from "./company";
@@ -12,6 +14,7 @@ import {
   protocolFooterLines,
   protocolHandsDesignation,
   protocolRows,
+  reportDesignation,
   sampleDesignation,
   surfaceText,
   type DocumentLine,
@@ -524,6 +527,39 @@ describe("surfaceText — the surface's « Autre » and the plate's duration (16
   });
 });
 
+describe("reportDesignation — the state of the hands after the name, on the report only (2.1, 28/10 — K1)", () => {
+  it("prints « Nom — mains <état> » on a hands line", () => {
+    expect(reportDesignation({ lineKind: "MAINS", personName: "Personne Test", handsState: "LAVEES" })).toBe(
+      "Personne Test — mains lavées"
+    );
+    expect(reportDesignation({ lineKind: "MAINS", personName: "Personne Test", handsState: "ASEPTISEES" })).toBe(
+      "Personne Test — mains aseptisées / désinfectées"
+    );
+    expect(reportDesignation({ lineKind: "MAINS", personName: "Personne Test", handsState: "NON_LAVEES" })).toBe(
+      "Personne Test — mains en cours de travail"
+    );
+    // A nameless old row still says what it is.
+    expect(reportDesignation({ lineKind: "MAINS", personName: null, handsState: "LAVEES" })).toBe("Mains lavées");
+  });
+
+  it("a hands line without a state, and every other line, read as sampleDesignation", () => {
+    expect(reportDesignation({ lineKind: "MAINS", personName: "Personne Test", handsState: null })).toBe("Personne Test");
+    const surface = { lineKind: "SURFACE" as const, surfaceLabel: "Planche verte", surfaceState: "NETTOYE" as const };
+    expect(reportDesignation({ ...surface, handsState: "LAVEES" })).toBe(sampleDesignation(surface));
+    expect(reportDesignation({ lineKind: "ALIMENT", produit: "Poulet rôti" })).toBe("Poulet rôti");
+  });
+
+  it("only the report's new versions print it: the e-mail, the alert, the label, the bench and the portal keep sampleDesignation", () => {
+    const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+    const dispatch = read("./report-dispatch.ts");
+    expect(dispatch.match(/reportDesignation\(/g)).toHaveLength(1);
+    expect(dispatch).toMatch(/produit: aligned \? reportDesignation\(sample\) : sampleDesignation\(sample\),/);
+    for (const file of ["./portal-query.ts", "./destruction-notice.ts", "./not-received-notice.ts", "../app/api/bench-sheet/route.ts", "../app/api/series/[id]/labels/route.ts"]) {
+      expect(read(file), file).not.toMatch(/reportDesignation/);
+    }
+  });
+});
+
 describe("protocolHandsDesignation — the hands on the protocole and the bon (16/10, Q109)", () => {
   it("prints the hands' own phrases: an old « non lavées » reads « mains en cours de travail »", () => {
     expect(protocolHandsDesignation({ personName: "Personne Test", handsState: "NON_LAVEES" })).toBe(
@@ -531,7 +567,7 @@ describe("protocolHandsDesignation — the hands on the protocole and the bon (1
     );
     expect(protocolHandsDesignation({ personName: "Personne Test", handsState: "LAVEES" })).toBe("Personne Test (mains lavées)");
     expect(protocolHandsDesignation({ personName: "Personne Test", handsState: "ASEPTISEES" })).toBe(
-      "Personne Test (mains aseptisées ou désinfectées)"
+      "Personne Test (mains aseptisées / désinfectées)"
     );
   });
 
@@ -737,5 +773,34 @@ describe("the laboratory's answers of 12/10 — protocole PG04/EN01 version G", 
   it("keeps room for the three footer lines in the protocol's page box", () => {
     expect(PROTOCOL_MARGIN.bottom).toBe("20mm");
     expect(buildProtocolHtml(visit)).toContain(pageCss(PROTOCOL_MARGIN));
+  });
+});
+
+describe("buildProtocolHtml — « Prélevé le » left empty (28/10, I3)", () => {
+  const declared = buildProtocolHtml(base);
+  const printedStart = /Prélevé le :<\/span> <b>([^<]*)<\/b>/;
+
+  it("prints « Non déclarée », never the stand-in (the save instant or the arrival)", () => {
+    const undeclared = buildProtocolHtml({ ...base, samplingTimeDeclared: false, endedAt: null });
+    expect(undeclared.match(printedStart)?.[1]).toBe("Non déclarée");
+  });
+
+  it("keeps the typed end beside it", () => {
+    const html = buildProtocolHtml({ ...base, samplingTimeDeclared: false });
+    expect(html).toMatch(/Prélevé le :<\/span> <b>Non déclarée<\/b> <span class="small">— fin /);
+  });
+
+  it("a declared start (true, null, absent) prints as before", () => {
+    const before = declared.match(printedStart)?.[1];
+    expect(before).toMatch(/\d/);
+    for (const samplingTimeDeclared of [true, null]) {
+      expect(buildProtocolHtml({ ...base, samplingTimeDeclared }).match(printedStart)?.[1], String(samplingTimeDeclared)).toBe(before);
+    }
+  });
+
+  it("the document route selects and passes the flag", () => {
+    const route = readFileSync(fileURLToPath(new URL("../app/api/series/[id]/document/route.ts", import.meta.url)), "utf8");
+    expect(route).toContain("samplingTimeDeclared: true,");
+    expect(route).toContain("samplingTimeDeclared: serie.samplingTimeDeclared,");
   });
 });

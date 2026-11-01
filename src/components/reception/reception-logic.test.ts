@@ -1,12 +1,17 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_THRESHOLDS, type ChecklistRow } from "@/lib/reception-rules";
 import {
+  allExploitableLabel,
   allExploitableNotice,
   answerAllExploitable,
   countLabel,
   depositLineChecklist,
   depositSampleQuantity,
   errorConcernsSample,
+  decisionChosen,
+  exploitableAnswer,
   familiesSummary,
   lineSampleRefs,
   coolerOutOfRange,
@@ -95,7 +100,7 @@ describe("receptionDesignation", () => {
       "Personne Test · mains en cours de travail"
     );
     expect(receptionDesignation({ ...base, lineKind: "MAINS", personName: "Personne Test", handsState: "ASEPTISEES" })).toBe(
-      "Personne Test · mains aseptisées ou désinfectées"
+      "Personne Test · mains aseptisées / désinfectées"
     );
   });
 
@@ -170,29 +175,38 @@ describe("missingFamilies", () => {
   });
 });
 
-describe("« Tous exploitables » (16/10, Q64)", () => {
-  const card = (id: string, exploitable: boolean | null) => ({ id, exploitable, reason: exploitable === false ? "NON_EXPLOITABLE" : "" });
+describe("« Tous exploitables et bien identifiés » (16/10, Q64; 28/10, 2.7 — I4)", () => {
+  const card = (id: string, exploitable: boolean | null, identificationOk: boolean | null = null) => ({
+    id,
+    exploitable,
+    identificationOk,
+    reason: exploitable === false ? "NON_EXPLOITABLE" : identificationOk === false ? "IDENTIFICATION" : "",
+  });
 
-  it("answers « Exploitable » on the unanswered samples only, and counts them", () => {
-    const lines = [card("a", null), card("b", true), card("c", null), card("d", false)];
+  it("answers « Exploitable » and « identification correcte » where unanswered only, and counts the samples", () => {
+    const lines = [card("a", null), card("b", true, true), card("c", null, false), card("d", false), card("e", true, null)];
     const { lines: answered, count } = answerAllExploitable(lines);
-    expect(count).toBe(2);
-    expect(answered.map((line) => [line.id, line.exploitable])).toEqual([
-      ["a", true],
-      ["b", true],
-      ["c", true],
-      ["d", false],
+    expect(count).toBe(4);
+    expect(answered.map((line) => [line.id, line.exploitable, line.identificationOk])).toEqual([
+      ["a", true, true],
+      ["b", true, true],
+      // An identification « Non » keeps its answer and its motif.
+      ["c", true, false],
+      // An explicit « Non exploitable » keeps its answer and its motif; its identification is answered.
+      ["d", false, true],
+      ["e", true, true],
     ]);
-    // An explicit « Non exploitable » keeps its answer and its motif.
-    expect(answered[3]).toBe(lines[3]);
+    expect(answered[1]).toBe(lines[1]);
+    expect(answered[2].reason).toBe("IDENTIFICATION");
     expect(answered[3].reason).toBe("NON_EXPLOITABLE");
     // The other fields travel unchanged; the input is not touched.
-    expect(answered[0]).toEqual({ id: "a", exploitable: true, reason: "" });
+    expect(answered[0]).toEqual({ id: "a", exploitable: true, identificationOk: true, reason: "" });
     expect(lines[0].exploitable).toBeNull();
+    expect(lines[0].identificationOk).toBeNull();
   });
 
   it("does nothing once every sample is answered", () => {
-    const lines = [card("a", true), card("b", false)];
+    const lines = [card("a", true, true), card("b", false, false)];
     const { lines: answered, count } = answerAllExploitable(lines);
     expect(count).toBe(0);
     expect(answered).toEqual(lines);
@@ -200,10 +214,79 @@ describe("« Tous exploitables » (16/10, Q64)", () => {
     expect(answerAllExploitable([]).count).toBe(0);
   });
 
-  it("gives the button's N and the confirmation read out", () => {
-    expect(unansweredExploitableCount([card("a", null), card("b", true), card("c", null)])).toBe(2);
-    expect(allExploitableNotice(1)).toBe("1 échantillon marqué exploitable — modifiable sur chaque échantillon");
-    expect(allExploitableNotice(4)).toBe("4 échantillons marqués exploitables — modifiable sur chaque échantillon");
+  it("gives the button's N, its label and the confirmation read out", () => {
+    expect(unansweredExploitableCount([card("a", null), card("b", true, true), card("c", true, null)])).toBe(2);
+    expect(allExploitableLabel(3)).toBe("Tous exploitables et bien identifiés (3)");
+    expect(allExploitableNotice(1)).toBe("1 échantillon marqué exploitable et bien identifié — modifiable sur chaque échantillon");
+    expect(allExploitableNotice(4)).toBe("4 échantillons marqués exploitables et bien identifiés — modifiable sur chaque échantillon");
+  });
+
+  it("« Non exploitable » preselects « Détruire », still changeable; « Exploitable » again goes back to « Analyser »", () => {
+    expect(exploitableAnswer({ reason: "", decision: "ANALYSER" }, false)).toEqual({
+      exploitable: false,
+      reason: "NON_EXPLOITABLE",
+      decision: "DETRUIRE",
+      destroyPreselected: true,
+    });
+    // A decision chosen otherwise stays.
+    expect(exploitableAnswer({ reason: "TEMPERATURE", decision: "EN_ATTENTE_CLIENT" }, false)).toMatchObject({
+      reason: "NON_EXPLOITABLE",
+      decision: "EN_ATTENTE_CLIENT",
+      destroyPreselected: false,
+    });
+    expect(exploitableAnswer({ reason: "NON_EXPLOITABLE", decision: "DETRUIRE", destroyPreselected: true }, true)).toEqual({
+      exploitable: true,
+      reason: "",
+      decision: "ANALYSER",
+      destroyPreselected: false,
+    });
+    // Another motif chosen by hand stays when the sample is exploitable.
+    expect(exploitableAnswer({ reason: "TEMPERATURE", decision: "EN_ATTENTE_CLIENT" }, true)).toEqual({
+      exploitable: true,
+      reason: "TEMPERATURE",
+      decision: "EN_ATTENTE_CLIENT",
+      destroyPreselected: false,
+    });
+  });
+
+  it("a « Détruire » chosen by hand survives « Non exploitable » then « Exploitable » (I4)", () => {
+    type Card = { reason: string; decision: string; destroyPreselected?: boolean };
+    const apply = (card: Card, patch: Partial<Card>): Card => ({ ...card, ...patch });
+    // Identification « Non », then « Détruire » chosen by hand.
+    let card: Card = { reason: "IDENTIFICATION", decision: "ANALYSER" };
+    card = apply(card, decisionChosen("DETRUIRE"));
+    // « Non exploitable », then back to « Exploitable »: still « Détruire ».
+    card = apply(card, exploitableAnswer(card, false));
+    expect(card).toMatchObject({ decision: "DETRUIRE", destroyPreselected: false });
+    card = apply(card, exploitableAnswer(card, true));
+    expect(card.decision).toBe("DETRUIRE");
+    // A preselection then changed by hand, and chosen « Détruire » again: the hand's.
+    let other: Card = { reason: "", decision: "ANALYSER" };
+    other = apply(other, exploitableAnswer(other, false));
+    expect(other).toMatchObject({ decision: "DETRUIRE", destroyPreselected: true });
+    other = apply(other, decisionChosen("EN_ATTENTE_CLIENT"));
+    other = apply(other, decisionChosen("DETRUIRE"));
+    other = apply(other, exploitableAnswer(other, true));
+    expect(other.decision).toBe("DETRUIRE");
+    // « Non exploitable » twice keeps its own preselection.
+    let twice: Card = { reason: "", decision: "ANALYSER" };
+    twice = apply(twice, exploitableAnswer(twice, false));
+    twice = apply(twice, exploitableAnswer(twice, false));
+    twice = apply(twice, exploitableAnswer(twice, true));
+    expect(twice.decision).toBe("ANALYSER");
+  });
+
+  it("both forms change the decision by hand through decisionChosen", () => {
+    const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+    expect(read("./SerieReceptionForm.tsx")).toContain("updateLine(line.sampleId, decisionChosen(decision))");
+    expect(read("./DepositForm.tsx")).toContain("updateIntake(line.key, decisionChosen(chosen))");
+  });
+
+  it("both forms answer rule (1) through exploitableAnswer, and the bar reads allExploitableLabel", () => {
+    const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+    expect(read("./SerieReceptionForm.tsx")).toMatch(/updateLine\(line\.sampleId, exploitableAnswer\(line, exploitable\)\)/);
+    expect(read("./DepositForm.tsx")).toMatch(/updateIntake\(key, exploitableAnswer\(intakeOf\(key\), exploitable\)\)/);
+    expect(read("./reception-widgets.tsx")).toMatch(/\{allExploitableLabel\(count\)\}/);
   });
 });
 
@@ -368,15 +451,16 @@ describe("depositLineChecklist — the eight rules of a deposit line", () => {
     // « Prélevé le » still empty (neither typed nor « inconnue »): the delay waits.
     const waiting = depositLineChecklist({ ...food, families: ["MICRO"], quantity: 500, serie: { ...typed, startedAt: null } }, DEFAULT_THRESHOLDS);
     expect(coded(waiting.rows, "C1")).toMatchObject({ status: "SANS_OBJET", detail: "Délai non calculé", rules: [] });
-    // « Heure de prélèvement inconnue du client »: the sampling is the arrival, « non déclarée ».
+    // « Prélevé le » left empty by the client (28/10, I3): the sampling is the
+    // arrival, « non déclarée » — the delay is not evaluable.
     const unknown = depositLineChecklist(
       { ...food, families: ["MICRO"], quantity: 500, serie: { ...typed, startedAt: typed.arrivedAt, samplingTimeDeclared: false } },
       DEFAULT_THRESHOLDS
     );
-    expect(coded(unknown.rows, "C1")).toMatchObject({ status: "A_VERIFIER", reason: "DELAI", detail: "Heure de prélèvement non déclarée" });
+    expect(coded(unknown.rows, "C1")).toMatchObject({ status: "SANS_OBJET", detail: "Délai non évaluable : heure de prélèvement non déclarée" });
   });
 
-  it("computes C1 per family: an undeclared sampling time is « à vérifier », chemistry without a limit is « sans objet »", () => {
+  it("computes C1 per family: an undeclared sampling time is « non évaluable », chemistry without a limit is « sans objet »", () => {
     const declared = depositLineChecklist({ ...food, families: ["MICRO", "CHIMIE"], quantity: 500 }, DEFAULT_THRESHOLDS);
     expect(coded(declared.rows, "C1")).toMatchObject({
       status: "CONFORME",
@@ -388,8 +472,8 @@ describe("depositLineChecklist — the eight rules of a deposit line", () => {
       { ...food, families: ["MICRO"], quantity: 500, serie: { ...food.serie, samplingTimeDeclared: false } },
       DEFAULT_THRESHOLDS
     );
-    expect(coded(undeclared.rows, "C1")).toMatchObject({ status: "A_VERIFIER", reason: "DELAI", detail: "Heure de prélèvement non déclarée" });
-    expect(undeclared.proposal).toMatchObject({ conformity: true, forced: false, reason: "DELAI" });
+    expect(coded(undeclared.rows, "C1")).toMatchObject({ status: "SANS_OBJET", detail: "Délai non évaluable : heure de prélèvement non déclarée" });
+    expect(undeclared.proposal).toMatchObject({ conformity: true, forced: false, reason: null });
     // Before the screen's clock, nothing is computed.
     expect(coded(depositLineChecklist({ ...food, families: ["MICRO"], quantity: 500, serie: null }, DEFAULT_THRESHOLDS).rows, "C1")).toMatchObject({
       status: "SANS_OBJET",

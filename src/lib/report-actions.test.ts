@@ -6,10 +6,13 @@ import {
   CONCLUSION_MAX_LENGTH,
   REPORT_READ_ROLES,
   RESEND_REPORT_ROLES,
+  SEND_REPORT_ROLES,
   approvalDispatch,
   canEditConclusion,
   canReadReports,
   canResendReport,
+  reportSendRefusal,
+  sendsReports,
   readConclusionEdit,
   reportVersionSent,
   resendOutcome,
@@ -42,34 +45,80 @@ function handler(text: string, method: string): string {
   return next < 0 ? text.slice(start) : text.slice(start, start + 1 + next);
 }
 
-describe("« Renvoyer au client »", () => {
-  it("is offered to the gestionnaire, the validator, the Direction and the administrator on an approved report", () => {
+describe("« Envoyer / Renvoyer au client » (2.16 (b), answer of 28/10 — K2)", () => {
+  it("the validator, the Direction and the administrator send; the gestionnaire is struck from the senders", () => {
+    expect([...SEND_REPORT_ROLES]).toEqual(["VALIDATEUR", "DIRECTION", "ADMIN"]);
     expect([...RESEND_REPORT_ROLES]).toEqual(["GESTIONNAIRE", "VALIDATEUR", "DIRECTION", "ADMIN"]);
-    for (const role of ["GESTIONNAIRE", "VALIDATEUR", "DIRECTION", "ADMIN"]) {
-      expect(canResendReport(role, "VALIDE", false), role).toBe(true);
-      expect(canResendReport(role, "RAPPORT_ENVOYE", false), role).toBe(true);
+    for (const role of SEND_REPORT_ROLES) {
+      expect(sendsReports(role), role).toBe(true);
+      // First send and resend alike.
+      expect(canResendReport(role, "VALIDE", false, false), role).toBe(true);
+      expect(canResendReport(role, "RAPPORT_ENVOYE", false, true), role).toBe(true);
     }
+    expect(sendsReports("GESTIONNAIRE")).toBe(false);
+  });
+
+  it("the gestionnaire commercial is offered « Renvoyer » only, once this version has left (switch COMMERCIAL_RESENDS_REPORTS)", () => {
+    expect(canResendReport("GESTIONNAIRE", "VALIDE", false, false)).toBe(false);
+    expect(canResendReport("GESTIONNAIRE", "RAPPORT_ENVOYE", false, false)).toBe(false);
+    expect(canResendReport("GESTIONNAIRE", "RAPPORT_ENVOYE", false, true)).toBe(true);
+    // Switch off: no resend either.
+    expect(canResendReport("GESTIONNAIRE", "RAPPORT_ENVOYE", false, true, false)).toBe(false);
   });
 
   it("is refused to every other role", () => {
     for (const role of ROLES.filter((r) => !(RESEND_REPORT_ROLES as readonly string[]).includes(r))) {
-      expect(canResendReport(role, "RAPPORT_ENVOYE", false), role).toBe(false);
+      expect(canResendReport(role, "RAPPORT_ENVOYE", false, true), role).toBe(false);
+      expect(reportSendRefusal(role, { sentAt: new Date(), amendedAt: null, amendmentPending: false }), role).not.toBeNull();
     }
-    expect(canResendReport("COMPTABLE", "VALIDE", false)).toBe(false);
+    expect(canResendReport("COMPTABLE", "VALIDE", false, false)).toBe(false);
   });
 
   it("waits for both signatures and is hidden while an amendment is pending", () => {
     for (const status of ["PRELEVE", "RECU", "EN_ANALYSE", "RESULTATS_SAISIS", "ANNULE"] as const) {
-      expect(canResendReport("ADMIN", status, false), status).toBe(false);
+      expect(canResendReport("ADMIN", status, false, false), status).toBe(false);
     }
-    expect(canResendReport("GESTIONNAIRE", "RAPPORT_ENVOYE", true)).toBe(false);
+    expect(canResendReport("GESTIONNAIRE", "RAPPORT_ENVOYE", true, true)).toBe(false);
+    expect(canResendReport("ADMIN", "RAPPORT_ENVOYE", true, true)).toBe(false);
   });
 
-  it("matches the guard of POST /api/samples/[id]/report/send (GESTIONNAIRE 200, COMPTABLE 403)", () => {
-    const calls = guardedRoles(source("../app/api/samples/[id]/report/send/route.ts"));
+  it("reportSendRefusal — the route's decision on the report it reads", () => {
+    const sentOn = new Date("2026-10-20T10:00:00Z");
+    const sent = { sentAt: sentOn, amendedAt: null, amendmentPending: false };
+    const never = { sentAt: null, amendedAt: null, amendmentPending: false };
+    // The senders: always (the dispatch checks the rest).
+    for (const role of SEND_REPORT_ROLES) {
+      expect(reportSendRefusal(role, never), role).toBeNull();
+      expect(reportSendRefusal(role, null), role).toBeNull();
+    }
+    // The gestionnaire: a version already sent only.
+    expect(reportSendRefusal("GESTIONNAIRE", sent)).toBeNull();
+    expect(reportSendRefusal("GESTIONNAIRE", never)).toMatch(/^Le premier envoi d'un rapport revient au validateur/);
+    expect(reportSendRefusal("GESTIONNAIRE", null)).not.toBeNull();
+    // An amendment pending: the send would issue and send « -A1 » — a first send.
+    expect(reportSendRefusal("GESTIONNAIRE", { ...sent, amendmentPending: true })).not.toBeNull();
+    // « -A1 » issued after the last send: never sent.
+    expect(reportSendRefusal("GESTIONNAIRE", { ...sent, amendedAt: new Date("2026-10-21T10:00:00Z") })).not.toBeNull();
+    // The switch off: never.
+    expect(reportSendRefusal("GESTIONNAIRE", sent, false)).toBe("Votre profil n'est pas autorisé à envoyer les rapports.");
+  });
+
+  it("matches the guard of POST /api/samples/[id]/report/send, which decides with reportSendRefusal before sending", () => {
+    const text = source("../app/api/samples/[id]/report/send/route.ts");
+    const calls = guardedRoles(text);
     expect(calls).toHaveLength(1);
     expect([...calls[0]].sort()).toEqual([...RESEND_REPORT_ROLES].sort());
     expect(calls[0]).not.toContain("COMPTABLE");
+    const refusal = text.indexOf("reportSendRefusal(session.role, report)");
+    expect(refusal).toBeGreaterThan(0);
+    expect(refusal).toBeLessThan(text.indexOf("sendReportWithAlerts(id, session.id)"));
+    expect(text).toMatch(/if \(refusal\) return NextResponse\.json\(\{ error: refusal \}, \{ status: 403 \}\);/);
+  });
+
+  it("every screen passes whether this version has left", () => {
+    expect(source("../app/commercial/[id]/page.tsx")).toMatch(/canResendReport\(\s*session\.role,\s*sample\.status,\s*sample\.report\.amendmentPending,\s*reportVersionSent\(sample\.report\)\s*\)/);
+    expect(source("../app/validation/[id]/page.tsx")).toMatch(/canResendReport\(session\.role, sample\.status, report\.amendmentPending, sent\)/);
+    expect(source("../components/validation/ReportActions.tsx")).toMatch(/canResendReport\(role, status, amendmentPending, sent\)/);
   });
 });
 

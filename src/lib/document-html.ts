@@ -34,6 +34,7 @@ import {
   withSurfaceState,
 } from "./labels";
 import { DEFAULT_THRESHOLDS, RECEPTION_RULES, receptionRuleLine, type ReceptionThresholds } from "./reception-rules";
+import { UNDECLARED_SAMPLING } from "./sample-search";
 
 /**
  * The two entry documents of the circuit, laid out like the paper forms
@@ -125,6 +126,10 @@ export type SerieDocumentData = {
   analysesChimie: boolean;
   receivedByName: string | null;
   startedAt: Date;
+  /** false: « Prélevé le » was left empty (28/10, I3) — `startedAt` is a
+   *  stand-in (the arrival, or the save instant), printed « Non déclarée ».
+   *  null or absent: declared (a typed visit, a série from before the flag). */
+  samplingTimeDeclared?: boolean | null;
   endedAt: Date | null;
   arrivedAt: Date | null;
   coolerTemperature: number | null;
@@ -469,7 +474,7 @@ export function buildProtocolHtml(data: SerieDocumentData, thresholds: Reception
   <div class="f"><span class="k">Site de prélèvement :</span> <b>${escapeHtml(data.clientName)}${data.siteName ? ` — ${escapeHtml(data.siteName)}` : ""}</b></div>
   <div class="f"><span class="k">Cadre :</span> <b>${escapeHtml(formatCadre(data.cadre, data.cadreNote))}</b></div>
   <div class="f"><span class="k">Interlocuteur :</span> <b>${show(data.interlocutor)}</b></div>
-  <div class="f"><span class="k">Prélevé le :</span> <b>${formatDayTime(data.startedAt)}</b>${
+  <div class="f"><span class="k">Prélevé le :</span> <b>${data.samplingTimeDeclared === false ? UNDECLARED_SAMPLING : formatDayTime(data.startedAt)}</b>${
     data.endedAt ? ` <span class="small">— fin ${formatDayTime(data.endedAt)}</span>` : ""
   }</div>
   <div class="f"><span class="k">Prélèvement effectué par :</span> <b>${escapeHtml(samplerText(data))}</b></div>
@@ -687,6 +692,26 @@ export function sampleDesignation(sample: {
   // An older row without a product name may still carry a surface or a
   // person typed on any kind of line.
   return first(sample.produit, sample.surfaceLabel, sample.personName);
+}
+
+/**
+ * The designation the REPORT prints (re-ask 2.1, the laboratory's answer of
+ * 28/10 — « l'imprimé après le nom juste sur le rapport », K1): a hands
+ * line reads « Personne Test — mains lavées », the hands' own phrases
+ * (`HANDS_STATE_PHRASES`); every other line, and a hands line without a
+ * state, is `sampleDesignation`. The report only — never the e-mail, the
+ * alert, the étiquette, the bench or the portal, which keep
+ * `sampleDesignation`; the protocole and the bon keep
+ * `protocolHandsDesignation`.
+ */
+export function reportDesignation(
+  sample: Parameters<typeof sampleDesignation>[0] & { handsState?: HandsState | null }
+): string | null {
+  const designation = sampleDesignation(sample);
+  if (sample.lineKind !== "MAINS" || !sample.handsState) return designation;
+  const phrase = HANDS_STATE_PHRASES[sample.handsState];
+  // A nameless old row: « Mains lavées ».
+  return designation ? `${designation} — ${phrase}` : phrase.charAt(0).toLocaleUpperCase("fr") + phrase.slice(1);
 }
 
 /**

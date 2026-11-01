@@ -234,7 +234,7 @@ export function validateReception(
     const d = new Date(String(input.arrivedAt));
     if (Number.isNaN(d.getTime())) return fail("L'heure d'arrivée est invalide.");
     if (d.getTime() > Date.now() + 5 * 60 * 1000) return fail(futureMessage("L'heure d'arrivée"));
-    const before = arrivalRefusal(d, serie.startedAt, serie.endedAt);
+    const before = arrivalRefusal(d, serie.startedAt, serie.endedAt, serie.samplingTimeDeclared);
     if (before) return fail(before);
     arrivedAt = d;
   }

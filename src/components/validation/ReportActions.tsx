@@ -15,8 +15,8 @@ import { ResendReportButton } from "./ResendReportButton";
 /**
  * The actions on an issued report (AMENDEMENT.md §4), on the validation page
  * and in the search: « Duplicata (PDF) », « Versions du rapport »,
- * « Envoyer / Renvoyer au client » (gestionnaire, validator, direction,
- * administrator — finalversion.md:116, `RESEND_REPORT_ROLES`), for the
+ * « Envoyer / Renvoyer au client » (validator, direction, administrator;
+ * the gestionnaire « Renvoyer » only since 28/10 — `canResendReport`), for the
  * administrator « Modifier la conclusion » (the silent correction, HANDOFF §8
  * 18/08), and « Rouvrir pour amendement » with its mandatory reason (the
  * administrator, the Direction and the validateur since 16/10, Q13 —
@@ -50,7 +50,7 @@ export function ReportActions({
 }) {
   const [open, setOpen] = useState<"versions" | "reopen" | "conclusion" | null>(null);
   const reopenable = !amendmentPending && canReopen(status, role);
-  const resendable = sendHere && canResendReport(role, status, amendmentPending);
+  const resendable = sendHere && canResendReport(role, status, amendmentPending, sent);
   // Hidden while an amendment is pending: its approval recomputes the
   // conclusion and would drop the correction (the route refuses it too).
   const conclusionEditable = reportId !== undefined && canEditConclusion(role, amendmentPending);

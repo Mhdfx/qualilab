@@ -101,6 +101,9 @@ type LineEditorProps = {
   /** The T° ambiante carries the required star: the préleveur's visit
    *  (16/10, Q113) — `lineDraftError(…, { requireAmbient: true })` checks it. */
   ambientRequired?: boolean;
+  /** The T° au prélèvement carries the required star: a food, a water or a
+   *  surface on the visit (28/10, I2 — `visitRequiresSamplingTemperature`). */
+  productTemperatureRequired?: boolean;
 };
 
 const UNIT_CHOICES = [1, 3, 5, 9];
@@ -285,6 +288,7 @@ export function LineEditor({
   quantityUnitFallback = "UNITE",
   chimieQuantity,
   ambientRequired = false,
+  productTemperatureRequired = false,
 }: LineEditorProps) {
   const kind: LineKind = line.lineKind;
   const number = index + 1;
@@ -762,11 +766,16 @@ export function LineEditor({
               s'alignent par le bas quand le libellé passe sur deux lignes. */}
           <div className={kind === "AIR" ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-2 items-end gap-3"}>
             {kind !== "AIR" && (
-              <Field label="Température au prélèvement (°C)" htmlFor={id("product-temperature")}>
+              <Field
+                label="Température au prélèvement (°C)"
+                htmlFor={id("product-temperature")}
+                required={productTemperatureRequired}
+              >
                 <input
                   id={id("product-temperature")}
                   type="text"
                   inputMode="decimal"
+                  aria-required={productTemperatureRequired ? "true" : undefined}
                   value={line.productTemperature}
                   onChange={(e) => onChange({ productTemperature: e.target.value })}
                   placeholder="Ex. : 4"

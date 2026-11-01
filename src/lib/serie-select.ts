@@ -63,6 +63,9 @@ const SERIE_COMMON = {
   cadreNote: true,
   clientReference: true,
   startedAt: true,
+  // false: « Prélevé le » left empty — `startedAt` is a stand-in, printed
+  // « Non déclarée » (28/10, I3).
+  samplingTimeDeclared: true,
   endedAt: true,
   arrivedAt: true,
   coolerTemperature: true,

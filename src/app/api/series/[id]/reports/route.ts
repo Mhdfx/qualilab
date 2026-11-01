@@ -10,13 +10,14 @@ import { serieHeader, serieSendPlanFor } from "@/lib/validation-server";
  * the samples set aside with their reason (`serieSendPlan`) — what the
  * confirmation dialog lists before `POST /api/series/[id]/reports/send`.
  *
- * The guard of the per-sample send (`RESEND_REPORT_ROLES`).
+ * The senders of a first report (`SEND_REPORT_ROLES` — never the
+ * gestionnaire commercial since 28/10, K2: a série holds no report to resend).
  */
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireApiRole("GESTIONNAIRE", "VALIDATEUR", "DIRECTION", "ADMIN");
+  const session = await requireApiRole("VALIDATEUR", "DIRECTION", "ADMIN");
   if (session instanceof NextResponse) return session;
   if (!SERIES_VALIDATION) {
     return NextResponse.json({ error: "L'envoi par série n'est pas activé." }, { status: 404 });

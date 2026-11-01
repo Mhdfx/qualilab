@@ -5,7 +5,7 @@ import { logAudit } from "@/lib/audit";
 import { CADRE_CHOICES, formatCadre, futureMessage } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 import { serieSelectFor, serializeSerie } from "@/lib/serie-select";
-import { arrivalChangeRefusal, arrivalRefusal } from "@/lib/serie-input";
+import { arrivalChangeRefusal, arrivalRefusal, endRefusal } from "@/lib/serie-input";
 import { serieStatus } from "@/lib/series";
 import { IMAGE_DATA_URI, MAX_IMAGE_CHARS, canSeeProtocolPhoto } from "@/lib/protocol-photo-access";
 
@@ -78,6 +78,7 @@ export async function PATCH(
       cadre: true,
       cadreNote: true,
       startedAt: true,
+      samplingTimeDeclared: true,
       endedAt: true,
       arrivedAt: true,
       receivedAt: true,
@@ -118,9 +119,14 @@ export async function PATCH(
 
   const finalEnded = (endedAt as unknown) === "skip" ? serie.endedAt : (endedAt as Date | null);
   const finalArrived = (arrivedAt as unknown) === "skip" ? serie.arrivedAt : (arrivedAt as Date | null);
-  if (finalEnded && finalEnded < serie.startedAt) return fail("L'heure de fin précède le début du prélèvement.");
-  // Never before the end of the sampling — nor before its start when no end was typed.
-  const arrivalProblem = finalArrived ? arrivalRefusal(finalArrived, serie.startedAt, finalEnded) : null;
+  // An undeclared start (« Prélevé le » left empty, 28/10 — I3) is a stand-in
+  // (the arrival, or the save instant): never compared, as at creation.
+  const endProblem = endRefusal(finalEnded, serie.startedAt, serie.samplingTimeDeclared);
+  if (endProblem) return fail(endProblem);
+  // Never before the end of the sampling — nor before its declared start when no end was typed.
+  const arrivalProblem = finalArrived
+    ? arrivalRefusal(finalArrived, serie.startedAt, finalEnded, serie.samplingTimeDeclared)
+    : null;
   if (arrivalProblem) return fail(arrivalProblem);
   // The arrival is the report's « Date et heure de réception » (lot 1b) and
   // C1's end: a change of it is checked (`arrivalChangeRefusal`) — once the

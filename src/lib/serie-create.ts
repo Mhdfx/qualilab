@@ -244,8 +244,10 @@ export async function createSerie(
           clientReference: input.clientReference,
           startedAt: input.startedAt,
           endedAt: input.endedAt,
-          // C1: a deposit says whether its sampling time was given (null on a visit).
-          samplingTimeDeclared: isDeposit ? input.samplingTimeDeclared : null,
+          // C1: whether the sampling time was given — false when « Prélevé
+          // le » was left empty (client or third party, 28/10 — I3), true on
+          // a deposit that typed it, null on a visit that typed it.
+          samplingTimeDeclared: input.samplingTimeDeclared,
           // The deposit's « Arrivé le » (16/10, Q118); a page opened before
           // the field sends none: the deposit arrives at its save, as before.
           arrivedAt: isDeposit ? (input.arrivedAt ?? now) : input.arrivedAt,

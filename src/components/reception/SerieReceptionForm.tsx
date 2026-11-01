@@ -72,7 +72,8 @@ import {
 import { protocolPhotoHref } from "@/lib/protocol-photo-access";
 import { repetitionRange } from "@/lib/series";
 import { futureFieldError } from "@/lib/device-time";
-import { SERIE_MESSAGES, arrivalRefusal } from "@/lib/serie-input";
+import { SERIE_MESSAGES, arrivalRefusal, startIsDeclared } from "@/lib/serie-input";
+import { UNDECLARED_SAMPLING } from "@/lib/sample-search";
 import { Card } from "@/components/ui/Card";
 import { LabDateTimeInput, dateTimePending } from "@/components/LabDateTimeInput";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -96,6 +97,8 @@ import { SampleVerbs } from "@/components/samples/SampleVerbs";
 import type { Role } from "@/lib/roles";
 import {
   allExploitableNotice,
+  decisionChosen,
+  exploitableAnswer,
   answerAllExploitable,
   coolerOutOfRange,
   countLabel,
@@ -219,6 +222,8 @@ export type ReceptionSerieData = {
   cadreNote?: string | null;
   clientReference: string | null;
   startedAt: string;
+  /** false: « Prélevé le » left empty — `startedAt` is a stand-in (28/10, I3); optional on an older payload. */
+  samplingTimeDeclared?: boolean | null;
   endedAt: string | null;
   arrivedAt: string | null;
   coolerTemperature: number | null;
@@ -289,6 +294,8 @@ type LineState = {
   receptionNote: string;
   /** Non-conform only: analyse anyway, wait for the client, or destroy (A9). */
   decision: ReceptionDecision;
+  /** « Détruire » preselected by « Non exploitable » (I4), not chosen by hand. */
+  destroyPreselected?: boolean;
   /** « Accord du client », for « Analyser malgré tout » (A9). */
   consultation: ConsultationDraft;
 };
@@ -460,23 +467,20 @@ export function SerieReceptionForm({
   }
 
   /**
-   * Rule (1) answered. « Non exploitable » makes the sample non conform with
-   * the motif of rule (1); answering « Exploitable » afterwards drops that
+   * Rule (1) answered (`exploitableAnswer`). « Non exploitable » makes the
+   * sample non conform with the motif of rule (1) and preselects « Détruire »
+   * (2.7, 28/10 — I4); answering « Exploitable » afterwards drops that
    * motif, the rules propose again.
    */
   function answerExploitable(line: LineState, exploitable: boolean) {
-    updateLine(
-      line.sampleId,
-      exploitable
-        ? { exploitable, reason: line.reason === "NON_EXPLOITABLE" ? "" : line.reason }
-        : { exploitable, reason: "NON_EXPLOITABLE" }
-    );
+    updateLine(line.sampleId, exploitableAnswer(line, exploitable));
   }
 
   /**
-   * « Tous exploitables » (16/10, Q64): rule (1) « Exploitable » on every
-   * sample still unanswered — a « Non exploitable » already chosen stays.
-   * An unanswered sample carries no rule (1) motif, so nothing else moves.
+   * « Tous exploitables et bien identifiés » (16/10, Q64; 28/10, I4): rule
+   * (1) « Exploitable » and C5 « identification correcte » wherever still
+   * unanswered — an answer already chosen stays. An unanswered sample
+   * carries no motif of either, so nothing else moves.
    */
   function answerAllLines() {
     const { lines: answered, count } = answerAllExploitable(activeLines);
@@ -535,6 +539,7 @@ export function SerieReceptionForm({
       {
         startedAt: new Date(serie.startedAt),
         endedAt: serie.endedAt ? new Date(serie.endedAt) : null,
+        samplingTimeDeclared: serie.samplingTimeDeclared ?? null,
         // As the API reads it: the arrival typed here, else the série's.
         arrivedAt: localInputDate(arrivedAt) ?? (serie.arrivedAt ? new Date(serie.arrivedAt) : null),
         receivedAt: now,
@@ -583,7 +588,12 @@ export function SerieReceptionForm({
       (arrivedAt ? null : SERIE_MESSAGES.arrivalMissing) ??
       futureFieldError("L'heure d'arrivée", arrivedAt) ??
       (arrival
-        ? arrivalRefusal(arrival, new Date(serie.startedAt), serie.endedAt ? new Date(serie.endedAt) : null)
+        ? arrivalRefusal(
+            arrival,
+            new Date(serie.startedAt),
+            serie.endedAt ? new Date(serie.endedAt) : null,
+            serie.samplingTimeDeclared
+          )
         : null);
     setArrivedError(arrivalProblem);
     if (arrivalProblem) {
@@ -1016,7 +1026,7 @@ export function SerieReceptionForm({
                   <DecisionChips
                     legend="Décision pour cet échantillon"
                     value={line.decision}
-                    onChange={(decision) => updateLine(line.sampleId, { decision })}
+                    onChange={(decision) => updateLine(line.sampleId, decisionChosen(decision))}
                   />
                 )}
 
@@ -1073,7 +1083,9 @@ export function SerieReceptionForm({
               )}
               <div className="flex justify-between gap-3">
                 <dt className="text-slate-400">Début</dt>
-                <dd className="text-right font-medium text-slate-800">{formatDateTime(serie.startedAt)}</dd>
+                <dd className="text-right font-medium text-slate-800">
+                  {startIsDeclared(serie.samplingTimeDeclared) ? formatDateTime(serie.startedAt) : UNDECLARED_SAMPLING}
+                </dd>
               </div>
               <div className="flex justify-between gap-3">
                 <dt className="text-slate-400">Fin</dt>

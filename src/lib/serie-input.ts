@@ -15,6 +15,7 @@ import type {
   TemperatureSource,
 } from "@/generated/prisma/enums";
 import { MAX_UNITS } from "./series";
+import { UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE } from "./lab-proposals";
 import { parseIsoDay } from "./date-only";
 import {
   AIR_EXPOSURE_MINUTES,
@@ -77,11 +78,13 @@ import {
  * caller that does not send them (a page opened before) keeps the old rule:
  * the « P » sample takes the line's quantity (`sampleQuantity`).
  *
- * The times (16/10, Q118): « Prélevé le » is required on a visit and on a
- * deposit — the deposit's one exception, the client who truly does not know
- * (proposal of the re-ask 2.6, `SAMPLING_TIME_UNKNOWN`), is said by a box,
- * never by an empty field. The deposit's « Arrivé le » is read first: the
- * unknown sampling time falls back on it.
+ * The times (re-ask 2.6, the laboratory's answer of 28/10 — lot 3A, I3):
+ * « Prélevé le » is required when the laboratory sampled
+ * (`samplingTimeRequired`: « Prélèvement effectué par » Qualilab, in
+ * practice the visit), optional when the client or a third party did — left
+ * empty, the série is « Non déclarée » (`samplingTimeDeclared` false) and
+ * its sampling instant is the arrival. The deposit's « Arrivé le » is read
+ * first, and is required on its screen (pre-filled).
  *
  * Messages: `validateLine` returns the bare sentence (« Choisissez l'état de
  * la surface. ») with the line number aside — « Corriger la fiche » shows it
@@ -112,19 +115,48 @@ export const SURFACE_AREA_DEFAULT_CM2 = 100;
 const TEXT = 191;
 
 /**
- * The deposit whose client truly does not know the sampling time (16/10,
- * Q118) — the PROPOSAL of the re-ask 2.6, pending the laboratory's answer:
- * a box « Heure de prélèvement inconnue du client », ticked on purpose. The
- * série is then « Non déclarée » (`samplingTimeDeclared` false), its
- * sampling instant the arrival, and C1 « à vérifier » with the observation
- * required. Should the laboratory answer « refusé tant que l'heure n'est
- * pas donnée », `allowed: false` takes the box off the counter and the API
- * refuses the flag — nothing else changes.
+ * Whether « Prélevé le » is required (re-ask 2.6, answer of 28/10 — I3):
+ * « la date et l'heure de prélèvement sont obligatoires lors de notre
+ * prélèvement ; si un client ramène son échantillon, il n'est obligatoire
+ * que la date et l'heure de réception ». The laboratory sampled
+ * (`QUALILAB`, the predicate of `sampledByLab` in report-dispatch.ts):
+ * required. The client (`CLIENT`): optional, empty = « Non déclarée ». A
+ * third party (`AUTRE` — a veterinary service, another body): optional as
+ * the client by default — hypothèse, à confirmer par R-15. The counter only
+ * offers « Le client » and « Autre »; the visit offers Qualilab and
+ * « Autre ».
+ *
+ * The box « Heure de prélèvement inconnue du client » (the proposal of
+ * 16/10) is gone: an empty field says it. A page opened before still
+ * sending `samplingTimeUnknown: true` is read as an empty field.
  */
-export const SAMPLING_TIME_UNKNOWN = {
-  allowed: true,
-  label: "Heure de prélèvement inconnue du client",
-} as const;
+export function samplingTimeRequired(samplerKind: SamplerKind): boolean {
+  return samplerKind === "QUALILAB";
+}
+
+/**
+ * What the screens say under an empty optional « Prélevé le » (I3): what is
+ * printed, and what C1 does with it (switch `UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE`).
+ */
+export const UNDECLARED_SAMPLING_HINT = UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE
+  ? "Facultatif quand le client ou un tiers a prélevé : laissé vide, la date de prélèvement est imprimée « Non déclarée » et le délai prélèvement → laboratoire (C1) n'est pas évaluable."
+  : "Facultatif quand le client ou un tiers a prélevé : laissé vide, la date de prélèvement est imprimée « Non déclarée » ; le délai (C1) sera « à vérifier » et l'observation de réception obligatoire pour accepter un échantillon conforme.";
+
+/**
+ * The kinds whose « Température au prélèvement » the visit requires
+ * (re-ask 2.2, answer of 28/10 — I2): « il faut toujours avoir la T° au
+ * prélèvement » for food, water and surfaces. The air has no such field —
+ * its T° ambiante, required on every visit line, stands for it; the hands
+ * keep it optional (Q101); « Autre » too (R-14). Never at the counter (the
+ * T° at arrival is the reception's, `LabSettings.temperatureRequiredKinds`),
+ * never in « Corriger la fiche »: an old line stays correctable.
+ */
+export const SAMPLING_TEMPERATURE_KINDS: readonly LineKind[] = ["ALIMENT", "EAU", "SURFACE"];
+
+/** Whether a visit line of this kind needs its « Température au prélèvement » (I2). */
+export function visitRequiresSamplingTemperature(lineKind: LineKind): boolean {
+  return SAMPLING_TEMPERATURE_KINDS.includes(lineKind);
+}
 
 /** The messages the forms repeat word for word in their own checks. */
 export const SERIE_MESSAGES = {
@@ -139,20 +171,17 @@ export const SERIE_MESSAGES = {
   airExposureMissing: "Indiquez la durée d'exposition de la boîte, en minutes.",
   airExposureInvalid: `La durée d'exposition doit être un nombre entier de minutes, de ${AIR_EXPOSURE_MINUTES.min} à ${AIR_EXPOSURE_MINUTES.max}.`,
   ambientMissing: "Indiquez la T° ambiante : elle est obligatoire sur la visite.",
+  /** 2.2 (28/10, I2): food, water and surfaces on a visit. */
+  productTemperatureMissing:
+    "Indiquez la température au prélèvement : elle est obligatoire sur la visite pour un aliment, une eau ou une surface.",
   arrivalBeforeEnd: "L'arrivée au laboratoire précède la fin du prélèvement.",
   arrivalBeforeStart: "L'arrivée au laboratoire précède le prélèvement.",
-  /** « Prélevé le » emptied on a visit (16/10, Q118): the screen pre-fills it, the API refuses it empty. */
-  startedMissing: "Indiquez la date et l'heure du prélèvement.",
-  /** The counter's screen: the field and its box are both on it (the box only while it is offered). */
-  depositStartedMissing: SAMPLING_TIME_UNKNOWN.allowed
-    ? `Indiquez la date et l'heure du prélèvement, ou cochez « ${SAMPLING_TIME_UNKNOWN.label} ».`
-    : "Indiquez la date et l'heure du prélèvement.",
-  /** The deposit API: a page opened before 16/10 has no box — told to reload. */
-  depositStartedMissingApi: SAMPLING_TIME_UNKNOWN.allowed
-    ? `Indiquez la date et l'heure du prélèvement, ou cochez « ${SAMPLING_TIME_UNKNOWN.label} » (rechargez la page si cette case n'apparaît pas).`
-    : "Indiquez la date et l'heure du prélèvement.",
-  /** `SAMPLING_TIME_UNKNOWN.allowed` false: the box is refused. */
-  samplingUnknownRefused: "L'heure du prélèvement est obligatoire : le dépôt ne peut pas être enregistré sans elle.",
+  endBeforeStart: "L'heure de fin précède le début du prélèvement.",
+  /**
+   * « Prélevé le » emptied when the laboratory sampled (28/10, I3): the
+   * visit's screen pre-fills it, the API refuses it empty.
+   */
+  startedMissing: "Indiquez la date et l'heure du prélèvement : elle est obligatoire quand le laboratoire prélève.",
   /** The deposit's « Arrivé le » emptied on the screen (16/10, Q118). */
   arrivalMissing: "Indiquez la date et l'heure d'arrivée au laboratoire.",
   arrivalTooOld: "L'heure d'arrivée remonte à plus de 30 jours.",
@@ -164,13 +193,47 @@ const MAX_PAST_MS = 30 * 24 * 3600 * 1000;
 const FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
 
 /**
- * The arrival at the laboratory against the sampling: never before its end,
- * nor before its start when no end was typed. One rule for the visit's
- * creation, the série's header (PATCH), the reception and its screen.
+ * Whether the série's start is a time someone declared (28/10, I3): false
+ * only when « Prélevé le » was left empty (`samplingTimeDeclared` false) —
+ * its `startedAt` is then a stand-in (the arrival, else the save instant),
+ * never a sampling time: no rule compares with it and no screen or document
+ * prints it. null (a typed visit, a série from before the flag) or true:
+ * declared.
  */
-export function arrivalRefusal(arrivedAt: Date, startedAt: Date, endedAt: Date | null): string | null {
+export function startIsDeclared(samplingTimeDeclared: boolean | null | undefined): boolean {
+  return samplingTimeDeclared !== false;
+}
+
+/**
+ * The arrival at the laboratory against the sampling: never before its end,
+ * nor before its start when no end was typed — a declared start only
+ * (`startIsDeclared`): an undeclared one is a stand-in, the arrival is then
+ * checked against a typed end alone. One rule for the visit's creation, the
+ * série's header (PATCH), the reception and its screen.
+ */
+export function arrivalRefusal(
+  arrivedAt: Date,
+  startedAt: Date,
+  endedAt: Date | null,
+  samplingTimeDeclared?: boolean | null
+): string | null {
   if (endedAt && arrivedAt < endedAt) return SERIE_MESSAGES.arrivalBeforeEnd;
-  if (arrivedAt < startedAt) return SERIE_MESSAGES.arrivalBeforeStart;
+  if (startIsDeclared(samplingTimeDeclared) && arrivedAt < startedAt) return SERIE_MESSAGES.arrivalBeforeStart;
+  return null;
+}
+
+/**
+ * The end of the sampling against its start — a declared start only
+ * (`startIsDeclared`): « Fin du prélèvement » typed after an empty
+ * « Prélevé le » is never compared with the stand-in (the save instant).
+ * One rule for the creation (`validateSerie`) and the header (PATCH).
+ */
+export function endRefusal(
+  endedAt: Date | null,
+  startedAt: Date,
+  samplingTimeDeclared?: boolean | null
+): string | null {
+  if (endedAt && startIsDeclared(samplingTimeDeclared) && endedAt < startedAt) return SERIE_MESSAGES.endBeforeStart;
   return null;
 }
 
@@ -328,10 +391,10 @@ export type CleanSerie = {
   startedAt: Date;
   endedAt: Date | null;
   /**
-   * C1: true when the deposit's « Prélevé le » was typed; false when the
-   * client did not know it (`SAMPLING_TIME_UNKNOWN`, 16/10 — `startedAt` is
-   * then the arrival), as on the deposits saved before 16/10 with the field
-   * left empty; null on a visit.
+   * C1: false when « Prélevé le » was left empty — allowed when the client
+   * or a third party sampled (28/10, I3; `startedAt` is then the arrival) —,
+   * as on the deposits saved before 16/10 with the field left empty; true on
+   * a deposit whose time was typed; null on a visit whose time was typed.
    */
   samplingTimeDeclared: boolean | null;
   /** The arrival typed (the deposit's « Arrivé le »); null = not sent — a
@@ -583,9 +646,13 @@ export function validateLine(
       return fail(`${label} doit être un nombre plausible (−80 à 300 °C).`);
     }
   }
-  // The ambient temperature is required on the visit, every kind — the air
-  // included; « 0 » is a value (16/10, Q113). Never at the counter, never in
+  // The temperature at sampling on the visit, food, water and surfaces
+  // (2.2, 28/10 — I2), then the ambient one, every kind — the air included;
+  // « 0 » is a value (16/10, Q113). Never at the counter, never in
   // « Corriger la fiche » (no `kind`): an old line stays correctable.
+  if (options.kind === "VISITE" && visitRequiresSamplingTemperature(lineKind) && productTemperature === null) {
+    return fail(SERIE_MESSAGES.productTemperatureMissing);
+  }
   if (options.kind === "VISITE" && ambientTemperature === null) return fail(SERIE_MESSAGES.ambientMissing);
 
   // « Surface prélevée (cm²) » (ex-« Aire prélevée »): 100 cm² by default on
@@ -771,35 +838,37 @@ export function validateSerie(
 
   const now = Date.now();
 
-  // The arrival first (16/10, Q118): a deposit whose sampling time the
-  // client does not know takes it as its sampling instant. Bounded like the
-  // sampling — never in the future, never more than 30 days back.
+  // The arrival first (16/10, Q118): a série whose sampling time was not
+  // declared takes it as its sampling instant. Bounded like the sampling —
+  // never in the future, never more than 30 days back.
   const arrivedAt = dateOrNull(input.arrivedAt);
   if (arrivedAt === "invalid") return fail("L'heure d'arrivée n'est pas valide.");
   if (arrivedAt && arrivedAt.getTime() > now + FUTURE_TOLERANCE_MS) return fail(futureMessage("L'heure d'arrivée"));
   if (arrivedAt && arrivedAt.getTime() < now - MAX_PAST_MS) return fail(SERIE_MESSAGES.arrivalTooOld);
 
-  // « Prélevé le » is required (16/10, Q118): the screens pre-fill or ask
-  // it, and an empty one is never replaced by the save instant any more.
-  // The deposit's one exception is the box « Heure de prélèvement inconnue
-  // du client » (re-ask 2.6), never an empty field — a page opened before
-  // the box is told to reload. The box wins over a time sent with it.
+  // « Prélevé le » (re-ask 2.6, 28/10 — I3): required when the laboratory
+  // sampled, never replaced by the save instant then; optional when the
+  // client or a third party did — empty, the série is « Non déclarée » and
+  // its sampling instant is the arrival (the save instant without one). The
+  // box of a page opened before 01/11 (`samplingTimeUnknown`) reads as an
+  // empty field and wins over a time sent with it, as it did.
   const startedAtRaw = dateOrNull(input.startedAt);
   if (startedAtRaw === "invalid") return fail("La date et l'heure du prélèvement ne sont pas valides.");
-  const samplingTimeUnknown = deposit && input.samplingTimeUnknown === true;
-  if (samplingTimeUnknown && !SAMPLING_TIME_UNKNOWN.allowed) return fail(SERIE_MESSAGES.samplingUnknownRefused);
-  if (startedAtRaw === null && !samplingTimeUnknown) {
-    return fail(deposit ? SERIE_MESSAGES.depositStartedMissingApi : SERIE_MESSAGES.startedMissing);
-  }
-  const startedAt = samplingTimeUnknown || startedAtRaw === null ? (arrivedAt ?? new Date(now)) : startedAtRaw;
+  const typedStart = input.samplingTimeUnknown === true ? null : startedAtRaw;
+  if (typedStart === null && samplingTimeRequired(samplerKind)) return fail(SERIE_MESSAGES.startedMissing);
+  const samplingDeclared = typedStart !== null;
+  const startedAt = typedStart ?? arrivedAt ?? new Date(now);
   if (startedAt.getTime() > now + FUTURE_TOLERANCE_MS) return fail(futureMessage("L'heure du prélèvement"));
   if (startedAt.getTime() < now - MAX_PAST_MS) return fail("L'heure du prélèvement remonte à plus de 30 jours.");
 
   const endedAt = dateOrNull(input.endedAt);
   if (endedAt === "invalid") return fail("L'heure de fin n'est pas valide.");
   if (endedAt && endedAt.getTime() > now + FUTURE_TOLERANCE_MS) return fail(futureMessage("L'heure de fin"));
-  if (endedAt && endedAt < startedAt) return fail("L'heure de fin précède le début du prélèvement.");
-  const arrivalProblem = arrivedAt ? arrivalRefusal(arrivedAt, startedAt, endedAt) : null;
+  // An undeclared start (its stand-in is the arrival or the save) is never
+  // compared with a typed end: only the arrival is (`arrivalRefusal`).
+  const endProblem = endRefusal(endedAt, startedAt, samplingDeclared);
+  if (endProblem) return fail(endProblem);
+  const arrivalProblem = arrivedAt ? arrivalRefusal(arrivedAt, startedAt, endedAt, samplingDeclared) : null;
   if (arrivalProblem) return fail(arrivalProblem);
 
   const coolerTemperature = numberOrNull(input.coolerTemperature);
@@ -860,8 +929,9 @@ export function validateSerie(
       clientReference: text(input.clientReference) || null,
       startedAt,
       endedAt,
-      // C1: « Non déclarée » only when the client did not know (16/10).
-      samplingTimeDeclared: deposit ? !samplingTimeUnknown : null,
+      // C1: « Non déclarée » when the time was left empty (28/10, I3); a
+      // visit whose time was typed stays null, as before.
+      samplingTimeDeclared: deposit ? samplingDeclared : samplingDeclared ? null : false,
       arrivedAt,
       coolerTemperature: coolerTemperature as number | null,
       advanceAmount,

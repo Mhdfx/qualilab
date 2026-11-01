@@ -153,7 +153,9 @@ export const TIMELINE_ACTIONS: Record<string, ActionSpec> = {
     note: (meta) =>
       join(
         count(meta.nonConformes) > 0 ? plural(count(meta.nonConformes), "résultat non conforme", "résultats non conformes") : null,
-        count(meta.anomalies) > 0 ? plural(count(meta.anomalies), "anomalie", "anomalies") : null
+        count(meta.anomalies) > 0 ? plural(count(meta.anomalies), "anomalie", "anomalies") : null,
+        // Internal notes (2.20 (h), G2): read on the validation page, never printed.
+        count(meta.notes) > 0 ? plural(count(meta.notes), "note interne", "notes internes") : null
       ),
   },
   SAMPLE_REGULATION_SET: {

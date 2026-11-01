@@ -15,13 +15,14 @@ import { runSerieSend, serieHeader } from "@/lib/validation-server";
  * untouched and said so.
  *
  * `{ sampleIds: string[] }` → `{ summary, lines }`. The guard of the
- * per-sample send (`RESEND_REPORT_ROLES`).
+ * first send of a report (`SEND_REPORT_ROLES` — never the gestionnaire
+ * commercial since 28/10, K2: a série only sends versions never sent).
  */
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireApiRole("GESTIONNAIRE", "VALIDATEUR", "DIRECTION", "ADMIN");
+  const session = await requireApiRole("VALIDATEUR", "DIRECTION", "ADMIN");
   if (session instanceof NextResponse) return session;
   if (!SERIES_VALIDATION) {
     return NextResponse.json({ error: "L'envoi par série n'est pas activé." }, { status: 404 });

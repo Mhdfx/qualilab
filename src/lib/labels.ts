@@ -195,7 +195,7 @@ export const QUANTITY_UNIT_LABELS = {
  * re-ask of 18/10, point 2.1: change it here only).
  */
 export const HANDS_STATE_LABELS = {
-  ASEPTISEES: "Aseptisées ou désinfectées",
+  ASEPTISEES: "Aseptisées / désinfectées",
   NON_LAVEES: "En cours de travail",
   LAVEES: "Lavées",
 } as const satisfies Record<HandsState, string>;
@@ -208,7 +208,7 @@ export const HANDS_STATE_CHOICES: readonly HandsState[] = ["ASEPTISEES", "NON_LA
  * the hands — never the surface's phrases, never `Sample.surfaceState`.
  */
 export const HANDS_STATE_PHRASES = {
-  ASEPTISEES: "mains aseptisées ou désinfectées",
+  ASEPTISEES: "mains aseptisées / désinfectées",
   NON_LAVEES: "mains en cours de travail",
   LAVEES: "mains lavées",
 } as const satisfies Record<HandsState, string>;

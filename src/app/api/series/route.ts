@@ -136,9 +136,10 @@ export async function GET(request: Request) {
  * réception » (A7), refused otherwise.
  *
  * C1 reads the deposit's « Arrivé le » (16/10, Q118) — the save instant for
- * a page opened before the field. « Prélevé le » is required: a deposit
- * whose client does not know it says so with its box (`samplingTimeUnknown`),
- * and C1 is then « à vérifier », the observation required.
+ * a page opened before the field. « Prélevé le » is required only when the
+ * laboratory sampled (28/10, I3 — `samplingTimeRequired`): left empty by the
+ * client or a third party, the série is « Non déclarée » and C1 « délai non
+ * évaluable » (switch `UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE`).
  */
 export async function POST(request: Request) {
   const session = await requireApiRole("PRELEVEUR", "RECEPTIONNISTE", "ADMIN");
