@@ -1,6 +1,7 @@
 import { COMPANY, type CompanyInfo } from "./company";
 import { airMethodText } from "./labels";
-import type { AirMethod, Interpretation, LineKind, SampleType, TemperatureSource } from "@/generated/prisma/client";
+import type { AccreditationStatus, AirMethod, Interpretation, LineKind, SampleType, TemperatureSource } from "@/generated/prisma/client";
+import { markedParameterName } from "./accreditation";
 import { fmt, singleLimit, type Plan } from "./interpretation";
 import { repetitionLabel } from "./series";
 import { escapeHtml, show, SUPERSCRIPT_CSS } from "./html-text";
@@ -106,6 +107,10 @@ export type ReportData = {
     /** The plan the result was judged against, frozen with it; null = none. */
     criterion: Plan | null;
     units: ReportUnit[];
+    /** K4 (Q14): the parameter's accreditation at the issue — its legend
+     *  mark (« * », « (SA) », « (SN) ») follows the name. Absent on the
+     *  versions issued before lot 3C; null = « à préciser », no mark. */
+    accreditation?: AccreditationStatus | null;
   }[];
   /** An amended version (AMENDEMENT.md §2.3): the version it cancels and
    *  replaces, and the reason. Absent or null on an original report. */
@@ -151,6 +156,29 @@ export type ReportData = {
   /** The arrival at the laboratory typed on the série (`Serie.arrivedAt`):
    *  « Date et heure de réception » on the aligned layout (`receptionInstant`). */
   arrivedAt?: Date | null;
+
+  /* --- Lot 3C (RETOUR-LABO-28-10.md): written only when a version is
+   *     issued; absent on the versions issued before, which keep their print. --- */
+
+  /** K6 (Q104 (d)): « Moyen de prélèvement » as decided at the issue
+   *  (`samplingMeansText`) — « Écouvillon », « Flacon stérile », « N/A »… */
+  samplingMeans?: string;
+  /** K4 (Q14): the accreditation logo prints in the cartouche — decided at
+   *  the issue: the logo was uploaded and the report carries an accredited
+   *  analysis (`reportCarriesAccreditationLogo`). */
+  accreditationLogo?: boolean;
+  /** K4: the stamp prints under « Direction » — it was uploaded at the issue. */
+  stamp?: boolean;
+};
+
+/**
+ * The images a print adds from /admin/entreprise (K4): read at each print,
+ * printed only where the issued version says so (`accreditationLogo`,
+ * `stamp`) and while the file is still there.
+ */
+export type ReportImages = {
+  accreditationLogoDataUri?: string | null;
+  stampDataUri?: string | null;
 };
 
 /**
@@ -307,6 +335,11 @@ function unitClass(row: Row, unit: ReportUnit): string {
   return "";
 }
 
+/** The analysis's name with its accreditation mark (K4) — as typed on a version issued before lot 3C. */
+function parameterName(row: Row): string {
+  return markedParameterName(row.parameter, row.accreditation);
+}
+
 function rowIsBad(row: Row) {
   return row.interpretation === "NON_SATISFAISANT" || row.conform === false;
 }
@@ -345,8 +378,8 @@ function resultsTable(data: ReportData, from: number, to: number, first: boolean
       }
       const note = first && row.note ? `<span class="note">${escapeHtml(row.note)}</span>` : "";
       return first
-        ? `<tr><td class="param">${show(row.parameter)}${note}</td><td class="method">${show(row.norm)}</td><td class="unit">${show(row.unit)}</td>${cells}</tr>`
-        : `<tr><td class="param">${show(row.parameter)}</td>${cells}</tr>`;
+        ? `<tr><td class="param">${show(parameterName(row))}${note}</td><td class="method">${show(row.norm)}</td><td class="unit">${show(row.unit)}</td>${cells}</tr>`
+        : `<tr><td class="param">${show(parameterName(row))}</td>${cells}</tr>`;
     })
     .join("");
 
@@ -480,12 +513,15 @@ function receptionText(data: ReportData): string {
 /** The reference lines of the sampling: the procedures, the air instruction, the means. */
 function samplingReferenceHtml(data: ReportData): string {
   const air = data.lineKind === "AIR";
+  // Since lot 3C the means is decided at the issue (K6, `samplingMeansText`).
   const means = `Moyen de prélèvement : ${
-    air && data.airMethod
-      ? escapeHtml(airMethodText(data.airMethod, data.airExposureMin))
-      : isAlignedLayout(data)
-        ? NOT_APPLICABLE
-        : "—"
+    data.samplingMeans !== undefined
+      ? escapeHtml(data.samplingMeans)
+      : air && data.airMethod
+        ? escapeHtml(airMethodText(data.airMethod, data.airExposureMin))
+        : isAlignedLayout(data)
+          ? NOT_APPLICABLE
+          : "—"
   }`;
   if (data.sampledByLab === false) {
     return `Référence prélèvement : N/A (prélèvement non effectué par le laboratoire)<br>${means}`;
@@ -573,7 +609,7 @@ function interpretationTable(data: ReportData): string {
 <tr><td colspan="${2 + columns.length}" class="reg">Réglementation en vigueur : ${show(data.regulation)}</td></tr></tbody>
 </table>`;
   const rows = data.results
-    .map((row) => `<tr><td class="param">${show(row.parameter)}</td><td class="method">${show(row.norm)}</td><td class="unit">${show(row.unit)}</td>${criteriaCells(row)}</tr>`)
+    .map((row) => `<tr><td class="param">${show(parameterName(row))}</td><td class="method">${show(row.norm)}</td><td class="unit">${show(row.unit)}</td>${criteriaCells(row)}</tr>`)
     .join("");
   const criteria = `<table class="criteria">
 <colgroup><col class="a-param"><col class="a-method"><col class="a-unit"><col class="a-m"><col class="a-m"></colgroup>
@@ -679,6 +715,16 @@ export async function printReport(
   }
 }
 
+/** An image data URI as the upload accepts it — the whole string, so nothing can close the attribute. */
+const IMAGE_DATA_URI = /^data:image\/(png|jpe?g|svg\+xml|webp);base64,[A-Za-z0-9+/]+=*$/;
+
+/** The stamp under « Direction » (K4): on a version issued with it, while the file is still uploaded. */
+function stampHtml(data: ReportData, images: ReportImages): string {
+  const uri = images.stampDataUri;
+  if (!data.stamp || !uri || !IMAGE_DATA_URI.test(uri)) return "";
+  return `<img class="stamp" src="${uri}" alt="Cachet du laboratoire">`;
+}
+
 /**
  * The page of the report: page 1 and its annex. The laboratory's identity is
  * not in it — it prints in the footer template (`reportFooterTemplate`) and
@@ -690,7 +736,8 @@ export function buildReportHtml(
   data: ReportData,
   marks: ReportMarks = {},
   company: CompanyInfo = COMPANY,
-  density: ReportDensity = reportDensity(data, marks)
+  density: ReportDensity = reportDensity(data, marks),
+  images: ReportImages = {}
 ): string {
   const nonConformes = data.results.filter((r) => r.conform === false).length;
   const alert = nonConformes > 0 || data.interpretation === "NON_SATISFAISANT";
@@ -771,6 +818,10 @@ export function buildReportHtml(
   .signatures > div { min-width: 55mm; }
   .signatures > div:last-child { text-align: center; }
   .signatures .name { font-weight: 700; margin-top: .8mm; }
+  /* K4: the laboratory's stamp under « Direction », when uploaded. */
+  .signatures .stamp { display: block; margin: 1mm auto 0; max-width: 42mm; max-height: 20mm; object-fit: contain; }
+  body.dense .signatures .stamp { max-height: 14mm; }
+  body.xdense .signatures .stamp { display: inline-block; max-height: 9mm; margin: 0 0 0 2mm; vertical-align: middle; }
   .annex-title { text-align: center; font-size: 10pt; line-height: 1.45; margin: 1mm 0 4mm; }
   .count { margin: -1.5mm 0 2.5mm 2mm; }
   table.verdict thead th { background: #d9d9d9; text-align: center; vertical-align: middle; }
@@ -844,7 +895,7 @@ export function buildReportHtml(
   ${bands.join("\n  ")}
   <div class="signatures">
     <div><div>Responsable Technique</div><div class="name">${show(data.validatorName)}</div></div>
-    <div><div>Direction</div><div class="name">${show(data.approverName)}</div></div>
+    <div><div>Direction</div><div class="name">${show(data.approverName)}</div>${stampHtml(data, images)}</div>
   </div>
 </section>
 <section class="sheet annex">
@@ -901,9 +952,19 @@ ${legal.name ? `<div style="font-weight:700;font-size:6.8pt;letter-spacing:.6px;
 </div>`;
 }
 
-/** The cartouche of the report: the template's grid, title « Rapport d'essai », in its black ink. */
-export function reportCartouche(reference: DocumentRef, logoDataUri: string | null): string {
-  return cartoucheTemplate({ title: DOC_TYPE_LABELS.RAPPORT, reference, logoDataUri, ink: REPORT_CARTOUCHE_INK });
+/**
+ * The cartouche of the report: the template's grid, title « Rapport
+ * d'essai », in its black ink — with the accreditation logo beside the
+ * laboratory's when the version was issued with it (K4, `accreditationLogo`).
+ */
+export function reportCartouche(reference: DocumentRef, logoDataUri: string | null, accreditationLogoDataUri: string | null = null): string {
+  return cartoucheTemplate({
+    title: DOC_TYPE_LABELS.RAPPORT,
+    reference,
+    logoDataUri,
+    secondaryLogoDataUri: accreditationLogoDataUri,
+    ink: REPORT_CARTOUCHE_INK,
+  });
 }
 
 /** What one print of the report is made of. */
@@ -915,6 +976,8 @@ export type ReportPdfInput = {
   marks?: ReportMarks;
   /** The body's density; `reportDensity`'s guess when absent. */
   density?: ReportDensity;
+  /** K4: the accreditation logo and the stamp uploaded in /admin/entreprise. */
+  images?: ReportImages;
 };
 
 /** Everything `renderPdf` needs for one report: the page, its cartouche and footer, the shared margins. */
@@ -922,9 +985,10 @@ export type ReportPdfOutput = { html: string; header: string; footer: string; ma
 
 export function reportPdfParts(input: ReportPdfInput): ReportPdfOutput {
   const marks = input.marks ?? {};
+  const images = input.images ?? {};
   return {
-    html: buildReportHtml(input.data, marks, input.company, input.density ?? reportDensity(input.data, marks)),
-    header: reportCartouche(input.reference, input.logoDataUri),
+    html: buildReportHtml(input.data, marks, input.company, input.density ?? reportDensity(input.data, marks), images),
+    header: reportCartouche(input.reference, input.logoDataUri, input.data.accreditationLogo ? (images.accreditationLogoDataUri ?? null) : null),
     footer: reportFooterTemplate(input.company, marks),
     margin: reportPdfMargin(marks, input.company),
   };

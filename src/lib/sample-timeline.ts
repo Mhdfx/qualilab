@@ -118,6 +118,12 @@ export const TIMELINE_ACTIONS: Record<string, ActionSpec> = {
   // Stream A (accord du client sur un non-conforme): wording of /admin/journal.
   SAMPLE_AWAITING_CLIENT: { label: "En attente de l'avis du client", tone: "warning", note: (meta) => text(meta.note) ?? text(meta.reason) },
   CLIENT_CONSULTED: { label: "Accord du client enregistré", tone: "neutral", note: (meta) => text(meta.note) ?? text(meta.reason) },
+  // I6 (Q75): added or corrected after the reception — the journal keeps before → after.
+  CLIENT_CONSULTATION_UPDATED: {
+    label: "Accord du client ajouté ou corrigé",
+    tone: "neutral",
+    note: (meta) => text((meta.after as { note?: unknown } | null | undefined)?.note),
+  },
   // Prise en charge libre (13/10): the journal row names the technician
   // as its actor; a take by a first typed result says so.
   SAMPLE_TAKEN: {
@@ -253,6 +259,7 @@ const CIRCUIT_ORDER = [
   "SAMPLE_REACTIVATED",
   "SAMPLE_AWAITING_CLIENT",
   "CLIENT_CONSULTED",
+  "CLIENT_CONSULTATION_UPDATED",
   "SAMPLE_PROGRAMMED",
   "PROGRAMMED",
   "SAMPLE_PROGRAMME_UPDATED",

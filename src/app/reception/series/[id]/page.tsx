@@ -26,7 +26,18 @@ const SERIE_RECEPTION_SELECT = {
   ...SERIE_LAB_SELECT,
   samples: {
     ...SERIE_LAB_SELECT.samples,
-    select: { ...SERIE_LAB_SELECT.samples.select, alertsSentAt: true, report: { select: { id: true } } },
+    select: {
+      ...SERIE_LAB_SELECT.samples.select,
+      alertsSentAt: true,
+      report: { select: { id: true } },
+      // I6 (Q75): the client's agreement, added or corrected here after the
+      // reception until the technical validation (`consultationEditable`).
+      clientConsultedName: true,
+      clientConsultationChannel: true,
+      clientConsultedAt: true,
+      clientConsultationNote: true,
+      validatedById: true,
+    },
   },
 } as const;
 

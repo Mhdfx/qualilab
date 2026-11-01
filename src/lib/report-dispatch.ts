@@ -34,6 +34,11 @@ import { REOPENED_SAMPLE_FIELDS, amendmentIssueRefusal, canTransition } from "./
 import { REOPENED_STATUS, amendedNumber, reopenRefusal, reopensReports } from "./report-amendment";
 import type { Role } from "./roles";
 import { SingleFlight } from "./single-flight";
+import { samplingMeansText } from "./sampling-means";
+import { reportCarriesAccreditationLogo } from "./accreditation";
+import { reportImagesPresent } from "./report-images";
+import { alertCopyRecipients } from "./alert-copies";
+import { loadAlertCopies } from "./alert-copies-server";
 
 /**
  * What follows an approval: the report is issued; it is sent to the client on
@@ -133,6 +138,8 @@ const REPORT_SAMPLE_SELECT = {
         select: {
           id: true,
           name: true,
+          // K4: its accreditation, frozen with each version issued (lot 3C).
+          accreditation: true,
           // The parameter's own method: the version in force of a norm
           // its catalogue criteria cite — the last fallback.
           criteria: {
@@ -196,6 +203,8 @@ function toReportData(
     amendment?: ReportAmendment | null;
     issuedAt?: Date | null;
     layout?: typeof REPORT_LAYOUT_ALIGNED;
+    /** At an issue (lot 3C, K4): which of the accreditation logo and the stamp are uploaded. */
+    images?: { accreditationLogo: boolean; stamp: boolean };
   }
 ): ReportData {
   const programmedNorm = new Map(sample.parameters.map((p) => [p.parameterId, p.normVersion?.label ?? null]));
@@ -248,6 +257,7 @@ function toReportData(
       ),
       criterion: storedPlan(result.criterion),
       units: result.units.map((u) => ({ display: unitStoredDisplay(u), value: u.value, detected: u.detected })),
+      ...(aligned ? { accreditation: result.parameter.accreditation ?? null } : {}),
     })),
     amendment: fields.amendment ?? null,
     sampledByLab: sample.serie.samplerKind === "QUALILAB",
@@ -266,6 +276,30 @@ function toReportData(
     // The approval that issued this version (the frozen version keeps its own).
     issuedAt: fields.issuedAt ?? sample.approvedAt,
     ...(aligned ? { layout: REPORT_LAYOUT_ALIGNED, arrivedAt: sample.serie.arrivedAt } : {}),
+    ...(aligned ? issuedSinceLot3C(sample, fields.images) : {}),
+  };
+}
+
+/**
+ * What a version issued since lot 3C (RETOUR-LABO-28-10.md) freezes besides
+ * the aligned layout: the sampling means (K6), each analysis's accreditation
+ * (K4, its mark after the name), and whether the accreditation logo and the
+ * stamp print — the logo only on a report carrying an accredited analysis.
+ */
+function issuedSinceLot3C(
+  sample: ReportSample,
+  images: { accreditationLogo: boolean; stamp: boolean } = { accreditationLogo: false, stamp: false }
+): Pick<ReportData, "samplingMeans" | "accreditationLogo" | "stamp"> {
+  return {
+    samplingMeans: samplingMeansText({
+      lineKind: sample.lineKind,
+      sampledByLab: sample.serie.samplerKind === "QUALILAB",
+      airMethod: sample.airMethod,
+      airExposureMin: sample.airExposureMin,
+    }),
+    accreditationLogo:
+      images.accreditationLogo && reportCarriesAccreditationLogo(sample.results.map((r) => r.parameter.accreditation)),
+    stamp: images.stamp,
   };
 }
 
@@ -456,11 +490,14 @@ export async function createReportFor(sampleId: string): Promise<IssuedReport | 
   const existing = await issuedReport();
   if (existing) return existing;
 
-  const fields = await computeReportFields(sampleId);
-  const sample = await prisma.sample.findUnique({
-    where: { id: sampleId },
-    select: { ...REPORT_SAMPLE_SELECT, approvedAt: true, approvedById: true },
-  });
+  const [fields, sample, images] = await Promise.all([
+    computeReportFields(sampleId),
+    prisma.sample.findUnique({
+      where: { id: sampleId },
+      select: { ...REPORT_SAMPLE_SELECT, approvedAt: true, approvedById: true },
+    }),
+    reportImagesPresent(),
+  ]);
   if (!fields || !sample) return null;
   // One instant for the version, for the « Date d'édition » it prints and
   // for the year of its number.
@@ -486,7 +523,7 @@ export async function createReportFor(sampleId: string): Promise<IssuedReport | 
         // wait on, until this one commits (or rolls back, number unburnt).
         const number = await drawReportNumber(tx, issuedAt);
         // Issued now: the aligned layout (lot 1b), frozen with the version.
-        const data = toReportData(sample, { ...fields, number, issuedAt, layout: REPORT_LAYOUT_ALIGNED });
+        const data = toReportData(sample, { ...fields, number, issuedAt, layout: REPORT_LAYOUT_ALIGNED, images });
         const report = await tx.report.create({
           data: { sampleId, number, ...fields },
           select: { id: true, number: true },
@@ -559,6 +596,7 @@ export async function amendReportFor(sampleId: string, actorId: string | null): 
     issuedAt,
     amendment: { previousNumber, previousIssuedAt, note },
     layout: REPORT_LAYOUT_ALIGNED,
+    images: await reportImagesPresent(),
   });
 
   try {
@@ -1073,8 +1111,10 @@ export async function sendContaminationAlerts(
 
   // The laboratory is always in copy of an alert; the identity saved on
   // /admin/entreprise also signs each message (read once for the batch).
-  const company = await getCompany();
-  const cc = [company.email.trim()].filter(Boolean);
+  // Its internal addresses (direction, qualité — L5, Q93) join the copy,
+  // for every client or the clients chosen (`alertCopyRecipients`).
+  const [company, copies] = await Promise.all([getCompany(), loadAlertCopies(sample.clientId)]);
+  const cc = alertCopyRecipients({ copies, clientId: sample.clientId, base: [company.email], to });
 
   // Claim atomically: whoever flips alertsSentAt from null wins, a
   // concurrent caller (early-alert validation racing the admin approval) sees
