@@ -350,6 +350,16 @@ function breakableWord(text: string): string {
   return text.replace(/^(ind[ée]nom)(brables?)$/i, "$1­$2").replace(/^(incomp)(tables?)$/i, "$1­$2");
 }
 
+/**
+ * The unit as its narrow column prints it: a break allowed after each « / »
+ * (« UFC/ » then « couteau »), only where the line is too long — never past
+ * the column's rule (retouche of 02/11). Runs on `show`'s escaped text, where
+ * a « / » after « < » can only close its own `<sup>`.
+ */
+function unitCell(unit: string | null): string {
+  return show(unit).replace(/(?<!<)\//g, "/<wbr>");
+}
+
 /** Colour of one repetition against the plan: over M red, between m and M
  *  amber — and over a single limit, amber while c tolerates it (Q31). */
 function unitClass(row: Row, unit: ReportUnit): string {
@@ -411,7 +421,7 @@ function resultsTable(data: ReportData, from: number, to: number, first: boolean
       }
       const note = first && row.note ? `<span class="note">${escapeHtml(row.note)}</span>` : "";
       return first
-        ? `<tr><td class="param">${show(parameterName(row))}${note}</td><td class="method">${show(row.norm)}</td><td class="unit">${show(row.unit)}</td>${cells}</tr>`
+        ? `<tr><td class="param">${show(parameterName(row))}${note}</td><td class="method">${show(row.norm)}</td><td class="unit">${unitCell(row.unit)}</td>${cells}</tr>`
         : `<tr><td class="param">${show(parameterName(row))}</td>${cells}</tr>`;
     })
     .join("");
@@ -441,7 +451,7 @@ function resultsTable(data: ReportData, from: number, to: number, first: boolean
  */
 export function resultColumns(repetitions: number): { param: number; method: number; unit: number; rep: number } {
   if (repetitions <= 0) return { param: 43, method: 18, unit: 9, rep: 30 };
-  const unit = 6.5;
+  const unit = 8;
   const reps = Math.min(55, 12 + repetitions * 5);
   const rep = Math.round((reps / repetitions) * 100) / 100;
   const names = 100 - unit - rep * repetitions;
@@ -642,7 +652,7 @@ function interpretationTable(data: ReportData): string {
 <tr><td colspan="${2 + columns.length}" class="reg">Réglementation en vigueur : ${show(data.regulation)}</td></tr></tbody>
 </table>`;
   const rows = data.results
-    .map((row) => `<tr><td class="param">${show(parameterName(row))}</td><td class="method">${show(row.norm)}</td><td class="unit">${show(row.unit)}</td>${criteriaCells(row)}</tr>`)
+    .map((row) => `<tr><td class="param">${show(parameterName(row))}</td><td class="method">${show(row.norm)}</td><td class="unit">${unitCell(row.unit)}</td>${criteriaCells(row)}</tr>`)
     .join("");
   const criteria = `<table class="criteria">
 <colgroup><col class="a-param"><col class="a-method"><col class="a-unit"><col class="a-m"><col class="a-m"></colgroup>
@@ -837,7 +847,8 @@ export function buildReportHtml(
   table.results thead th { background: #b4c6e7; font-style: italic; text-align: center; vertical-align: middle; padding: 1.6mm 1.2mm; }
   table.results tr.reps th { font-style: normal; font-weight: 700; padding: .5mm .3mm; }
   table.results tbody td { border-top: 1px dotted #000; border-bottom: 1px dotted #000; }
-  td.unit, th.unit { white-space: nowrap; overflow-wrap: normal; text-align: center; }
+  /* A long unit (« UFC/couteau ») wraps after its « / », inside the column. */
+  td.unit, th.unit { white-space: normal; overflow-wrap: normal; text-align: center; padding-left: .6mm; padding-right: .6mm; }
   .method { font-size: .9em; }
   .note { display: block; font-size: .85em; font-style: italic; margin-top: .3mm; }
   th.rep, td.rep { text-align: center; }

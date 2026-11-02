@@ -8,9 +8,8 @@ import { labDayOf } from "./lab-time";
  * journal and the accounting export (`lib/lab-day-range.ts`, which this
  * module reads). An e-mail shown « 09/10 23:40 » is therefore inside a period
  * ending on 09/10, whatever the runtime's time-zone data says (HANDOFF §9,
- * stale tzdata). /recherche still cuts on the server's clock
- * (`parseSampleSearch` / `serverIsoDay`); the two agree while the server's
- * tzdata is current.
+ * stale tzdata). /recherche cuts on the same clock since 02/11
+ * (`parseSampleSearch` reads its `du` / `au` with `parseDay`).
  */
 export type DayRange = {
   /** Start of the first day, or null (no lower bound). */

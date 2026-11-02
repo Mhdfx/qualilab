@@ -11,6 +11,9 @@
  * Pure and client-safe.
  */
 
+import { labDayBounds, labDayStart } from "./lab-day-range";
+import { labDayOf } from "./lab-time";
+
 /** The address parameter that carries a dashboard view. */
 export const VIEW_PARAM = "vue";
 
@@ -54,16 +57,19 @@ export function viewHref(path: string, view: string | null, anchor?: string): st
 }
 
 /**
- * « AAAA-MM-JJ » of a day boundary the server cut with `setHours(0, 0, 0, 0)`
- * (« Reçus aujourd'hui », « Ce mois-ci »), read on that same server clock —
- * the clock /recherche reads `du` / `au` back with (`parseSampleSearch`) —
- * so a tile's link opens exactly the instant the tile counted from. Pass it
- * to `rechercheHref` as a string. Identical to `formatIsoDay` while the
- * runtime's zone data and the lab's clock (`lab-time.ts`) agree; when they do
- * not (a runtime predating Morocco's return to UTC), `formatIsoDay` of server
- * midnight reads the previous day and the link would open one day early.
+ * « Reçus aujourd'hui »: the laboratory's today (`lib/lab-time.ts`), first to
+ * last millisecond, and its « AAAA-MM-JJ » for the tile's /recherche link —
+ * the clock /recherche reads `du` / `au` back with (`parseSampleSearch`), so
+ * the link opens exactly what the tile counted, whatever the server's zone
+ * data (retouche of 02/11; was the server's own midnight).
  */
-export function serverIsoDay(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+export function labToday(now: Date): { day: string; from: Date; to: Date } {
+  const bounds = labDayBounds(null, now)!;
+  return { day: bounds.day, from: bounds.from, to: new Date(bounds.until.getTime() - 1) };
+}
+
+/** « Ce mois-ci »: the first instant of the laboratory's month, and its « AAAA-MM-01 » for the link. */
+export function labMonthStart(now: Date): { day: string; from: Date } {
+  const day = `${labDayOf(now).slice(0, 7)}-01`;
+  return { day, from: labDayStart(day)! };
 }

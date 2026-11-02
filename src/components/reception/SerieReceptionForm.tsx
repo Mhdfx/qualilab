@@ -961,7 +961,7 @@ export function SerieReceptionForm({
                   id={`obs-${line.sampleId}`}
                   value={line.receptionNote}
                   onChange={(receptionNote) => updateLine(line.sampleId, { receptionNote })}
-                  doubt={conformity ? (rows.find((row) => row.status === "A_VERIFIER") ?? null) : null}
+                  doubt={rowToJustify(rows, conformity, null)}
                   invalid={highlighted && doubt !== null}
                 />
 

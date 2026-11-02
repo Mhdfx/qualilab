@@ -1342,7 +1342,7 @@ export function DepositForm({
                     id={noteAnchor(line.key)}
                     value={extra.receptionNote}
                     onChange={(receptionNote) => updateIntake(line.key, { receptionNote })}
-                    doubt={conformity ? (rows.find((row) => row.status === "A_VERIFIER") ?? null) : null}
+                    doubt={rowToJustify(rows, conformity, null)}
                     invalid={errorLine === number && doubt !== null}
                     inputClassName="input-field mt-1.5 resize-y px-4 py-2"
                   />

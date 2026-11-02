@@ -63,7 +63,7 @@ export default async function SauvegardesPage() {
             )}
             {health.state === "absent" && (
               <p className="mt-0.5">
-                Sur le serveur, le script de sauvegarde écrit ce journal ; l&apos;application le lit (voir DEPLOY.md, « Backups »).
+                {"Ce journal est écrit sur le serveur par la sauvegarde automatique, puis lu ici. S'il reste absent, demandez à l'administrateur du serveur de vérifier que la sauvegarde automatique est bien installée."}
               </p>
             )}
           </div>

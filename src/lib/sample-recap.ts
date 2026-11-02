@@ -43,7 +43,13 @@ export function recapAccess(canReadValues: boolean, requested: RecapMode): { mod
 /** The « Siège » of a client: the séries without a site. */
 export const RECAP_SIEGE = "Siège";
 
-export type RecapCatalogueEntry = { id: string; name: string; aliases: string | null };
+/**
+ * `category`: an alias is a spelling of its own category's germ (the criteria
+ * workbook's « Coliformes » for the food « Coliformes totaux »), so it merges
+ * columns within that category only; the same name in two categories (a
+ * twin) is one column whatever the category. Absent, all entries share one.
+ */
+export type RecapCatalogueEntry = { id: string; name: string; aliases: string | null; category?: string | null };
 
 export type RecapResult = {
   parameterId: string;
@@ -96,10 +102,13 @@ export function resultVerdict(result: Pick<RecapResult, "conform" | "interpretat
 }
 
 /**
- * The columns of the catalogue: parameters sharing a name or an alias
- * (normalised: accents, case, punctuation) are one column, named after the
- * first in the catalogue's order. Returns parameter id → column key, and
- * each key's label and rank.
+ * The columns of the catalogue: parameters sharing a name (twins of another
+ * category), or a name or an alias within one category (normalised: accents,
+ * case, punctuation), are one column, named after the first in the
+ * catalogue's order. An alias never reaches across categories: the ambiance
+ * « Coliformes » (UFC/couteau) is not the food « Coliformes totaux » whose
+ * alias it spells (retouche of 02/11). Returns parameter id → column key,
+ * and each key's label and rank.
  */
 export function recapColumns(catalogue: readonly RecapCatalogueEntry[]): {
   columnOf: Map<string, string>;
@@ -109,7 +118,11 @@ export function recapColumns(catalogue: readonly RecapCatalogueEntry[]): {
   const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
   const owner = new Map<string, number>();
   catalogue.forEach((entry, index) => {
-    const keys = [entry.name, ...(entry.aliases ?? "").split(/\r?\n/)].map(normalizeLabel).filter(Boolean);
+    const category = entry.category ?? "";
+    const name = normalizeLabel(entry.name);
+    const spellings = [entry.name, ...(entry.aliases ?? "").split(/\r?\n/)].map(normalizeLabel).filter(Boolean);
+    // « =name » joins twins across categories; « CATEGORY|spelling » joins names and aliases within one.
+    const keys = [...(name ? [`=${name}`] : []), ...spellings.map((key) => `${category}|${key}`)];
     for (const key of keys) {
       const seen = owner.get(key);
       if (seen === undefined) owner.set(key, index);

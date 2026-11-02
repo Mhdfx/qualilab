@@ -132,6 +132,7 @@ function textOf(html: string) {
     .replace(/<style>[\s\S]*?<\/style>/, "")
     .replace(/<title>[\s\S]*?<\/title>/, "")
     .replace(/<br>/g, " ")
+    .replace(/<wbr>/g, "")
     .replace(/<[^>]+>/g, " ")
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, " ")
@@ -504,6 +505,30 @@ describe("buildReportHtml — the results of page 1", () => {
     expect(html).toContain('<td class="rep no">1,2.10<sup>2</sup></td>');
     // The catalogue limit stands in the annex's criteria.
     expect(sheets(html).annex).toContain('<td class="crit" colspan="2">&lt; 10 ufc/g</td>');
+  });
+});
+
+describe("the Unité column — a long unit wraps inside it (retouche of 02/11)", () => {
+  it("breaks « UFC/couteau » after its « / » on page 1 and in the annex, the <sup> left whole", () => {
+    const html = buildReportHtml({
+      ...base,
+      results: [
+        { ...base.results[0], unit: "UFC/couteau" },
+        { ...base.results[0], parameter: "Germes", unit: "UFC/25 cm²" },
+      ],
+    });
+    const { page1, annex } = sheets(html);
+    expect(page1).toContain('<td class="unit">UFC/<wbr>couteau</td>');
+    expect(annex).toContain('<td class="unit">UFC/<wbr>couteau</td>');
+    expect(page1).toContain('<td class="unit">UFC/<wbr>25 cm<sup>2</sup></td>');
+    expect(html).not.toMatch(/<\/<wbr>sup>/);
+    // The column wraps instead of running over its rule.
+    expect(html).toMatch(/td\.unit, th\.unit \{ white-space: normal;/);
+    expect(html).not.toMatch(/td\.unit, th\.unit \{ white-space: nowrap/);
+  });
+
+  it("keeps 8 % for the unit with R1 … Rn, so that « couteau » holds on its line", () => {
+    for (let n = 1; n <= 10; n += 1) expect(resultColumns(n).unit).toBe(8);
   });
 });
 

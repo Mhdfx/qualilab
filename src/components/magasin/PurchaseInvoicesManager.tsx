@@ -709,7 +709,7 @@ function InvoiceForm({
     <Card className={`${invoice ? "" : "mb-4 border-l-4 border-brand"} p-4`}>
       {invoice && (
         <p className="mb-3 text-sm font-medium text-slate-700">
-          Corriger la facture {invoice.number} — possible tant qu&apos;aucun paiement n&apos;est enregistré ; la correction est journalisée.
+          {`Corriger la facture ${invoice.number} — possible tant qu'aucun paiement n'est enregistré ; la correction est journalisée.`}
         </p>
       )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1016,8 +1016,7 @@ function CancelForm({ invoice, onDone, onError }: { invoice: PurchaseInvoiceRow;
   return (
     <div>
       <p className="mb-2 text-sm text-slate-700">
-        Annuler la saisie de la facture {invoice.number} (saisie par erreur) : elle reste dans l&apos;historique, hors des totaux, des alertes et du
-        journal des achats.
+        {`Annuler la saisie de la facture ${invoice.number} (saisie par erreur) : elle reste dans l'historique, hors des totaux, des alertes et du journal des achats.`}
       </p>
       <label className="block text-sm">
         <span className="font-medium text-slate-700">Motif</span>

@@ -45,6 +45,7 @@ import {
 } from "@/components/commercial/client-actions-logic";
 import { clientCompletionGaps, completionHint } from "@/lib/client-completion";
 import { declaredSampledAt, parseSampleSearch, rechercheHref } from "@/lib/sample-search";
+import { labDayOf } from "@/lib/lab-time";
 import { parseView } from "@/lib/dashboard-view";
 import {
   CLIENT_INVOICE_VIEW_FILTERS,
@@ -91,12 +92,12 @@ export default async function ClientDetailPage({
 
   // The summary's period (slice F): the current month by default.
   const raw = await searchParams;
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
+  // The laboratory's today, the clock `parseSampleSearch` reads the period with.
+  const today = labDayOf(new Date());
   const summaryParams = new URLSearchParams({
     client: id,
-    du: typeof raw.du === "string" ? raw.du : `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`,
-    au: typeof raw.au === "string" ? raw.au : `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+    du: typeof raw.du === "string" ? raw.du : `${today.slice(0, 7)}-01`,
+    au: typeof raw.au === "string" ? raw.au : today,
   });
   const summarySearch = parseSampleSearch(summaryParams);
   // « Facturé » and « Encaissé » filter the « Factures » card below to the

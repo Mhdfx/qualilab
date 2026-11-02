@@ -20,7 +20,7 @@ import {
   type ProgrammationView,
 } from "./circuit-views";
 import { TAKEN_WHERE, UNCLAIMED_WHERE, benchQueueWhereFor, benchWhereFor } from "./bench-access";
-import { parseView, serverIsoDay, viewHref } from "./dashboard-view";
+import { labToday, parseView, viewHref } from "./dashboard-view";
 import { parseSampleSearch, rechercheHref } from "./sample-search";
 
 /**
@@ -59,20 +59,23 @@ describe("the views round-trip through the address", () => {
   });
 });
 
-describe("serverIsoDay", () => {
-  it("writes the server's calendar day", () => {
-    expect(serverIsoDay(new Date(2026, 9, 8, 0, 0, 0, 0))).toBe("2026-10-08");
-    expect(serverIsoDay(new Date(2026, 0, 5, 23, 59))).toBe("2026-01-05");
+describe("labToday", () => {
+  it("is the laboratory's day, whatever the server's zone (UTC since 20/09/2026, UTC+1 before)", () => {
+    expect(labToday(new Date("2026-10-08T23:30:00Z"))).toEqual({
+      day: "2026-10-08",
+      from: new Date("2026-10-08T00:00:00.000Z"),
+      to: new Date("2026-10-08T23:59:59.999Z"),
+    });
+    expect(labToday(new Date("2026-01-05T23:30:00Z")).day).toBe("2026-01-06");
   });
 
   it("opens on /recherche exactly the day « Reçus aujourd'hui » counts", () => {
-    const startOfDay = new Date(2026, 9, 8, 0, 0, 0, 0);
-    const endOfDay = new Date(2026, 9, 8, 23, 59, 59, 999);
-    const href = rechercheHref({ from: serverIsoDay(startOfDay), to: serverIsoDay(startOfDay) });
+    const today = labToday(new Date("2026-10-08T10:00:00Z"));
+    const href = rechercheHref({ from: today.day, to: today.day });
     const search = parseSampleSearch(new URL(href, "http://localhost").searchParams);
     expect(search.dateField).toBe("reception");
-    expect(search.from?.getTime()).toBe(startOfDay.getTime());
-    expect(search.to?.getTime()).toBe(endOfDay.getTime());
+    expect(search.from?.getTime()).toBe(today.from.getTime());
+    expect(search.to?.getTime()).toBe(today.to.getTime());
   });
 });
 

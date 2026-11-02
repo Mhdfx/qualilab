@@ -11,7 +11,7 @@ import type { Role } from "./roles";
  * defined once here — its label (the tile's) and the exact filter the tile
  * counts with. The tile and the list it opens read the same definition, so
  * they cannot disagree. The address side (`parseView`, `viewHref`, and
- * `serverIsoDay` for a day link to /recherche) lives in
+ * `labToday` / `labMonthStart` for a day link to /recherche) lives in
  * `lib/dashboard-view.ts`. Pure and client-safe (type-only Prisma imports).
  */
 

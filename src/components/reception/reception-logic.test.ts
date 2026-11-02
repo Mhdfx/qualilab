@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_THRESHOLDS, type ChecklistRow } from "@/lib/reception-rules";
+import { DEFAULT_THRESHOLDS, rowToJustify, type ChecklistRow } from "@/lib/reception-rules";
 import {
   allExploitableLabel,
   allExploitableNotice,
@@ -287,6 +287,21 @@ describe("« Tous exploitables et bien identifiés » (16/10, Q64; 28/10, 2.7 �
     expect(read("./SerieReceptionForm.tsx")).toMatch(/updateLine\(line\.sampleId, exploitableAnswer\(line, exploitable\)\)/);
     expect(read("./DepositForm.tsx")).toMatch(/updateIntake\(key, exploitableAnswer\(intakeOf\(key\), exploitable\)\)/);
     expect(read("./reception-widgets.tsx")).toMatch(/\{allExploitableLabel\(count\)\}/);
+  });
+
+  it("R-30: the observation field is starred « obligatoire » only for the doubt rowToJustify requires (C1 / C2 / temperature), not a quantity not weighed", () => {
+    const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+    for (const form of ["./SerieReceptionForm.tsx", "./DepositForm.tsx"]) {
+      const source = read(form);
+      expect(source).toContain("doubt={rowToJustify(rows, conformity, null)}");
+      expect(source).not.toMatch(/doubt=\{conformity \? \(rows\.find\(\(row\) => row\.status === "A_VERIFIER"\)/);
+    }
+    // The note passed as null: the star stays while the observation is typed.
+    const quantity = [{ key: "ALIMENT_MICRO" as const, status: "A_VERIFIER" as const }];
+    expect(rowToJustify(quantity, true, null, true)).toBeNull();
+    const delay = [...quantity, { key: "DELAI" as const, status: "A_VERIFIER" as const }];
+    expect(rowToJustify(delay, true, null, true)).toMatchObject({ key: "DELAI" });
+    expect(rowToJustify(delay, false, null, true)).toBeNull();
   });
 });
 

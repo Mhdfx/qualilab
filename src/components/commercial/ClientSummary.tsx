@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BarChart3, Download, Search } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { searchQueryString, type SampleSearch } from "@/lib/sample-search";
+import { labDayOf } from "@/lib/lab-time";
 import type { SearchRow } from "@/lib/sample-search-server";
 
 /**
@@ -10,8 +11,8 @@ import type { SearchRow } from "@/lib/sample-search-server";
  * A plain GET form on the client page — the period is in the URL.
  */
 export function ClientSummary({ search, rows, total }: { search: SampleSearch; rows: SearchRow[]; total: number }) {
-  const iso = (d: Date | null) =>
-    d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : "";
+  // The days read on the laboratory's clock (`parseSampleSearch`), written back on it.
+  const iso = (d: Date | null) => (d ? labDayOf(d) : "");
   const byConclusion = new Map<string, { count: number; tone: string }>();
   for (const row of rows) {
     const entry = byConclusion.get(row.conclusion.label) ?? { count: 0, tone: row.conclusion.tone };

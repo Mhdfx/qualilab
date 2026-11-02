@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
 import { formatDateTime } from "@/lib/labels";
 import { getLabSettings } from "@/lib/lab-settings";
-import { serverIsoDay, viewHref } from "@/lib/dashboard-view";
+import { labToday, viewHref } from "@/lib/dashboard-view";
 import { rechercheHref } from "@/lib/sample-search";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
@@ -28,14 +28,12 @@ const QUEUE_LIMIT = 100;
 const PENDING_SERIE = { samples: { some: { status: "PRELEVE" as const } } };
 
 export default async function ReceptionPage() {
-  // The day as /recherche reads `du` / `au` back: server midnight to
-  // 23:59:59.999 on the server clock (TZ = LAB_TIME_ZONE), so the tile's
-  // link is written with `serverIsoDay`, the same clock.
+  // The day as /recherche reads `du` / `au` back: the laboratory's midnight
+  // to 23:59:59.999 on its clock (`labToday`), whatever the server's zone.
   const now = new Date();
-  const startOfDay = new Date(now);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(startOfDay);
-  endOfDay.setHours(23, 59, 59, 999);
+  const today = labToday(now);
+  const startOfDay = today.from;
+  const endOfDay = today.to;
 
   const [session, pending, pendingSeries, pendingSamples, blocked, recusAujourdhui, enAnalyse, aProgrammer, settings] = await Promise.all([
     // Belt and braces with the layout guard.
@@ -139,7 +137,7 @@ export default async function ReceptionPage() {
             value={recusAujourdhui}
             icon={ClipboardCheck}
             accent="emerald"
-            href={rechercheHref({ from: serverIsoDay(startOfDay), to: serverIsoDay(startOfDay) })}
+            href={rechercheHref({ from: today.day, to: today.day })}
           />
           <StatCard
             label="À programmer"

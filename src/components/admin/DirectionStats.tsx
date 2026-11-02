@@ -13,7 +13,7 @@ import { billingFigures } from "@/components/invoices/invoice-queries";
 import { formatCurrency, formatDecimal, SAMPLE_STATUS_LABELS, SAMPLE_TYPE_LABELS } from "@/lib/labels";
 import { OPEN_STATUSES, rechercheHref } from "@/lib/sample-search";
 import { countInStatuses, invoiceTileHref } from "@/lib/management-views";
-import { serverIsoDay, viewHref } from "@/lib/dashboard-view";
+import { labMonthStart, viewHref } from "@/lib/dashboard-view";
 import { BENCH_STATUSES, TAKEN_WHERE, UNCLAIMED_WHERE } from "@/lib/bench-access";
 import { BENCH_VIEWS } from "@/lib/circuit-views";
 import { benchLoadByTechnician, technicianLoadText } from "@/lib/technician-load";
@@ -51,9 +51,9 @@ const BENCH_ANCHOR = "analyses";
 export async function DirectionStats() {
   // One clock for the page: the month's start and the « en retard » test.
   const now = new Date();
-  const monthStart = new Date(now);
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
+  // The laboratory's month (`labMonthStart`), the clock /recherche reads the link back with.
+  const month = labMonthStart(now);
+  const monthStart = month.from;
 
   const [byStatus, byType, delays, billing, alertsThisMonth, blocked, toTake, benchLines] =
     await Promise.all([
@@ -155,7 +155,7 @@ export async function DirectionStats() {
   ];
   const maxStatus = Math.max(1, ...STATUS_ORDER.map((s) => statusCount.get(s) ?? 0));
   // « Ce mois-ci » opens /recherche from the very instant it counted from.
-  const monthFrom = serverIsoDay(monthStart);
+  const monthFrom = month.day;
 
   // A row of the two cards below that opens a list: the whole row is the
   // link, its figure in the accessible name.

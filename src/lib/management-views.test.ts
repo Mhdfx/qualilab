@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SampleStatus } from "@/generated/prisma/enums";
-import { parseView, serverIsoDay } from "./dashboard-view";
+import { labMonthStart, parseView } from "./dashboard-view";
 import { EIL_STATUSES } from "./quality-validation";
 import { OPEN_STATUSES, parseSampleSearch, rechercheHref } from "./sample-search";
 import {
@@ -38,15 +38,16 @@ describe("countInStatuses", () => {
   });
 });
 
-describe("serverIsoDay", () => {
-  it("writes the day a server-cut boundary falls on, read back to the same instant by /recherche", () => {
-    const monthStart = new Date(2026, 9, 1, 0, 0, 0, 0);
-    expect(serverIsoDay(monthStart)).toBe("2026-10-01");
-    expect(serverIsoDay(new Date(2026, 0, 5, 23, 59))).toBe("2026-01-05");
-    for (const boundary of [monthStart, new Date(2026, 1, 1), new Date(2026, 11, 31)]) {
-      const href = rechercheHref({ type: "EAU", dateField: "prelevement", from: serverIsoDay(boundary) });
+describe("labMonthStart", () => {
+  it("is the laboratory's month, read back to the same instant by /recherche", () => {
+    expect(labMonthStart(new Date("2026-10-31T23:30:00Z"))).toEqual({ day: "2026-10-01", from: new Date("2026-10-01T00:00:00.000Z") });
+    // Before 20/09/2026 the laboratory's clock was UTC+1: its 1st of February began at 31/01 23:00 UTC.
+    expect(labMonthStart(new Date("2026-02-14T12:00:00Z"))).toEqual({ day: "2026-02-01", from: new Date("2026-01-31T23:00:00.000Z") });
+    for (const now of [new Date("2026-10-15T12:00:00Z"), new Date("2026-02-01T00:30:00Z"), new Date("2026-12-31T23:59:00Z")]) {
+      const month = labMonthStart(now);
+      const href = rechercheHref({ type: "EAU", dateField: "prelevement", from: month.day });
       const search = parseSampleSearch(new URL(href, "https://labo.test").searchParams);
-      expect(search.from?.getTime()).toBe(boundary.getTime());
+      expect(search.from?.getTime()).toBe(month.from.getTime());
       expect(search.dateField).toBe("prelevement");
       expect(search.type).toBe("EAU");
     }

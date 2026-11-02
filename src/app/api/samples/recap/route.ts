@@ -68,7 +68,7 @@ export async function GET(request: Request) {
         },
       },
     }),
-    prisma.analysisParameter.findMany({ select: { id: true, name: true, aliases: true }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
+    prisma.analysisParameter.findMany({ select: { id: true, name: true, aliases: true, category: true }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
     search.clientId ? prisma.client.findUnique({ where: { id: search.clientId }, select: { name: true } }) : null,
     search.siteId && search.siteId !== SIEGE ? prisma.site.findUnique({ where: { id: search.siteId }, select: { name: true } }) : null,
   ]);

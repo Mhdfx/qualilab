@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SAMPLE_STATUS_LABELS, SAMPLE_TYPE_LABELS, formatDate } from "@/lib/labels";
 import { UNDECLARED_SAMPLING, parseSampleSearch, searchQueryString, type Conclusion } from "@/lib/sample-search";
+import { labDayOf } from "@/lib/lab-time";
 import { searchSamples } from "@/lib/sample-search-server";
 import { benchHidesClient, benchSearchScope } from "@/lib/bench-access";
 import { Card } from "@/components/ui/Card";
@@ -102,8 +103,8 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
       })
     : [];
   const reportBySample = new Map(reports.map((r) => [r.sampleId, r]));
-  const iso = (d: Date | null) =>
-    d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : "";
+  // The days read on the laboratory's clock (`parseSampleSearch`), written back on it.
+  const iso = (d: Date | null) => (d ? labDayOf(d) : "");
 
   return (
     <div>

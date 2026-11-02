@@ -35,6 +35,32 @@ describe("recapColumns (L1)", () => {
     expect(columns.get("ecoli")).toEqual({ label: "Escherichia coli", rank: 3 });
     expect(columnOf.get("chlore")).toBe("chlore");
   });
+
+  it("never merges through another category's alias: the ambiance « Coliformes » keeps its own column (retouche of 02/11)", () => {
+    // The local catalogue's coliforms: the food « Coliformes totaux » spells « Coliformes » as an alias (criteria workbook).
+    const { columnOf, columns } = recapColumns([
+      { id: "alim-ct", name: "Coliformes totaux", aliases: "Coliformes à 30°C\nColiformes", category: "ALIMENTAIRE" },
+      { id: "alim-30", name: "Coliformes à 30 °C", aliases: null, category: "ALIMENTAIRE" },
+      { id: "eau-ct", name: "Coliformes totaux", aliases: null, category: "EAU" },
+      { id: "amb-col", name: "Coliformes", aliases: null, category: "AMBIANCE" },
+      { id: "amb-ecoli", name: "E. coli", aliases: null, category: "AMBIANCE" },
+      { id: "alim-ecoli", name: "Escherichia coli", aliases: "E. coli", category: "ALIMENTAIRE" },
+    ]);
+    // Twins (one name, two categories) and an alias within its own category: one column.
+    expect(columnOf.get("eau-ct")).toBe("alim-ct");
+    expect(columnOf.get("alim-30")).toBe("alim-ct");
+    expect(columns.get("alim-ct")?.label).toBe("Coliformes totaux");
+    // Another category's alias joins nothing.
+    expect(columnOf.get("amb-col")).toBe("amb-col");
+    expect(columns.get("amb-col")).toEqual({ label: "Coliformes", rank: 3 });
+    expect(columnOf.get("amb-ecoli")).toBe("amb-ecoli");
+    expect(columnOf.get("alim-ecoli")).toBe("alim-ecoli");
+  });
+
+  it("the route reads each parameter's category for the rule", () => {
+    const route = readFileSync(join(process.cwd(), "src/app/api/samples/recap/route.ts"), "utf8");
+    expect(route).toContain("select: { id: true, name: true, aliases: true, category: true }");
+  });
 });
 
 describe("resultVerdict", () => {

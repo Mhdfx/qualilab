@@ -13,7 +13,8 @@ import {
   searchQueryString,
   searchReceptionAt,
 } from "./sample-search";
-import { formatIsoDay } from "./labels";
+import { formatDayShort, formatIsoDay } from "./labels";
+import { labDayOf, toLabWallTime } from "./lab-time";
 
 const parse = (query: string) => parseSampleSearch(new URLSearchParams(query));
 
@@ -21,16 +22,34 @@ describe("parseSampleSearch", () => {
   it("reads client, nature, state, date field and the period", () => {
     const s = parse("q=%20thon%20&client=c1&nature=n1&etat=terminees&date=prelevement&du=2026-09-01&au=2026-09-30");
     expect(s).toMatchObject({ q: "thon", clientId: "c1", natureId: "n1", state: "terminees", dateField: "prelevement" });
-    expect(s.from?.getDate()).toBe(1);
-    expect(s.to?.getHours()).toBe(23);
+    expect(toLabWallTime(s.from!)).toBe("2026-09-01T00:00");
+    expect(toLabWallTime(s.to!)).toBe("2026-09-30T23:59");
+  });
+
+  it("reads the days on the laboratory's clock, whatever the server's zone — the title says the day asked (retouche of 02/11)", () => {
+    // After Morocco's return to UTC (20/09/2026): the lab's midnight is UTC midnight.
+    const s = parse("du=2026-10-01&au=2026-10-31");
+    expect(s.from?.toISOString()).toBe("2026-10-01T00:00:00.000Z");
+    expect(s.to?.toISOString()).toBe("2026-10-31T23:59:59.999Z");
+    expect(formatDayShort(s.from!)).toBe("01/10/2026");
+    expect(formatDayShort(s.to!)).toBe("31/10/2026");
+    // Before it, UTC+1: the 1st of September began at 31/08 23:00 UTC.
+    expect(parse("du=2026-09-01").from?.toISOString()).toBe("2026-08-31T23:00:00.000Z");
+    expect(formatDayShort(parse("du=2026-09-01").from!)).toBe("01/09/2026");
+    // A day that does not exist is refused, never reinterpreted.
+    expect(parse("du=2026-02-31").from).toBeNull();
+    // The source no longer reads the server's own zone.
+    const source = readFileSync(fileURLToPath(new URL("./sample-search.ts", import.meta.url)), "utf8");
+    expect(source).not.toMatch(/new Date\(`\$\{value\}T/);
+    expect(source).not.toMatch(/d\.getFullYear\(\)/);
   });
 
   it("ignores what it cannot read and turns a backwards period around", () => {
     const s = parse("etat=peut-etre&du=hier&au=2026-13-45");
     expect(s).toMatchObject({ state: null, from: null, to: null, dateField: "reception" });
     const back = parse("du=2026-09-30&au=2026-09-01");
-    expect(back.from!.getDate()).toBe(1);
-    expect(back.to!.getDate()).toBe(30);
+    expect(labDayOf(back.from!)).toBe("2026-09-01");
+    expect(labDayOf(back.to!)).toBe("2026-09-30");
   });
 
   it("round-trips through the query string", () => {
@@ -154,8 +173,8 @@ describe("rechercheHref", () => {
     const href = rechercheHref({ status: "EN_ANALYSE", type: "AMBIANCE", dateField: "prelevement", from: "2026-10-01", to: "2026-10-31" });
     const s = parseSampleSearch(new URL(href, "http://localhost").searchParams);
     expect(s).toMatchObject({ status: "EN_ANALYSE", type: "AMBIANCE", dateField: "prelevement" });
-    expect(s.from?.getDate()).toBe(1);
-    expect(s.to?.getDate()).toBe(31);
+    expect(labDayOf(s.from!)).toBe("2026-10-01");
+    expect(labDayOf(s.to!)).toBe("2026-10-31");
     expect(sampleSearchWhere(s)).toHaveProperty("sampledAt.gte");
   });
 });

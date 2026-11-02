@@ -2,6 +2,8 @@ import type { Interpretation, SampleStatus, SampleType } from "@/generated/prism
 import { INTERPRETATION_LABELS, indicativeVerdict, nothingJudged, sampleVerdict } from "./interpretation";
 import { SAMPLE_STATUS_LABELS, SAMPLE_TYPE_LABELS, formatIsoDay } from "./labels";
 import { receptionInstant } from "./report-template";
+import { parseDay } from "./day-range";
+import { labDayOf } from "./lab-time";
 
 /**
  * Finding the analyses (RETOUR-LABO-29-09.md, slice F) — pure: the filters
@@ -38,7 +40,7 @@ export type SampleSearch = {
   /** `rapport=1`: only the samples that carry a report (amended ones included). */
   withReport: boolean;
   dateField: DateField;
-  /** Inclusive day bounds, local wall clock (the lab's time zone). */
+  /** Inclusive day bounds on the laboratory's clock (`lib/lab-time.ts`), whatever the server's zone. */
   from: Date | null;
   to: Date | null;
 };
@@ -47,11 +49,16 @@ export const DONE_STATUSES: SampleStatus[] = ["VALIDE", "RAPPORT_ENVOYE"];
 /** « En cours » — every step before validation, the programme included (PROGRAMME.md §6). */
 export const OPEN_STATUSES: SampleStatus[] = ["PRELEVE", "RECU", "PROGRAMME", "EN_ANALYSE", "RESULTATS_SAISIS"];
 
-/** « 2026-09-01 » → the start of that day; anything else → null. */
+/**
+ * « 2026-09-01 » → the first (or the last) instant of that day on the
+ * laboratory's clock — the clock `formatDayShort` prints the period's title
+ * with — never the server's own zone, which stale tzdata puts an hour off
+ * (« du 30/09 » printed for du=2026-10-01; retouche of 02/11). Anything
+ * else → null.
+ */
 function day(value: string | null, endOfDay: boolean): Date | null {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const date = new Date(`${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}`);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return parseDay(value, endOfDay);
 }
 
 const isKey = <K extends string>(labels: Record<K, string>, value: string | null): value is K =>
@@ -137,8 +144,8 @@ export function sampleSearchWhere(search: SampleSearch, options: { blind?: boole
 /** The query string of a search, for links (pagination, export). */
 export function searchQueryString(search: SampleSearch, extra: Record<string, string> = {}) {
   const params = new URLSearchParams();
-  const iso = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  // The day `parseSampleSearch` read, on the same (laboratory's) clock.
+  const iso = (d: Date) => labDayOf(d);
   if (search.q) params.set("q", search.q);
   if (search.clientId) params.set("client", search.clientId);
   if (search.siteId) params.set("site", search.siteId);
@@ -172,11 +179,9 @@ export const EMPTY_SAMPLE_SEARCH: SampleSearch = {
 /**
  * What a dashboard link asks of /recherche. Days are inclusive. A `Date` is
  * written with `formatIsoDay` (the lab's zone, the same on server and
- * browser). A boundary the server cut with `setHours(0, 0, 0, 0)` is better
- * passed as `serverIsoDay(boundary)` (`lib/dashboard-view.ts`): /recherche
- * reads `du` / `au` back on the server clock, so that string returns the
- * exact instant the tile counted from even when the runtime's zone data and
- * `lib/lab-time.ts` disagree.
+ * browser), the clock /recherche reads `du` / `au` back with: a tile that
+ * counts from a laboratory midnight (`labToday` / `labMonthStart`,
+ * `lib/dashboard-view.ts`) opens exactly the instant it counted from.
  */
 export type RechercheLink = {
   q?: string;
