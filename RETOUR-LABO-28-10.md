@@ -26,6 +26,11 @@
 > (estimations). Priorité : **P1** avant que les essais du laboratoire
 > continuent (ce qu'il voit à l'écran tous les jours) · **P2** avant la mise
 > en service réelle · **P3** après, ou quand le laboratoire aura répondu.
+>
+> **05/11 :** lot 3 en production depuis le 01/11 (`16c1d56`, retouches
+> `19d21af` le 02/11). Le laboratoire a répondu le 04/11 au questionnaire du
+> 02/11 (R-4, R-7 à R-30, Q131) : verdict de chaque hypothèse en tête du §5,
+> analyse et plan du lot 4 dans `RETOUR-LABO-04-11.md`.
 
 ---
 
@@ -294,6 +299,39 @@ unité et seuil non cités).
 - Partout ailleurs, la lecture du scan confirme la transcription.
 
 ## 5. Le plan — lot 3
+
+> **Mise à jour du 05/11 — réponses du 04/11 au questionnaire du 02/11**
+> (`RETOUR-LABO-04-11.md`, plan du lot 4 ; rien construit). Les hypothèses
+> « à confirmer par R-x » écrites plus bas deviennent :
+>
+> | Hypothèse du lot 3 | R-x | Verdict du 04/11 | Suite (lot 4) |
+> |---|---|---|---|
+> | « Arrivé le » prérempli, modifiable | R-7 | **confirmée** (« suggère la vraie heure actuelle mais modifiable ») | rien |
+> | I7 `OBSERVATION_ONLY_DELAY_AND_TEMPERATURE` ; I3 `UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE`, tiers « Autre » facultatif | R-30, R-15 | **en attente (direction)** — question laissée vide | interrupteurs gardés allumés |
+> | I6 `CONSULTATION_AFTER_RECEPTION` | R-8 | **confirmée** | rien |
+> | I4 « ou rejeté » | R-9 | **répondue** : refusé à l'arrivée, rendu au client, sans analyse ni destruction | I9 (à construire) |
+> | J4 dilution saisie, « 3.10³ » | R-12 | **confirmée** | rien |
+> | J3 la limite du catalogue compte comme critère (`NO_CRITERION_NO_INTERPRETATION`) | R-28 | **confirmée** (« le critère c'est la limite ») | rien |
+> | Ligne en anomalie d'un germe sensible sans critère (O-12 × J3) | R-28 | **confirmée** (« pas de boîte avec lecture impossible » ; chiffre ou absence / présence) | rien |
+> | J1 / J2 `UNIT_MISMATCH_NOT_JUDGED` | R-29 | **contestée** (« ça c'est faux », exemples barrés), sans règle de remplacement | C-1 ; interrupteur gardé d'ici là ; J6 |
+> | Tolérance c avec n = 1 (défaut du 19/10) | Q131 | **changée** : une unité au-dessus = « Non satisfaisant », avec alerte | J5 |
+> | K3 `ALERTS_AT_VALIDATION` | R-13 (c) | **changée** : l'alerte part seulement avec l'envoi du rapport | K7 (→ false) |
+> | K2 `COMMERCIAL_RESENDS_REPORTS` | R-13 (b) | **changée** : le commercial n'envoie ni ne renvoie ; envoient le validateur technique et l'administration | K8 (→ false) |
+> | S3 sans Listeria ; dénombrements sans alerte | R-14 | **répondue** : L. monocytogenes seule ; dénombrements dès > 0 | S10 (réglage) |
+> | L5 copies internes des alertes | R-16 | **changée** : 2 adresses du laboratoire dans tous les envois (alertes et rapports) ; adresses par client (existe) | L6 + les adresses |
+> | K5 5 / 7 jours ouvrés | R-18 (Q8) | **changée** : microbiologie 8, physico-chimie « 10 – 15 jours » (signe entre 10 et 15 incertain) | S9 ; C-2 |
+> | K4 `ACCREDITATION_LOGO_ON_MIXED_REPORT` | R-18 (Q14) | **confirmée comme défaut**, « laisser la main pour modifier » | K10 |
+> | K6 `SAMPLING_MEANS_BY_KIND` | R-27 | **changée** : le moyen de prélèvement seulement pour l'air | K9 |
+> | L1 valeur colorée, C / NC pour la réception (`RECAP_DEFAULT_MODE`, `recapAccess`) | R-21 | **confirmée** | rien |
+> | N1 / N3 reçus dans le mois, « Acceptable » = conforme, surfaces / mains / air non déclarés, Origine | R-22 | **confirmée** (« Conforme / non conforme ») | rien |
+> | H5 prix par client | R-4 | **oui** | H5 (à construire) |
+> | M7 retenue : base, taux, 3 mois, avertissement | R-24 | **à clarifier** (100 % / 10 %, base TTC : incohérent tel qu'écrit) | C-3 ; rien ne change |
+>
+> Les fichiers « envoyés le 28/10 » : le logo d'accréditation et une
+> attestation de RIB étaient bien arrivés (retrouvés le 05/11 dans les
+> téléchargements, absents de l'inventaire du §0) ; ni cachet, ni logo HD,
+> ni liste des paramètres accrédités. Les fichiers « envoyés le 27/10 »
+> sont les modèles vides du §3.
 
 État au 01/11 (soir) : **les cinq lots construits, relus, corrigés et
 intégrés** dans `lot2-retour-16-10` (copie locale, non poussé, non déployé) ;
