@@ -1,6 +1,8 @@
 # Réponses du laboratoire du 04/11 (le questionnaire du 02/11 annoté) — plan du lot 4
 
-> **Analysé le 05/11 — rien construit, rien déployé, production non
+> **Analysé le 05/11. État au 05/11 : lot 4A construit (arbre principal,
+> local, non commité ; K10 y a été déplacé du lot 4B), lot 4B construit sur
+> la branche `lot4b`, H5 en cours ; rien déployé, production non
 > touchée.** Le 04/11, le laboratoire a renvoyé, scanné (3 pages), notre
 > questionnaire du 02/11 « Quelques questions pour finir les réglages »
 > (`backups/Qualilab-questions-2026-11-02.pdf`, 18 questions, chacune avec sa
@@ -175,7 +177,10 @@ Notre transcription de départ est **confirmée** partout, avec ces nuances :
 Lettres du lot 3 reprises, numéros à la suite (**I** réception · **J**
 paillasse et interprétation · **K** rapport, envoi, alertes · **L** exports
 et exploitation) ; **H5** garde le nom de `RETOUR-LABO-19-10.md` ; **S9–S13**
-sont des gestes du propriétaire (sans code). **Rien n'est construit.**
+sont des gestes du propriétaire (sans code). **État au 05/11 : lot 4A
+construit (arbre principal, non commité), K10 compris — déplacé du lot 4B
+dans le lot 4A (bilan ci-dessous) ; lot 4B (I9, L6) construit sur la branche
+`lot4b` ; H5 construit, relu et corrigé sur la branche `lot4h` ; rien déployé.**
 
 ### Lot 4A — P1, ce que le laboratoire voit pendant ses essais
 
@@ -195,12 +200,112 @@ Gestes du propriétaire avec ce lot (sans code, en production, journalisés) :
 | S10 | Q10 — `npx tsx scripts/s3-contamination-alerts.mts --base <prod> --listeria monocytogenes --dry-run`, lecture du plan, approbation, puis sans `--dry-run`. Un Listeria **autre que monocytogenes** tombe dans la section « Listeria outside the scope … never set nor cleared », **qu'il soit déjà marqué ou non** (le script ne l'affiche pas et ne le décoche jamais, même avec `--unset-others`) : vérifier son drapeau dans /admin/parametres et le décocher à la main s'il est marqué. Les dénombrements cités (E. coli surfaces, E. coli mains, E. coli présumés, L. monocytogenes des eaux) sans limite sont listés « Enumeration without a limit … NOT flagged » : les marquer « alerte » **sans limite** dans /admin/parametres (J3 allumé : `sensitiveNeedsLimit` = false, la fiche l'accepte ; O-12 : alerte dès > 0), ou ajouter au script une option `--enumerations` (XS, code) |
 | S11 | Fichiers retrouvés — /admin/entreprise : téléverser le logo d'accréditation (`backups/fichiers-labo-28-10/logo-accreditation-semac-560.png`) ; il ne s'imprime que sur un rapport portant une analyse **accréditée** (statuts encore « à préciser » : rien ne change tant que la liste n'est pas saisie) ; saisir le RIB depuis l'attestation (le numéro n'entre pas dans le dépôt) |
 
+#### Lot 4A — construit le 05/11 (arbre principal, local, non déployé)
+
+Tout le lot 4A, plus K10 et l'option `--enumerations` de S10, dans
+`src/lib/lab-proposals.ts` (un interrupteur par point, son retour en arrière
+testé dans `lab-proposals-4a-back.test.ts`) :
+
+- **K7** — `ALERTS_AT_VALIDATION` = false : l'alerte part une seule fois, avec
+  le premier envoi du rapport ; /admin/reglages dit sous le réglage S2 qu'il
+  est sans effet (`alertSettingNotice`). Tests des deux positions relus
+  (`alert-moment`, `serie-validation`, `validation-server`,
+  `lab-proposals-off`).
+  **Cas limites — hypothèse, à confirmer** (le laboratoire a dit « alerte
+  seulement avec l'envoi du rapport », sans ces cas) : (1) le rapport ne peut
+  pas partir faute d'adresse « rapports » chez le client (seulement une
+  adresse d'alerte) : l'alerte part quand même à son adresse, au clic
+  « Valider et envoyer » ou « Envoyer au client », et l'écran dit que le
+  rapport reste à envoyer (`alertsFollowSend`) ; (2) tout autre échec de
+  l'envoi du rapport (PDF, envoi déjà en cours, amendement non émis) :
+  l'alerte attend le rapport, aussi bien avec « Valider et envoyer » qu'avec
+  « Envoyer au client » (`alertsAfterApproval`) ; (3) un échantillon validé
+  dont l'alerte n'est pas partie (rapport remis sur papier, jamais envoyé
+  par e-mail) porte le badge « Alerte en attente de l'envoi du rapport »
+  dans « Validés — à envoyer » et sur sa fiche (`alertAwaitingReport`), et
+  « Envoyer la série » dit que l'alerte part avec ce clic
+  (`serieSendAlertNotice`).
+- **K8** — `COMMERCIAL_RESENDS_REPORTS` = false : le gestionnaire commercial
+  est refusé (403) à l'envoi et au renvoi, sa fiche n'offre plus
+  « Renvoyer » ; `SEND_REPORT_ROLES` inchangé.
+- **K9** — nouvel interrupteur `SAMPLING_MEANS_AIR_ONLY` : « Moyen de
+  prélèvement » imprimé pour l'air seulement ; la version émise garde
+  `samplingMeans: null` (pas de ligne) ; les versions émises avant gardent
+  leur ligne.
+- **J5** — nouvel interrupteur `SINGLE_UNIT_NO_TOLERANCE` : limite unique et
+  n = 1 **du critère** (même lu sur plusieurs unités) : c sans effet, une
+  unité au-dessus = « Non satisfaisant » (non conforme, alerte pour un germe
+  sous alerte) ; n ≥ 2 et m / M inchangés ; la grille des critères dit
+  « c sans effet quand n = 1 ». Les résultats enregistrés gardent leur
+  verdict jusqu'à une nouvelle saisie ; les rapports émis sont figés.
+- **K10** — nouvel interrupteur `ACCREDITATION_LOGO_BY_HAND` : case « Logo
+  d'accréditation sur le rapport » à la validation administrative (fiche de
+  l'échantillon) et choix « selon la règle / sur tous / sur aucun » pour la
+  série, visibles seulement si le logo est téléversé ; cochée par défaut
+  selon la règle actuelle ; figée avec la version émise
+  (`accreditationLogo`, `accreditationLogoByHand`) et journalisée
+  (SAMPLE_APPROVED : « imprimé (règle par défaut) », « retiré à la main »…) ;
+  un amendement repart de la règle. **Qui la touche : la personne qui signe
+  la validation administrative (Direction, administrateur) — hypothèse, à
+  confirmer par C-4.** **Ajouter le logo n'est possible que sur un rapport
+  portant au moins une analyse « accréditée » par le laboratoire
+  lui-même — hypothèse, à confirmer par C-4** (ISO 17025 §7.8 et les règles
+  d'usage de la marque de l'organisme d'accréditation : jamais le logo sur
+  un rapport sans analyse accréditée ; une analyse sous-traitée accréditée
+  « SA » ne suffit pas tant que le laboratoire ne l'a pas dit) : la case est
+  grisée sinon, et « Sur chaque rapport de la série » ne l'ajoute qu'aux
+  rapports qui portent une analyse accréditée ; le retirer reste toujours
+  possible. Tant que les statuts sont « à préciser » (production
+  aujourd'hui), la case dit « aucune analyse de ce rapport n'est marquée
+  « accréditée » (statuts à préciser dans /admin/parametres) » ; un rapport
+  mixte avec `ACCREDITATION_LOGO_ON_MIXED_REPORT` éteint le dit aussi. Une
+  case laissée telle quelle n'est pas un choix : la règle est relue à
+  l'émission (une liste d'analyses accréditées saisie entre-temps compte).
+  Le choix posté est journalisé même si l'émission échoue
+  (`accreditationLogoRequested`) et l'auto-réparation de l'envoi (émission
+  manquée à la validation) le suit ; le journal ne parle du logo que s'il
+  est téléversé, et le parcours de l'échantillon montre « logo
+  d'accréditation retiré / ajouté à la main ».
+- **S10** — `scripts/s3-contamination-alerts.mts --enumerations` : marque
+  « alerte » **sans limite** les dénombrements cités (E. coli surfaces et
+  mains, E. coli « présumés », L. monocytogenes des eaux — `citedEnumeration`),
+  J3 allumé seulement (O-12 : alerte dès > 0) ; tout autre dénombrement sans
+  limite reste « en attente d'une limite ». Restreint à ce que le
+  laboratoire a cité : l'E. coli de la catégorie AMBIANCE seulement en
+  unité ou nom de surface ou de mains (jamais l'air), et le Listeria des
+  eaux seulement s'il est nommé monocytogenes, quel que soit `--listeria`.
+  Sur la copie locale, avec `--listeria monocytogenes --enumerations` :
+  exactement ces 4 paramètres ; en production, relire le `--dry-run`.
+- Commentaires « confirmé le 04/11 » : `CONSULTATION_AFTER_RECEPTION`,
+  `NO_CRITERION_NO_INTERPRETATION`, `ONSSA_COUNT_BY`,
+  `ACCREDITATION_LOGO_ON_MIXED_REPORT` (défaut), et les interrupteurs changés.
+
+**J5 — les critères concernés (copie locale, 05/11).** 5 094 critères actifs,
+dont 3 406 avec n = 1. **190** sont concernés par J5 (n = 1, c ≥ 1, limite
+unique) : 175 « m seule » (c = 1 : 62 ; c = 2 : 112 ; c = 10 : 1) et 15 « M
+seule » (c = 1 : 1 ; c = 2 : 14) ; aucun m = M. Ils couvrent 92 types de
+produits et 60 paramètres ; 36 portent sur un germe sous alerte. Par domaine :
+microbiologie des aliments 131, physico-chimie des eaux 55, microbiologie des
+eaux 4. 242 autres critères n = 1 avec c ≥ 1 sont à deux limites (m < M) :
+inchangés (question de C-5). Résultats déjà enregistrés « Acceptable » sur la
+copie locale : 0.
+
+**L'exemple chiffré C-5** (vérifié par les tests, `interpretation.test.ts`
+« J5 ») : critère repris de l'ancien logiciel, n = 1, c = 1, m = 100 UFC/g.
+
+| Lecture | Avant J5 | Après J5 |
+|---|---|---|
+| 150 UFC/g | « Acceptable », conforme, pas d'alerte | « Non satisfaisant » — « 1 unité au-dessus de la limite 1.10² — n = 1 : c = 1 sans effet. » — non conforme, alerte si le germe est sous alerte |
+| 80 UFC/g | « Satisfaisant » | « Satisfaisant » |
+| « > 100 » ou « Indénombrable » | « Acceptable » | « Non satisfaisant » |
+| 500 UFC/g, critère m = 100 / M = 1 000, n = 1, c = 1 | « Acceptable » | « Acceptable » (inchangé : c'est la question de C-5) |
+
 ### Lot 4B — P2, avant la mise en service réelle
 
 | # | Source | Ce qu'il faut faire | Où | Effort | Migration |
 |---|---|---|---|---|---|
 | I9 | Q4 — R-9 | décision **« Rejeter (rendu au client) »** à côté de « Détruire » : à la réception, au comptoir et à la libération d'un « en attente du client » ; l'échantillon est annulé avec le motif « Rejeté à réception — rendu au client » (nouvelle valeur de `CancelReason`), sans analyse ni destruction ; imprimé sur le bon de réception et dans le parcours, journalisé, hors des compteurs de paillasse et du rapport ONSSA ; un « Non exploitable » présélectionne toujours « Détruire » (modifiable) ; l'e-mail au client d'une ligne non analysée dit « rejeté — rendu » au lieu de « détruit » | `prisma/schema.prisma` (enum), `src/lib/labels.ts`, `release-rules.ts`, `reception-input.ts`, `reception-logic.ts`, `SerieReceptionForm.tsx`, `DepositForm.tsx`, `BlockedSamples.tsx`, `document-html.ts`, e-mail de ligne détruite, tests | S–M | oui (additive : une valeur d'enum) |
-| K10 | Q13 — R-18 | **logo d'accréditation modifiable à la main** : par défaut la règle actuelle (au moins une analyse accréditée) ; une case « Logo d'accréditation » sur la validation administrative (rapport par rapport, et pour la série), visible seulement si le fichier existe ; le choix est figé avec la version émise et journalisé ; un amendement repart du défaut | `report-dispatch.ts`, `report-html.ts`, page et route de validation administrative, `ReportActions.tsx`, tests | S–M | à vérifier (le choix peut vivre dans les données figées de la version ; sinon une colonne additive) |
+| K10 | Q13 — R-18 | **Déplacé dans le lot 4A et construit le 05/11** (bilan « Lot 4A — construit le 05/11 » ci-dessus). Le plan d'origine : **logo d'accréditation modifiable à la main** : par défaut la règle actuelle (au moins une analyse accréditée) ; une case « Logo d'accréditation » sur la validation administrative (rapport par rapport, et pour la série), visible seulement si le fichier existe ; le choix est figé avec la version émise et journalisé ; un amendement repart du défaut | `report-dispatch.ts`, `report-html.ts`, page et route de validation administrative, `ReportActions.tsx`, tests | S–M | à vérifier (le choix peut vivre dans les données figées de la version ; sinon une colonne additive) |
 | L6 | Q11 — R-16 | **copies internes étendues aux rapports** : chaque adresse de « Copies internes » (/admin/entreprise) reçoit les alertes, les rapports ou les deux, pour tous les clients ou des clients choisis ; l'envoi d'un rapport (premier envoi et renvoi) l'ajoute en copie, sans doublon avec les adresses du client ; le libellé devient « Copies internes (alertes et rapports) » ; les deux adresses du laboratoire : tous les clients, les deux | `prisma/schema.prisma` (`AlertCopyAddress` : `forReports`, `forAlerts`), `report-dispatch.ts`, /admin/entreprise, `moveAlertCopies`, tests | S | oui (additive) |
 | H5 | Q17 — R-4 | **prix propres à chaque client** : table (client, analyse ou service, prix HT, origine), écran de lecture et de correction sur la fiche client (profils qui voient les prix : comptabilité, administration, Direction, gestion commerciale), reprise des ≈ 6 700 prix depuis l'ancienne base (copie locale d'abord, rapport des prix sans analyse ou sans client correspondant), la facture propose le prix du client à la place du catalogue, toujours modifiable, l'origine du prix dite sur la ligne | `prisma/schema.prisma`, nouveau `src/lib/client-prices.ts`, reprise (script), facturation (`invoice-*`), fiche client, tests de gardes des prix | M–L | oui (additive) |
 
@@ -260,10 +365,16 @@ Le comportement construit reste en place ; rien n'est relancé.
   nous-mêmes.
 - **C-4 — Q13** : « Qui peut retirer ou remettre le logo d'accréditation
   sur un rapport : la personne qui fait la validation administrative, le
-  validateur technique, l'administrateur ? Et la liste de vos paramètres
-  accrédités (la microbiologie et l'histamine ?) pour les marquer dans le
-  logiciel. »
-- **C-5 — Q8 (« Exemple pour vérifier »)** : leur envoyer l'exemple :
+  validateur technique, l'administrateur ? Le logiciel ne permet d'**ajouter**
+  le logo que sur un rapport portant au moins une analyse accréditée par
+  vous (jamais sur un rapport sans analyse accréditée) ; une analyse
+  sous-traitée à un laboratoire accrédité (« SA ») doit-elle compter ? Et la
+  liste de vos paramètres accrédités (la microbiologie et l'histamine ?)
+  pour les marquer dans le logiciel. » (construit en attendant : la
+  personne qui signe la validation administrative ; ajout seulement avec une
+  analyse « accréditée » ; « SA » ne compte pas.)
+- **C-5 — Q8 (« Exemple pour vérifier »)** (exemple chiffré prêt, tableau
+  du §5 « Lot 4A — construit le 05/11 ») : leur envoyer l'exemple :
   « Critère repris de l'ancien logiciel : n = 1, c = 1, m = 100 UFC/g.
   Lecture 150 UFC/g. Aujourd'hui : « Acceptable », sans alerte. Après la
   correction : « Non satisfaisant », alerte si le germe est sous alerte.
@@ -305,7 +416,8 @@ pas les redemander.
    « Moyen de prélèvement », rapport d'air avec ; n = 1 c = 1 → « Non
    satisfaisant » + alerte) ; déployer ; tester en production sur « TEST UI »
    (règle du 21/10) ; envoyer l'exemple C-5.
-3. **Lot 4B** (P2) : I9 et L6 (deux migrations additives), K10, puis H5
+3. **Lot 4B** (P2) : I9 et L6 (deux migrations additives), puis H5 (K10
+   a été construit avec le lot 4A)
    (reprise sur la copie locale d'abord, relue par le propriétaire avant la
    production).
 4. **Après les réponses** : J6, K5 bis, S12, S13.
