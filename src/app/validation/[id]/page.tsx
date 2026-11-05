@@ -546,7 +546,7 @@ export default async function ValidationDetailPage({
             nonConformes={nonConformes}
             alertables={alertables}
             // K7: « Alerte en attente de l'envoi du rapport » on an approved sample whose alert has not left.
-            alertAwaitingReport={alertAwaitingReport({ status: sample.status, alertsSentAt: sample.alertsSentAt, alerting: alertables })}
+            alertAwaitingReport={alertAwaitingReport({ status: sample.status, alertsSentAt: sample.alertsSentAt, alerting: alertables, versionIssuedAt: sample.report?.amendedAt ?? null })}
             alertsAtTechnical={settings.alertAfterTechnicalValidation}
             reportNumber={printedNumber}
             sentTo={sample.report?.sentTo ?? null}

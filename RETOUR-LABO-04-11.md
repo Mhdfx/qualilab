@@ -2,8 +2,10 @@
 
 > **Analysé le 05/11. État au 05/11 (soir) : lot 4 construit, relu,
 > intégré et testé en local sur `lot2-retour-16-10` — 4A (K10 y a été
-> déplacé du lot 4B), 4B (I9, L6), 4H (H5), plus la première passe de S12 ;
-> non poussé, rien déployé, production non touchée.** Le 04/11, le laboratoire a renvoyé, scanné (3 pages), notre
+> déplacé du lot 4B), 4B (I9, L6), 4H (H5), plus la première passe de S12
+> (marques de l'ancien logiciel seulement en production avant C-4) et les
+> corrections du contrôle final ; prêt pour la production, rien déployé,
+> production non touchée.** Le 04/11, le laboratoire a renvoyé, scanné (3 pages), notre
 > questionnaire du 02/11 « Quelques questions pour finir les réglages »
 > (`backups/Qualilab-questions-2026-11-02.pdf`, 18 questions, chacune avec sa
 > référence R-x de `RETOUR-LABO-28-10.md` §6), coché et annoté à la main.
@@ -181,8 +183,10 @@ sont des gestes du propriétaire (sans code). **État au 05/11 (soir) : lot 4
 intégré sur `lot2-retour-16-10` et testé en local** — 4A (`149c3b2`,
 `05637a0`, K10 compris, déplacé du lot 4B), 4B (I9, L6 ; fusion `c14b596`),
 H5 (fusion `f330419`), première passe de S12 ; contrôles et recettes verts
-(`TESTPLAN.md` « Checkpoint V22 », 93/93) ; **non poussé, rien déployé** ;
-la production suit `DEPLOY.md` « Lot 4 ».
+(`TESTPLAN.md` « Checkpoint V22 », 93/93) ; contrôle final hostile appliqué
+(S12 microbiologie / histamine seulement avec `--domains`, comptage J5 avant
+validation, badge K7 après un amendement) ; **prêt pour la production, rien
+déployé** ; la production suit `DEPLOY.md` « Lot 4 ».
 
 ### Lot 4A — P1, ce que le laboratoire voit pendant ses essais
 
@@ -240,6 +244,9 @@ testé dans `lab-proposals-4a-back.test.ts`) :
   sous alerte) ; n ≥ 2 et m / M inchangés ; la grille des critères dit
   « c sans effet quand n = 1 ». Les résultats enregistrés gardent leur
   verdict jusqu'à une nouvelle saisie ; les rapports émis sont figés.
+  En production : compter et faire ressaisir avant validation (DEPLOY
+  « Lot 4 » étape 3 — requête en lecture seule, codes seulement ; 0 sur la
+  copie locale).
 - **K10** — nouvel interrupteur `ACCREDITATION_LOGO_BY_HAND` : case « Logo
   d'accréditation sur le rapport » à la validation administrative (fiche de
   l'échantillon) et choix « selon la règle / sur tous / sur aucun » pour la
@@ -447,7 +454,7 @@ retirer sur la fiche si le client doit suivre le catalogue.
 | J6 | C-1 (R-29) | soit `UNIT_MISMATCH_NOT_JUDGED` → false (tout critère juge, quelle que soit l'unité), soit des critères par objet / par moyen saisis dans le catalogue (donnée, sans code) | XS (ou donnée) |
 | K5 bis | C-2 (Q12) | si « 10 – 15 » dépend du type d'analyse : délais par type dans /admin/reglages (existe, réglage) ; si la physico-chimie seule est en jours calendaires : un drapeau « jours ouvrés / calendaires » propre à chaque domaine | — (réglage) ou XS–S (migration additive) |
 | S13 | C-3 (R-24) | base, taux, champ d'application, durée de l'attestation dans les réglages Achat & Stock ; `PAYMENT_REQUIRES_TAX_CERTIFICATE` selon la réponse | XS (réglage) |
-| S12 | §8 | la liste des paramètres accrédités saisie dans « Accréditation des paramètres » (/admin/parametres) ; le cachet téléversé. **Première passe construite le 05/11** : `scripts/s12-accreditation.mts` (par la route de l'application, `--dry-run` puis réel) — une marque de l'ancien logiciel décide (« * », « (SA) », « (SN) »), sinon toute la microbiologie et l'histamine « Accrédité » (la note de Q13), le reste « à préciser », un statut déjà saisi jamais réécrit — **hypothèse, à confirmer par C-4** ; la liste du laboratoire la remplace ligne à ligne | donnée |
+| S12 | §8 | la liste des paramètres accrédités saisie dans « Accréditation des paramètres » (/admin/parametres) ; le cachet téléversé. **Première passe construite le 05/11** : `scripts/s12-accreditation.mts` (par la route de l'application, `--dry-run` puis réel) — une marque de l'ancien logiciel décide (« * », « (SA) », « (SN) »), le reste « à préciser », un statut déjà saisi jamais réécrit. **En production, seules les marques de l'ancien logiciel avant C-4** (`npx tsx scripts/s12-accreditation.mts --base $PROD --dry-run`, puis réel ; jamais `--domains` avant la liste du laboratoire) : « ça dépend des cas » (Q13) veut dire que certaines analyses de microbiologie et d'histamine sont accréditées et d'autres non — un « Accrédité » en bloc imprimerait le logo d'accréditation sur des rapports que le laboratoire n'a pas confirmés (ISO 17025 §7.8). L'option `--domains` (toute la microbiologie et l'histamine « Accrédité ») reste un essai local — **hypothèse, à confirmer par C-4** ; la liste du laboratoire fixe la microbiologie et l'histamine ligne à ligne dans /admin/parametres | donnée |
 
 ### Rien à construire
 
@@ -567,15 +574,15 @@ pas les redemander.
    a été construit avec le lot 4A)
    (reprise sur la copie locale d'abord, relue par le propriétaire avant la
    production).
-4. **Après les réponses** : J6, K5 bis, S12 (la liste du laboratoire — la première passe est construite), S13.
-
-**État au 05/11 (soir)** : les étapes 2 et 3 sont construites, intégrées et
-testées en local (`TESTPLAN.md` « Checkpoint V22 ») ; l'étape 1 et le
-déploiement suivent `DEPLOY.md` « Lot 4 ».
+4. **Après les réponses** : J6, K5 bis, S12 (la liste du laboratoire ; en production, seules les marques de l'ancien logiciel avant C-4), S13.
 5. **Prévenir le laboratoire au déploiement du lot 4A** : l'alerte part
    avec le rapport, le commercial n'envoie plus rien, le moyen de
    prélèvement n'est plus imprimé hors air, n = 1 et c = 1 : une unité
    au-dessus est « Non satisfaisant ».
+
+**État au 05/11 (soir)** : les étapes 2 et 3 sont construites, intégrées et
+testées en local (`TESTPLAN.md` « Checkpoint V22 ») ; l'étape 1 et le
+déploiement suivent `DEPLOY.md` « Lot 4 ».
 
 ## 10. Dépôt public
 

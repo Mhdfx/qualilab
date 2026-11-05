@@ -4,7 +4,10 @@
 // PARAMETER_ACCREDITATION_UPDATED with before / after), signed in as the demo admin.
 // The rule is src/lib/accreditation-seed.ts (tested) — hypothèse, à confirmer par C-4:
 //   - a mark of the old software in the name decides (« * », « (SA) », « (SN) »);
-//   - otherwise every microbiology parameter and every histamine → « Accrédité »;
+//   - ONLY WITH --domains: otherwise every microbiology parameter and every histamine → « Accrédité ».
+//     NEVER --domains in production before the laboratory's list (C-4): the lab wrote « ça dépend
+//     des cas », and a blanket « Accrédité » would print the accreditation logo on reports it never
+//     confirmed. Without it, the script sets the old software's marks only;
 //   - everything else stays « à préciser »; a status already recorded is never rewritten.
 // Undo: /admin/parametres « Accréditation des paramètres » (or the same route), row by row.
 //
@@ -13,6 +16,8 @@
 // Options:
 //   --base <url>            the application (default http://localhost:3210 — LOCAL)
 //   --dry-run               read and print the plan, change nothing
+//   --domains               also microbiology + histamine → « Accrédité » (hypothèse C-4; local tests only
+//                           until the laboratory's list arrives)
 //   --login panel|password  panel = click « admin » in « Comptes de démonstration » on /login
 //                           (headless Chrome, no password typed — the rule for PRODUCTION);
 //                           password = the demo password of the seed (local only).
@@ -39,6 +44,7 @@ const host = new URL(BASE).hostname;
 const local = ["localhost", "127.0.0.1", "::1"].includes(host) || host.endsWith(".localhost");
 const loginMode = opt("login") ?? (local ? "password" : "panel");
 const dryRun = flag("dry-run");
+const domains = flag("domains");
 const out = opt("out") ?? join(REPO, ".ui-tests", `s12-accreditation.${host.replace(/[^a-z0-9.-]/gi, "_")}.json`);
 if (loginMode === "password" && !local) throw new Error("--login password is for the local application only: use the demo panel elsewhere.");
 
@@ -100,9 +106,10 @@ const cookie = await signIn();
 const read = await api(cookie, "GET", "/api/parameters");
 if (read.status !== 200 || !Array.isArray(read.data)) throw new Error(`GET /api/parameters: HTTP ${read.status}`);
 const rows = (read.data as AccreditationSeedRow[]).map((p) => ({ id: p.id, name: p.name, family: p.family ?? null, accreditation: p.accreditation ?? null }));
-const plan = accreditationSeedPlan(rows);
+const plan = accreditationSeedPlan(rows, { domains });
 
 console.log(`Base ${BASE} · login ${loginMode} · ${dryRun ? "DRY RUN" : "APPLY"}`);
+console.log(domains ? "Portée : marques de l'ancien logiciel + microbiologie et histamine (--domains, hypothèse C-4)" : "Portée : marques de l'ancien logiciel seulement");
 console.log(`Catalogue: ${rows.length} parameters — already recorded (left as they are): ${plan.kept} · to set: ${plan.set.length} · left « à préciser »: ${plan.leftUnknown}`);
 const byWhy = new Map<string, number>();
 for (const entry of plan.set) byWhy.set(`${entry.why} → ${ACCREDITATION_LABELS[entry.accreditation!]}`, (byWhy.get(`${entry.why} → ${ACCREDITATION_LABELS[entry.accreditation!]}`) ?? 0) + 1);
@@ -118,10 +125,10 @@ if (!dryRun && plan.set.length > 0) {
     updated += Number(r.data?.updated ?? 0);
   }
   const again = await api(cookie, "GET", "/api/parameters");
-  const left = accreditationSeedPlan((again.data as AccreditationSeedRow[]).map((p) => ({ id: p.id, name: p.name, family: p.family ?? null, accreditation: p.accreditation ?? null })));
+  const left = accreditationSeedPlan((again.data as AccreditationSeedRow[]).map((p) => ({ id: p.id, name: p.name, family: p.family ?? null, accreditation: p.accreditation ?? null })), { domains });
   console.log(`Written: ${updated} · read back: ${left.set.length} left to set (expected 0)`);
 }
 
 mkdirSync(dirname(out), { recursive: true });
-writeFileSync(out, JSON.stringify({ base: BASE, at: new Date().toISOString(), dryRun, kept: plan.kept, leftUnknown: plan.leftUnknown, updated, set: plan.set }, null, 2));
+writeFileSync(out, JSON.stringify({ base: BASE, at: new Date().toISOString(), dryRun, domains, kept: plan.kept, leftUnknown: plan.leftUnknown, updated, set: plan.set }, null, 2));
 console.log(`Report: ${out}`);

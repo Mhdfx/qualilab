@@ -1183,11 +1183,12 @@ Built 21/10 on branch `lot2-retour-16-10`, on top of `d4bff04`, committed and pu
 - [ ] Still six migrations applied (none added on 21/10); the laboratory told to reload every tab (the 35-minute bound).
 - [ ] Then the production lines of V18-A to V18-H above, on « TEST UI » data only.
 
-## Checkpoint V22 — Lot 4, réponses du laboratoire du 04/11 (lots 4A, 4B, 4H, `RETOUR-LABO-04-11.md` §5) — integrated and tested locally 05/11, **not pushed, not deployed**
+## Checkpoint V22 — Lot 4, réponses du laboratoire du 04/11 (lots 4A, 4B, 4H, `RETOUR-LABO-04-11.md` §5) — integrated and tested locally 05/11, final review applied, **pushed, not deployed — ready for production**
 
 Integrated on `lot2-retour-16-10`: 4A `149c3b2` (code) + `05637a0` (documents), merge 4B `c14b596`, merge 4H `f330419`, then S12's first pass and the integration's documents.
 
 **Integration run (05/11, local):** 4 additive migrations applied (`20261105020000`, `20261105020001`, `20261105030000`, `20261105030001`; `migrate status` up to date, `migrate diff` empty); tsc 0, eslint 0, vitest 196 files / 3 615 tests, `npm run build` OK. Regression e2e on :3210 (git-ignored scripts, adapted to the intended changes K7, K8, K9 and H5's section 7 only): v16-1 64/64, v16-2 108/108, v16-3 69/69, v17 78/78, v18 53/53 (`npx tsx`), v19 71/71, v19-serie 50/50, v20 99/99, v21-lot3 127/127, **v22-lot4 93/93**.
+**After the final review's fixes (05/11):** tsc 0, eslint 0, vitest 196 files / 3 621 tests, `npm run build` OK; re-run v22-lot4 93/93, v19-serie 50/50, v18 53/53, v21-lot3 127/127 (a first run lost one L2 step to a transient `fetch failed` on the dev server; the re-run passed).
 Run: `export BASE=http://localhost:3210 MSYS_NO_PATHCONV=1 && node .ui-tests/v22-lot4-local.mjs` (« TEST UI » client and « TEST UI V22 … » records only; every setting put back — logo, statuses, delays, copies, flags).
 
 Local (05/11, by `v22-lot4-local.mjs`, 93/93):
@@ -1202,9 +1203,13 @@ Local (05/11, by `v22-lot4-local.mjs`, 93/93):
 - [x] **S10** `scripts/s3-contamination-alerts.mts --listeria monocytogenes --enumerations --dry-run` on the local copy.
 - [x] **I9** « Rejeter (rendu au client) » at the visit's reception, at the release of an « en attente du client », at the counter (a conforming line → 400), mixed série destroyed + rejected; bon / parcours / e-mail wording.
 - [x] **H5** guards (COMPTABLE / GESTIONNAIRE / ADMIN; import ADMIN only); a typed price → proposal at the client's price (origin CLIENT / SAISIE), the programme sheet's section 7 « prix du client », the draft's `InvoiceItem.priceSource` back at reopening; the import: analyse (kept typed, client not found, 0, equal to the old tariff — C-8 (e)) then commit (1 created, REPRISE, journalled), re-run 0 written, a reprised price removed → `removedAt`, re-run 0 written (keptRemoved 1), the proposal back to the catalogue.
-- [x] **S12** (first pass) `npx tsx scripts/s12-accreditation.mts --dry-run` then applied on the local copy: 830 parameters → 241 set (107 microbiology, 5 histamine, 129 by the old marks), read back 0 left; reverted afterwards (vitest `accreditation-seed.test.ts`).
+- [x] **S12** (first pass) `npx tsx scripts/s12-accreditation.mts --dry-run` then applied on the local copy: 830 parameters → 241 set (107 microbiology, 5 histamine, 129 by the old marks), read back 0 left; reverted afterwards (vitest `accreditation-seed.test.ts`). **Revised at the final review:** microbiology + histamine only behind `--domains` (hypothèse C-4, never in production before the lab's list). Re-run 05/11: default `--dry-run` « marques de l'ancien logiciel seulement » → 129 to set (110 SN, 19 SA), 0 « Accrédité », 701 left; `--dry-run --domains` → 241, as above.
+- [x] **J5 count** (`DEPLOY.md` « Lot 4 » step 3, read only) on the local copy: 0 rows « Acceptable » with n = 1, c ≥ 1, single limit on a sample not yet approved.
+- [x] **K7 after an amendment** (vitest `alert-moment.test.ts`): an amended report whose `alertsSentAt` predates `Report.amendedAt` shows « Alerte en attente de l'envoi du rapport », and the série dialog counts its alert.
 
 Production (after `DEPLOY.md` « Lot 4 », demo accounts clicked, « TEST UI » only — never a password typed):
+- [ ] J5 count of step 3: 0 rows (else the bench re-saves those lines before approval).
+- [ ] S12 old-software marks only (no `--domains`): read back « 0 left to set », no « Accrédité » set by the script.
 - [ ] The V22 lines above on « TEST UI » (a production copy of `v22-lot4-local.mjs` with panel login), then tell the owner.
 - [ ] The laboratory told what changes (K7, K8, K9, J5 with the example C-5, I9, K10).
 

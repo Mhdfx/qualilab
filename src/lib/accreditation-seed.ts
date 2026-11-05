@@ -9,8 +9,12 @@ import { accreditationFromLegacyName, type AccreditationUpdate } from "./accredi
  *
  *   1. a mark of the old software in the name decides (« * » = non accrédité,
  *      « (SA) » / « (SN) » = sous-traité) — never overridden;
- *   2. otherwise a microbiology parameter (`family` MICRO) and a histamine
- *      (by name, whatever the family) are « Accrédité »;
+ *   2. ONLY WITH `domains: true` (script flag `--domains`): otherwise a
+ *      microbiology parameter (`family` MICRO) and a histamine (by name,
+ *      whatever the family) are « Accrédité ». Off by default: the laboratory
+ *      wrote « ça dépend des cas », so a blanket « Accrédité » would print the
+ *      accreditation logo on reports the lab never confirmed (ISO 17025 §7.8).
+ *      Never `--domains` in production before the lab's list (C-4);
  *   3. everything else stays « à préciser » (null: no mark, no logo).
  *
  * Only parameters still « à préciser » are proposed: a status already
@@ -42,15 +46,24 @@ export type AccreditationSeedPlan = {
 const HISTAMINE = /histamine/i;
 
 /** The status proposed for one parameter still « à préciser », or null (left so). */
-export function accreditationSeedFor(row: Pick<AccreditationSeedRow, "name" | "family">): { status: AccreditationStatus; why: AccreditationSeedWhy } | null {
+export type AccreditationSeedOptions = {
+  /** Also propose « Accrédité » for microbiology and histamine (hypothèse C-4). Default false: old-software marks only. */
+  domains?: boolean;
+};
+
+export function accreditationSeedFor(
+  row: Pick<AccreditationSeedRow, "name" | "family">,
+  opts: AccreditationSeedOptions = {},
+): { status: AccreditationStatus; why: AccreditationSeedWhy } | null {
   const legacy = accreditationFromLegacyName(row.name);
   if (legacy) return { status: legacy, why: "MARQUE_ANCIEN_LOGICIEL" };
+  if (!opts.domains) return null;
   if (HISTAMINE.test(row.name)) return { status: "ACCREDITE", why: "HISTAMINE" };
   if (row.family === "MICRO") return { status: "ACCREDITE", why: "MICROBIOLOGIE" };
   return null;
 }
 
-export function accreditationSeedPlan(rows: readonly AccreditationSeedRow[]): AccreditationSeedPlan {
+export function accreditationSeedPlan(rows: readonly AccreditationSeedRow[], opts: AccreditationSeedOptions = {}): AccreditationSeedPlan {
   const set: AccreditationSeedEntry[] = [];
   let kept = 0;
   let leftUnknown = 0;
@@ -59,7 +72,7 @@ export function accreditationSeedPlan(rows: readonly AccreditationSeedRow[]): Ac
       kept += 1;
       continue;
     }
-    const seed = accreditationSeedFor(row);
+    const seed = accreditationSeedFor(row, opts);
     if (!seed) {
       leftUnknown += 1;
       continue;

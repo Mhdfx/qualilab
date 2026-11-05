@@ -1096,8 +1096,11 @@ entered since). The `docker-compose.yml` mount is harmless to the old code.
 Branch `lot2-retour-16-10` after `857a1b5` (the analysis): lot 4A `149c3b2`
 (K7, K8, K9, J5, K10, S10 `--enumerations`) and `05637a0` (its documents),
 the merges of lot 4B `c14b596` (I9, L6) and lot 4H `f330419` (H5), then
-S12's first pass (`scripts/s12-accreditation.mts`) and the integration's
-documents (`HANDOFF.md` §8 « 2026-11-05 — lot 4 », `TESTPLAN.md` V22).
+S12's first pass (`scripts/s12-accreditation.mts`; old-software marks only
+by default, microbiology + histamine only behind `--domains`), the
+integration's documents (`HANDOFF.md` §8 « 2026-11-05 — lot 4 »,
+`TESTPLAN.md` V22) and the fixes of the final review (S12 opt-in, J5
+count, K7 badge after an amendment).
 Production runs `19d21af`.
 
 **Four additive migrations**, applied by the image's `migrate` service
@@ -1119,7 +1122,7 @@ and `scripts/`.
 ### 0. Before the window
 
 - Gates on the branch's head (green on 05/11: `npx tsc --noEmit` 0,
-  `npx eslint src` 0, `npx vitest run` 196 files / 3 615 tests,
+  `npx eslint src` 0, `npx vitest run` 196 files / 3 621 tests after the final review's fixes,
   `npm run build` OK; e2e v16-1 → v21 and `v22-lot4-local.mjs` 93/93 on
   the local copy).
 - **Prepare the client-price file on this machine** (the legacy base is
@@ -1164,6 +1167,27 @@ docker compose logs app --since 10m                # no error
 - The eight counts again: equal. `SELECT COUNT(*) FROM ClientPrice` → 0;
   `SELECT COUNT(*) FROM AlertCopyAddress WHERE forAlerts = 1 AND forReports = 0`
   = the number of L5 addresses.
+- **J5 — results saved before the deploy and still « Acceptable »** (read
+  only; codes and parameter names only, never a client name). J5 does not
+  re-judge a saved result: a single-limit criterion with n = 1 and c ≥ 1 that
+  read one unit above the limit stays `ACCEPTABLE` / conform, would print
+  « Acceptable » and would never alert (`ALERT_RESULT_WHERE`). Count them on
+  the samples not yet approved:
+
+  ```sql
+  SELECT s.code, s.status, p.name FROM Result r JOIN Sample s ON s.id = r.sampleId JOIN AnalysisParameter p ON p.id = r.parameterId
+  WHERE r.interpretation = 'ACCEPTABLE'
+    AND JSON_EXTRACT(r.criterion,'$.n') = 1 AND JSON_EXTRACT(r.criterion,'$.c') >= 1
+    AND (COALESCE(JSON_TYPE(JSON_EXTRACT(r.criterion,'$.bigM')),'NULL') = 'NULL'
+         OR COALESCE(JSON_TYPE(JSON_EXTRACT(r.criterion,'$.m')),'NULL') = 'NULL'
+         OR JSON_EXTRACT(r.criterion,'$.m') = JSON_EXTRACT(r.criterion,'$.bigM'))
+    AND s.status NOT IN ('VALIDE','RAPPORT_ENVOYE','ANNULE');
+  ```
+
+  Expected: 0 rows (0 on the local copy on 05/11). Any row: before those
+  samples are approved, the bench re-saves those lines (the results PUT
+  re-judges them through `judgeUnits` under `SINGLE_UNIT_NO_TOLERANCE`);
+  write the codes down for the owner.
 
 ### 4. The owner's settings (demo panel admin — never a password typed; each journalled)
 
@@ -1183,18 +1207,22 @@ clicking « admin » in « Comptes de démonstration » (headless Chrome).
   made up). The **RIB**: the owner types it himself in Administration →
   Entreprise from `backups/fichiers-labo-28-10/attestation-rib.pdf` — never
   in the repo, never by the operator.
-- **S12, first pass (the lab's Q13 note: microbiology and histamine —
-  hypothèse, à confirmer par C-4)**, through `PATCH /api/parameters/accreditation`:
-  1. `npx tsx scripts/s12-accreditation.mts --base $PROD --dry-run` — read
-     the plan with the owner: « already recorded » (left), « to set »
-     (old software marks; MICROBIOLOGIE → Accrédité; HISTAMINE → Accrédité),
-     « left à préciser ».
+- **S12 — old-software marks only** (« * » → non accrédité, « (SA) » /
+  « (SN) » → sous-traité), through `PATCH /api/parameters/accreditation`:
+  1. `npx tsx scripts/s12-accreditation.mts --base $PROD --dry-run` — the
+     script prints « Portée : marques de l'ancien logiciel seulement »; read
+     the plan with the owner: « already recorded » (left), « to set » (only
+     MARQUE_ANCIEN_LOGICIEL rows), « left à préciser ».
   2. The owner approves → `npx tsx scripts/s12-accreditation.mts --base $PROD`;
      read back « 0 left to set »; one PARAMETER_ACCREDITATION_UPDATED row.
      The JSON report lands in `.ui-tests/s12-accreditation.185.217.126.53.json`.
-  3. From then on the logo prints on a report carrying an accredited
-     analysis, and the K10 box can remove it; the lab's real list (C-4)
-     replaces this one row by row in /admin/parametres.
+  3. **Never `--domains` before the laboratory's list (C-4).** The lab wrote
+     « en microbiologie et histamine, ça dépend des cas »: a blanket
+     « Accrédité » would print the accreditation logo (S11,
+     `ACCREDITATION_LOGO_ON_MIXED_REPORT`) on reports the lab never
+     confirmed (ISO 17025 §7.8, the accreditation body's rules on its mark).
+     The microbiology and histamine list comes from the laboratory and
+     replaces this row by row in /admin/parametres.
 - **S10** — `scripts/s3-contamination-alerts.mts` (lot 3 step 5 explains the
   sections):
   1. `npx tsx scripts/s3-contamination-alerts.mts --base $PROD --listeria monocytogenes --enumerations --dry-run`

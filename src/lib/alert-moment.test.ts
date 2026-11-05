@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   ALERT_AWAITING_REPORT_LABEL,
   alertAwaitingReport,
+  alertNotSentForVersion,
   alertSettingNotice,
   alertsAfterApproval,
   alertsAtApproval,
@@ -52,14 +53,38 @@ describe("K7 edge cases (hypothèse, à confirmer — RETOUR-LABO-04-11.md §5 K
     expect(alertAwaitingReport(due, true)).toBe(false);
   });
 
+  it("an amended report whose earlier version alerted shows the badge until an alert leaves for the new version", () => {
+    const issued = new Date("2026-11-05T10:00:00Z");
+    const amended = { status: "VALIDE", alerting: 1, versionIssuedAt: issued };
+    // Alerted for the version replaced, before this one was issued: it may alert again.
+    expect(alertAwaitingReport({ ...amended, alertsSentAt: new Date("2026-11-01T09:00:00Z") })).toBe(true);
+    expect(alertAwaitingReport({ ...amended, alertsSentAt: "2026-11-01T09:00:00.000Z", versionIssuedAt: issued.toISOString() })).toBe(true);
+    // An alert left after this version was issued: nothing waits.
+    expect(alertAwaitingReport({ ...amended, alertsSentAt: new Date("2026-11-05T10:05:00Z") })).toBe(false);
+    // Never amended: as before.
+    expect(alertAwaitingReport({ ...amended, alertsSentAt: new Date("2026-11-01T09:00:00Z"), versionIssuedAt: null })).toBe(false);
+    expect(alertAwaitingReport({ ...amended, alertsSentAt: new Date("2026-11-01T09:00:00Z") }, true)).toBe(false);
+    expect(alertNotSentForVersion({ alertsSentAt: null })).toBe(true);
+    expect(alertNotSentForVersion({ alertsSentAt: new Date("2026-11-01T09:00:00Z"), versionIssuedAt: issued })).toBe(true);
+    expect(alertNotSentForVersion({ alertsSentAt: new Date("2026-11-06T09:00:00Z"), versionIssuedAt: issued })).toBe(false);
+  });
+
+  it("the série's send counts the alert of an amended version too", () => {
+    const server = readFileSync(fileURLToPath(new URL("./validation-server.ts", import.meta.url)), "utf8");
+    expect(server).toMatch(/alertsPending: alertNotSentForVersion\(\{ alertsSentAt: sample\.alertsSentAt, versionIssuedAt: sample\.report\?\.amendedAt \?\? null \}\)/);
+  });
+
   it("the badge is shown on the validation list and the fiche", () => {
     const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
     const list = read("../app/validation/page.tsx");
     expect(list).toMatch(/_count: \{ select: \{ results: \{ where: ALERT_RESULT_WHERE \} \} \}/);
-    expect(list).toMatch(/alertAwaitingReport: alertAwaitingReport\(\{ status: item\.status, alertsSentAt, alerting: _count\.results \}\)/);
+    expect(list).toMatch(/report: \{ select: \{ amendmentPending: true, amendedAt: true \} \}/);
+    expect(list).toMatch(
+      /alertAwaitingReport: alertAwaitingReport\(\{ status: item\.status, alertsSentAt, alerting: _count\.results, versionIssuedAt: report\?\.amendedAt \?\? null \}\)/
+    );
     expect(read("../components/validation/ValidationQueue.tsx")).toMatch(/\{item\.alertAwaitingReport && \(/);
     expect(read("../app/validation/[id]/page.tsx")).toMatch(
-      /alertAwaitingReport=\{alertAwaitingReport\(\{ status: sample\.status, alertsSentAt: sample\.alertsSentAt, alerting: alertables \}\)\}/
+      /alertAwaitingReport=\{alertAwaitingReport\(\{ status: sample\.status, alertsSentAt: sample\.alertsSentAt, alerting: alertables, versionIssuedAt: sample\.report\?\.amendedAt \?\? null \}\)\}/
     );
     expect(read("../components/validation/ValidationPanel.tsx")).toMatch(/\{alertAwaitingReport && \(/);
   });

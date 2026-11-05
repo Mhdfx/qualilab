@@ -77,7 +77,8 @@ const ITEM_SELECT = {
   },
   results: { select: { conform: true, workStatus: true } },
   // AMENDEMENT.md §2: a reopened report shows the badge « Amendement ».
-  report: { select: { amendmentPending: true } },
+  // `amendedAt`: K7, an amended version may alert again (`alertAwaitingReport`).
+  report: { select: { amendmentPending: true, amendedAt: true } },
   // K7: « Alerte en attente de l'envoi du rapport » — the results that alert, and whether it left.
   alertsSentAt: true,
   _count: { select: { results: { where: ALERT_RESULT_WHERE } } },
@@ -135,9 +136,10 @@ export default async function ValidationPage({
   const awaitingAdmin = items.filter((item) => inValidationView("attente_admin", item)).length;
   const shownRows = view === "a_envoyer" ? (toSend ?? []) : view ? items.filter((item) => inValidationView(view, item)) : items;
   // K7: an approved line whose alert waits for the report's send says so.
-  const shown = shownRows.map(({ alertsSentAt, _count, ...item }) => ({
+  const shown = shownRows.map(({ alertsSentAt, _count, report, ...item }) => ({
     ...item,
-    alertAwaitingReport: alertAwaitingReport({ status: item.status, alertsSentAt, alerting: _count.results }),
+    report: report ? { amendmentPending: report.amendmentPending } : null,
+    alertAwaitingReport: alertAwaitingReport({ status: item.status, alertsSentAt, alerting: _count.results, versionIssuedAt: report?.amendedAt ?? null }),
   }));
   // « Toute la série » (re-ask 2.16, `SERIES_VALIDATION`): per série shown,
   // what its buttons would take for this person — counted over the whole

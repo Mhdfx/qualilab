@@ -81,12 +81,29 @@ export function alertsAfterApproval(
  * rapport »: a report handed over on paper, never e-mailed, would otherwise
  * keep its alert forever unseen. `alerting`: results that raise an alert
  * (`ALERT_RESULT_WHERE`).
+ *
+ * An amended report (`versionIssuedAt`: `Report.amendedAt`, when the current
+ * version was approved) whose earlier version already alerted counts too
+ * while no alert left after this version was issued: its changed or new germ
+ * may alert again (`germsToRealert` may still find nothing new — hence « peut
+ * partir » in the wording).
  */
 export function alertAwaitingReport(
-  sample: { status: string; alertsSentAt: Date | string | null; alerting: number },
+  sample: { status: string; alertsSentAt: Date | string | null; alerting: number; versionIssuedAt?: Date | string | null },
   atValidation: boolean = ALERTS_AT_VALIDATION
 ): boolean {
-  return !atValidation && sample.status === "VALIDE" && sample.alertsSentAt === null && sample.alerting > 0;
+  return !atValidation && sample.status === "VALIDE" && sample.alerting > 0 && alertNotSentForVersion(sample);
+}
+
+/**
+ * Whether no alert left for the version of the report now issued: never
+ * alerted, or alerted only before this version (an amendment) was approved.
+ * Shared by the badge (`alertAwaitingReport`) and the série's send dialog.
+ */
+export function alertNotSentForVersion(sample: { alertsSentAt: Date | string | null; versionIssuedAt?: Date | string | null }): boolean {
+  if (sample.alertsSentAt === null) return true;
+  if (sample.versionIssuedAt === null || sample.versionIssuedAt === undefined) return false;
+  return new Date(sample.alertsSentAt).getTime() < new Date(sample.versionIssuedAt).getTime();
 }
 
 /** The badge's words (`alertAwaitingReport`). */

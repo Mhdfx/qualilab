@@ -5,7 +5,7 @@ import { logAudit } from "./audit";
 import { prisma } from "./prisma";
 import { canApprove, canValidateTechnically, signsAdministratively } from "./sample-status";
 import { issueReportFor, sendReport, sendContaminationAlerts, type IssuedReport } from "./report-dispatch";
-import { alertsAfterApproval, alertsAtTechnicalValidation, alertsFollowSend, alertsWithoutReportNote } from "./alert-moment";
+import { alertNotSentForVersion, alertsAfterApproval, alertsAtTechnicalValidation, alertsFollowSend, alertsWithoutReportNote } from "./alert-moment";
 import { ALERT_RESULT_WHERE } from "./contamination-alert";
 import { accreditationLogoJournal } from "./accreditation";
 import { ACCREDITATION_LOGO_BY_HAND } from "./lab-proposals";
@@ -595,7 +595,10 @@ async function serieSendCandidates(serieId: string): Promise<SerieSendCandidate[
     ...lineOf(sample),
     status: sample.status,
     report: sample.report,
-    alertsPending: sample.alertsSentAt === null ? sample._count.results : 0,
+    // An amended report whose earlier version alerted: its alert may leave again (`alertNotSentForVersion`).
+    alertsPending: alertNotSentForVersion({ alertsSentAt: sample.alertsSentAt, versionIssuedAt: sample.report?.amendedAt ?? null })
+      ? sample._count.results
+      : 0,
   }));
 }
 
