@@ -76,6 +76,33 @@ describe("K6 — « Moyen de prélèvement »", () => {
   });
 });
 
+describe("K9 (lot 4A, 04/11 Q14) — « Moyen de prélèvement » for the air only", () => {
+  it("a version frozen with no means (null) prints no line, whoever sampled — « Référence prélèvement » unchanged", () => {
+    const lab = buildReportHtml({ ...issued, samplingMeans: null });
+    expect(lab).not.toContain("Moyen de prélèvement");
+    expect(lab).toContain("Référence prélèvement");
+    const client = buildReportHtml({ ...issued, samplingMeans: null, sampledByLab: false });
+    expect(client).not.toContain("Moyen de prélèvement");
+    expect(client).toContain("Référence prélèvement : N/A (prélèvement non effectué par le laboratoire)");
+  });
+
+  it("the air keeps its method", () => {
+    const air = buildReportHtml({ ...issued, lineKind: "AIR", airMethod: "BIOCOLLECTEUR", samplingMeans: "Biocollecteur" });
+    expect(air).toContain("Moyen de prélèvement : Biocollecteur");
+  });
+
+  it("the null survives the freeze — a later print of the version still has no line", () => {
+    const revived = reportDataFromJson(reportDataToJson({ ...issued, samplingMeans: null }));
+    expect(revived?.samplingMeans).toBeNull();
+    expect(buildReportHtml(revived!)).not.toContain("Moyen de prélèvement");
+  });
+
+  it("versions issued before keep their line (lot 3C « Écouvillon », older ones « N/A »)", () => {
+    expect(buildReportHtml(issued)).toContain("Moyen de prélèvement : Écouvillon");
+    expect(buildReportHtml({ ...issued, samplingMeans: undefined })).toContain("Moyen de prélèvement : N/A");
+  });
+});
+
 describe("K4 — accreditation marks, logo and stamp", () => {
   it("prints each analysis's mark after its name, on page 1 and in the annex", () => {
     const html = buildReportHtml(issued);
@@ -139,15 +166,45 @@ describe("the issue freezes them (report-dispatch)", () => {
   const source = readFileSync(join(process.cwd(), "src/lib/report-dispatch.ts"), "utf8");
 
   it("only on a version issued now — the live 13/10 rendering keeps its data key for key", () => {
-    expect(source).toMatch(/\.\.\.\(aligned \? issuedSinceLot3C\(sample, fields\.images\) : \{\}\)/);
+    expect(source).toMatch(/\.\.\.\(aligned \? issuedSinceLot3C\(sample, fields\.images, fields\.accreditationLogoChoice \?\? null\) : \{\}\)/);
     expect(source).toMatch(/\.\.\.\(aligned \? \{ accreditation: result\.parameter\.accreditation \?\? null \} : \{\}\)/);
   });
 
   it("freezes the files (flag and archived hash) at both issues (first version and amendment)", () => {
     expect((source.match(/freezeReportImages\(\)/g) ?? []).length).toBe(2);
-    expect(source).toMatch(/images\.accreditationLogo && reportCarriesAccreditationLogo\(/);
+    // K10: the rule (`accreditationLogoRule`), then the signer's box — the file existing,
+    // and the box adding it only to a report carrying an accredited analysis (`addable`).
+    expect(source).toMatch(/const rule = accreditationLogoRule\(sample\.results\.map\(\(r\) => r\.parameter\.accreditation\)\);/);
+    expect(source).toMatch(/uploaded: images\.accreditationLogo,\s+byRule: rule\.byRule,\s+addable: rule\.addable,/);
     expect(source).toMatch(/accreditationLogoHash: images\.accreditationLogoHash/);
+    // K10: the approval's journal hears of the logo only when one was uploaded at the issue.
+    expect((source.match(/\.\.\.journalledLogo\(images, issuedLogoDecision\(/g) ?? []).length).toBe(2);
+    expect(source).toMatch(/return images\.accreditationLogo \? \{ accreditationLogo: decision \} : \{\};/);
+    // K10: the send repairing a failed issue follows the approval's box (SAMPLE_APPROVED `accreditationLogoRequested`).
+    expect(source).toMatch(/amendReportFor\(sample\.id, actorId, \{ accreditationLogo: await approvalLogoChoice\(sample\.id\) \}\)/);
+    expect(source).toMatch(/createReportFor\(sample\.id, \{ accreditationLogo: await approvalLogoChoice\(sample\.id\) \}\)/);
+    expect(source).toMatch(/action: "SAMPLE_APPROVED" \},\s+orderBy: \{ createdAt: "desc" \}/);
+    expect(source).toMatch(/return requestedAccreditationLogo\(approval\?\.metadata\);/);
+    // K7: the report without an address says so — the alert still tries its own.
+    expect(source).toMatch(/: "Aucune adresse email enregistrée pour ce client\.",[\s\S]{0,200}noRecipients: true as const,/);
     expect(source).toMatch(/stampHash: images\.stampHash/);
+  });
+
+  it("K10: both issues take the approval's box « Logo d'accréditation » — an amendment starts from the rule again", () => {
+    expect(source).toMatch(/export async function issueReportFor\(sampleId: string, actorId: string \| null, options: IssueOptions = \{\}\)/);
+    expect(source).toMatch(/amendReportFor\(sampleId, actorId, options\) : createReportFor\(sampleId, options\)/);
+    expect((source.match(/accreditationLogoChoice: /g) ?? []).length).toBe(2);
+    // The self-healing issues of `sendReport`: the box the approval journalled
+    // (`approvalLogoChoice`), never the rule over a hand choice.
+    expect(source).not.toMatch(/await amendReportFor\(sample\.id, actorId\)/);
+    expect(source).not.toMatch(/await createReportFor\(sample\.id\)/);
+  });
+
+  it("K10: the hand's choice is frozen and revived with the version — the print reads `accreditationLogo`", () => {
+    const removed = reportDataFromJson(reportDataToJson({ ...issued, accreditationLogo: false, accreditationLogoByHand: true }));
+    expect(removed).toMatchObject({ accreditationLogo: false, accreditationLogoByHand: true });
+    const parts = reportPdfParts({ data: removed!, company: COMPANY, reference, logoDataUri: PNG, images: { accreditationLogoDataUri: LOGO } });
+    expect(parts.header).not.toContain(LOGO);
   });
 
   it("renders every PDF from the frozen images (report-pdf)", () => {

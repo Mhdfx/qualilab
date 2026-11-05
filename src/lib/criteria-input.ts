@@ -1,6 +1,7 @@
 import type { Family, LimitKind } from "@/generated/prisma/enums";
 import { fingerprint } from "./fingerprint";
 import { singleLimit, type Plan } from "./interpretation";
+import { SINGLE_UNIT_NO_TOLERANCE } from "./lab-proposals";
 import { isDilutionShorthand, parseLabValue } from "./result-value";
 import { normalizeLabel } from "./serie-input";
 import { MAX_UNITS } from "./series";
@@ -119,14 +120,18 @@ export function toleranceApplies(mKind: LimitKind, hasM: boolean, hasBigM: boole
 export const LIMITLESS_HINT = "sans limite — résultat sans verdict";
 
 /**
- * The note the grid shows on a single-limit row with n = 1 and c ≥ 1. n = 1
- * bounds c by what a sample holds (the imported grids need it), so c units
- * above the limit are tolerated whatever the sample: a sample of one unit
- * above the limit is « Acceptable », never « Non satisfaisant » — a rule the
- * laboratory is asked to confirm (RETOUR-LABO-16-10.md F2).
+ * The note the grid shows on a single-limit row with n = 1 and c ≥ 1 (the
+ * old software's imported grids carry such rows). Since lot 4A (J5, Q8 of
+ * 04/11, `SINGLE_UNIT_NO_TOLERANCE`) c has no effect there: one unit above
+ * the limit is « Non satisfaisant » (`toleranceIgnored`). With the switch
+ * off, the note of 19/10 again: c units above are « Acceptable »
+ * (RETOUR-LABO-16-10.md F2).
  */
-export function wideToleranceNote(plan: Plan): string | null {
+export function wideToleranceNote(plan: Plan, singleUnitNoTolerance: boolean = SINGLE_UNIT_NO_TOLERANCE): string | null {
   if (plan.n !== 1 || plan.c === null || plan.c < 1 || singleLimit(plan) === null) return null;
+  if (singleUnitNoTolerance) {
+    return `c sans effet quand n = 1 : une seule unité au-dessus de la limite est « Non satisfaisant » (c = ${plan.c} ignoré).`;
+  }
   return `c = ${plan.c} avec n = 1 : un échantillon d'une seule unité au-dessus de la limite sera « Acceptable », jamais « Non satisfaisant ».`;
 }
 

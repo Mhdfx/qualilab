@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { COMMERCIAL_RESENDS_REPORTS } from "./lab-proposals";
 import { ROLES } from "./roles";
 import {
   CONCLUSION_MAX_LENGTH,
@@ -58,10 +59,21 @@ describe("« Envoyer / Renvoyer au client » (2.16 (b), answer of 28/10 — K2)"
     expect(sendsReports("GESTIONNAIRE")).toBe(false);
   });
 
-  it("the gestionnaire commercial is offered « Renvoyer » only, once this version has left (switch COMMERCIAL_RESENDS_REPORTS)", () => {
+  it("K8 (Q9 of 04/11): by default the gestionnaire commercial neither sends nor resends", () => {
+    expect(COMMERCIAL_RESENDS_REPORTS).toBe(false);
     expect(canResendReport("GESTIONNAIRE", "VALIDE", false, false)).toBe(false);
-    expect(canResendReport("GESTIONNAIRE", "RAPPORT_ENVOYE", false, false)).toBe(false);
-    expect(canResendReport("GESTIONNAIRE", "RAPPORT_ENVOYE", false, true)).toBe(true);
+    expect(canResendReport("GESTIONNAIRE", "RAPPORT_ENVOYE", false, true)).toBe(false);
+    const sent = { sentAt: new Date("2026-10-20T10:00:00Z"), amendedAt: null, amendmentPending: false };
+    expect(reportSendRefusal("GESTIONNAIRE", sent)).toBe("Votre profil n'est pas autorisé à envoyer les rapports.");
+    expect(reportSendRefusal("GESTIONNAIRE", null)).toBe("Votre profil n'est pas autorisé à envoyer les rapports.");
+    // The senders are unchanged (« seul le validateur technique ou l'administration »).
+    for (const role of SEND_REPORT_ROLES) expect(reportSendRefusal(role, sent), role).toBeNull();
+  });
+
+  it("the way back (switch on): « Renvoyer » only, once this version has left", () => {
+    expect(canResendReport("GESTIONNAIRE", "VALIDE", false, false, true)).toBe(false);
+    expect(canResendReport("GESTIONNAIRE", "RAPPORT_ENVOYE", false, false, true)).toBe(false);
+    expect(canResendReport("GESTIONNAIRE", "RAPPORT_ENVOYE", false, true, true)).toBe(true);
     // Switch off: no resend either.
     expect(canResendReport("GESTIONNAIRE", "RAPPORT_ENVOYE", false, true, false)).toBe(false);
   });
@@ -91,14 +103,14 @@ describe("« Envoyer / Renvoyer au client » (2.16 (b), answer of 28/10 — K2)"
       expect(reportSendRefusal(role, never), role).toBeNull();
       expect(reportSendRefusal(role, null), role).toBeNull();
     }
-    // The gestionnaire: a version already sent only.
-    expect(reportSendRefusal("GESTIONNAIRE", sent)).toBeNull();
-    expect(reportSendRefusal("GESTIONNAIRE", never)).toMatch(/^Le premier envoi d'un rapport revient au validateur/);
-    expect(reportSendRefusal("GESTIONNAIRE", null)).not.toBeNull();
+    // The gestionnaire, switch on (the way back): a version already sent only.
+    expect(reportSendRefusal("GESTIONNAIRE", sent, true)).toBeNull();
+    expect(reportSendRefusal("GESTIONNAIRE", never, true)).toMatch(/^Le premier envoi d'un rapport revient au validateur/);
+    expect(reportSendRefusal("GESTIONNAIRE", null, true)).not.toBeNull();
     // An amendment pending: the send would issue and send « -A1 » — a first send.
-    expect(reportSendRefusal("GESTIONNAIRE", { ...sent, amendmentPending: true })).not.toBeNull();
+    expect(reportSendRefusal("GESTIONNAIRE", { ...sent, amendmentPending: true }, true)).not.toBeNull();
     // « -A1 » issued after the last send: never sent.
-    expect(reportSendRefusal("GESTIONNAIRE", { ...sent, amendedAt: new Date("2026-10-21T10:00:00Z") })).not.toBeNull();
+    expect(reportSendRefusal("GESTIONNAIRE", { ...sent, amendedAt: new Date("2026-10-21T10:00:00Z") }, true)).not.toBeNull();
     // The switch off: never.
     expect(reportSendRefusal("GESTIONNAIRE", sent, false)).toBe("Votre profil n'est pas autorisé à envoyer les rapports.");
   });
@@ -125,19 +137,33 @@ describe("« Envoyer / Renvoyer au client » (2.16 (b), answer of 28/10 — K2)"
 describe("approvalDispatch — no automatic send (16/10, Q92)", () => {
   it("« Valider »: without `send`, or `send: false`, the report stays at the laboratory", () => {
     for (const body of [{ action: "approve" }, { action: "approve", send: false }, {}, null, undefined]) {
-      expect(approvalDispatch(body), JSON.stringify(body)).toEqual({ ok: true, sendReport: false, sendAlerts: true });
+      expect(approvalDispatch(body), JSON.stringify(body)).toEqual({ ok: true, sendReport: false, sendAlerts: false, accreditationLogo: null });
     }
   });
 
   it("« Valider et envoyer »: `send: true` sends the report", () => {
-    expect(approvalDispatch({ action: "approve", send: true })).toEqual({ ok: true, sendReport: true, sendAlerts: true });
+    expect(approvalDispatch({ action: "approve", send: true })).toEqual({ ok: true, sendReport: true, sendAlerts: true, accreditationLogo: null });
   });
 
-  it("runs the contamination alerts whatever `send` says (they never wait for the report)", () => {
-    for (const send of [true, false, undefined]) {
+  it("K7 (Q9 of 04/11): the contamination alerts leave with the report only — « Valider et envoyer »", () => {
+    expect(approvalDispatch({ send: true })).toMatchObject({ ok: true, sendAlerts: true });
+    for (const send of [false, undefined]) {
       const plan = approvalDispatch({ send });
-      expect(plan.ok && plan.sendAlerts, String(send)).toBe(true);
+      expect(plan.ok && plan.sendAlerts, String(send)).toBe(false);
     }
+  });
+
+  it("K10 (Q13 of 04/11): reads the box « Logo d'accréditation » — a boolean, or null / absent for the rule", () => {
+    expect(approvalDispatch({ send: false, accreditationLogo: false })).toMatchObject({ ok: true, accreditationLogo: false });
+    expect(approvalDispatch({ send: true, accreditationLogo: true })).toMatchObject({ ok: true, accreditationLogo: true });
+    expect(approvalDispatch({ accreditationLogo: null })).toMatchObject({ ok: true, accreditationLogo: null });
+    for (const logo of ["true", 1, {}, []]) {
+      const plan = approvalDispatch({ accreditationLogo: logo });
+      expect(plan.ok, JSON.stringify(logo)).toBe(false);
+      if (!plan.ok) expect(plan.error).toMatch(/accreditationLogo/);
+    }
+    // The switch off: the field is ignored, the rule decides.
+    expect(approvalDispatch({ accreditationLogo: false }, false)).toMatchObject({ ok: true, accreditationLogo: null });
   });
 
   it("refuses anything but a boolean rather than guessing (400)", () => {
@@ -194,10 +220,18 @@ describe("validationBody — what the validation panel posts (16/10, Q92)", () =
   it("« Valider et envoyer » carries send: true, « Valider » send: false — read by approvalDispatch as such", () => {
     const withSend = validationBody("approve", "  ", "reg-1", true);
     expect(withSend).toEqual({ action: "approve", reason: "", regulationId: "reg-1", send: true });
-    expect(approvalDispatch(withSend)).toEqual({ ok: true, sendReport: true, sendAlerts: true });
+    expect(approvalDispatch(withSend)).toEqual({ ok: true, sendReport: true, sendAlerts: true, accreditationLogo: null });
     const without = validationBody("approve", "", "", false);
     expect(without).toEqual({ action: "approve", reason: "", regulationId: undefined, send: false });
-    expect(approvalDispatch(without)).toEqual({ ok: true, sendReport: false, sendAlerts: true });
+    expect(approvalDispatch(without)).toEqual({ ok: true, sendReport: false, sendAlerts: false, accreditationLogo: null });
+  });
+
+  it("K10: carries the box « Logo d'accréditation » on an approval only, when it was shown", () => {
+    const unticked = validationBody("approve", "", "reg-1", false, false);
+    expect(unticked).toEqual({ action: "approve", reason: "", regulationId: "reg-1", send: false, accreditationLogo: false });
+    expect(approvalDispatch(unticked)).toMatchObject({ ok: true, accreditationLogo: false });
+    expect(validationBody("approve", "", "", true, null)).not.toHaveProperty("accreditationLogo");
+    expect(validationBody("validate", "", "", false, true)).not.toHaveProperty("accreditationLogo");
   });
 
   it("never carries `send` on a technical validation or a send-back", () => {
@@ -207,7 +241,10 @@ describe("validationBody — what the validation panel posts (16/10, Q92)", () =
 
   it("is what the panel posts, and « Valider et envoyer » asks for the send", () => {
     const panel = source("../components/validation/ValidationPanel.tsx");
-    expect(panel).toMatch(/body: JSON\.stringify\(validationBody\(action, reason, regulationId, withSend\)\)/);
+    // K10: the box posts null (the rule, read again at the issue) unless the signer changed it.
+    expect(panel).toMatch(/validationBody\(action, reason, regulationId, withSend, action === "approve" \? accreditationLogoPosted\(accreditationLogo, logoChecked\) : null\)/);
+    // …and cannot be ticked on a report without an accredited analysis.
+    expect(panel).toMatch(/disabled=\{!accreditationLogoTickable\(accreditationLogo\)\}/);
     const button = panel.slice(panel.indexOf('send("approve", true)'));
     expect(panel.indexOf('send("approve", true)')).toBeGreaterThan(0);
     expect(button.slice(0, button.indexOf("</SecondaryButton>"))).toMatch(/Valider et envoyer/);

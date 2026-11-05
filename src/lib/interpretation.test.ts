@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aboveBelowLimit, applyUnitFactor, fmt, hasLimit, singleLimit, indicativeVerdict, storedPlan, informalVerdict, interpret, judgeUnits, legacyFailures, parseUnitReading, pickCriterion, planLabel, sampleVerdict, suggestUnitsConformity, summariseReadings, unitStoredDisplay, verdictToConform, worstVerdict, type Plan } from "./interpretation";
+import { aboveBelowLimit, applyUnitFactor, fmt, hasLimit, singleLimit, indicativeVerdict, storedPlan, informalVerdict, interpret, judgeUnits, legacyFailures, parseUnitReading, pickCriterion, planLabel, sampleVerdict, suggestUnitsConformity, summariseReadings, toleranceIgnored, unitStoredDisplay, verdictToConform, worstVerdict, type Plan } from "./interpretation";
 
 const read = (...raws: string[]) => raws.map(parseUnitReading);
 const threeClass: Plan = { n: 5, c: 2, mKind: "VALUE", m: 100, bigM: 10_000 };
@@ -328,5 +328,56 @@ describe("dilution and printing of a unit", () => {
     expect(fmt(995)).toBe("1.10³");
     expect(fmt(95)).toBe("95");
     expect(fmt(1_500_000)).toBe("1,5.10⁶");
+  });
+});
+
+describe("J5 (lot 4A — Q8 / Q131 of 04/11): a single limit with n = 1 tolerates nothing", () => {
+  // The worked example C-5 (RETOUR-LABO-04-11.md §7): a criterion taken over
+  // from the old software, n = 1, c = 1, m = 100 UFC/g.
+  const legacy: Plan = { n: 1, c: 1, mKind: "VALUE", m: 100, bigM: null };
+
+  it("C-5: 150 UFC/g is « Non satisfaisant » (it was « Acceptable »), 80 is « Satisfaisant » both ways", () => {
+    expect(toleranceIgnored(legacy)).toBe(true);
+    const over = judgeUnits(legacy, read("150")).official;
+    expect(over).toMatchObject({ verdict: "NON_SATISFAISANT", countAboveM: 1 });
+    expect(over?.reason).toBe("1 unité au-dessus de la limite 1.10² — n = 1 : c = 1 sans effet.");
+    expect(verdictToConform(over?.verdict ?? null)).toBe(false);
+    expect(judgeUnits(legacy, read("80")).official?.verdict).toBe("SATISFAISANT");
+    // Before lot 4A (the switch off): « Acceptable », conform, no alert.
+    const before = judgeUnits(legacy, read("150"), false).official;
+    expect(before).toMatchObject({ verdict: "ACCEPTABLE", countAboveM: 1 });
+    expect(verdictToConform(before?.verdict ?? null)).toBe(true);
+    expect(judgeUnits(legacy, read("80"), false).official?.verdict).toBe("SATISFAISANT");
+  });
+
+  it("applies to M alone and to m = M, and to a plan n = 1 read on more units", () => {
+    expect(judgeUnits({ n: 1, c: 2, mKind: "UNSPECIFIED", m: null, bigM: 1000 }, read("2000")).official?.verdict).toBe("NON_SATISFAISANT");
+    expect(judgeUnits({ n: 1, c: 1, mKind: "VALUE", m: 100, bigM: 100 }, read("150")).official?.verdict).toBe("NON_SATISFAISANT");
+    // The criterion's n decides, not the units taken.
+    expect(judgeUnits(legacy, read("150", "10", "10")).official?.verdict).toBe("NON_SATISFAISANT");
+  });
+
+  it("an uncountable plate or « > x » at the limit is « Non satisfaisant » too; « > x » below it stays open", () => {
+    expect(judgeUnits(legacy, read("Indénombrable")).official?.verdict).toBe("NON_SATISFAISANT");
+    expect(judgeUnits(legacy, read("> 100")).official?.verdict).toBe("NON_SATISFAISANT");
+    expect(judgeUnits(legacy, read("> 50")).official).toMatchObject({ verdict: "INCOMPLET", undecided: true });
+  });
+
+  it("leaves n ≥ 2 (Q31 of 30/09), the three-class plans and the absence tests as they were", () => {
+    const five: Plan = { n: 5, c: 1, mKind: "VALUE", m: 100, bigM: 100 };
+    expect(toleranceIgnored(five)).toBe(false);
+    expect(judgeUnits(five, read("150", "10", "10", "10", "10")).official?.verdict).toBe("ACCEPTABLE");
+    // m / M with n = 1: « Acceptable » between m and M is untouched (asked in C-5).
+    const mM: Plan = { n: 1, c: 1, mKind: "VALUE", m: 100, bigM: 1000 };
+    expect(toleranceIgnored(mM)).toBe(false);
+    expect(judgeUnits(mM, read("500")).official?.verdict).toBe("ACCEPTABLE");
+    expect(toleranceIgnored({ n: 1, c: 0, mKind: "VALUE", m: 100, bigM: null })).toBe(false);
+    expect(toleranceIgnored({ n: 1, c: null, mKind: "VALUE", m: 100, bigM: null })).toBe(false);
+    expect(toleranceIgnored({ n: 1, c: 1, mKind: "ABSENCE", m: null, bigM: null })).toBe(false);
+  });
+
+  it("the indicative verdict (too few units) never tolerated c anyway", () => {
+    const two: Plan = { n: 2, c: 1, mKind: "VALUE", m: 100, bigM: null };
+    expect(judgeUnits(two, read("150"))).toMatchObject({ official: null, informal: { verdict: "NON_SATISFAISANT" } });
   });
 });

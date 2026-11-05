@@ -25,6 +25,7 @@ import {
   serieBatchChunkSize,
   serieBatchChunks,
   serieBatchCounts,
+  serieBatchRequest,
   serieBatchStopped,
   serieBatchSummary,
   serieConclusion,
@@ -55,9 +56,15 @@ const VALID1 = { id: "u-valid1", role: "VALIDATEUR" as Role };
 const DIR1 = { id: "u-dir1", role: "DIRECTION" as Role };
 const ADMIN = { id: "u-admin", role: "ADMIN" as Role };
 const REG = { id: "reg-1", title: "Règlement TEST" };
-/** LabSettings.alertAfterTechnicalValidation, ON by default. */
-const AT_TECHNICAL = { alertsAtTechnical: true };
-const AT_APPROVAL = { alertsAtTechnical: false };
+/**
+ * LabSettings.alertAfterTechnicalValidation, with the switch
+ * `ALERTS_AT_VALIDATION` turned back on (the way back of K7): the setting
+ * decides only then. The default since lot 4A is read by `DEFAULT_K7`.
+ */
+const AT_TECHNICAL = { alertsAtTechnical: true, atValidation: true };
+const AT_APPROVAL = { alertsAtTechnical: false, atValidation: true };
+/** The settings as the server passes them (no `atValidation`): the switch's default — off since lot 4A (K7). */
+const DEFAULT_K7 = { alertsAtTechnical: true };
 
 function candidate(overrides: Partial<SerieValidationCandidate> = {}): SerieValidationCandidate {
   return {
@@ -290,6 +297,13 @@ describe("serieValidationPlan — what the dialog lists", () => {
     expect(serieValidationPlan([alerting], "approve", DIR1, AT_APPROVAL).eligible[0].alertNow).toBe(true);
     // Nothing alertable: never, at either step.
     expect(serieValidationPlan([candidate({ nonConformes: 3 })], "validate", VALID1, AT_TECHNICAL).eligible[0].alertNow).toBe(false);
+  });
+
+  it("K7 (Q9 of 04/11, the default): no signature sends the alert but « Valider et envoyer »", () => {
+    const alerting = candidate({ alertables: 1, validatedById: VALID1.id });
+    const fresh = candidate({ alertables: 1 });
+    expect(serieValidationPlan([fresh], "validate", VALID1, DEFAULT_K7).eligible[0]).toMatchObject({ alertNow: false, alertWithSend: false });
+    expect(serieValidationPlan([alerting], "approve", DIR1, DEFAULT_K7).eligible[0]).toMatchObject({ alertNow: false, alertWithSend: true });
   });
 
   it("alertWithSend: with the K3 switch off, only « Valider et envoyer » at the approval sends the alert", () => {
@@ -590,18 +604,23 @@ describe("what the dialog warns about before a signature (the sample's panel's w
     expect(server).toMatch(/interpretation: true,\s+informalInterpretation: true,/);
   });
 
-  it("alertsLeaveAt: the step that sends the alerts", () => {
-    expect(alertsLeaveAt("validate", true)).toBe(true);
-    expect(alertsLeaveAt("approve", true)).toBe(false);
-    expect(alertsLeaveAt("validate", false)).toBe(false);
-    expect(alertsLeaveAt("approve", false)).toBe(true);
+  it("alertsLeaveAt: the step that sends the alerts (switch on — the way back of K7)", () => {
+    expect(alertsLeaveAt("validate", true, true)).toBe(true);
+    expect(alertsLeaveAt("approve", true, true)).toBe(false);
+    expect(alertsLeaveAt("validate", false, true)).toBe(false);
+    expect(alertsLeaveAt("approve", false, true)).toBe(true);
+    // K7, the default: no signature without the send.
+    expect(alertsLeaveAt("validate", true)).toBe(false);
+    expect(alertsLeaveAt("approve", false)).toBe(false);
   });
 
   it("serieAlertNotice: whether the alerts leave at this step, in the panel's words", () => {
-    expect(serieAlertNotice("validate", true, 2)).toMatch(/^Une alerte de contamination est envoyée au client dès la validation technique : 2 échantillons ci-dessous en déclenchent une à cette validation\.$/);
-    expect(serieAlertNotice("approve", false, 1)).toMatch(/^Une alerte de contamination est envoyée au client à la validation administrative : 1 échantillon ci-dessous en déclenche une/);
-    expect(serieAlertNotice("validate", false, 1)).toMatch(/sera envoyée au client après la validation administrative.*rien ne part à cette étape/);
-    expect(serieAlertNotice("approve", true, 3)).toMatch(/partent dès la validation technique.*ne renvoie que celles qui auraient échoué/);
+    expect(serieAlertNotice("validate", true, 2, true)).toMatch(/^Une alerte de contamination est envoyée au client dès la validation technique : 2 échantillons ci-dessous en déclenchent une à cette validation\.$/);
+    expect(serieAlertNotice("approve", false, 1, true)).toMatch(/^Une alerte de contamination est envoyée au client à la validation administrative : 1 échantillon ci-dessous en déclenche une/);
+    expect(serieAlertNotice("validate", false, 1, true)).toMatch(/sera envoyée au client après la validation administrative.*rien ne part à cette étape/);
+    expect(serieAlertNotice("approve", true, 3, true)).toMatch(/partent dès la validation technique.*ne renvoie que celles qui auraient échoué/);
+    // K7, the default: the alert leaves with the report, at whichever step.
+    expect(serieAlertNotice("validate", true, 2)).toMatch(/^Une alerte de contamination part avec le rapport/);
   });
 });
 
@@ -647,7 +666,7 @@ describe("the dialog's requests: short, and an answer that never arrived claims 
   it("the dialog posts in chunks, reads each answer through readSerieBatchReply and hides its run buttons once stopped", () => {
     const dialog = source("../components/validation/SerieBatchActions.tsx");
     expect(dialog).toMatch(/serieBatchChunks\(plan\.eligible, serieBatchChunkSize\(action, withSend\)\)/);
-    expect(dialog).toMatch(/serieBatchRequest\(serieId, action, chunk, withSend\)/);
+    expect(dialog).toMatch(/serieBatchRequest\(serieId, action, chunk, withSend, logo\)/);
     expect(dialog).toMatch(/readSerieBatchReply\(response\.status/);
     // The headline is rebuilt from every chunk's lines.
     expect(dialog).toMatch(/serieBatchSummary\(action, outcome\.lines\)/);
@@ -833,5 +852,30 @@ describe("the sample's « Parcours » says when a step was taken « toute la sé
     expect(note("Alerte de contamination envoyée")).toBe("Salmonella — envoi simulé (toute la série 991/26)");
     // A sample's own button: nothing added.
     expect(note("Rapport envoyé au client", 1)).toBe("RAP-2026-00002 — x@test.invalid");
+  });
+});
+
+
+describe("K10 — the série's box « Logo d'accréditation » (Q13 of 04/11)", () => {
+  const lines = [{ id: "a", regulationId: "reg-1" }];
+
+  it("rides on the approval only, and only when a choice other than the rule was made", () => {
+    expect(serieBatchRequest("s1", "approve", lines, false, false).body).toEqual({
+      action: "approve",
+      send: false,
+      accreditationLogo: false,
+      samples: [{ id: "a", regulationId: "reg-1" }],
+    });
+    expect(serieBatchRequest("s1", "approve", lines, true, null).body).not.toHaveProperty("accreditationLogo");
+    expect(serieBatchRequest("s1", "validate", lines, false, true).body).not.toHaveProperty("accreditationLogo");
+    expect(serieBatchRequest("s1", "send", lines, false, true).body).toEqual({ sampleIds: ["a"] });
+  });
+
+  it("the route reads it with approvalDispatch and passes it to every sample's approval", () => {
+    const route = source("../app/api/series/[id]/validation/route.ts");
+    expect(route).toMatch(/accreditationLogo: dispatch\.accreditationLogo/);
+    const server = source("./validation-server.ts");
+    expect(server).toMatch(/plan: \{ sendReport: boolean; accreditationLogo\?: boolean \| null \}\s*\): Promise<SerieBatchLine\[\]>/);
+    expect(server).toMatch(/accreditationLogoUploaded: action === "approve" && ACCREDITATION_LOGO_BY_HAND \? await accreditationLogoUploaded\(\) : false/);
   });
 });

@@ -32,6 +32,14 @@ vi.mock("./report-dispatch", () => ({
   sendContaminationAlerts: stubs.sendContaminationAlerts,
 }));
 vi.mock("./lab-settings", () => ({ getLabSettings: stubs.getLabSettings }));
+// K7 (lot 4A): `ALERTS_AT_VALIDATION` is off by default; a test turns it back on to check the way back.
+const switches = vi.hoisted(() => ({ alertsAtValidation: false }));
+vi.mock("./lab-proposals", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./lab-proposals")>()),
+  get ALERTS_AT_VALIDATION() {
+    return switches.alertsAtValidation;
+  },
+}));
 
 import { approveSample, runSerieSend, sendReportWithAlerts, validateTechnically, type ValidationSample } from "./validation-server";
 
@@ -67,6 +75,7 @@ const entries = (action: string) => journal().filter((entry) => entry.action ===
 
 beforeEach(() => {
   vi.clearAllMocks();
+  switches.alertsAtValidation = false;
   stubs.logAudit.mockResolvedValue(undefined);
   stubs.prisma.sample.updateMany.mockResolvedValue({ count: 1 });
   stubs.prisma.clientProduct.update.mockResolvedValue({});
@@ -128,8 +137,97 @@ describe("approveSample — the administrative validation, from the sample or fr
   });
 });
 
+describe("approveSample — K10, the box « Logo d'accréditation » (Q13 of 04/11)", () => {
+  it("passes the box to the issue and journals what the version froze", async () => {
+    stubs.issueReportFor.mockResolvedValue({
+      id: "r1",
+      number: "RAP-2026-00001",
+      accreditationLogo: { printed: false, byRule: true, byHand: true },
+    });
+    await approveSample(sample(), DIR1, REG, { sendReport: false, accreditationLogo: false }, SERIE);
+    expect(stubs.issueReportFor).toHaveBeenCalledWith("s1", DIR1.id, { accreditationLogo: false });
+    expect(entries("SAMPLE_APPROVED")[0].metadata).toMatchObject({ accreditationLogo: "retiré à la main", accreditationLogoByHand: true, viaSerie: "991/26" });
+  });
+
+  it("without the box (no logo uploaded), the rule: null passed, the rule's decision journalled", async () => {
+    stubs.issueReportFor.mockResolvedValue({
+      id: "r1",
+      number: "RAP-2026-00001",
+      accreditationLogo: { printed: true, byRule: true, byHand: false },
+    });
+    await approveSample(sample(), DIR1, REG, { sendReport: false });
+    expect(stubs.issueReportFor).toHaveBeenCalledWith("s1", DIR1.id, { accreditationLogo: null });
+    const metadata = entries("SAMPLE_APPROVED")[0].metadata;
+    expect(metadata).toMatchObject({ accreditationLogo: "imprimé (règle par défaut)" });
+    expect(metadata).not.toHaveProperty("accreditationLogoByHand");
+  });
+
+  it("a report issued before (nothing issued now) journals no logo", async () => {
+    await approveSample(sample(), DIR1, REG, { sendReport: false });
+    expect(entries("SAMPLE_APPROVED")[0].metadata).not.toHaveProperty("accreditationLogo");
+  });
+
+  it("journals the box as posted even when the report failed to issue — the send that issues it later follows it", async () => {
+    stubs.issueReportFor.mockResolvedValue(null);
+    await approveSample(sample(), DIR1, REG, { sendReport: false, accreditationLogo: false });
+    const metadata = entries("SAMPLE_APPROVED")[0].metadata;
+    expect(metadata).toMatchObject({ reportNumber: null, accreditationLogoRequested: false });
+    expect(metadata).not.toHaveProperty("accreditationLogo");
+  });
+
+  it("the rule (box untouched, or none): nothing requested is journalled", async () => {
+    await approveSample(sample(), DIR1, REG, { sendReport: false, accreditationLogo: null });
+    expect(entries("SAMPLE_APPROVED")[0].metadata).not.toHaveProperty("accreditationLogoRequested");
+  });
+});
+
 describe("validateTechnically — the alerts that leave at step 1 carry the série too", () => {
-  it("passes the série's number to the alerts, and journals step 1 with it", async () => {
+  it("K7 (Q9 of 04/11, the default): step 1 sends no alert, whatever the setting says — they leave with the report", async () => {
+    const outcome = await validateTechnically(sample({ validatedById: null }), VALID1, REG, SERIE);
+    expect(outcome.ok).toBe(true);
+    expect(stubs.sendContaminationAlerts).not.toHaveBeenCalled();
+    expect(entries("SAMPLE_VALIDATED_TECHNICAL")[0].metadata).toMatchObject({ step: "1/2", viaSerie: "991/26" });
+  });
+
+  it("K7 « Valider » (no send) at step 2 sends no alert either; « Valider et envoyer » does", async () => {
+    await approveSample(sample(), DIR1, REG, { sendReport: false }, SERIE);
+    expect(stubs.sendContaminationAlerts).not.toHaveBeenCalled();
+    await approveSample(sample(), DIR1, REG, { sendReport: true }, SERIE);
+    expect(stubs.sendContaminationAlerts).toHaveBeenCalledTimes(1);
+  });
+
+  it("K7 « Valider et envoyer »: the report failed to leave (PDF, a send under way) — the alert waits for it, as with « Envoyer au client »", async () => {
+    stubs.sendReport.mockResolvedValue({ ok: false, error: "Génération du PDF impossible." });
+    await approveSample(sample(), DIR1, REG, { sendReport: true });
+    stubs.sendReport.mockResolvedValue({ ok: false, error: IN_FLIGHT, inFlight: true });
+    await approveSample(sample(), DIR1, REG, { sendReport: true });
+    stubs.sendReport.mockRejectedValue(new Error("smtp down"));
+    await approveSample(sample(), DIR1, REG, { sendReport: true });
+    expect(stubs.sendContaminationAlerts).not.toHaveBeenCalled();
+  });
+
+  it("K7 « Valider et envoyer »: no report address — the alert still tries its own (hypothèse, à confirmer)", async () => {
+    stubs.sendReport.mockResolvedValue({ ok: false, error: "Aucune adresse email enregistrée pour ce client.", noRecipients: true });
+    stubs.sendContaminationAlerts.mockResolvedValue({ ok: true, sent: 1 });
+    const outcome = await approveSample(sample(), DIR1, REG, { sendReport: true });
+    expect(stubs.sendContaminationAlerts).toHaveBeenCalledTimes(1);
+    expect(outcome.ok && outcome.body.dispatch).toMatchObject({
+      error:
+        "Aucune adresse email enregistrée pour ce client. L'alerte de contamination est partie à l'adresse d'alerte du client ; le rapport reste à envoyer.",
+      alerts: 1,
+    });
+  });
+
+  it("the way back (switch on): the approval runs the alerts whatever the send did", async () => {
+    switches.alertsAtValidation = true;
+    stubs.sendReport.mockResolvedValue({ ok: false, error: "Génération du PDF impossible." });
+    await approveSample(sample(), DIR1, REG, { sendReport: true });
+    await approveSample(sample(), DIR1, REG, { sendReport: false });
+    expect(stubs.sendContaminationAlerts).toHaveBeenCalledTimes(2);
+  });
+
+  it("the way back (switch on): passes the série's number to the alerts, and journals step 1 with it", async () => {
+    switches.alertsAtValidation = true;
     const outcome = await validateTechnically(sample({ validatedById: null }), VALID1, REG, SERIE);
     expect(outcome.ok).toBe(true);
     expect(stubs.sendContaminationAlerts).toHaveBeenCalledWith("s1", VALID1.id, expect.objectContaining(SERIE));
@@ -144,9 +242,33 @@ describe("sendReportWithAlerts — « Envoyer au client », per sample or for th
     expect(stubs.sendContaminationAlerts).not.toHaveBeenCalled();
   });
 
-  it("any other refusal is a plain failure", async () => {
-    stubs.sendReport.mockResolvedValue({ ok: false, error: "Aucune adresse email enregistrée pour ce client." });
-    expect(await sendReportWithAlerts("s1", VALID1.id)).toEqual({ ok: false, error: "Aucune adresse email enregistrée pour ce client." });
+  it("any other refusal is a plain failure, and the alert waits for the report", async () => {
+    stubs.sendReport.mockResolvedValue({ ok: false, error: "Génération du PDF impossible." });
+    expect(await sendReportWithAlerts("s1", VALID1.id)).toEqual({ ok: false, error: "Génération du PDF impossible." });
+    expect(stubs.sendContaminationAlerts).not.toHaveBeenCalled();
+  });
+
+  it("K7: no report address — the report stays « à envoyer », the alert leaves to its own address and says so", async () => {
+    stubs.sendReport.mockResolvedValue({ ok: false, error: "Aucune adresse email enregistrée pour ce client.", noRecipients: true });
+    stubs.sendContaminationAlerts.mockResolvedValue({ ok: true, sent: 1 });
+    expect(await sendReportWithAlerts("s1", VALID1.id, SERIE)).toEqual({
+      ok: false,
+      error:
+        "Aucune adresse email enregistrée pour ce client. L'alerte de contamination est partie à l'adresse d'alerte du client ; le rapport reste à envoyer.",
+      alerts: 1,
+    });
+    expect(stubs.sendContaminationAlerts).toHaveBeenCalledWith("s1", VALID1.id, SERIE);
+    // No alert due: the refusal alone.
+    stubs.sendContaminationAlerts.mockResolvedValue({ ok: true, sent: 0 });
+    expect(await sendReportWithAlerts("s1", VALID1.id)).toEqual({ ok: false, error: "Aucune adresse email enregistrée pour ce client.", alerts: 0 });
+    // Neither address: both refusals.
+    stubs.sendContaminationAlerts.mockResolvedValue({ ok: false, error: "Aucune adresse d'alerte enregistrée pour ce client." });
+    expect(await sendReportWithAlerts("s1", VALID1.id)).toEqual({
+      ok: false,
+      error:
+        "Aucune adresse email enregistrée pour ce client. Alerte de contamination non envoyée : Aucune adresse d'alerte enregistrée pour ce client.",
+      alertsError: "Aucune adresse d'alerte enregistrée pour ce client.",
+    });
   });
 });
 

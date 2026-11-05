@@ -22,6 +22,21 @@ export async function getReportImages(): Promise<ReportImages> {
   }
 }
 
+/**
+ * Whether the accreditation logo is uploaded — the administrative
+ * validation shows its box « Logo d'accréditation » only then (K10). Counted,
+ * never read; a failed read hides the box (the rule decides, as before).
+ */
+export async function accreditationLogoUploaded(): Promise<boolean> {
+  try {
+    const count = await prisma.companySettings.count({ where: { id: "company", accreditationLogoData: { not: null } } });
+    return count > 0;
+  } catch (error) {
+    console.error("[report] accreditation logo presence unreadable, box hidden", { error });
+    return false;
+  }
+}
+
 /** The key of an image in `ReportImageArchive`: the SHA-256 of its data URI. */
 export function reportImageHash(dataUri: string): string {
   return createHash("sha256").update(dataUri, "utf8").digest("hex");

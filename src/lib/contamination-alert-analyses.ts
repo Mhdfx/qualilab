@@ -32,8 +32,20 @@ import { sensitiveNeedsLimit } from "./parameter-validation";
  * sensitive parameter without a limit again (`sensitiveNeedsLimit`), and the
  * plan gives the detection the limit 0 (« Absence ») with its flag, as
  * before. An ENUMERATION (UFC/g, UFC/cm², UFC/mains…) without a limit is not
- * flagged either way: its limit (or its criterion) is the laboratory's to
+ * flagged by default: its limit (or its criterion) is the laboratory's to
  * give, never invented here — listed `needsLimit`.
+ *
+ * Lot 4A (S10, the answer of 04/11 to Q10, RETOUR-LABO-04-11.md §1): « pour
+ * les comptages, alerte dès qu'on en trouve (plus de 0) » — the enumerations
+ * the question cited (`citedEnumeration`: E. coli on surfaces and hands,
+ * E. coli « présumés », L. monocytogenes in water) alert from the first
+ * colony. With `enumerations` (the script's `--enumerations`) and J3 on,
+ * those are flagged WITHOUT a limit: J3 leaves them unjudged and O-12
+ * alerts as soon as the reading is > 0 (`contamination-alert.ts`). Never a
+ * limit written; J3 off, they stay `needsLimit` (the route would refuse a
+ * sensitive parameter without one). Any other enumeration without a limit
+ * stays `needsLimit` — « si on a besoin on en ajoute au futur »: the
+ * laboratory ticks « alerte » itself in /admin/parametres.
  */
 
 export type AlertGerm = "SALMONELLA" | "LISTERIA" | "E_COLI";
@@ -113,8 +125,45 @@ export type AlertPlanRow = Pick<AlertParameter, "id" | "name" | "category"> & {
   unit?: string | null;
 };
 
-/** A row to set, with the body of its PATCH: the flag — and, switch J3 off only, the limit 0 of a detection without one. */
-export type AlertPlanWrite = AlertPlanRow & { patch: { alertOnExceed: true; limitValue?: 0 } };
+/**
+ * A row to set, with the body of its PATCH: the flag — and, switch J3 off
+ * only, the limit 0 of a detection without one. `enumeration`: a cited
+ * enumeration flagged without a limit (`--enumerations`, S10 — O-12: > 0).
+ */
+export type AlertPlanWrite = AlertPlanRow & { patch: { alertOnExceed: true; limitValue?: 0 }; enumeration?: true };
+
+/**
+ * The enumerations the question of 02/11 cited and the laboratory confirmed
+ * on 04/11 (Q10: « alerte dès qu'on en trouve (plus de 0) »): E. coli on
+ * surfaces and hands (the category `AMBIANCE` — a surface or hands unit or
+ * name, never the air: `surfaceOrHands`), E. coli « présumés » (any
+ * category), L. monocytogenes in water (named so in the name or an alias,
+ * whatever the script's `--listeria` scope: never « Listeria spp. »). Read
+ * on the germ the scope gave (a Listeria outside the scope never reaches
+ * here).
+ */
+export function citedEnumeration(
+  parameter: Pick<AlertParameter, "name" | "aliases" | "category" | "unit">,
+  germ: AlertGerm
+): boolean {
+  const spellings = [parameter.name, ...(parameter.aliases ?? "").split(/\r?\n/)].filter((s) => s.trim() !== "");
+  if (germ === "E_COLI") {
+    if (parameter.category === "AMBIANCE" && surfaceOrHands(parameter.unit, spellings)) return true;
+    return spellings.some((spelling) => / presum/.test(words(spelling)));
+  }
+  return germ === "LISTERIA" && parameter.category === "EAU" && spellings.some((spelling) => / monocytogenes /.test(words(spelling)));
+}
+
+/**
+ * A surface or hands reading of the category `AMBIANCE` (shared with the
+ * air): a unit « UFC/cm² », « UFC/25cm² », « UFC/mains », or a name saying
+ * « mains », « cm² », « surface ». An air unit (« UFC/m³ », « UFC/boîte »)
+ * or none at all is not.
+ */
+function surfaceOrHands(unit: string | null | undefined, spellings: readonly string[]): boolean {
+  if (/cm\s*(?:²|2)?(?![a-z])|mains?\b/i.test(unit ?? "")) return true;
+  return spellings.some((spelling) => / mains? | cm2? | surfaces? /.test(words(spelling.replace(/²/g, "2"))));
+}
 
 export type AlertPlan = {
   /** Named by the answer, the flag not set yet: to set. */
@@ -140,7 +189,8 @@ export type AlertPlan = {
 export function contaminationAlertPlan(
   parameters: readonly AlertParameter[],
   listeria: ListeriaScope = "ALL",
-  limitZeroOnDetection: boolean = sensitiveNeedsLimit()
+  limitZeroOnDetection: boolean = sensitiveNeedsLimit(),
+  enumerations: boolean = false
 ): AlertPlan {
   const plan: AlertPlan = { toSet: [], needsLimit: [], alreadySet: [], othersFlagged: [], deferred: [] };
   const byName = [...parameters].sort((a, b) => a.name.localeCompare(b.name, "fr") || a.category.localeCompare(b.category));
@@ -160,6 +210,10 @@ export function contaminationAlertPlan(
     if (limited) plan.toSet.push({ ...row, patch: { alertOnExceed: true } });
     else if (isDetection(parameter.unit)) {
       plan.toSet.push({ ...row, patch: limitZeroOnDetection ? { alertOnExceed: true, limitValue: 0 } : { alertOnExceed: true } });
+    }
+    // S10 (Q10 of 04/11): a cited enumeration alerts from > 0 — flagged without a limit, J3 on only.
+    else if (enumerations && !limitZeroOnDetection && citedEnumeration(parameter, germ)) {
+      plan.toSet.push({ ...row, patch: { alertOnExceed: true }, enumeration: true });
     }
     else plan.needsLimit.push(row);
   }

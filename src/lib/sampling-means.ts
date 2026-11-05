@@ -1,6 +1,6 @@
 import type { AirMethod, LineKind } from "@/generated/prisma/enums";
 import { airMethodText } from "./labels";
-import { SAMPLING_MEANS_BY_KIND } from "./lab-proposals";
+import { SAMPLING_MEANS_AIR_ONLY, SAMPLING_MEANS_BY_KIND } from "./lab-proposals";
 
 /**
  * « Moyen de prélèvement » on the report (RETOUR-LABO-28-10.md K6 — Q104 (d),
@@ -13,6 +13,10 @@ import { SAMPLING_MEANS_BY_KIND } from "./lab-proposals";
  * - the client or a third party sampled: « N/A »;
  * - the air keeps its method whoever is named (« Boîte exposée 30 min »,
  *   « Biocollecteur »), « N/A » when it was not recorded.
+ *
+ * Lot 4A, K9 (04/11, Q14 — `SAMPLING_MEANS_AIR_ONLY`): the line is printed
+ * for the air only; for every other kind `samplingMeansText` answers `null`
+ * — no line at all, whoever sampled.
  *
  * Pure. Frozen with each report issued since lot 3C (`ReportData.samplingMeans`):
  * a version issued before keeps the print it had.
@@ -37,10 +41,19 @@ export type SamplingMeansInput = {
   airExposureMin?: number | null;
 };
 
-export function samplingMeansText(input: SamplingMeansInput, byKind: boolean = SAMPLING_MEANS_BY_KIND): string {
+/**
+ * The text of « Moyen de prélèvement », or `null` when the report prints no
+ * such line (K9: outside the air while `airOnly` is on).
+ */
+export function samplingMeansText(
+  input: SamplingMeansInput,
+  byKind: boolean = SAMPLING_MEANS_BY_KIND,
+  airOnly: boolean = SAMPLING_MEANS_AIR_ONLY
+): string | null {
   if (input.lineKind === "AIR") {
     return input.airMethod ? airMethodText(input.airMethod, input.airExposureMin) : MEANS_NOT_APPLICABLE;
   }
+  if (airOnly) return null;
   if (!byKind || !input.sampledByLab || !input.lineKind) return MEANS_NOT_APPLICABLE;
   return SAMPLING_MEANS[input.lineKind] ?? MEANS_NOT_APPLICABLE;
 }

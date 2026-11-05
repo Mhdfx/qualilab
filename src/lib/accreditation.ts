@@ -1,5 +1,5 @@
 import type { AccreditationStatus } from "@/generated/prisma/enums";
-import { ACCREDITATION_LOGO_ON_MIXED_REPORT } from "./lab-proposals";
+import { ACCREDITATION_LOGO_BY_HAND, ACCREDITATION_LOGO_ON_MIXED_REPORT } from "./lab-proposals";
 
 /**
  * The accreditation of the analyses (RETOUR-LABO-28-10.md K4 — Q14 : « Logo
@@ -117,6 +117,148 @@ export function reportCarriesAccreditationLogo(
   if (!statuses.some((status) => status === "ACCREDITE")) return false;
   if (mixed) return true;
   return statuses.every((status) => status === "ACCREDITE" || status === "SOUS_TRAITE_ACCREDITE");
+}
+
+/**
+ * K10 (lot 4A — Q13 of 04/11, « mettre le logo par défaut mais de laisser la
+ * main pour modifier »): what the rule says about ONE report, and why.
+ * `byRule`: `reportCarriesAccreditationLogo`; `addable`: the signer may
+ * ADD the logo the rule leaves out — only on a report carrying at least one
+ * analysis « accréditée » by the laboratory itself (ISO 17025 §7.8: never
+ * the logo on a report without an accredited analysis; hypothèse, à
+ * confirmer par C-4 — a subcontracted « SA » analysis does not count until
+ * the laboratory says so). Removing it is always allowed. `reason` picks
+ * the line under the box.
+ */
+export type AccreditationLogoReason =
+  /** The rule prints it: at least one analysis accredited (every one, switch `ACCREDITATION_LOGO_ON_MIXED_REPORT` off). */
+  | "ACCREDITED"
+  /** Some analysis accredited, but the switch `ACCREDITATION_LOGO_ON_MIXED_REPORT` is off and the report is mixed. */
+  | "MIXED"
+  /** No analysis « accréditée », some still « à préciser » in /admin/parametres. */
+  | "TO_SPECIFY"
+  /** Every status recorded, none « accréditée ». */
+  | "NONE_ACCREDITED";
+
+export type AccreditationLogoRule = { byRule: boolean; addable: boolean; reason: AccreditationLogoReason };
+
+export function accreditationLogoRule(
+  statuses: readonly (AccreditationStatus | null | undefined)[],
+  mixed: boolean = ACCREDITATION_LOGO_ON_MIXED_REPORT
+): AccreditationLogoRule {
+  const byRule = reportCarriesAccreditationLogo(statuses, mixed);
+  const addable = statuses.some((status) => status === "ACCREDITE");
+  const reason: AccreditationLogoReason = byRule
+    ? "ACCREDITED"
+    : addable
+      ? "MIXED"
+      : statuses.some((status) => !status)
+        ? "TO_SPECIFY"
+        : "NONE_ACCREDITED";
+  return { byRule, addable, reason };
+}
+
+/**
+ * K10: the logo of ONE version, as its administrative validation decides
+ * it. `uploaded`: the file exists (and was archived) at the issue;
+ * `byRule` / `addable`: `accreditationLogoRule` (`addable` absent = the
+ * rule's own answer — never wider than the rule); `choice`: the box « Logo
+ * d'accréditation » as the signer posted it — null when it was not shown,
+ * not changed, or not posted (the rule alone), ignored while `byHand` (the
+ * switch `ACCREDITATION_LOGO_BY_HAND`) is off. Without the file nothing
+ * prints, whatever was ticked; a tick on a report without any accredited
+ * analysis is not followed (`addable`).
+ */
+export type AccreditationLogoDecision = {
+  /** The logo prints on this version. */
+  printed: boolean;
+  /** What the rule alone would have printed (the file existing). */
+  byRule: boolean;
+  /** The signer changed what the rule said. */
+  byHand: boolean;
+};
+
+export function accreditationLogoDecision(
+  input: { uploaded: boolean; byRule: boolean; addable?: boolean; choice: boolean | null },
+  byHand: boolean = ACCREDITATION_LOGO_BY_HAND
+): AccreditationLogoDecision {
+  if (!input.uploaded) return { printed: false, byRule: false, byHand: false };
+  const byRule = input.byRule;
+  const addable = byRule || input.addable === true;
+  const choice = byHand ? input.choice : null;
+  const printed = choice === null ? byRule : choice && addable;
+  return { printed, byRule, byHand: printed !== byRule };
+}
+
+/**
+ * What the validation panel posts for the box (K10): null — the rule, read
+ * again at the issue — while the box shows what the rule said when the page
+ * loaded (untouched, or ticked back); the box's state only when the signer
+ * changed it. An untouched box never freezes a stale rule as a hand choice
+ * (an accredited list typed in /admin/parametres meanwhile).
+ */
+export function accreditationLogoPosted(rule: Pick<AccreditationLogoRule, "byRule"> | null, checked: boolean): boolean | null {
+  if (!rule) return null;
+  return checked === rule.byRule ? null : checked;
+}
+
+/** The box may be ticked: the rule prints the logo, or the report carries an accredited analysis (K10). */
+export function accreditationLogoTickable(rule: Pick<AccreditationLogoRule, "byRule" | "addable">): boolean {
+  return rule.byRule || rule.addable;
+}
+
+const LOGO_REASON_TEXT: Record<AccreditationLogoReason, string> = {
+  ACCREDITED: "Par défaut, le logo s'imprime : le rapport porte au moins une analyse accréditée.",
+  MIXED: "Par défaut, pas de logo : rapport mixte, le logo n'est imprimé que si toutes les analyses sont accréditées.",
+  TO_SPECIFY:
+    "Pas de logo : aucune analyse de ce rapport n'est marquée « accréditée » (statuts à préciser dans /admin/parametres).",
+  NONE_ACCREDITED: "Pas de logo : aucune analyse de ce rapport n'est accréditée.",
+};
+
+/** The line under the box « Logo d'accréditation » (K10): the rule and its reason, and whether the hand changed it. */
+export function accreditationLogoHint(rule: AccreditationLogoRule, checked: boolean): string {
+  const line = LOGO_REASON_TEXT[rule.reason];
+  if (!accreditationLogoTickable(rule)) return `${line} Le logo ne peut pas être ajouté à ce rapport.`;
+  if (checked === rule.byRule) return `${line} Décochez ou cochez pour ce rapport seulement ; le choix est figé avec le rapport émis.`;
+  return `${line} Modifié à la main pour ce rapport : le logo ${checked ? "sera imprimé" : "ne sera pas imprimé"} (choix tracé dans le journal).`;
+}
+
+/**
+ * The série's box « Logo d'accréditation » (K10, « Valider la série »): one
+ * choice for every report of the série — the rule report by report (the
+ * default, posted as null), or the logo on every report carrying an
+ * accredited analysis (never on one without: `accreditationLogoDecision`),
+ * or on none.
+ */
+export const SERIE_LOGO_CHOICES = [
+  { key: "RULE", value: null, label: "Selon la règle, rapport par rapport (par défaut) : le logo sur chaque rapport portant au moins une analyse accréditée" },
+  { key: "ALL", value: true, label: "Sur chaque rapport de la série portant au moins une analyse accréditée, même mixte (jamais sur un rapport sans analyse accréditée)" },
+  { key: "NONE", value: false, label: "Sur aucun rapport de la série" },
+] as const satisfies readonly { key: string; value: boolean | null; label: string }[];
+
+export type SerieLogoChoice = (typeof SERIE_LOGO_CHOICES)[number]["key"];
+
+/** The journal's words for a decision (SAMPLE_APPROVED `accreditationLogo`). */
+export function accreditationLogoJournal(decision: AccreditationLogoDecision): string {
+  if (!decision.byHand) return decision.printed ? "imprimé (règle par défaut)" : "non imprimé (règle par défaut)";
+  return decision.printed ? "ajouté à la main" : "retiré à la main";
+}
+
+/**
+ * The choice an approval asked for (SAMPLE_APPROVED
+ * `accreditationLogoRequested`, journalled even when the report failed to
+ * issue), read back by the send that issues the report afterwards
+ * (`sendReport`'s repair) — null when the approval left it to the rule or
+ * the metadata is unreadable.
+ */
+export function requestedAccreditationLogo(metadata: string | null | undefined): boolean | null {
+  if (!metadata) return null;
+  try {
+    const value = (JSON.parse(metadata) as { accreditationLogoRequested?: unknown } | null)?.accreditationLogoRequested;
+    return typeof value === "boolean" ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 export type AccreditationUpdate = { id: string; accreditation: AccreditationStatus | null };

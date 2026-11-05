@@ -14,6 +14,8 @@ import {
 } from "@/lib/circuit-views";
 import { rechercheHref } from "@/lib/sample-search";
 import { SERIES_VALIDATION } from "@/lib/lab-proposals";
+import { alertAwaitingReport } from "@/lib/alert-moment";
+import { ALERT_RESULT_WHERE } from "@/lib/contamination-alert";
 import { serieBatchCounts, serieViewActions } from "@/lib/serie-validation";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
@@ -76,6 +78,9 @@ const ITEM_SELECT = {
   results: { select: { conform: true, workStatus: true } },
   // AMENDEMENT.md §2: a reopened report shows the badge « Amendement ».
   report: { select: { amendmentPending: true } },
+  // K7: « Alerte en attente de l'envoi du rapport » — the results that alert, and whether it left.
+  alertsSentAt: true,
+  _count: { select: { results: { where: ALERT_RESULT_WHERE } } },
 } satisfies Prisma.SampleSelect;
 
 /**
@@ -128,7 +133,12 @@ export default async function ValidationPage({
   // the tiles count it, the view only narrows what is shown.
   const toValidate = items.filter((item) => inValidationView("a_valider", item)).length;
   const awaitingAdmin = items.filter((item) => inValidationView("attente_admin", item)).length;
-  const shown = view === "a_envoyer" ? (toSend ?? []) : view ? items.filter((item) => inValidationView(view, item)) : items;
+  const shownRows = view === "a_envoyer" ? (toSend ?? []) : view ? items.filter((item) => inValidationView(view, item)) : items;
+  // K7: an approved line whose alert waits for the report's send says so.
+  const shown = shownRows.map(({ alertsSentAt, _count, ...item }) => ({
+    ...item,
+    alertAwaitingReport: alertAwaitingReport({ status: item.status, alertsSentAt, alerting: _count.results }),
+  }));
   // « Toute la série » (re-ask 2.16, `SERIES_VALIDATION`): per série shown,
   // what its buttons would take for this person — counted over the whole
   // série, as the dialog's plan reads it (« à envoyer » shows a page of

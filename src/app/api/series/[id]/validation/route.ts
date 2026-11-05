@@ -77,13 +77,17 @@ export async function POST(
   if (refusal) return NextResponse.json({ error: refusal }, { status: 403 });
   // « Valider » or « Valider et envoyer »: read before anything is written;
   // a technical validation never sends anything.
-  const dispatch = action === "approve" ? approvalDispatch(body) : { ok: true as const, sendReport: false };
+  const dispatch = action === "approve" ? approvalDispatch(body) : { ok: true as const, sendReport: false, accreditationLogo: null };
   if (!dispatch.ok) return NextResponse.json({ error: dispatch.error }, { status: 400 });
 
   const serie = await serieHeader(id);
   if (!serie) return NextResponse.json({ error: "Série introuvable." }, { status: 404 });
 
-  const lines = await runSerieValidation(serie, action, session, samples, { sendReport: dispatch.sendReport });
+  // K10: the série's box « Logo d'accréditation » — null = each report by the rule.
+  const lines = await runSerieValidation(serie, action, session, samples, {
+    sendReport: dispatch.sendReport,
+    accreditationLogo: dispatch.accreditationLogo,
+  });
   return NextResponse.json({
     action,
     send: dispatch.sendReport,

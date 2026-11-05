@@ -3,6 +3,7 @@ import { ArrowRight, ShieldCheck, AlertTriangle, Clock, PencilLine, Send } from 
 import type { AirMethod, LineKind, SampleType, SurfaceState } from "@/generated/prisma/client";
 import type { SampleStatus } from "@/generated/prisma/enums";
 import { isSendLate } from "@/lib/circuit-views";
+import { ALERT_AWAITING_REPORT_LABEL } from "@/lib/alert-moment";
 import { formatDate } from "@/lib/labels";
 import { labReference } from "@/lib/sample-select";
 import { approvalState, APPROVAL_LABELS } from "@/lib/sample-status";
@@ -48,6 +49,8 @@ export type ValidationItem = {
   receivedAt: Date | null;
   /** A report reopened for amendment (AMENDEMENT.md §2): badge « Amendement ». */
   report?: { amendmentPending: boolean } | null;
+  /** K7 (`alertAwaitingReport`): approved, its contamination alert waits for the report's send. */
+  alertAwaitingReport?: boolean;
 };
 
 const DEFAULT_EMPTY = {
@@ -160,6 +163,12 @@ export function ValidationQueue({
                               <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
                                 <PencilLine className="h-3 w-3" aria-hidden="true" />
                                 Amendement
+                              </span>
+                            )}
+                            {item.alertAwaitingReport && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
+                                <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                                {ALERT_AWAITING_REPORT_LABEL}
                               </span>
                             )}
                             {nonConformes > 0 && (

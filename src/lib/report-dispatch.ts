@@ -38,7 +38,13 @@ import { REOPENED_STATUS, amendedNumber, reopenRefusal, reopensReports } from ".
 import type { Role } from "./roles";
 import { SingleFlight } from "./single-flight";
 import { samplingMeansText } from "./sampling-means";
-import { conclusionParameterName, reportCarriesAccreditationLogo } from "./accreditation";
+import {
+  accreditationLogoDecision,
+  accreditationLogoRule,
+  conclusionParameterName,
+  requestedAccreditationLogo,
+  type AccreditationLogoDecision,
+} from "./accreditation";
 import { freezeReportImages, type IssuedReportImages } from "./report-images";
 import { alertCopyRecipients } from "./alert-copies";
 import { loadAlertCopies } from "./alert-copies-server";
@@ -212,6 +218,8 @@ function toReportData(
     layout?: typeof REPORT_LAYOUT_ALIGNED;
     /** At an issue (lot 3C, K4): which of the accreditation logo and the stamp are uploaded, and their archived hash. */
     images?: IssuedReportImages;
+    /** At an issue (lot 4A, K10): the box « Logo d'accréditation » of the approval; null = the rule. */
+    accreditationLogoChoice?: boolean | null;
   }
 ): ReportData {
   const programmedNorm = new Map(sample.parameters.map((p) => [p.parameterId, p.normVersion?.label ?? null]));
@@ -296,21 +304,68 @@ function toReportData(
     // The approval that issued this version (the frozen version keeps its own).
     issuedAt: fields.issuedAt ?? sample.approvedAt,
     ...(aligned ? { layout: REPORT_LAYOUT_ALIGNED, arrivedAt: sample.serie.arrivedAt } : {}),
-    ...(aligned ? issuedSinceLot3C(sample, fields.images) : {}),
+    ...(aligned ? issuedSinceLot3C(sample, fields.images, fields.accreditationLogoChoice ?? null) : {}),
   };
 }
 
 /**
+ * K10: the logo decision of a version about to be issued — the rule, then
+ * the signer's box, which may remove the logo but add it only to a report
+ * carrying an accredited analysis (`accreditationLogoRule`, `addable`).
+ */
+function issuedLogoDecision(
+  sample: Pick<ReportSample, "results">,
+  images: IssuedReportImages,
+  choice: boolean | null
+): AccreditationLogoDecision {
+  const rule = accreditationLogoRule(sample.results.map((r) => r.parameter.accreditation));
+  return accreditationLogoDecision({
+    uploaded: images.accreditationLogo,
+    byRule: rule.byRule,
+    addable: rule.addable,
+    choice,
+  });
+}
+
+/**
+ * K10: what the approval's journal says of the logo — only when the logo
+ * was uploaded at the issue (nothing to decide otherwise, the journal stays
+ * quiet until S11).
+ */
+function journalledLogo(images: IssuedReportImages, decision: AccreditationLogoDecision): Pick<IssuedReport, "accreditationLogo"> {
+  return images.accreditationLogo ? { accreditationLogo: decision } : {};
+}
+
+/**
+ * K10: the box an approval posted, journalled with it
+ * (SAMPLE_APPROVED `accreditationLogoRequested`) — read back by the send that
+ * issues the report its approval failed to issue (`sendReportNow`), so a
+ * logo the Direction removed is not printed by the repair. Null: the rule.
+ */
+async function approvalLogoChoice(sampleId: string): Promise<boolean | null> {
+  const approval = await prisma.auditLog.findFirst({
+    where: { entity: "Sample", entityId: sampleId, action: "SAMPLE_APPROVED" },
+    orderBy: { createdAt: "desc" },
+    select: { metadata: true },
+  });
+  return requestedAccreditationLogo(approval?.metadata);
+}
+
+/**
  * What a version issued since lot 3C (RETOUR-LABO-28-10.md) freezes besides
- * the aligned layout: the sampling means (K6), each analysis's accreditation
- * (K4, its mark after the name), and whether the accreditation logo and the
- * stamp print — the logo only on a report carrying an accredited analysis.
+ * the aligned layout: the sampling means (K6; since lot 4A, K9, null outside
+ * the air), each analysis's accreditation (K4, its mark after the name), and
+ * whether the accreditation logo and the stamp print — the logo on a report
+ * carrying an accredited analysis, or as the signer of the administrative
+ * validation ticked it (K10, `accreditationLogoByHand`).
  */
 function issuedSinceLot3C(
   sample: ReportSample,
-  images: IssuedReportImages = { accreditationLogo: false, stamp: false }
-): Pick<ReportData, "samplingMeans" | "accreditationLogo" | "stamp" | "accreditationLogoHash" | "stampHash"> {
-  const logo = images.accreditationLogo && reportCarriesAccreditationLogo(sample.results.map((r) => r.parameter.accreditation));
+  images: IssuedReportImages = { accreditationLogo: false, stamp: false },
+  choice: boolean | null = null
+): Pick<ReportData, "samplingMeans" | "accreditationLogo" | "accreditationLogoByHand" | "stamp" | "accreditationLogoHash" | "stampHash"> {
+  const decision = issuedLogoDecision(sample, images, choice);
+  const logo = decision.printed;
   return {
     samplingMeans: samplingMeansText({
       lineKind: sample.lineKind,
@@ -319,6 +374,7 @@ function issuedSinceLot3C(
       airExposureMin: sample.airExposureMin,
     }),
     accreditationLogo: logo,
+    ...(decision.byHand ? { accreditationLogoByHand: true } : {}),
     stamp: images.stamp,
     // The image itself is frozen too: its hash in `ReportImageArchive`.
     ...(logo && images.accreditationLogoHash ? { accreditationLogoHash: images.accreditationLogoHash } : {}),
@@ -485,7 +541,16 @@ async function computeReportFields(sampleId: string): Promise<ReportFields | nul
 
 const asJson = (data: ReportData) => reportDataToJson(data) as Prisma.InputJsonValue;
 
-export type IssuedReport = { id: string; number: string; amended?: boolean };
+export type IssuedReport = {
+  id: string;
+  number: string;
+  amended?: boolean;
+  /** K10: the logo decision frozen with the version issued now (absent when nothing was issued now, or no logo was uploaded). */
+  accreditationLogo?: AccreditationLogoDecision;
+};
+
+/** What the administrative validation passes to the issue (K10). */
+export type IssueOptions = { accreditationLogo?: boolean | null };
 
 /**
  * Attempts at issuing a report. The number is drawn from the RAPPORT counter
@@ -515,7 +580,7 @@ const ISSUE_TRANSACTION = { maxWait: 10_000, timeout: 20_000 };
  * retries the creation later so an approved sample can never stay
  * report-less forever.
  */
-export async function createReportFor(sampleId: string): Promise<IssuedReport | null> {
+export async function createReportFor(sampleId: string, options: IssueOptions = {}): Promise<IssuedReport | null> {
   const issuedReport = async () => {
     const report = await prisma.report.findUnique({
       where: { sampleId },
@@ -559,7 +624,14 @@ export async function createReportFor(sampleId: string): Promise<IssuedReport | 
         // wait on, until this one commits (or rolls back, number unburnt).
         const number = await drawReportNumber(tx, issuedAt);
         // Issued now: the aligned layout (lot 1b), frozen with the version.
-        const data = toReportData(sample, { ...fields, number, issuedAt, layout: REPORT_LAYOUT_ALIGNED, images });
+        const data = toReportData(sample, {
+          ...fields,
+          number,
+          issuedAt,
+          layout: REPORT_LAYOUT_ALIGNED,
+          images,
+          accreditationLogoChoice: options.accreditationLogo ?? null,
+        });
         const report = await tx.report.create({
           data: { sampleId, number, ...fields },
           select: { id: true, number: true },
@@ -574,7 +646,8 @@ export async function createReportFor(sampleId: string): Promise<IssuedReport | 
             issuedById: sample.approvedById,
           },
         });
-        return report;
+        // K10: what the version froze, for the approval's journal (the logo uploaded only).
+        return { ...report, ...journalledLogo(images, issuedLogoDecision(sample, images, options.accreditationLogo ?? null)) };
       }, ISSUE_TRANSACTION);
     }, REPORT_NUMBER_TRIES, ["P2002", ...CONTENTION_CODES]);
   } catch (error) {
@@ -597,7 +670,7 @@ class StaleAmendment extends Error {}
  * « Rapport amendé — annule et remplace le rapport … du … ». One
  * transaction; null (logged) on failure — `sendReport` retries it.
  */
-export async function amendReportFor(sampleId: string, actorId: string | null): Promise<IssuedReport | null> {
+export async function amendReportFor(sampleId: string, actorId: string | null, options: IssueOptions = {}): Promise<IssuedReport | null> {
   const report = await prisma.report.findUnique({ where: { sampleId }, select: REPORT_SELECT });
   if (!report) return null;
   if (!report.amendmentPending) {
@@ -626,13 +699,17 @@ export async function amendReportFor(sampleId: string, actorId: string | null): 
   const note = report.amendmentNote?.trim() || null;
   const issuedAt = sample.approvedAt ?? new Date();
   // Issued now: the aligned layout (lot 1b), whatever the version replaced printed.
+  // K10: the logo starts from the rule again — only this approval's box counts.
+  const images = await freezeReportImages();
+  const logoChoice = options.accreditationLogo ?? null;
   const data = toReportData(sample, {
     ...fields,
     number,
     issuedAt,
     amendment: { previousNumber, previousIssuedAt, note },
     layout: REPORT_LAYOUT_ALIGNED,
-    images: await freezeReportImages(),
+    images,
+    accreditationLogoChoice: logoChoice,
   });
 
   try {
@@ -672,13 +749,13 @@ export async function amendReportFor(sampleId: string, actorId: string | null): 
     metadata: { code: sample.code, number, version, note, replaces: previousNumber },
   });
 
-  return { id: report.id, number, amended: true };
+  return { id: report.id, number, amended: true, ...journalledLogo(images, issuedLogoDecision(sample, images, logoChoice)) };
 }
 
 /** What the approval issues: the amended version when one is pending, else the report itself. */
-export async function issueReportFor(sampleId: string, actorId: string | null): Promise<IssuedReport | null> {
+export async function issueReportFor(sampleId: string, actorId: string | null, options: IssueOptions = {}): Promise<IssuedReport | null> {
   const report = await prisma.report.findUnique({ where: { sampleId }, select: { amendmentPending: true } });
-  return report?.amendmentPending ? amendReportFor(sampleId, actorId) : createReportFor(sampleId);
+  return report?.amendmentPending ? amendReportFor(sampleId, actorId, options) : createReportFor(sampleId, options);
 }
 
 /** The longest amendment reason accepted: it is printed on the one-page report. */
@@ -891,15 +968,15 @@ async function sendReportNow(sampleId: string, actorId: string | null, context: 
       };
     }
     // Self-healing: the approval went through but the amended version was
-    // not issued — it is issued now.
-    if (!(await amendReportFor(sample.id, actorId))) {
+    // not issued — it is issued now, with the logo the approval asked for (K10).
+    if (!(await amendReportFor(sample.id, actorId, { accreditationLogo: await approvalLogoChoice(sample.id) }))) {
       return { ok: false as const, error: "Émission du rapport amendé impossible." };
     }
   } else if (!sample.report && approved) {
     // Self-healing: an approval whose report creation failed left a VALIDE
     // sample without its official document — the send creates it now instead
-    // of failing forever.
-    await createReportFor(sample.id);
+    // of failing forever — with the logo the approval asked for (K10).
+    await createReportFor(sample.id, { accreditationLogo: await approvalLogoChoice(sample.id) });
   }
 
   const report = await prisma.report.findUnique({
@@ -918,6 +995,9 @@ async function sendReportNow(sampleId: string, actorId: string | null, context: 
       error: otherSitesOnly
         ? otherSitesMessage("reports", sample.serie.siteId)
         : "Aucune adresse email enregistrée pour ce client.",
+      // K7 (lot 4A): the report cannot leave by e-mail at all — the
+      // contamination alert still tries its own addresses (`alertsFollowSend`).
+      noRecipients: true as const,
     };
   }
 

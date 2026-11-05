@@ -12,7 +12,12 @@
 //     is invented. Switch J3 off only, the admin route needs a limit again, and the
 //     script also writes `limitValue: 0` (« Absence ») on such a detection — a limit
 //     the bench's suggested conformity then reads (bench-reading.ts `valueAgainstLimit`).
-//   - An ENUMERATION without a limit is never flagged (listed « needs a limit »).
+//   - An ENUMERATION without a limit is not flagged (listed « needs a limit »)… unless
+//     --enumerations (lot 4A, S10 — the answer of 04/11 to Q10: « alerte dès qu'on en
+//     trouve (plus de 0) »): the enumerations the question cited (E. coli on surfaces and
+//     hands, E. coli « présumés », L. monocytogenes in water — `citedEnumeration`) get the
+//     flag WITHOUT a limit, J3 on only: unjudged (J3), they alert as soon as the reading
+//     is > 0 (O-12). Never a limit written. Any other enumeration stays « needs a limit ».
 //
 // Run (from the repo root):
 //   npx tsx scripts/s3-contamination-alerts.mts [options]
@@ -27,6 +32,7 @@
 //                           (§7 S3 « Listeria après R-14 ») — listed « deferred »,
 //                           never set nor cleared; all = the genus as written,
 //                           monocytogenes = L. monocytogenes only.
+//   --enumerations          also flag the cited enumerations without a limit (S10, see above)
 //   --unset-others          also clear the flag on the parameters the answer does not name
 //                           (default: only listed — clearing a flag silences alerts;
 //                           a deferred Listeria is never cleared)
@@ -37,6 +43,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ALERT_GERM_LABELS, contaminationAlertPlan } from "../src/lib/contamination-alert-analyses";
+import { sensitiveNeedsLimit } from "../src/lib/parameter-validation";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 
@@ -56,6 +63,7 @@ if (!["NONE", "ALL", "MONOCYTOGENES"].includes(listeriaOption)) throw new Error(
 const listeria = listeriaOption as "NONE" | "ALL" | "MONOCYTOGENES";
 const dryRun = flag("dry-run");
 const unsetOthers = flag("unset-others");
+const enumerations = flag("enumerations");
 const out = opt("out") ?? join(REPO, ".ui-tests", `s3-contamination-alerts.${host.replace(/[^a-z0-9.-]/gi, "_")}.json`);
 if (loginMode === "password" && !local) throw new Error("--login password is for the local application only: use the demo panel elsewhere.");
 
@@ -117,14 +125,24 @@ type Row = { id: string; name: string; category: string; germ: string | null };
 const cookie = await signIn();
 const read = await api(cookie, "GET", "/api/parameters");
 if (read.status !== 200 || !Array.isArray(read.data)) throw new Error(`GET /api/parameters: HTTP ${read.status}`);
-const plan = contaminationAlertPlan(read.data, listeria);
+// J3 decides whether a detection needs the limit 0 and whether an enumeration may go without a limit.
+const j3Off = sensitiveNeedsLimit();
+if (enumerations && j3Off) console.log("--enumerations: J3 is off (a sensitive parameter needs a limit) — the enumerations stay « needs a limit ».");
+const plan = contaminationAlertPlan(read.data, listeria, j3Off, enumerations);
 
 const label = (r: Row) => `${r.name} [${r.category}]${r.germ ? ` — ${ALERT_GERM_LABELS[r.germ as keyof typeof ALERT_GERM_LABELS]}` : ""}`;
-console.log(`Base ${BASE} · login ${loginMode} · Listeria ${listeria} · ${dryRun ? "DRY RUN" : "APPLY"}${unsetOthers ? " · unset others" : ""}`);
+console.log(`Base ${BASE} · login ${loginMode} · Listeria ${listeria} · ${dryRun ? "DRY RUN" : "APPLY"}${enumerations ? " · enumerations" : ""}${unsetOthers ? " · unset others" : ""}`);
 console.log(`Catalogue: ${read.data.length} parameters`);
 console.log(`\nTo set (${plan.toSet.length}):`);
-for (const r of plan.toSet) console.log(`  + ${label(r)}${r.patch.limitValue === 0 ? " (détection : limite 0 = Absence, posée avec le drapeau)" : ""}`);
-console.log(`Enumeration without a limit — the laboratory's limit or criterion first, NOT flagged (${plan.needsLimit.length}):`);
+for (const r of plan.toSet) {
+  const note = r.patch.limitValue === 0
+    ? " (détection : limite 0 = Absence, posée avec le drapeau)"
+    : r.enumeration
+      ? ` (dénombrement cité le 04/11, sans limite : alerte dès > 0 — ${r.unit ?? "sans unité"})`
+      : "";
+  console.log(`  + ${label(r)}${note}`);
+}
+console.log(`Enumeration without a limit — the laboratory's limit or criterion first, NOT flagged${enumerations ? " (not cited on 04/11)" : " (--enumerations flags the cited ones)"} (${plan.needsLimit.length}):`);
 for (const r of plan.needsLimit) console.log(`  ! ${label(r)} (${r.unit ?? "sans unité"})`);
 console.log(`Already set (${plan.alreadySet.length}):`);
 for (const r of plan.alreadySet) console.log(`  = ${label(r)}`);
@@ -147,7 +165,7 @@ if (!dryRun) {
   }
   // Read back: the plan must now have nothing left to set.
   const after = await api(cookie, "GET", "/api/parameters");
-  const again = contaminationAlertPlan(after.data, listeria);
+  const again = contaminationAlertPlan(after.data, listeria, j3Off, enumerations);
   console.log(`\nRead back: ${again.toSet.length} left to set, ${again.alreadySet.length} set, ${again.needsLimit.length} waiting for a limit, ${again.othersFlagged.length} other flagged.`);
   if (again.toSet.length > 0) process.exitCode = 1;
 }
@@ -155,7 +173,7 @@ if (!dryRun) {
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(
   out,
-  JSON.stringify({ at: new Date().toISOString(), base: BASE, login: loginMode, listeria, dryRun, unsetOthers, plan, changes }, null, 2)
+  JSON.stringify({ at: new Date().toISOString(), base: BASE, login: loginMode, listeria, dryRun, enumerations, unsetOthers, plan, changes }, null, 2)
 );
 console.log(`\nReport: ${out}`);
 if (changes.some((c) => c.status !== 200)) process.exitCode = 1;

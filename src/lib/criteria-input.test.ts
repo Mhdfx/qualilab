@@ -182,11 +182,16 @@ describe("criterionChange — what a save writes, and what the journal calls a c
 });
 
 describe("wideToleranceNote — c ≥ 1 with n = 1 on a single limit", () => {
-  const note = "c = 2 avec n = 1 : un échantillon d'une seule unité au-dessus de la limite sera « Acceptable », jamais « Non satisfaisant ».";
-  it("warns on m alone, M alone and m = M", () => {
+  const note = "c sans effet quand n = 1 : une seule unité au-dessus de la limite est « Non satisfaisant » (c = 2 ignoré).";
+  const before = "c = 2 avec n = 1 : un échantillon d'une seule unité au-dessus de la limite sera « Acceptable », jamais « Non satisfaisant ».";
+  it("says c has no effect on m alone, M alone and m = M (J5, Q8 of 04/11)", () => {
     expect(wideToleranceNote({ n: 1, c: 2, mKind: "VALUE", m: 100, bigM: null })).toBe(note);
     expect(wideToleranceNote({ n: 1, c: 2, mKind: "UNSPECIFIED", m: null, bigM: 1000 })).toBe(note);
     expect(wideToleranceNote({ n: 1, c: 2, mKind: "VALUE", m: 100, bigM: 100 })).toBe(note);
+  });
+
+  it("the way back (switch off): the note of 19/10, « Acceptable »", () => {
+    expect(wideToleranceNote({ n: 1, c: 2, mKind: "VALUE", m: 100, bigM: null }, false)).toBe(before);
   });
 
   it("stays silent where a unit above the limit is still « Non satisfaisant »", () => {
@@ -199,10 +204,11 @@ describe("wideToleranceNote — c ≥ 1 with n = 1 on a single limit", () => {
     expect(wideToleranceNote({ n: 1, c: 2, mKind: "ABSENCE", m: null, bigM: null })).toBeNull();
   });
 
-  it("matches the engine: one unit above the limit with n = 1, c = 1 is « Acceptable »", () => {
+  it("matches the engine: one unit above the limit with n = 1, c = 1 is « Non satisfaisant » (« Acceptable » with the switch off)", () => {
     const plan = { n: 1, c: 1, mKind: "VALUE" as const, m: 100, bigM: null };
     expect(wideToleranceNote(plan)).not.toBeNull();
-    expect(judgeUnits(plan, [parseUnitReading("1.10⁴")]).official?.verdict).toBe("ACCEPTABLE");
+    expect(judgeUnits(plan, [parseUnitReading("1.10⁴")]).official?.verdict).toBe("NON_SATISFAISANT");
+    expect(judgeUnits(plan, [parseUnitReading("1.10⁴")], false).official?.verdict).toBe("ACCEPTABLE");
   });
 });
 

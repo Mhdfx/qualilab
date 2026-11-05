@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   ALERT_CATEGORIES,
   alertGermOf,
+  citedEnumeration,
   contaminationAlertPlan,
   isDetection,
   type AlertParameter,
@@ -144,10 +145,68 @@ describe("contaminationAlertPlan — what setting the list changes", () => {
     expect(plan.deferred.map((r) => r.id)).toEqual(["l-food"]);
   });
 
+  it("--enumerations (lot 4A, S10 — Q10 of 04/11): the cited enumerations without a limit get the flag only, J3 on", () => {
+    const counts = [
+      ...catalogue,
+      p("Escherichia-Coli βglucoronidase positives*/mains", { id: "e-hands", category: "AMBIANCE", unit: "UFC/mains", limitValue: null }),
+      p("Escherichia-Coli présumés", { id: "e-presumed", unit: "ufc/g", limitValue: null }),
+      p("Listeria", { id: "l-water", category: "EAU", unit: "ufc/100ml", limitValue: null, aliases: "Listeria monocytogenes" }),
+      p("Listeria", { id: "l-food-count", unit: "UFC/g", limitValue: null, aliases: "Listeria monocytogenes" }),
+      p("E. coli", { id: "e-food-count", category: "EAU", name: "E. coli (dénombrement)", unit: "UFC/100 mL", limitValue: null }),
+    ];
+    // Without the option: listed « needs a limit », as before.
+    expect(contaminationAlertPlan(counts, "MONOCYTOGENES").needsLimit.map((r) => r.id).sort()).toEqual(
+      ["e-food-count", "e-hands", "e-presumed", "e-surface", "l-food-count", "l-water"].sort()
+    );
+    const plan = contaminationAlertPlan(counts, "MONOCYTOGENES", false, true);
+    const flagged = plan.toSet.filter((r) => r.enumeration);
+    expect(flagged.map((r) => r.id).sort()).toEqual(["e-hands", "e-presumed", "e-surface", "l-water"]);
+    // The flag only — never an invented limit.
+    expect(flagged.every((r) => JSON.stringify(r.patch) === JSON.stringify({ alertOnExceed: true }))).toBe(true);
+    // Not cited: E. coli counted in water, L. monocytogenes counted in food — the laboratory's limit first.
+    expect(plan.needsLimit.map((r) => r.id).sort()).toEqual(["e-food-count", "l-food-count"]);
+    // Switch J3 off: a sensitive parameter needs a limit again — nothing flagged without one.
+    expect(contaminationAlertPlan(counts, "MONOCYTOGENES", true, true).toSet.some((r) => r.enumeration)).toBe(false);
+    // Listeria outside the scope: never reached.
+    expect(contaminationAlertPlan(counts, "NONE", false, true).toSet.some((r) => r.id === "l-water")).toBe(false);
+  });
+
+  it("citedEnumeration: E. coli on surfaces and hands, E. coli « présumés », L. monocytogenes in water", () => {
+    expect(citedEnumeration({ name: "E. coli", category: "AMBIANCE", unit: "ufc/cm²" }, "E_COLI")).toBe(true);
+    expect(citedEnumeration({ name: "Coliformes E. coli/25cm2", category: "AMBIANCE", unit: "UFC/25cm²" }, "E_COLI")).toBe(true);
+    expect(citedEnumeration({ name: "Escherichia-Coli βglucoronidase positives*/mains", category: "AMBIANCE", unit: "UFC/mains" }, "E_COLI")).toBe(true);
+    expect(citedEnumeration({ name: "Escherichia-Coli présumés", category: "ALIMENTAIRE" }, "E_COLI")).toBe(true);
+    expect(citedEnumeration({ name: "E. coli", aliases: "E. coli presumes", category: "EAU" }, "E_COLI")).toBe(true);
+    expect(citedEnumeration({ name: "E. coli", category: "ALIMENTAIRE" }, "E_COLI")).toBe(false);
+    expect(citedEnumeration({ name: "Listeria", aliases: "Listeria monocytogenes", category: "EAU" }, "LISTERIA")).toBe(true);
+    expect(citedEnumeration({ name: "Listeria", aliases: "Listeria monocytogenes", category: "ALIMENTAIRE" }, "LISTERIA")).toBe(false);
+    expect(citedEnumeration({ name: "Salmonella", category: "AMBIANCE" }, "SALMONELLA")).toBe(false);
+  });
+
+  it("citedEnumeration never widens to what the laboratory did not cite: the air's E. coli, water Listeria spp.", () => {
+    // The category AMBIANCE is shared with the air: an air E. coli is not a surface.
+    expect(citedEnumeration({ name: "E. coli", category: "AMBIANCE", unit: "UFC/m³" }, "E_COLI")).toBe(false);
+    expect(citedEnumeration({ name: "E. coli (air)", category: "AMBIANCE", unit: "UFC/boîte" }, "E_COLI")).toBe(false);
+    expect(citedEnumeration({ name: "E. coli", category: "AMBIANCE", unit: null }, "E_COLI")).toBe(false);
+    // A water Listeria not named monocytogenes: never flagged, whatever `--listeria` says.
+    expect(citedEnumeration({ name: "Listeria", category: "EAU", unit: "ufc/100ml" }, "LISTERIA")).toBe(false);
+    expect(citedEnumeration({ name: "Listeria spp", aliases: "Recherche de Listeria spp", category: "EAU" }, "LISTERIA")).toBe(false);
+    const counts = [
+      p("E. coli", { id: "e-air", category: "AMBIANCE", unit: "UFC/m³", limitValue: null }),
+      p("Listeria spp", { id: "l-water-spp", category: "EAU", unit: "ufc/100ml", limitValue: null }),
+      p("Listeria", { id: "l-water-mono", category: "EAU", unit: "ufc/100ml", limitValue: null, aliases: "Listeria monocytogenes" }),
+    ];
+    const plan = contaminationAlertPlan(counts, "ALL", false, true);
+    expect(plan.toSet.filter((r) => r.enumeration).map((r) => r.id)).toEqual(["l-water-mono"]);
+    expect(plan.needsLimit.map((r) => r.id).sort()).toEqual(["e-air", "l-water-spp"]);
+  });
+
   it("the production script is tracked, defaults to no Listeria and says what it writes", () => {
     const script = readFileSync(fileURLToPath(new URL("../../scripts/s3-contamination-alerts.mts", import.meta.url)), "utf8");
     expect(script).toMatch(/opt\("listeria"\) \?\? "none"/);
     expect(script).toContain("limitValue: 0");
+    expect(script).toMatch(/const enumerations = flag\("enumerations"\);/);
+    expect(script).toMatch(/contaminationAlertPlan\(read\.data, listeria, j3Off, enumerations\)/);
     expect(script).not.toMatch(/C:\/laragon/);
   });
 });

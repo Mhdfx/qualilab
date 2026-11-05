@@ -169,12 +169,18 @@ export type ReportData = {
    *     issued; absent on the versions issued before, which keep their print. --- */
 
   /** K6 (Q104 (d)): « Moyen de prélèvement » as decided at the issue
-   *  (`samplingMeansText`) — « Écouvillon », « Flacon stérile », « N/A »… */
-  samplingMeans?: string;
+   *  (`samplingMeansText`) — « Écouvillon », « Flacon stérile », « N/A »…;
+   *  `null` since lot 4A (K9, Q14 of 04/11): the report prints no such line
+   *  (every kind but the air). */
+  samplingMeans?: string | null;
   /** K4 (Q14): the accreditation logo prints in the cartouche — decided at
    *  the issue: the logo was uploaded and the report carries an accredited
    *  analysis (`reportCarriesAccreditationLogo`). */
   accreditationLogo?: boolean;
+  /** K10 (lot 4A, Q13 of 04/11): the signer of the administrative validation
+   *  changed what the rule said — `accreditationLogo` is their choice. Absent
+   *  when the rule decided. Trace only: the print reads `accreditationLogo`. */
+  accreditationLogoByHand?: boolean;
   /** K4: the stamp prints under « Direction » — it was uploaded at the issue. */
   stamp?: boolean;
   /** K4: the SHA-256 of the logo printed at the issue (`ReportImageArchive`):
@@ -556,22 +562,27 @@ function receptionText(data: ReportData): string {
 /** The reference lines of the sampling: the procedures, the air instruction, the means. */
 function samplingReferenceHtml(data: ReportData): string {
   const air = data.lineKind === "AIR";
-  // Since lot 3C the means is decided at the issue (K6, `samplingMeansText`).
-  const means = `Moyen de prélèvement : ${
-    data.samplingMeans !== undefined
-      ? escapeHtml(data.samplingMeans)
-      : air && data.airMethod
-        ? escapeHtml(airMethodText(data.airMethod, data.airExposureMin))
-        : isAlignedLayout(data)
-          ? NOT_APPLICABLE
-          : "—"
-  }`;
+  // Since lot 3C the means is decided at the issue (K6, `samplingMeansText`);
+  // since lot 4A (K9) `null` there means no line at all (outside the air).
+  const means =
+    data.samplingMeans === null
+      ? null
+      : `Moyen de prélèvement : ${
+          data.samplingMeans !== undefined
+            ? escapeHtml(data.samplingMeans)
+            : air && data.airMethod
+              ? escapeHtml(airMethodText(data.airMethod, data.airExposureMin))
+              : isAlignedLayout(data)
+                ? NOT_APPLICABLE
+                : "—"
+        }`;
+  const withMeans = (reference: string) => (means ? `${reference}<br>${means}` : reference);
   if (data.sampledByLab === false) {
-    return `Référence prélèvement : N/A (prélèvement non effectué par le laboratoire)<br>${means}`;
+    return withMeans("Référence prélèvement : N/A (prélèvement non effectué par le laboratoire)");
   }
   // A version frozen before the template does not say who sampled: the
   // procedures are not claimed for it (it may be a client's deposit).
-  if (data.sampledByLab === undefined) return `Référence prélèvement : —<br>${means}`;
+  if (data.sampledByLab === undefined) return withMeans("Référence prélèvement : —");
   return [
     `Référence prélèvement ${escapeHtml(SAMPLING_PROCEDURES)}`,
     air ? `Prélèvement de l'air : ${escapeHtml(AIR_SAMPLING_PROCEDURE)}` : null,

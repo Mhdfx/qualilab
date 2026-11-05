@@ -86,6 +86,12 @@ const join = (...parts: (string | null | undefined)[]): string | null => {
   const kept = parts.filter((part): part is string => typeof part === "string" && part.length > 0);
   return kept.length > 0 ? kept.join(" — ") : null;
 };
+/** K10: « logo d'accréditation retiré / ajouté à la main » (SAMPLE_APPROVED `accreditationLogo`). */
+const approvalLogoNote = (value: unknown): string | null => {
+  if (value === "retiré à la main") return "logo d'accréditation retiré à la main";
+  if (value === "ajouté à la main") return "logo d'accréditation ajouté à la main";
+  return null;
+};
 const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
 const cancelReason = (value: unknown): string | null => {
   const code = text(value);
@@ -179,7 +185,11 @@ export const TIMELINE_ACTIONS: Record<string, ActionSpec> = {
     label: "Validation administrative",
     tone: "success",
     note: (meta) =>
-      text(meta.reportNumber) ? `${meta.amendment === true ? "Rapport amendé" : "Rapport"} ${text(meta.reportNumber)}` : null,
+      join(
+        text(meta.reportNumber) ? `${meta.amendment === true ? "Rapport amendé" : "Rapport"} ${text(meta.reportNumber)}` : null,
+        // K10: a hand choice on the accreditation logo shows on the timeline, not only in the raw journal.
+        meta.accreditationLogoByHand === true ? approvalLogoNote(meta.accreditationLogo) : null
+      ),
   },
   CONTAMINATION_ALERT_SENT: {
     label: (meta) => (meta.status === "ECHEC" ? "Alerte de contamination non envoyée" : "Alerte de contamination envoyée"),

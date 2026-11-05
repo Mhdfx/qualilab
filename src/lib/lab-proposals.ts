@@ -71,13 +71,15 @@ export const SERIES_VALIDATION = true;
  * Re-ask 2.16 (b) / R-13 (b) — the answer of 28/10 struck « le gestionnaire
  * commercial » from those who SEND a report (lot 3A, K2): the first send of
  * a version is the validator's, the Direction's or the administrator's
- * (`SEND_REPORT_ROLES`, src/lib/report-actions.ts). Whether the
- * gestionnaire keeps the RESEND of a report already sent (V11,
- * finalversion.md:116) was not asked: kept by default — hypothèse, à
- * confirmer par R-13. Off: the gestionnaire neither sends nor resends (the
- * route refuses it, its client fiche no longer offers « Renvoyer »).
+ * (`SEND_REPORT_ROLES`, src/lib/report-actions.ts). Turned OFF by lot 4A,
+ * K8 — confirmé le 04/11 (Q9: « pas de renvoi par le commercial », « il ne
+ * doit pas envoyer de rapport », « seul le validateur technique ou
+ * l'administration »). OFF (now): the gestionnaire neither sends nor
+ * resends (the route refuses it with a 403, its client fiche no longer
+ * offers « Renvoyer »). On (the way back): the gestionnaire resends a
+ * version already sent (V11, finalversion.md:116), as from 01/11 to lot 4A.
  */
-export const COMMERCIAL_RESENDS_REPORTS = true;
+export const COMMERCIAL_RESENDS_REPORTS = false;
 
 /**
  * Re-ask 2.6 / R-15 — C1 of a série whose « Prélevé le » was left empty
@@ -117,7 +119,8 @@ export const OBSERVATION_ONLY_DELAY_AND_TEMPERATURE = true;
  * the conclusion. The catalogue's limit still counts as a criterion
  * (hypothèse, à confirmer par R-28, RETOUR-LABO-28-10.md §6 — a line with a limit
  * keeps its computed conformity and, for « Présence » or a « > x » below
- * the limit, the technician's choice). A sensitive germ left without any
+ * the limit, the technician's choice). « Le critère c'est la limite » —
+ * confirmé le 04/11 (Q6 (a), RETOUR-LABO-04-11.md §1). A sensitive germ left without any
  * verdict alerts on its presence (rule O-12, `contamination-alert.ts`),
  * whichever way this switch is set.
  * Off: the bench asks the technician's choice again on those lines, the
@@ -141,6 +144,25 @@ export const NO_CRITERION_NO_INTERPRETATION = true;
  */
 export const UNIT_MISMATCH_NOT_JUDGED = true;
 
+// ————— Lot 4A — paillasse (RETOUR-LABO-04-11.md §5) —————
+// The answers of 04/11 confirm or change switches of lot 3: K7, K8 below
+// (`ALERTS_AT_VALIDATION`, `COMMERCIAL_RESENDS_REPORTS` turned off), K9
+// (`SAMPLING_MEANS_AIR_ONLY`), K10 (`ACCREDITATION_LOGO_BY_HAND`) and J5 here.
+
+/**
+ * Lot 4A, J5 — confirmé le 04/11 (Q8 / Q131, « Autre (une seule unité
+ * au-dessus = « Non satisfaisant », avec alerte) », RETOUR-LABO-04-11.md §1
+ * and the worked example C-5 in §7). ON (now): a criterion with ONE limit
+ * (m alone, M alone, m = M) and n = 1 no longer tolerates c units above it —
+ * one unit above is « Non satisfaisant » (so `conform = false`, and the
+ * contamination alert of a germ under alert); n ≥ 2 unchanged (answer to
+ * Q31 of 30/09). The criteria grid says « c sans effet quand n = 1 ». A
+ * result already saved keeps its verdict until it is typed again; issued
+ * reports are frozen. Off: c units above the limit are « Acceptable »
+ * whatever n, as from 19/10 to lot 4A.
+ */
+export const SINGLE_UNIT_NO_TOLERANCE = true;
+
 // ————— Lot 3C — réception, rapport, exports, exploitation (RETOUR-LABO-28-10.md §5) —————
 // The owner's decision of 01/11: everything is built now; what still waits
 // for an answer of the laboratory (R-x) gets its switch here, ON = the
@@ -152,7 +174,8 @@ export const UNIT_MISMATCH_NOT_JUDGED = true;
  * corrected after the reception, until the validation, by the reception and
  * the administrator — « Accord du client » on the received série's page,
  * journalled (CLIENT_CONSULTATION_UPDATED, before → after) and shown to the
- * validator. Off: the agreement is written at the reception, the counter or
+ * validator. Confirmé le 04/11 (Q3, « Oui » — RETOUR-LABO-04-11.md §1).
+ * Off: the agreement is written at the reception, the counter or
  * the release of a held sample only, as before; the route answers 404.
  */
 export const CONSULTATION_AFTER_RECEPTION = true;
@@ -165,25 +188,64 @@ export const CONSULTATION_AFTER_RECEPTION = true;
  * method as before; « N/A » when the client or a third party sampled. Reports
  * issued from now on only (`samplingMeansText`); a version issued before
  * keeps its print. Off: « N/A » outside the air, as before.
+ * Superseded while `SAMPLING_MEANS_AIR_ONLY` (below) is on: it then decides
+ * nothing; it says again what the line reads if that switch is turned off.
  */
 export const SAMPLING_MEANS_BY_KIND = true;
+
+/**
+ * Lot 4A, K9 — confirmé le 04/11 (Q14, R-27: « le moyen de prélèvement ne
+ * doit s'afficher dans le rapport que dans le cas de l'air »). ON (now): the
+ * line « Moyen de prélèvement » prints on an AIR report only (its method,
+ * « Boîte exposée N min », « Biocollecteur »); every other report leaves it
+ * out — whoever sampled, no « Écouvillon », no « N/A ». « Référence
+ * prélèvement » is unchanged. Reports issued from now on only
+ * (`samplingMeansText` freezes `null` in `ReportData.samplingMeans`); a
+ * version issued before keeps its print. Off: the line comes back on every
+ * report, as `SAMPLING_MEANS_BY_KIND` says (K6, lot 3C).
+ */
+export const SAMPLING_MEANS_AIR_ONLY = true;
 
 /**
  * K4 (Q14, « Logo → paramètre accrédité » — a mixed report: R-18): the
  * accreditation logo prints on a report carrying at least one accredited
  * analysis, the non-accredited ones marked « * ». Off: only on a report
- * whose analyses are all accredited (own or subcontracted).
+ * whose analyses are all accredited (own or subcontracted). Confirmé comme
+ * défaut le 04/11 (Q13: « mettre le logo par défaut mais de laisser la main
+ * pour modifier ») — the hand is `ACCREDITATION_LOGO_BY_HAND` below.
  */
 export const ACCREDITATION_LOGO_ON_MIXED_REPORT = true;
 
 /**
- * K3 (2.16 (c), « Non » — R-13): the contamination alerts leave at the
- * validation, as the settings say (`alertAfterTechnicalValidation`, S2: the
- * administrative one once the owner switches it off). Off: they no longer
- * leave at any validation, only with the report — « Valider et envoyer »,
- * « Envoyer au client » (the claim `alertsSentAt` still sends each one once).
+ * Lot 4A, K10 (Q13 of 04/11, R-18: « mettre le logo par défaut mais de
+ * laisser la main pour modifier »). ON (now): the administrative validation
+ * (« Valider », « Valider et envoyer », per sample and for the série) shows
+ * a box « Logo d'accréditation » when the logo is uploaded, ticked as the
+ * rule above says (`reportCarriesAccreditationLogo`); the signer may untick
+ * it for this report, or tick it — only on a report carrying an analysis
+ * « accréditée » by the laboratory (`accreditationLogoRule`, `addable`:
+ * hypothèse, à confirmer par C-4). An untouched box posts nothing (the rule,
+ * read again at the issue). The choice is frozen with the version issued
+ * (`ReportData.accreditationLogo`, `accreditationLogoByHand`) and journalled
+ * (SAMPLE_APPROVED `accreditationLogo`); an amendment starts from the rule
+ * again. WHO may change it — the signer of the administrative validation
+ * (Direction, administrateur): hypothèse, à confirmer par C-4. Off: the box
+ * leaves the screens, the routes ignore the field, the rule alone decides.
  */
-export const ALERTS_AT_VALIDATION = true;
+export const ACCREDITATION_LOGO_BY_HAND = true;
+
+/**
+ * K3 (2.16 (c), « Non » — R-13), turned OFF by lot 4A, K7: the answer of
+ * 04/11 to Q9 (RETOUR-LABO-04-11.md §1) — « Autre (alerte seulement avec
+ * l'envoi du rapport) » — confirmé le 04/11. OFF (now): no validation sends
+ * the contamination alerts; they leave once, with the first send of the
+ * report — « Valider et envoyer », « Envoyer au client », the série's send
+ * (the claim `alertsSentAt` still sends each one once). The setting
+ * `alertAfterTechnicalValidation` (S2) no longer applies; /admin/reglages
+ * says so under it. On (the way back): they leave at the validation the
+ * settings name, as from 01/11 to the lot 4A deployment.
+ */
+export const ALERTS_AT_VALIDATION = false;
 
 /**
  * I8 (Q105, one word read « Annulé » — R-17): the bon de réception no longer
@@ -214,7 +276,9 @@ export const ONSSA_OFFICIAL_CONTROL = true;
  * received — the month's activity, counted once its results are validated
  * (the screen lists those still waiting). "VALIDATION": the day of its
  * administrative validation — every sample counted in the month it was
- * completed.
+ * completed. "RECEPTION" confirmé le 04/11 (Q16, « Oui » — with
+ * « Conforme / non conforme » only: an « Acceptable » counts conform,
+ * RETOUR-LABO-04-11.md §1 and §4).
  */
 export const ONSSA_COUNT_BY: "RECEPTION" | "VALIDATION" = "RECEPTION";
 

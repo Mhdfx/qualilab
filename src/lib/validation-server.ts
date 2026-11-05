@@ -5,7 +5,11 @@ import { logAudit } from "./audit";
 import { prisma } from "./prisma";
 import { canApprove, canValidateTechnically, signsAdministratively } from "./sample-status";
 import { issueReportFor, sendReport, sendContaminationAlerts, type IssuedReport } from "./report-dispatch";
-import { alertsAtApproval, alertsAtTechnicalValidation } from "./alert-moment";
+import { alertsAfterApproval, alertsAtTechnicalValidation, alertsFollowSend, alertsWithoutReportNote } from "./alert-moment";
+import { ALERT_RESULT_WHERE } from "./contamination-alert";
+import { accreditationLogoJournal } from "./accreditation";
+import { ACCREDITATION_LOGO_BY_HAND } from "./lab-proposals";
+import { accreditationLogoUploaded } from "./report-images";
 import { getLabSettings, type LabSettings } from "./lab-settings";
 import { needsRegulation, proposeRegulation } from "./regulation";
 import type { Role } from "./roles";
@@ -203,13 +207,16 @@ export type ApprovalBody = {
  * issues the report; `plan` (`approvalDispatch`, read by the caller before
  * anything is written) says whether it is also sent (« Valider et
  * envoyer ») — nothing is sent automatically any more (16/10, Q92). The
- * contamination alerts still run here whatever `plan` says.
+ * contamination alerts leave here with « Valider et envoyer » only since lot
+ * 4A (K7, `alertsAfterApproval`). `plan.accreditationLogo` is the box « Logo
+ * d'accréditation » (K10, Q13 of 04/11): frozen with the version issued and
+ * journalled with the approval (`accreditationLogo`).
  */
 export async function approveSample(
   sample: ValidationSample,
   session: Signer,
   regulation: ChosenRegulation | null,
-  plan: { sendReport: boolean },
+  plan: { sendReport: boolean; accreditationLogo?: boolean | null },
   context: SignatureContext = {}
 ): Promise<SignatureOutcome<ApprovalBody>> {
   const check = canApprove(sample, session.role, session.id);
@@ -254,32 +261,37 @@ export async function approveSample(
     // still shows who actually signed it. A report reopened for amendment is
     // not recreated: its next version (« -A1 ») is issued.
     await recordRegulation(sample, regulation, session.id, context);
-    report = await issueReportFor(sample.id, session.id);
+    report = await issueReportFor(sample.id, session.id, { accreditationLogo: plan.accreditationLogo ?? null });
 
     // The report leaves only on « Valider et envoyer »; otherwise the sample
     // stays VALIDE, « à envoyer », until « Envoyer au client ». The alerts
-    // run either way: a no-op when they left at the technical validation,
-    // the retry of a failed one, or their only send when the laboratory has
-    // them wait for this approval. Neither may break the approval, which is
-    // already recorded — a failed send is visible in the journal and can be
-    // retried from the interface.
+    // (K7, `ALERTS_AT_VALIDATION` off): with « Valider et envoyer » only,
+    // and only when the report left or could not leave for lack of a report
+    // address (`alertsFollowSend`) — as « Envoyer au client » does. Switch
+    // on, they run either way (a no-op when they left at the technical
+    // validation, the retry of a failed one, or their only send). Neither may
+    // break the approval, which is already recorded — a failed send is
+    // visible in the journal and can be retried from the interface.
     if (report) {
+      let sent: { ok: boolean; noRecipients?: boolean } | null = null;
       if (plan.sendReport) {
-        const sent = await sendReport(sample.id, session.id, context).catch((error) => {
+        const outcome = await sendReport(sample.id, session.id, context).catch((error) => {
           console.error("[validation] report send failed", { error });
           return { ok: false as const, error: "Envoi du rapport impossible." };
         });
-        dispatch = sent.ok ? { report: sent.status } : { error: sent.error };
+        dispatch = outcome.ok ? { report: outcome.status } : { error: outcome.error };
+        sent = { ok: outcome.ok, noRecipients: !outcome.ok && "noRecipients" in outcome };
       }
 
-      // K3 (`ALERTS_AT_VALIDATION`): off, only « Valider et envoyer » sends them here.
-      if (alertsAtApproval(plan.sendReport)) {
+      if (alertsAfterApproval(plan.sendReport, sent)) {
         const alerts = await sendContaminationAlerts(sample.id, session.id, context).catch((error) => {
           console.error("[validation] alert send failed", { error });
           return { ok: false as const, error: "Envoi des alertes impossible." };
         });
         if (alerts.ok) dispatch.alerts = alerts.sent;
         else dispatch.error = [dispatch.error, alerts.error].filter(Boolean).join(" ");
+        // K7: the report had no address but the alert left — the panel says the report still waits.
+        if (alerts.ok && sent?.noRecipients) dispatch.error = [dispatch.error, alertsWithoutReportNote(alerts)].filter(Boolean).join(" ");
       }
     } else {
       // The approval stands; the send retries the issue (`sendReport`).
@@ -303,6 +315,13 @@ export async function approveSample(
         // « Valider » or « Valider et envoyer » (16/10, Q92).
         send: plan.sendReport,
         ...(report?.amended ? { amendment: true } : {}),
+        // K10: the box as posted — journalled even when the issue failed, so
+        // that the send issuing the report later follows it (`sendReport`).
+        ...(typeof plan.accreditationLogo === "boolean" ? { accreditationLogoRequested: plan.accreditationLogo } : {}),
+        // K10: the accreditation logo frozen with the version — by the rule, or by hand (the logo uploaded only).
+        ...(report?.accreditationLogo
+          ? { accreditationLogo: accreditationLogoJournal(report.accreditationLogo), ...(report.accreditationLogo.byHand ? { accreditationLogoByHand: true } : {}) }
+          : {}),
         // What followed the approval threw: see the error logged with it.
         ...(broke ? { incomplete: true } : {}),
         ...(context.viaSerie ? { viaSerie: context.viaSerie } : {}),
@@ -316,8 +335,12 @@ export async function approveSample(
 /** What « Envoyer / Renvoyer au client » answers: the send, and the alerts that rode along. */
 export type ReportSendOutcome =
   | { ok: true; status: string; to: string[]; alerts: number; alertsError?: string }
-  /** `inFlight`: another send of this report is under way (`sendReport`'s SingleFlight). */
-  | { ok: false; error: string; inFlight?: true };
+  /**
+   * `inFlight`: another send of this report is under way (`sendReport`'s
+   * SingleFlight). `alerts` / `alertsError`: the report had no address, the
+   * alerts were tried anyway (K7, `alertsFollowSend`).
+   */
+  | { ok: false; error: string; inFlight?: true; alerts?: number; alertsError?: string };
 
 /**
  * Sends — or resends — one sample's report to the client, and the alerts
@@ -332,12 +355,26 @@ export async function sendReportWithAlerts(
   context: SignatureContext = {}
 ): Promise<ReportSendOutcome> {
   const result = await sendReport(sampleId, actorId, context);
-  if (!result.ok) return { ok: false, error: result.error, ...("inFlight" in result ? { inFlight: true as const } : {}) };
+  const follow = alertsFollowSend({ ok: result.ok, noRecipients: !result.ok && "noRecipients" in result });
+  if (!result.ok && !follow) {
+    return { ok: false, error: result.error, ...("inFlight" in result ? { inFlight: true as const } : {}) };
+  }
 
   const alerts = await sendContaminationAlerts(sampleId, actorId, context).catch((error) => {
     console.error("[report/send] alert send failed", { error });
     return { ok: false as const, error: "Envoi des alertes impossible." };
   });
+
+  // K7: no report address — the report stays « à envoyer », the alert tried its own.
+  if (!result.ok) {
+    const note = alertsWithoutReportNote(alerts);
+    return {
+      ok: false,
+      error: note ? `${result.error} ${note}` : result.error,
+      ...("inFlight" in result ? { inFlight: true as const } : {}),
+      ...(alerts.ok ? { alerts: alerts.sent } : { alertsError: alerts.error }),
+    };
+  }
 
   return {
     ...result,
@@ -449,6 +486,8 @@ export async function serieValidationPlanFor(serieId: string, action: SerieValid
     ...serieValidationPlan(candidates, action, session, { alertsAtTechnical: settings.alertAfterTechnicalValidation }),
     // The panel's « Mode démonstration » notice, in the dialog too.
     emailLive: emailLive(),
+    // K10: the approval's box « Logo d'accréditation » is offered only when the logo is uploaded.
+    accreditationLogoUploaded: action === "approve" && ACCREDITATION_LOGO_BY_HAND ? await accreditationLogoUploaded() : false,
   };
 }
 
@@ -481,7 +520,7 @@ export async function runSerieValidation(
   action: SerieValidationAction,
   session: Signer,
   requested: SerieValidationRequest["samples"],
-  plan: { sendReport: boolean }
+  plan: { sendReport: boolean; accreditationLogo?: boolean | null }
 ): Promise<SerieBatchLine[]> {
   const { samples, settings, candidates } = await serieValidationCandidates(serie.id);
   const fresh = serieValidationPlan(candidates, action, session, { alertsAtTechnical: settings.alertAfterTechnicalValidation });
@@ -546,10 +585,18 @@ async function serieSendCandidates(serieId: string): Promise<SerieSendCandidate[
       airExposureMin: true,
       // `amendedAt`: whether THIS version has left (`reportVersionSent`).
       report: { select: { number: true, version: true, sentAt: true, amendedAt: true, amendmentPending: true } },
+      // K7: an alert not sent yet leaves with this send — the dialog says so.
+      alertsSentAt: true,
+      _count: { select: { results: { where: ALERT_RESULT_WHERE } } },
     },
     orderBy: [{ lineNumber: "asc" }, { code: "asc" }],
   });
-  return samples.map((sample) => ({ ...lineOf(sample), status: sample.status, report: sample.report }));
+  return samples.map((sample) => ({
+    ...lineOf(sample),
+    status: sample.status,
+    report: sample.report,
+    alertsPending: sample.alertsSentAt === null ? sample._count.results : 0,
+  }));
 }
 
 /** What « Envoyer la série au client » would send, for its confirmation dialog. */

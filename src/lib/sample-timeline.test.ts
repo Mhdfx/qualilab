@@ -163,6 +163,25 @@ describe("sampleTimeline — merging timestamps and the journal", () => {
     expect(events[1].key).toMatch(/^audit-/);
   });
 
+  it("K10: shows a hand choice on the accreditation logo with the administrative validation (never the rule's)", () => {
+    const events = sampleTimeline(bare, [
+      row("SAMPLE_APPROVED", "16:00", "Admin Test", {
+        reportNumber: "RAP-2026-00001",
+        accreditationLogo: "retiré à la main",
+        accreditationLogoByHand: true,
+      }),
+    ]);
+    expect(events[1].note).toBe("Rapport RAP-2026-00001 — logo d'accréditation retiré à la main");
+    const added = sampleTimeline(bare, [
+      row("SAMPLE_APPROVED", "16:00", "Admin Test", { reportNumber: "RAP-2026-00002", accreditationLogo: "ajouté à la main", accreditationLogoByHand: true }),
+    ]);
+    expect(added[1].note).toBe("Rapport RAP-2026-00002 — logo d'accréditation ajouté à la main");
+    const byRule = sampleTimeline(bare, [
+      row("SAMPLE_APPROVED", "16:00", "Admin Test", { reportNumber: "RAP-2026-00003", accreditationLogo: "imprimé (règle par défaut)" }),
+    ]);
+    expect(byRule[1].note).toBe("Rapport RAP-2026-00003");
+  });
+
   it("leaves out downloads, duplicatas and the bench's intermediate saves", () => {
     const events = sampleTimeline(bare, [
       row("REPORT_DOWNLOADED", "17:00", "Gestion Test"),

@@ -185,7 +185,8 @@ describe.skipIf(!prisma)("report numbers under simultaneous approvals (local dat
     const twice = await approvedSample(new Date(MAIN(), 5, 15, 12));
     const [first, second] = await Promise.all([createReportFor(twice), createReportFor(twice)]);
     expect(first?.number).toBe(`RAP-${MAIN()}-00053`);
-    expect(second).toEqual(first);
+    // The same report (the one that issued it also says what it froze — K10).
+    expect({ id: second?.id, number: second?.number }).toEqual({ id: first?.id, number: first?.number });
     expect(await db.report.count({ where: { sampleId: twice } })).toBe(1);
 
     const next = await createReportFor(await approvedSample(new Date(MAIN(), 5, 15, 12, 5)));

@@ -1,4 +1,5 @@
 import type { Interpretation, LimitKind } from "@/generated/prisma/enums";
+import { SINGLE_UNIT_NO_TOLERANCE } from "./lab-proposals";
 import { isUncountableText, parseLabValue } from "./result-value";
 
 /**
@@ -219,7 +220,8 @@ export function interpret(plan: Plan, readings: UnitReading[]): Verdict {
 function judgeCounts(plan: Plan, bounds: Bound[]): Verdict {
   // Single limit: m alone, M alone when m is « non spécifiée », or m = M.
   // c counts the units tolerated above it, shown « Acceptable » (answer of
-  // the laboratory to Q31, RETOUR-LABO-30-09.md §2 H1).
+  // the laboratory to Q31, RETOUR-LABO-30-09.md §2 H1) — except a criterion
+  // with n = 1, whose c `judgeUnits` sets aside first (J5, Q8 of 04/11).
   const single = singleLimit(plan);
   if (single !== null) {
     const above = bounds.filter((b) => over(b, single)).length;
@@ -338,7 +340,7 @@ export type Judgement = {
  * Until every unit taken is read the official verdict is INCOMPLET, which
  * is what keeps the sheet from being submitted.
  */
-export function judgeUnits(plan: Plan, readings: UnitReading[]): Judgement {
+export function judgeUnits(plan: Plan, readings: UnitReading[], singleUnitNoTolerance: boolean = SINGLE_UNIT_NO_TOLERANCE): Judgement {
   const taken = Math.max(1, readings.length);
   const read = readings.filter((r) => r.kind !== "empty" && r.kind !== "unreadable").length;
   // « Non spécifié » without any limit: the germ is analysed and reported,
@@ -347,13 +349,33 @@ export function judgeUnits(plan: Plan, readings: UnitReading[]): Judgement {
     return { official: read < taken ? interpret({ ...plan, n: taken }, readings) : null, informal: null };
   }
   if (taken >= plan.n || read < taken) {
-    return { official: interpret({ ...plan, n: taken }, readings), informal: null };
+    // J5: the criterion's own n decides (a plan n = 1 read on more units still tolerates nothing).
+    const ignored = toleranceIgnored(plan, singleUnitNoTolerance);
+    const official = interpret({ ...plan, n: taken, ...(ignored ? { c: 0 } : {}) }, readings);
+    return { official: ignored ? withIgnoredTolerance(official, plan) : official, informal: null };
   }
   const informal = informalVerdict(plan, readings);
   // A « > x » that leaves even the indicative verdict open keeps the sheet
   // on the bench, exactly as an unread unit does.
   if (informal.undecided) return { official: informal, informal: null };
   return { official: null, informal };
+}
+
+/**
+ * J5 (lot 4A — Q8 / Q131 of 04/11, `SINGLE_UNIT_NO_TOLERANCE`): whether the
+ * tolerance c of this criterion is set aside — a single limit (m alone,
+ * M alone, m = M) with n = 1 and c ≥ 1. One unit above the limit is then
+ * « Non satisfaisant », as the laboratory answered; n ≥ 2 and the
+ * three-class plans keep c (Q31 of 30/09).
+ */
+export function toleranceIgnored(plan: Plan, singleUnitNoTolerance: boolean = SINGLE_UNIT_NO_TOLERANCE): boolean {
+  return singleUnitNoTolerance && plan.n === 1 && plan.c !== null && plan.c >= 1 && singleLimit(plan) !== null;
+}
+
+/** The verdict's sentence says why c did not count (« n = 1 : c = 1 sans effet »). */
+function withIgnoredTolerance(verdict: Verdict, plan: Plan): Verdict {
+  if (verdict.verdict !== "NON_SATISFAISANT" || verdict.countAboveM === 0) return verdict;
+  return { ...verdict, reason: `${verdict.reason.replace(/\.$/, "")} — n = 1 : c = ${plan.c} sans effet.` };
 }
 
 /**

@@ -15,8 +15,9 @@ import { ResendReportButton } from "./ResendReportButton";
 /**
  * The actions on an issued report (AMENDEMENT.md §4), on the validation page
  * and in the search: « Duplicata (PDF) », « Versions du rapport »,
- * « Envoyer / Renvoyer au client » (validator, direction, administrator;
- * the gestionnaire « Renvoyer » only since 28/10 — `canResendReport`), for the
+ * « Envoyer / Renvoyer au client » (validator, direction, administrator —
+ * `canResendReport`; the gestionnaire's « Renvoyer » of 28/10 is off since
+ * lot 4A, K8, switch `COMMERCIAL_RESENDS_REPORTS`), for the
  * administrator « Modifier la conclusion » (the silent correction, HANDOFF §8
  * 18/08), and « Rouvrir pour amendement » with its mandatory reason (the
  * administrator, the Direction and the validateur since 16/10, Q13 —

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, ClipboardCheck, Scale, SlidersHorizontal } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { alertSettingNotice } from "@/lib/alert-moment";
 import type { LabSettings } from "@/lib/lab-settings";
 import { LINE_KIND_LABELS } from "@/lib/labels";
 import {
@@ -43,13 +44,15 @@ type NumberKey =
 
 // The non-conform-at-reception switch is gone (29/09): the réceptionniste
 // decides line by line, « Analyser malgré tout » or « Détruire ».
-const SWITCHES: { key: SwitchKey; title: string; on: string; off: string }[] = [
+const SWITCHES: { key: SwitchKey; title: string; on: string; off: string; notice?: string | null }[] = [
   {
     key: "alertAfterTechnicalValidation",
     title: "Moment d'envoi des alertes de contamination",
     on: "Dès la validation technique : le client est prévenu sans attendre la validation administrative — le choix du laboratoire (29/09).",
     // The report no longer leaves at the approval (16/10, Q92); the alerts still do.
     off: "À la validation administrative, que le rapport soit envoyé alors ou plus tard.",
+    // K7 (04/11, Q9): the alert leaves with the report only — this choice no longer applies.
+    notice: alertSettingNotice(),
   },
   {
     key: "consultationRequired",
@@ -225,6 +228,11 @@ export function LabSettingsForm({
           {SWITCHES.map((item) => (
             <fieldset key={item.key} className="rounded-xl border border-slate-200 p-4">
               <legend className="px-1 text-sm font-semibold text-slate-800">{item.title}</legend>
+              {item.notice && (
+                <p className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  {item.notice}
+                </p>
+              )}
               {(
                 [
                   { checked: false, label: item.off },

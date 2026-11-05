@@ -13,6 +13,7 @@ import {
   Send,
   PencilLine,
   Info,
+  AlertTriangle,
 } from "lucide-react";
 import type { SampleStatus } from "@/generated/prisma/enums";
 import { Card } from "@/components/ui/Card";
@@ -26,8 +27,15 @@ import {
 } from "@/lib/sample-status";
 import { ROLE_LABELS, type Role } from "@/lib/roles";
 import { validationBody, type ValidationAction } from "@/lib/report-actions";
+import {
+  accreditationLogoHint,
+  accreditationLogoPosted,
+  accreditationLogoTickable,
+  type AccreditationLogoRule,
+} from "@/lib/accreditation";
 import { ResendReportButton } from "./ResendReportButton";
 import { ALERTS_AT_VALIDATION } from "@/lib/lab-proposals";
+import { ALERT_AWAITING_REPORT_LABEL } from "@/lib/alert-moment";
 
 /** Nothing to sign: before the results are submitted, or on a cancelled sample. */
 const NO_CONTROLS: ValidationControls = {
@@ -51,6 +59,8 @@ type ValidationPanelProps = {
   alertables: number;
   /** LabSettings.alertAfterTechnicalValidation: the alerts leave at step 1, not step 2. */
   alertsAtTechnical: boolean;
+  /** K7 (`alertAwaitingReport`): approved, its contamination alert waits for the report's send. */
+  alertAwaitingReport?: boolean;
   reportNumber: string | null;
   sentTo: string | null;
   /** The version in force has reached the client (`reportVersionSent`). */
@@ -72,6 +82,14 @@ type ValidationPanelProps = {
   /** An amendment in progress (AMENDEMENT.md §2): the version in force, the
    *  one the approval will issue, and the reason. */
   amendment?: { currentNumber: string; nextNumber: string; note: string | null } | null;
+  /**
+   * K10 (Q13 of 04/11): the box « Logo d'accréditation » of the
+   * administrative validation — null when no logo is uploaded (or the switch
+   * `ACCREDITATION_LOGO_BY_HAND` is off). `accreditationLogoRule`: `byRule`
+   * is the box's starting state, `addable` whether it may be ticked (an
+   * accredited analysis on the report), `reason` the line under it.
+   */
+  accreditationLogo?: AccreditationLogoRule | null;
 };
 
 /**
@@ -97,6 +115,7 @@ export function ValidationPanel({
   nonConformes,
   alertables,
   alertsAtTechnical,
+  alertAwaitingReport = false,
   reportNumber,
   sentTo,
   sent,
@@ -109,6 +128,7 @@ export function ValidationPanel({
   regulationRequired,
   chosenRegulation,
   amendment = null,
+  accreditationLogo = null,
 }: ValidationPanelProps) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -117,6 +137,8 @@ export function ValidationPanel({
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const [regulationId, setRegulationId] = useState(proposedRegulationId ?? "");
+  // K10: starts as the rule says; an amendment starts from the rule again.
+  const [logoChecked, setLogoChecked] = useState(accreditationLogo?.byRule ?? false);
 
   /** `withSend`: « Valider et envoyer » — the approval sends the report too. */
   async function send(action: ValidationAction, withSend = false) {
@@ -137,7 +159,10 @@ export function ValidationPanel({
       const response = await fetch(`/api/samples/${sampleId}/validation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(validationBody(action, reason, regulationId, withSend)),
+        body: JSON.stringify(
+          // K10: null (the rule, read again at the issue) unless the signer changed the box.
+          validationBody(action, reason, regulationId, withSend, action === "approve" ? accreditationLogoPosted(accreditationLogo, logoChecked) : null)
+        ),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -275,6 +300,26 @@ export function ValidationPanel({
         </div>
       )}
 
+      {canApprove && accreditationLogo && (
+        <div className="mt-4 rounded-xl border border-slate-200 px-3 py-2.5">
+          <label className="flex min-h-[44px] cursor-pointer items-start gap-3 text-sm text-slate-800">
+            <input
+              type="checkbox"
+              checked={logoChecked}
+              onChange={(e) => setLogoChecked(e.target.checked)}
+              // Never ADDED to a report without an accredited analysis (K10 — hypothèse, à confirmer par C-4).
+              disabled={!accreditationLogoTickable(accreditationLogo)}
+              className="mt-0.5 h-4 w-4 accent-brand disabled:cursor-not-allowed"
+              aria-describedby="accreditation-logo-hint"
+            />
+            <span className="font-medium">Logo d&apos;accréditation sur le rapport</span>
+          </label>
+          <p id="accreditation-logo-hint" className="mt-1 text-xs text-slate-500">
+            {accreditationLogoHint(accreditationLogo, logoChecked)}
+          </p>
+        </div>
+      )}
+
       {signable && !(canValidate || canApprove) && chosenRegulation && (
         <p className="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
           Réglementation : <b className="font-medium text-slate-800">{chosenRegulation}</b>
@@ -365,6 +410,16 @@ export function ValidationPanel({
               <span>Rapport émis, pas encore envoyé au client.</span>
             </p>
           ))}
+
+          {alertAwaitingReport && (
+            <p className="mt-2 flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-800 ring-1 ring-rose-200">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>
+                <b>{ALERT_AWAITING_REPORT_LABEL}.</b> L&apos;alerte de contamination part avec l&apos;envoi du rapport
+                (« Envoyer au client ») ; un rapport remis sur papier ne l&apos;envoie pas.
+              </span>
+            </p>
+          )}
 
           {!emailLive && (
             <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">

@@ -180,6 +180,17 @@ export function alertsLeaveAt(
 }
 
 /**
+ * K7 (`ALERTS_AT_VALIDATION` off): the sentence above « Envoyer la série »'s
+ * list when some of its samples' contamination alert has not left yet — it
+ * leaves with this click. Null when none, or the switch on (the alerts
+ * belong to the validations then).
+ */
+export function serieSendAlertNotice(alerting: number, atValidation: boolean = ALERTS_AT_VALIDATION): string | null {
+  if (atValidation || alerting <= 0) return null;
+  return `Une alerte de contamination part avec ces rapports : ${alerting} échantillon${alerting > 1 ? "s" : ""} en déclenche${alerting > 1 ? "nt" : ""} une.`;
+}
+
+/**
  * The sentence above the dialog's list when samples of it raise an alert —
  * the sample's panel's words, for this step: whether the alerts leave now.
  */
@@ -193,7 +204,7 @@ export function serieAlertNotice(
   if (!atValidation) {
     return `Une alerte de contamination part avec le rapport (« Valider et envoyer », « Envoyer au client ») : ${samples} en déclenche${alerting > 1 ? "nt" : ""} une.`;
   }
-  if (alertsLeaveAt(action, alertsAtTechnical)) {
+  if (alertsLeaveAt(action, alertsAtTechnical, atValidation)) {
     return alertsAtTechnical
       ? `Une alerte de contamination est envoyée au client dès la validation technique : ${samples} en déclenche${alerting > 1 ? "nt" : ""} une à cette validation.`
       : `Une alerte de contamination est envoyée au client à la validation administrative : ${samples} en déclenche${alerting > 1 ? "nt" : ""} une à cette validation.`;
@@ -287,6 +298,8 @@ export function serieValidationPlan(
 export type SerieSendCandidate = SerieLineSource & {
   status: SampleStatus;
   report: { number: string; version: number; sentAt: Date | null; amendedAt: Date | null; amendmentPending: boolean } | null;
+  /** K7: results raising a contamination alert whose alert has not left yet (`alertsSentAt` null) — it leaves with this send. */
+  alertsPending?: number;
 };
 
 /**
@@ -307,8 +320,8 @@ export function serieSendRefusal(sample: Pick<SerieSendCandidate, "status" | "re
 
 export type SerieSendPlan = {
   action: "send";
-  /** One e-mail per report, each with the number printed on the version in force. */
-  eligible: (SerieLine & { number: string })[];
+  /** One e-mail per report, each with the number printed on the version in force; `alertables`: its alert leaves with it (K7). */
+  eligible: (SerieLine & { number: string; alertables?: number })[];
   skipped: (SerieLine & { reason: string })[];
 };
 
@@ -318,7 +331,13 @@ export function serieSendPlan(samples: readonly SerieSendCandidate[]): SerieSend
     const line = serieLine(sample);
     const refusal = serieSendRefusal(sample);
     if (refusal || !sample.report) plan.skipped.push({ ...line, reason: refusal ?? "Rapport pas encore émis." });
-    else plan.eligible.push({ ...line, number: amendedNumber(sample.report.number, sample.report.version) });
+    else {
+      plan.eligible.push({
+        ...line,
+        number: amendedNumber(sample.report.number, sample.report.version),
+        ...(sample.alertsPending ? { alertables: sample.alertsPending } : {}),
+      });
+    }
   }
   return plan;
 }
@@ -460,7 +479,9 @@ export function serieBatchRequest(
   serieId: string,
   action: SerieBatchAction,
   eligible: readonly { id: string; regulationId?: string | null }[],
-  send: boolean
+  send: boolean,
+  /** K10: the série's box « Logo d'accréditation » — true / false for every report, null = each by the rule. */
+  accreditationLogo: boolean | null = null
 ): { url: string; body: unknown } {
   const serie = encodeURIComponent(serieId);
   if (action === "send") {
@@ -471,6 +492,7 @@ export function serieBatchRequest(
     body: {
       action,
       ...(action === "approve" ? { send } : {}),
+      ...(action === "approve" && accreditationLogo !== null ? { accreditationLogo } : {}),
       samples: eligible.map((line) => ({ id: line.id, regulationId: line.regulationId ?? null })),
     },
   };

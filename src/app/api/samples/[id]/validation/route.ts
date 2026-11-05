@@ -25,7 +25,10 @@ import {
  *                       report leaves only with `send: true` (« Valider et
  *                       envoyer ») — nothing is sent automatically any more
  *                       (16/10, Q92; `approvalDispatch`). The contamination
- *                       alerts still run here whatever `send` says.
+ *                       alerts leave with the report only (K7, 04/11), and
+ *                       `accreditationLogo` is the box « Logo
+ *                       d'accréditation » (K10, 04/11) frozen with the
+ *                       version issued.
  * `action: "reject"`    Either desk sends it back to the technician who took
  *                       it (prise en charge libre, PROGRAMME.md §10 — the
  *                       holder stays, so it comes back to their bench) with a

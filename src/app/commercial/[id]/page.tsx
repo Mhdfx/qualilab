@@ -502,9 +502,12 @@ export default async function ClientDetailPage({
                         >
                           {amendedNumber(sample.report.number, sample.report.version)}
                         </a>
-                        {/* The client relationship is the gestionnaire's: a report
-                            already sent is resent from here (finalversion.md:116);
-                            its first send is the validation's (28/10, K2). */}
+                        {/* The resend of a report already sent, from the client's
+                            fiche (finalversion.md:116) — for the ADMIN only since
+                            lot 4A (K8, Q9 of 04/11: `COMMERCIAL_RESENDS_REPORTS`
+                            off, the gestionnaire no longer sends any report;
+                            `canResendReport` decides). Its first send is the
+                            validation's (28/10, K2). */}
                         {canResendReport(
                           session.role,
                           sample.status,

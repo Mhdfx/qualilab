@@ -15,6 +15,9 @@ import { requireRole, getSession } from "@/lib/auth";
 import { roleAllowed } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getLabSettings } from "@/lib/lab-settings";
+import { accreditationLogoRule } from "@/lib/accreditation";
+import { alertAwaitingReport } from "@/lib/alert-moment";
+import { accreditationLogoUploaded } from "@/lib/report-images";
 import { needsRegulation, proposeRegulation } from "@/lib/regulation";
 import { labReference } from "@/lib/sample-select";
 import { sampleVerdict } from "@/lib/interpretation";
@@ -46,7 +49,7 @@ import { SampleTimelineCard } from "@/components/validation/SampleTimelineCard";
 import { EmailSendsCard } from "@/components/validation/EmailSendsCard";
 import { earlyAlertSendsOf } from "@/lib/alert-log-samples-server";
 import { withEarlyAlerts } from "@/lib/alert-log-samples";
-import { SERIES_VALIDATION } from "@/lib/lab-proposals";
+import { ACCREDITATION_LOGO_BY_HAND, SERIES_VALIDATION } from "@/lib/lab-proposals";
 import { serieBatchCounts } from "@/lib/serie-validation";
 import { SerieBatchActions } from "@/components/validation/SerieBatchActions";
 
@@ -159,7 +162,8 @@ export default async function ValidationDetailPage({
           dilutionUsed: true,
           parameterId: true,
           parameter: {
-            select: { name: true, threshold: true, limitValue: true, alertOnExceed: true, calcFactor: true },
+            // `accreditation`: K10's box starts as the rule says (`accreditationLogoRule`).
+            select: { name: true, threshold: true, limitValue: true, alertOnExceed: true, calcFactor: true, accreditation: true },
           },
         },
       },
@@ -194,7 +198,7 @@ export default async function ValidationDetailPage({
 
   // « Réglementation en vigueur » (slice I): proposed from what is known,
   // confirmed or changed by the validator.
-  const [regulations, settings, signedProtocols, timeline, reportSends, earlyAlerts, held, serieSamples] = await Promise.all([
+  const [regulations, settings, signedProtocols, timeline, reportSends, earlyAlerts, held, serieSamples, logoUploaded] = await Promise.all([
     prisma.regulation.findMany({ where: { active: true }, select: { id: true, title: true }, orderBy: [{ sortOrder: "asc" }, { title: "asc" }] }),
     getLabSettings(),
     // Whether the visit's signed protocol was photographed — counted, never
@@ -229,7 +233,12 @@ export default async function ValidationDetailPage({
           },
         })
       : Promise.resolve([]),
+    // K10: the box « Logo d'accréditation » exists only when the logo is uploaded.
+    ACCREDITATION_LOGO_BY_HAND ? accreditationLogoUploaded() : Promise.resolve(false),
   ]);
+  const accreditationLogo = logoUploaded
+    ? accreditationLogoRule(sample.results.map((result) => result.parameter.accreditation))
+    : null;
   const heldInvoice = held.get(sample.id) ?? null;
   const serieBatch = serieBatchCounts(
     serieSamples.map((row) => ({ ...row, serie: { id: sample.serieId, serialNumber: sample.serie.serialNumber } })),
@@ -536,6 +545,8 @@ export default async function ValidationDetailPage({
             validatedAt={sample.validatedAt ? formatDateTime(sample.validatedAt) : null}
             nonConformes={nonConformes}
             alertables={alertables}
+            // K7: « Alerte en attente de l'envoi du rapport » on an approved sample whose alert has not left.
+            alertAwaitingReport={alertAwaitingReport({ status: sample.status, alertsSentAt: sample.alertsSentAt, alerting: alertables })}
             alertsAtTechnical={settings.alertAfterTechnicalValidation}
             reportNumber={printedNumber}
             sentTo={sample.report?.sentTo ?? null}
@@ -549,6 +560,7 @@ export default async function ValidationDetailPage({
             regulationRequired={needsRegulation(sample)}
             chosenRegulation={sample.regulation?.title ?? null}
             amendment={amendment}
+            accreditationLogo={accreditationLogo}
           />
           {/* « Toute la série (N) » (re-ask 2.16, Q92 « avoir les deux
               options »): the same step for the série's other samples too. */}

@@ -7,6 +7,7 @@ import {
   SERIE_BATCH_UNCERTAIN,
   readSerieBatchReply,
   serieAlertNotice,
+  serieSendAlertNotice,
   serieBatchChunkSize,
   serieBatchChunks,
   serieBatchLabel,
@@ -19,6 +20,7 @@ import {
   type SerieBatchLine,
   type SerieBatchReply,
 } from "@/lib/serie-validation";
+import { SERIE_LOGO_CHOICES, type SerieLogoChoice } from "@/lib/accreditation";
 import { ReportDialog } from "./ReportDialog";
 
 /** A line of the plan, as `GET /api/series/[id]/validation` or `/reports` answers it. */
@@ -52,6 +54,8 @@ type Plan = {
   alertsAtTechnical?: boolean;
   /** False when no mail provider is configured yet — sends are recorded, not delivered. */
   emailLive?: boolean;
+  /** K10: the logo is uploaded — the approval offers its box « Logo d'accréditation ». */
+  accreditationLogoUploaded?: boolean;
 };
 
 /**
@@ -159,6 +163,8 @@ function SerieBatchDialog({
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   // How many samples have their outcome so far, while the requests follow one another.
   const [progress, setProgress] = useState(0);
+  // K10: the série's box « Logo d'accréditation » — the rule by default.
+  const [logoChoice, setLogoChoice] = useState<SerieLogoChoice>("RULE");
 
   useEffect(() => {
     let live = true;
@@ -206,7 +212,8 @@ function SerieBatchDialog({
       for (const [index, chunk] of chunks.entries()) {
         let reply: SerieBatchReply;
         try {
-          const { url, body } = serieBatchRequest(serieId, action, chunk, withSend);
+          const logo = logoOffered ? (SERIE_LOGO_CHOICES.find((choice) => choice.key === logoChoice)?.value ?? null) : null;
+          const { url, body } = serieBatchRequest(serieId, action, chunk, withSend, logo);
           const response = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -240,10 +247,16 @@ function SerieBatchDialog({
   }
 
   const count = plan?.eligible.length ?? 0;
+  const logoOffered = action === "approve" && plan?.accreditationLogoUploaded === true;
   // The sentence above the list: how many samples alert, and whether at this step.
   const alerting = plan?.eligible.filter((line) => (line.alertables ?? 0) > 0).length ?? 0;
+  // K7: « Envoyer la série » is where the alerts of a série « Validée » leave — the dialog says so.
   const alertNotice =
-    action !== "send" && alerting > 0 ? serieAlertNotice(action, plan?.alertsAtTechnical ?? true, alerting) : null;
+    action === "send"
+      ? serieSendAlertNotice(alerting)
+      : alerting > 0
+        ? serieAlertNotice(action, plan?.alertsAtTechnical ?? true, alerting)
+        : null;
   // The panel's « Mode démonstration »: shown whenever this action e-mails the client.
   const sendsMail = action !== "validate" || (plan?.eligible.some((line) => line.alertNow) ?? false);
   const demoNotice = plan !== null && plan.emailLive === false && sendsMail && count > 0;
@@ -394,6 +407,26 @@ function SerieBatchDialog({
                 ))}
               </ul>
             </section>
+          )}
+
+          {logoOffered && count > 0 && (
+            <fieldset className="mt-4 rounded-xl border border-slate-200 px-3 py-2.5">
+              <legend className="px-1 text-sm font-semibold text-slate-800">Logo d&apos;accréditation</legend>
+              {SERIE_LOGO_CHOICES.map((choice) => (
+                <label key={choice.key} className="mt-1 flex min-h-[44px] cursor-pointer items-start gap-3 text-sm text-slate-700">
+                  <input
+                    type="radio"
+                    name="serie-accreditation-logo"
+                    checked={logoChoice === choice.key}
+                    onChange={() => setLogoChoice(choice.key)}
+                    disabled={!!busy}
+                    className="mt-0.5 h-4 w-4 accent-brand"
+                  />
+                  <span>{choice.label}</span>
+                </label>
+              ))}
+              <p className="mt-1 text-xs text-slate-500">Le choix est figé avec chaque rapport émis et tracé dans le journal.</p>
+            </fieldset>
           )}
 
           {error && (

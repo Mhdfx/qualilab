@@ -1,7 +1,8 @@
 import type { SampleStatus } from "@/generated/prisma/enums";
 import type { Role } from "./roles";
 import { formatDecimal } from "./labels";
-import { COMMERCIAL_RESENDS_REPORTS } from "./lab-proposals";
+import { alertsAtApproval } from "./alert-moment";
+import { ACCREDITATION_LOGO_BY_HAND, COMMERCIAL_RESENDS_REPORTS } from "./lab-proposals";
 
 /**
  * The actions on an issued report that are not part of the double
@@ -25,9 +26,11 @@ export const SEND_REPORT_ROLES = ["VALIDATEUR", "DIRECTION", "ADMIN"] as const s
 /**
  * Who may reach `POST /api/samples/[id]/report/send` at all: the senders,
  * plus the gestionnaire commercial for the RESEND of a version already sent
- * (finalversion.md:116, V11) — kept by default until the re-ask R-13 (b)
- * answers, behind `COMMERCIAL_RESENDS_REPORTS`. The route then decides with
- * `reportSendRefusal` on the report it reads.
+ * (finalversion.md:116, V11) while `COMMERCIAL_RESENDS_REPORTS` is on. The
+ * route then decides with `reportSendRefusal` on the report it reads: since
+ * lot 4A (K8, Q9 of 04/11 — the switch off) it refuses the gestionnaire
+ * every send with a 403; the guard keeps the four so that the switch stays
+ * a way back without touching the route.
  */
 export const RESEND_REPORT_ROLES = ["GESTIONNAIRE", ...SEND_REPORT_ROLES] as const satisfies readonly Role[];
 
@@ -43,7 +46,8 @@ export function sendsReports(role: string): boolean {
  * gestionnaire commercial only resends the version in force once it has
  * left (`reportVersionSent`), never while an amendment is pending (the
  * send would issue and send the amended version: a first send), and not at
- * all when `COMMERCIAL_RESENDS_REPORTS` is off.
+ * all when `COMMERCIAL_RESENDS_REPORTS` is off (the default since lot 4A,
+ * K8 — confirmé le 04/11).
  */
 export function reportSendRefusal(
   role: string,
@@ -111,28 +115,44 @@ export function reportVersionSent(report: { sentAt: Date | null; amendedAt: Date
  * devra pas être envoyé automatiquement au client »). « Valider » issues the
  * report and leaves the sample VALIDE — listed « Validés — à envoyer » —
  * until someone clicks « Envoyer au client »; « Valider et envoyer » sends it
- * at once. The contamination alerts do not follow the report: the approval
- * always runs them. With `LabSettings.alertAfterTechnicalValidation` (the
- * laboratory's choice of 29/09) they left at the technical validation and
- * the call is a no-op — or the retry of a failed one; otherwise this is
- * where they leave.
+ * at once. The contamination alerts (`sendAlerts`, `alertsAtApproval`):
+ * since lot 4A (K7, Q9 of 04/11 — `ALERTS_AT_VALIDATION` off) they leave
+ * with the report only, so with « Valider et envoyer »; switch on, the
+ * approval always runs them (a no-op when they left at the technical
+ * validation, the retry of a failed one, or their only send).
+ *
+ * `accreditationLogo` (K10, Q13 of 04/11 — `ACCREDITATION_LOGO_BY_HAND`):
+ * the box « Logo d'accréditation » as the signer left it, null when it was
+ * not shown (no logo uploaded) or the switch is off — the rule decides
+ * (`accreditationLogoDecision`).
  */
 export type ApprovalDispatch =
-  | { ok: true; sendReport: boolean; sendAlerts: true }
+  | { ok: true; sendReport: boolean; sendAlerts: boolean; accreditationLogo: boolean | null }
   | { ok: false; error: string };
 
 /**
  * Reads `send` of the approval body (`POST /api/samples/[id]/validation`,
- * `action: "approve"`): absent is « Valider » (nothing leaves), `true` is
- * « Valider et envoyer »; anything but a boolean is refused (400) rather
- * than guessed.
+ * `action: "approve"`, and the série's): absent is « Valider » (nothing
+ * leaves), `true` is « Valider et envoyer »; `accreditationLogo` absent or
+ * null is the rule, a boolean the signer's choice; anything else is refused
+ * (400) rather than guessed.
  */
-export function approvalDispatch(body: unknown): ApprovalDispatch {
-  const send = body && typeof body === "object" ? (body as { send?: unknown }).send : undefined;
+export function approvalDispatch(body: unknown, logoByHand: boolean = ACCREDITATION_LOGO_BY_HAND): ApprovalDispatch {
+  const fields = body && typeof body === "object" ? (body as { send?: unknown; accreditationLogo?: unknown }) : {};
+  const send = fields.send;
   if (send !== undefined && typeof send !== "boolean") {
     return { ok: false, error: "Requête invalide : « send » vaut true ou false." };
   }
-  return { ok: true, sendReport: send === true, sendAlerts: true };
+  const logo = fields.accreditationLogo;
+  if (logo !== undefined && logo !== null && typeof logo !== "boolean") {
+    return { ok: false, error: "Requête invalide : « accreditationLogo » vaut true, false ou null." };
+  }
+  return {
+    ok: true,
+    sendReport: send === true,
+    sendAlerts: alertsAtApproval(send === true),
+    accreditationLogo: logoByHand && typeof logo === "boolean" ? logo : null,
+  };
 }
 
 /** The validation panel's four decisions, as `POST /api/samples/[id]/validation` reads them. */
@@ -142,13 +162,22 @@ export type ValidationAction = "validate" | "approve" | "reject";
  * The body the validation panel posts. `send` rides only on an approval —
  * true for « Valider et envoyer », false for « Valider » — so that
  * `approvalDispatch` sends the report exactly when that button was used.
+ * `accreditationLogo` (K10) rides on an approval too, only when the box was
+ * shown (a boolean); null or absent leaves the rule to decide.
  */
-export function validationBody(action: ValidationAction, reason: string, regulationId: string, withSend: boolean) {
+export function validationBody(
+  action: ValidationAction,
+  reason: string,
+  regulationId: string,
+  withSend: boolean,
+  accreditationLogo: boolean | null = null
+) {
   return {
     action,
     reason: reason.trim(),
     regulationId: regulationId || undefined,
     ...(action === "approve" ? { send: withSend } : {}),
+    ...(action === "approve" && accreditationLogo !== null ? { accreditationLogo } : {}),
   };
 }
 
