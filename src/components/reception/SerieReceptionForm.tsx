@@ -11,6 +11,7 @@ import {
   FileText,
   ShieldCheck,
   Thermometer,
+  Undo2,
 } from "lucide-react";
 import type {
   AirMethod,
@@ -149,7 +150,8 @@ import { summaryLineOf, verbSampleOf, type ReceptionVerbFacts } from "./receptio
  * A non-conform sample is analysed anyway — the client's agreement noted
  * (« Accord du client », required when the laboratory says so) —, held
  * « en attente du client » (received, numbered, released later from
- * « Bloqués »), or destroyed (A9).
+ * « Bloqués »), destroyed (A9), or rejected — given back to the client
+ * (« Rejeter (rendu au client) », I9, 04/11).
  *
  * No technician here (retour du 08/10, RETOUR-LABO-06-10.md §9.3), nor
  * anywhere since 13/10 (prise en charge libre, PROGRAMME.md §10): the
@@ -1061,7 +1063,7 @@ export function SerieReceptionForm({
                   <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                     Échantillon réceptionné et numéroté, puis bloqué jusqu&apos;à l&apos;avis du client : il apparaît dans
-                    « Bloqués » de la réception, d&apos;où il sera analysé ou détruit.
+                    « Bloqués » de la réception, d&apos;où il sera analysé, détruit ou rendu au client.
                   </p>
                 )}
 
@@ -1070,6 +1072,15 @@ export function SerieReceptionForm({
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                     Échantillon détruit : numéroté et imprimé sur le bon de réception avec sa non-conformité, puis annulé
                     (motif « Détruit à réception »). Aucune analyse, rien n&apos;est facturé.
+                  </p>
+                )}
+
+                {!conformity && line.decision === "REJETER" && (
+                  <p className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                    <Undo2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    Échantillon rejeté et rendu au client : numéroté et imprimé sur le bon de réception avec sa
+                    non-conformité, puis annulé (motif « Rejeté à réception — rendu au client »). Ni analyse ni
+                    destruction, rien n&apos;est facturé ; le client est informé par e-mail.
                   </p>
                 )}
               </Card>

@@ -16,10 +16,12 @@ import { parseConsultation, type ClientConsultation } from "./client-consultatio
  * which joins the programme queue like any received sample, then
  * « À prendre » once programmed — a technician takes it there (prise en
  * charge libre, PROGRAMME.md §10); « Détruire » cancels it (« Détruit à
- * réception ») and the client is told.
+ * réception ») and the client is told; « Rejeter (rendu au client) » (I9,
+ * 04/11) cancels it with the motif « Rejeté à réception — rendu au client »
+ * — given back, not destroyed — and the client is told the same way.
  */
 
-export const RELEASE_DECISIONS = ["ANALYSER", "DETRUIRE"] as const;
+export const RELEASE_DECISIONS = ["ANALYSER", "DETRUIRE", "REJETER"] as const;
 export type ReleaseDecision = (typeof RELEASE_DECISIONS)[number];
 
 export const RELEASE_REASON_MAX = 2000;
@@ -27,7 +29,7 @@ export const RELEASE_REASON_MAX = 2000;
 export const RELEASE_MESSAGES = {
   notBlocked: "Cet échantillon n'est pas bloqué en réception.",
   adminOnly: "Seul un administrateur peut libérer cet échantillon : il n'attend pas l'avis du client.",
-  decision: "Choisissez : analyser ou détruire l'échantillon.",
+  decision: "Choisissez : analyser, détruire ou rejeter (rendre au client) l'échantillon.",
   reasonTooLong: "Le motif est trop long (2 000 caractères maximum).",
   already: "Cet échantillon vient d'être libéré.",
 } as const;
@@ -90,7 +92,7 @@ export function parseReleaseBody(
   const reason = typeof input.reason === "string" ? input.reason.trim() : "";
   if (reason.length > RELEASE_REASON_MAX) return { ok: false, error: RELEASE_MESSAGES.reasonTooLong };
 
-  // The agreement is recorded for an analysis; a destruction ignores it.
+  // The agreement is recorded for an analysis; a destruction or a rejection ignores it.
   let consultation: ClientConsultation | null = null;
   if (decision === "ANALYSER") {
     const parsed = parseConsultation(input.consultation, now);

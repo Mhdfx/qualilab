@@ -15,7 +15,8 @@ export default async function EntreprisePage() {
   await requireRole("ADMIN");
 
   // Lot 3C (RETOUR-LABO-28-10.md): the accreditation logo and the stamp
-  // (K4), the e-mails' sender (L4), the internal copies of the alerts (L5).
+  // (K4), the e-mails' sender (L4), the internal copies of the alerts (L5)
+  // and of the reports (L6).
   const [company, images, sender, copies, clients] = await Promise.all([
     getCompany(),
     getReportImages(),

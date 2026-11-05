@@ -35,6 +35,7 @@ import {
   withSurfaceState,
 } from "./labels";
 import { DEFAULT_THRESHOLDS, RECEPTION_RULES, receptionRuleLine, type ReceptionThresholds } from "./reception-rules";
+import { NOT_ANALYSED_OUTCOME, NOT_ANALYSED_SUFFIX } from "./reception-outcome";
 import { UNDECLARED_SAMPLING } from "./sample-search";
 
 /**
@@ -66,6 +67,8 @@ export type DocumentLine = {
   cancelled?: boolean;
   /** Non-conform at reception and destroyed (slice E): said as such. */
   destroyed?: boolean;
+  /** Non-conform at reception and rejected — given back to the client (I9): said as such. */
+  rejected?: boolean;
   /** Cancelled « Non reçu au laboratoire » (NON_RECU): never reached the laboratory. */
   notReceived?: boolean;
   lineNumber: number;
@@ -392,7 +395,8 @@ function surfaceStateText(line: DocumentLine) {
 }
 
 function cancelledText(line: DocumentLine) {
-  if (line.destroyed) return "Détruit à réception";
+  if (line.destroyed) return NOT_ANALYSED_OUTCOME.DETRUIT_A_RECEPTION;
+  if (line.rejected) return NOT_ANALYSED_OUTCOME.REJETE_A_RECEPTION;
   return line.notReceived ? "Non reçu" : "Échantillon annulé";
 }
 
@@ -556,7 +560,7 @@ export function buildBonHtml(data: SerieDocumentData, thresholds: ReceptionThres
       const waiting = !l.cancelled && l.awaitingClient ? " — en attente de l'avis du client" : "";
       const status =
         l.conformity === false
-          ? `<br><span class="nc">Non conforme${l.conformityReason ? ` — ${escapeHtml(NON_CONFORMITY_REASON_LABELS[l.conformityReason])}` : ""}${l.destroyed ? " — détruit" : l.cancelled ? " — annulé" : ""}${waiting}</span>`
+          ? `<br><span class="nc">Non conforme${l.conformityReason ? ` — ${escapeHtml(NON_CONFORMITY_REASON_LABELS[l.conformityReason])}` : ""}${l.destroyed ? ` — ${NOT_ANALYSED_SUFFIX.DETRUIT_A_RECEPTION}` : l.rejected ? ` — ${NOT_ANALYSED_SUFFIX.REJETE_A_RECEPTION}` : l.cancelled ? " — annulé" : ""}${waiting}</span>`
           : l.cancelled
             ? `<br><span class="nc">${cancelledText(l)}</span>`
             : "";

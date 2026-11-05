@@ -147,6 +147,8 @@ export async function GET(
   const lines: DocumentLine[] = serie.samples.map((s) => ({
     cancelled: s.status === "ANNULE",
     destroyed: s.status === "ANNULE" && s.cancelReason === "DETRUIT_A_RECEPTION",
+    // I9: rejected — given back to the client, not destroyed.
+    rejected: s.status === "ANNULE" && s.cancelReason === "REJETE_A_RECEPTION",
     notReceived: s.status === "ANNULE" && s.cancelReason === "NON_RECU",
     lineNumber: s.lineNumber,
     ref: sampleRef(s.lineNumber, s.code),

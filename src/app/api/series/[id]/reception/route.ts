@@ -24,7 +24,9 @@ class StaleReception extends Error {}
  * ignored (`validateReception`), and `Sample.technicianId` is never written
  * here. A non-conform sample the réceptionniste destroys is
  * received and numbered too (it prints on the bon de réception), then
- * cancelled in the same transaction with the motif DETRUIT_A_RECEPTION.
+ * cancelled in the same transaction with the motif DETRUIT_A_RECEPTION; one
+ * rejected — « Rejeter (rendu au client) », I9 — the same way with the motif
+ * REJETE_A_RECEPTION (given back to the client, not destroyed).
  * Either every sample is received or none is — two réceptionnistes on the
  * same série cannot half-number it (`StaleReception` → 409).
  *
@@ -165,7 +167,7 @@ export async function POST(
 
   // Every status written below, checked by the state machine first.
   for (const line of input.lines) {
-    const steps = line.destroy ? (["RECU", "ANNULE"] as const) : (["RECU"] as const);
+    const steps = line.cancelReason ? (["RECU", "ANNULE"] as const) : (["RECU"] as const);
     let from: "PRELEVE" | "RECU" = "PRELEVE";
     for (const to of steps) {
       const transition = canTransition(from, to, session.role);
@@ -220,8 +222,9 @@ export async function POST(
                     clientConsultationNote: line.consultation.note,
                   }
                 : {}),
-              ...(line.destroy
-                ? { status: "ANNULE" as const, cancelledAt: receivedAt, cancelledById: session.id, cancelReason: "DETRUIT_A_RECEPTION" as const }
+              // Destroyed or rejected (I9): cancelled at once with its own motif.
+              ...(line.cancelReason
+                ? { status: "ANNULE" as const, cancelledAt: receivedAt, cancelledById: session.id, cancelReason: line.cancelReason }
                 : {}),
             },
           });
@@ -298,6 +301,7 @@ export async function POST(
             // A7: the observation — the justification of an accepted doubt.
             receptionNote: line.receptionNote,
             destroyed: line.destroy,
+            rejected: line.reject,
             // A9: the decision, and the client's agreement when recorded.
             decision: line.decision,
             consultation: line.consultation,
@@ -314,9 +318,9 @@ export async function POST(
           },
         })
       ),
-      // A destroyed sample is a cancellation like any other: its own entry.
+      // A destroyed or rejected sample is a cancellation like any other: its own entry.
       ...input.lines
-        .filter((line) => line.destroy)
+        .filter((line) => line.cancelReason)
         .map((line) =>
           logAudit({
             actorId: session.id,
@@ -329,7 +333,7 @@ export async function POST(
               code: rows.find((r) => r.id === line.sampleId)?.code ?? null,
               controlCode: rows.find((r) => r.id === line.sampleId)?.controlCode ?? null,
               serialNumber: serie.serialNumber,
-              reason: "DETRUIT_A_RECEPTION",
+              reason: line.cancelReason,
               note: line.conformityNote,
             },
           })
@@ -381,6 +385,7 @@ export async function POST(
           lines: rows.length,
           controlCodes: rows.map((r) => r.controlCode),
           destroyed: input.lines.filter((l) => l.destroy).map((l) => l.ref),
+          rejected: input.lines.filter((l) => l.reject).map((l) => l.ref),
           awaitingClient: input.lines.filter((l) => l.awaitClient).map((l) => l.ref),
           // The arrival as stored: typed, else the série's, else the reception instant.
           arrivedAt: input.arrivedAt ?? serie.arrivedAt ?? receivedAt,
@@ -392,10 +397,10 @@ export async function POST(
       }),
     ]);
 
-    // The client is told about the destroyed samples (Q35) — never at the
-    // cost of the reception itself.
+    // The client is told about the destroyed and rejected samples (Q35, I9)
+    // — never at the cost of the reception itself.
     const destruction = await notifyDestroyed(
-      input.lines.filter((line) => line.destroy).map((line) => line.sampleId),
+      input.lines.filter((line) => line.cancelReason).map((line) => line.sampleId),
       session.id
     ).catch((error) => {
       console.error("[reception] destruction notice failed", { serieId: serie.id, error });

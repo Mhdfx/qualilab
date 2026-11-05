@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BellRing, Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { ALERT_COPY_LABEL_MAX } from "@/lib/alert-copies";
+import { ALERT_COPY_LABEL_MAX, ALERT_COPY_MESSAGES, copiesKind } from "@/lib/alert-copies";
 
 export type AlertCopyRow = {
   id: string;
@@ -12,19 +12,42 @@ export type AlertCopyRow = {
   label: string | null;
   allClients: boolean | null;
   active: boolean | null;
+  /** L6: null (an address of L5) reads as true. */
+  forAlerts: boolean | null;
+  /** L6: null reads as false. */
+  forReports: boolean | null;
   clients: { client: { id: string; name: string } }[];
 };
 
-type Draft = { email: string; label: string; allClients: boolean; active: boolean; clientIds: string[] };
+type Draft = {
+  email: string;
+  label: string;
+  allClients: boolean;
+  active: boolean;
+  clientIds: string[];
+  forAlerts: boolean;
+  forReports: boolean;
+};
 
-const EMPTY: Draft = { email: "", label: "", allClients: true, active: true, clientIds: [] };
+/** A new address receives both (R-16: « + 2 adresses dans tous les envois »). */
+const EMPTY: Draft = { email: "", label: "", allClients: true, active: true, clientIds: [], forAlerts: true, forReports: true };
+
+/** « Alertes et rapports », « Alertes », « Rapports » — what an address receives. */
+function kindsText(row: Pick<AlertCopyRow, "forAlerts" | "forReports">): string {
+  const alerts = copiesKind(row, "alerts");
+  const reports = copiesKind(row, "reports");
+  return alerts && reports ? "Alertes et rapports" : reports ? "Rapports" : "Alertes";
+}
 
 /**
- * « Copies internes des alertes » (RETOUR-LABO-28-10.md L5 — Q93, reading to
- * confirm by R-16): the laboratory's addresses (direction, qualité…) copied
- * on the contamination alerts, of every client or of the clients chosen —
- * every site of a chosen client. The identity's e-mail stays in copy of
- * every alert, as before.
+ * « Copies internes (alertes et rapports) » — the laboratory's addresses
+ * (direction, qualité…) in copy of what leaves for the client, of every
+ * client or of the clients chosen (every site of a chosen client). L5
+ * (RETOUR-LABO-28-10.md, Q93) for the contamination alerts; L6
+ * (RETOUR-LABO-04-11.md, R-16) for the reports too — each address receives
+ * the alerts, the reports or both. The identity's e-mail stays in copy of
+ * every alert, as before; a report is copied to the addresses ticked
+ * « Rapports » only, at its first send and at every resend.
  */
 export function AlertCopiesManager({ initial, clients }: { initial: AlertCopyRow[]; clients: { id: string; name: string }[] }) {
   const router = useRouter();
@@ -43,13 +66,25 @@ export function AlertCopiesManager({ initial, clients }: { initial: AlertCopyRow
     setEditing(row ? row.id : "new");
     setDraft(
       row
-        ? { email: row.email, label: row.label ?? "", allClients: row.allClients !== false, active: row.active !== false, clientIds: row.clients.map((c) => c.client.id) }
+        ? {
+            email: row.email,
+            label: row.label ?? "",
+            allClients: row.allClients !== false,
+            active: row.active !== false,
+            clientIds: row.clients.map((c) => c.client.id),
+            forAlerts: copiesKind(row, "alerts"),
+            forReports: copiesKind(row, "reports"),
+          }
         : EMPTY
     );
   }
 
   async function submit() {
     if (busy) return;
+    if (!draft.forAlerts && !draft.forReports) {
+      setError(ALERT_COPY_MESSAGES.kind);
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -75,7 +110,7 @@ export function AlertCopiesManager({ initial, clients }: { initial: AlertCopyRow
   }
 
   async function remove(row: AlertCopyRow) {
-    if (busy || !window.confirm(`Retirer ${row.email} des copies des alertes ?`)) return;
+    if (busy || !window.confirm(`Retirer ${row.email} des copies internes (alertes et rapports) ?`)) return;
     setBusy(true);
     setError("");
     try {
@@ -102,11 +137,13 @@ export function AlertCopiesManager({ initial, clients }: { initial: AlertCopyRow
     <Card className="p-5">
       <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
         <BellRing className="h-4 w-4 text-brand" aria-hidden="true" />
-        Copies internes des alertes de contamination
+        Copies internes (alertes et rapports)
       </h2>
       <p className="mt-1 text-sm text-slate-500">
-        Les adresses du laboratoire (direction, qualité…) mises en copie des alertes, pour tous les clients ou pour les clients
-        choisis (tous leurs sites). L&apos;e-mail de l&apos;identité reste en copie de chaque alerte.
+        Les adresses du laboratoire (direction, qualité…) mises en copie des alertes de contamination, des rapports ou des
+        deux, pour tous les clients ou pour les clients choisis (tous leurs sites). Un rapport est copié à son premier envoi
+        comme à chaque renvoi, jamais en double avec les adresses du client. L&apos;e-mail de l&apos;identité reste en copie de
+        chaque alerte.
       </p>
 
       {rows.length === 0 ? (
@@ -120,7 +157,8 @@ export function AlertCopiesManager({ initial, clients }: { initial: AlertCopyRow
                 {row.label && <span className="ml-2 text-slate-500">{row.label}</span>}
                 <span className="block text-xs text-slate-500">
                   {row.active === false ? "Désactivée · " : ""}
-                  {row.allClients !== false ? "Tous les clients" : `Clients choisis : ${row.clients.map((c) => c.client.name).join(", ")}`}
+                  {kindsText(row)} ·{" "}
+                  {row.allClients !== false ? "tous les clients" : `clients choisis : ${row.clients.map((c) => c.client.name).join(", ")}`}
                 </span>
               </span>
               <button type="button" onClick={() => edit(row)} className="inline-flex min-h-[36px] items-center gap-1 rounded-lg px-2 font-medium text-brand hover:bg-brand/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
@@ -151,7 +189,30 @@ export function AlertCopiesManager({ initial, clients }: { initial: AlertCopyRow
             </div>
           </div>
           <fieldset className="mt-4">
-            <legend className="text-sm font-medium text-slate-700">En copie des alertes de</legend>
+            <legend className="text-sm font-medium text-slate-700">Reçoit en copie</legend>
+            <div className="mt-1.5 flex flex-wrap gap-4 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={draft.forAlerts}
+                  onChange={(e) => setDraft({ ...draft, forAlerts: e.target.checked })}
+                  className="h-4 w-4 accent-brand"
+                />
+                Alertes de contamination
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={draft.forReports}
+                  onChange={(e) => setDraft({ ...draft, forReports: e.target.checked })}
+                  className="h-4 w-4 accent-brand"
+                />
+                Rapports (premier envoi et renvois)
+              </label>
+            </div>
+          </fieldset>
+          <fieldset className="mt-4">
+            <legend className="text-sm font-medium text-slate-700">Pour</legend>
             <div className="mt-1.5 flex flex-wrap gap-4 text-sm">
               <label className="flex items-center gap-2">
                 <input type="radio" name="copy-scope" checked={draft.allClients} onChange={() => setDraft({ ...draft, allClients: true })} className="h-4 w-4 accent-brand" />

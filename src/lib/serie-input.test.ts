@@ -867,6 +867,24 @@ describe("validateSerie — the deposit at the counter", () => {
     expect(destroyed).toMatchObject({ ok: true, value: { lines: [{ destroy: true }] } });
   });
 
+  it("I9 — rejects (gives back to the client) only a non-conform sample at the counter", () => {
+    const conform = validateSerie({ ...deposit, lines: [{ ...deposit.lines[0], decision: "REJETER" }] }, natures, { kind: "DEPOT" });
+    expect(conform).toMatchObject({
+      ok: false,
+      line: 1,
+      error: "Échantillon 1 — seul un échantillon non conforme peut être rejeté (rendu au client).",
+    });
+    const rejected = validateSerie({ ...deposit, lines: [{ ...deposit.lines[1], decision: "REJETER" }] }, natures, { kind: "DEPOT" });
+    expect(rejected).toMatchObject({
+      ok: true,
+      value: { lines: [{ decision: "REJETER", reject: true, destroy: false, awaitClient: false, cancelReason: "REJETE_A_RECEPTION" }] },
+    });
+    const destroyed = validateSerie({ ...deposit, lines: [{ ...deposit.lines[1], decision: "DETRUIRE" }] }, natures, { kind: "DEPOT" });
+    expect(destroyed).toMatchObject({ ok: true, value: { lines: [{ reject: false, cancelReason: "DETRUIT_A_RECEPTION" }] } });
+    const analysed = validateSerie(deposit, natures, { kind: "DEPOT" });
+    expect(analysed.ok && analysed.value.lines.every((l) => l.cancelReason === null && !l.reject)).toBe(true);
+  });
+
   it("never takes a technician at the counter — one takes the sample from « À prendre » (RETOUR-LABO-06-10 §9.3, PROGRAMME.md §10)", () => {
     // Both lines still send `technicianId` (a page opened before 08/10):
     // the deposit goes through, the technician is dropped.

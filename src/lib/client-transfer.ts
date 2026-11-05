@@ -293,9 +293,10 @@ export async function moveTypesAndProfiles(
  * Lot 3C, L5 (RETOUR-LABO-28-10.md): an internal copy address set to
  * « clients choisis » for a source client is chosen for the target — its
  * samples now carry the target's id, so the address keeps receiving their
- * alerts. A link the target already has is not written twice; the sources'
- * links are deleted (the source is archived). Returns the addresses newly
- * linked to the target.
+ * alerts and, when ticked « Rapports » (L6), their reports. A link the
+ * target already has is not written twice; the sources' links are deleted
+ * (the source is archived). Returns the addresses newly linked to the
+ * target.
  */
 export async function moveAlertCopies(tx: Tx, fromClientIds: string[], toClientId: string): Promise<number> {
   const sources = fromClientIds.filter((id) => id !== toClientId);

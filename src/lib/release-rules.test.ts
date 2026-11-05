@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CONSULTATION_MESSAGES } from "./client-consultation";
-import { RELEASE_MESSAGES, canRelease, parseReleaseBody, releaseRefusal, waitingSince } from "./release-rules";
+import { RELEASE_DECISIONS, RELEASE_MESSAGES, canRelease, parseReleaseBody, releaseRefusal, waitingSince } from "./release-rules";
 
 const now = new Date("2026-10-10T14:30:00.000Z");
 const awaiting = { status: "RECU" as const, analysisBlocked: true, awaitingClientSince: new Date("2026-10-08T10:00:00.000Z") };
@@ -49,6 +49,13 @@ describe("parseReleaseBody — analyse or destroy, never a technician", () => {
     });
     const destroy = parseReleaseBody({ decision: "DETRUIRE", consultation: { name: "ignoré" } }, now);
     expect(destroy).toEqual({ ok: true, value: { decision: "DETRUIRE", consultation: null, reason: null, legacy: false } });
+    // I9: « Rejeter (rendu au client) » — the agreement ignored, the motif kept.
+    const reject = parseReleaseBody({ decision: "REJETER", consultation: { name: "ignoré" }, reason: " Le client reprend l'échantillon " }, now);
+    expect(reject).toEqual({
+      ok: true,
+      value: { decision: "REJETER", consultation: null, reason: "Le client reprend l'échantillon", legacy: false },
+    });
+    expect(RELEASE_DECISIONS).toEqual(["ANALYSER", "DETRUIRE", "REJETER"]);
   });
 
   it("reads the old body { technicianId } as an analysis and drops the technician", () => {
