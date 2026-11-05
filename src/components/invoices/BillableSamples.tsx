@@ -7,6 +7,7 @@ import { SAMPLE_STATUS_LABELS, SAMPLE_TYPE_LABELS } from "@/lib/labels";
 import { billedBeforeResult } from "@/lib/billing-status";
 import type { SampleStatus, SampleType } from "@/generated/prisma/client";
 import { viaSiteLabel, type SampleProvenance } from "@/components/commercial/client-actions-logic";
+import type { LinePriceOrigin } from "@/lib/client-prices";
 
 export type BillableLine = {
   sampleId: string;
@@ -14,6 +15,8 @@ export type BillableLine = {
   quantity: number;
   unitPrice: number;
   unpriced: boolean;
+  /** Lot 4H, H5: the client's own price, the catalogue's, or none (`proposeLines`). */
+  priceOrigin: LinePriceOrigin;
 };
 
 /**
@@ -41,7 +44,8 @@ type BillableSample = SampleProvenance & {
  * programmed (PROGRAMME.md §6): the invoice no longer waits for the report,
  * and a line billed before its result is flagged so the accountant knows.
  *
- * Choosing samples fills the invoice lines at catalogue prices; the accountant
+ * Choosing samples fills the invoice lines at the client's own prices where
+ * it has some, catalogue prices otherwise (lot 4H, H5); the accountant
  * then edits the wording and the amounts freely before issuing, which is the
  * control over naming the client asked for.
  */
@@ -169,6 +173,7 @@ function BillableSamplesFor({
             0
           );
           const missingPrice = sampleLines.some((line) => line.unpriced);
+          const clientPriced = sampleLines.filter((line) => line.priceOrigin?.source === "CLIENT").length;
           // Programmed or on the bench: billed before its results are validated.
           const beforeResult = billedBeforeResult(sample.status) && !sample.amendmentPending;
           const via = viaSiteLabel(sample, clientId);
@@ -190,6 +195,14 @@ function BillableSamplesFor({
                     <span className="text-xs text-slate-500">
                       {SAMPLE_TYPE_LABELS[sample.type]}
                     </span>
+                    {clientPriced > 0 && (
+                      <span
+                        title="Prix propres au client, à la place du catalogue : modifiables sur chaque ligne."
+                        className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 ring-1 ring-violet-200"
+                      >
+                        {clientPriced === sampleLines.length ? "prix du client" : `${clientPriced} prix du client`}
+                      </span>
+                    )}
                     {missingPrice && (
                       <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
                         prix à saisir

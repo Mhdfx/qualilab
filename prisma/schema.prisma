@@ -344,6 +344,8 @@ model User {
   calibrations         CalibrationRecord[]  @relation("CalibrationCreatedBy")
   temperatures         TemperatureReading[] @relation("TemperatureCreatedBy")
   eilCampaigns         EilCampaign[]        @relation("EilCreatedBy")
+  /// Lot 4H, H5 — the client prices this user last set by hand.
+  clientPrices         ClientPrice[]        @relation("ClientPriceUpdatedBy")
 
   @@index([role])
   @@index([clientId])
@@ -447,6 +449,8 @@ model Client {
   portalUsers    User[]            @relation("PortalUserClient")
   /// RETOUR-LABO-28-10.md L5: the laboratory's addresses copied on this client's alerts.
   alertCopies    AlertCopyClient[]
+  /// Lot 4H, H5 (RETOUR-LABO-04-11.md): the prices proper to this client.
+  prices         ClientPrice[]
 
   @@index([archived, name])
   @@index([mergedIntoId])
@@ -511,6 +515,8 @@ model AnalysisParameter {
   /// left out of the report and listed on its screen. Chosen in /admin/onssa
   /// (proposed from the name and the aliases).
   onssaColumn    String?                    @db.VarChar(40)
+  /// Lot 4H, H5: the prices proper to some clients for this analysis.
+  clientPrices   ClientPrice[]
 }
 
 model LabService {
@@ -520,6 +526,8 @@ model LabService {
   /// Exact money — never Float. Read through `toMoney()`.
   unitPrice Decimal @default(0) @db.Decimal(12, 2)
   active    Boolean @default(true)
+  /// Lot 4H, H5: the prices proper to some clients for this service.
+  clientPrices ClientPrice[]
 }
 
 model Sample {
@@ -1904,4 +1912,51 @@ model OnssaProductGroup {
   natures      AnalysisNature[]
 
   @@index([active, sortOrder])
+}
+
+/// Lot 4H, H5 (RETOUR-LABO-04-11.md §5, R-4 « Oui »): where a client's price
+/// comes from — taken over from the old software (« Importer les prix
+/// clients », /admin/import), or typed on the client's fiche.
+enum ClientPriceOrigin {
+  REPRISE
+  SAISIE
+}
+
+/// Lot 4H, H5 — a price proper to one client for one analysis
+/// (`parameterId`) or one service of the catalogue (`labServiceId`),
+/// exactly one of the two. The invoice proposal takes it instead of the
+/// catalogue's, always editable, and says so on the line
+/// (`src/lib/client-prices.ts`). Read and written by the roles that see
+/// prices only (`BILLING_ROLES`, price-access.ts).
+model ClientPrice {
+  id           String             @id @default(cuid())
+  clientId     String
+  client       Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  parameterId  String?
+  parameter    AnalysisParameter? @relation(fields: [parameterId], references: [id], onDelete: Cascade)
+  labServiceId String?
+  labService   LabService?        @relation(fields: [labServiceId], references: [id], onDelete: Cascade)
+  /// « P:<parameterId> » or « S:<labServiceId> » (`clientPriceKey`): one
+  /// price per client and analysis or service.
+  itemKey      String             @db.VarChar(64)
+  /// Hors taxes. Exact money — never Float. Read through `toMoney()`.
+  unitPrice    Decimal            @db.Decimal(12, 2)
+  origin       ClientPriceOrigin
+  /// REPRISE: the row of the old software's PRIX_PARAME_PARCLIENTS — what
+  /// makes the import idempotent.
+  legacyPriceId    Int?           @unique
+  /// REPRISE: the old software's client (CLIENTS.ID) the price came from.
+  legacyClientId   Int?
+  /// REPRISE: when the old software last changed the price.
+  legacyModifiedAt DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  /// Who typed it last (SAISIE); null for a price the import wrote.
+  updatedById  String?
+  updatedBy    User?              @relation("ClientPriceUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([clientId, itemKey])
+  @@index([parameterId])
+  @@index([labServiceId])
+  @@index([updatedById])
 }

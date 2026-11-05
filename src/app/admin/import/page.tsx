@@ -5,6 +5,7 @@ import { ImportCriteres } from "@/components/admin/ImportCriteres";
 import { ImportMemoire } from "@/components/admin/ImportMemoire";
 import { ImportLegacy } from "@/components/admin/ImportLegacy";
 import { ImportSites } from "@/components/admin/ImportSites";
+import { ImportClientPrices } from "@/components/admin/ImportClientPrices";
 
 export const metadata = { title: "Import de données" };
 
@@ -38,6 +39,11 @@ export default async function ImportPage() {
         <section>
           <h2 className="mb-3 text-base font-semibold text-slate-900">Sites de l&apos;ancien logiciel (CSV)</h2>
           <ImportSites />
+        </section>
+        <section>
+          {/* Lot 4H, H5 (RETOUR-LABO-04-11.md §5): after the clients and their sites. */}
+          <h2 className="mb-3 text-base font-semibold text-slate-900">Prix propres aux clients (ancien logiciel, CSV)</h2>
+          <ImportClientPrices />
         </section>
       </div>
     </div>

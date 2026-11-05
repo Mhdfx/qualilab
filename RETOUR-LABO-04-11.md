@@ -204,6 +204,66 @@ Gestes du propriétaire avec ce lot (sans code, en production, journalisés) :
 | L6 | Q11 — R-16 | **copies internes étendues aux rapports** : chaque adresse de « Copies internes » (/admin/entreprise) reçoit les alertes, les rapports ou les deux, pour tous les clients ou des clients choisis ; l'envoi d'un rapport (premier envoi et renvoi) l'ajoute en copie, sans doublon avec les adresses du client ; le libellé devient « Copies internes (alertes et rapports) » ; les deux adresses du laboratoire : tous les clients, les deux | `prisma/schema.prisma` (`AlertCopyAddress` : `forReports`, `forAlerts`), `report-dispatch.ts`, /admin/entreprise, `moveAlertCopies`, tests | S | oui (additive) |
 | H5 | Q17 — R-4 | **prix propres à chaque client** : table (client, analyse ou service, prix HT, origine), écran de lecture et de correction sur la fiche client (profils qui voient les prix : comptabilité, administration, Direction, gestion commerciale), reprise des ≈ 6 700 prix depuis l'ancienne base (copie locale d'abord, rapport des prix sans analyse ou sans client correspondant), la facture propose le prix du client à la place du catalogue, toujours modifiable, l'origine du prix dite sur la ligne | `prisma/schema.prisma`, nouveau `src/lib/client-prices.ts`, reprise (script), facturation (`invoice-*`), fiche client, tests de gardes des prix | M–L | oui (additive) |
 
+#### H5 — tel que construit (lot 4H, 05/11, branche `lot4h`, local, non déployé)
+
+- **Table `ClientPrice`** (migration additive `20261105030000_lot4h_prix_clients`) : un
+  prix HT par client et par analyse (`AnalysisParameter`) ou prestation du catalogue
+  (`LabService`), origine « Repris de l'ancien logiciel » (REPRISE) ou « Saisi sur la
+  fiche client » (SAISIE), date, auteur ; un prix saisi n'est jamais écrasé par une
+  reprise.
+- **Lecture et correction** : carte « Prix propres au client » sur la fiche client
+  (gestion commerciale, administration) et page `/comptabilite/clients/[id]/prix`
+  (comptabilité, administration, ouverte depuis la facture) ; API
+  `/api/clients/[id]/prices` (GET, PUT, DELETE) pour COMPTABLE, GESTIONNAIRE, ADMIN ;
+  tout autre profil reçoit 403 ; chaque changement est journalisé (avant / après).
+  La Direction voit les prix par la règle du 25/10 mais n'a ni fiche client ni écran
+  de facture : elle ne reçoit pas cet écran (**hypothèse, à confirmer par C-8**).
+- **Facture** : la proposition (échantillons à facturer, choix d'une prestation)
+  prend le prix du client à la place du catalogue, toujours modifiable ; la ligne dit
+  « Prix du client — repris de l'ancien logiciel (catalogue : …) », « Prix du
+  catalogue », « Prix à saisir » ou « Prix modifié à la main ».
+- **Fusion et « Rattacher comme site de… »** : les prix du client archivé passent au
+  client conservé, sauf pour une analyse où celui-ci a déjà le sien.
+- **Reprise** : `scripts/legacy/extract-client-prices.py` (lecture seule de
+  `qlabo-fb`) écrit `backups/prix-clients-ancienne-base.csv` (ignoré par git) ;
+  « Importer les prix clients » (/admin/import, administrateur seul) : analyse
+  (rapprochés / client introuvable / client ambigu / analyse introuvable / doublons /
+  prix à 0), puis import en une transaction, journalisé (`CLIENT_PRICES_IMPORTED`,
+  chaque passage), idempotent (`legacyPriceId` ; même fichier relancé : 0 écrit).
+  Règles retenues (**hypothèses, à confirmer par C-8**) : un prix à 0 n'est pas un
+  prix propre (le catalogue s'applique) ; le prix d'un site de l'ancien logiciel va
+  au client qui paie ce site (son « Facturé à », sinon son client) ; deux prix pour
+  le même client et la même analyse : le plus récemment modifié est gardé.
+  `PRIX_ANALYSE_PARCLIENT` (18 lignes) n'est pas repris.
+
+**Comptes de la reprise, 05/11** — sur une copie de la base locale (`qualilab_h5`)
+où les clients (1 507 créés) et les sites (390) de l'ancien logiciel ont été repris
+comme en production le 01/10 et le 07/10 ; la production, qui a fusionné des clients
+depuis, donnera des chiffres voisins : l'écran d'analyse les montre avant l'import.
+
+| | Lignes |
+|---|---:|
+| Prix dans l'ancienne base (`PRIX_PARAME_PARCLIENTS`, 305 clients) | 6 695 |
+| Prix à 0 — le catalogue s'applique | 1 937 |
+| Lignes illisibles (client sans nom : 11 ; prix vide : 1) | 12 |
+| **Rapprochés** (client et analyse trouvés) | **4 016** |
+| — dont prix créés | 3 125 (290 clients) |
+| — dont doublons (même client et même analyse ; 186 à un autre prix) | 891 |
+| Client introuvable (3 clients) | 58 |
+| Client ambigu (5 clients : plusieurs fiches du même nom) | 207 |
+| Analyse introuvable (19 analyses) | 465 |
+| Relance du même fichier | 0 écrit, 3 125 inchangés |
+
+Clients trouvés : 285 par le nom, 5 par l'ICE, 1 par le site. Les analyses
+introuvables sont surtout des libellés de l'ancien logiciel absents du catalogue sous
+ce nom : eaux « Coliformes à 36 °C » (134) et « Escherichia coli » (127), surfaces
+« Coliformes totaux à 30 °C * » (100), effet aseptisant (Pseudomonas, Staphylococcus
+aureus, Aspergillus niger, Candida albicans : 76). Les ajouter en alias de l'analyse
+correspondante dans /admin/parametres (équivalence à confirmer par le laboratoire),
+puis relancer l'import : seuls les prix nouveaux sont écrits. Recette locale
+`h5-verify` 26/26 (gardes des neuf profils, pages, proposition de facture, saisie,
+retrait, relance idempotente, prix saisi conservé par la reprise).
+
 ### Après les clarifications (P2–P3)
 
 | # | Après | Ce qui changerait | Effort |
@@ -276,6 +336,15 @@ Le comportement construit reste en place ; rien n'est relancé.
   ne connaît que ces deux classes, un « Acceptable » y compte conforme
   (c'est ce que fait le logiciel) — ou souhaitez-vous ne plus voir
   « Acceptable » ailleurs non plus ?
+
+- **C-8 — R-4, la reprise des prix clients** (H5, construit) : « Dans l'ancien
+  logiciel, 1 937 prix propres valent 0 : nous les lisons « pas de prix propre, le
+  tarif s'applique » — d'accord ? Un prix saisi pour un site va au client qui paie ce
+  site ; si un client a deux prix pour la même analyse, nous gardons le plus récent.
+  « E. coli » de l'eau = « Escherichia coli » de l'ancien logiciel, « Coliformes
+  totaux » = « Coliformes à 36 °C » ? » — et pour le propriétaire : la Direction
+  doit-elle aussi lire et corriger ces prix (aujourd'hui : comptabilité, commercial,
+  administrateur) ?
 
 ## 8. Fichiers et données qu'il nous faut encore
 

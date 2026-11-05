@@ -32,6 +32,12 @@ import {
 import { ConfirmDialog, sendJson } from "@/components/invoices/InvoiceDialogs";
 import type { DraftFormInvoice } from "@/components/invoices/invoice-view";
 import { ClientPicker, type PickedClient } from "@/components/commercial/ClientPicker";
+import {
+  linePriceOriginLabel,
+  priceEditedByHand,
+  type ClientPriceRow,
+  type LinePriceOrigin,
+} from "@/lib/client-prices";
 
 /** Every active client may be invoiced. */
 const NO_EXCLUDED_CLIENTS: string[] = [];
@@ -44,6 +50,14 @@ type LineItem = {
   unitPrice: string;
   /** Set when the line came from a validated analysis. */
   sampleId?: string | null;
+  /**
+   * Lot 4H, H5: where the proposed price came from (the client's own, the
+   * catalogue's, none) and that price — the line says it, and says
+   * « Prix modifié à la main » once the accountant types another one.
+   * Unknown (null) on a line typed by hand or reopened from a draft.
+   */
+  priceOrigin?: LinePriceOrigin | null;
+  proposedPrice?: number | null;
 };
 
 let lineCounter = 0;
@@ -98,6 +112,25 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
   const [submitting, setSubmitting] = useState(false);
   const [confirmIssue, setConfirmIssue] = useState(false);
   const [error, setError] = useState("");
+  // Lot 4H, H5: the chosen client's own prices for the catalogue's services.
+  const [clientPrices, setClientPrices] = useState<{ clientId: string; rows: ClientPriceRow[] } | null>(null);
+
+  useEffect(() => {
+    if (!clientId) return;
+    let cancelled = false;
+    fetch(`/api/clients/${clientId}/prices`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (!cancelled) setClientPrices({ clientId, rows: Array.isArray(data) ? data : [] });
+      })
+      .catch(() => {
+        if (!cancelled) setClientPrices({ clientId, rows: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
+  const ownPrices = clientPrices?.clientId === clientId ? clientPrices.rows : [];
 
   useEffect(() => {
     fetch("/api/lab-services")
@@ -139,6 +172,14 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
    *  alone: the wording may have been edited on purpose. */
   function selectService(key: string, serviceId: string) {
     const service = services.find((s) => s.id === serviceId);
+    // The client's own price for the service when it has one (lot 4H, H5).
+    const own = ownPrices.find((row) => row.labServiceId === serviceId);
+    const priceOrigin: LinePriceOrigin | null = service
+      ? own
+        ? { source: "CLIENT", origin: own.origin, updatedAt: own.updatedAt, cataloguePrice: service.unitPrice }
+        : { source: "CATALOGUE" }
+      : null;
+    const price = own ? own.unitPrice : service?.unitPrice;
     setItems((prev) =>
       prev.map((item) =>
         item.key === key
@@ -147,7 +188,9 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
                 ...item,
                 serviceId,
                 description: service.name,
-                unitPrice: String(service.unitPrice),
+                unitPrice: String(price),
+                priceOrigin,
+                proposedPrice: price,
               }
             : { ...item, serviceId: "" }
           : item
@@ -295,10 +338,20 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
 
         <Card className="p-5 sm:p-6">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="section-title">
-              <FileText className="h-4 w-4" />
-              Prestations
-            </h3>
+            <div>
+              <h3 className="section-title">
+                <FileText className="h-4 w-4" />
+                Prestations
+              </h3>
+              {clientId && ownPrices.length > 0 && (
+                <Link
+                  href={`/comptabilite/clients/${clientId}/prix`}
+                  className="mt-1 inline-block rounded text-xs font-medium text-violet-700 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                >
+                  {ownPrices.length} prix propre{ownPrices.length > 1 ? "s" : ""} à ce client
+                </Link>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => setItems((prev) => [...prev, newLine()])}
@@ -336,6 +389,8 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
                         quantity: String(line.quantity),
                         unitPrice: line.unitPrice ? String(line.unitPrice) : "",
                         sampleId: line.sampleId,
+                        priceOrigin: line.priceOrigin ?? null,
+                        proposedPrice: line.unitPrice,
                       };
                     });
                     // Drop the single blank line the form starts with.
@@ -396,12 +451,14 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
                             {categoryServices.map((service) => (
                               <option key={service.id} value={service.id}>
                                 {service.name}
+                                {ownPrices.some((row) => row.labServiceId === service.id) ? " — prix du client" : ""}
                               </option>
                             ))}
                           </optgroup>
                         );
                       })}
                     </select>
+                    {item.priceOrigin && <LinePriceNote item={item} />}
                   </div>
                   <input
                     type="number"
@@ -532,4 +589,28 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
       )}
     </div>
   );
+}
+
+/**
+ * What a line says of its price (lot 4H, H5): the client's own, the
+ * catalogue's, none — or « Prix modifié à la main » once the accountant
+ * typed another one over the proposal.
+ */
+function LinePriceNote({ item }: { item: LineItem }) {
+  if (!item.priceOrigin) return null;
+  const label = linePriceOriginLabel(item.priceOrigin);
+  if (priceEditedByHand(item.proposedPrice, item.unitPrice)) {
+    return (
+      <p className="px-1 text-[11px] text-slate-500">
+        Prix modifié à la main — proposé : {formatCurrency(item.proposedPrice ?? 0)} ({label.charAt(0).toLowerCase() + label.slice(1)})
+      </p>
+    );
+  }
+  const tone =
+    item.priceOrigin.source === "CLIENT"
+      ? "font-medium text-violet-700"
+      : item.priceOrigin.source === "NONE"
+        ? "font-medium text-amber-700"
+        : "text-slate-500";
+  return <p className={`px-1 text-[11px] ${tone}`}>{label}</p>;
 }

@@ -118,6 +118,10 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   SAMPLE_RELEASED: "Échantillon débloqué pour l'analyse",
   CLIENTS_IMPORTED: "Clients de l'ancien logiciel importés",
   SITES_IMPORTED: "Sites de l'ancien logiciel rattachés",
+  // Lot 4H, H5 (RETOUR-LABO-04-11.md): the prices proper to a client.
+  CLIENT_PRICES_IMPORTED: "Prix clients de l'ancien logiciel importés",
+  CLIENT_PRICE_SET: "Prix propre à un client enregistré",
+  CLIENT_PRICE_DELETED: "Prix propre à un client retiré",
   COMPANY_UPDATED: "Coordonnées du laboratoire modifiées",
   LAB_SETTINGS_UPDATED: "Réglages du laboratoire modifiés",
   SERVICE_UPDATED: "Prestation du catalogue modifiée",
