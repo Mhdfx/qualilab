@@ -1183,6 +1183,31 @@ Built 21/10 on branch `lot2-retour-16-10`, on top of `d4bff04`, committed and pu
 - [ ] Still six migrations applied (none added on 21/10); the laboratory told to reload every tab (the 35-minute bound).
 - [ ] Then the production lines of V18-A to V18-H above, on « TEST UI » data only.
 
+## Checkpoint V22 — Lot 4, réponses du laboratoire du 04/11 (lots 4A, 4B, 4H, `RETOUR-LABO-04-11.md` §5) — integrated and tested locally 05/11, **not pushed, not deployed**
+
+Integrated on `lot2-retour-16-10`: 4A `149c3b2` (code) + `05637a0` (documents), merge 4B `c14b596`, merge 4H `f330419`, then S12's first pass and the integration's documents.
+
+**Integration run (05/11, local):** 4 additive migrations applied (`20261105020000`, `20261105020001`, `20261105030000`, `20261105030001`; `migrate status` up to date, `migrate diff` empty); tsc 0, eslint 0, vitest 196 files / 3 615 tests, `npm run build` OK. Regression e2e on :3210 (git-ignored scripts, adapted to the intended changes K7, K8, K9 and H5's section 7 only): v16-1 64/64, v16-2 108/108, v16-3 69/69, v17 78/78, v18 53/53 (`npx tsx`), v19 71/71, v19-serie 50/50, v20 99/99, v21-lot3 127/127, **v22-lot4 93/93**.
+Run: `export BASE=http://localhost:3210 MSYS_NO_PATHCONV=1 && node .ui-tests/v22-lot4-local.mjs` (« TEST UI » client and « TEST UI V22 … » records only; every setting put back — logo, statuses, delays, copies, flags).
+
+Local (05/11, by `v22-lot4-local.mjs`, 93/93):
+- [x] **S9** `PUT /api/admin/due-delays` 8 / 10 working days, « autre » empty (admin 200, réception 403); the programme sheet proposes « 8 jours ouvrés après l'arrivée ».
+- [x] **S11** the SEMAC logo (`backups/fichiers-labo-28-10/logo-accreditation-semac-560.png`) uploaded through `PUT /api/admin/company/images` (validator 403), journal REPORT_IMAGES_UPDATED; the issued version freezes its hash.
+- [x] **K10** statuses through `PATCH /api/parameters/accreditation`; the box « Logo d'accréditation sur le rapport »: untouched = the rule (journal « imprimé (règle par défaut) »), unticked = « retiré à la main » frozen and shown in the parcours, ticked on a report without an accredited analysis = never a logo, the request journalled; an unreadable value → 400.
+- [x] **J5** a criterion m = 100, n = 1, c = 1: the grid says « c sans effet quand n = 1 … »; 150 UFC/g → non conforme, 80 → conforme; the report says « Non satisfaisant ».
+- [x] **K7** no validation sends the alert; « Valider » leaves it waiting (« Alerte en attente de l'envoi du rapport » in « Validés — à envoyer » and on the fiche); « Envoyer au client » sends it once, a resend never again; « Valider et envoyer » sends report and alert together; /admin/reglages says S2 is without effect.
+- [x] **K8** the gestionnaire: first send 403, resend 403; no send button on the client fiche.
+- [x] **L6** an address « Rapports » only (neither → 400, réception 403; an L5 body = alerts only); REPORT_SENT carries it in `cc`, not in `to`; the parcours shows the copy.
+- [x] **K9** food report without « Moyen de prélèvement », air report « Biocollecteur ».
+- [x] **S10** `scripts/s3-contamination-alerts.mts --listeria monocytogenes --enumerations --dry-run` on the local copy.
+- [x] **I9** « Rejeter (rendu au client) » at the visit's reception, at the release of an « en attente du client », at the counter (a conforming line → 400), mixed série destroyed + rejected; bon / parcours / e-mail wording.
+- [x] **H5** guards (COMPTABLE / GESTIONNAIRE / ADMIN; import ADMIN only); a typed price → proposal at the client's price (origin CLIENT / SAISIE), the programme sheet's section 7 « prix du client », the draft's `InvoiceItem.priceSource` back at reopening; the import: analyse (kept typed, client not found, 0, equal to the old tariff — C-8 (e)) then commit (1 created, REPRISE, journalled), re-run 0 written, a reprised price removed → `removedAt`, re-run 0 written (keptRemoved 1), the proposal back to the catalogue.
+- [x] **S12** (first pass) `npx tsx scripts/s12-accreditation.mts --dry-run` then applied on the local copy: 830 parameters → 241 set (107 microbiology, 5 histamine, 129 by the old marks), read back 0 left; reverted afterwards (vitest `accreditation-seed.test.ts`).
+
+Production (after `DEPLOY.md` « Lot 4 », demo accounts clicked, « TEST UI » only — never a password typed):
+- [ ] The V22 lines above on « TEST UI » (a production copy of `v22-lot4-local.mjs` with panel login), then tell the owner.
+- [ ] The laboratory told what changes (K7, K8, K9, J5 with the example C-5, I9, K10).
+
 ## Checkpoint V21 — Lot 3, retour du laboratoire du 28/10 (lots 3A–3E, `RETOUR-LABO-28-10.md` §5) — integrated and tested locally 01/11, **deployed 01/11 (`16c1d56`), production recette 111/113, 113/113 after the L2 server fix (02/11)**
 
 The five lots integrated on `lot2-retour-16-10` (3A `ec792dc`, 3D `cd9837c`, docs `78ebd20`, merges 3B `0d6ebc7`, 3C `7082811`, 3E `5f78071`, then the integration's docs commit). Per-lot detail lines: « Checkpoint V21-3A » (lot 3A), « Checkpoint V24 » (lot 3D), « Checkpoint 3E » (lot 3E); lots 3B and 3C are listed here.

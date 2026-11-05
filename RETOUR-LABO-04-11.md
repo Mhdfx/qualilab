@@ -1,9 +1,9 @@
 # Réponses du laboratoire du 04/11 (le questionnaire du 02/11 annoté) — plan du lot 4
 
-> **Analysé le 05/11. État au 05/11 : lot 4A construit (arbre principal,
-> local, non commité ; K10 y a été déplacé du lot 4B), lot 4B construit sur
-> la branche `lot4b`, H5 en cours ; rien déployé, production non
-> touchée.** Le 04/11, le laboratoire a renvoyé, scanné (3 pages), notre
+> **Analysé le 05/11. État au 05/11 (soir) : lot 4 construit, relu,
+> intégré et testé en local sur `lot2-retour-16-10` — 4A (K10 y a été
+> déplacé du lot 4B), 4B (I9, L6), 4H (H5), plus la première passe de S12 ;
+> non poussé, rien déployé, production non touchée.** Le 04/11, le laboratoire a renvoyé, scanné (3 pages), notre
 > questionnaire du 02/11 « Quelques questions pour finir les réglages »
 > (`backups/Qualilab-questions-2026-11-02.pdf`, 18 questions, chacune avec sa
 > référence R-x de `RETOUR-LABO-28-10.md` §6), coché et annoté à la main.
@@ -177,10 +177,12 @@ Notre transcription de départ est **confirmée** partout, avec ces nuances :
 Lettres du lot 3 reprises, numéros à la suite (**I** réception · **J**
 paillasse et interprétation · **K** rapport, envoi, alertes · **L** exports
 et exploitation) ; **H5** garde le nom de `RETOUR-LABO-19-10.md` ; **S9–S13**
-sont des gestes du propriétaire (sans code). **État au 05/11 : lot 4A
-construit (arbre principal, non commité), K10 compris — déplacé du lot 4B
-dans le lot 4A (bilan ci-dessous) ; lot 4B (I9, L6) construit sur la branche
-`lot4b` ; H5 construit, relu et corrigé sur la branche `lot4h` ; rien déployé.**
+sont des gestes du propriétaire (sans code). **État au 05/11 (soir) : lot 4
+intégré sur `lot2-retour-16-10` et testé en local** — 4A (`149c3b2`,
+`05637a0`, K10 compris, déplacé du lot 4B), 4B (I9, L6 ; fusion `c14b596`),
+H5 (fusion `f330419`), première passe de S12 ; contrôles et recettes verts
+(`TESTPLAN.md` « Checkpoint V22 », 93/93) ; **non poussé, rien déployé** ;
+la production suit `DEPLOY.md` « Lot 4 ».
 
 ### Lot 4A — P1, ce que le laboratoire voit pendant ses essais
 
@@ -200,7 +202,7 @@ Gestes du propriétaire avec ce lot (sans code, en production, journalisés) :
 | S10 | Q10 — `npx tsx scripts/s3-contamination-alerts.mts --base <prod> --listeria monocytogenes --dry-run`, lecture du plan, approbation, puis sans `--dry-run`. Un Listeria **autre que monocytogenes** tombe dans la section « Listeria outside the scope … never set nor cleared », **qu'il soit déjà marqué ou non** (le script ne l'affiche pas et ne le décoche jamais, même avec `--unset-others`) : vérifier son drapeau dans /admin/parametres et le décocher à la main s'il est marqué. Les dénombrements cités (E. coli surfaces, E. coli mains, E. coli présumés, L. monocytogenes des eaux) sans limite sont listés « Enumeration without a limit … NOT flagged » : les marquer « alerte » **sans limite** dans /admin/parametres (J3 allumé : `sensitiveNeedsLimit` = false, la fiche l'accepte ; O-12 : alerte dès > 0), ou ajouter au script une option `--enumerations` (XS, code) |
 | S11 | Fichiers retrouvés — /admin/entreprise : téléverser le logo d'accréditation (`backups/fichiers-labo-28-10/logo-accreditation-semac-560.png`) ; il ne s'imprime que sur un rapport portant une analyse **accréditée** (statuts encore « à préciser » : rien ne change tant que la liste n'est pas saisie) ; saisir le RIB depuis l'attestation (le numéro n'entre pas dans le dépôt) |
 
-#### Lot 4A — construit le 05/11 (arbre principal, local, non déployé)
+#### Lot 4A — construit le 05/11 (intégré sur `lot2-retour-16-10`, testé en local, non déployé)
 
 Tout le lot 4A, plus K10 et l'option `--enumerations` de S10, dans
 `src/lib/lab-proposals.ts` (un interrupteur par point, son retour en arrière
@@ -309,7 +311,7 @@ copie locale : 0.
 | L6 | Q11 — R-16 | **copies internes étendues aux rapports** : chaque adresse de « Copies internes » (/admin/entreprise) reçoit les alertes, les rapports ou les deux, pour tous les clients ou des clients choisis ; l'envoi d'un rapport (premier envoi et renvoi) l'ajoute en copie, sans doublon avec les adresses du client ; le libellé devient « Copies internes (alertes et rapports) » ; les deux adresses du laboratoire : tous les clients, les deux | `prisma/schema.prisma` (`AlertCopyAddress` : `forReports`, `forAlerts`), `report-dispatch.ts`, /admin/entreprise, `moveAlertCopies`, tests | S | oui (additive) |
 | H5 | Q17 — R-4 | **prix propres à chaque client** : table (client, analyse ou service, prix HT, origine), écran de lecture et de correction sur la fiche client (profils qui voient les prix : comptabilité, administration, Direction, gestion commerciale), reprise des ≈ 6 700 prix depuis l'ancienne base (copie locale d'abord, rapport des prix sans analyse ou sans client correspondant), la facture propose le prix du client à la place du catalogue, toujours modifiable, l'origine du prix dite sur la ligne | `prisma/schema.prisma`, nouveau `src/lib/client-prices.ts`, reprise (script), facturation (`invoice-*`), fiche client, tests de gardes des prix | M–L | oui (additive) |
 
-#### Lot 4B — construit le 05/11 (branche `lot4b`, local, non déployé)
+#### Lot 4B — construit le 05/11 (fusionné `c14b596`, testé en local, non déployé)
 
 - **I9** — décision `REJETER` (« Rejeter (rendu au client) ») à la réception
   d'une série, au comptoir et à la libération d'un « en attente du client » →
@@ -332,7 +334,7 @@ copie locale : 0.
   aux tests de réception, comptoir, libération et bon ; tsc 0, eslint 0,
   vitest 191 fichiers / 3 488 tests ; migrations appliquées à la base locale.
 
-#### H5 — tel que construit (lot 4H, 05/11, branche `lot4h`, local, non déployé)
+#### H5 — tel que construit (lot 4H, 05/11, fusionné `f330419`, testé en local, non déployé)
 
 - **Table `ClientPrice`** (migration additive `20261105030000_lot4h_prix_clients`) : un
   prix HT par client et par analyse (`AnalysisParameter`) ou prestation du catalogue
@@ -445,7 +447,7 @@ retirer sur la fiche si le client doit suivre le catalogue.
 | J6 | C-1 (R-29) | soit `UNIT_MISMATCH_NOT_JUDGED` → false (tout critère juge, quelle que soit l'unité), soit des critères par objet / par moyen saisis dans le catalogue (donnée, sans code) | XS (ou donnée) |
 | K5 bis | C-2 (Q12) | si « 10 – 15 » dépend du type d'analyse : délais par type dans /admin/reglages (existe, réglage) ; si la physico-chimie seule est en jours calendaires : un drapeau « jours ouvrés / calendaires » propre à chaque domaine | — (réglage) ou XS–S (migration additive) |
 | S13 | C-3 (R-24) | base, taux, champ d'application, durée de l'attestation dans les réglages Achat & Stock ; `PAYMENT_REQUIRES_TAX_CERTIFICATE` selon la réponse | XS (réglage) |
-| S12 | §8 | la liste des paramètres accrédités saisie dans « Accréditation des paramètres » (/admin/parametres) ; le cachet téléversé | donnée |
+| S12 | §8 | la liste des paramètres accrédités saisie dans « Accréditation des paramètres » (/admin/parametres) ; le cachet téléversé. **Première passe construite le 05/11** : `scripts/s12-accreditation.mts` (par la route de l'application, `--dry-run` puis réel) — une marque de l'ancien logiciel décide (« * », « (SA) », « (SN) »), sinon toute la microbiologie et l'histamine « Accrédité » (la note de Q13), le reste « à préciser », un statut déjà saisi jamais réécrit — **hypothèse, à confirmer par C-4** ; la liste du laboratoire la remplace ligne à ligne | donnée |
 
 ### Rien à construire
 
@@ -565,7 +567,11 @@ pas les redemander.
    a été construit avec le lot 4A)
    (reprise sur la copie locale d'abord, relue par le propriétaire avant la
    production).
-4. **Après les réponses** : J6, K5 bis, S12, S13.
+4. **Après les réponses** : J6, K5 bis, S12 (la liste du laboratoire — la première passe est construite), S13.
+
+**État au 05/11 (soir)** : les étapes 2 et 3 sont construites, intégrées et
+testées en local (`TESTPLAN.md` « Checkpoint V22 ») ; l'étape 1 et le
+déploiement suivent `DEPLOY.md` « Lot 4 ».
 5. **Prévenir le laboratoire au déploiement du lot 4A** : l'alerte part
    avec le rapport, le commercial n'envoie plus rien, le moyen de
    prélèvement n'est plus imprimé hors air, n = 1 et c = 1 : une unité

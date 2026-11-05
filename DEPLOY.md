@@ -1091,6 +1091,152 @@ fix forward. Full rollback = `git checkout v1.6-avant-lot3 && bash
 scripts/deploy.sh` + restore `qualilab_avant-lot3.sql.gz` (loses everything
 entered since). The `docker-compose.yml` mount is harmless to the old code.
 
+## Lot 4 (05/11) — the laboratory's answers of 04/11: deploy, the owner's settings, S10, S12, the client prices
+
+Branch `lot2-retour-16-10` after `857a1b5` (the analysis): lot 4A `149c3b2`
+(K7, K8, K9, J5, K10, S10 `--enumerations`) and `05637a0` (its documents),
+the merges of lot 4B `c14b596` (I9, L6) and lot 4H `f330419` (H5), then
+S12's first pass (`scripts/s12-accreditation.mts`) and the integration's
+documents (`HANDOFF.md` §8 « 2026-11-05 — lot 4 », `TESTPLAN.md` V22).
+Production runs `19d21af`.
+
+**Four additive migrations**, applied by the image's `migrate` service
+(`prisma migrate deploy`):
+`20261105020000_lot4b_rejete_a_reception` (its only MODIFY appends
+`REJETE_A_RECEPTION` to `Sample.cancelReason`),
+`20261105020001_lot4b_copies_internes_rapports` (`AlertCopyAddress.forAlerts`
+default true, `forReports` default false — the L5 addresses stay « alertes »
+only), `20261105030000_lot4h_prix_clients` (new table `ClientPrice`, empty),
+`20261105030001_lot4h_prix_retires_origine_ligne` (`ClientPrice.removedAt`,
+`InvoiceItem.priceSource`, both nullable). **Nothing switches on by itself
+in the data**; the behaviour changes are in the code (`HANDOFF.md` §9
+« Lot 4 — switches and hypotheses »): the alert leaves with the report only
+(K7), the gestionnaire no longer sends nor resends (K8), « Moyen de
+prélèvement » for the air only (K9), n = 1 → c without effect (J5), the
+logo box (K10). No new package, nothing changed outside `src/`, `prisma/`
+and `scripts/`.
+
+### 0. Before the window
+
+- Gates on the branch's head (green on 05/11: `npx tsc --noEmit` 0,
+  `npx eslint src` 0, `npx vitest run` 196 files / 3 615 tests,
+  `npm run build` OK; e2e v16-1 → v21 and `v22-lot4-local.mjs` 93/93 on
+  the local copy).
+- **Prepare the client-price file on this machine** (the legacy base is
+  local only, `qlabo-fb`, read only):
+  `python scripts/legacy/extract-client-prices.py --container qlabo-fb --out backups`
+  → `backups/prix-clients-ancienne-base.csv` (names clients: it stays in
+  `backups/`, never in the repo; it carries the `tarifAncien` column).
+- Tell the laboratory what changes (`RETOUR-LABO-04-11.md` §9 step 5): the
+  alert leaves with the report; the gestionnaire no longer sends; no
+  « Moyen de prélèvement » outside the air; n = 1 and c = 1: one unit above
+  = « Non satisfaisant » (send the example C-5); « Rejeter (rendu au
+  client) »; the logo box.
+- Outside the laboratory's hours.
+
+### 1. Restore point
+
+- **Code:** `git tag v1.7-avant-lot4 19d21af && git push origin v1.7-avant-lot4`
+  (what production runs); then `git checkout master && git merge --ff-only
+  lot2-retour-16-10 && git push origin master`.
+- **Database:** `/var/backups/qualilab/qualilab_avant-lot4.sql.gz`, taken
+  with the app stopped, right before `deploy.sh` (the commands of « Lot 2
+  du 16/10 » step 2 with this name: `gzip -t`, « -- Dump completed »,
+  `chown qualilab:`).
+
+### 2. On the VPS, as root
+
+- `sudo -u qualilab git rev-parse --short HEAD` → `19d21af`; the last
+  migration `20261101500000_lot3e_rapport_onssa`, none unfinished; the
+  eight counts written down (« Lot 2 du 16/10 » step 2).
+- `sudo -u qualilab git pull --ff-only`; `docker compose build`;
+  `docker compose stop app`; the dump of step 1; `bash scripts/deploy.sh`.
+
+### 3. Checks right after
+
+```bash
+docker compose ps -a migrate                       # Exited (0)
+docker compose logs migrate | tail -12             # the four 20261105… migrations applied
+curl -s localhost:3000/api/health                  # {"status":"ok","database":"connected"}
+docker compose logs app --since 10m                # no error
+```
+
+- The eight counts again: equal. `SELECT COUNT(*) FROM ClientPrice` → 0;
+  `SELECT COUNT(*) FROM AlertCopyAddress WHERE forAlerts = 1 AND forReports = 0`
+  = the number of L5 addresses.
+
+### 4. The owner's settings (demo panel admin — never a password typed; each journalled)
+
+From this machine, `PROD=http://185.217.126.53`; each command signs in by
+clicking « admin » in « Comptes de démonstration » (headless Chrome).
+
+- **S9** — Administration → Réglages → « Délais de rendu par type
+  d'analyse »: microbiologie **8**, physico-chimie **10**, autre empty,
+  « jours ouvrés » → Enregistrer. The screen sends
+  `PUT /api/admin/due-delays {"dueDaysMicro":8,"dueDaysChimie":10,"dueDaysAutre":"","dueCalendarDays":false}`
+  (10 is provisional until C-2).
+- **S11** — Administration → Entreprise → « Accréditation et cachet
+  (rapport d'essai) » → « Logo d'accréditation » → « Déposer le fichier »:
+  `backups/fichiers-labo-28-10/logo-accreditation-semac-560.png` (under the
+  300 KB limit; saved on pick — `PUT /api/admin/company/images {"accreditationLogoData":"data:image/png;base64,…"}`,
+  journal REPORT_IMAGES_UPDATED). **No stamp** (none received — never one
+  made up). The **RIB**: the owner types it himself in Administration →
+  Entreprise from `backups/fichiers-labo-28-10/attestation-rib.pdf` — never
+  in the repo, never by the operator.
+- **S12, first pass (the lab's Q13 note: microbiology and histamine —
+  hypothèse, à confirmer par C-4)**, through `PATCH /api/parameters/accreditation`:
+  1. `npx tsx scripts/s12-accreditation.mts --base $PROD --dry-run` — read
+     the plan with the owner: « already recorded » (left), « to set »
+     (old software marks; MICROBIOLOGIE → Accrédité; HISTAMINE → Accrédité),
+     « left à préciser ».
+  2. The owner approves → `npx tsx scripts/s12-accreditation.mts --base $PROD`;
+     read back « 0 left to set »; one PARAMETER_ACCREDITATION_UPDATED row.
+     The JSON report lands in `.ui-tests/s12-accreditation.185.217.126.53.json`.
+  3. From then on the logo prints on a report carrying an accredited
+     analysis, and the K10 box can remove it; the lab's real list (C-4)
+     replaces this one row by row in /admin/parametres.
+- **S10** — `scripts/s3-contamination-alerts.mts` (lot 3 step 5 explains the
+  sections):
+  1. `npx tsx scripts/s3-contamination-alerts.mts --base $PROD --listeria monocytogenes --enumerations --dry-run`
+     — read « To set » (L. monocytogenes, and the cited enumerations E. coli
+     surfaces / mains, E. coli présumés, L. monocytogenes des eaux, flagged
+     without a limit — they alert as soon as > 0), « Listeria outside the
+     scope » (a Listeria other than monocytogenes already flagged: untick it
+     by hand in /admin/parametres).
+  2. The owner approves → the same command without `--dry-run`; read back
+     « 0 left to set »; PARAMETER_UPDATED rows in the journal.
+- **H5, the client prices** (Administration → Import → « Prix propres aux
+  clients », the screen calls `POST /api/admin/import/prix-clients`):
+  1. Compare the old tariff with the production catalogue first (the
+     analysis counts the prices equal to the old tariff apart — not taken
+     while `CLIENT_PRICE_SKIP_LEGACY_TARIFF`, C-8 (e)).
+  2. Choose `backups/prix-clients-ancienne-base.csv` → **Analyser**
+     (`{"mode":"analyse"}`, nothing written): read with the owner the
+     counts — to create, equal to the old tariff, duplicates and the
+     conflicts list (`CLIENT_PRICE_OWN_BEFORE_SITE`, C-8 (c)), at 0, client
+     not found, ambiguous, analysis not found, removed by hand.
+  3. The owner approves → **Importer les prix** (`{"mode":"commit"}`);
+     journal CLIENT_PRICES_IMPORTED; a second « Analyser » shows 0 to write.
+  4. Aliases for the analyses not found only if the laboratory confirms the
+     equivalences (C-8), then a second run (idempotent).
+- **L6** — « Copies internes (alertes et rapports) » in Administration →
+  Entreprise once the laboratory gives its two addresses (§8, Q11).
+
+### 5. Production recette (demo accounts, « TEST UI » only)
+
+`TESTPLAN.md` « Checkpoint V22 », production lines: never a password typed
+on production (the demo panel), only the « TEST UI » client; then tell the
+owner.
+
+### 6. Rollback
+
+Code only is **not** clean: the old code does not know
+`REJETE_A_RECEPTION` (a rejected sample would be misread) nor the client
+prices. Prefer a fix forward; each behaviour change is a switch in
+`src/lib/lab-proposals.ts` (flip and redeploy, no row rewritten). Full
+rollback = `git checkout v1.7-avant-lot4 && bash scripts/deploy.sh` +
+restore `qualilab_avant-lot4.sql.gz` (loses everything entered since).
+
 ## After every deploy — 5-minute check
 
 1. `/api/health` answers `ok`.
