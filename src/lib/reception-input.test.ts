@@ -199,6 +199,32 @@ describe("validateReception", () => {
     expect(validate({ ...good, lines: [{ ...line, decision: "BLOQUER" }, good.lines[1]] })).toMatchObject({ ok: false, lineNumber: 1 });
   });
 
+  it("I9 — « Rejeter (rendu au client) »: cancelled at once with its own motif, a non-conform line only", () => {
+    const line = { ...good.lines[0], conformity: false, conformityReason: "EMBALLAGE" };
+    const rejected = validate({ ...good, lines: [{ ...line, decision: "REJETER" }, good.lines[1]] });
+    expect(rejected.ok && rejected.value.lines[0]).toMatchObject({
+      decision: "REJETER",
+      reject: true,
+      destroy: false,
+      awaitClient: false,
+      consultation: null,
+      cancelReason: "REJETE_A_RECEPTION",
+    });
+    // The other decisions keep their motif — or none.
+    const destroyed = validate({ ...good, lines: [{ ...line, decision: "DETRUIRE" }, good.lines[1]] });
+    expect(destroyed.ok && destroyed.value.lines[0]).toMatchObject({ reject: false, cancelReason: "DETRUIT_A_RECEPTION" });
+    const held = validate({ ...good, lines: [{ ...line, decision: "EN_ATTENTE_CLIENT" }, good.lines[1]] });
+    expect(held.ok && held.value.lines[0]).toMatchObject({ reject: false, cancelReason: null });
+    const analysed = validate({ ...good, lines: [line, good.lines[1]] });
+    expect(analysed.ok && analysed.value.lines[0]).toMatchObject({ reject: false, cancelReason: null });
+
+    expect(validate({ ...good, lines: [{ ...good.lines[0], decision: "REJETER" }, good.lines[1]] })).toMatchObject({
+      ok: false,
+      lineNumber: 1,
+      error: "Échantillon 1 : seul un échantillon non conforme peut être rejeté (rendu au client).",
+    });
+  });
+
   it("rejects implausible numbers and a quantity without unit", () => {
     expect(validate({ ...good, coolerTemperature: "500" }).ok).toBe(false);
     expect(validate({ ...good, lines: [{ ...good.lines[0], quantity: "250", quantityUnit: "" }, good.lines[1]] })).toMatchObject({

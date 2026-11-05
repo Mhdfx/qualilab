@@ -6,11 +6,12 @@ import { ALERT_COPY_MAX, parseAlertCopy } from "@/lib/alert-copies";
 import { ALERT_COPY_SELECT } from "@/lib/alert-copies-server";
 
 /**
- * The laboratory's addresses copied on the contamination alerts
- * (RETOUR-LABO-28-10.md L5 — Q93, to confirm by R-16). `GET` the list,
- * `POST { email, label?, allClients, clientIds? }` one more. ADMIN only,
- * journalled. The clients chosen must exist (archived ones are kept: their
- * old séries still alert).
+ * The laboratory's internal copies — « Copies internes (alertes et
+ * rapports) »: L5 (RETOUR-LABO-28-10.md, Q93) for the contamination alerts,
+ * L6 (RETOUR-LABO-04-11.md, R-16) for the reports too. `GET` the list,
+ * `POST { email, label?, allClients, clientIds?, forAlerts?, forReports? }`
+ * one more. ADMIN only, journalled. The clients chosen must exist (archived
+ * ones are kept: their old séries still alert and still send reports).
  */
 export async function GET() {
   const session = await requireApiRole("ADMIN");
@@ -48,6 +49,8 @@ export async function POST(request: Request) {
       label: value.label,
       allClients: value.allClients,
       active: value.active,
+      forAlerts: value.forAlerts,
+      forReports: value.forReports,
       clients: { create: value.clientIds.map((clientId) => ({ clientId })) },
     },
     select: ALERT_COPY_SELECT,
@@ -57,7 +60,15 @@ export async function POST(request: Request) {
     action: "ALERT_COPY_CREATED",
     entity: "AlertCopyAddress",
     entityId: created.id,
-    metadata: { email: value.email, label: value.label, allClients: value.allClients, active: value.active, clientIds: value.clientIds },
+    metadata: {
+      email: value.email,
+      label: value.label,
+      allClients: value.allClients,
+      active: value.active,
+      forAlerts: value.forAlerts,
+      forReports: value.forReports,
+      clientIds: value.clientIds,
+    },
   });
   return NextResponse.json(created, { status: 201 });
 }

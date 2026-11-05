@@ -274,13 +274,13 @@ export async function createSerie(
         const product = line.produit ? await resolveProduct(tx, client.id, line.produit) : null;
         const place = await resolvePlace(tx, client.id, siteId, line.lieu);
         const produit = product?.label ?? line.produit;
-        // A destroyed line is received, numbered and cancelled at once. The
+        // A destroyed or rejected line (I9) is received, numbered and cancelled at once. The
         // others wait in the programmation queue (RECU), without a
         // technician, for the programme of the responsable des
         // paramètres, then in « À prendre » for a technician to take them
         // (PROGRAMME.md §1, §10 — the deposit follows the same path as a
         // visit).
-        const destroyed = isDeposit && line.destroy;
+        const cancelReason = isDeposit ? line.cancelReason : null;
 
         for (const planned of plans[index]) {
           const controlCode = isDeposit ? (await nextNumber(tx, "CONTROLE", year)).formatted : null;
@@ -332,8 +332,8 @@ export async function createSerie(
               unitCount: line.unitCount,
               productTypeId: line.productTypeId,
               sampledAt: input.startedAt,
-              status: destroyed ? "ANNULE" : isDeposit ? "RECU" : "PRELEVE",
-              ...(destroyed ? { cancelledAt: now, cancelledById: actor.id, cancelReason: "DETRUIT_A_RECEPTION" as const } : {}),
+              status: cancelReason ? "ANNULE" : isDeposit ? "RECU" : "PRELEVE",
+              ...(cancelReason ? { cancelledAt: now, cancelledById: actor.id, cancelReason } : {}),
               controlCode,
               receivedById: isDeposit ? actor.id : null,
               receivedAt: isDeposit ? now : null,
@@ -396,6 +396,7 @@ export async function createSerie(
         ? {
             nonConform: input.lines.filter((l) => !l.conformity).length,
             destroyed: input.lines.flatMap((l, i) => (l.destroy ? [i + 1] : [])),
+            rejected: input.lines.flatMap((l, i) => (l.reject ? [i + 1] : [])),
             awaitingClient: input.lines.flatMap((l, i) => (l.awaitClient ? [i + 1] : [])),
             advanceAmount: input.advanceAmount,
             advanceMode: input.advanceMode,
@@ -404,7 +405,7 @@ export async function createSerie(
     },
   });
 
-  // A sample destroyed at the counter is a cancellation like any other; a
+  // A sample destroyed or rejected at the counter is a cancellation like any other; a
   // sample held for the client, or analysed with the client's agreement,
   // has its own entry too (A9).
   await Promise.all(
@@ -412,7 +413,7 @@ export async function createSerie(
       if (!isDeposit) return [];
       const line = input.lines[sample.lineIndex];
       const entries = [];
-      if (line.destroy) {
+      if (line.cancelReason) {
         entries.push(
           logAudit({
             actorId: actor.id,
@@ -425,7 +426,7 @@ export async function createSerie(
               serialNumber: result.serialNumber,
               lineNumber: sample.lineNumber,
               twin: sample.twin,
-              reason: "DETRUIT_A_RECEPTION",
+              reason: line.cancelReason,
               note: line.conformityNote,
             },
           })

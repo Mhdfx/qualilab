@@ -23,7 +23,7 @@ export const EMAIL_STATUS_LABELS: Record<EmailLogStatus, string> = {
 export const EMAIL_TYPE_LABELS: Record<EmailType, string> = {
   RAPPORT: "Rapport d'analyse",
   ALERTE_CONTAMINATION: "Alerte de contamination",
-  DESTRUCTION: "Destruction à réception",
+  DESTRUCTION: "Destruction ou rejet à réception",
   // A visit's sample « Non reçu au laboratoire » (16/10, Q74): one e-mail per sample.
   NON_RECU: "Échantillon non reçu",
 };

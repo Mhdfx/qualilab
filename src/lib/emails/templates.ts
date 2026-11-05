@@ -3,6 +3,7 @@ import { COMPANY, type CompanyInfo } from "@/lib/company";
 import { designationHeading } from "@/lib/document-html";
 import { escapeHtml as escape } from "@/lib/html-text";
 import { formatDate } from "@/lib/labels";
+import { NOT_ANALYSED_OUTCOME } from "@/lib/reception-outcome";
 import { amendedReportSubject, amendmentHeader } from "@/lib/report-amendment";
 import { UNDECLARED_SAMPLING, declaredSampledAt } from "@/lib/sample-search";
 
@@ -259,6 +260,12 @@ export type DestructionLine = {
   lieu: string;
   /** « Emballage ou contenant non conforme — sachet percé ». */
   motif: string;
+  /**
+   * What became of the line (I9, 04/11): destroyed by the laboratory, or
+   * rejected — given back to the client. Absent = destroyed (the notice of
+   * 30/09).
+   */
+  outcome?: "DETRUIT" | "REJETE";
 };
 
 export type DestructionEmailInput = {
@@ -275,9 +282,24 @@ export type DestructionEmailInput = {
  * The client is told when a line is destroyed at reception (answer of the
  * laboratory to Q35, RETOUR-LABO-30-09.md H3) — the same header as the
  * report e-mail, one row per destroyed line with its non-conformity.
+ *
+ * Since I9 (04/11, R-9) a line may instead be rejected — given back to the
+ * client, not destroyed: the message says « rejeté — rendu au client »
+ * (`outcome: "REJETE"`). When the lines of one série differ, each row says
+ * its own outcome in a « Suite donnée » column.
  */
 export function destructionEmail(input: DestructionEmailInput, company: CompanyInfo = COMPANY) {
   const many = input.lines.length > 1;
+  const rejected = input.lines.filter((line) => line.outcome === "REJETE").length;
+  const mixed = rejected > 0 && rejected < input.lines.length;
+  const s = many ? "s" : "";
+  // « … et détruit(s). », « … et rejeté(s) : rendu(s) au client. », or the outcome row by row.
+  const outcome =
+    rejected === 0
+      ? ` et détruit${s}.`
+      : mixed
+        ? ` ; la suite donnée à chacun est indiquée ci-dessous.`
+        : ` et rejeté${s} : ${many ? "ils vous sont rendus" : "il vous est rendu"}, sans analyse ni destruction par le laboratoire.`;
   const subject = `Échantillon${many ? "s" : ""} non analysé${many ? "s" : ""} — dossier ${input.serialNumber}${subjectSuffix(company)}`;
   const header: [string, string][] = [
     ["N° dossier", input.serialNumber],
@@ -292,7 +314,10 @@ export function destructionEmail(input: DestructionEmailInput, company: CompanyI
         <td style="${TD}">${escape(line.designation)}</td>
         <td style="${TD}">${escape(line.numeroLot ?? "—")}</td>
         <td style="${TD}">${escape(line.lieu)}</td>
-        <td style="${TD};color:#8c1b31">${escape(line.motif)}</td>
+        <td style="${TD};color:#8c1b31">${escape(line.motif)}</td>${
+          mixed ? `
+        <td style="${TD}">${NOT_ANALYSED_OUTCOME[line.outcome === "REJETE" ? "REJETE_A_RECEPTION" : "DETRUIT_A_RECEPTION"]}</td>` : ""
+        }
       </tr>`
     )
     .join("");
@@ -301,7 +326,7 @@ export function destructionEmail(input: DestructionEmailInput, company: CompanyI
     <p style="font-size:15px;margin:0 0 14px">Bonjour,</p>
     <p style="font-size:14px;line-height:1.6;margin:0 0 14px">
       ${many ? "Les échantillons suivants n'ont pas pu être analysés : ils ont été" : "L'échantillon suivant n'a pas pu être analysé : il a été"}
-      jugé${many ? "s" : ""} non conforme${many ? "s" : ""} à la réception et détruit${many ? "s" : ""}.
+      jugé${s} non conforme${s} à la réception${outcome}
     </p>
     <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;margin:0 0 14px">
       <tbody>
@@ -315,7 +340,8 @@ export function destructionEmail(input: DestructionEmailInput, company: CompanyI
           <th style="${TH}">Produit</th>
           <th style="${TH}">N° de lot</th>
           <th style="${TH}">Lieu de prélèvement</th>
-          <th style="${TH}">Motif</th>
+          <th style="${TH}">Motif</th>${mixed ? `
+          <th style="${TH}">Suite donnée</th>` : ""}
         </tr>
       </thead>
       <tbody>${rows}</tbody>

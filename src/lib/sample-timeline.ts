@@ -116,10 +116,17 @@ export const TIMELINE_ACTIONS: Record<string, ActionSpec> = {
   SAMPLE_INTAKE_CORRECTED: { label: "Fiche de l'échantillon corrigée", tone: "neutral", note: (meta) => text(meta.reason) },
   SAMPLE_PROGRAMMED: { label: "Programme d'analyse confirmé", tone: "neutral" },
   SAMPLE_PROGRAMME_UPDATED: { label: "Programme d'analyse modifié", tone: "neutral" },
+  // A held sample's release decides (A9): analysed, destroyed, or rejected —
+  // given back to the client (I9). The motif typed rides along.
   SAMPLE_RELEASED: {
-    label: "Libéré pour l'analyse",
-    tone: "neutral",
-    note: (meta) => (text(meta.technicianName) ? `Technicien : ${text(meta.technicianName)}` : null),
+    label: (meta) =>
+      meta.decision === "DETRUIRE"
+        ? "Libéré : détruit"
+        : meta.decision === "REJETER"
+          ? "Libéré : rejeté, rendu au client"
+          : "Libéré pour l'analyse",
+    tone: (meta) => (meta.decision === "DETRUIRE" || meta.decision === "REJETER" ? "danger" : "neutral"),
+    note: (meta) => join(text(meta.technicianName) ? `Technicien : ${text(meta.technicianName)}` : null, text(meta.reason)),
   },
   // Stream A (accord du client sur un non-conforme): wording of /admin/journal.
   SAMPLE_AWAITING_CLIENT: { label: "En attente de l'avis du client", tone: "warning", note: (meta) => text(meta.note) ?? text(meta.reason) },
@@ -203,6 +210,10 @@ export const TIMELINE_ACTIONS: Record<string, ActionSpec> = {
       join(
         text(meta.number),
         Array.isArray(meta.to) ? meta.to.filter((entry): entry is string => typeof entry === "string").join(", ") || null : null,
+        // L6: the laboratory's internal copies the report went to.
+        Array.isArray(meta.cc) && meta.cc.some((entry) => typeof entry === "string")
+          ? `copie : ${meta.cc.filter((entry): entry is string => typeof entry === "string").join(", ")}`
+          : null,
         sendStatus(meta.status)
       ),
   },

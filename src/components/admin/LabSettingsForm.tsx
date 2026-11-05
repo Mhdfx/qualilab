@@ -301,7 +301,8 @@ export function LabSettingsForm({
           échantillon au moment de la réception, imprimées aussi sous le bon et le protocole. La
           règle (1) est la réponse du réceptionniste ; une quantité sous le minimum ou une
           température manquante rend l&apos;échantillon non conforme ; la réception décide alors,
-          échantillon par échantillon, de l&apos;analyser malgré tout ou de le détruire. La règle (8)
+          échantillon par échantillon, de l&apos;analyser malgré tout, d&apos;attendre l&apos;avis du client, de le détruire ou de le
+          rejeter (rendu au client). La règle (8)
           s&apos;applique aux aliments dont la désignation, la famille de produits ou la nature nomme des mollusques
           bivalves.
         </p>

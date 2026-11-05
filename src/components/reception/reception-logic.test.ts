@@ -247,6 +247,13 @@ describe("« Tous exploitables et bien identifiés » (16/10, Q64; 28/10, 2.7 �
       decision: "EN_ATTENTE_CLIENT",
       destroyPreselected: false,
     });
+    // « Rejeter (rendu au client) » (I9) chosen by hand stays, as « En attente du client ».
+    expect(exploitableAnswer({ reason: "", decision: "REJETER" }, false)).toEqual({
+      exploitable: false,
+      reason: "NON_EXPLOITABLE",
+      decision: "REJETER",
+      destroyPreselected: false,
+    });
   });
 
   it("a « Détruire » chosen by hand survives « Non exploitable » then « Exploitable » (I4)", () => {

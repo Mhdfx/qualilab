@@ -411,8 +411,9 @@ export function StorageClassSelect({
 
 /**
  * What becomes of a non-conform sample (29/09, A9): « Analyser malgré tout »,
- * « En attente du client » (received, held until released), « Détruire ».
- * `decisions` narrows the choice (the release offers analyse / destroy).
+ * « En attente du client » (received, held until released), « Détruire »,
+ * « Rejeter (rendu au client) » (I9). `decisions` narrows the choice (the
+ * release offers analyse / destroy / reject).
  */
 export function DecisionChips({
   legend,
@@ -431,7 +432,11 @@ export function DecisionChips({
   return (
     <fieldset className="mt-3">
       <legend className={legendClassName}>{legend}</legend>
-      <div className={`mt-2 grid grid-cols-1 gap-2 ${decisions.length > 2 ? "sm:grid-cols-3" : "grid-cols-2"}`}>
+      <div
+        className={`mt-2 grid grid-cols-1 gap-2 ${
+          decisions.length > 3 ? "sm:grid-cols-2 xl:grid-cols-4" : decisions.length > 2 ? "sm:grid-cols-3" : "grid-cols-2"
+        }`}
+      >
         {decisions.map((decision) => (
           <ConformityChip
             key={decision}

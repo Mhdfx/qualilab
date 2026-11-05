@@ -11,6 +11,7 @@ import {
   Plus,
   Printer,
   Tag,
+  Undo2,
   User,
   Wallet,
 } from "lucide-react";
@@ -158,7 +159,7 @@ type LineIntake = {
   note: string;
   /** « Observation de réception » (A7) — required to accept a doubt conforme. */
   receptionNote: string;
-  /** Non-conform only: analyse anyway, wait for the client, or destroy (A9). */
+  /** Non-conform only: analyse anyway, wait for the client, destroy (A9) or reject — give back to the client (I9). */
   decision: ReceptionDecision;
   /** « Détruire » preselected by « Non exploitable » (I4), not chosen by hand. */
   destroyPreselected?: boolean;
@@ -867,7 +868,7 @@ export function DepositForm({
                     <td className="py-2.5">
                       {s.status === "ANNULE" ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-                          Échantillon détruit
+                          {s.cancelReason === "REJETE_A_RECEPTION" ? "Échantillon rejeté — rendu au client" : "Échantillon détruit"}
                           {s.conformityReason ? ` · ${NON_CONFORMITY_REASON_LABELS[s.conformityReason]}` : ""}
                         </span>
                       ) : s.conformity === false ? (
@@ -1433,8 +1434,8 @@ export function DepositForm({
                     <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                       {twins ? "Échantillons réceptionnés et numérotés" : "Échantillon réceptionné et numéroté"}, puis bloqué
-                      {twins ? "s" : ""}{" "}jusqu&apos;à l&apos;avis du client : à analyser ou détruire depuis « Bloqués » de la
-                      réception.
+                      {twins ? "s" : ""}{" "}jusqu&apos;à l&apos;avis du client : à analyser, détruire ou rendre au client depuis
+                      « Bloqués » de la réception.
                     </p>
                   )}
                   {destroy && (
@@ -1444,6 +1445,16 @@ export function DepositForm({
                         ? `Échantillons ${microRef} et ${chimieRef} détruits : numérotés et imprimés sur le bon de réception avec leur non-conformité, puis annulés`
                         : "Échantillon détruit : numéroté et imprimé sur le bon de réception avec sa non-conformité, puis annulé"}{" "}
                       (motif « Détruit à réception »). Aucune analyse, rien n&apos;est facturé.
+                    </p>
+                  )}
+                  {!conformity && decision === "REJETER" && (
+                    <p className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                      <Undo2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                      {twins
+                        ? `Échantillons ${microRef} et ${chimieRef} rejetés et rendus au client : numérotés et imprimés sur le bon de réception avec leur non-conformité, puis annulés`
+                        : "Échantillon rejeté et rendu au client : numéroté et imprimé sur le bon de réception avec sa non-conformité, puis annulé"}{" "}
+                      (motif « Rejeté à réception — rendu au client »). Ni analyse ni destruction, rien n&apos;est facturé ; le
+                      client est informé par e-mail.
                     </p>
                   )}
                 </Card>
@@ -1548,7 +1559,13 @@ export function DepositForm({
                         }`}
                       >
                         {conformity ? "Conforme" : reason ? NON_CONFORMITY_REASON_LABELS[reason] : "Non conforme"}
-                        {destroy ? " · à détruire" : decision === "EN_ATTENTE_CLIENT" ? " · en attente du client" : ""}
+                        {destroy
+                          ? " · à détruire"
+                          : decision === "REJETER"
+                            ? " · à rendre au client"
+                            : decision === "EN_ATTENTE_CLIENT"
+                              ? " · en attente du client"
+                              : ""}
                       </span>
                     </div>
                     {names.length > 0 ? (

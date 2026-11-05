@@ -6,9 +6,9 @@ import { parseAlertCopy } from "@/lib/alert-copies";
 import { ALERT_COPY_SELECT } from "@/lib/alert-copies-server";
 
 /**
- * One address copied on the contamination alerts (L5): `PUT` the whole
- * address again (e-mail, label, « tous les clients » or the clients chosen,
- * active), `DELETE` to remove it. ADMIN only, journalled before → after.
+ * One internal copy address (L5, L6): `PUT` the whole address again (e-mail,
+ * label, « tous les clients » or the clients chosen, active, alerts and / or
+ * reports), `DELETE` to remove it. ADMIN only, journalled before → after.
  */
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireApiRole("ADMIN");
@@ -43,6 +43,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         label: value.label,
         allClients: value.allClients,
         active: value.active,
+        forAlerts: value.forAlerts,
+        forReports: value.forReports,
         clients: { create: value.clientIds.map((clientId) => ({ clientId })) },
       },
       select: ALERT_COPY_SELECT,
@@ -54,8 +56,24 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     entity: "AlertCopyAddress",
     entityId: id,
     metadata: {
-      before: { email: before.email, label: before.label, allClients: before.allClients, active: before.active, clientIds: before.clients.map((c) => c.client.id) },
-      after: { email: value.email, label: value.label, allClients: value.allClients, active: value.active, clientIds: value.clientIds },
+      before: {
+        email: before.email,
+        label: before.label,
+        allClients: before.allClients,
+        active: before.active,
+        forAlerts: before.forAlerts,
+        forReports: before.forReports,
+        clientIds: before.clients.map((c) => c.client.id),
+      },
+      after: {
+        email: value.email,
+        label: value.label,
+        allClients: value.allClients,
+        active: value.active,
+        forAlerts: value.forAlerts,
+        forReports: value.forReports,
+        clientIds: value.clientIds,
+      },
     },
   });
   return NextResponse.json(saved);
@@ -73,7 +91,14 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     action: "ALERT_COPY_DELETED",
     entity: "AlertCopyAddress",
     entityId: id,
-    metadata: { email: before.email, label: before.label, allClients: before.allClients, clientIds: before.clients.map((c) => c.client.id) },
+    metadata: {
+      email: before.email,
+      label: before.label,
+      allClients: before.allClients,
+      forAlerts: before.forAlerts,
+      forReports: before.forReports,
+      clientIds: before.clients.map((c) => c.client.id),
+    },
   });
   return NextResponse.json({ ok: true });
 }

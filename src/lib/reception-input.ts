@@ -31,6 +31,7 @@ import {
   type ClientConsultation,
   type ReceptionDecision,
 } from "./client-consultation";
+import { receptionCancelReason, type ReceptionCancelReason } from "./reception-outcome";
 
 /**
  * Validating the grouped reception of a série — pure, shared by the screen
@@ -52,7 +53,10 @@ import {
  * A non-conform line is decided case by case (RETOUR-LABO-29-09.md, slice
  * E): analysed anyway, or destroyed — received and numbered like the others
  * (it prints on the bon de réception), then cancelled with the motif
- * « Détruit à réception ». Since A9 it may also wait for the client's
+ * « Détruit à réception ». Since I9 (04/11, R-9) it may also be rejected —
+ * « Rejeter (rendu au client) »: received, numbered and cancelled the same
+ * way with the motif « Rejeté à réception — rendu au client », given back
+ * to the client rather than destroyed. Since A9 it may also wait for the client's
  * opinion (« En attente du client »: received, held until released), and an
  * analysis carries the client's agreement when given — required when the
  * laboratory says so (`LabSettings.consultationRequired`).
@@ -145,7 +149,11 @@ export type CleanReceptionLine = {
   receptionNote: string | null;
   /** « Détruire » on a non-conform line: no analysis, cancelled at once. */
   destroy: boolean;
-  /** The decision on the line: « Analyser » (also every conform line), « En attente du client », « Détruire ». */
+  /** « Rejeter (rendu au client) » on a non-conform line (I9): no analysis, cancelled at once, given back. */
+  reject: boolean;
+  /** The motif of a line cancelled at once — destroyed or rejected; null when analysed or held. */
+  cancelReason: ReceptionCancelReason | null;
+  /** The decision on the line: « Analyser » (also every conform line), « En attente du client », « Détruire », « Rejeter ». */
   decision: ReceptionDecision;
   /** « En attente du client »: received, held (`analysisBlocked`) until released. */
   awaitClient: boolean;
@@ -386,17 +394,22 @@ export function validateReception(
       conformityNote = note || null;
     }
 
-    // Only a non-conform sample can be destroyed or wait for the client;
-    // « analyser » is the default.
+    // Only a non-conform sample can be destroyed, rejected (I9) or wait for
+    // the client; « analyser » is the default.
     const decision = parseDecision(rawLine.decision);
     if (!decision) return fail(`Échantillon ${ref} : décision inconnue.`, n, ref);
     if (decision === "DETRUIRE" && conformity) {
       return fail(`Échantillon ${ref} : seul un échantillon non conforme peut être détruit.`, n, ref);
     }
+    if (decision === "REJETER" && conformity) {
+      return fail(receptionLineMessage(ref, CONSULTATION_MESSAGES.rejectConform), n, ref);
+    }
     if (decision === "EN_ATTENTE_CLIENT" && conformity) {
       return fail(receptionLineMessage(ref, CONSULTATION_MESSAGES.awaitConform), n, ref);
     }
     const destroy = decision === "DETRUIRE";
+    const reject = decision === "REJETER";
+    const cancelReason = receptionCancelReason(decision);
     // The client's agreement, for a non-conform sample analysed anyway (A9).
     let consultation: ClientConsultation | null = null;
     if (!conformity && decision === "ANALYSER") {
@@ -427,6 +440,8 @@ export function validateReception(
       conformityNote,
       receptionNote: receptionNote || null,
       destroy,
+      reject,
+      cancelReason,
       decision,
       awaitClient: decision === "EN_ATTENTE_CLIENT",
       consultation,

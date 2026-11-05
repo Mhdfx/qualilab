@@ -8,10 +8,11 @@ import { canTransition } from "@/lib/sample-status";
 import { notifyDestroyed } from "@/lib/destruction-notice";
 import { CONSULTATION_MESSAGES, consultationMissing } from "@/lib/client-consultation";
 import { RELEASE_MESSAGES, parseReleaseBody, releaseRefusal } from "@/lib/release-rules";
+import { receptionCancelReason } from "@/lib/reception-outcome";
 
 /**
  * Releases a sample held at reception (`analysisBlocked`, status RECU):
- * `{ decision: "ANALYSER" | "DETRUIRE", consultation?, reason? }`.
+ * `{ decision: "ANALYSER" | "DETRUIRE" | "REJETER", consultation?, reason? }`.
  *
  * Who (`releaseRefusal`): the admin, any hold; the réceptionniste, a sample
  * « en attente du client » only (A9) — a reactivated destroyed sample, or
@@ -26,8 +27,9 @@ import { RELEASE_MESSAGES, parseReleaseBody, releaseRefusal } from "@/lib/releas
  * `{ technicianId }` is read as « Analyser », the technician ignored.
  *
  * « Détruire » cancels it with the motif « Détruit à réception » (through
- * `canTransition`), then tells the client — never at the cost of the
- * cancellation itself.
+ * `canTransition`), « Rejeter (rendu au client) » (I9, 04/11) with the motif
+ * « Rejeté à réception — rendu au client »; then the client is told — never
+ * at the cost of the cancellation itself.
  *
  * Not the bench's « Libérer » (`…/take`, DELETE), which gives a taken
  * sample back to « À prendre »: this one releases a reception hold.
@@ -153,14 +155,16 @@ export async function POST(
     return NextResponse.json(updated);
   }
 
-  // DETRUIRE: a cancellation, through the state machine.
+  // DETRUIRE or REJETER: a cancellation, through the state machine.
+  const cancelReason = receptionCancelReason(decision);
+  if (!cancelReason) return NextResponse.json({ error: RELEASE_MESSAGES.decision }, { status: 400 });
   const transition = canTransition("RECU", "ANNULE", session.role);
   if (!transition.ok) return NextResponse.json({ error: transition.error }, { status: 403 });
   const destroyed = await claim({
     status: "ANNULE",
     cancelledAt: now,
     cancelledById: session.id,
-    cancelReason: "DETRUIT_A_RECEPTION",
+    cancelReason,
     analysisBlocked: false,
     awaitingClientSince: null,
   });
@@ -192,13 +196,13 @@ export async function POST(
         code: sample.code,
         controlCode: sample.controlCode,
         serialNumber: sample.serie.serialNumber,
-        reason: "DETRUIT_A_RECEPTION",
+        reason: cancelReason,
         note: reason ?? sample.conformityNote,
       },
     }),
   ]);
 
-  // The client is told (Q35) — never at the cost of the cancellation.
+  // The client is told (Q35, I9) — never at the cost of the cancellation.
   const destruction = await notifyDestroyed([sample.id], session.id).catch((error) => {
     console.error("[release] destruction notice failed", { sampleId: sample.id, error });
     return null;

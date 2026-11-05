@@ -194,6 +194,10 @@ enum CancelReason {
   /// complémentaires, C-series) — offered on a PRELEVE sample only.
   /// Appended last: the MariaDB ENUM grows in place, no table copy.
   NON_RECU
+  /// I9 (RETOUR-LABO-04-11.md, R-9): non-conform at reception and rejected —
+  /// given back to the client, neither analysed nor destroyed by the
+  /// laboratory (reception, counter, release of a held sample). Appended last.
+  REJETE_A_RECEPTION
 }
 
 /// How money is paid: the advance at the counter (bon de réception « Avance »)
@@ -1850,10 +1854,12 @@ model Regulation {
   @@index([normalizedTitle])
 }
 
-/// RETOUR-LABO-28-10.md L5 (Q93, reading to confirm by R-16): an address of
-/// the laboratory (direction, qualité…) copied on the contamination alerts —
-/// of every client (`allClients`), or of the clients chosen. Added to the
-/// identity's e-mail, always in copy. Edited in /admin/entreprise, journalled.
+/// RETOUR-LABO-28-10.md L5 (Q93), extended by L6 (RETOUR-LABO-04-11.md,
+/// R-16): an address of the laboratory (direction, qualité…) copied on the
+/// contamination alerts, the reports, or both — of every client
+/// (`allClients`), or of the clients chosen. On an alert it joins the
+/// identity's e-mail, always in copy; on a report (first send and resend) it
+/// is the only copy. Edited in /admin/entreprise, journalled.
 model AlertCopyAddress {
   id         String            @id @default(cuid())
   email      String
@@ -1861,6 +1867,11 @@ model AlertCopyAddress {
   label      String?
   allClients Boolean?          @default(true)
   active     Boolean?          @default(true)
+  /// L6: copied on the contamination alerts. Null (a row of L5) reads as true.
+  forAlerts  Boolean?          @default(true)
+  /// L6: copied on the reports. Null or false: not — an address of L5 keeps
+  /// receiving the alerts only until the administrator ticks it.
+  forReports Boolean?          @default(false)
   clients    AlertCopyClient[]
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt

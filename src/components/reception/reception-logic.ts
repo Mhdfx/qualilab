@@ -216,8 +216,8 @@ export function allExploitableNotice(count: number): string {
  * client », or a « Détruire » chosen by hand) stays. « Exploitable »
  * afterwards drops that motif — the rules propose again — and only the
  * « Détruire » it had preselected goes back to « Analyser ». A decision
- * changed by hand clears the mark (`decisionChosen`). « Rejeté » waits for
- * R-9.
+ * changed by hand clears the mark (`decisionChosen`). « Rejeter (rendu au
+ * client) » (I9) chosen by hand stays, as « En attente du client ».
  */
 export function exploitableAnswer<R extends string, D extends string>(
   current: { reason: R; decision: D; destroyPreselected?: boolean },

@@ -214,6 +214,16 @@ describe("buildBonHtml — PG05/EN04 version H", () => {
     expect(html).not.toContain("N° de factures");
   });
 
+  it("I9 — prints a rejected line as given back to the client, a destroyed one as destroyed", () => {
+    const nonConform = deposit.lines[1];
+    const rejected = buildBonHtml({ ...deposit, lines: [deposit.lines[0], { ...nonConform, cancelled: true, rejected: true }] }, thresholds);
+    expect(rejected).toContain("Non conforme — Quantité insuffisante — rejeté, rendu au client</span>");
+    expect(rejected).not.toContain("— détruit");
+    const destroyed = buildBonHtml({ ...deposit, lines: [deposit.lines[0], { ...nonConform, cancelled: true, destroyed: true }] }, thresholds);
+    expect(destroyed).toContain("Non conforme — Quantité insuffisante — détruit</span>");
+    expect(destroyed).not.toContain("rendu au client");
+  });
+
   it("frames the client as the paper: série, name, two address lines, phone — no fax since Q105 (I8)", () => {
     const box = html.slice(html.indexOf('<div class="client">'), html.indexOf("<table"));
     expect(box).toContain(field("N° de série :", "2754/26"));
@@ -408,6 +418,16 @@ describe("buildProtocolHtml — one row per échantillon (V3)", () => {
       '<span class="small">1M :</span> —<br><span class="small">1P :</span> <span class="nc">Détruit à réception</span>'
     );
     expect(partly).not.toContain("Ligne annulée");
+  });
+
+  it("I9 — says « Rejeté — rendu au client » for a twin rejected at reception", () => {
+    const partly = buildProtocolHtml({
+      ...visit,
+      lines: [visit.lines[0], { ...visit.lines[1], cancelled: true, rejected: true }],
+    });
+    expect(partly).toContain(
+      '<span class="small">1M :</span> —<br><span class="small">1P :</span> <span class="nc">Rejeté — rendu au client</span>'
+    );
   });
 
   it("marks a row cancelled once when its two samples are", () => {

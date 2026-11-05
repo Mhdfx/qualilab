@@ -281,10 +281,10 @@ export async function POST(request: Request) {
     }
 
     const created = await createSerie(checked.value, { id: session.id, role: session.role });
-    // A deposit sample destroyed at the counter is told to the client (Q35).
+    // A deposit sample destroyed or rejected at the counter is told to the client (Q35, I9).
     if (created.kind === "DEPOT") {
       await notifyDestroyed(
-        created.samples.filter((s) => lines[s.lineIndex]?.destroy).map((s) => s.id),
+        created.samples.filter((s) => lines[s.lineIndex]?.cancelReason).map((s) => s.id),
         session.id
       ).catch((error) => console.error("[series] destruction notice failed", { serieId: created.id, error }));
     }
@@ -320,6 +320,7 @@ export async function POST(request: Request) {
               conformityNote: line.conformityNote,
               receptionNote: line.receptionNote,
               destroyed: line.destroy,
+              rejected: line.reject,
               // A9: the decision, and the client's agreement when recorded.
               decision: line.decision,
               consultation: line.consultation,

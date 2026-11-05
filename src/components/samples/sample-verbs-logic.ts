@@ -11,6 +11,7 @@ import type {
 import { BILLABLE_STATUSES } from "@/lib/billing-status";
 import { billedAnalysesNotice, type InvoiceFact } from "@/lib/billing";
 import { CANCEL_REASON_LABELS, isExposedPlate } from "@/lib/labels";
+import { isReceptionCancel } from "@/lib/reception-outcome";
 import { resultsToReset } from "@/lib/intake-input";
 import { cancellersLabel, type CorrectionRights } from "@/lib/sample-verbs";
 import { surfaceAreaPayload } from "@/components/preleveur/visit-types";
@@ -76,14 +77,14 @@ export type VerbSample = {
 
 /**
  * The motifs « Annuler » offers for a sample, in the labels' order.
- * « Détruit à réception » is the reception's own verb (slice E), never
- * picked here; « Non reçu au laboratoire » only concerns a sample still
+ * « Détruit à réception » and « Rejeté à réception — rendu au client » are
+ * the reception's own verbs (slice E, I9), never picked here; « Non reçu au laboratoire » only concerns a sample still
  * waiting for its reception (PRELEVE) — the cancel route refuses it on any
  * other status.
  */
 export function cancelReasonsFor(status: SampleStatus): CancelReason[] {
   return (Object.keys(CANCEL_REASON_LABELS) as CancelReason[]).filter(
-    (reason) => reason !== "DETRUIT_A_RECEPTION" && (reason !== "NON_RECU" || status === "PRELEVE")
+    (reason) => !isReceptionCancel(reason) && (reason !== "NON_RECU" || status === "PRELEVE")
   );
 }
 

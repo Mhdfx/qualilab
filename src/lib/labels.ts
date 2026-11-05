@@ -259,11 +259,16 @@ export const CONSULTATION_CHANNEL_SHORT = {
   EMAIL: "e-mail",
 } as const satisfies Record<ConsultationChannel, string>;
 
-/** What becomes of a non-conform sample at reception, and at its release (A9). */
+/**
+ * What becomes of a non-conform sample at reception, and at its release (A9).
+ * « Rejeter (rendu au client) » (I9, RETOUR-LABO-04-11.md R-9): refused at
+ * arrival and given back to the client — neither analysed nor destroyed.
+ */
 export const RECEPTION_DECISION_LABELS = {
   ANALYSER: "Analyser malgré tout",
   EN_ATTENTE_CLIENT: "En attente du client",
   DETRUIRE: "Détruire",
+  REJETER: "Rejeter (rendu au client)",
 } as const;
 
 export const CANCEL_REASON_LABELS = {
@@ -276,6 +281,8 @@ export const CANCEL_REASON_LABELS = {
   AUTRE: "Autre",
   /** A sample of the visit that never reached the laboratory — on a PRELEVE sample only. */
   NON_RECU: "Non reçu au laboratoire",
+  /** Only set by « Rejeter (rendu au client) » at reception, at the counter or at a release (I9). */
+  REJETE_A_RECEPTION: "Rejeté à réception — rendu au client",
 } as const satisfies Record<CancelReason, string>;
 
 /**

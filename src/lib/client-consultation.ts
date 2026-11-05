@@ -17,7 +17,8 @@ import {
  * tout » — the client's agreement may be recorded, and must be when the
  * laboratory says so: `LabSettings.consultationRequired`), held « en attente
  * du client » (received, numbered, blocked until the reception or the admin
- * releases it), or destroyed. Nobody using the new options keeps the 29/09
+ * releases it), destroyed, or rejected — given back to the client (« Rejeter
+ * (rendu au client) », I9, 04/11). Nobody using the new options keeps the 29/09
  * behaviour: analyse or destroy, nothing recorded.
  */
 
@@ -49,6 +50,8 @@ export const CONSULTATION_MESSAGES = {
   noteTooLong: "La note de l'accord du client est trop longue (2 000 caractères maximum).",
   decision: "Décision inconnue.",
   awaitConform: "Seul un échantillon non conforme peut attendre l'avis du client.",
+  /** I9: « Rejeter (rendu au client) » is a non-conformity's decision, as « Détruire ». */
+  rejectConform: "Seul un échantillon non conforme peut être rejeté (rendu au client).",
 } as const;
 
 /** The future check of the agreement's date-time (5 min of tolerance, as every field). */

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Clock, FlaskConical, Trash2 } from "lucide-react";
+import { AlertTriangle, Clock, FlaskConical, Trash2, Undo2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { NON_CONFORMITY_REASON_LABELS } from "@/lib/labels";
 import {
@@ -38,7 +38,8 @@ export type BlockedSample = {
 /**
  * Samples held at reception. « En attente du client » (A9): received non
  * conforme, waiting for the client's opinion — the reception or the admin
- * releases it, analysed (the client's agreement noted) or destroyed. Any
+ * releases it, analysed (the client's agreement noted), destroyed, or
+ * rejected — given back to the client (I9, 04/11). Any
  * other hold (a destroyed sample reactivated, the retired policy) stays the
  * admin's. Releasing never assigns a technician: an analysed sample goes to
  * the programme queue like any received sample, then to « À prendre » once
@@ -186,7 +187,7 @@ function BlockedRow({ sample, consultationRequired }: { sample: BlockedSample; c
             </>
           )}
 
-          {decision === "DETRUIRE" && (
+          {(decision === "DETRUIRE" || decision === "REJETER") && (
             <div className="mt-3">
               <label htmlFor={`release-${sample.id}-reason`} className="block text-sm font-medium text-slate-700">
                 Motif <span className="font-normal text-slate-500">(facultatif)</span>
@@ -197,14 +198,22 @@ function BlockedRow({ sample, consultationRequired }: { sample: BlockedSample; c
                 maxLength={RELEASE_REASON_MAX}
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
-                placeholder="Ex. : le client demande la destruction"
+                placeholder={decision === "REJETER" ? "Ex. : le client reprend l'échantillon" : "Ex. : le client demande la destruction"}
                 className="input-field mt-1.5 resize-y px-3 py-2"
               />
-              <p className="mt-2 flex items-start gap-2 text-xs text-rose-800">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                Annulé avec le motif « Détruit à réception » : aucune analyse, rien n&apos;est facturé, le client est informé par
-                e-mail.
-              </p>
+              {decision === "REJETER" ? (
+                <p className="mt-2 flex items-start gap-2 text-xs text-rose-800">
+                  <Undo2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  Annulé avec le motif « Rejeté à réception — rendu au client » : ni analyse ni destruction, rien n&apos;est
+                  facturé, le client est informé par e-mail.
+                </p>
+              ) : (
+                <p className="mt-2 flex items-start gap-2 text-xs text-rose-800">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  Annulé avec le motif « Détruit à réception » : aucune analyse, rien n&apos;est facturé, le client est informé
+                  par e-mail.
+                </p>
+              )}
             </div>
           )}
 
@@ -214,17 +223,25 @@ function BlockedRow({ sample, consultationRequired }: { sample: BlockedSample; c
               onClick={release}
               disabled={busy}
               className={`mt-3 inline-flex min-h-[44px] items-center gap-2 rounded-xl px-4 text-sm font-semibold text-white transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 ${
-                decision === "DETRUIRE"
+                decision === "DETRUIRE" || decision === "REJETER"
                   ? "bg-rose-700 hover:bg-rose-800 focus-visible:ring-rose-600"
                   : "bg-brand hover:bg-brand-dark focus-visible:ring-brand"
               }`}
             >
               {decision === "DETRUIRE" ? (
                 <Trash2 className="h-4 w-4" aria-hidden="true" />
+              ) : decision === "REJETER" ? (
+                <Undo2 className="h-4 w-4" aria-hidden="true" />
               ) : (
                 <FlaskConical className="h-4 w-4" aria-hidden="true" />
               )}
-              {busy ? "Enregistrement…" : decision === "DETRUIRE" ? "Détruire l'échantillon" : "Analyser l'échantillon"}
+              {busy
+                ? "Enregistrement…"
+                : decision === "DETRUIRE"
+                  ? "Détruire l'échantillon"
+                  : decision === "REJETER"
+                    ? "Rendre l'échantillon au client"
+                    : "Analyser l'échantillon"}
             </button>
           )}
         </div>

@@ -46,7 +46,7 @@ import {
   type AccreditationLogoDecision,
 } from "./accreditation";
 import { freezeReportImages, type IssuedReportImages } from "./report-images";
-import { alertCopyRecipients } from "./alert-copies";
+import { alertCopyRecipients, reportCopyRecipients } from "./alert-copies";
 import { loadAlertCopies } from "./alert-copies-server";
 
 /**
@@ -920,6 +920,11 @@ export type DispatchContext = { viaSerie?: string };
  * One send per sample at a time: a second « Renvoyer au client » clicked
  * while the first is under way (two people, two tabs) is refused instead of
  * e-mailing the client twice (full-db recette 12/10).
+ *
+ * The laboratory's internal copies ticked « Rapports » (L6, R-16 — for every
+ * client or the clients chosen) ride in copy of every send, the first one
+ * and each resend, never twice and never one of the client's own addresses
+ * (`reportCopyRecipients`).
  */
 export async function sendReport(sampleId: string, actorId: string | null, context: DispatchContext = {}) {
   const flight = await reportSends.run(sampleId, () => sendReportNow(sampleId, actorId, context));
@@ -1005,6 +1010,8 @@ async function sendReportNow(sampleId: string, actorId: string | null, context: 
   if (!data) return { ok: false as const, error: "Rapport indisponible." };
 
   const company = await getCompany();
+  // L6: the internal copies ticked « Rapports » — a failed read sends without them.
+  const cc = reportCopyRecipients({ copies: await loadAlertCopies(sample.clientId), clientId: sample.clientId, to });
 
   let attachment;
   try {
@@ -1053,6 +1060,7 @@ async function sendReportNow(sampleId: string, actorId: string | null, context: 
 
   const result = await sendEmail({
     to,
+    ...(cc.length > 0 ? { cc } : {}),
     subject,
     html,
     type: "RAPPORT",
@@ -1097,6 +1105,8 @@ async function sendReportNow(sampleId: string, actorId: string | null, context: 
       number: data.number,
       version: report.version,
       to,
+      // L6: the internal copies the report went to, when any.
+      ...(cc.length > 0 ? { cc } : {}),
       status: result.status,
       ...(context.viaSerie ? { viaSerie: context.viaSerie } : {}),
     },

@@ -3,6 +3,7 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { canTransition, reactivationTarget } from "@/lib/sample-status";
+import { isReceptionCancel } from "@/lib/reception-outcome";
 
 /**
  * Bringing a cancelled sample back — ADMIN only, written reason. It returns
@@ -55,12 +56,12 @@ export async function POST(
         validatedById: null,
         validatedAt: null,
         alertsSentAt: null,
-        // A line destroyed at reception (a mis-click, the sample still on the
-        // shelf) never reached the bench: it comes back held, and the admin
+        // A line destroyed or rejected at reception (a mis-click, the sample
+        // still on the shelf) never reached the bench: it comes back held, and the admin
         // decides again from « Échantillons bloqués ». Analysed, it joins the
         // programme queue, then « À prendre » once programmed — nobody
         // assigns a technician (PROGRAMME.md §10).
-        ...(sample.cancelReason === "DETRUIT_A_RECEPTION" ? { analysisBlocked: true } : {}),
+        ...(isReceptionCancel(sample.cancelReason) ? { analysisBlocked: true } : {}),
       },
     });
     if (moved.count === 0) {

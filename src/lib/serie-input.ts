@@ -42,6 +42,7 @@ import {
   type ClientConsultation,
   type ReceptionDecision,
 } from "./client-consultation";
+import { receptionCancelReason, type ReceptionCancelReason } from "./reception-outcome";
 
 /**
  * Validating a série (visite or dépôt) and its lines — pure, shared by the
@@ -368,6 +369,10 @@ export type CleanLine = {
   receptionNote: string | null;
   /** A non-conform deposit line destroyed at the counter (slice E). */
   destroy: boolean;
+  /** A non-conform deposit line rejected at the counter — given back to the client (I9). */
+  reject: boolean;
+  /** The motif of a deposit line cancelled at once (destroyed or rejected); null otherwise, and on a visit. */
+  cancelReason: ReceptionCancelReason | null;
   /** The counter's decision on the line (A9); « Analyser » on a visit and on every conform line. */
   decision: ReceptionDecision;
   /** « En attente du client »: received, held until released. */
@@ -736,11 +741,13 @@ export function validateLine(
       if (reason === "AUTRE" && !note) return fail("Précisez le motif « autre ».");
       conformityNote = note || null;
     }
-    // Case by case (29/09, A9): a non-conform line is analysed anyway — the
-    // client's agreement recorded —, waits for the client, or is destroyed.
+    // Case by case (29/09, A9, I9): a non-conform line is analysed anyway —
+    // the client's agreement recorded —, waits for the client, is destroyed,
+    // or is rejected (given back to the client).
     const chosen = parseDecision(input.decision);
     if (!chosen) return fail("Décision inconnue pour l'échantillon.");
     if (chosen === "DETRUIRE" && conformity) return fail("Seul un échantillon non conforme peut être détruit.");
+    if (chosen === "REJETER" && conformity) return fail(CONSULTATION_MESSAGES.rejectConform);
     if (chosen === "EN_ATTENTE_CLIENT" && conformity) return fail(CONSULTATION_MESSAGES.awaitConform);
     decision = chosen;
     destroy = decision === "DETRUIRE";
@@ -800,6 +807,8 @@ export function validateLine(
       conformityNote,
       receptionNote,
       destroy,
+      reject: decision === "REJETER",
+      cancelReason: deposit ? receptionCancelReason(decision) : null,
       decision,
       awaitClient: decision === "EN_ATTENTE_CLIENT",
       consultation,

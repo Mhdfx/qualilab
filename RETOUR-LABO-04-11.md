@@ -309,6 +309,29 @@ copie locale : 0.
 | L6 | Q11 — R-16 | **copies internes étendues aux rapports** : chaque adresse de « Copies internes » (/admin/entreprise) reçoit les alertes, les rapports ou les deux, pour tous les clients ou des clients choisis ; l'envoi d'un rapport (premier envoi et renvoi) l'ajoute en copie, sans doublon avec les adresses du client ; le libellé devient « Copies internes (alertes et rapports) » ; les deux adresses du laboratoire : tous les clients, les deux | `prisma/schema.prisma` (`AlertCopyAddress` : `forReports`, `forAlerts`), `report-dispatch.ts`, /admin/entreprise, `moveAlertCopies`, tests | S | oui (additive) |
 | H5 | Q17 — R-4 | **prix propres à chaque client** : table (client, analyse ou service, prix HT, origine), écran de lecture et de correction sur la fiche client (profils qui voient les prix : comptabilité, administration, Direction, gestion commerciale), reprise des ≈ 6 700 prix depuis l'ancienne base (copie locale d'abord, rapport des prix sans analyse ou sans client correspondant), la facture propose le prix du client à la place du catalogue, toujours modifiable, l'origine du prix dite sur la ligne | `prisma/schema.prisma`, nouveau `src/lib/client-prices.ts`, reprise (script), facturation (`invoice-*`), fiche client, tests de gardes des prix | M–L | oui (additive) |
 
+#### Lot 4B — construit le 05/11 (branche `lot4b`, local, non déployé)
+
+- **I9** — décision `REJETER` (« Rejeter (rendu au client) ») à la réception
+  d'une série, au comptoir et à la libération d'un « en attente du client » →
+  motif `REJETE_A_RECEPTION` (migration additive `20261105020000`, la
+  correspondance dans `src/lib/reception-outcome.ts`) : reçu, numéroté puis
+  annulé, ni analysé ni détruit ; bon, protocole, parcours, journal et e-mail
+  au client (« rejeté — rendu », colonne « Suite donnée » quand la série mêle
+  les deux suites) ; jamais proposé par « Annuler » ; réactivé, il revient
+  bloqué comme un détruit ; « Non exploitable » présélectionne « Détruire ».
+- **L6** — « Copies internes (alertes et rapports) » : chaque adresse coche
+  « Alertes », « Rapports » ou les deux (`forAlerts` / `forReports`, migration
+  additive `20261105020001`) ; le rapport part en copie au premier envoi et à
+  chaque renvoi, sans doublon avec les adresses du client, copie journalisée
+  (`REPORT_SENT.cc`) et montrée dans le parcours. **Une adresse saisie au lot
+  L5 garde les alertes seulement ; une nouvelle adresse coche les deux par
+  défaut — hypothèse, à confirmer quand le laboratoire donnera ses deux
+  adresses (§8, Q11). Les adresses internes sont en copie visible (Cc), comme
+  les alertes — hypothèse, à confirmer avec les deux adresses (§8, Q11).**
+- Tests : `reception-outcome.test.ts`, `alert-copies.test.ts`, cas ajoutés
+  aux tests de réception, comptoir, libération et bon ; tsc 0, eslint 0,
+  vitest 191 fichiers / 3 488 tests ; migrations appliquées à la base locale.
+
 ### Après les clarifications (P2–P3)
 
 | # | Après | Ce qui changerait | Effort |

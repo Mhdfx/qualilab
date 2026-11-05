@@ -8,10 +8,13 @@ import { destructionEmail } from "./emails/templates";
 import { NON_CONFORMITY_REASON_LABELS } from "./labels";
 import { sampleDesignation } from "./document-html";
 import { receptionInstant } from "./report-template";
+import { RECEPTION_CANCEL_REASONS } from "./reception-outcome";
 
 /**
  * Tells the client that samples of a série were destroyed at reception
- * (RETOUR-LABO-30-09.md H3). One e-mail per série, to the report recipients.
+ * (RETOUR-LABO-30-09.md H3) — or rejected, given back to the client (I9,
+ * RETOUR-LABO-04-11.md R-9): the e-mail says which, line by line. One e-mail
+ * per série, to the report recipients.
  *
  * Called after the reception is written: a missing address or a failed send
  * never undoes a reception — the journal says who was told, or why not.
@@ -19,7 +22,7 @@ import { receptionInstant } from "./report-template";
 export async function notifyDestroyed(sampleIds: string[], actorId: string) {
   if (sampleIds.length === 0) return null;
   const samples = await prisma.sample.findMany({
-    where: { id: { in: sampleIds }, status: "ANNULE", cancelReason: "DETRUIT_A_RECEPTION" },
+    where: { id: { in: sampleIds }, status: "ANNULE", cancelReason: { in: [...RECEPTION_CANCEL_REASONS] } },
     select: {
       id: true,
       clientId: true,
@@ -39,6 +42,7 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
       receivedAt: true,
       conformityReason: true,
       conformityNote: true,
+      cancelReason: true,
       // `samplingTimeDeclared`: « Non déclarée » rather than the instant a
       // deposit was entered (R6).
       // `arrivedAt`: « Date de réception » as the reports print it since lot 1b.
@@ -67,6 +71,7 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
       motif: [s.conformityReason ? NON_CONFORMITY_REASON_LABELS[s.conformityReason] : "Non conforme", s.conformityNote]
         .filter(Boolean)
         .join(" — "),
+      outcome: s.cancelReason === "REJETE_A_RECEPTION" ? ("REJETE" as const) : ("DETRUIT" as const),
     })),
   }, company);
 
@@ -98,6 +103,8 @@ export async function notifyDestroyed(sampleIds: string[], actorId: string) {
       serialNumber: first.serie.serialNumber,
       lines: samples.map((s) => s.lineNumber),
       controlCodes: samples.map((s) => s.controlCode),
+      // I9: which lines were rejected (given back) rather than destroyed.
+      rejected: samples.filter((s) => s.cancelReason === "REJETE_A_RECEPTION").map((s) => s.controlCode),
       to,
       status,
       error,
