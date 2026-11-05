@@ -3,7 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { moveEmails, movePlaces, moveProducts, moveTypesAndProfiles } from "@/lib/client-transfer";
+import { moveAlertCopies, moveClientPrices, moveEmails, movePlaces, moveProducts, moveTypesAndProfiles } from "@/lib/client-transfer";
 import { detectDelimiter, parseCsv } from "@/lib/csv";
 import {
   guessSiteColumns,
@@ -51,6 +51,10 @@ type Written = {
   emails: number;
   productTypes: number;
   profiles: number;
+  /** Lot 4H, H5: the archived clients' own prices moved to the parent. */
+  clientPrices: number;
+  /** Lot 3C, L5: internal copy addresses newly chosen for the parent. */
+  alertCopies: number;
 };
 
 type AuditEntry = Omit<Parameters<typeof logAudit>[0], "actorId">;
@@ -65,6 +69,8 @@ const emptyWritten = (): Written => ({
   emails: 0,
   productTypes: 0,
   profiles: 0,
+  clientPrices: 0,
+  alertCopies: 0,
 });
 
 function addWritten(total: Written, part: Written) {
@@ -79,6 +85,8 @@ function addWritten(total: Written, part: Written) {
   total.emails += part.emails;
   total.productTypes += part.productTypes;
   total.profiles += part.profiles;
+  total.clientPrices += part.clientPrices;
+  total.alertCopies += part.alertCopies;
 }
 
 /** What the screen shows: the plan without its internal list of sites. */
@@ -290,6 +298,11 @@ async function writeParent(
   const owned = await moveTypesAndProfiles(tx, ids, parentId);
   written.productTypes += owned.productTypes;
   written.profiles += owned.profiles;
+
+  // Their own prices (lot 4H, H5) and their internal alert copies (L5) follow
+  // the parent, as with a merge and « Rattacher comme site de… ».
+  written.clientPrices += await moveClientPrices(tx, ids, parentId);
+  written.alertCopies += await moveAlertCopies(tx, ids, parentId);
 
   // ---- archived, never deleted -------------------------------------------------------------
   // `mergedIntoId`: the fiche says « Rattachée comme site de » its parent (CLIENTS-FUSION.md §6).

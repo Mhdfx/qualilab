@@ -86,7 +86,8 @@ export async function GET(
       select: { id: true, name: true, category: true, unitPrice: true, active: true },
     }),
     prisma.clientPrice.findMany({
-      where: { clientId: id },
+      // Never a price removed by hand (kept only as the reprise's memory).
+      where: { clientId: id, removedAt: null },
       select: { parameterId: true, labServiceId: true, unitPrice: true, origin: true, updatedAt: true },
     }),
   ]);

@@ -19,7 +19,16 @@ export default async function ComptaClientPricesPage({ params }: { params: Promi
   await requireRole("COMPTABLE", "ADMIN");
   const { id } = await params;
   const [client, rows] = await Promise.all([
-    prisma.client.findUnique({ where: { id }, select: { id: true, name: true, archived: true } }),
+    prisma.client.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        archived: true,
+        // Its sites billed to another client: their samples follow that client's prices (the card says it).
+        sites: { where: { billingClientId: { not: null } }, select: { name: true, billingClient: { select: { id: true, name: true } } } },
+      },
+    }),
     loadClientPriceRows(id),
   ]);
   if (!client) notFound();
@@ -38,7 +47,14 @@ export default async function ComptaClientPricesPage({ params }: { params: Promi
         title={client.name}
         subtitle="Les prix que ce client paie à la place de ceux du catalogue : la facture les propose, toujours modifiables."
       />
-      <ClientPricesCard clientId={client.id} initialRows={rows} archived={client.archived} />
+      <ClientPricesCard
+        clientId={client.id}
+        initialRows={rows}
+        archived={client.archived}
+        billedElsewhere={client.sites.flatMap((site) =>
+          site.billingClient && site.billingClient.id !== client.id ? [{ site: site.name, billingClient: site.billingClient.name }] : []
+        )}
+      />
     </div>
   );
 }

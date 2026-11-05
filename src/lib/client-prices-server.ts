@@ -14,7 +14,8 @@ import { sortClientPriceRows, type ClientPriceRow } from "./client-prices";
 export async function loadClientPriceRows(clientId: string): Promise<ClientPriceRow[]> {
   const [prices, services] = await Promise.all([
     prisma.clientPrice.findMany({
-      where: { clientId },
+      // A price removed by hand stays as a memory for the reprise, never listed.
+      where: { clientId, removedAt: null },
       select: {
         id: true,
         parameterId: true,
@@ -52,6 +53,7 @@ export async function loadClientPriceRows(clientId: string): Promise<ClientPrice
           label: price.parameter.name,
           domain: SAMPLE_TYPE_LABELS[price.parameter.category],
           cataloguePrice: entry ? toMoney(entry.unitPrice) : null,
+          billedServiceId: entry?.id ?? null,
         },
       ];
     }
@@ -63,6 +65,7 @@ export async function loadClientPriceRows(clientId: string): Promise<ClientPrice
           label: price.labService.name,
           domain: LAB_SERVICE_CATEGORY_LABELS[price.labService.category as LabServiceCategory] ?? price.labService.category,
           cataloguePrice: toMoney(price.labService.unitPrice),
+          billedServiceId: null,
         },
       ];
     }

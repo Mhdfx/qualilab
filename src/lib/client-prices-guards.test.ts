@@ -53,27 +53,48 @@ describe("the client prices' guards", () => {
 
   it("the invoice proposal reads the invoiced client's prices", () => {
     const route = source("app/api/clients/[id]/billable/route.ts");
-    expect(route).toMatch(/prisma\.clientPrice\.findMany\(\{\s+where: \{ clientId: id \},/);
+    expect(route).toMatch(/prisma\.clientPrice\.findMany\(\{[^}]*where: \{ clientId: id, removedAt: null \},/);
     expect(route).toMatch(/proposeLines\(\s+billable,\s+catalogue,\s+clientPriceIndex\(/);
     for (const roles of guards(route)) for (const role of roles) expect(billing).toContain(role);
   });
 
-  it("a merge and « Rattacher comme site de… » carry the prices to the kept client", () => {
+  it("a merge, « Rattacher comme site de… » and the sites import carry the prices to the kept client", () => {
     expect(source("app/api/clients/[id]/merge/route.ts")).toContain("counts.clientPrices = await moveClientPrices(tx, [sourceId], targetId);");
     expect(source("app/api/clients/[id]/attach-as-site/route.ts")).toContain("const clientPrices = await moveClientPrices(tx, [sourceId], parentId);");
+    // The import of the sites archives the clients created by mistake into their parent (lot 4H review).
+    const sites = source("app/api/admin/import/sites/route.ts");
+    expect(sites).toContain("written.clientPrices += await moveClientPrices(tx, ids, parentId);");
+    expect(sites).toContain("written.alertCopies += await moveAlertCopies(tx, ids, parentId);");
+    // Both before the clients are archived into the parent.
+    expect(sites.indexOf("moveClientPrices(tx, ids, parentId)")).toBeLessThan(sites.indexOf("data: { archived: true, mergedIntoId: parentId }"));
+  });
+
+  it("a price removed by hand is never read again, and a price of the old software is remembered, not deleted", () => {
+    const route = source("app/api/clients/[id]/prices/route.ts");
+    expect(route).toMatch(/const remembered = price\.legacyPriceId !== null;/);
+    expect(route).toMatch(/data: \{ removedAt: new Date\(\), updatedById: session\.id \}/);
+    // Typed again: the mark is cleared.
+    expect(route).toMatch(/update: \{ unitPrice, origin: "SAISIE", updatedById: session\.id, removedAt: null \}/);
+    // Every reader skips it: the fiche's list, the invoice proposal, the programme sheet; the import's update never touches it.
+    expect(source("lib/client-prices-server.ts")).toMatch(/where: \{ clientId, removedAt: null \}/);
+    expect(source("lib/programme-referential.ts")).toMatch(/where: \{ clientId: billedClientId, removedAt: null \}/);
+    expect(source("app/api/admin/import/prix-clients/route.ts")).toMatch(/where: \{ id: w\.existingId!, origin: "REPRISE", removedAt: null \}/);
   });
 });
 
 describe("moveClientPrices", () => {
-  type Row = { clientId: string; itemKey: string };
+  type Row = { clientId: string; itemKey: string; removedAt?: Date | null };
+  type Where = { clientId: string; itemKey: { notIn: string[] }; removedAt?: null | { not: null } };
+  const removedMatches = (r: Row, filter: Where["removedAt"]) =>
+    filter === undefined ? true : filter === null ? !r.removedAt : Boolean(r.removedAt);
   function stubTx(rows: Row[]) {
     return {
       clientPrice: {
         findMany: vi.fn(async ({ where }: { where: { clientId: string } }) => rows.filter((r) => r.clientId === where.clientId).map(({ itemKey }) => ({ itemKey }))),
-        updateMany: vi.fn(async ({ where, data }: { where: { clientId: string; itemKey: { notIn: string[] } }; data: { clientId: string } }) => {
+        updateMany: vi.fn(async ({ where, data }: { where: Where; data: { clientId: string } }) => {
           let count = 0;
           for (const r of rows) {
-            if (r.clientId === where.clientId && !where.itemKey.notIn.includes(r.itemKey)) {
+            if (r.clientId === where.clientId && !where.itemKey.notIn.includes(r.itemKey) && removedMatches(r, where.removedAt)) {
               r.clientId = data.clientId;
               count += 1;
             }
@@ -102,6 +123,17 @@ describe("moveClientPrices", () => {
       { clientId: "C", itemKey: "P:salmo" },
       { clientId: "A", itemKey: "S:prelevement" },
     ]);
+  });
+
+  it("a price removed by hand follows as the reprise's memory, but is not counted as a price moved", async () => {
+    const removedAt = new Date("2026-11-05T10:00:00Z");
+    const rows: Row[] = [
+      { clientId: "B", itemKey: "P:ecoli", removedAt },
+      { clientId: "B", itemKey: "P:salmo", removedAt: null },
+    ];
+    const moved = await moveClientPrices(stubTx(rows) as never, ["B"], "A");
+    expect(moved).toBe(1);
+    expect(rows.map((r) => r.clientId)).toEqual(["A", "A"]);
   });
 
   it("does nothing without another source", async () => {

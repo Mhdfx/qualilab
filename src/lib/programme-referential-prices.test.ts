@@ -14,6 +14,8 @@ const prisma = vi.hoisted(() => ({
   analysisParameter: { findMany: vi.fn() },
   analysisProfile: { findMany: vi.fn() },
   labService: { findMany: vi.fn() },
+  sample: { findUnique: vi.fn() },
+  clientPrice: { findMany: vi.fn() },
   criterion: { findMany: vi.fn() },
   normVersion: { findMany: vi.fn() },
 }));
@@ -24,6 +26,7 @@ vi.mock("@/lib/prisma", () => ({ prisma }));
 import { loadProgrammeReferential } from "./programme-referential";
 
 const LINE = {
+  id: "s1",
   code: "12/26-1M",
   natureId: "n-micro",
   nature: { family: "MICRO" as const },
@@ -45,8 +48,10 @@ beforeEach(() => {
   prisma.analysisParameter.findMany.mockResolvedValue(PARAMETERS);
   prisma.analysisProfile.findMany.mockResolvedValue([]);
   prisma.labService.findMany.mockResolvedValue([
-    { name: "E. coli test", category: "ALIMENTAIRE", unitPrice: "120.00", active: true },
+    { id: "s-ecoli", name: "E. coli test", category: "ALIMENTAIRE", unitPrice: "120.00", active: true },
   ]);
+  prisma.sample.findUnique.mockResolvedValue({ serie: { site: null } });
+  prisma.clientPrice.findMany.mockResolvedValue([]);
   prisma.criterion.findMany.mockResolvedValue([]);
   prisma.normVersion.findMany.mockResolvedValue([]);
 });
@@ -56,12 +61,31 @@ describe("loadProgrammeReferential — the catalogue prices for a role that sees
     const referential = await loadProgrammeReferential(LINE, { natures: [], withPrices: true });
     expect(prisma.labService.findMany).toHaveBeenCalledTimes(1);
     expect(referential.prices).toEqual({ "p-ecoli": 120, "p-salm": null });
+    expect(referential.clientPriced).toEqual([]);
+  });
+
+  it("lot 4H: the billed client's own prices, as the invoice will propose them — its site's « Facturé à » first", async () => {
+    prisma.sample.findUnique.mockResolvedValue({ serie: { site: { billingClientId: "c-billed" } } });
+    prisma.clientPrice.findMany.mockResolvedValue([
+      { parameterId: "p-salm", labServiceId: null, unitPrice: "95.00", origin: "REPRISE", updatedAt: new Date("2026-11-05T09:00:00Z") },
+    ]);
+    const referential = await loadProgrammeReferential(LINE, { natures: [], withPrices: true });
+    expect(prisma.clientPrice.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { clientId: "c-billed", removedAt: null } }));
+    expect(referential.prices).toEqual({ "p-ecoli": 120, "p-salm": 95 });
+    expect(referential.clientPriced).toEqual(["p-salm"]);
+  });
+
+  it("lot 4H: no site billed elsewhere — the sample's own client", async () => {
+    await loadProgrammeReferential(LINE, { natures: [], withPrices: true });
+    expect(prisma.clientPrice.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { clientId: "c1", removedAt: null } }));
   });
 
   it("without (the responsable des paramètres): the services never read, no price — not even « prix à saisir »", async () => {
     const referential = await loadProgrammeReferential(LINE, { natures: [], withPrices: false });
     expect(prisma.labService.findMany).not.toHaveBeenCalled();
+    expect(prisma.clientPrice.findMany).not.toHaveBeenCalled();
     expect(referential.prices).toEqual({});
+    expect(referential.clientPriced).toEqual([]);
     // The rest of the referential is the same.
     expect(referential.parameters.map((p) => p.id)).toEqual(["p-ecoli", "p-salm"]);
     expect(JSON.stringify(referential)).not.toMatch(/unitPrice|120/);

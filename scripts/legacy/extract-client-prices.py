@@ -12,6 +12,11 @@ CSV file that « Importer les prix clients » (/admin/import) reads.
   CLIENTS                 the client (or the site, TYPECLIENT 102) the price
                           belongs to: name, ICE, obsolete flag, parent
   LISTE_PARAMETRES        the parameter's label (LIBELLE)
+  PARAMETRES.PRIX         the old software's own tariff for that parameter
+                          (« tarifAncien »): most client prices only repeat
+                          it (3 007 of the 3 490 non-zero ones with a tariff,
+                          05/11) — the import counts them apart and, by
+                          default, does not take them (C-8)
 
 PRIX_ANALYSE_PARCLIENT (18 rows priced by « analyse », a grouping the old
 software no longer documents) and the empty PRIX_PARCLIENT / GROUPES_PRIX
@@ -53,6 +58,7 @@ HEADER = [
     "parametre",
     "prix",
     "derniereModification",
+    "tarifAncien",
 ]
 
 s, n, cols = legacy.s, legacy.n, legacy.cols
@@ -61,7 +67,7 @@ SQL = f"""SELECT {cols(
     n('x.ID'), n('c.ID'), n('c.TYPECLIENT'), s('c.NOM'), s('c.ICE'), n('c.OBSOLETE'),
     n('c.ID_HAUTE'), s('h.NOM'),
     n('p.ID'), n('p.ID_ECHANTILLION'), s('l.LIBELLE'),
-    n('x.PRIX'), n('x.LAST_MODIF'))}
+    n('x.PRIX'), n('x.LAST_MODIF'), n('p.PRIX'))}
 FROM PRIX_PARAME_PARCLIENTS x
 JOIN CLIENTS c ON c.ID = x.IDCLIENT
 LEFT JOIN CLIENTS h ON h.ID = c.ID_HAUTE

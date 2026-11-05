@@ -318,8 +318,10 @@ export async function moveAlertCopies(tx: Tx, fromClientIds: string[], toClientI
  * Lot 4H, H5 (RETOUR-LABO-04-11.md): the sources' own prices go to the
  * target — its samples are now the target's, so are their prices. A price
  * the target already has for the same analysis or service is the target's
- * (kept); the source's then stays on the archived fiche, read-only. Returns
- * the prices moved.
+ * (kept); the source's then stays on the archived fiche, read-only. A price
+ * removed by hand (`removedAt`) moves too — the memory of that decision, so
+ * the reprise does not bring it back on the target — but is not counted.
+ * Returns the prices moved.
  */
 export async function moveClientPrices(tx: Tx, fromClientIds: string[], toClientId: string): Promise<number> {
   const sources = fromClientIds.filter((id) => id !== toClientId);
@@ -328,12 +330,17 @@ export async function moveClientPrices(tx: Tx, fromClientIds: string[], toClient
   // One source at a time: when two bring the same analysis, the first one's price is kept.
   for (const sourceId of sources) {
     const held = await tx.clientPrice.findMany({ where: { clientId: toClientId }, select: { itemKey: true } });
+    const notHeld = { notIn: held.map((row) => row.itemKey) };
     moved += (
       await tx.clientPrice.updateMany({
-        where: { clientId: sourceId, itemKey: { notIn: held.map((row) => row.itemKey) } },
+        where: { clientId: sourceId, itemKey: notHeld, removedAt: null },
         data: { clientId: toClientId },
       })
     ).count;
+    await tx.clientPrice.updateMany({
+      where: { clientId: sourceId, itemKey: notHeld, removedAt: { not: null } },
+      data: { clientId: toClientId },
+    });
   }
   return moved;
 }

@@ -28,6 +28,8 @@ type Written = {
   emails: number;
   productTypes: number;
   profiles: number;
+  clientPrices?: number;
+  alertCopies?: number;
 };
 
 type Summary = {
@@ -83,6 +85,8 @@ function transferText(written: Written): string {
     plural(written.emails, "adresse", "adresses"),
     ...(written.productTypes > 0 ? [plural(written.productTypes, "famille de produits", "familles de produits")] : []),
     ...(written.profiles > 0 ? [plural(written.profiles, "profil d'analyses", "profils d'analyses")] : []),
+    ...((written.clientPrices ?? 0) > 0 ? [plural(written.clientPrices ?? 0, "prix propre", "prix propres")] : []),
+    ...((written.alertCopies ?? 0) > 0 ? [plural(written.alertCopies ?? 0, "copie interne des alertes", "copies internes des alertes")] : []),
   ];
   return `Transférés aux sites : ${parts.slice(0, -1).join(", ")} et ${parts[parts.length - 1]}.`;
 }

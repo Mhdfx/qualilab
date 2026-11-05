@@ -20,7 +20,13 @@ import { loadClientPriceRows } from "@/lib/client-prices-server";
  *   PUT { parameterId | labServiceId, unitPrice }
  *                             → sets one price (origin SAISIE: a later
  *                               reprise never overwrites it)
- *   DELETE ?prix=<id>         → removes one: the catalogue's price applies again
+ *   DELETE ?prix=<id>         → removes one: the catalogue's price applies again.
+ *                               A price that came from the old software
+ *                               (`legacyPriceId`) is not deleted but marked
+ *                               `removedAt`: the reprise remembers the
+ *                               decision and never brings it back (every
+ *                               reader ignores such a row; a price typed
+ *                               again for the same item clears the mark)
  *
  * Every change is journalled with the price before and after. An archived
  * client (merged, attached as a site) keeps its prices on record but takes
@@ -70,7 +76,7 @@ export async function PUT(request: Request, { params }: Params) {
   const itemKey = clientPriceKey(target);
   const before = await prisma.clientPrice.findUnique({
     where: { clientId_itemKey: { clientId: id, itemKey } },
-    select: { unitPrice: true, origin: true },
+    select: { unitPrice: true, origin: true, removedAt: true },
   });
   const saved = await prisma.clientPrice.upsert({
     where: { clientId_itemKey: { clientId: id, itemKey } },
@@ -83,8 +89,9 @@ export async function PUT(request: Request, { params }: Params) {
       origin: "SAISIE",
       updatedById: session.id,
     },
-    // Typed by hand: the reprise will not overwrite it any more.
-    update: { unitPrice, origin: "SAISIE", updatedById: session.id },
+    // Typed by hand: the reprise will not overwrite it any more (and a price
+    // removed earlier comes back as this one).
+    update: { unitPrice, origin: "SAISIE", updatedById: session.id, removedAt: null },
     select: { id: true },
   });
 
@@ -98,7 +105,7 @@ export async function PUT(request: Request, { params }: Params) {
       priceId: saved.id,
       item: item.name,
       kind: parameter ? "analyse" : "prestation",
-      before: before ? { unitPrice: toMoney(before.unitPrice), origin: before.origin } : null,
+      before: before && !before.removedAt ? { unitPrice: toMoney(before.unitPrice), origin: before.origin } : null,
       after: { unitPrice, origin: "SAISIE" },
     },
   });
@@ -113,11 +120,12 @@ export async function DELETE(request: Request, { params }: Params) {
   if (!priceId) return NextResponse.json({ error: "Prix à retirer manquant." }, { status: 400 });
 
   const price = await prisma.clientPrice.findFirst({
-    where: { id: priceId, clientId: id },
+    where: { id: priceId, clientId: id, removedAt: null },
     select: {
       id: true,
       unitPrice: true,
       origin: true,
+      legacyPriceId: true,
       client: { select: { name: true, archived: true } },
       parameter: { select: { name: true } },
       labService: { select: { name: true } },
@@ -127,7 +135,14 @@ export async function DELETE(request: Request, { params }: Params) {
   if (price.client.archived) {
     return NextResponse.json({ error: "Client archivé : ses prix se corrigent sur la fiche du client conservé." }, { status: 409 });
   }
-  await prisma.clientPrice.delete({ where: { id: price.id } });
+  // A price of the old software: kept as the memory of the removal, so the
+  // next « Importer les prix clients » leaves it out (`keptRemoved`).
+  const remembered = price.legacyPriceId !== null;
+  if (remembered) {
+    await prisma.clientPrice.update({ where: { id: price.id }, data: { removedAt: new Date(), updatedById: session.id } });
+  } else {
+    await prisma.clientPrice.delete({ where: { id: price.id } });
+  }
   await logAudit({
     actorId: session.id,
     action: "CLIENT_PRICE_DELETED",
@@ -139,6 +154,8 @@ export async function DELETE(request: Request, { params }: Params) {
       item: price.parameter?.name ?? price.labService?.name ?? null,
       kind: price.parameter ? "analyse" : "prestation",
       before: { unitPrice: toMoney(price.unitPrice), origin: price.origin },
+      // The reprise will not bring it back.
+      remembered,
     },
   });
   return NextResponse.json(await loadClientPriceRows(id));

@@ -19,13 +19,21 @@ import type { SampleType } from "@/generated/prisma/client";
  * `BILLING_ROLES`, price-access.ts). Each one says where it comes from (taken
  * over from the old software, or typed here) beside the catalogue's price.
  * A price set or corrected here is never overwritten by a later reprise;
- * a price removed lets the catalogue's apply again. The invoice proposes
- * these prices, always editable.
+ * a price removed lets the catalogue's apply again (and a price taken over
+ * from the old software, once removed, is never brought back by the
+ * reprise). The invoice proposes these prices, always editable.
+ *
+ * `billedElsewhere`: this client's sites billed to another client — their
+ * samples are invoiced to that client, at that client's prices, never at
+ * these (hypothèse, à confirmer par C-8 (b)); the card says so.
  */
 
 type ParameterOption = { id: string; name: string; category: SampleType };
 
 type Adding = { kind: "ANALYSE" | "PRESTATION"; itemId: string; search: string; price: string };
+
+/** A site of this client billed to another client (« Facturé à »). */
+export type BilledElsewhereSite = { site: string; billingClient: string };
 
 const plural = (count: number, one: string, many: string) => `${count} ${count > 1 ? many : one}`;
 
@@ -33,11 +41,14 @@ export function ClientPricesCard({
   clientId,
   initialRows,
   archived,
+  billedElsewhere = [],
 }: {
   clientId: string;
   initialRows: ClientPriceRow[];
   /** An archived fiche lists its prices, read-only. */
   archived: boolean;
+  /** Its sites billed to another client: their samples follow that client's prices. */
+  billedElsewhere?: BilledElsewhereSite[];
 }) {
   const [rows, setRows] = useState(initialRows);
   const [search, setSearch] = useState("");
@@ -51,6 +62,12 @@ export function ClientPricesCard({
 
   const shown = useMemo(() => (search.trim() ? rows.filter((row) => matchesClientPriceSearch(row, search)) : rows), [rows, search]);
   const reprise = rows.filter((row) => row.origin === "REPRISE").length;
+  // « Les échantillons des sites A et B, facturés à X, … » — one line per billing client.
+  const elsewhere = useMemo(() => {
+    const byClient = new Map<string, string[]>();
+    for (const row of billedElsewhere) byClient.set(row.billingClient, [...(byClient.get(row.billingClient) ?? []), row.site]);
+    return [...byClient.entries()].map(([billingClient, sites]) => ({ billingClient, sites }));
+  }, [billedElsewhere]);
 
   /** Sends one change; the answer is the client's whole list, as the server now holds it. */
   async function send(method: "PUT" | "DELETE", body?: Record<string, unknown>, priceId?: string): Promise<boolean> {
@@ -159,6 +176,18 @@ export function ClientPricesCard({
             </button>
           )}
         </div>
+
+        {elsewhere.map(({ billingClient, sites }) => (
+          <p key={billingClient} className="mt-3 rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-900 ring-1 ring-sky-200">
+            {sites.length > 1 ? "Les échantillons des sites " : "Les échantillons du site "}
+            {sites.map((site, i) => (
+              <span key={site}>
+                {i > 0 ? (i === sites.length - 1 ? " et " : ", ") : ""}« {site} »
+              </span>
+            ))}
+            {`, facturés à ${billingClient}, sont facturés aux prix de ${billingClient} : les prix ci-dessous ne s'y appliquent pas.`}
+          </p>
+        ))}
 
         {archived && rows.length > 0 && (
           <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">

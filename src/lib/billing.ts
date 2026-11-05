@@ -13,7 +13,14 @@ import {
   type CreditNoteLine,
   type InvoiceState,
 } from "./invoice-lifecycle";
-import { EMPTY_CLIENT_PRICES, resolveLinePrice, type ClientPriceIndex, type LinePriceOrigin } from "./client-prices";
+import {
+  EMPTY_CLIENT_PRICES,
+  parseLinePriceSource,
+  resolveLinePrice,
+  type ClientPriceIndex,
+  type InvoiceLinePriceSource,
+  type LinePriceOrigin,
+} from "./client-prices";
 
 /**
  * Turning analyses into invoice lines.
@@ -213,6 +220,8 @@ export type InvoiceLine = {
   unitPrice: number;
   lineTotal: number;
   sampleId: string | null;
+  /** Lot 4H, H5: where the price came from (`InvoiceItem.priceSource`), when the form said it. */
+  priceSource?: InvoiceLinePriceSource;
 };
 
 export type InvoiceLinesCheck = { ok: true; lines: InvoiceLine[] } | { ok: false; error: string };
@@ -266,6 +275,8 @@ export function checkInvoiceLines(items: unknown, options: { issue: boolean }): 
     if (sampleId && options.issue && unitPrice <= 0) {
       return { ok: false, error: unpricedLineError(description) };
     }
+    // Said on the draft and the invoice sheet, never printed; unknown values dropped.
+    const priceSource = parseLinePriceSource(item.priceSource);
     lines.push({
       description,
       quantity,
@@ -274,6 +285,7 @@ export function checkInvoiceLines(items: unknown, options: { issue: boolean }): 
       // to the stored total.
       lineTotal: roundMoney(quantity * unitPrice),
       sampleId,
+      ...(priceSource ? { priceSource } : {}),
     });
   }
   if (lines.length === 0) {

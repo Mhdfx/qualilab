@@ -77,7 +77,7 @@ comportement construit) · **à construire** · **réglage** / **donnée**
 | 14 | R-27 (Q104 d) | « Oui » coché ; « le moyen de prélèvement ne doit s'afficher dans le rapport que dans le cas de l'air (des prélèvements) » | les libellés conviennent, mais la ligne « Moyen de prélèvement » **n'apparaît que pour l'air** ; ni « Écouvillon », ni « Flacon stérile », ni « N/A » sur les autres rapports | K6 : `SAMPLING_MEANS_BY_KIND` = true → « Écouvillon » / « Flacon stérile » / « Sachet stérile… » quand le laboratoire prélève, « N/A » sinon ; l'air garde sa méthode (`samplingMeansText`, `samplingReferenceHtml`) | **K9** : la ligne seulement pour l'air (nouveaux rapports ; versions émises inchangées) | à modifier | XS–S |
 | 15 | R-6, R-21 (Q115) | « Oui » coché (croix) | le récapitulatif par site tel que construit : une ligne par échantillon, une colonne par paramètre, valeur colorée, la réception ne voit que « C / NC » | L1 : `RECAP_DEFAULT_MODE` = "valeur", `recapAccess` (valeurs aux profils de `REPORT_READ_ROLES`, C / NC à la réception et à la programmation) | rien ; la décision du propriétaire sur les valeurs est confirmée par le laboratoire | confirmé | — |
 | 16 | R-22 | « Oui » coché (croix) ; « Acceptable » barré d'une croix ; en marge « Conforme / non conforme » | comptage confirmé (reçus dans le mois ; surfaces, mains, air non déclarés ; Origine = Local / Importé / Destiné à l'export) ; dans le rapport ONSSA il n'y a que **Conforme / Non conforme** — « Acceptable » n'y existe pas : il y est compté conforme (lecture, §4) | N3 : `ONSSA_COUNT_BY` = "RECEPTION" ; « Acceptable » = conforme ; aucun groupe proposé pour surfaces, mains, air ; « Origine » par série (texte, trois valeurs proposées) | rien ; commentaires « confirmé le 04/11 » | confirmé | XS (commentaire) |
-| 17 | R-4 (Q86 3) | « Oui » coché (croix) | reprendre les ≈ 6 700 prix propres à certains clients ; la facture propose le prix du client, toujours modifiable | **rien de construit** (H5 de `RETOUR-LABO-19-10.md`, « après R-4 ») ; la facture propose le prix du catalogue | **H5** : table des prix par client + reprise depuis l'ancienne base | à construire | M–L |
+| 17 | R-4 (Q86 3) | « Oui » coché (croix) | reprendre les ≈ 6 700 prix propres à certains clients ; la facture propose le prix du client, toujours modifiable | **construit (lot 4H, local, non déployé)** — §5 « H5 — tel que construit » ; la facture propose le prix du client | **H5** : table des prix par client + reprise depuis l'ancienne base | construit (lot 4H, local, non déployé) | M–L |
 | 18 | R-24 | aucune case (la proposition « attestation 3 mois, avertissement sans blocage » **non cochée**) ; « Taux avec attestation : 100 » ; « sans attestation : 10 » — le « % » imprimé après chaque nombre est repassé ou barré d'un trait de stylo, suivi d'un signe illisible (l'unité elle-même est donc incertaine) ; Base « TTC » coché ; « Fournisseurs concernés » vide ; « Autre » vide | des taux et une base, mais incohérents tels qu'écrits : **100 % du TTC** retiendrait toute la facture (le logiciel le refuse), et un taux plus fort **avec** attestation que sans est l'inverse de l'usage. Le reste (durée de l'attestation, avertissement ou blocage, fournisseurs) sans réponse | M7 : champ d'application, base (TVA par défaut), taux avec / sans attestation **vides** dans les réglages (`AchatStockSettings`) ; validité 3 mois ; `PAYMENT_REQUIRES_TAX_CERTIFICATE` = false (avertissement) ; « 100 % sur le TTC » refusé | **C-3** au comptable ; rien n'est saisi avant sa réponse ; puis réglage (S13) | à clarifier | XS (réglage) |
 
 ## 2. Les hypothèses du lot 3 — ce que la réponse en fait
@@ -103,7 +103,7 @@ comportement construit) · **à construire** · **réglage** / **donnée**
 | `SAMPLING_MEANS_BY_KIND` (K6) | R-27 | le moyen seulement pour l'air | **changée** | K9 |
 | L1 — valeur colorée ; C / NC pour la réception | R-21 | Oui | **confirmée** | rien |
 | N1 / N3 — reçus dans le mois, « Acceptable » = conforme, surfaces / mains / air non déclarés, Origine | R-22 | Oui, « Conforme / non conforme » | **confirmée** | rien |
-| H5 — prix par client (non construit) | R-4 | Oui | **à construire** | H5 |
+| H5 — prix par client | R-4 | Oui | **construit (lot 4H, local, non déployé)** | H5 |
 | M7 — retenue : base, taux, 3 mois, avertissement (`PAYMENT_REQUIRES_TAX_CERTIFICATE` = false) | R-24 | taux et base écrits, incohérents ; proposition non cochée | **à clarifier** | C-3 ; rien ne change |
 
 Restent hors de ce questionnaire (exprès, 02/11) et donc **toujours
@@ -217,13 +217,40 @@ Gestes du propriétaire avec ce lot (sans code, en production, journalisés) :
   `/api/clients/[id]/prices` (GET, PUT, DELETE) pour COMPTABLE, GESTIONNAIRE, ADMIN ;
   tout autre profil reçoit 403 ; chaque changement est journalisé (avant / après).
   La Direction voit les prix par la règle du 25/10 mais n'a ni fiche client ni écran
-  de facture : elle ne reçoit pas cet écran (**hypothèse, à confirmer par C-8**).
+  de facture : le propriétaire a décidé le 26/10 de la laisser ainsi (« DIRECTION left
+  as is, no invoice screen », HANDOFF) ; elle ne reçoit donc pas cet écran
+  (**C-8 (d)** demande seulement si H5 change cette décision).
 - **Facture** : la proposition (échantillons à facturer, choix d'une prestation)
   prend le prix du client à la place du catalogue, toujours modifiable ; la ligne dit
   « Prix du client — repris de l'ancien logiciel (catalogue : …) », « Prix du
-  catalogue », « Prix à saisir » ou « Prix modifié à la main ».
-- **Fusion et « Rattacher comme site de… »** : les prix du client archivé passent au
-  client conservé, sauf pour une analyse où celui-ci a déjà le sien.
+  catalogue », « Prix à saisir » ou « Prix modifié à la main ». Une prestation
+  choisie à la main suit le même ordre que la proposition : le prix du client pour
+  l'analyse facturée sous cette prestation (tous les prix de la reprise sont des prix
+  par analyse), sinon pour la prestation, sinon le catalogue ; le choix attend que les
+  prix du client soient chargés, et une ligne déjà remplie est reproposée au prix du
+  client (jamais un prix tapé à la main).
+- **Origine du prix enregistrée** : colonne additive `InvoiceItem.priceSource`
+  (migration `20261105030001_lot4h_prix_retires_origine_ligne` ; prix du client repris
+  ou saisi, catalogue, saisi à la main), écrite à l'enregistrement du brouillon, redite
+  à sa réouverture et sur la fiche de la facture — jamais sur le PDF. Une ligne
+  enregistrée avant la colonne n'a pas d'origine.
+- **Fiche de programmation, section 7** (profils qui voient la facturation) : chaque
+  analyse au prix que la facture proposera — le prix propre du client facturé
+  (« Facturé à » du site, sinon le client) s'il en a un, sinon le catalogue —, avec
+  « prix du client » / « prix du catalogue » sous le montant ; le total est celui de
+  la proposition de facture.
+- **Fusion, « Rattacher comme site de… » et import des sites** : les prix du client
+  archivé passent au client conservé, sauf pour une analyse où celui-ci a déjà le sien
+  (l'import des sites emporte aussi les adresses de copie interne, L5).
+- **Prix retiré à la main** : un prix repris de l'ancien logiciel puis retiré sur la
+  fiche n'est pas supprimé mais marqué (`ClientPrice.removedAt`, même migration) ;
+  aucun écran ni aucune facture ne le lit, et la reprise suivante ne le remet pas
+  (« Prix retirés à la main — non repris ») ; le saisir de nouveau sur la fiche
+  efface la marque. Un prix saisi sur la fiche puis retiré est supprimé.
+- **Sites facturés à un autre client** : la carte des prix le dit (« Les échantillons
+  du site « X », facturés à Y, sont facturés aux prix de Y : les prix ci-dessous ne
+  s'y appliquent pas ») — la facture va au client qui paie, à ses prix
+  (**hypothèse, à confirmer par C-8 (b)**).
 - **Reprise** : `scripts/legacy/extract-client-prices.py` (lecture seule de
   `qlabo-fb`) écrit `backups/prix-clients-ancienne-base.csv` (ignoré par git) ;
   « Importer les prix clients » (/admin/import, administrateur seul) : analyse
@@ -233,8 +260,17 @@ Gestes du propriétaire avec ce lot (sans code, en production, journalisés) :
   Règles retenues (**hypothèses, à confirmer par C-8**) : un prix à 0 n'est pas un
   prix propre (le catalogue s'applique) ; le prix d'un site de l'ancien logiciel va
   au client qui paie ce site (son « Facturé à », sinon son client) ; deux prix pour
-  le même client et la même analyse : le plus récemment modifié est gardé.
-  `PRIX_ANALYSE_PARCLIENT` (18 lignes) n'est pas repris.
+  le même client et la même analyse : le prix propre du client avant celui d'un de
+  ses sites, puis le plus récemment modifié (interrupteur
+  `CLIENT_PRICE_OWN_BEFORE_SITE`, allumé ; éteint : le plus récent seulement) —
+  chaque conflit est listé sur l'écran d'analyse (client, analyse, les deux prix,
+  client ou site, type d'analyse, date) ; un prix **égal au tarif de l'ancien
+  logiciel** pour l'analyse (`PARAMETRES.PRIX`, colonne `tarifAncien` du fichier)
+  n'est pas un prix négocié : compté à part (« Égaux à l'ancien tarif ») et non
+  repris, le client suit le catalogue (interrupteur `CLIENT_PRICE_SKIP_LEGACY_TARIFF`,
+  allumé ; éteint : repris comme les autres, figés à l'ancien tarif quand le
+  catalogue change). Les dates de l'ancien logiciel sont lues à l'heure du
+  laboratoire. `PRIX_ANALYSE_PARCLIENT` (18 lignes) n'est pas repris.
 
 **Comptes de la reprise, 05/11** — sur une copie de la base locale (`qualilab_h5`)
 où les clients (1 507 créés) et les sites (390) de l'ancien logiciel ont été repris
@@ -263,6 +299,16 @@ correspondante dans /admin/parametres (équivalence à confirmer par le laborato
 puis relancer l'import : seuls les prix nouveaux sont écrits. Recette locale
 `h5-verify` 26/26 (gardes des neuf profils, pages, proposition de facture, saisie,
 retrait, relance idempotente, prix saisi conservé par la reprise).
+
+**Relecture du 05/11** : dans l'ancienne base, 3 007 des 3 490 prix propres non nuls
+dont l'analyse a un tarif (`PARAMETRES.PRIX` > 0) **égalent ce tarif** (86 %) ; 136
+seulement sont au-dessus, 42 à environ 1,2 fois. Ce sont les tarifs de l'ancien
+logiciel recopiés, pas des prix négociés : d'où l'interrupteur
+`CLIENT_PRICE_SKIP_LEGACY_TARIFF` (C-8 (e)). Le catalogue actuel ne vient pas de ces
+tarifs : **avant l'import en production, comparer l'ancien tarif au catalogue de
+production** (l'écran d'analyse le rappelle). Une copie de répétition déjà importée
+garde ses prix égaux à l'ancien tarif (« déjà repris : laissé tel quel ») : les
+retirer sur la fiche si le client doit suivre le catalogue.
 
 ### Après les clarifications (P2–P3)
 
@@ -337,14 +383,21 @@ Le comportement construit reste en place ; rien n'est relancé.
   (c'est ce que fait le logiciel) — ou souhaitez-vous ne plus voir
   « Acceptable » ailleurs non plus ?
 
-- **C-8 — R-4, la reprise des prix clients** (H5, construit) : « Dans l'ancien
+- **C-8 — R-4, la reprise des prix clients** (H5, construit) : « (a) Dans l'ancien
   logiciel, 1 937 prix propres valent 0 : nous les lisons « pas de prix propre, le
-  tarif s'applique » — d'accord ? Un prix saisi pour un site va au client qui paie ce
-  site ; si un client a deux prix pour la même analyse, nous gardons le plus récent.
-  « E. coli » de l'eau = « Escherichia coli » de l'ancien logiciel, « Coliformes
-  totaux » = « Coliformes à 36 °C » ? » — et pour le propriétaire : la Direction
-  doit-elle aussi lire et corriger ces prix (aujourd'hui : comptabilité, commercial,
-  administrateur) ?
+  tarif s'applique » — d'accord ? (b) Un prix saisi pour un site va au client qui
+  paie ce site, et les échantillons d'un site facturé à un autre client sont facturés
+  aux prix de ce dernier — d'accord ? (c) Si un client a deux prix pour la même
+  analyse (le sien et celui d'un de ses sites, ou deux types d'analyse — par exemple
+  Salmonella sur viande et sur produit laitier), nous gardons son prix propre avant
+  celui du site, puis le plus récent ; l'écran d'analyse liste les 186 cas — faut-il
+  une autre règle ? (d) « E. coli » de l'eau = « Escherichia coli » de l'ancien
+  logiciel, « Coliformes totaux » = « Coliformes à 36 °C » ? (e) 3 007 des prix
+  propres sont égaux à l'ancien tarif de l'analyse : les garder figés à ce prix, ou
+  ces clients suivent-ils le catalogue (notre choix par défaut) ? » — et pour le
+  propriétaire : il a décidé le 26/10 de laisser la Direction sans écran de facture ;
+  H5 change-t-il cette décision (aujourd'hui, ces prix se lisent et se corrigent par
+  la comptabilité, le commercial et l'administrateur) ?
 
 ## 8. Fichiers et données qu'il nous faut encore
 

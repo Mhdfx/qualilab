@@ -1363,6 +1363,11 @@ model InvoiceItem {
   creditedItem   InvoiceItem?  @relation("InvoiceItemCredits", fields: [creditedItemId], references: [id], onDelete: SetNull)
   /// FACTURE line: the credit-note lines that take it back.
   creditLines    InvoiceItem[] @relation("InvoiceItemCredits")
+  /// Lot 4H, H5: where the line's price came from, said on the draft and on
+  /// the invoice sheet (never printed) — the client's own price (taken over
+  /// or typed on the fiche), the catalogue's, or typed by hand. Null: a line
+  /// saved before the column, a credit-note line, a line still unpriced.
+  priceSource    InvoiceLinePriceSource?
 
   @@index([invoiceId])
   @@index([sampleId])
@@ -1922,6 +1927,14 @@ enum ClientPriceOrigin {
   SAISIE
 }
 
+/// Lot 4H, H5 — the origin of an invoice line's price (`InvoiceItem.priceSource`).
+enum InvoiceLinePriceSource {
+  CLIENT_REPRISE
+  CLIENT_SAISIE
+  CATALOGUE
+  MAIN
+}
+
 /// Lot 4H, H5 — a price proper to one client for one analysis
 /// (`parameterId`) or one service of the catalogue (`labServiceId`),
 /// exactly one of the two. The invoice proposal takes it instead of the
@@ -1951,8 +1964,13 @@ model ClientPrice {
   legacyModifiedAt DateTime?
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
-  /// Who typed it last (SAISIE); null for a price the import wrote.
+  /// Who typed it last (SAISIE) — or removed it; null for a price the import wrote.
   updatedById  String?
+  /// Removed by hand on the fiche while it came from the old software
+  /// (`legacyPriceId`): the row stays as the memory of that decision, so a
+  /// later reprise never brings the price back; every reader ignores it
+  /// (`removedAt: null`). A price typed again on the fiche clears it.
+  removedAt    DateTime?
   updatedBy    User?              @relation("ClientPriceUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@unique([clientId, itemKey])

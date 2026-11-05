@@ -444,7 +444,14 @@ export default async function ClientDetailPage({
             billedSites={client.billedSites}
           />
 
-          <ClientPricesCard clientId={client.id} initialRows={prices} archived={client.archived} />
+          <ClientPricesCard
+            clientId={client.id}
+            initialRows={prices}
+            archived={client.archived}
+            billedElsewhere={client.sites.flatMap((site) =>
+              site.billingClient && site.billingClient.id !== client.id ? [{ site: site.name, billingClient: site.billingClient.name }] : []
+            )}
+          />
 
           <Card className="p-5">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">

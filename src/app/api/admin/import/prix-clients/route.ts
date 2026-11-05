@@ -11,6 +11,7 @@ import {
   readClientPriceRows,
   type ClientPricePlan,
 } from "@/lib/client-prices-import";
+import { CLIENT_PRICE_OWN_BEFORE_SITE, CLIENT_PRICE_SKIP_LEGACY_TARIFF } from "@/lib/lab-proposals";
 
 /**
  * « Importer les prix clients » (lot 4H, H5 — RETOUR-LABO-04-11.md §5): the
@@ -25,7 +26,11 @@ import {
  *                  (CLIENT_PRICES_IMPORTED). Idempotent: `legacyPriceId`
  *                  and one price per client and analysis — re-running the
  *                  same file writes nothing; a price typed on a fiche is
- *                  never overwritten.
+ *                  never overwritten, a price removed on a fiche never
+ *                  brought back (`removedAt`).
+ *
+ * The rules waiting for C-8 are the switches `CLIENT_PRICE_SKIP_LEGACY_TARIFF`
+ * and `CLIENT_PRICE_OWN_BEFORE_SITE` (lab-proposals.ts).
  *
  * Production runs the same route with the same file (the CSV holds client
  * names: it travels outside the repository, like the other legacy exports).
@@ -80,7 +85,7 @@ export async function POST(request: Request) {
       prisma.analysisNature.findMany({ select: { legacyId: true, legacyType: true, family: true } }),
       prisma.clientPrice.findMany({
         where: { parameterId: { not: null } },
-        select: { id: true, clientId: true, itemKey: true, unitPrice: true, origin: true, legacyPriceId: true },
+        select: { id: true, clientId: true, itemKey: true, unitPrice: true, origin: true, legacyPriceId: true, removedAt: true },
       }),
     ]);
     return planClientPriceImport(rows, rejected, {
@@ -89,7 +94,7 @@ export async function POST(request: Request) {
       parameters,
       natures: natures.map((n) => ({ legacyId: n.legacyId, category: n.legacyType, family: n.family })),
       existing: existing.map((e) => ({ ...e, unitPrice: toMoney(e.unitPrice) })),
-    });
+    }, { skipLegacyTariff: CLIENT_PRICE_SKIP_LEGACY_TARIFF, ownBeforeSite: CLIENT_PRICE_OWN_BEFORE_SITE });
   };
   const plan = await load();
   if (mode === "analyse") return NextResponse.json({ mode, ...summarize(plan) });
@@ -122,9 +127,9 @@ export async function POST(request: Request) {
         }
         let updatedCount = 0;
         for (const w of updated) {
-          // Never over a price typed on the fiche since the analysis.
+          // Never over a price typed on the fiche, nor removed there, since the analysis.
           const result = await tx.clientPrice.updateMany({
-            where: { id: w.existingId!, origin: "REPRISE" },
+            where: { id: w.existingId!, origin: "REPRISE", removedAt: null },
             data: {
               unitPrice: w.unitPrice,
               legacyPriceId: w.legacyPriceId,
@@ -156,6 +161,7 @@ export async function POST(request: Request) {
       counts: plan.counts,
       matched: plan.matched,
       conflicts: plan.conflicts,
+      legacyTariff: plan.legacyTariff,
       clients: plan.clients,
       written,
     },

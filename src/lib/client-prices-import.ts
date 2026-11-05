@@ -4,6 +4,8 @@ import { parameterKeys } from "./legacy-catalogue";
 import { normalizeSiteName } from "./sites-import";
 import { roundMoney } from "./invoice-math";
 import { clientPriceKey, type ClientPriceOrigin } from "./client-prices";
+import { fromLabWallTime } from "./lab-time";
+import { formatDate } from "./labels";
 
 /**
  * Lot 4H, H5 (RETOUR-LABO-04-11.md §5, R-4 « Oui ») — « Importer les prix
@@ -41,19 +43,35 @@ import { clientPriceKey, type ClientPriceOrigin } from "./client-prices";
  * RETOUR-LABO-04-11.md §5 H5):
  *   - a price of 0 — no price of its own: the catalogue's applies
  *     (hypothèse, à confirmer par C-8; 1 937 rows on 05/11);
+ *   - with `skipLegacyTariff` (`CLIENT_PRICE_SKIP_LEGACY_TARIFF`), a price
+ *     equal to the old software's own tariff for the analysis (« tarifAncien »,
+ *     PARAMETRES.PRIX): a list price, not a negotiated one — the client
+ *     follows the catalogue (hypothèse, à confirmer par C-8; 3 007 rows);
  *   - a client or an analysis not found, or a client whose name is ambiguous;
  *   - a second price for the same client and analysis (two types d'analyse
- *     of the same domain, two old clients merged into one of ours): the most
- *     recently changed one is kept, the others are « doublons » (hypothèse, à confirmer par C-8).
+ *     of the same domain, a site's price going to the client billed for it,
+ *     two old clients merged into one of ours): with `ownBeforeSite`
+ *     (`CLIENT_PRICE_OWN_BEFORE_SITE`) the client's own price wins over a
+ *     site's, then the most recently changed one is kept; the others are
+ *     « doublons », each conflict listed (hypothèse, à confirmer par C-8).
  *
  * Idempotent: a price already taken over and unchanged is left alone, a
  * changed one updated; a price typed on the client's fiche (SAISIE) is never
- * overwritten.
+ * overwritten, and a price removed by hand on the fiche (`removedAt`) never
+ * comes back.
  */
 
 /** The file's first line, as `extract-client-prices.py` writes it. */
 export const CLIENT_PRICE_FILE_HEADER =
-  "legacyPriceId;legacyClientId;clientType;client;ice;clientObsolete;legacyParentId;parent;legacyParamId;legacyNatureId;parametre;prix;derniereModification";
+  "legacyPriceId;legacyClientId;clientType;client;ice;clientObsolete;legacyParentId;parent;legacyParamId;legacyNatureId;parametre;prix;derniereModification;tarifAncien";
+
+/** The rules of the plan that wait for C-8 — the switches of lab-proposals.ts. */
+export type ClientPriceImportOptions = {
+  /** `CLIENT_PRICE_SKIP_LEGACY_TARIFF`: a price equal to the old tariff is not taken. */
+  skipLegacyTariff: boolean;
+  /** `CLIENT_PRICE_OWN_BEFORE_SITE`: between two prices, the client's own before a site's. */
+  ownBeforeSite: boolean;
+};
 
 const COLUMNS = [
   "legacyPriceId",
@@ -69,6 +87,7 @@ const COLUMNS = [
   "parametre",
   "prix",
   "derniereModification",
+  "tarifAncien",
 ] as const;
 type Column = (typeof COLUMNS)[number];
 const REQUIRED: Column[] = ["legacyPriceId", "legacyClientId", "client", "parametre", "prix"];
@@ -94,6 +113,8 @@ export type LegacyClientPrice = {
   parameter: string;
   price: number;
   modifiedAt: Date | null;
+  /** The old software's own tariff for the analysis (PARAMETRES.PRIX); null when the file has none, or 0. */
+  legacyTariff: number | null;
 };
 
 export type RejectedPriceRow = { line: number; client: string; parameter: string; reason: string };
@@ -112,12 +133,18 @@ function id(value: string | undefined): number | null {
   return n > 0 && n <= MAX_LEGACY_ID ? n : null;
 }
 
-/** « 2022-02-22 10:12:26 » (the lab's local time, as the old software wrote it) → a Date, or null. */
+/**
+ * « 2022-02-22 10:12:26 » → a Date, or null. The old software wrote the
+ * laboratory's wall clock (UTC+1 before 20/09/2026): read on that clock
+ * (`fromLabWallTime`, lab-time.ts), so a change made at 23 h 30 is not shown
+ * the next day.
+ */
 export function legacyDate(value: string | undefined): Date | null {
   const m = (value ?? "").trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
   if (!m) return null;
-  const date = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0)));
-  return Number.isNaN(date.getTime()) ? null : date;
+  const [, y, mo, d, h = "00", mi = "00", s = "00"] = m;
+  if (+mo < 1 || +mo > 12 || +d < 1 || +d > 31) return null;
+  return fromLabWallTime(`${y}-${mo}-${d}T${h}:${mi}:${s}`);
 }
 
 /** « 250.00 », « 249,50 », « 1 200 » → a price, or null. */
@@ -163,6 +190,10 @@ export function readClientPriceRows(
       parameter,
       price,
       modifiedAt: legacyDate(cell("derniereModification")),
+      legacyTariff: (() => {
+        const tariff = legacyPrice(cell("tarifAncien"));
+        return tariff !== null && tariff > 0 ? tariff : null;
+      })(),
     });
   });
   return { rows: kept, rejected };
@@ -181,6 +212,8 @@ export type ExistingClientPrice = {
   unitPrice: number;
   origin: ClientPriceOrigin;
   legacyPriceId: number | null;
+  /** Removed by hand on the fiche: the reprise never brings it back. */
+  removedAt: Date | null;
 };
 
 export type PriceImportDb = {
@@ -335,7 +368,9 @@ export type PriceImportCategory =
   | "update"
   | "unchanged"
   | "keptManual"
+  | "keptRemoved"
   | "zeroPrice"
+  | "sameAsLegacyTariff"
   | "clientNotFound"
   | "clientAmbiguous"
   | "analysisNotFound"
@@ -347,7 +382,9 @@ export const PRICE_IMPORT_CATEGORIES: readonly PriceImportCategory[] = [
   "update",
   "unchanged",
   "keptManual",
+  "keptRemoved",
   "zeroPrice",
+  "sameAsLegacyTariff",
   "clientNotFound",
   "clientAmbiguous",
   "analysisNotFound",
@@ -381,6 +418,22 @@ export type MissingClient = { legacyClientId: number; name: string; prices: numb
 /** One analysis of the old software the import did not place. */
 export type MissingAnalysis = { label: string; legacyNatureId: number | null; prices: number; reason: string };
 
+/** One price of a conflict, as the screen lists it. */
+export type ConflictPrice = {
+  line: number;
+  price: number;
+  /** The old software's row it came from: the client itself, or one of its sites. */
+  source: "client" | "site";
+  /** The old software's client (or site) name, as the file has it. */
+  legacyName: string;
+  legacyNatureId: number | null;
+  /** « 22/02/2022 », or null. */
+  modifiedOn: string | null;
+};
+
+/** Several prices of the old software at different prices for one client and analysis of ours. */
+export type PriceConflict = { client: string; analysis: string; kept: ConflictPrice; others: ConflictPrice[] };
+
 export type ClientPricePlan = {
   rows: number;
   counts: Record<PriceImportCategory, number>;
@@ -388,6 +441,16 @@ export type ClientPricePlan = {
   matched: number;
   /** Duplicates whose price differs from the one kept. */
   conflicts: number;
+  /** Those conflicts, one per client and analysis (the first ones). */
+  conflictList: PriceConflict[];
+  /** The rule that chose among them, in French. */
+  duplicateRule: string;
+  /**
+   * The non-zero prices equal to the old software's tariff (« tarifAncien »),
+   * whether skipped (`skipLegacyTariff`) or taken; `withTariff`: those the
+   * file gives a tariff for.
+   */
+  legacyTariff: { equal: number; withTariff: number; skipped: boolean };
   clients: { matched: number; notFound: number; ambiguous: number; bySite: number; byIce: number; byName: number };
   /** Of the matched clients, how many are archived records with no kept fiche to follow. */
   archivedClients: number;
@@ -400,17 +463,41 @@ export type ClientPricePlan = {
 const MAX_EXAMPLES = 50;
 const MAX_MISSING = 200;
 
-/** Newest change first, then the newest row: the price kept when the same client and analysis come twice. */
-function newer(a: LegacyClientPrice, b: LegacyClientPrice): boolean {
+const isSiteRow = (row: Pick<LegacyClientPrice, "clientType">) => row.clientType === LEGACY_SITE_TYPE;
+
+/**
+ * Whether `a` is kept over `b` when the same client and analysis come twice
+ * (C-8 (c)): with `ownBeforeSite`, the client's own price before a site's;
+ * then the newest change, then the newest row.
+ */
+export function preferredPrice(a: LegacyClientPrice, b: LegacyClientPrice, ownBeforeSite: boolean): boolean {
+  if (ownBeforeSite && isSiteRow(a) !== isSiteRow(b)) return !isSiteRow(a);
   const ta = a.modifiedAt?.getTime() ?? 0;
   const tb = b.modifiedAt?.getTime() ?? 0;
   return ta !== tb ? ta > tb : a.legacyPriceId > b.legacyPriceId;
 }
 
+/** Whether a price only repeats the old software's tariff for the analysis. */
+export function equalsLegacyTariff(row: Pick<LegacyClientPrice, "price" | "legacyTariff">): boolean {
+  return row.legacyTariff !== null && row.price > 0 && Math.round(row.price * 100) === Math.round(row.legacyTariff * 100);
+}
+
+const conflictPrice = (row: LegacyClientPrice): ConflictPrice => ({
+  line: row.line,
+  price: row.price,
+  source: isSiteRow(row) ? "site" : "client",
+  legacyName: row.client,
+  legacyNatureId: row.legacyNatureId,
+  modifiedOn: row.modifiedAt ? formatDate(row.modifiedAt) : null,
+});
+
+export const DEFAULT_CLIENT_PRICE_IMPORT_OPTIONS: ClientPriceImportOptions = { skipLegacyTariff: true, ownBeforeSite: true };
+
 export function planClientPriceImport(
   rows: readonly LegacyClientPrice[],
   rejected: readonly RejectedPriceRow[],
-  db: PriceImportDb
+  db: PriceImportDb,
+  options: ClientPriceImportOptions = DEFAULT_CLIENT_PRICE_IMPORT_OPTIONS
 ): ClientPricePlan {
   const counts = Object.fromEntries(PRICE_IMPORT_CATEGORIES.map((c) => [c, 0])) as Record<PriceImportCategory, number>;
   const examples = Object.fromEntries(PRICE_IMPORT_CATEGORIES.map((c) => [c, [] as PriceImportExample[]])) as Record<
@@ -433,12 +520,29 @@ export function planClientPriceImport(
   const missingClients = new Map<number, MissingClient>();
   const missingAnalyses = new Map<string, MissingAnalysis>();
   const groups = new Map<string, { row: LegacyClientPrice; clientId: string; parameter: PriceImportParameter }[]>();
+  const existingByKey = new Map(db.existing.map((e) => [`${e.clientId}|${e.itemKey}`, e]));
+  const existingByLegacy = new Map(db.existing.flatMap((e) => (e.legacyPriceId !== null ? [[e.legacyPriceId, e] as const] : [])));
+  const legacyTariff = { equal: 0, withTariff: 0, skipped: options.skipLegacyTariff };
 
   for (const row of rows) {
     const base = { line: row.line, client: row.client, parameter: row.parameter, price: row.price };
     if (row.price <= 0) {
       note("zeroPrice", { ...base, detail: "Prix 0 : le prix du catalogue s'applique." });
       continue;
+    }
+    if (row.legacyTariff !== null) legacyTariff.withTariff += 1;
+    if (equalsLegacyTariff(row)) {
+      legacyTariff.equal += 1;
+      if (options.skipLegacyTariff) {
+        const taken = existingByLegacy.get(row.legacyPriceId);
+        note("sameAsLegacyTariff", {
+          ...base,
+          detail: taken
+            ? "Égal à l'ancien tarif, mais déjà repris par un import précédent : laissé tel quel (à retirer sur la fiche si le client doit suivre le catalogue)."
+            : "Égal au tarif de l'ancien logiciel pour cette analyse : pas un prix négocié, le catalogue s'applique.",
+        });
+        continue;
+      }
     }
     let match = clientMatches.get(row.legacyClientId);
     if (!match) {
@@ -476,39 +580,67 @@ export function planClientPriceImport(
     groups.set(key, group);
   }
 
-  const existingByKey = new Map(db.existing.map((e) => [`${e.clientId}|${e.itemKey}`, e]));
-  const existingByLegacy = new Map(db.existing.flatMap((e) => (e.legacyPriceId !== null ? [[e.legacyPriceId, e] as const] : [])));
   const writes: PlannedClientPrice[] = [];
   let conflicts = 0;
+  const conflictList: PriceConflict[] = [];
   const matchedClients = new Set<string>();
+  const duplicateRule = options.ownBeforeSite
+    ? "le prix propre du client avant celui d'un de ses sites, puis le plus récemment modifié"
+    : "le prix modifié le plus récemment";
 
   for (const [key, group] of groups) {
-    const winner = group.reduce((best, candidate) => (newer(candidate.row, best.row) ? candidate : best));
+    const winner = group.reduce((best, candidate) => (preferredPrice(candidate.row, best.row, options.ownBeforeSite) ? candidate : best));
     matchedClients.add(winner.clientId);
     const ours = `${clientName.get(winner.clientId) ?? "?"} — ${winner.parameter.name}`;
+    const differing: ConflictPrice[] = [];
     for (const other of group) {
       if (other === winner) continue;
       const conflict = other.row.price !== winner.row.price;
-      if (conflict) conflicts += 1;
+      if (conflict) {
+        conflicts += 1;
+        differing.push(conflictPrice(other.row));
+      }
       note("duplicate", {
         line: other.row.line,
         client: other.row.client,
         parameter: other.row.parameter,
         price: other.row.price,
         detail: conflict
-          ? `Même client et même analyse que la ligne ${winner.row.line} (${ours}) à un autre prix : le prix modifié le plus récemment est gardé.`
+          ? `Même client et même analyse que la ligne ${winner.row.line} (${ours}) à un autre prix : gardé, ${duplicateRule}.`
           : `Même client, même analyse et même prix que la ligne ${winner.row.line} (${ours}).`,
+      });
+    }
+    if (differing.length > 0 && conflictList.length < MAX_MISSING) {
+      conflictList.push({
+        client: clientName.get(winner.clientId) ?? "?",
+        analysis: winner.parameter.name,
+        kept: conflictPrice(winner.row),
+        others: differing,
       });
     }
     const { row } = winner;
     const base = { line: row.line, client: row.client, parameter: row.parameter, price: row.price };
     const existing = existingByKey.get(key);
     const itemKey = clientPriceKey({ parameterId: winner.parameter.id });
+    if (existing?.removedAt) {
+      note("keptRemoved", {
+        ...base,
+        detail: `Prix retiré à la main sur la fiche le ${formatDate(existing.removedAt)} : non repris, le catalogue s'applique.`,
+      });
+      continue;
+    }
     if (existing?.origin === "SAISIE") {
       note("keptManual", { ...base, detail: `Prix saisi sur la fiche (${existing.unitPrice.toFixed(2)}) : conservé.` });
       continue;
     }
     const elsewhere = existingByLegacy.get(row.legacyPriceId);
+    if (elsewhere?.removedAt) {
+      note("keptRemoved", {
+        ...base,
+        detail: `Prix retiré à la main le ${formatDate(elsewhere.removedAt)} : non repris.`,
+      });
+      continue;
+    }
     if (elsewhere && elsewhere.id !== existing?.id) {
       // Already taken over onto another fiche (a client merged since): left where it is.
       note("unchanged", { ...base, detail: "Déjà repris sur une autre fiche (client fusionné depuis) : laissé tel quel." });
@@ -538,8 +670,11 @@ export function planClientPriceImport(
   return {
     rows: rows.length + rejected.length,
     counts,
-    matched: counts.create + counts.update + counts.unchanged + counts.keptManual + counts.duplicate,
+    matched: counts.create + counts.update + counts.unchanged + counts.keptManual + counts.keptRemoved + counts.duplicate,
     conflicts,
+    conflictList,
+    duplicateRule,
+    legacyTariff,
     clients: {
       matched: found.length,
       notFound: [...clientMatches.values()].filter((m) => m.status === "missing").length,

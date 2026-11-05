@@ -238,3 +238,27 @@ export const PURCHASE_PARTIAL_PAYMENTS = true;
  * invoice or on the supplier).
  */
 export const PAYMENT_REQUIRES_TAX_CERTIFICATE = false;
+
+// ————— Lot 4H — H5, la reprise des prix clients (RETOUR-LABO-04-11.md §5, §7 C-8) —————
+// Built before the laboratory answered C-8; each rule written « hypothèse, à
+// confirmer par C-8 » in RETOUR-LABO-04-11.md §5 « H5 — tel que construit ».
+
+/**
+ * C-8 (e): a client price of the old software equal to the old software's
+ * own tariff for the analysis (PARAMETRES.PRIX, the file's « tarifAncien »)
+ * is no negotiated price — 3 007 of the 3 490 non-zero prices with a tariff
+ * (05/11). On (proposed): « Importer les prix clients » counts them apart
+ * (« Égaux à l'ancien tarif ») and does not take them — those clients follow
+ * the catalogue like any other. Off: they are taken over like the others,
+ * and stay frozen at the old tariff when the catalogue changes.
+ */
+export const CLIENT_PRICE_SKIP_LEGACY_TARIFF = true;
+
+/**
+ * C-8 (c): two prices of the old software for the same client and analysis
+ * (a site's price going to the client billed for it, two types d'analyse of
+ * the same domain): on (proposed), the client's own price wins over a
+ * site's, then the most recently changed; off: the most recently changed
+ * only. Every conflict is listed on the import's analysis screen.
+ */
+export const CLIENT_PRICE_OWN_BEFORE_SITE = true;

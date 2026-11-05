@@ -6,8 +6,10 @@ import { Card } from "@/components/ui/Card";
 import { formatCurrency, formatDecimal } from "@/lib/labels";
 import {
   CLIENT_PRICE_FILE_HEADER,
+  type ConflictPrice,
   type MissingAnalysis,
   type MissingClient,
+  type PriceConflict,
   type PriceImportCategory,
   type PriceImportExample,
 } from "@/lib/client-prices-import";
@@ -26,6 +28,9 @@ type Summary = {
   counts: Record<PriceImportCategory, number>;
   matched: number;
   conflicts: number;
+  conflictList: PriceConflict[];
+  duplicateRule: string;
+  legacyTariff: { equal: number; withTariff: number; skipped: boolean };
   clients: { matched: number; notFound: number; ambiguous: number; bySite: number; byIce: number; byName: number };
   archivedClients: number;
   missingClients: MissingClient[];
@@ -42,6 +47,13 @@ const SECTIONS: { key: PriceImportCategory; analyse: string; done: string; tone:
   { key: "analysisNotFound", analyse: "Analyse introuvable — prix ignorés", done: "Analyse introuvable — prix ignorés", tone: "warn" },
   { key: "duplicate", analyse: "Doublons — un seul prix gardé", done: "Doublons — un seul prix gardé", tone: "muted" },
   { key: "keptManual", analyse: "Prix saisis sur la fiche — conservés", done: "Prix saisis sur la fiche — conservés", tone: "muted" },
+  { key: "keptRemoved", analyse: "Prix retirés à la main sur la fiche — non repris", done: "Prix retirés à la main sur la fiche — non repris", tone: "muted" },
+  {
+    key: "sameAsLegacyTariff",
+    analyse: "Égaux au tarif de l'ancien logiciel — non repris, le catalogue s'applique",
+    done: "Égaux au tarif de l'ancien logiciel — non repris, le catalogue s'applique",
+    tone: "muted",
+  },
   { key: "unchanged", analyse: "Déjà repris, inchangés", done: "Déjà repris, inchangés", tone: "muted" },
   { key: "zeroPrice", analyse: "Prix à 0 — le catalogue s'applique", done: "Prix à 0 — le catalogue s'applique", tone: "muted" },
   { key: "rejected", analyse: "Lignes illisibles — ignorées", done: "Lignes illisibles — ignorées", tone: "muted" },
@@ -122,7 +134,8 @@ export function ImportClientPrices() {
         </p>
         <p className="mt-2 text-sm text-slate-500">
           Rien n&apos;est écrit avant « Importer les prix », et relancer ne crée aucun doublon. Un prix saisi sur la fiche d&apos;un
-          client n&apos;est jamais remplacé. Un prix à 0 n&apos;est pas repris : le catalogue s&apos;applique.
+          client n&apos;est jamais remplacé, un prix retiré sur la fiche n&apos;est jamais remis. Un prix à 0 n&apos;est pas repris : le
+          catalogue s&apos;applique ; un prix égal au tarif de l&apos;ancien logiciel non plus (hypothèse, à confirmer par C-8).
         </p>
 
         <div className="mt-4 rounded-xl border border-slate-200 p-4">
@@ -183,7 +196,17 @@ export function ImportClientPrices() {
               value={done && written ? written.created + written.updated : toWrite}
               hint={done && written ? `${nf.format(written.created)} · ${nf.format(written.updated)}` : `${nf.format(counts.create)} · ${nf.format(counts.update)}`}
             />
-            <Stat label="Inchangés" value={counts.unchanged + counts.keptManual} hint={counts.keptManual > 0 ? `dont ${counts.keptManual} saisis sur la fiche` : "déjà repris"} />
+            <Stat
+              label="Inchangés"
+              value={counts.unchanged + counts.keptManual + counts.keptRemoved}
+              hint={
+                counts.keptManual + counts.keptRemoved > 0
+                  ? [counts.keptManual > 0 ? `${counts.keptManual} saisis sur la fiche` : "", counts.keptRemoved > 0 ? `${counts.keptRemoved} retirés à la main` : ""]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : "déjà repris"
+              }
+            />
             <Stat
               label="Client introuvable"
               value={counts.clientNotFound + counts.clientAmbiguous}
@@ -192,6 +215,11 @@ export function ImportClientPrices() {
             />
             <Stat label="Analyse introuvable" value={counts.analysisNotFound} hint={`${plural(summary.missingAnalyses.length, "libellé", "libellés")}`} warn />
             <Stat label="Doublons" value={counts.duplicate} hint={summary.conflicts > 0 ? `dont ${summary.conflicts} à un autre prix` : "même prix"} />
+            <Stat
+              label="Égaux à l'ancien tarif"
+              value={summary.legacyTariff.equal}
+              hint={`sur ${nf.format(summary.legacyTariff.withTariff)} avec un tarif · ${summary.legacyTariff.skipped ? "non repris" : "repris quand même"}`}
+            />
             <Stat label="Prix à 0 · illisibles" value={counts.zeroPrice + counts.rejected} hint={`${nf.format(counts.zeroPrice)} · ${nf.format(counts.rejected)}`} />
           </dl>
 
@@ -199,6 +227,15 @@ export function ImportClientPrices() {
             <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
               Écrit : {plural(written.created, "prix créé", "prix créés")}, {plural(written.updated, "prix mis à jour", "prix mis à jour")}. Les
               fiches des clients les listent sous « Prix propres au client ».
+            </p>
+          )}
+          {summary.legacyTariff.equal > 0 && (
+            <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              {`${nf.format(summary.legacyTariff.equal)} prix propres de l'ancien logiciel sont égaux à son tarif de l'analyse : ce ne sont pas des prix négociés. `}
+              {summary.legacyTariff.skipped
+                ? "Ils ne sont pas repris : ces clients suivent le catalogue (hypothèse, à confirmer par C-8)."
+                : "Ils sont repris quand même : ces clients resteront à l'ancien tarif quand le catalogue changera."}{" "}
+              Avant l&apos;import en production, comparez l&apos;ancien tarif au catalogue de production.
             </p>
           )}
           {summary.archivedClients > 0 && (
@@ -223,6 +260,10 @@ export function ImportClientPrices() {
               head={["Analyse de l'ancien logiciel", "Type d'analyse", "Prix", "Motif"]}
               rows={summary.missingAnalyses.map((a) => [a.label, a.legacyNatureId === null ? "—" : `n° ${a.legacyNatureId}`, String(a.prices), a.reason])}
             />
+          )}
+
+          {summary.conflictList.length > 0 && (
+            <Conflicts conflicts={summary.conflictList} total={summary.conflicts} rule={summary.duplicateRule} />
           )}
 
           <div className="mt-5 space-y-2">
@@ -327,6 +368,60 @@ function Missing({ title, hint, head, rows }: { title: string; hint: string; hea
                     {cell}
                   </td>
                 ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
+}
+
+/** « 320,00 DH — site « X » (type d'analyse n° 12, modifié le 22/02/2022) » */
+function conflictCell(price: ConflictPrice): string {
+  const source = price.source === "site" ? `site « ${price.legacyName} »` : `client « ${price.legacyName} »`;
+  const details = [price.legacyNatureId === null ? null : `type d'analyse n° ${price.legacyNatureId}`, price.modifiedOn ? `modifié le ${price.modifiedOn}` : null]
+    .filter(Boolean)
+    .join(", ");
+  return `${formatCurrency(price.price)} — ${source}${details ? ` (${details})` : ""}, ligne ${price.line}`;
+}
+
+function Conflicts({ conflicts, total, rule }: { conflicts: PriceConflict[]; total: number; rule: string }) {
+  return (
+    <details className="mt-4 rounded-xl border border-amber-200 bg-amber-50/40">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-800 hover:bg-amber-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/30">
+        <span>Prix en conflit — même client et même analyse, à des prix différents</span>
+        <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-amber-800 ring-1 ring-amber-200">{nf.format(total)}</span>
+      </summary>
+      <div className="max-h-96 overflow-auto px-4 pb-3">
+        <p className="mb-1.5 text-xs text-slate-600">
+          Gardé : {rule} (hypothèse, à confirmer par C-8). Les autres prix ne sont pas repris ; corrigez la fiche du client si le
+          laboratoire en décide autrement.
+          {/* `total` counts the other prices, the list one row per client and analysis. */}
+          {conflicts.reduce((sum, c) => sum + c.others.length, 0) < total ? ` Les ${conflicts.length} premiers clients et analyses.` : ""}
+        </p>
+        <table className="w-full min-w-[720px] text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+              <th scope="col" className="pb-1.5 pr-3 font-medium">Client</th>
+              <th scope="col" className="pb-1.5 pr-3 font-medium">Analyse</th>
+              <th scope="col" className="pb-1.5 pr-3 font-medium">Prix gardé</th>
+              <th scope="col" className="pb-1.5 font-medium">Autres prix</th>
+            </tr>
+          </thead>
+          <tbody>
+            {conflicts.map((c) => (
+              <tr key={`${c.kept.line}`} className="border-b border-slate-100 align-top last:border-0">
+                <td className="py-1.5 pr-3 text-slate-800">{c.client}</td>
+                <td className="py-1.5 pr-3 text-slate-700">{c.analysis}</td>
+                <td className="py-1.5 pr-3 text-slate-900">{conflictCell(c.kept)}</td>
+                <td className="py-1.5 text-slate-600">
+                  {c.others.map((o) => (
+                    <span key={o.line} className="block">
+                      {conflictCell(o)}
+                    </span>
+                  ))}
+                </td>
               </tr>
             ))}
           </tbody>

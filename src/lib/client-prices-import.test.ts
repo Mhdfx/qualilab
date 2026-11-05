@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { parseCsv } from "./csv";
+import { formatDate } from "./labels";
 import {
   CLIENT_PRICE_FILE_HEADER,
   clientPriceColumns,
+  equalsLegacyTariff,
   legacyDate,
   legacyPrice,
   LegacyClientResolver,
   LegacyParameterResolver,
   planClientPriceImport,
   planWritesPrices,
+  preferredPrice,
   readClientPriceRows,
+  type ExistingClientPrice,
   type LegacyClientPrice,
   type PriceImportDb,
 } from "./client-prices-import";
@@ -50,6 +54,7 @@ function row(over: Partial<LegacyClientPrice>): LegacyClientPrice {
     parameter: "Escherichia coli",
     price: 40,
     modifiedAt: new Date("2024-03-01T10:00:00Z"),
+    legacyTariff: null,
     ...over,
   };
 }
@@ -90,8 +95,8 @@ describe("reading the file", () => {
     expect(clientPriceColumns(header)).not.toBeNull();
     expect(clientPriceColumns(["client", "prix"])).toBeNull();
     const { rows, rejected } = read([
-      "6442;5;101;Traiteur Démo;001234567000089;0;;;1;1;Micro-organismes-1 à 30°C;40.00;2022-02-22 10:12:26",
-      "6443;7;102;Site Nord;;0;3;Chaîne Démo;5;1;Recherche des Salmonella;75,50;",
+      "6442;5;101;Traiteur Démo;001234567000089;0;;;1;1;Micro-organismes-1 à 30°C;40.00;2022-02-22 10:12:26;40.00",
+      "6443;7;102;Site Nord;;0;3;Chaîne Démo;5;1;Recherche des Salmonella;75,50;;0",
     ]);
     expect(rejected).toEqual([]);
     expect(rows[0]).toMatchObject({
@@ -103,9 +108,21 @@ describe("reading the file", () => {
       legacyNatureId: 1,
       parameter: "Micro-organismes-1 à 30°C",
       price: 40,
+      legacyTariff: 40,
     });
-    expect(rows[0].modifiedAt?.toISOString()).toBe("2022-02-22T10:12:26.000Z");
-    expect(rows[1]).toMatchObject({ clientType: 102, legacyParentId: 3, parent: "Chaîne Démo", price: 75.5, modifiedAt: null });
+    // The laboratory's wall clock (UTC+1 in 2022).
+    expect(rows[0].modifiedAt?.toISOString()).toBe("2022-02-22T09:12:26.000Z");
+    expect(rows[1]).toMatchObject({ clientType: 102, legacyParentId: 3, parent: "Chaîne Démo", price: 75.5, modifiedAt: null, legacyTariff: null });
+  });
+
+  it("reads a file written before « tarifAncien » existed: no tariff, nothing compared", () => {
+    const old = "legacyPriceId;legacyClientId;clientType;client;ice;clientObsolete;legacyParentId;parent;legacyParamId;legacyNatureId;parametre;prix;derniereModification";
+    const table = parseCsv(`${old}\n6442;5;101;Traiteur Démo;;0;;;1;1;pH;40.00;`, ";");
+    const columns = clientPriceColumns(table[0]);
+    expect(columns).not.toBeNull();
+    const { rows } = readClientPriceRows(table.slice(1), columns!);
+    expect(rows[0].legacyTariff).toBeNull();
+    expect(equalsLegacyTariff(rows[0])).toBe(false);
   });
 
   it("rejects a row without its ids, its client, its analysis or a readable price, with the line", () => {
@@ -133,9 +150,17 @@ describe("reading the file", () => {
     expect(legacyPrice("0.00")).toBe(0);
     expect(legacyPrice("-3")).toBeNull();
     expect(legacyPrice("20000000")).toBeNull();
-    expect(legacyDate("2026-09-07 15:17:49")?.toISOString()).toBe("2026-09-07T15:17:49.000Z");
-    expect(legacyDate("2026-09-07")?.toISOString()).toBe("2026-09-07T00:00:00.000Z");
+    // Before 20/09/2026 the laboratory's clock was UTC+1, plain UTC since.
+    expect(legacyDate("2026-09-07 15:17:49")?.toISOString()).toBe("2026-09-07T14:17:49.000Z");
+    expect(legacyDate("2026-09-07")?.toISOString()).toBe("2026-09-06T23:00:00.000Z");
+    expect(legacyDate("2026-10-05 23:30:00")?.toISOString()).toBe("2026-10-05T23:30:00.000Z");
     expect(legacyDate("")).toBeNull();
+    expect(legacyDate("2026-13-01")).toBeNull();
+  });
+
+  it("a change made late in the evening is shown on its own day, not the next one", () => {
+    expect(formatDate(legacyDate("2024-03-05 23:30:00")!)).toBe(formatDate(legacyDate("2024-03-05 08:00:00")!));
+    expect(formatDate(legacyDate("2024-03-05 23:30:00")!)).not.toBe(formatDate(legacyDate("2024-03-06 08:00:00")!));
   });
 });
 
@@ -269,9 +294,86 @@ describe("planClientPriceImport", () => {
     expect(plan.conflicts).toBe(1);
     expect(plan.writes).toEqual([expect.objectContaining({ unitPrice: 45, legacyPriceId: 11 })]);
     expect(plan.examples.duplicate.map((e) => e.detail)).toEqual([
-      expect.stringMatching(/à un autre prix : le prix modifié le plus récemment est gardé/),
+      expect.stringMatching(/à un autre prix : gardé, .*le plus récemment modifié/),
       expect.stringMatching(/même prix/),
     ]);
+    // The conflict is listed with both prices, their source and their type d'analyse.
+    expect(plan.conflictList).toEqual([
+      {
+        client: "TRAITEUR DEMO",
+        analysis: "E. coli",
+        kept: expect.objectContaining({ price: 45, source: "client", legacyNatureId: 1, modifiedOn: expect.any(String) }),
+        others: [expect.objectContaining({ price: 40, source: "client" })],
+      },
+    ]);
+  });
+
+  it("C-8 (c), the client's own price before a site's (switch on) — the most recent only (off)", () => {
+    // The franchise's own price (older) and the price of a site billed to it (newer).
+    const own = row({ legacyPriceId: 70, legacyClientId: 40, client: "Franchisé Démo", price: 60, modifiedAt: new Date("2023-01-01") });
+    const site = row({ legacyPriceId: 71, legacyClientId: 900, clientType: 102, client: "Site Nord", parent: "Chaîne Démo", price: 52, modifiedAt: new Date("2025-01-01") });
+    expect(preferredPrice(own, site, true)).toBe(true);
+    expect(preferredPrice(site, own, true)).toBe(false);
+    expect(preferredPrice(own, site, false)).toBe(false);
+
+    const on = planClientPriceImport([site, own], [], db(), { skipLegacyTariff: true, ownBeforeSite: true });
+    expect(on.writes).toEqual([expect.objectContaining({ clientId: "c-franchise", unitPrice: 60, legacyPriceId: 70 })]);
+    expect(on.duplicateRule).toMatch(/prix propre du client avant celui d'un de ses sites/);
+    expect(on.conflictList).toEqual([
+      expect.objectContaining({ kept: expect.objectContaining({ price: 60, source: "client" }), others: [expect.objectContaining({ price: 52, source: "site", legacyName: "Site Nord" })] }),
+    ]);
+
+    const off = planClientPriceImport([site, own], [], db(), { skipLegacyTariff: true, ownBeforeSite: false });
+    expect(off.writes).toEqual([expect.objectContaining({ clientId: "c-franchise", unitPrice: 52, legacyPriceId: 71 })]);
+  });
+
+  it("C-8 (e), a price equal to the old tariff: counted apart and not taken (switch on), taken (off)", () => {
+    const rows = [
+      row({ legacyPriceId: 80, price: 40, legacyTariff: 40 }),
+      row({ legacyPriceId: 81, parameter: "Salmonella", price: 70, legacyTariff: 90 }),
+      row({ legacyPriceId: 82, legacyNatureId: 3, price: 30, legacyTariff: null }),
+    ];
+    const on = planClientPriceImport(rows, [], db(), { skipLegacyTariff: true, ownBeforeSite: true });
+    expect(on.counts).toMatchObject({ sameAsLegacyTariff: 1, create: 2 });
+    expect(on.legacyTariff).toEqual({ equal: 1, withTariff: 2, skipped: true });
+    expect(on.writes.map((w) => w.legacyPriceId)).toEqual([81, 82]);
+    expect(on.examples.sameAsLegacyTariff[0].detail).toMatch(/pas un prix négocié/);
+
+    const off = planClientPriceImport(rows, [], db(), { skipLegacyTariff: false, ownBeforeSite: true });
+    expect(off.counts).toMatchObject({ sameAsLegacyTariff: 0, create: 3 });
+    expect(off.legacyTariff).toEqual({ equal: 1, withTariff: 2, skipped: false });
+  });
+
+  it("a price taken over, then removed by hand on the fiche, then the reprise run again: nothing written", () => {
+    const rows = [row({ legacyPriceId: 90, price: 40 }), row({ legacyPriceId: 91, parameter: "Salmonella", price: 75 })];
+    const first = planClientPriceImport(rows, [], db());
+    expect(first.counts.create).toBe(2);
+    // Written, then « Retirer » on the fiche: the row stays, marked removed (DELETE /api/clients/[id]/prices).
+    const existing: ExistingClientPrice[] = first.writes.map((w, i) => ({
+      id: `w${i}`,
+      clientId: w.clientId,
+      itemKey: w.itemKey,
+      unitPrice: w.unitPrice,
+      origin: "REPRISE",
+      legacyPriceId: w.legacyPriceId,
+      removedAt: w.legacyPriceId === 90 ? new Date("2026-11-05T10:00:00Z") : null,
+    }));
+    const again = planClientPriceImport(rows, [], db({ existing }));
+    expect(again.counts).toMatchObject({ create: 0, update: 0, unchanged: 1, keptRemoved: 1 });
+    expect(again.writes).toEqual([]);
+    expect(again.examples.keptRemoved[0].detail).toMatch(/retiré à la main sur la fiche le .* : non repris/);
+    // Even when the old software changed the price meanwhile.
+    const changed = planClientPriceImport([row({ legacyPriceId: 90, price: 44 })], [], db({ existing }));
+    expect(changed.counts).toMatchObject({ update: 0, keptRemoved: 1 });
+    expect(planWritesPrices(changed)).toBe(false);
+  });
+
+  it("a removed price moved onto another fiche (a merge since) is not brought back either", () => {
+    const plan = planClientPriceImport([row({ legacyPriceId: 95, price: 40 })], [], db({
+      existing: [{ id: "gone", clientId: "c-cafe", itemKey: "P:p-ecoli-food", unitPrice: 40, origin: "REPRISE", legacyPriceId: 95, removedAt: new Date("2026-11-01") }],
+    }));
+    expect(plan.counts).toMatchObject({ create: 0, keptRemoved: 1 });
+    expect(plan.writes).toEqual([]);
   });
 
   it("brings two old clients merged into one of ours onto that one", () => {
@@ -291,9 +393,9 @@ describe("planClientPriceImport", () => {
       row({ legacyPriceId: 42, legacyNatureId: 3, price: 30 }),
     ];
     const existing = [
-      { id: "e1", clientId: "c-traiteur", itemKey: "P:p-ecoli-food", unitPrice: 40, origin: "REPRISE" as const, legacyPriceId: 40 },
-      { id: "e2", clientId: "c-traiteur", itemKey: "P:p-salmo", unitPrice: 75, origin: "REPRISE" as const, legacyPriceId: 41 },
-      { id: "e3", clientId: "c-traiteur", itemKey: "P:p-ecoli-water", unitPrice: 33, origin: "SAISIE" as const, legacyPriceId: null },
+      { id: "e1", clientId: "c-traiteur", itemKey: "P:p-ecoli-food", unitPrice: 40, origin: "REPRISE" as const, legacyPriceId: 40, removedAt: null },
+      { id: "e2", clientId: "c-traiteur", itemKey: "P:p-salmo", unitPrice: 75, origin: "REPRISE" as const, legacyPriceId: 41, removedAt: null },
+      { id: "e3", clientId: "c-traiteur", itemKey: "P:p-ecoli-water", unitPrice: 33, origin: "SAISIE" as const, legacyPriceId: null, removedAt: null },
     ];
     const plan = planClientPriceImport(rows, [], db({ existing }));
     expect(plan.counts).toMatchObject({ create: 0, update: 1, unchanged: 1, keptManual: 1 });
@@ -308,7 +410,7 @@ describe("planClientPriceImport", () => {
 
   it("leaves a price already taken over onto another fiche where it is", () => {
     const plan = planClientPriceImport([row({ legacyPriceId: 50, price: 40 })], [], db({
-      existing: [{ id: "moved", clientId: "c-cafe", itemKey: "P:p-ecoli-food", unitPrice: 40, origin: "REPRISE", legacyPriceId: 50 }],
+      existing: [{ id: "moved", clientId: "c-cafe", itemKey: "P:p-ecoli-food", unitPrice: 40, origin: "REPRISE", legacyPriceId: 50, removedAt: null }],
     }));
     expect(plan.counts).toMatchObject({ create: 0, unchanged: 1 });
     expect(plan.writes).toEqual([]);

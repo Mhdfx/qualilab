@@ -122,6 +122,97 @@ export function linePriceOriginLabel(origin: LinePriceOrigin): string {
 }
 
 /**
+ * A catalogue service picked by hand on an invoice line (« Reprendre une
+ * prestation du catalogue »): the same order as `resolveLinePrice` — the
+ * client's price for the analysis billed as this service (every price the
+ * reprise brought is one), else its price for the service itself, else the
+ * catalogue's. Several analyses billed as the same service at different
+ * prices name no single one: the service's own price, or the catalogue's.
+ */
+export function servicePickPrice(
+  rows: readonly Pick<ClientPriceRow, "kind" | "labServiceId" | "billedServiceId" | "unitPrice" | "origin" | "updatedAt">[],
+  service: { id: string; unitPrice: number }
+): LinePrice {
+  const analyses = rows.filter((row) => row.kind === "ANALYSE" && row.billedServiceId === service.id);
+  const single = analyses.length > 0 && analyses.every((row) => roundMoney(row.unitPrice) === roundMoney(analyses[0].unitPrice)) ? analyses[0] : undefined;
+  const own = single ?? rows.find((row) => row.kind === "PRESTATION" && row.labServiceId === service.id);
+  const index = own
+    ? clientPriceIndex([{ parameterId: null, labServiceId: service.id, unitPrice: own.unitPrice, origin: own.origin, updatedAt: own.updatedAt }])
+    : EMPTY_CLIENT_PRICES;
+  return resolveLinePrice(index, null, service);
+}
+
+/**
+ * A line filled from a catalogue service, once the client's prices are
+ * known (they load after the client is chosen, or change with it): its new
+ * proposal, or null to leave it — a price typed by hand over the proposal
+ * is never replaced, nor a line that already carries this proposal.
+ */
+export function repriceServiceLine(
+  line: { serviceId: string; servicePrice?: number | null; proposedPrice?: number | null; unitPrice: string; priceOrigin?: LinePriceOrigin | null },
+  rows: Parameters<typeof servicePickPrice>[0]
+): LinePrice | null {
+  if (!line.serviceId || line.servicePrice === null || line.servicePrice === undefined) return null;
+  if (priceEditedByHand(line.proposedPrice, line.unitPrice)) return null;
+  const next = servicePickPrice(rows, { id: line.serviceId, unitPrice: line.servicePrice });
+  const same =
+    line.proposedPrice !== null &&
+    line.proposedPrice !== undefined &&
+    roundMoney(line.proposedPrice) === next.unitPrice &&
+    line.priceOrigin?.source === next.origin.source &&
+    (next.origin.source !== "CLIENT" || (line.priceOrigin?.source === "CLIENT" && line.priceOrigin.origin === next.origin.origin));
+  return same ? null : next;
+}
+
+/**
+ * Where an invoice line's price came from, as the draft saves it
+ * (`InvoiceItem.priceSource`) and the draft and the invoice sheet say it —
+ * never printed on the invoice.
+ */
+export type InvoiceLinePriceSource = "CLIENT_REPRISE" | "CLIENT_SAISIE" | "CATALOGUE" | "MAIN";
+
+export const INVOICE_LINE_PRICE_SOURCES: readonly InvoiceLinePriceSource[] = ["CLIENT_REPRISE", "CLIENT_SAISIE", "CATALOGUE", "MAIN"];
+
+export const INVOICE_LINE_PRICE_SOURCE_LABELS: Record<InvoiceLinePriceSource, string> = {
+  CLIENT_REPRISE: "Prix du client — repris de l'ancien logiciel",
+  CLIENT_SAISIE: "Prix du client — saisi sur la fiche client",
+  CATALOGUE: "Prix du catalogue",
+  MAIN: "Prix saisi à la main",
+};
+
+/** A source sent by the form, or null when absent or unknown. */
+export function parseLinePriceSource(value: unknown): InvoiceLinePriceSource | null {
+  return typeof value === "string" && (INVOICE_LINE_PRICE_SOURCES as readonly string[]).includes(value) ? (value as InvoiceLinePriceSource) : null;
+}
+
+/**
+ * The source a line is saved with: the proposal's origin while its price is
+ * the one proposed (`origin`, or `saved` for a line reopened from a draft),
+ * « MAIN » once the accountant typed another price — or a price on a line
+ * nothing proposed; null for a line still without a price.
+ */
+export function linePriceSource(line: {
+  origin?: LinePriceOrigin | null;
+  saved?: InvoiceLinePriceSource | null;
+  proposedPrice?: number | null;
+  typed: string;
+}): InvoiceLinePriceSource | null {
+  const value = Number(line.typed.replace(",", "."));
+  const priced = line.typed.trim() !== "" && Number.isFinite(value) && value > 0;
+  const proposal: InvoiceLinePriceSource | null = line.origin
+    ? line.origin.source === "CLIENT"
+      ? line.origin.origin === "REPRISE"
+        ? "CLIENT_REPRISE"
+        : "CLIENT_SAISIE"
+      : line.origin.source === "CATALOGUE"
+        ? "CATALOGUE"
+        : null
+    : (line.saved ?? null);
+  if (proposal && proposal !== "MAIN" && !priceEditedByHand(line.proposedPrice, line.typed)) return proposal;
+  return priced ? "MAIN" : null;
+}
+
+/**
  * The price a line carries is the one proposed, or one typed by the
  * accountant over it: then the line says « Prix modifié à la main ».
  */
@@ -180,6 +271,12 @@ export type ClientPriceRow = {
   unitPrice: number;
   /** The catalogue's price for comparison, or null (no catalogue entry). */
   cataloguePrice: number | null;
+  /**
+   * ANALYSE: the catalogue service it is billed as (same name and domain,
+   * `catalogueKey`) — so a service picked by hand on an invoice line finds
+   * the client's price for its analysis (`servicePickPrice`); null otherwise.
+   */
+  billedServiceId: string | null;
   origin: ClientPriceOrigin;
   updatedAt: string;
   /** REPRISE: when the old software last changed it. */
