@@ -221,7 +221,8 @@ Gestes du propriétaire avec ce lot (sans code, en production, journalisés) :
   (`REPORT_SENT.cc`) et montrée dans le parcours. **Une adresse saisie au lot
   L5 garde les alertes seulement ; une nouvelle adresse coche les deux par
   défaut — hypothèse, à confirmer quand le laboratoire donnera ses deux
-  adresses (§8, Q11).**
+  adresses (§8, Q11). Les adresses internes sont en copie visible (Cc), comme
+  les alertes — hypothèse, à confirmer avec les deux adresses (§8, Q11).**
 - Tests : `reception-outcome.test.ts`, `alert-copies.test.ts`, cas ajoutés
   aux tests de réception, comptoir, libération et bon ; tsc 0, eslint 0,
   vitest 191 fichiers / 3 488 tests ; migrations appliquées à la base locale.

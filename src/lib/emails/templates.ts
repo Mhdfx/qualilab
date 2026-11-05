@@ -3,6 +3,7 @@ import { COMPANY, type CompanyInfo } from "@/lib/company";
 import { designationHeading } from "@/lib/document-html";
 import { escapeHtml as escape } from "@/lib/html-text";
 import { formatDate } from "@/lib/labels";
+import { NOT_ANALYSED_OUTCOME } from "@/lib/reception-outcome";
 import { amendedReportSubject, amendmentHeader } from "@/lib/report-amendment";
 import { UNDECLARED_SAMPLING, declaredSampledAt } from "@/lib/sample-search";
 
@@ -297,7 +298,7 @@ export function destructionEmail(input: DestructionEmailInput, company: CompanyI
     rejected === 0
       ? ` et détruit${s}.`
       : mixed
-        ? ` : la suite donnée à chacun est indiquée ci-dessous.`
+        ? ` ; la suite donnée à chacun est indiquée ci-dessous.`
         : ` et rejeté${s} : ${many ? "ils vous sont rendus" : "il vous est rendu"}, sans analyse ni destruction par le laboratoire.`;
   const subject = `Échantillon${many ? "s" : ""} non analysé${many ? "s" : ""} — dossier ${input.serialNumber}${subjectSuffix(company)}`;
   const header: [string, string][] = [
@@ -315,7 +316,7 @@ export function destructionEmail(input: DestructionEmailInput, company: CompanyI
         <td style="${TD}">${escape(line.lieu)}</td>
         <td style="${TD};color:#8c1b31">${escape(line.motif)}</td>${
           mixed ? `
-        <td style="${TD}">${line.outcome === "REJETE" ? "Rejeté — rendu au client" : "Détruit"}</td>` : ""
+        <td style="${TD}">${NOT_ANALYSED_OUTCOME[line.outcome === "REJETE" ? "REJETE_A_RECEPTION" : "DETRUIT_A_RECEPTION"]}</td>` : ""
         }
       </tr>`
     )

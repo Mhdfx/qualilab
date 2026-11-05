@@ -240,7 +240,7 @@ function BlockedRow({ sample, consultationRequired }: { sample: BlockedSample; c
                 : decision === "DETRUIRE"
                   ? "Détruire l'échantillon"
                   : decision === "REJETER"
-                    ? "Rejeter (rendre au client)"
+                    ? "Rendre l'échantillon au client"
                     : "Analyser l'échantillon"}
             </button>
           )}

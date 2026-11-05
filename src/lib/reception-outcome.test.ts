@@ -166,9 +166,9 @@ describe("the client's e-mail — « rejeté — rendu » instead of « détruit
         { ...base.lines[0], controlCode: "102/26", outcome: "REJETE" },
       ],
     });
-    expect(html).toContain("jugés non conformes à la réception : la suite donnée à chacun est indiquée ci-dessous.");
+    expect(html).toContain("jugés non conformes à la réception ; la suite donnée à chacun est indiquée ci-dessous.");
     expect(html).toContain(">Suite donnée</th>");
-    expect(html).toMatch(/101\/26[\s\S]*?>Détruit<\/td>[\s\S]*?102\/26[\s\S]*?>Rejeté — rendu au client<\/td>/);
+    expect(html).toMatch(/101\/26[\s\S]*?>Détruit à réception<\/td>[\s\S]*?102\/26[\s\S]*?>Rejeté — rendu au client<\/td>/);
   });
 });
 
