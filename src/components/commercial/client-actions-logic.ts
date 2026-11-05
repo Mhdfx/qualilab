@@ -56,6 +56,8 @@ export type MergeCounts = {
   billedSites?: number;
   /** Lot 3C, L5: the laboratory's alert copy addresses chosen for B, now chosen for A. */
   alertCopies?: number;
+  /** Lot 4H, H5: B's own prices, now the kept client's. */
+  clientPrices?: number;
 };
 
 /** The counts `POST /api/clients/[id]/attach-as-site` returns. */
@@ -69,6 +71,8 @@ export type AttachCounts = {
   profiles: number;
   /** Lot 3C, L5: the laboratory's alert copy addresses chosen for B, now chosen for the principal. */
   alertCopies?: number;
+  /** Lot 4H, H5: B's own prices, now the principal's. */
+  clientPrices?: number;
   invoicesKept: number;
 };
 
@@ -104,6 +108,7 @@ function memoryDetails(counts: {
   productTypes?: number;
   profiles?: number;
   alertCopies?: number;
+  clientPrices?: number;
 }, targetName: string): string[] {
   const details: string[] = [];
   if (n(counts.emails) > 0) details.push(countLabel(n(counts.emails), "adresse e-mail", "adresses e-mail"));
@@ -121,6 +126,9 @@ function memoryDetails(counts: {
     details.push(
       `${countLabel(n(counts.alertCopies), "adresse du laboratoire en copie des alertes", "adresses du laboratoire en copie des alertes")} : désormais pour ${q(targetName)}`
     );
+  }
+  if (n(counts.clientPrices) > 0) {
+    details.push(countLabel(n(counts.clientPrices), "prix propre au client", "prix propres au client"));
   }
   return details;
 }

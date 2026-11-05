@@ -1112,7 +1112,7 @@ export function ProgrammeSheet({
             index={7}
             icon={ReceiptText}
             title="Facturation"
-            hint="Les lignes proposées au comptable dès la confirmation : chaque analyse programmée à son prix du catalogue."
+            hint="Les lignes proposées au comptable dès la confirmation : chaque analyse programmée au prix propre du client facturé s'il en a un, sinon au prix du catalogue."
           />
           {billing.lines.length === 0 ? (
             <p className="text-sm text-slate-500">Aucune analyse programmée : rien à facturer pour l&apos;instant.</p>
@@ -1122,7 +1122,7 @@ export function ProgrammeSheet({
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                     <th className="pb-2 pr-3 font-medium">Analyse</th>
-                    <th className="pb-2 text-right font-medium">Prix catalogue (HT)</th>
+                    <th className="pb-2 text-right font-medium">Prix proposé (HT)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1133,7 +1133,12 @@ export function ProgrammeSheet({
                         {line.unitPrice === null ? (
                           <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">prix à saisir</span>
                         ) : (
-                          <span className="text-slate-800">{formatCurrency(line.unitPrice)}</span>
+                          <span className="text-slate-800">
+                            {formatCurrency(line.unitPrice)}
+                            <span className={`block text-[11px] ${line.clientPrice ? "font-medium text-violet-700" : "text-slate-500"}`}>
+                              {line.clientPrice ? "prix du client" : "prix du catalogue"}
+                            </span>
+                          </span>
                         )}
                       </td>
                     </tr>

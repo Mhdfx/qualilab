@@ -36,6 +36,8 @@ import { SitesManager } from "@/components/commercial/SitesManager";
 import { ClientSummary } from "@/components/commercial/ClientSummary";
 import { ClientMergeActions } from "@/components/commercial/ClientMergeActions";
 import { BillingClientsCard } from "@/components/commercial/BillingClientsCard";
+import { ClientPricesCard } from "@/components/commercial/ClientPricesCard";
+import { loadClientPriceRows } from "@/lib/client-prices-server";
 import {
   archivedBanner,
   archivedKind,
@@ -106,7 +108,7 @@ export default async function ClientDetailPage({
   const invoiceGroup = invoiceView ? CLIENT_INVOICE_VIEW_FILTERS[invoiceView] : null;
   const period = { du: raw.du, au: raw.au };
 
-  const [client, samples, invoices, figures, sampleCount, reportCount, summary, mergeEntry] =
+  const [client, samples, invoices, figures, sampleCount, reportCount, summary, mergeEntry, prices] =
     await Promise.all([
     prisma.client.findUnique({
       where: { id },
@@ -184,6 +186,9 @@ export default async function ClientDetailPage({
       orderBy: { createdAt: "desc" },
       select: { action: true },
     }),
+    // Lot 4H, H5: the prices this client pays instead of the catalogue's (a
+    // billing space: GESTIONNAIRE and ADMIN see prices, price-access.ts).
+    loadClientPriceRows(id),
   ]);
 
   if (!client) notFound();
@@ -437,6 +442,15 @@ export default async function ClientDetailPage({
                 .map((site) => ({ id: site.id, name: site.name })),
             }))}
             billedSites={client.billedSites}
+          />
+
+          <ClientPricesCard
+            clientId={client.id}
+            initialRows={prices}
+            archived={client.archived}
+            billedElsewhere={client.sites.flatMap((site) =>
+              site.billingClient && site.billingClient.id !== client.id ? [{ site: site.name, billingClient: site.billingClient.name }] : []
+            )}
           />
 
           <Card className="p-5">

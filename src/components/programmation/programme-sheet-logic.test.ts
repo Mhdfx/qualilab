@@ -881,6 +881,18 @@ describe("entry check and billing", () => {
     expect(billing.total).toBe(770);
     expect(billing.unpriced).toBe(1);
     expect(billingLines({ ...draft, parameterIds: [] }, referential)).toEqual({ lines: [], total: 0, unpriced: 0 });
+    expect(billing.lines.every((l) => l.clientPrice === false)).toBe(true);
+  });
+
+  it("lot 4H: a price of the billed client's own is marked as such, the total being the invoice's", () => {
+    const draft = applyProfile(initialDraft(received, referential), referential.profiles[0], referential);
+    const own = { ...referential, prices: { ...referential.prices, "p-salm": 380 }, clientPriced: ["p-salm"] };
+    const billing = billingLines(draft, own);
+    expect(billing.lines.map((l) => [l.name, l.unitPrice, l.clientPrice])).toEqual([
+      ["E. coli", 320, false],
+      ["Salmonelles", 380, true],
+    ]);
+    expect(billing.total).toBe(700);
   });
 });
 
@@ -893,7 +905,7 @@ describe("prices and invoices on the programme sheet — the owner's rule of 25/
     const gate = sheet.indexOf("{billing && (");
     expect(gate).toBeGreaterThan(-1);
     const end = sheet.indexOf("{/* Pied */}");
-    for (const text of ["Prix catalogue (HT)", "Total des lignes tarifées", "prix à saisir", "Note pour le comptable", "formatCurrency("]) {
+    for (const text of ["Prix proposé (HT)", "Total des lignes tarifées", "prix à saisir", "Note pour le comptable", "formatCurrency("]) {
       const at = sheet.indexOf(text);
       expect(at, text).toBeGreaterThan(gate);
       expect(at, text).toBeLessThan(end);

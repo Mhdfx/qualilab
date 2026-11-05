@@ -2,6 +2,7 @@ import "server-only";
 import type { Family, LineKind, SampleType } from "@/generated/prisma/enums";
 import { prisma } from "./prisma";
 import { buildCatalogueIndex, catalogueKey, type CatalogueEntry } from "./billing";
+import { EMPTY_CLIENT_PRICES, clientPriceIndex, resolveLinePrice, type ClientPriceIndex } from "./client-prices";
 import { germCount } from "./family-list";
 import { toMoney } from "./money";
 import {
@@ -372,13 +373,21 @@ export async function normVersionsForParameters(
  * nature's category. A nature the line may not take falls back to the
  * current one; the GET route refuses it before calling this.
  *
- * `withPrices`: the catalogue price of each parameter (section 7 of the
- * sheet), for a role that sees the billing (`seesBilling`). Without it the
- * services are not even read and `prices` is empty — the referential is the
- * page's RSC payload and the GET's JSON, readable whatever the screen hides.
+ * `withPrices`: the price of each parameter (section 7 of the sheet), for a
+ * role that sees the billing (`seesBilling`). Without it the services are
+ * not even read and `prices` is empty — the referential is the page's RSC
+ * payload and the GET's JSON, readable whatever the screen hides.
+ *
+ * Lot 4H, H5: the price is the one the invoice will propose
+ * (`resolveLinePrice`, the rule of `/api/clients/[id]/billable`) — the
+ * client's own price where the client billed for the sample (its site's
+ * « Facturé à », else its client) has one, the catalogue's otherwise;
+ * `clientPriced` lists the parameters priced at the client's price.
  */
 export async function loadProgrammeReferential(
   sample: NatureLine & {
+    /** The sample's id: the client billed for it is read from its site (lot 4H). */
+    id?: string;
     clientId: string;
     type: SampleType;
     parameters: { parameterId: string; normVersionId: string | null }[];
@@ -454,22 +463,27 @@ export async function loadProgrammeReferential(
     options.withPrices
       ? prisma.labService.findMany({
           where: { active: true, category },
-          select: { name: true, category: true, unitPrice: true, active: true },
+          select: { id: true, name: true, category: true, unitPrice: true, active: true },
         })
       : Promise.resolve([]),
   ]);
+  // Lot 4H, H5: the prices of the client billed for the sample — read for a billing role only.
+  const clientPrices = options.withPrices ? await billedClientPrices(sample) : EMPTY_CLIENT_PRICES;
 
   const normVersions = await normVersionsForParameters(
     parameters.map((p) => p.id),
     sample.parameters
   );
 
-  // The catalogue price of each parameter, matched by name like the invoice
-  // proposal does (`/api/clients/[id]/billable`); null = « prix à saisir ».
-  // None at all without `withPrices`: not a « prix à saisir » per parameter.
+  // The price of each parameter as the invoice proposal computes it
+  // (`/api/clients/[id]/billable`): the billed client's own price, else the
+  // catalogue's matched by name; null = « prix à saisir ». None at all
+  // without `withPrices`: not a « prix à saisir » per parameter.
   const prices: Record<string, number | null> = {};
+  const clientPriced: string[] = [];
   if (options.withPrices) {
     const catalogue: CatalogueEntry[] = services.map((service) => ({
+      id: service.id,
       name: service.name,
       category: service.category,
       unitPrice: toMoney(service.unitPrice),
@@ -477,7 +491,10 @@ export async function loadProgrammeReferential(
     }));
     const index = buildCatalogueIndex(catalogue);
     for (const parameter of parameters) {
-      prices[parameter.id] = index.get(catalogueKey(parameter.name, category))?.unitPrice ?? null;
+      const entry = index.get(catalogueKey(parameter.name, category)) ?? null;
+      const price = resolveLinePrice(clientPrices, parameter.id, entry ? { id: entry.id, unitPrice: entry.unitPrice } : null);
+      prices[parameter.id] = price.origin.source === "NONE" ? null : price.unitPrice;
+      if (price.origin.source === "CLIENT") clientPriced.push(parameter.id);
     }
   }
 
@@ -535,7 +552,37 @@ export async function loadProgrammeReferential(
       parameterIds: profile.parameters.map((p) => p.parameterId),
     })),
     normVersions,
-    /** The catalogue price of each parameter (null = « prix à saisir ») — empty without `withPrices`. */
+    /** The price the invoice will propose for each parameter (null = « prix à saisir ») — empty without `withPrices`. */
     prices,
+    /** Lot 4H, H5: the parameters priced at the billed client's own price — empty without `withPrices`. */
+    clientPriced,
   };
+}
+
+/**
+ * Lot 4H, H5 — the own prices of the client the sample is billed to: its
+ * site's « Facturé à », else its client (`invoiceSampleRefusal`, the rule of
+ * the invoice). Never a price removed by hand.
+ */
+async function billedClientPrices(sample: { id?: string; clientId: string }): Promise<ClientPriceIndex> {
+  const billing = sample.id
+    ? await prisma.sample.findUnique({
+        where: { id: sample.id },
+        select: { serie: { select: { site: { select: { billingClientId: true } } } } },
+      })
+    : null;
+  const billedClientId = billing?.serie?.site?.billingClientId ?? sample.clientId;
+  const rows = await prisma.clientPrice.findMany({
+    where: { clientId: billedClientId, removedAt: null },
+    select: { parameterId: true, labServiceId: true, unitPrice: true, origin: true, updatedAt: true },
+  });
+  return clientPriceIndex(
+    rows.map((row) => ({
+      parameterId: row.parameterId,
+      labServiceId: row.labServiceId,
+      unitPrice: toMoney(row.unitPrice),
+      origin: row.origin,
+      updatedAt: row.updatedAt.toISOString(),
+    }))
+  );
 }

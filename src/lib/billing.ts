@@ -13,6 +13,14 @@ import {
   type CreditNoteLine,
   type InvoiceState,
 } from "./invoice-lifecycle";
+import {
+  EMPTY_CLIENT_PRICES,
+  parseLinePriceSource,
+  resolveLinePrice,
+  type ClientPriceIndex,
+  type InvoiceLinePriceSource,
+  type LinePriceOrigin,
+} from "./client-prices";
 
 /**
  * Turning analyses into invoice lines.
@@ -23,10 +31,17 @@ import {
  * before issuing, and a service missing from the catalogue is surfaced rather
  * than silently priced at zero.
  *
+ * Lot 4H, H5 (RETOUR-LABO-04-11.md, R-4 « Oui »): a client with a price of
+ * its own for the analysis (or for the catalogue service it is billed as)
+ * is proposed that price instead of the catalogue's; each line says where
+ * its price comes from (`priceOrigin`, client-prices.ts).
+ *
  * Kept pure so the rule can be tested without a database.
  */
 
 export type CatalogueEntry = {
+  /** The `LabService` — the key of a client's price for the service. */
+  id?: string;
   name: string;
   category: string;
   unitPrice: number;
@@ -39,7 +54,8 @@ export type BillableSample = {
   code: string;
   type: SampleType;
   produit: string | null;
-  parameters: { name: string }[];
+  /** `id`: the `AnalysisParameter` — the key of a client's price for the analysis. */
+  parameters: { id?: string; name: string }[];
 };
 
 export type ProposedLine = {
@@ -47,8 +63,10 @@ export type ProposedLine = {
   description: string;
   quantity: number;
   unitPrice: number;
-  /** True when no catalogue entry matched — the price must be set by hand. */
+  /** True when neither the client nor the catalogue prices it — the price must be set by hand. */
   unpriced: boolean;
+  /** Where `unitPrice` comes from: the client's own price, the catalogue's, or none. */
+  priceOrigin: LinePriceOrigin;
 };
 
 /**
@@ -82,21 +100,28 @@ export function lineDescription(
 
 export function proposeLines(
   samples: BillableSample[],
-  catalogue: CatalogueEntry[]
+  catalogue: CatalogueEntry[],
+  clientPrices: ClientPriceIndex = EMPTY_CLIENT_PRICES
 ): ProposedLine[] {
   const index = buildCatalogueIndex(catalogue);
   const lines: ProposedLine[] = [];
 
   for (const sample of samples) {
     for (const parameter of sample.parameters) {
-      const entry = index.get(key(parameter.name, sample.type));
+      const entry = index.get(key(parameter.name, sample.type)) ?? null;
+      const price = resolveLinePrice(
+        clientPrices,
+        parameter.id,
+        entry ? { id: entry.id, unitPrice: toMoney(entry.unitPrice) } : null
+      );
       lines.push({
         sampleId: sample.id,
         description: lineDescription(parameter.name, sample),
         quantity: 1,
-        unitPrice: entry ? toMoney(entry.unitPrice) : 0,
+        unitPrice: price.unitPrice,
         // Flagged, never guessed: an unpriced analysis is the accountant's call.
-        unpriced: !entry,
+        unpriced: price.origin.source === "NONE",
+        priceOrigin: price.origin,
       });
     }
   }
@@ -195,6 +220,8 @@ export type InvoiceLine = {
   unitPrice: number;
   lineTotal: number;
   sampleId: string | null;
+  /** Lot 4H, H5: where the price came from (`InvoiceItem.priceSource`), when the form said it. */
+  priceSource?: InvoiceLinePriceSource;
 };
 
 export type InvoiceLinesCheck = { ok: true; lines: InvoiceLine[] } | { ok: false; error: string };
@@ -248,6 +275,8 @@ export function checkInvoiceLines(items: unknown, options: { issue: boolean }): 
     if (sampleId && options.issue && unitPrice <= 0) {
       return { ok: false, error: unpricedLineError(description) };
     }
+    // Said on the draft and the invoice sheet, never printed; unknown values dropped.
+    const priceSource = parseLinePriceSource(item.priceSource);
     lines.push({
       description,
       quantity,
@@ -256,6 +285,7 @@ export function checkInvoiceLines(items: unknown, options: { issue: boolean }): 
       // to the stored total.
       lineTotal: roundMoney(quantity * unitPrice),
       sampleId,
+      ...(priceSource ? { priceSource } : {}),
     });
   }
   if (lines.length === 0) {

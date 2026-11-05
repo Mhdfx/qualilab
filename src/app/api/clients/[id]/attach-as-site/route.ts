@@ -4,7 +4,7 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { checkAttachAsSite, type ClientFacts } from "@/lib/client-merge-rules";
-import { moveAlertCopies, moveEmails, movePlaces, moveProducts, moveTypesAndProfiles } from "@/lib/client-transfer";
+import { moveAlertCopies, moveClientPrices, moveEmails, movePlaces, moveProducts, moveTypesAndProfiles } from "@/lib/client-transfer";
 import { normalizeSiteName } from "@/lib/sites-import";
 
 /**
@@ -55,6 +55,8 @@ type AttachCounts = {
   profiles: number;
   /** Lot 3C, L5: the laboratory's alert copy addresses chosen for B, now chosen for the principal. */
   alertCopies: number;
+  /** Lot 4H, H5: B's own prices, now the principal's (those it has for the same analysis stay on B). */
+  clientPrices: number;
   /** B's invoices, which stay in its name. */
   invoicesKept: number;
 };
@@ -159,6 +161,8 @@ async function attach(
   const owned = await moveTypesAndProfiles(tx, [sourceId], parentId);
   // Lot 3C, L5: an alert copy chosen for B keeps receiving the alerts of its samples, now the principal's.
   const alertCopies = await moveAlertCopies(tx, [sourceId], parentId);
+  // Lot 4H, H5: B's own prices go to the principal with its samples (the principal's own price wins).
+  const clientPrices = await moveClientPrices(tx, [sourceId], parentId);
 
   // ---- archived, never deleted; the invoices stay in B's name ----------------------------------
   await tx.client.update({ where: { id: sourceId }, data: { archived: true, mergedIntoId: parentId } });
@@ -179,6 +183,7 @@ async function attach(
       productTypes: owned.productTypes,
       profiles: owned.profiles,
       alertCopies,
+      clientPrices,
       invoicesKept: sourceRow._count.invoices,
     },
   };

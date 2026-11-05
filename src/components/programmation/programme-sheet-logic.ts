@@ -789,13 +789,21 @@ export function unitWarning(
   return `La famille « ${type.name} » attend n = ${needed} ; avec ${draft.unitCount} unité${draft.unitCount > 1 ? "s" : ""} la paillasse lira en indicatif, sans verdict officiel.`;
 }
 
-export type BillingLine = { parameterId: string; name: string; unitPrice: number | null };
+export type BillingLine = {
+  parameterId: string;
+  name: string;
+  unitPrice: number | null;
+  /** Lot 4H, H5: priced at the billed client's own price, not the catalogue's. */
+  clientPrice: boolean;
+};
 
 /**
- * The lines the accountant will be proposed: each analysis at its catalogue
- * price, flagged when it has none. Section 7 of the sheet, computed for a
- * role that sees the billing only (`seesBilling`, the owner's rule of 25/10)
- * — the others receive no price to compute it from.
+ * The lines the accountant will be proposed: each analysis at the price the
+ * invoice proposes — the billed client's own price where it has one (lot
+ * 4H, H5), else the catalogue's —, flagged when it has none. Section 7 of
+ * the sheet, computed for a role that sees the billing only (`seesBilling`,
+ * the owner's rule of 25/10) — the others receive no price to compute it
+ * from.
  */
 export function billingLines(
   draft: ProgrammeDraft,
@@ -803,7 +811,9 @@ export function billingLines(
 ): { lines: BillingLine[]; total: number; unpriced: number } {
   const lines = draft.parameterIds.flatMap((id) => {
     const parameter = referential.parameters.find((candidate) => candidate.id === id);
-    return parameter ? [{ parameterId: id, name: parameter.name, unitPrice: referential.prices[id] ?? null }] : [];
+    return parameter
+      ? [{ parameterId: id, name: parameter.name, unitPrice: referential.prices[id] ?? null, clientPrice: referential.clientPriced?.includes(id) ?? false }]
+      : [];
   });
   return {
     lines,

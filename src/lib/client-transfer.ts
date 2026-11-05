@@ -17,7 +17,10 @@ import { isEmail } from "./client-validation";
  *     labelled with its name, boxes unticked;
  *   - the samples of a merged row follow the row it joined;
  *   - the laboratory's alert copies « clients choisis » (lot 3C, L5): an
- *     address chosen for a source is chosen for the target.
+ *     address chosen for a source is chosen for the target;
+ *   - the client's own prices (lot 4H, H5): a source's price moves unless
+ *     the target has its own for the same analysis or service — the
+ *     target's wins, the source's stays on the archived fiche.
  *
  * Every function takes the caller's transaction and returns its counts;
  * `byClient` counts, per source client, the rows it gave (moved or merged).
@@ -310,4 +313,35 @@ export async function moveAlertCopies(tx: Tx, fromClientIds: string[], toClientI
   });
   await tx.alertCopyClient.deleteMany({ where: { clientId: { in: sources } } });
   return created.count;
+}
+
+/**
+ * Lot 4H, H5 (RETOUR-LABO-04-11.md): the sources' own prices go to the
+ * target — its samples are now the target's, so are their prices. A price
+ * the target already has for the same analysis or service is the target's
+ * (kept); the source's then stays on the archived fiche, read-only. A price
+ * removed by hand (`removedAt`) moves too — the memory of that decision, so
+ * the reprise does not bring it back on the target — but is not counted.
+ * Returns the prices moved.
+ */
+export async function moveClientPrices(tx: Tx, fromClientIds: string[], toClientId: string): Promise<number> {
+  const sources = fromClientIds.filter((id) => id !== toClientId);
+  if (sources.length === 0) return 0;
+  let moved = 0;
+  // One source at a time: when two bring the same analysis, the first one's price is kept.
+  for (const sourceId of sources) {
+    const held = await tx.clientPrice.findMany({ where: { clientId: toClientId }, select: { itemKey: true } });
+    const notHeld = { notIn: held.map((row) => row.itemKey) };
+    moved += (
+      await tx.clientPrice.updateMany({
+        where: { clientId: sourceId, itemKey: notHeld, removedAt: null },
+        data: { clientId: toClientId },
+      })
+    ).count;
+    await tx.clientPrice.updateMany({
+      where: { clientId: sourceId, itemKey: notHeld, removedAt: { not: null } },
+      data: { clientId: toClientId },
+    });
+  }
+  return moved;
 }

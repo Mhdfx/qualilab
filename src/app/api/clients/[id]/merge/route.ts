@@ -12,7 +12,7 @@ import {
   type ClientFacts,
   type FillableField,
 } from "@/lib/client-merge-rules";
-import { moveAlertCopies, moveEmails, movePlaces, moveProducts, moveTypesAndProfiles } from "@/lib/client-transfer";
+import { moveAlertCopies, moveClientPrices, moveEmails, movePlaces, moveProducts, moveTypesAndProfiles } from "@/lib/client-transfer";
 import { normalizeSiteName } from "@/lib/sites-import";
 import { PORTAL_ROLE } from "@/lib/roles";
 
@@ -107,6 +107,8 @@ type MergeCounts = {
   profiles: number;
   /** Lot 3C, L5: the laboratory's alert copy addresses chosen for B, now chosen for A. */
   alertCopies: number;
+  /** Lot 4H, H5: B's own prices, now A's (those A has for the same analysis stay on B). */
+  clientPrices: number;
   /** Clients billed for B, now billed for A. */
   billingClients: number;
   /** Sites billed to B, now billed to A. */
@@ -190,6 +192,7 @@ async function merge(tx: Prisma.TransactionClient, sourceId: string, targetId: s
     productTypes: 0,
     profiles: 0,
     alertCopies: 0,
+    clientPrices: 0,
     billingClients: 0,
     billedSites: 0,
   };
@@ -277,6 +280,8 @@ async function merge(tx: Prisma.TransactionClient, sourceId: string, targetId: s
   counts.profiles = owned.profiles;
   // Lot 3C, L5: an alert copy chosen for B keeps receiving the alerts of B's samples, now A's.
   counts.alertCopies = await moveAlertCopies(tx, [sourceId], targetId);
+  // Lot 4H, H5: B's own prices are A's now (A's own price wins).
+  counts.clientPrices = await moveClientPrices(tx, [sourceId], targetId);
 
   // ---- the links that targeted B target A --------------------------------------------------
   counts.billingClients = (await tx.client.updateMany({ where: { billedForId: sourceId }, data: { billedForId: targetId } })).count;

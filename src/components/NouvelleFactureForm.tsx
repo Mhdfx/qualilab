@@ -32,6 +32,17 @@ import {
 import { ConfirmDialog, sendJson } from "@/components/invoices/InvoiceDialogs";
 import type { DraftFormInvoice } from "@/components/invoices/invoice-view";
 import { ClientPicker, type PickedClient } from "@/components/commercial/ClientPicker";
+import {
+  INVOICE_LINE_PRICE_SOURCE_LABELS,
+  linePriceOriginLabel,
+  linePriceSource,
+  priceEditedByHand,
+  repriceServiceLine,
+  servicePickPrice,
+  type ClientPriceRow,
+  type InvoiceLinePriceSource,
+  type LinePriceOrigin,
+} from "@/lib/client-prices";
 
 /** Every active client may be invoiced. */
 const NO_EXCLUDED_CLIENTS: string[] = [];
@@ -44,7 +55,36 @@ type LineItem = {
   unitPrice: string;
   /** Set when the line came from a validated analysis. */
   sampleId?: string | null;
+  /**
+   * Lot 4H, H5: where the proposed price came from (the client's own, the
+   * catalogue's, none) and that price — the line says it, and says
+   * « Prix modifié à la main » once the accountant types another one.
+   * Unknown (null) on a line typed by hand or reopened from a draft.
+   */
+  priceOrigin?: LinePriceOrigin | null;
+  proposedPrice?: number | null;
+  /** A line reopened from a draft: the origin it was saved with (`InvoiceItem.priceSource`). */
+  savedSource?: InvoiceLinePriceSource | null;
+  /** A line filled from a catalogue service: that service's catalogue price (re-priced once the client's prices load). */
+  servicePrice?: number | null;
 };
+
+/** What the draft saves of a line's price origin (`InvoiceItem.priceSource`). */
+function sourceOf(item: LineItem): InvoiceLinePriceSource | null {
+  return linePriceSource({ origin: item.priceOrigin, saved: item.savedSource, proposedPrice: item.proposedPrice, typed: item.unitPrice });
+}
+
+/** Lines filled from a catalogue service, re-proposed at this client's prices (a price typed by hand is kept). */
+function repriceLines(items: LineItem[], rows: ClientPriceRow[]): LineItem[] {
+  let changed = false;
+  const next = items.map((item) => {
+    const price = repriceServiceLine(item, rows);
+    if (!price) return item;
+    changed = true;
+    return { ...item, unitPrice: String(price.unitPrice), priceOrigin: price.origin, proposedPrice: price.unitPrice };
+  });
+  return changed ? next : items;
+}
 
 let lineCounter = 0;
 
@@ -71,6 +111,9 @@ function draftLines(draft: DraftFormInvoice | undefined): LineItem[] {
       quantity: String(item.quantity),
       unitPrice: item.unitPrice ? item.unitPrice.toFixed(2) : "",
       sampleId: item.sampleId,
+      // The origin saved with the line, and its price as the one it names.
+      savedSource: item.priceSource ?? null,
+      proposedPrice: item.unitPrice,
     };
   });
 }
@@ -98,6 +141,34 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
   const [submitting, setSubmitting] = useState(false);
   const [confirmIssue, setConfirmIssue] = useState(false);
   const [error, setError] = useState("");
+  // Lot 4H, H5: the chosen client's own prices for the catalogue's services.
+  const [clientPrices, setClientPrices] = useState<{ clientId: string; rows: ClientPriceRow[] } | null>(null);
+
+  useEffect(() => {
+    if (!clientId) return;
+    let cancelled = false;
+    fetch(`/api/clients/${clientId}/prices`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (cancelled) return;
+        const rows: ClientPriceRow[] = Array.isArray(data) ? data : [];
+        setClientPrices({ clientId, rows });
+        // A service picked before the prices arrived (or for another client) takes this client's price.
+        setItems((prev) => repriceLines(prev, rows));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setClientPrices({ clientId, rows: [] });
+        setItems((prev) => repriceLines(prev, []));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
+  const ownPrices = useMemo(() => (clientPrices?.clientId === clientId ? clientPrices.rows : []), [clientPrices, clientId]);
+  // The catalogue's services are offered once this client's prices are known
+  // (a pick before would propose the catalogue's price — lot 4H review).
+  const pricesReady = !clientId || clientPrices?.clientId === clientId;
 
   useEffect(() => {
     fetch("/api/lab-services")
@@ -135,19 +206,33 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
     );
   }
 
+  /** The services this client has a price of its own for (its analysis billed as it, or the service itself). */
+  const clientPricedServices = useMemo(
+    () => new Set(services.filter((s) => servicePickPrice(ownPrices, s).origin.source === "CLIENT").map((s) => s.id)),
+    [services, ownPrices]
+  );
+
   /** Prefills a line from the catalogue. Clearing the picker leaves the line
    *  alone: the wording may have been edited on purpose. */
   function selectService(key: string, serviceId: string) {
     const service = services.find((s) => s.id === serviceId);
+    // Lot 4H, H5 — the order of the invoice proposal (`resolveLinePrice`):
+    // the client's price for the analysis billed as this service, else for
+    // the service, else the catalogue's.
+    const price = service ? servicePickPrice(ownPrices, service) : null;
     setItems((prev) =>
       prev.map((item) =>
         item.key === key
-          ? service
+          ? service && price
             ? {
                 ...item,
                 serviceId,
                 description: service.name,
-                unitPrice: String(service.unitPrice),
+                unitPrice: String(price.unitPrice),
+                priceOrigin: price.origin,
+                proposedPrice: price.unitPrice,
+                servicePrice: service.unitPrice,
+                savedSource: null,
               }
             : { ...item, serviceId: "" }
           : item
@@ -179,6 +264,8 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
           quantity: Number(item.quantity),
           unitPrice: Number(item.unitPrice) || 0,
           sampleId: item.sampleId ?? null,
+          // Lot 4H, H5: said again when the draft is reopened, and on the invoice sheet.
+          priceSource: sourceOf(item),
         })),
       },
     };
@@ -295,10 +382,20 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
 
         <Card className="p-5 sm:p-6">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="section-title">
-              <FileText className="h-4 w-4" />
-              Prestations
-            </h3>
+            <div>
+              <h3 className="section-title">
+                <FileText className="h-4 w-4" />
+                Prestations
+              </h3>
+              {clientId && ownPrices.length > 0 && (
+                <Link
+                  href={`/comptabilite/clients/${clientId}/prix`}
+                  className="mt-1 inline-block rounded text-xs font-medium text-violet-700 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                >
+                  {ownPrices.length} prix propre{ownPrices.length > 1 ? "s" : ""} à ce client
+                </Link>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => setItems((prev) => [...prev, newLine()])}
@@ -336,6 +433,8 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
                         quantity: String(line.quantity),
                         unitPrice: line.unitPrice ? String(line.unitPrice) : "",
                         sampleId: line.sampleId,
+                        priceOrigin: line.priceOrigin ?? null,
+                        proposedPrice: line.unitPrice,
                       };
                     });
                     // Drop the single blank line the form starts with.
@@ -378,12 +477,15 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
                       value={item.serviceId}
                       onChange={(e) => selectService(item.key, e.target.value)}
                       aria-label="Reprendre une prestation du catalogue"
-                      className="input-field px-4 py-2 text-xs text-slate-600"
+                      disabled={!pricesReady}
+                      className="input-field px-4 py-2 text-xs text-slate-600 disabled:cursor-wait disabled:opacity-60"
                     >
                       <option value="">
                         {services.length === 0
                           ? "Chargement des prestations…"
-                          : "Reprendre une prestation du catalogue…"}
+                          : !pricesReady
+                            ? "Chargement des prix du client…"
+                            : "Reprendre une prestation du catalogue…"}
                       </option>
                       {LAB_SERVICE_CATEGORIES.map((category) => {
                         const categoryServices = servicesByCategory.get(category) ?? [];
@@ -396,12 +498,14 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
                             {categoryServices.map((service) => (
                               <option key={service.id} value={service.id}>
                                 {service.name}
+                                {clientPricedServices.has(service.id) ? " — prix du client" : ""}
                               </option>
                             ))}
                           </optgroup>
                         );
                       })}
                     </select>
+                    {(item.priceOrigin || item.savedSource) && <LinePriceNote item={item} />}
                   </div>
                   <input
                     type="number"
@@ -532,4 +636,39 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
       )}
     </div>
   );
+}
+
+/**
+ * What a line says of its price (lot 4H, H5): the client's own, the
+ * catalogue's, none — or « Prix modifié à la main » once the accountant
+ * typed another one over the proposal.
+ */
+function LinePriceNote({ item }: { item: LineItem }) {
+  if (!item.priceOrigin) {
+    // Reopened from a draft: the origin it was saved with, until the price is retyped.
+    if (!item.savedSource) return null;
+    const source = sourceOf(item);
+    if (!source) return null;
+    const client = source === "CLIENT_REPRISE" || source === "CLIENT_SAISIE";
+    return (
+      <p className={`px-1 text-[11px] ${client ? "font-medium text-violet-700" : "text-slate-500"}`}>
+        {source === "MAIN" && item.savedSource !== "MAIN" ? "Prix modifié à la main" : INVOICE_LINE_PRICE_SOURCE_LABELS[source]}
+      </p>
+    );
+  }
+  const label = linePriceOriginLabel(item.priceOrigin);
+  if (priceEditedByHand(item.proposedPrice, item.unitPrice)) {
+    return (
+      <p className="px-1 text-[11px] text-slate-500">
+        Prix modifié à la main — proposé : {formatCurrency(item.proposedPrice ?? 0)} ({label.charAt(0).toLowerCase() + label.slice(1)})
+      </p>
+    );
+  }
+  const tone =
+    item.priceOrigin.source === "CLIENT"
+      ? "font-medium text-violet-700"
+      : item.priceOrigin.source === "NONE"
+        ? "font-medium text-amber-700"
+        : "text-slate-500";
+  return <p className={`px-1 text-[11px] ${tone}`}>{label}</p>;
 }

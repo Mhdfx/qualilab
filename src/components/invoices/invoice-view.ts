@@ -16,6 +16,7 @@ import {
 } from "@/lib/invoice-lifecycle";
 import { toMoney, type MoneyInput } from "@/lib/money";
 import { creditNoteLinesRefusal, remainingLineCreditable } from "@/lib/billing";
+import type { InvoiceLinePriceSource } from "@/lib/client-prices";
 
 /**
  * What the invoice screens show (FACTURATION.md §5), shaped once.
@@ -47,6 +48,8 @@ export type InvoiceViewItem = {
   unitPrice: number;
   lineTotal: number;
   sampleId: string | null;
+  /** Lot 4H, H5: where the line's price came from (null: unknown, or a line saved before it was kept). */
+  priceSource?: InvoiceLinePriceSource | null;
   /** The billed sample's status (PROGRAMME.md §6 banners); absent on a line typed by hand. */
   sample?: BilledSample | null;
   /**
@@ -133,7 +136,14 @@ export type DraftFormInvoice = {
   dueDate: string | null;
   taxRate: number;
   notes: string | null;
-  items: { description: string; quantity: number; unitPrice: number; sampleId: string | null }[];
+  items: {
+    description: string;
+    quantity: number;
+    unitPrice: number;
+    sampleId: string | null;
+    /** Lot 4H, H5: the price's origin as saved — said again on the reopened draft. */
+    priceSource?: InvoiceLinePriceSource | null;
+  }[];
 };
 
 /** The draft form's starting values, from the fiche's view of a draft. */
@@ -150,6 +160,7 @@ export function draftFormInvoice(invoice: InvoiceDetailView): DraftFormInvoice {
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       sampleId: item.sampleId,
+      priceSource: item.priceSource ?? null,
     })),
   };
 }

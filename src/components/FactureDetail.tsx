@@ -12,6 +12,7 @@ import { INVOICE_NOTICE_LABELS, invoiceNotices } from "@/lib/invoice-notices";
 import { InvoiceStateBadge } from "@/components/invoices/InvoiceStateBadge";
 import { InvoiceActionsBar, InvoiceLedger } from "@/components/invoices/InvoiceManagement";
 import { collectable, documentLabel, type InvoiceDetailView } from "@/components/invoices/invoice-view";
+import { INVOICE_LINE_PRICE_SOURCE_LABELS } from "@/lib/client-prices";
 
 const INVOICE_BLUE = "#4472C4";
 const INVOICE_BLUE_LIGHT = "#DDEBF7";
@@ -280,6 +281,16 @@ export function FactureDetail({
                 >
                   <td className="border-b border-slate-200 px-2 py-1.5 text-slate-800">
                     {item.description}
+                    {/* Lot 4H, H5: where the price came from — on screen only, never printed. */}
+                    {item.priceSource && (
+                      <span
+                        className={`no-print mt-0.5 block text-[10px] ${
+                          item.priceSource === "CLIENT_REPRISE" || item.priceSource === "CLIENT_SAISIE" ? "font-medium text-violet-700" : "text-slate-500"
+                        }`}
+                      >
+                        {INVOICE_LINE_PRICE_SOURCE_LABELS[item.priceSource]}
+                      </span>
+                    )}
                   </td>
                   <td className="border-b border-slate-200 px-2 py-1.5 text-center text-slate-600">
                     u.

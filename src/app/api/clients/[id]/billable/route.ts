@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { holdingInvoiceItemWhere, proposeLines, type CatalogueEntry } from "@/lib/billing";
 import { BILLABLE_STATUSES } from "@/lib/billing-status";
 import { toMoney } from "@/lib/money";
+import { clientPriceIndex } from "@/lib/client-prices";
 
 /**
  * A client's analyses that are ready to invoice.
@@ -20,6 +21,10 @@ import { toMoney } from "@/lib/money";
  * plus the samples of the sites billed to it (its principal client's). Such
  * a sample carries `via: { siteName, clientId, clientName }`; the client's
  * own samples carry `via: null`.
+ *
+ * Lot 4H, H5: the lines are priced at the client's own prices where it has
+ * some (`ClientPrice`, the invoiced client's — a site billed to it included),
+ * the catalogue's otherwise; each line says which (`priceOrigin`).
  */
 export async function GET(
   request: Request,
@@ -41,7 +46,7 @@ export async function GET(
       })
     : null;
 
-  const [samples, services] = await Promise.all([
+  const [samples, services, prices] = await Promise.all([
     prisma.sample.findMany({
       where: {
         OR: [
@@ -72,13 +77,18 @@ export async function GET(
         report: { select: { amendmentPending: true } },
         client: { select: { name: true } },
         serie: { select: { site: { select: { name: true } } } },
-        parameters: { select: { parameter: { select: { name: true } } } },
+        parameters: { select: { parameter: { select: { id: true, name: true } } } },
       },
       orderBy: [{ validatedAt: "asc" }, { programmedAt: "asc" }],
       take: 100,
     }),
     prisma.labService.findMany({
-      select: { name: true, category: true, unitPrice: true, active: true },
+      select: { id: true, name: true, category: true, unitPrice: true, active: true },
+    }),
+    prisma.clientPrice.findMany({
+      // Never a price removed by hand (kept only as the reprise's memory).
+      where: { clientId: id, removedAt: null },
+      select: { parameterId: true, labServiceId: true, unitPrice: true, origin: true, updatedAt: true },
     }),
   ]);
 
@@ -98,11 +108,13 @@ export async function GET(
         ? null
         : { siteName: sample.serie.site?.name ?? null, clientId: sample.clientId, clientName: sample.client.name },
     parameters: sample.parameters.map(({ parameter }) => ({
+      id: parameter.id,
       name: parameter.name,
     })),
   }));
 
   const catalogue: CatalogueEntry[] = services.map((service) => ({
+    id: service.id,
     name: service.name,
     category: service.category,
     unitPrice: toMoney(service.unitPrice),
@@ -111,6 +123,18 @@ export async function GET(
 
   return NextResponse.json({
     samples: billable,
-    lines: proposeLines(billable, catalogue),
+    lines: proposeLines(
+      billable,
+      catalogue,
+      clientPriceIndex(
+        prices.map((price) => ({
+          parameterId: price.parameterId,
+          labServiceId: price.labServiceId,
+          unitPrice: toMoney(price.unitPrice),
+          origin: price.origin,
+          updatedAt: price.updatedAt.toISOString(),
+        }))
+      )
+    ),
   });
 }

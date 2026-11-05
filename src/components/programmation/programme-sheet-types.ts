@@ -245,11 +245,14 @@ export type ProgrammeReferentialData = {
   /** The norm versions each parameter may be programmed with. */
   normVersions: Record<string, NormVersionRef[]>;
   /**
-   * The catalogue price of each parameter; null = « prix à saisir ». Empty
-   * for a role that does not see the billing (`seesBilling`, 25/10): the
-   * server never loads them for it.
+   * The price the invoice will propose for each parameter — the billed
+   * client's own price (lot 4H, H5), else the catalogue's; null = « prix à
+   * saisir ». Empty for a role that does not see the billing (`seesBilling`,
+   * 25/10): the server never loads them for it.
    */
   prices: Record<string, number | null>;
+  /** Lot 4H, H5: the parameters priced at the billed client's own price (absent or empty: none). */
+  clientPriced?: string[];
 };
 
 /** What `PUT /api/samples/[id]/programme` answers. */

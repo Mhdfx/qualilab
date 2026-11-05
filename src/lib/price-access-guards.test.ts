@@ -114,11 +114,13 @@ const BILLING_SPACES = [
   "api/lab-services/",
   "api/clients/[id]/billable/",
   "api/clients/[id]/billed-for/",
+  // Lot 4H, H5: the prices proper to a client (its fiche, the comptabilité's page, the invoice form).
+  "api/clients/[id]/prices/",
 ];
 
 /** What reads a price, an amount, an invoice or a payment. */
 const MONEY =
-  /\bunitPrice\b|\badvanceAmount\b|formatCurrency\(|heldInvoices\(|billingFigures\(|loadProgrammeReferential\(|\b(?:prisma|tx)\.(?:invoice|invoiceItem|payment|labService|purchaseInvoice)\b|invoices:\s*\{|\binvoiceItems\s*:|_count:\s*\{\s*select:\s*\{[^}]*\binvoices\b|INVOICE_STATUS_LABELS/;
+  /\bunitPrice\b|\badvanceAmount\b|formatCurrency\(|heldInvoices\(|billingFigures\(|loadProgrammeReferential\(|\b(?:prisma|tx)\.(?:invoice|invoiceItem|payment|labService|clientPrice|purchaseInvoice)\b|invoices:\s*\{|\binvoiceItems\s*:|_count:\s*\{\s*select:\s*\{[^}]*\binvoices\b|INVOICE_STATUS_LABELS/;
 
 /**
  * A page or route that reads money: in its own code (`MONEY`), or through a

@@ -108,6 +108,7 @@ export async function loadInvoiceDetail(id: string): Promise<InvoiceDetailView |
       unitPrice: toMoney(item.unitPrice),
       lineTotal: toMoney(item.lineTotal),
       sampleId: item.sampleId,
+      priceSource: item.priceSource,
       creditedAmount: credited[item.id] ?? 0,
       sample: item.sample
         ? {
