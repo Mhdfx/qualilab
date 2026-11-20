@@ -481,7 +481,12 @@ Le comportement construit reste en place ; rien n'est relancé.
 
 ## 7. À clarifier — une ligne chacune, avec un exemple (prochain échange, quand le propriétaire le décide)
 
-- **C-1 — Q6 (R-29)** : « Vous avez écrit « ça c'est faux » à côté de notre
+> **20/11 — réponses reçues** (questionnaire « Dernières précisions » du 07/11, questions 1 à 8 ;
+> analyse et plan du lot 5 : `RETOUR-LABO-20-11.md`). Réglées : C-2, C-5, C-6, C-7, C-8 ; confirmée
+> avec une donnée manquante : C-4 (la portée d'accréditation) ; répondue, à construire : C-1 (J6) ;
+> en partie : C-3 (D-3). Les questions qui restent sont D-1 … D-7 de `RETOUR-LABO-20-11.md` §8.
+
+- **C-1 — Q6 (R-29)** *(20/11 : répondue — unité des surfaces au choix, jugement par la valeur ; air sans limite ⇒ J6, D-4)* : « Vous avez écrit « ça c'est faux » à côté de notre
   règle. Exemple : un couteau prélevé à l'écouvillon, résultat
   « 120 UFC/couteau » ; la famille « Hygiène des surfaces » a un critère
   « ≤ 100 UFC/cm² ». Le logiciel affiche « sans interprétation ». Faut-il
@@ -489,11 +494,11 @@ Le comportement construit reste en place ; rien n'est relancé.
   l'objet (« ≤ … UFC/couteau ») que vous nous donnez, ou (c) autre chose ? Et
   pour l'air : un critère en UFC/m³ sur une boîte exposée ? » — à montrer à
   l'écran plutôt qu'à écrire.
-- **C-2 — Q12** : « Physico-chimie « 10 – 15 jours » : 10 jours ouvrés
+- **C-2 — Q12** *(20/11 : réglée — « Oui », 10 jours ouvrés pour toute la physico-chimie ; K5 bis abandonné)* : « Physico-chimie « 10 – 15 jours » : 10 jours ouvrés
   (environ 15 jours calendaires), ou 10 à 15 jours selon l'analyse (le
   logiciel accepte déjà un délai par type d'analyse : lesquels à 15 ?) —
   et lequel le logiciel propose-t-il par défaut ? »
-- **C-3 — Q18, pour le comptable** : « Retenue à la source : vous avez
+- **C-3 — Q18, pour le comptable** *(20/11 : en partie — TVA, 75 % avec attestation, 100 % sans, au cas par cas ; durée 4 ou 6 mois (illisible), achats ou facturation client ?, blocage non dit ⇒ S13, D-3)* : « Retenue à la source : vous avez
   écrit 100 et 10 et repassé le « % » — s'agit-il bien de pourcentages ?
   Avec 100 % du TTC, la retenue serait égale à toute la facture. S'agit-il de la retenue
   sur la TVA (100 % ou un autre pourcentage **de la TVA**), et 10 % de quoi
@@ -501,7 +506,7 @@ Le comportement construit reste en place ; rien n'est relancé.
   reste-t-elle valable ? Le paiement doit-il être bloqué sans attestation ? »
   — aucun taux n'est saisi avant sa réponse ; nous ne proposons pas de taux
   nous-mêmes.
-- **C-4 — Q13** : « Qui peut retirer ou remettre le logo d'accréditation
+- **C-4 — Q13** *(20/11 : « Oui » — K10 confirmé tel que construit ; la liste = leur portée d'accréditation, « déjà transmise », non reçue ⇒ D-6, puis S12)* : « Qui peut retirer ou remettre le logo d'accréditation
   sur un rapport : la personne qui fait la validation administrative, le
   validateur technique, l'administrateur ? Le logiciel ne permet d'**ajouter**
   le logo que sur un rapport portant au moins une analyse accréditée par
@@ -511,7 +516,7 @@ Le comportement construit reste en place ; rien n'est relancé.
   pour les marquer dans le logiciel. » (construit en attendant : la
   personne qui signe la validation administrative ; ajout seulement avec une
   analyse « accréditée » ; « SA » ne compte pas.)
-- **C-5 — Q8 (« Exemple pour vérifier »)** (exemple chiffré prêt, tableau
+- **C-5 — Q8 (« Exemple pour vérifier »)** *(20/11 : réglée — « Juste » ; 150 → Non satisfaisant, 500 entre m et M reste Acceptable)* (exemple chiffré prêt, tableau
   du §5 « Lot 4A — construit le 05/11 ») : leur envoyer l'exemple :
   « Critère repris de l'ancien logiciel : n = 1, c = 1, m = 100 UFC/g.
   Lecture 150 UFC/g. Aujourd'hui : « Acceptable », sans alerte. Après la
@@ -519,14 +524,14 @@ Le comportement construit reste en place ; rien n'est relancé.
   Lecture 80 : « Satisfaisant » dans les deux cas. » (une capture de la
   copie locale, après J5) ; et demander si un critère à deux limites m / M
   avec n = 1 reste « Acceptable » entre m et M.
-- **C-6 — Q9** (seulement si utile) : « l'administration » comprend-elle la
+- **C-6 — Q9** (seulement si utile) *(20/11 : réglée — « Oui » : validateur technique, Direction, administrateur)* : « l'administration » comprend-elle la
   Direction (validation administrative) ? Lu ainsi par défaut.
-- **C-7 — Q16** (une ligne) : « Conforme / non conforme » = le rapport ONSSA
+- **C-7 — Q16** (une ligne) *(20/11 : réglée — « Oui » + « Satisfaisant et acceptable = Conforme » ; rapports d'analyse inchangés)* : « Conforme / non conforme » = le rapport ONSSA
   ne connaît que ces deux classes, un « Acceptable » y compte conforme
   (c'est ce que fait le logiciel) — ou souhaitez-vous ne plus voir
   « Acceptable » ailleurs non plus ?
 
-- **C-8 — R-4, la reprise des prix clients** (H5, construit) : « (a) Dans l'ancien
+- **C-8 — R-4, la reprise des prix clients** (H5, construit) *(20/11 : réglée — « Oui » aux cinq règles ⇒ S14 (alias E. coli / Coliformes, relance de l'import) ; la question au propriétaire sur la Direction reste ouverte)* : « (a) Dans l'ancien
   logiciel, 1 937 prix propres valent 0 : nous les lisons « pas de prix propre, le
   tarif s'applique » — d'accord ? (b) Un prix saisi pour un site va au client qui
   paie ce site, et les échantillons d'un site facturé à un autre client sont facturés

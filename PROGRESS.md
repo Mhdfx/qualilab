@@ -8,7 +8,13 @@
 
 ## ▶ NEXT ACTION
 
-**05/11 (nuit) — LOT 4 DÉPLOYÉ EN PRODUCTION (`4ebb146`, 05/11 20 h 30) ET RECETTÉ : V22 de production passée (85/90 → 60/64 → 31/31, échecs dus au script puis corrigés), contre-vérification hostile 32/32.** Réglages appliqués : S9 8 / 10 jours ouvrés, S11 logo SEMAC, S12 marques de l'ancien logiciel (73), S10 16 drapeaux, H5 1 075 prix clients. Tout ce qui a été créé sur « TEST UI » est annulé ou retiré (séries 59–64/26 annulées, prix de test retiré, brouillon supprimé ; 58/26 : 6 rapports émis gardés). Détail : `TESTPLAN.md` « Checkpoint V22 », `LOT4-AVANCEMENT.md`.
+**20/11 — RÉPONSES DU 20/11 ANALYSÉES — LOT 5 PLANIFIÉ — RIEN CONSTRUIT (`RETOUR-LABO-20-11.md`, tracker `LOT5-AVANCEMENT.md`).** Le questionnaire « Dernières précisions » du 07/11 est revenu coché et annoté (scan hors dépôt `backups/retour-labo-20-11/`). Confirmé tel que construit : C-2, C-4, C-5, C-6, C-7, C-8, Q73, Q133. Changé : C-1 (unité des surfaces au choix, jugement par la valeur), 2.8 (identification « à vérifier »), 2.14 (échantillons des collègues « pas visible » — contredit 2.13), Q106 (« À prendre » par n° de série), Q132 (corriger sans amendement), Q20 (tout l'historique de l'ancien logiciel sur le portail). Q19 « pas décidé », Q98 vide. Production `4ebb146` non touchée. **À construire quand le propriétaire le dit**, dans cet ordre :
+1. **Propriétaire, sans code** : décision Q19 (numérotation 5001/26 – 40001/26 : S17) ; S13 (retenue TVA 75 / 100, sans la durée), S14 (alias E. coli / Coliformes, relance de l'import des prix), S15 (critères sensoriels n = 1), S16 (première adresse de copie, `backups/retour-labo-20-11/adresses.md`).
+2. **Lot 5A** (P1, ≈ 1 à 1,5 jour, une migration additive — K11) : J6, I10, J7 (hypothèse D-1), J8, K11, commentaires « confirmé le 20/11 » ; recette V23 locale puis production (`RETOUR-LABO-20-11.md` §5).
+3. **Lot 5B** (P2–P3, ≈ 3 à 5 jours, trois tables additives) : historique de l'ancien logiciel sur le portail et la fiche client — HA2-a d'abord (repérer les tables dans `qlabo-fb`), puis HA1 → HA7 (`RETOUR-LABO-20-11.md` §6).
+4. À reposer au laboratoire au prochain échange : D-1 … D-7 (`RETOUR-LABO-20-11.md` §8) ; toujours ouverts : `direction1` à créer, cachet, logo HD, portée d'accréditation, PV de recette.
+
+_Previous next action:_ **05/11 (nuit) — LOT 4 DÉPLOYÉ EN PRODUCTION (`4ebb146`, 05/11 20 h 30) ET RECETTÉ : V22 de production passée (85/90 → 60/64 → 31/31, échecs dus au script puis corrigés), contre-vérification hostile 32/32.** Réglages appliqués : S9 8 / 10 jours ouvrés, S11 logo SEMAC, S12 marques de l'ancien logiciel (73), S10 16 drapeaux, H5 1 075 prix clients. Tout ce qui a été créé sur « TEST UI » est annulé ou retiré (séries 59–64/26 annulées, prix de test retiré, brouillon supprimé ; 58/26 : 6 rapports émis gardés). Détail : `TESTPLAN.md` « Checkpoint V22 », `LOT4-AVANCEMENT.md`.
 Next, in this order:
 1. **Prévenir le propriétaire** (téléphone) puis **le laboratoire** de ce qui change (K7, K8, K9, J5 avec l'exemple C-5, I9, K10).
 2. Propriétaire : créer `direction1` (listé dans « Comptes de démonstration » mais « Identifiants incorrects » en production) et les comptes Direction ; les deux adresses « Copies internes » (Q11) ; la liste d'accréditation (C-4) avant tout « Accrédité ».
@@ -434,6 +440,11 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-11-20 — réponses du 20/11 analysées, lot 5 planifié (rien construit)
+- Scan `backups/retour-labo-20-11/reponses-derniere-precisions-scan.pdf` (3 pages) relu agrandi (250 / 500 dpi) contre le questionnaire du 07/11 (`backups/Qualilab-questions-2026-11-07.pdf`) ; lectures incertaines notées (`RETOUR-LABO-20-11.md` §4 : durée de l'attestation 4 ou 6 mois, « PAS DÉCIDÉ », seconde adresse incomplète).
+- Écrits : `RETOUR-LABO-20-11.md` (réponses, plan 5A / 5B, attentes, questions D-1 … D-7), `LOT5-AVANCEMENT.md`, `backups/retour-labo-20-11/adresses.md` (hors dépôt) ; mis à jour : NEEDEDINFO (20/11), `RETOUR-LABO-04-11.md` §7 (C-1 … C-8), HANDOFF (§1, §8), PROGRESS.
+- Aucun code touché, aucun test lancé (documents seulement), production non touchée.
 
 ### 2026-11-05 (soir) — lot 4 intégré et testé en local (non poussé, non déployé)
 - 4A commité (`149c3b2`, `05637a0`), `lot4b` et `lot4h` fusionnés `--no-ff` (`c14b596`, `f330419`) : aucune ligne perdue (vérifié ligne à ligne), conflits de documents résolus en gardant les deux côtés. `prisma migrate deploy` + `generate` (4 migrations additives).
