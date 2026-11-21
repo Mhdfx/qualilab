@@ -48,6 +48,10 @@ export const BLIND_BENCH_SCREENS = true;
  * readings already saved stay, each with its author (D-09), and the one who
  * takes over finishes and submits. Journalled SAMPLE_TAKEN_OVER. Off: a
  * colleague's sample is read-only again (only its holder types on it).
+ * Superseded while `COLLEAGUE_SAMPLES_HIDDEN` (lot 5A, J7 — 2.14 of 20/11,
+ * « pas visible », hypothèse D-1) is on: the colleague's sample is no longer
+ * reached, « Reprendre » is refused, the administrator's « Libérer » is the
+ * way to hand a sample over; this switch decides again once J7 is off.
  */
 export const TAKE_OVER_COLLEAGUE = true;
 
@@ -76,7 +80,9 @@ export const SERIES_VALIDATION = true;
  * doit pas envoyer de rapport », « seul le validateur technique ou
  * l'administration »). OFF (now): the gestionnaire neither sends nor
  * resends (the route refuses it with a 403, its client fiche no longer
- * offers « Renvoyer »). On (the way back): the gestionnaire resends a
+ * offers « Renvoyer »). Confirmé le 20/11 (C-6, « Oui, d'accord »: send the
+ * technical validator, the Direction and the administrator — `SEND_REPORT_ROLES`
+ * — never the gestionnaire commercial). On (the way back): the gestionnaire resends a
  * version already sent (V11, finalversion.md:116), as from 01/11 to lot 4A.
  */
 export const COMMERCIAL_RESENDS_REPORTS = false;
@@ -139,6 +145,11 @@ export const NO_CRITERION_NO_INTERPRETATION = true;
  * interprétation » (J3), rather than against a limit it was never expressed
  * in (`unitJudges`, `result-unit.ts`). Hypothèse, à confirmer par R-29
  * (RETOUR-LABO-28-10.md §6).
+ * Since lot 5A (C-1 of 20/11: « l'interprétation se fait par rapport aux
+ * résultats et non pas par rapport à l'unité »), the AIR ONLY — a surface is
+ * judged by its value while `SURFACE_JUDGED_WHATEVER_UNIT` is on; for the
+ * air, hypothèse, à confirmer par D-4 (the air's limit, RETOUR-LABO-20-11.md
+ * §8: the line of the air's limit was left empty on 20/11).
  * Off: such a criterion or limit judges the line again, as before lot 3B;
  * the unit printed stays the one of J1 / J2.
  */
@@ -156,7 +167,9 @@ export const UNIT_MISMATCH_NOT_JUDGED = true;
  * (m alone, M alone, m = M) and n = 1 no longer tolerates c units above it —
  * one unit above is « Non satisfaisant » (so `conform = false`, and the
  * contamination alert of a germ under alert); n ≥ 2 unchanged (answer to
- * Q31 of 30/09). The criteria grid says « c sans effet quand n = 1 ». A
+ * Q31 of 30/09). Confirmé le 20/11 (C-5, « Juste »: one limit at 100 and
+ * n = 1, a reading of 150 is « Non satisfaisant »; m = 100 / M = 1 000 and
+ * n = 1, 500 stays « Acceptable » — two limits unchanged). The criteria grid says « c sans effet quand n = 1 ». A
  * result already saved keeps its verdict until it is typed again; issued
  * reports are frozen. Off: c units above the limit are « Acceptable »
  * whatever n, as from 19/10 to lot 4A.
@@ -229,7 +242,11 @@ export const ACCREDITATION_LOGO_ON_MIXED_REPORT = true;
  * (`ReportData.accreditationLogo`, `accreditationLogoByHand`) and journalled
  * (SAMPLE_APPROVED `accreditationLogo`); an amendment starts from the rule
  * again. WHO may change it — the signer of the administrative validation
- * (Direction, administrateur): hypothèse, à confirmer par C-4. Off: the box
+ * (Direction, administrateur) —, the tick added only on a report with an
+ * accredited analysis, and « SA » (sous-traité accrédité) not counting as
+ * the laboratory's own: confirmé le 20/11 (C-4, « Oui, d'accord »; the list
+ * of accredited analyses is their « portée d'accréditation », still to be
+ * received — D-6, then S12). Off: the box
  * leaves the screens, the routes ignore the field, the rule alone decides.
  */
 export const ACCREDITATION_LOGO_BY_HAND = true;
@@ -278,7 +295,10 @@ export const ONSSA_OFFICIAL_CONTROL = true;
  * administrative validation — every sample counted in the month it was
  * completed. "RECEPTION" confirmé le 04/11 (Q16, « Oui » — with
  * « Conforme / non conforme » only: an « Acceptable » counts conform,
- * RETOUR-LABO-04-11.md §1 and §4).
+ * RETOUR-LABO-04-11.md §1 and §4). « Acceptable » = conforme (N3,
+ * `isNonConformResult`, `onssa-report.ts`): confirmé le 20/11 (C-7,
+ * « Satisfaisant et acceptable = Conforme »); the analysis reports keep
+ * printing « Acceptable ».
  */
 export const ONSSA_COUNT_BY: "RECEPTION" | "VALIDATION" = "RECEPTION";
 
@@ -299,7 +319,10 @@ export const PURCHASE_PARTIAL_PAYMENTS = true;
  * form and the payment (« avertissement ») — the payment is NOT blocked,
  * as the plan proposes; hypothèse, à confirmer par R-24. On: the payment of
  * such an invoice is refused until an attestation is recorded (on the
- * invoice or on the supplier).
+ * invoice or on the supplier). C-3 of 20/11 answered the rates (75 % of the
+ * VAT with an attestation, 100 % without, supplier by supplier: a setting,
+ * S13 — `scripts/lot5a-owner-steps.mts`), not the warning or the block nor
+ * the attestation's duration (4 or 6 months): still open, D-3.
  */
 export const PAYMENT_REQUIRES_TAX_CERTIFICATE = false;
 
@@ -314,7 +337,10 @@ export const PAYMENT_REQUIRES_TAX_CERTIFICATE = false;
  * (05/11). On (proposed): « Importer les prix clients » counts them apart
  * (« Égaux à l'ancien tarif ») and does not take them — those clients follow
  * the catalogue like any other. Off: they are taken over like the others,
- * and stay frozen at the old tariff when the catalogue changes.
+ * and stay frozen at the old tariff when the catalogue changes. Confirmé le
+ * 20/11 (C-8, « Oui, d'accord avec ces cinq règles » — (a) to (e), (d) the
+ * equivalences « E. coli » = « Escherichia coli » and « Coliformes totaux » =
+ * « Coliformes à 36 °C » for the water: aliases, S14).
  */
 export const CLIENT_PRICE_SKIP_LEGACY_TARIFF = true;
 
@@ -323,6 +349,110 @@ export const CLIENT_PRICE_SKIP_LEGACY_TARIFF = true;
  * (a site's price going to the client billed for it, two types d'analyse of
  * the same domain): on (proposed), the client's own price wins over a
  * site's, then the most recently changed; off: the most recently changed
- * only. Every conflict is listed on the import's analysis screen.
+ * only. Every conflict is listed on the import's analysis screen. Confirmé
+ * le 20/11 (C-8 (c), « Oui, d'accord avec ces cinq règles »).
  */
 export const CLIENT_PRICE_OWN_BEFORE_SITE = true;
+
+// ————— Lot 5A — réponses du 20/11 (RETOUR-LABO-20-11.md §5) —————
+// The owner's « execute the plan » of 21/11. ON = the answer of 20/11 (or,
+// where the answer leaves a point open, the plan's default — « hypothèse, à
+// confirmer par D-x », RETOUR-LABO-20-11.md §8); OFF = the behaviour before
+// lot 5A. The way back of each is pinned by `lab-proposals-5a-back.test.ts`.
+
+/**
+ * Lot 5A, J6 (a) — C-1 of 20/11 (« l'interprétation se fait par rapport aux
+ * résultats et non pas par rapport à l'unité »). ON (now): a SURFACE line is
+ * judged by its value against its criterion or its limit WHATEVER their unit
+ * — « 120 UFC/couteau » against « ≤ 100 UFC/100 cm² » is non conforme (and
+ * alerts, for a germ under alert); no conversion, the numbers are compared
+ * as the laboratory reads them (`unitJudges`, `result-unit.ts`). The air
+ * keeps `UNIT_MISMATCH_NOT_JUDGED`. Off: a surface described in words is
+ * read « sans interprétation » against a « /cm² » criterion again (lot 3B).
+ */
+export const SURFACE_JUDGED_WHATEVER_UNIT = true;
+
+/**
+ * Lot 5A, J6 — the n proposed for a surface described in words (review of
+ * lot 5A). Hypothèse, à confirmer par D-4: C-1 says how a surface is JUDGED,
+ * not how many units a single object (« couteau ») is read in. OFF (now):
+ * the programme sheet proposes n as before lot 5A — a criterion whose unit
+ * names an area (« UFC/cm² ») does not raise the n of a described surface
+ * (`typeUnitCount`, `programme-sheet-logic.ts`), while J6 still judges the
+ * reading against it: a « couteau » programmed n = 1 under an n = 5
+ * criterion is read in indicative (« Non satisfaisant » above the limit,
+ * and the contamination alert still leaves — indicative verdicts alert).
+ * ON: the criterion's n is proposed for a described surface too (n = 5 on
+ * a couteau under most « /cm² » criteria), and the sheet warns below it.
+ * A surface given in cm² and the air are not concerned.
+ */
+export const SURFACE_DESCRIBED_N_FROM_CRITERION = false;
+
+/**
+ * Lot 5A, J6 (b) — C-1 of 20/11 (« laisser la possibilité de modifier
+ * l'unité »). ON (now): on a SURFACE line counted in UFC, the bench sheet
+ * offers the unit of each result — « UFC/100 cm² », « UFC/<objet> » (the
+ * object prefilled from the surface's description, editable), the
+ * criterion's — prefilled as computed (`resultUnit`); `PUT …/results`
+ * stores the one chosen (`surfaceUnitChoice`, `result-unit.ts`) and the
+ * report, the alert and the validation print it. Off: the unit is computed,
+ * never chosen (a posted unit is ignored), as before lot 5A.
+ */
+export const SURFACE_UNIT_CHOSEN_AT_ENTRY = true;
+
+/**
+ * Lot 5A, I10 — 2.8 (Q70) of 20/11, « Autre (seulement « à vérifier ») ».
+ * ON (now): C5 « Identification » answered « Non » makes the row « à
+ * vérifier » (motif `IDENTIFICATION` at hand), no longer « non conforme »:
+ * the sample may be accepted conform; with
+ * `OBSERVATION_ONLY_DELAY_AND_TEMPERATURE` on, no observation is required for
+ * it (a warning, as the DLC). The reception may still declare the sample non
+ * conform by hand, motif « Identification » or « Emballage ». Off: « Non » is
+ * non conforme, motif « Identification incomplète », as before lot 5A.
+ */
+export const IDENTIFICATION_TO_VERIFY = true;
+
+/**
+ * Lot 5A, J7 — 2.14 (Q108) of 20/11: « ceux des collègues restent visibles en
+ * lecture sur la paillasse » struck out, « pas visible ». Hypothèse, à
+ * confirmer par D-1 (the answer contradicts 2.13 of 28/10, `TAKE_OVER_COLLEAGUE`).
+ * ON (now): a technician no longer sees a sample a colleague holds — « Pris
+ * par un collègue » leaves /technicien, its sheet answers 404 like a sample
+ * that does not exist, « Reprendre » is refused (403) even though
+ * `TAKE_OVER_COLLEAGUE` stays on; a sample held by the sample's holder and
+ * by a legacy parameter technician stays visible to each of them. The
+ * take-over goes through the administrator: « Libérer » — allowed to the
+ * ADMIN even on a sample that carries readings (they keep their author,
+ * D-09; journal SAMPLE_UNTAKEN with how many) — puts it back in « À
+ * prendre », where any technician takes it; the holder still cannot free a
+ * sample once a reading is typed. Off: the colleagues' samples are listed
+ * read-only with « Reprendre », and « Libérer » waits for an empty sheet, as
+ * before lot 5A.
+ */
+export const COLLEAGUE_SAMPLES_HIDDEN = true;
+
+/**
+ * Lot 5A, J8 — Q106 of 20/11 (« par n° de série ou code d'échantillon »).
+ * ON (now): « À prendre » is listed by N° de série (the série's draw, then
+ * the sample's line), with a choice « N° de contrôle » (`?tri=controle`); the
+ * urgent samples keep their badge but no longer lead — hypothèse, à
+ * confirmer par D-2 (`bench-order.ts`). Off: the urgent first, then the
+ * oldest receptions, no choice, as before lot 5A.
+ */
+export const TAKE_LIST_BY_NUMBER = true;
+
+/**
+ * Lot 5A, K11 — Q132 of 20/11, « Autre (corriger sans amendement : même
+ * numéro, sans « annule et remplace ») ». ON (now): a validated report never
+ * sent is corrected in place — « Corriger avant envoi » (the roles of
+ * « Rouvrir pour amendement », a reason required): the sample goes back to
+ * RESULTATS_SAISIS, both validations again, and the same version is issued
+ * again — same printed number, no « Annule et remplace », no « Rapport
+ * amendé »; the frozen version replaced is kept as an internal trace
+ * (`ReportVersion.correctedBeforeSend`, never printed nor sent). An amendment
+ * not sent yet (`-A1`) is corrected in place too and keeps its number and its
+ * « Annule et remplace » of the version that left. A report already sent is
+ * amended, as before. Off: every reopening is an amendment (`-A1`), as before
+ * lot 5A (`report-amendment.ts`).
+ */
+export const UNSENT_REPORT_CORRECTED_IN_PLACE = true;

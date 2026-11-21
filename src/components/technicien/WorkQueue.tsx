@@ -56,6 +56,13 @@ export type WorkItem = {
    */
   takenOverAt: Date | null;
   /**
+   * Since when the holder holds it (`holderTakenAt`): `assignedAt`, except
+   * after an administrator handed the sample over with its readings (J7) —
+   * `assignedAt` then stays the start of the analyses, and this is the new
+   * holder's own take (review of lot 5A).
+   */
+  takenAt: Date | null;
+  /**
    * Absent on a technician's blind bench (re-ask 2.15, `benchHidesClient`):
    * the list then names no client — neither on the série nor on the row.
    */
@@ -112,8 +119,8 @@ function HolderChip({ item, free }: { item: WorkItem; free: boolean }) {
       <UserCheck className="h-3 w-3" aria-hidden="true" />
       {item.takenOverAt
         ? `Repris par ${holder} · ${formatDateTime(item.takenOverAt)}`
-        : item.assignedAt
-          ? `Pris par ${holder} · ${formatDateTime(item.assignedAt)}`
+        : item.takenAt
+          ? `Pris par ${holder} · ${formatDateTime(item.takenAt)}`
           : `Pris par ${holder}`}
     </span>
   );

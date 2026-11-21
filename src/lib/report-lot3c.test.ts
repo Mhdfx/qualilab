@@ -170,15 +170,16 @@ describe("the issue freezes them (report-dispatch)", () => {
     expect(source).toMatch(/\.\.\.\(aligned \? \{ accreditation: result\.parameter\.accreditation \?\? null \} : \{\}\)/);
   });
 
-  it("freezes the files (flag and archived hash) at both issues (first version and amendment)", () => {
-    expect((source.match(/freezeReportImages\(\)/g) ?? []).length).toBe(2);
+  it("freezes the files (flag and archived hash) at every issue (first version, amendment, correction before send)", () => {
+    // Three issues since lot 5A, K11: the same version issued again in place.
+    expect((source.match(/freezeReportImages\(\)/g) ?? []).length).toBe(3);
     // K10: the rule (`accreditationLogoRule`), then the signer's box — the file existing,
     // and the box adding it only to a report carrying an accredited analysis (`addable`).
     expect(source).toMatch(/const rule = accreditationLogoRule\(sample\.results\.map\(\(r\) => r\.parameter\.accreditation\)\);/);
     expect(source).toMatch(/uploaded: images\.accreditationLogo,\s+byRule: rule\.byRule,\s+addable: rule\.addable,/);
     expect(source).toMatch(/accreditationLogoHash: images\.accreditationLogoHash/);
     // K10: the approval's journal hears of the logo only when one was uploaded at the issue.
-    expect((source.match(/\.\.\.journalledLogo\(images, issuedLogoDecision\(/g) ?? []).length).toBe(2);
+    expect((source.match(/\.\.\.journalledLogo\(images, issuedLogoDecision\(/g) ?? []).length).toBe(3);
     expect(source).toMatch(/return images\.accreditationLogo \? \{ accreditationLogo: decision \} : \{\};/);
     // K10: the send repairing a failed issue follows the approval's box (SAMPLE_APPROVED `accreditationLogoRequested`).
     expect(source).toMatch(/amendReportFor\(sample\.id, actorId, \{ accreditationLogo: await approvalLogoChoice\(sample\.id\) \}\)/);
@@ -193,7 +194,8 @@ describe("the issue freezes them (report-dispatch)", () => {
   it("K10: both issues take the approval's box « Logo d'accréditation » — an amendment starts from the rule again", () => {
     expect(source).toMatch(/export async function issueReportFor\(sampleId: string, actorId: string \| null, options: IssueOptions = \{\}\)/);
     expect(source).toMatch(/amendReportFor\(sampleId, actorId, options\) : createReportFor\(sampleId, options\)/);
-    expect((source.match(/accreditationLogoChoice: /g) ?? []).length).toBe(2);
+    // The first version, the amendment and the correction before send (lot 5A, K11).
+    expect((source.match(/accreditationLogoChoice: /g) ?? []).length).toBe(3);
     // The self-healing issues of `sendReport`: the box the approval journalled
     // (`approvalLogoChoice`), never the rule over a hand choice.
     expect(source).not.toMatch(/await amendReportFor\(sample\.id, actorId\)/);

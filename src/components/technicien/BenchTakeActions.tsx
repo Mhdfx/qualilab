@@ -119,11 +119,22 @@ export function TakeButton({
 /**
  * « Libérer » — gives the sample back to « À prendre », after a
  * confirmation. Its holder or an administrator, while nothing is typed on
- * it; the server re-checks both under the row lock. Done, the bench opens
+ * it — the administrator also once readings are typed, while the
+ * colleagues' samples are hidden (lot 5A, J7: `confirmText` then says what
+ * stays); the server re-checks both under the row lock. Done, the bench opens
  * (the sample is anyone's again); refused, the reason stays beside the
  * button.
  */
-export function ReleaseButton({ sampleId, className = "" }: { sampleId: string; className?: string }) {
+export function ReleaseButton({
+  sampleId,
+  className = "",
+  confirmText,
+}: {
+  sampleId: string;
+  className?: string;
+  /** The confirmation of an administrator freeing a sample with readings (J7, `releaseTypedConfirmation`). */
+  confirmText?: string;
+}) {
   const router = useRouter();
   const [sending, setSending] = useState(false);
   const [navigating, startNavigation] = useTransition();
@@ -132,7 +143,7 @@ export function ReleaseButton({ sampleId, className = "" }: { sampleId: string; 
 
   async function release() {
     if (busy) return;
-    if (!window.confirm("Remettre cet échantillon dans « À prendre » ? Vos collègues pourront le prendre.")) return;
+    if (!window.confirm(confirmText ?? "Remettre cet échantillon dans « À prendre » ? Vos collègues pourront le prendre.")) return;
     setSending(true);
     setError("");
     try {

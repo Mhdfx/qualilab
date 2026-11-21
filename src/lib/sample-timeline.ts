@@ -229,6 +229,17 @@ export const TIMELINE_ACTIONS: Record<string, ActionSpec> = {
     tone: "success",
     note: (meta) => join(text(meta.number), text(meta.note)),
   },
+  // Lot 5A, K11 (Q132 of 20/11): a report never sent, corrected in place.
+  REPORT_CORRECTED_BEFORE_SEND: {
+    label: "Rapport rouvert pour correction avant envoi",
+    tone: "warning",
+    note: (meta) => join(text(meta.number), text(meta.reason)),
+  },
+  REPORT_CORRECTION_ISSUED: {
+    label: "Rapport corrigé émis (même numéro)",
+    tone: "success",
+    note: (meta) => join(text(meta.number), text(meta.reason)),
+  },
   SAMPLE_CANCELLED: {
     label: "Échantillon annulé",
     tone: "danger",
@@ -303,8 +314,10 @@ const CIRCUIT_ORDER = [
   "SAMPLE_APPROVED",
   "APPROVED",
   "REPORT_AMENDED",
+  "REPORT_CORRECTION_ISSUED",
   "REPORT_SENT",
   "REPORT_REOPENED",
+  "REPORT_CORRECTED_BEFORE_SEND",
   "SAMPLE_REOPENED",
 ];
 const rank = (kind: string) => {

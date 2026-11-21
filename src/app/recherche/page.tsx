@@ -12,7 +12,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ClientSiteFilter } from "@/components/recherche/ClientSiteFilter";
 import { ReportActions } from "@/components/validation/ReportActions";
-import { amendedNumber } from "@/lib/report-amendment";
+import { amendedNumber, pendingReportChange } from "@/lib/report-amendment";
 import { canReadReports, reportVersionSent } from "@/lib/report-actions";
 import { sampleLinkFor } from "@/lib/sample-verbs";
 import { RecapExportMenu } from "@/components/search/RecapExportMenu";
@@ -304,7 +304,10 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
                               {report.version > 0 && <span className="mt-1 block font-mono text-[11px] text-slate-500">{number}</span>}
                               {report.amendmentPending && (
                                 <span className="mt-1 inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
-                                  Amendement en cours
+                                  {/* K11: a correction before send keeps its number. */}
+                                  {pendingReportChange(true, reportVersionSent(report)) === "correction"
+                                    ? "Correction avant envoi en cours"
+                                    : "Amendement en cours"}
                                 </span>
                               )}
                               <ReportActions

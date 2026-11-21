@@ -71,20 +71,24 @@ describe("K7 edge cases (hypothèse, à confirmer — RETOUR-LABO-04-11.md §5 K
 
   it("the série's send counts the alert of an amended version too", () => {
     const server = readFileSync(fileURLToPath(new URL("./validation-server.ts", import.meta.url)), "utf8");
-    expect(server).toMatch(/alertsPending: alertNotSentForVersion\(\{ alertsSentAt: sample\.alertsSentAt, versionIssuedAt: sample\.report\?\.amendedAt \?\? null \}\)/);
+    // …and of a version corrected before its send (K11): `versionIssuedAt` reads its reissue.
+    expect(server).toMatch(/alertsPending: alertNotSentForVersion\(\{ alertsSentAt: sample\.alertsSentAt, versionIssuedAt: versionIssuedAt\(sample\.report\) \}\)/);
+    expect(server).toContain("report: { select: { number: true, sentAt: true, amendmentPending: true, ...IN_FORCE_VERSION_TRACE_SELECT } },");
   });
 
   it("the badge is shown on the validation list and the fiche", () => {
     const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
     const list = read("../app/validation/page.tsx");
     expect(list).toMatch(/_count: \{ select: \{ results: \{ where: ALERT_RESULT_WHERE \} \} \}/);
-    expect(list).toMatch(/report: \{ select: \{ amendmentPending: true, amendedAt: true \} \}/);
+    // `sentAt` since lot 5A, K11 (a correction before send says so).
+    // `versions` since the review of lot 5A: a correction reissued in place dates the version in force.
+    expect(list).toContain("report: { select: { amendmentPending: true, sentAt: true, ...IN_FORCE_VERSION_TRACE_SELECT } },");
     expect(list).toMatch(
-      /alertAwaitingReport: alertAwaitingReport\(\{ status: item\.status, alertsSentAt, alerting: _count\.results, versionIssuedAt: report\?\.amendedAt \?\? null \}\)/
+      /alertAwaitingReport: alertAwaitingReport\(\{ status: item\.status, alertsSentAt, alerting: _count\.results, versionIssuedAt: versionIssuedAt\(report\) \}\)/
     );
     expect(read("../components/validation/ValidationQueue.tsx")).toMatch(/\{item\.alertAwaitingReport && \(/);
     expect(read("../app/validation/[id]/page.tsx")).toMatch(
-      /alertAwaitingReport=\{alertAwaitingReport\(\{ status: sample\.status, alertsSentAt: sample\.alertsSentAt, alerting: alertables, versionIssuedAt: sample\.report\?\.amendedAt \?\? null \}\)\}/
+      /alertAwaitingReport=\{alertAwaitingReport\(\{ status: sample\.status, alertsSentAt: sample\.alertsSentAt, alerting: alertables, versionIssuedAt: versionIssuedAt\(sample\.report\) \}\)\}/
     );
     expect(read("../components/validation/ValidationPanel.tsx")).toMatch(/\{alertAwaitingReport && \(/);
   });

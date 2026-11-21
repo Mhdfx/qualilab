@@ -58,12 +58,21 @@ export function receivedAgeLabel(days: number): string {
 
 /**
  * A bench address with the filter set or removed, the tile's view and the
- * list's anchor kept: `/technicien?vue=en_analyse&recus=3#analyses`.
+ * list's anchor kept: `/technicien?vue=en_analyse&recus=3#analyses`. `kept`
+ * carries the page's other choices (« À prendre » by N° de contrôle, J8:
+ * `tri=controle`), written after them.
  */
-export function receivedAgeHref(path: string, view: string | null, days: number | null, anchor?: string): string {
+export function receivedAgeHref(
+  path: string,
+  view: string | null,
+  days: number | null,
+  anchor?: string,
+  kept: Readonly<Record<string, string>> = {}
+): string {
   const params = new URLSearchParams();
   if (view) params.set("vue", view);
   if (days !== null) params.set(RECEIVED_AGE_PARAM, String(days));
+  for (const [name, value] of Object.entries(kept)) params.set(name, value);
   const query = params.toString();
   return `${path}${query ? `?${query}` : ""}${anchor ? `#${anchor.replace(/^#/, "")}` : ""}`;
 }

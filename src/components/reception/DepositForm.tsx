@@ -479,8 +479,10 @@ export function DepositForm({
   }
 
   /**
-   * C5 answered for the line. « Non » makes it non conform with the motif
-   * IDENTIFICATION unless one is chosen; « Oui » afterwards drops that motif.
+   * C5 answered for the line. « Non » puts the motif IDENTIFICATION at hand
+   * unless one is chosen — « à vérifier » since lot 5A, I10, the line may
+   * still be accepted conform (non conform while `IDENTIFICATION_TO_VERIFY`
+   * is off); « Oui » afterwards drops that motif.
    */
   function answerIdentification(key: string, ok: boolean) {
     const current = intakeOf(key);

@@ -12,11 +12,13 @@ import { formatIsoDay } from "@/lib/labels";
 import { labDayBounds } from "@/lib/lab-day-range";
 import { labReference } from "@/lib/sample-select";
 import { loadBenchPlans } from "@/lib/bench-plan";
-import { judgingThreshold, resultUnit } from "@/lib/result-unit";
+import { judgingThreshold, resultUnit, surfaceUnitEditable } from "@/lib/result-unit";
 import { benchQueueWhereFor, canEditParameter } from "@/lib/bench-access";
 import { benchUnit } from "@/lib/bench-reading";
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { sampleDesignation } from "@/lib/document-html";
+import { inTakeOrder } from "@/lib/take-over";
+import { holderTakesOf } from "@/lib/take-over-server";
 
 /**
  * The printable bench sheet.
@@ -58,6 +60,8 @@ export async function GET(request: Request) {
       code: true,
       controlCode: true,
       unitCount: true,
+      receivedAt: true,
+      assignedAt: true,
       serie: { select: { serialNumber: true } },
       type: true,
       lineKind: true,
@@ -78,6 +82,8 @@ export async function GET(request: Request) {
           parameter: { select: { id: true, name: true, unit: true, threshold: true } },
         },
       },
+      // A surface's unit as chosen at the bench and saved (J6 (b)).
+      results: { select: { parameterId: true, unit: true } },
     },
     // A technician's samples in the order they took them; another role's
     // per holder (MySQL sorts a missing holder first: « À prendre » leads).
@@ -90,14 +96,23 @@ export async function GET(request: Request) {
 
   // The same criteria as the bench screen (product type, norm in force), so
   // the sheet carries m, M, c and the R1 … Rn cells the technician will key in.
+  // A technician's: in the order they took them — a sample an administrator
+  // handed over with its readings (J7) keeps `assignedAt`, the start of the
+  // analyses, so its place is the holder's own take (`holderTakenAt`).
+  const takes = isTechnician ? await holderTakesOf(rows) : null;
+  const ordered = takes
+    ? inTakeOrder(rows, new Map([...takes].map(([id, take]) => [id, take.takenAt])))
+    : rows;
+
   const samples: BenchSheetSample[] = await Promise.all(
-    rows.map(async (row) => {
+    ordered.map(async (row) => {
       const bench = await loadBenchPlans(row.id);
       const perUnit = bench.plans.size > 0 || row.unitCount > 1;
       // My sheet carries my parameters; the other roles print the whole échantillon.
       const lines = isTechnician
         ? row.parameters.filter((line) => canEditParameter(row, line, session.id))
         : row.parameters;
+      const storedUnits = new Map(row.results.map((result) => [result.parameterId, result.unit]));
       return {
         reference: labReference(row),
         serieNumber: row.serie.serialNumber,
@@ -111,10 +126,13 @@ export async function GET(request: Request) {
           const plan = bench.plans.get(parameter.id);
           // The method: the programmed norm version, else the criterion's.
           const norm = normVersion?.label ?? plan?.normLabel ?? null;
+          const base = benchUnit(plan, parameter.unit);
+          const stored = storedUnits.get(parameter.id) ?? null;
           return {
             name: parameter.name,
-            // « UFC/couteau », « UFC/m³ »… as the result will store it (J1, J2).
-            unit: resultUnit(bench.context, benchUnit(plan, parameter.unit)),
+            // « UFC/couteau », « UFC/m³ »… as the result will store it (J1,
+            // J2) — a surface's as chosen and saved at the bench (J6 (b)).
+            unit: stored && surfaceUnitEditable(bench.context, base) ? stored : resultUnit(bench.context, base),
             threshold: plan
               ? `${plan.label}${norm ? ` · ${norm}` : ""}`
               : judgingThreshold(bench.context, parameter.threshold, parameter.unit),

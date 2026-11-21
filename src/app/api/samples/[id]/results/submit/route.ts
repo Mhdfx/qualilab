@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { loadAssignedSample } from "@/lib/sample-access";
 import { canTransition } from "@/lib/sample-status";
 import type { SampleStatus } from "@/generated/prisma/enums";
-import { TAKE_MESSAGES, canEnterParameter } from "@/lib/bench-access";
+import { TAKE_MESSAGES, canEnterParameter, colleagueNamed } from "@/lib/bench-access";
 import { lockTakeState } from "@/lib/bench-take-server";
 import { awaitsManualConformity, unreadableSensitiveReading } from "@/lib/bench-reading";
 import { readingFactor } from "@/lib/dilution";
@@ -79,7 +79,7 @@ export async function POST(
       locked.technicianId !== session.id &&
       !locked.parameterHolderIds.includes(session.id)
     ) {
-      return { refusal: { status: 403, error: TAKE_MESSAGES.heldByOther(locked.holderName ?? "un collègue") } };
+      return { refusal: { status: 403, error: TAKE_MESSAGES.heldByOther(colleagueNamed(locked.holderName)) } };
     }
     const transition = canTransition(locked.status, "RESULTATS_SAISIS", session.role);
     if (!transition.ok) return { refusal: { status: 409, error: transition.error } };

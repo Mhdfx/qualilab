@@ -34,7 +34,20 @@ import type { Interpretation } from "@/generated/prisma/enums";
 import { CONTENTION_CODES, retryOnDuplicate } from "./retry-unique";
 import { reportDesignation, sampleDesignation } from "./document-html";
 import { REOPENED_SAMPLE_FIELDS, amendmentIssueRefusal, canTransition } from "./sample-status";
-import { REOPENED_STATUS, amendedNumber, reopenRefusal, reopensReports } from "./report-amendment";
+import {
+  CORRECTION_MESSAGES,
+  REOPENED_STATUS,
+  amendedNumber,
+  correctionPending,
+  correctionRefusal,
+  lastReplacedData,
+  reopenMode,
+  reopenRefusal,
+  reopensReports,
+  traceWithPending,
+  traceWithReissue,
+} from "./report-amendment";
+import { reportVersionSent } from "./report-actions";
 import type { Role } from "./roles";
 import { SingleFlight } from "./single-flight";
 import { samplingMeansText } from "./sampling-means";
@@ -545,6 +558,8 @@ export type IssuedReport = {
   id: string;
   number: string;
   amended?: boolean;
+  /** K11: the same version issued again in place, corrected before its first send. */
+  correctedInPlace?: boolean;
   /** K10: the logo decision frozen with the version issued now (absent when nothing was issued now, or no logo was uploaded). */
   accreditationLogo?: AccreditationLogoDecision;
 };
@@ -676,6 +691,15 @@ export async function amendReportFor(sampleId: string, actorId: string | null, o
   if (!report.amendmentPending) {
     return { id: report.id, number: amendedNumber(report.number, report.version) };
   }
+  // K11: « Corriger avant envoi » asked on this version — the same version
+  // is issued again in place, never an « -A(n+1) ».
+  const inForce = await prisma.reportVersion.findUnique({
+    where: { reportId_version: { reportId: report.id, version: report.version } },
+    select: { id: true, data: true, issuedAt: true, issuedById: true, correctedBeforeSend: true },
+  });
+  if (inForce && correctionPending(inForce.correctedBeforeSend)) {
+    return reissueCorrectedReport(sampleId, report, inForce, actorId, options);
+  }
 
   const fields = await computeReportFields(sampleId);
   const sample = await prisma.sample.findUnique({
@@ -752,6 +776,101 @@ export async function amendReportFor(sampleId: string, actorId: string | null, o
   return { id: report.id, number, amended: true, ...journalledLogo(images, issuedLogoDecision(sample, images, logoChoice)) };
 }
 
+/**
+ * K11 — the approval after « Corriger avant envoi » (Q132 of 20/11): the
+ * SAME version issued again in place. Same printed number (no « -A »
+ * suffix added), no amendment header of its own — an « -A1 » corrected
+ * before its send keeps its « Annule et remplace » of the version that left,
+ * with its own reason (`amendmentOf`) —, `Report.version` and `amendedAt`
+ * unchanged; the report's fields frozen anew (signatures, conclusion,
+ * verdict), the version's data replaced, and the data it replaces appended
+ * to its internal trace (`ReportVersion.correctedBeforeSend`, never printed
+ * nor sent) with the correction's reason, author and date. One transaction,
+ * guarded like the amendment's (two approvals racing issue it once);
+ * journal REPORT_CORRECTION_ISSUED. Null (logged) on failure — `sendReport`
+ * retries it, like an amendment.
+ */
+async function reissueCorrectedReport(
+  sampleId: string,
+  report: ReportRow,
+  inForce: { id: string; data: Prisma.JsonValue; issuedAt: Date; issuedById: string | null; correctedBeforeSend: Prisma.JsonValue },
+  actorId: string | null,
+  options: IssueOptions
+): Promise<IssuedReport | null> {
+  const fields = await computeReportFields(sampleId);
+  const sample = await prisma.sample.findUnique({
+    where: { id: sampleId },
+    select: { ...REPORT_SAMPLE_SELECT, code: true, status: true, validatedById: true, approvedAt: true, approvedById: true },
+  });
+  if (!fields || !sample) return null;
+  // Never without the full double validation, whoever calls.
+  const refusal = amendmentIssueRefusal(sample);
+  if (refusal) {
+    console.error("[report] correction refused", { sampleId, status: sample.status, refusal });
+    return null;
+  }
+  const number = amendedNumber(report.number, report.version);
+  const issuedAt = sample.approvedAt ?? new Date();
+  const trace = traceWithReissue(
+    inForce.correctedBeforeSend,
+    { data: inForce.data, issuedAt: inForce.issuedAt, issuedById: inForce.issuedById },
+    issuedAt
+  );
+  if (!trace) return { id: report.id, number };
+  const reason = trace.replaced[trace.replaced.length - 1]?.reason ?? null;
+  // Issued now: the aligned layout (lot 1b). K10: the logo starts from the
+  // rule again — only this approval's box counts, as for an amendment.
+  const images = await freezeReportImages();
+  const logoChoice = options.accreditationLogo ?? null;
+  const data = toReportData(sample, {
+    ...fields,
+    number,
+    issuedAt,
+    // An « -A1 » keeps the header of the version it replaced; an original has none.
+    amendment: await amendmentOf(report),
+    layout: REPORT_LAYOUT_ALIGNED,
+    images,
+    accreditationLogoChoice: logoChoice,
+  });
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Guarded: two approvals racing issue it once; the version never moves.
+      const claimed = await tx.report.updateMany({
+        where: { id: report.id, amendmentPending: true, version: report.version },
+        data: { ...fields, amendmentPending: false, sendStatus: "NON_ENVOYE" },
+      });
+      if (claimed.count === 0) throw new StaleAmendment();
+      await tx.reportVersion.updateMany({
+        where: { id: inForce.id },
+        data: {
+          data: asJson(data),
+          issuedAt,
+          issuedById: sample.approvedById,
+          correctedBeforeSend: trace as unknown as Prisma.InputJsonValue,
+        },
+      });
+    }, ISSUE_TRANSACTION);
+  } catch (error) {
+    if (error instanceof StaleAmendment) {
+      const current = await prisma.report.findUnique({ where: { id: report.id }, select: { number: true, version: true } });
+      return current ? { id: report.id, number: amendedNumber(current.number, current.version) } : null;
+    }
+    console.error("[report] correction issue failed", { sampleId, error });
+    return null;
+  }
+
+  await logAudit({
+    actorId,
+    action: AUDIT_ACTIONS.REPORT_CORRECTION_ISSUED,
+    entity: "Report",
+    entityId: report.id,
+    metadata: { code: sample.code, number, version: report.version, reason, corrections: trace.replaced.length },
+  });
+
+  return { id: report.id, number, correctedInPlace: true, ...journalledLogo(images, issuedLogoDecision(sample, images, logoChoice)) };
+}
+
 /** What the approval issues: the amended version when one is pending, else the report itself. */
 export async function issueReportFor(sampleId: string, actorId: string | null, options: IssueOptions = {}): Promise<IssuedReport | null> {
   const report = await prisma.report.findUnique({ where: { sampleId }, select: { amendmentPending: true } });
@@ -790,7 +909,7 @@ export async function reopenForAmendment(
       status: true,
       approvedAt: true,
       approvedById: true,
-      report: { select: REPORT_SELECT },
+      report: { select: { ...REPORT_SELECT, sentAt: true } },
     },
   });
   if (!sample) return { ok: false, status: 404, error: "Échantillon introuvable." };
@@ -808,6 +927,11 @@ export async function reopenForAmendment(
   // A role that never reopens is refused (403); one that does, meeting a
   // state that forbids it now, gets the 409.
   if (refusal) return { ok: false, status: reopensReports(actor.role) ? 409 : 403, error: refusal };
+  // K11 (Q132 of 20/11): a version the client never received is corrected
+  // before send, never amended — `POST …/correct`.
+  if (reopenMode(reportVersionSent(report)) === "correct") {
+    return { ok: false, status: 409, error: CORRECTION_MESSAGES.useCorrection };
+  }
   const motif = (reason as string).trim();
   // Printed under « Rapport amendé », on a report that holds on one page.
   if (motif.length > AMENDMENT_NOTE_MAX) {
@@ -895,6 +1019,152 @@ export async function reopenForAmendment(
 
   return { ok: true, number, version: report.version, frozen: freeze !== null };
 }
+
+/** The longest reason of a correction before send (internal, kept in the trace). */
+export const CORRECTION_REASON_MAX = 500;
+
+/**
+ * « Corriger avant envoi » (lot 5A, K11 — Q132 of 20/11): a validated
+ * report the client never received goes back to the double validation and
+ * will be issued again IN PLACE — same number, no « Annule et remplace »
+ * (`reissueCorrectedReport`). The roles of the amendment, a reason (internal,
+ * at least 3 characters). One transaction: the sample back to
+ * RESULTATS_SAISIS with both signatures cleared, guarded by its status
+ * VALIDE — a send that went out meanwhile moved it to RAPPORT_ENVOYE, and
+ * the correction is then refused (409; only an amendment corrects it now);
+ * the report marked in progress (`amendmentPending`, so every guard of an
+ * amendment holds), guarded by `sentAt` as read — a send recorded meanwhile
+ * refuses it too; the version in force frozen if it is not yet, and the
+ * correction pending on it (`ReportVersion.correctedBeforeSend`). Journal
+ * REPORT_CORRECTED_BEFORE_SEND. `alertsSentAt` is kept, as for an
+ * amendment: an alert already sent is not repeated for the same result, a
+ * changed one alerts again (`sendContaminationAlerts`).
+ */
+export async function correctBeforeSend(
+  sampleId: string,
+  actor: { id: string; role: Role; name?: string | null },
+  reason: unknown
+): Promise<ReopenOutcome> {
+  // Never while a send of this report is under way (the e-mail may be
+  // leaving with the version about to be corrected): the same single flight
+  // as `sendReport`, so the two exclude each other.
+  const run = await reportSends.run(sampleId, () => correctBeforeSendNow(sampleId, actor, reason));
+  if (!run.ran) {
+    return { ok: false, status: 409, error: "Un envoi de ce rapport est en cours : attendez qu'il se termine, puis rechargez la page." };
+  }
+  return run.value;
+}
+
+async function correctBeforeSendNow(
+  sampleId: string,
+  actor: { id: string; role: Role; name?: string | null },
+  reason: unknown
+): Promise<ReopenOutcome> {
+  const sample = await prisma.sample.findUnique({
+    where: { id: sampleId },
+    select: {
+      id: true,
+      code: true,
+      status: true,
+      approvedAt: true,
+      approvedById: true,
+      report: { select: { ...REPORT_SELECT, sentAt: true } },
+    },
+  });
+  if (!sample) return { ok: false, status: 404, error: "Échantillon introuvable." };
+  const report = sample.report;
+  if (!report) {
+    return { ok: false, status: 409, error: "Aucun rapport n'a été émis pour cet échantillon : il n'y a rien à corriger." };
+  }
+  const refusal = correctionRefusal({
+    status: sample.status,
+    role: actor.role,
+    reason,
+    sent: reportVersionSent(report),
+    amendmentPending: report.amendmentPending,
+  });
+  if (refusal) return { ok: false, status: reopensReports(actor.role) ? 409 : 403, error: refusal };
+  const motif = (reason as string).trim();
+  if (motif.length > CORRECTION_REASON_MAX) {
+    return { ok: false, status: 400, error: `Le motif de la correction est trop long (${CORRECTION_REASON_MAX} caractères au plus).` };
+  }
+  const transition = canTransition(sample.status, REOPENED_STATUS, actor.role, motif);
+  if (!transition.ok) return { ok: false, status: 409, error: transition.error };
+
+  const inForce = await prisma.reportVersion.findUnique({
+    where: { reportId_version: { reportId: report.id, version: report.version } },
+    select: { id: true, correctedBeforeSend: true },
+  });
+  // A report issued before versions existed: its version in force is frozen
+  // first (« reconstituée »), as at an amendment, so the reissue has a row.
+  let freeze: Prisma.ReportVersionUncheckedCreateInput | null = null;
+  if (!inForce) {
+    const data = await liveReportData(sampleId, report);
+    if (!data) return { ok: false, status: 409, error: "Le rapport en vigueur n'a pas pu être relu : réessayez." };
+    freeze = {
+      reportId: report.id,
+      version: report.version,
+      number: data.number,
+      data: asJson(data),
+      note: report.version > 0 ? report.amendmentNote : null,
+      reconstructed: true,
+      issuedAt: report.version > 0 ? report.amendedAt ?? report.createdAt : sample.approvedAt ?? report.createdAt,
+      issuedById: report.version === 0 ? sample.approvedById : null,
+    };
+  }
+  const now = new Date();
+  const trace = traceWithPending(inForce?.correctedBeforeSend ?? null, {
+    reason: motif,
+    byId: actor.id,
+    byName: actor.name?.trim() || null,
+    at: now.toISOString(),
+  });
+  const traceJson = trace as unknown as Prisma.InputJsonValue;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // VALIDE only: a send that left meanwhile moved it to RAPPORT_ENVOYE.
+      const moved = await tx.sample.updateMany({
+        where: { id: sample.id, status: "VALIDE" },
+        data: REOPENED_SAMPLE_FIELDS,
+      });
+      if (moved.count === 0) throw new SentMeanwhile();
+      const marked = await tx.report.updateMany({
+        where: { id: report.id, amendmentPending: false, version: report.version, sentAt: report.sentAt },
+        data: { amendmentPending: true },
+      });
+      if (marked.count === 0) throw new SentMeanwhile();
+      if (freeze) await tx.reportVersion.create({ data: { ...freeze, correctedBeforeSend: traceJson } });
+      else if (inForce) await tx.reportVersion.updateMany({ where: { id: inForce.id }, data: { correctedBeforeSend: traceJson } });
+    });
+  } catch (error) {
+    if (error instanceof SentMeanwhile || (error as { code?: string }).code === "P2002") {
+      return { ok: false, status: 409, error: CORRECTION_MESSAGES.sentMeanwhile };
+    }
+    throw error;
+  }
+
+  const number = amendedNumber(report.number, report.version);
+  await logAudit({
+    actorId: actor.id,
+    action: AUDIT_ACTIONS.REPORT_CORRECTED_BEFORE_SEND,
+    entity: "Report",
+    entityId: report.id,
+    metadata: {
+      code: sample.code,
+      number,
+      version: report.version,
+      reason: motif,
+      from: sample.status,
+      to: REOPENED_STATUS,
+      reconstructed: freeze !== null,
+      role: actor.role,
+    },
+  });
+  return { ok: true, number, version: report.version, frozen: freeze !== null };
+}
+
+class SentMeanwhile extends Error {}
 
 /**
  * The report sends under way, one per sample (kept on `globalThis` so a
@@ -1208,16 +1478,36 @@ export async function sendContaminationAlerts(
 
   // Amendment: only what changed is alerted again.
   const report = sample.report;
-  const amendment = report !== null && (report.amendmentPending || report.version > 0);
+  // K11: an original corrected before its send (same version, issued again
+  // in place) is alerted like an amendment — an alert already sent for
+  // exactly this result is not repeated, a result changed by the correction
+  // alerts again (never silently dropped: the 09/09 lesson). What it
+  // replaced is in the version's internal trace.
+  const correctedOriginal =
+    report !== null && !report.amendmentPending && report.version === 0
+      ? lastReplacedData(
+          (
+            await prisma.reportVersion.findUnique({
+              where: { reportId_version: { reportId: report.id, version: 0 } },
+              select: { correctedBeforeSend: true },
+            })
+          )?.correctedBeforeSend ?? null
+        )
+      : null;
+  const amendment = report !== null && (report.amendmentPending || report.version > 0 || correctedOriginal !== null);
   let results = sample.results;
   if (amendment) {
     const replacedVersion = report.amendmentPending ? report.version : report.version - 1;
     const [replaced, alerted] = await Promise.all([
-      sample.alertsSentAt ? loadReportVersion(report.id, replacedVersion) : Promise.resolve(null),
+      !sample.alertsSentAt
+        ? Promise.resolve(null)
+        : correctedOriginal !== null
+          ? Promise.resolve({ data: reportDataFromJson(correctedOriginal as Prisma.JsonValue) })
+          : loadReportVersion(report.id, replacedVersion),
       alertsAlreadySent(sample.id),
     ]);
     const germs = new Set(
-      germsToRealert({ current: readings, alerted, replaced: replaced?.data.results ?? null })
+      germsToRealert({ current: readings, alerted, replaced: replaced?.data?.results ?? null })
     );
     results = results.filter((r) => germs.has(r.parameter.name));
     if (results.length === 0) {

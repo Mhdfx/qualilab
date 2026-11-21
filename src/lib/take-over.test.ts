@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { TAKE_MESSAGES, benchHidesClient, benchSearchScope, benchWhereFor, type TakeState } from "./bench-access";
-import { BLIND_BENCH_SCREENS, TAKE_OVER_COLLEAGUE } from "./lab-proposals";
+import { TAKE_MESSAGES, benchHidesClient, benchSearchScope, benchWhereFor, colleagueNamed, type TakeState } from "./bench-access";
+import { BLIND_BENCH_SCREENS, COLLEAGUE_SAMPLES_HIDDEN, TAKE_OVER_COLLEAGUE } from "./lab-proposals";
 import { formatDateTime } from "./labels";
 import { SAMPLE_BENCH_SELECT, SAMPLE_LAB_SELECT } from "./sample-select";
 import { sampleTimeline, type TimelineSample } from "./sample-timeline";
@@ -12,7 +12,10 @@ import {
   TAKE_OVER_MESSAGES,
   currentTakeOver,
   enteredByText,
+  holderTakenAt,
+  inTakeOrder,
   lostSampleHolder,
+  releaseTypedConfirmation,
   takeOverConfirmation,
   takeOverRefusal,
   takeStateOf,
@@ -51,12 +54,12 @@ describe("the switches — our proposals, ON until the laboratory answers otherw
 
 describe("takeOverRefusal — « Reprendre » a colleague's sample (2.13, C3)", () => {
   it("lets any technician take over a sample a colleague holds on the bench, no reason asked", () => {
-    expect(takeOverRefusal(state(), tech2, true)).toBeNull();
-    expect(takeOverRefusal(state({ status: "PROGRAMME" }), tech2, true)).toBeNull();
+    expect(takeOverRefusal(state(), tech2, true, false)).toBeNull();
+    expect(takeOverRefusal(state({ status: "PROGRAMME" }), tech2, true, false)).toBeNull();
   });
 
   it("answers the holder's own click as done, not as a refusal", () => {
-    expect(takeOverRefusal(state(), tech1, true)).toBeNull();
+    expect(takeOverRefusal(state(), tech1, true, false)).toBeNull();
   });
 
   it("is closed when the switch is off (the colleague's sample read-only, as before)", () => {
@@ -64,11 +67,11 @@ describe("takeOverRefusal — « Reprendre » a colleague's sample (2.13, C3)", 
   });
 
   it("is a technician's gesture: the admin stands in without taking", () => {
-    expect(takeOverRefusal(state(), admin, true)).toEqual({ status: 403, error: TAKE_OVER_MESSAGES.technicianOnly });
+    expect(takeOverRefusal(state(), admin, true, false)).toEqual({ status: 403, error: TAKE_OVER_MESSAGES.technicianOnly });
   });
 
   it("sends a free sample to « Prendre en charge »", () => {
-    expect(takeOverRefusal(state({ technicianId: null, holderName: null }), tech2, true)).toEqual({
+    expect(takeOverRefusal(state({ technicianId: null, holderName: null }), tech2, true, false)).toEqual({
       status: 409,
       error: TAKE_OVER_MESSAGES.free,
     });
@@ -76,45 +79,66 @@ describe("takeOverRefusal — « Reprendre » a colleague's sample (2.13, C3)", 
 
   it("leaves a line split parameter by parameter before 13/10 to an administrator", () => {
     const legacy = { status: 409, error: TAKE_OVER_MESSAGES.legacy };
-    expect(takeOverRefusal(state({ technicianId: null, heldByParameter: true }), tech2, true)).toEqual(legacy);
-    expect(takeOverRefusal(state({ heldByParameter: true }), tech2, true)).toEqual(legacy);
+    expect(takeOverRefusal(state({ technicianId: null, heldByParameter: true }), tech2, true, false)).toEqual(legacy);
+    expect(takeOverRefusal(state({ heldByParameter: true }), tech2, true, false)).toEqual(legacy);
   });
 
   it("never sends a free sample off the bench or held at reception to « Prendre en charge »", () => {
-    expect(takeOverRefusal(state({ technicianId: null, holderName: null, status: "ANNULE" }), tech2, true)).toEqual({
+    expect(takeOverRefusal(state({ technicianId: null, holderName: null, status: "ANNULE" }), tech2, true, false)).toEqual({
       status: 409,
       error: TAKE_OVER_MESSAGES.offBench,
     });
-    expect(takeOverRefusal(state({ technicianId: null, holderName: null, status: "VALIDE" }), tech2, true)).toEqual({
+    expect(takeOverRefusal(state({ technicianId: null, holderName: null, status: "VALIDE" }), tech2, true, false)).toEqual({
       status: 409,
       error: TAKE_OVER_MESSAGES.offBench,
     });
-    expect(takeOverRefusal(state({ technicianId: null, holderName: null, analysisBlocked: true }), tech2, true)).toEqual({
+    expect(takeOverRefusal(state({ technicianId: null, holderName: null, analysisBlocked: true }), tech2, true, false)).toEqual({
       status: 409,
       error: TAKE_MESSAGES.blocked,
     });
     // A legacy split line that left the bench is told so, not sent to the admin.
-    expect(takeOverRefusal(state({ heldByParameter: true, status: "RESULTATS_SAISIS" }), tech2, true)).toEqual({
+    expect(takeOverRefusal(state({ heldByParameter: true, status: "RESULTATS_SAISIS" }), tech2, true, false)).toEqual({
       status: 409,
       error: TAKE_OVER_MESSAGES.offBench,
     });
   });
 
   it("refuses a sample off the bench, held at reception, or missing", () => {
-    expect(takeOverRefusal(state({ status: "RESULTATS_SAISIS" }), tech2, true)).toEqual({
+    expect(takeOverRefusal(state({ status: "RESULTATS_SAISIS" }), tech2, true, false)).toEqual({
       status: 409,
       error: TAKE_OVER_MESSAGES.offBench,
     });
-    expect(takeOverRefusal(state({ status: "VALIDE" }), tech2, true)?.status).toBe(409);
-    expect(takeOverRefusal(state({ analysisBlocked: true }), tech2, true)).toEqual({
+    expect(takeOverRefusal(state({ status: "VALIDE" }), tech2, true, false)?.status).toBe(409);
+    expect(takeOverRefusal(state({ analysisBlocked: true }), tech2, true, false)).toEqual({
       status: 409,
       error: TAKE_MESSAGES.blocked,
     });
-    expect(takeOverRefusal(null, tech2, true)?.status).toBe(404);
+    expect(takeOverRefusal(null, tech2, true, false)?.status).toBe(404);
   });
 
   it("reads the switch by default", () => {
-    expect(takeOverRefusal(state(), tech2)).toEqual(takeOverRefusal(state(), tech2, TAKE_OVER_COLLEAGUE));
+    expect(takeOverRefusal(state(), tech2)).toEqual(
+      takeOverRefusal(state(), tech2, TAKE_OVER_COLLEAGUE, COLLEAGUE_SAMPLES_HIDDEN)
+    );
+  });
+
+  it("lot 5A, J7 (2.14 of 20/11, hypothèse D-1): a colleague's sample answers 404, as its sheet — the admin's « Libérer » instead", () => {
+    expect(COLLEAGUE_SAMPLES_HIDDEN).toBe(true);
+    expect(takeOverRefusal(state(), tech2)).toEqual({ status: 404, error: TAKE_MESSAGES.notFound });
+    expect(takeOverRefusal(state(), tech2, true, true)).toEqual({ status: 404, error: TAKE_MESSAGES.notFound });
+    // Never naming the holder (review of lot 5A).
+    expect(JSON.stringify(takeOverRefusal(state(), tech2))).not.toContain("Technicien A");
+    // Already the caller's: done, as a double click.
+    expect(takeOverRefusal(state({ technicianId: "tech2" }), tech2, true, true)).toBeNull();
+    // The way back: J7 off, 2.13's « Reprendre » again.
+    expect(takeOverRefusal(state(), tech2, true, false)).toBeNull();
+  });
+
+  it("the admin's confirmation of « Libérer » on a sample with readings says what stays and who to tell", () => {
+    const text = releaseTypedConfirmation("Technicien A");
+    expect(text).toContain("Retirer cet échantillon à Technicien A et le remettre dans « À prendre » ?");
+    expect(text).toContain("chacun au nom de la personne qui l'a saisi");
+    expect(text).toContain("pensez à prévenir Technicien A");
   });
 });
 
@@ -174,6 +198,81 @@ describe("currentTakeOver — « Repris à A », « Repris par B »", () => {
 
   it("asks the journal for the three bench actions only", () => {
     expect([...HOLDER_ACTIONS]).toEqual(["SAMPLE_TAKEN", "SAMPLE_UNTAKEN", "SAMPLE_TAKEN_OVER"]);
+  });
+});
+
+describe("holderTakenAt — « pris le … » is the holder's own take (review of lot 5A, J7)", () => {
+  const at = (time: string) => new Date(`2026-11-21T${time}:00Z`);
+  const row = (action: string, time: string, actorId: string, metadata?: Record<string, unknown>): HolderRow => ({
+    action,
+    actorId,
+    createdAt: at(time),
+    metadata: metadata ? JSON.stringify(metadata) : null,
+  });
+  const takenByA = row("SAMPLE_TAKEN", "08:00", "techA", { implicit: false });
+  // The admin frees it with R1 typed: `assignedAt` stays 08:00, the « Date d'analyse ».
+  const freedWithReadings = row("SAMPLE_UNTAKEN", "14:00", "admin", { typedResults: 1, byAdmin: true });
+  const takenByB = row("SAMPLE_TAKEN", "14:05", "techB", { implicit: false });
+
+  it("the admin frees a sample with readings, B takes it: B's take, never A's 08:00", () => {
+    expect(holderTakenAt([takenByA, freedWithReadings, takenByB], "techB", at("08:00"))).toEqual(at("14:05"));
+    // In any order, as the journal may come.
+    expect(holderTakenAt([takenByB, takenByA, freedWithReadings], "techB", at("08:00"))).toEqual(at("14:05"));
+    // The implicit take of a first reading typed on the free sample is a take too.
+    const implicitB = row("SAMPLE_TAKEN", "14:07", "techB", { implicit: true });
+    expect(holderTakenAt([takenByA, freedWithReadings, implicitB], "techB", at("08:00"))).toEqual(at("14:07"));
+  });
+
+  it("handed over twice: the last holder's take", () => {
+    const again = row("SAMPLE_UNTAKEN", "15:00", "admin", { typedResults: 2, byAdmin: true });
+    const takenByC = row("SAMPLE_TAKEN", "15:10", "techC");
+    expect(holderTakenAt([takenByA, freedWithReadings, takenByB, again, takenByC], "techC", at("08:00"))).toEqual(at("15:10"));
+  });
+
+  it("a plain take, or a free without readings (assignedAt cleared then stamped again): `assignedAt`, as before", () => {
+    expect(holderTakenAt([takenByA], "techA", at("08:00"))).toEqual(at("08:00"));
+    const freedEmpty = row("SAMPLE_UNTAKEN", "09:00", "techA", { typedResults: 0 });
+    const takenAgain = row("SAMPLE_TAKEN", "09:30", "techB");
+    expect(holderTakenAt([takenByA, freedEmpty, takenAgain], "techB", at("09:30"))).toEqual(at("09:30"));
+    // A give-back journalled before lot 5A carries no count: nothing changes.
+    expect(holderTakenAt([takenByA, row("SAMPLE_UNTAKEN", "09:00", "techA"), takenAgain], "techB", at("09:30"))).toEqual(at("09:30"));
+    // A journal without bench rows (a legacy assignment): `assignedAt`.
+    expect(holderTakenAt([], "techA", at("07:00"))).toEqual(at("07:00"));
+  });
+
+  it("a take-over is dated by its own row; nobody holds it: null", () => {
+    const over = row("SAMPLE_TAKEN_OVER", "10:00", "techB", { previousTechnicianId: "techA", typedResults: 1 });
+    expect(holderTakenAt([takenByA, over], "techB", at("08:00"))).toEqual(at("10:00"));
+    expect(holderTakenAt([takenByA, freedWithReadings], null, at("08:00"))).toBeNull();
+  });
+
+  it("the holder's take must be theirs: a row written by someone else keeps `assignedAt`", () => {
+    expect(holderTakenAt([takenByA, freedWithReadings, takenByB], "techA", at("08:00"))).toEqual(at("08:00"));
+  });
+});
+
+describe("inTakeOrder — a technician's printed bench sheet, in the order they took the samples", () => {
+  const at = (time: string) => new Date(`2026-11-21T${time}:00Z`);
+  const sample = (id: string, assignedAt: string | null, receivedAt: string, code = id) => ({
+    id,
+    code,
+    assignedAt: assignedAt ? at(assignedAt) : null,
+    receivedAt: at(receivedAt),
+  });
+
+  it("a sample handed over with its readings is placed at B's take, not at A's 08:00", () => {
+    const own = sample("own", "10:00", "07:00");
+    const handed = sample("handed", "08:00", "06:00");
+    const takes = new Map<string, Date | null>([
+      ["own", at("10:00")],
+      ["handed", at("14:05")],
+    ]);
+    expect(inTakeOrder([handed, own], takes).map((row) => row.id)).toEqual(["own", "handed"]);
+  });
+
+  it("without journal times: `assignedAt`, then reception, then code — a missing time first", () => {
+    const rows = [sample("b", "09:00", "07:00"), sample("a2", "09:00", "06:00", "A2"), sample("a1", "09:00", "06:00", "A1"), sample("none", null, "05:00")];
+    expect(inTakeOrder(rows, new Map()).map((row) => row.id)).toEqual(["none", "a1", "a2", "b"]);
   });
 });
 
@@ -432,8 +531,10 @@ describe("the bench screens read these rules", () => {
     expect(page).toContain("holderId={sample.technicianId}");
     const buttons = read("../components/technicien/BenchTakeActions.tsx");
     expect(buttons).toContain('callTake(sampleId, "PATCH", { holderId })');
-    // « Pris par B le … » dates the take-over, never a moved `assignedAt`.
-    expect(page).toContain("const takenAt = takenOver?.at ?? sample.assignedAt;");
+    // « Pris par B le … » dates the take-over, never a moved `assignedAt` —
+    // nor the previous holder's take after an admin's « Libérer » (J7).
+    expect(page).toContain("const takenAt = holderTakenAt(holderRows, sample.technicianId, sample.assignedAt);");
+    expect(page).not.toContain("take: 1,");
     expect(page.indexOf("const takenOver = currentTakeOver(")).toBeLessThan(page.indexOf("const takenAt = "));
     // The client is never selected with the sample, and loaded only for a viewer who reads it.
     expect(page).not.toMatch(/\n\s+client: \{ select: \{ name: true \} \},/);
@@ -457,10 +558,15 @@ describe("the bench screens read these rules", () => {
     expect(form).toContain("Vos résultats ont été enregistrés à votre nom, mais l'échantillon n'a pas été soumis");
     // The two refusals it reads come from the take messages.
     expect(read("./sample-access.ts")).toContain("TAKE_MESSAGES.heldByOther(holder)");
-    expect(read("../app/api/samples/[id]/results/submit/route.ts")).toContain("TAKE_MESSAGES.heldByOther(");
+    expect(read("../app/api/samples/[id]/results/submit/route.ts")).toContain("TAKE_MESSAGES.heldByOther(colleagueNamed(locked.holderName))");
     expect(read("../app/api/samples/[id]/results/route.ts")).toContain(
-      '{ error: `Déjà pris par ${written.holderName ?? "un collègue"}.` }'
+      "{ error: TAKE_MESSAGES.takenBy(colleagueNamed(written.holderName)) }"
     );
+    // While J7 hides them, « un collègue » in place of the name: the typing is still kept.
+    expect(lostSampleHolder(TAKE_MESSAGES.heldByOther(colleagueNamed("Technicien B")))).toBe("un collègue");
+    expect(lostSampleHolder(TAKE_MESSAGES.takenBy(colleagueNamed("Technicien B")))).toBe("un collègue");
+    expect(colleagueNamed("Technicien B", undefined, false)).toBe("Technicien B");
+    expect(colleagueNamed(null, undefined, false)).toBe("un collègue");
   });
 
   it("the list API: a blind technician neither filters by, matches nor reads the client", () => {
@@ -482,12 +588,15 @@ describe("the bench screens read these rules", () => {
 
   it("the bench lists: « Repris par B · <time> » dated by the journal, not by `assignedAt`", () => {
     const page = read("../app/technicien/page.tsx");
-    expect(page).toContain("currentTakeOversOf(rows),");
-    expect(page).toContain("takenOverAt: takeOvers.get(item.id)?.at ?? null,");
+    expect(page).toContain("holderTakesOf(rows),");
+    expect(page).toContain("takenOverAt: takes.get(item.id)?.takeOver?.at ?? null,");
+    expect(page).toContain("takenAt: takes.get(item.id)?.takenAt ?? item.assignedAt,");
     const queue = read("../components/technicien/WorkQueue.tsx");
     expect(queue).toContain("`Repris par ${holder} · ${formatDateTime(item.takenOverAt)}`");
+    expect(queue).toContain("`Pris par ${holder} · ${formatDateTime(item.takenAt)}`");
     const server = read("./take-over-server.ts");
-    expect(server).toContain("currentTakeOver(bySample.get(sample.id) ?? [], sample.technicianId)");
+    expect(server).toContain("takeOver: currentTakeOver(rows, sample.technicianId),");
+    expect(server).toContain("takenAt: holderTakenAt(rows, sample.technicianId, sample.assignedAt),");
   });
 
   it("the search: no client column, filter or text match for a blind technician", () => {

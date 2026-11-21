@@ -513,9 +513,11 @@ export function SerieReceptionForm({
   }
 
   /**
-   * C5 answered. « Non » makes the sample non conform with the motif
-   * IDENTIFICATION, unless a motif is already chosen; « Oui » afterwards
-   * drops that motif, the rules propose again.
+   * C5 answered. « Non » puts the motif IDENTIFICATION at hand, unless a
+   * motif is already chosen — the row is « à vérifier » since lot 5A, I10
+   * (the sample may still be accepted conform; non conform while
+   * `IDENTIFICATION_TO_VERIFY` is off); « Oui » afterwards drops that motif,
+   * the rules propose again.
    */
   function answerIdentification(line: LineState, ok: boolean) {
     updateLine(line.sampleId, {

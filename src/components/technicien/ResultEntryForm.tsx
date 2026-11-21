@@ -20,6 +20,7 @@ import { dilutionText, parseDilution } from "@/lib/dilution";
 import { applyQuickEntry, quickEntries, type QuickEntry } from "@/lib/quick-entries";
 import { repetitionLabel } from "@/lib/series";
 import { formatDecimal } from "@/lib/labels";
+import { MAX_SURFACE_OBJECT } from "@/lib/result-unit";
 import { lostSampleHolder } from "@/lib/take-over";
 import { SHEET_SAVED_BY_COLLEAGUE, followServer, overlapNotice, sheetDirty } from "@/lib/take-over-sheet";
 import { INTERNAL_NOTE_HINT, INTERNAL_NOTE_LABEL, showsNoteField } from "@/lib/result-note";
@@ -29,8 +30,15 @@ import type { ResultWorkStatus } from "@/generated/prisma/enums";
 export type ParameterLine = {
   parameterId: string;
   name: string;
-  /** The criterion's unit, else the parameter's (`benchUnit`). */
+  /** The criterion's unit, else the parameter's (`benchUnit`); on a surface whose unit is chosen, the stored one. */
   unit: string | null;
+  /**
+   * The units offered on a surface counted in UFC (lot 5A, J6 (b) —
+   * `surfaceUnitChoices`): absent or empty on a line whose unit is computed.
+   */
+  unitChoices?: string[];
+  /** The unit chosen on such a line, as typed — prefilled with `unit`; the save stores it. */
+  chosenUnit?: string;
   threshold: string | null;
   limitValue: number | null;
   /**
@@ -122,6 +130,7 @@ function sheetShape(lines: ParameterLine[]): string {
       line.parameterId,
       line.name,
       line.unit,
+      line.unitChoices ?? null,
       line.editable,
       line.technicianName,
       line.perUnit,
@@ -176,6 +185,15 @@ function lineFactor(line: ParameterLine): number | null {
   const typed = parseDilution(line.dilution);
   if (typed === "invalid") return null;
   return typed ?? line.calcFactor;
+}
+
+/** The unit a line reads in on screen: the one chosen on a surface (J6 (b)), else the server's. */
+function shownUnit(line: ParameterLine): string | null {
+  if (line.unitChoices && line.unitChoices.length > 0) {
+    const chosen = (line.chosenUnit ?? "").replace(/\s+/g, " ").trim();
+    return chosen && chosen !== "UFC/" ? chosen : line.unit;
+  }
+  return line.unit;
 }
 
 /** The notations the bench accepts — the help line and the « non reconnue » message. */
@@ -353,6 +371,8 @@ export function ResultEntryForm({
     // Only the lines I may type travel: the server refuses a colleague's (403).
     return lines.flatMap((line, index) => {
       if (!line.editable) return [];
+      // The unit travels only where it is chosen (J6 (b)); elsewhere the server computes it.
+      const unit = line.unitChoices && line.unitChoices.length > 0 ? { unit: line.chosenUnit ?? line.unit ?? "" } : {};
       return [
         line.perUnit
           ? {
@@ -362,6 +382,7 @@ export function ResultEntryForm({
               workStatus: line.workStatus,
               conform: line.plan ? undefined : readings[index].conform,
               dilution: line.dilution,
+              ...unit,
             }
           : {
               parameterId: line.parameterId,
@@ -370,6 +391,7 @@ export function ResultEntryForm({
               workStatus: line.workStatus,
               conform: readings[index].conform,
               dilution: line.dilution,
+              ...unit,
             },
       ];
     });
@@ -540,7 +562,7 @@ export function ResultEntryForm({
                   {line.perUnit ? (
                     <fieldset>
                       <legend className="block text-xs font-medium text-slate-600">
-                        Lecture par répétition {line.unit && `(${line.unit})`} — {line.units.length} unité{line.units.length > 1 ? "s" : ""}
+                        Lecture par répétition {shownUnit(line) && `(${shownUnit(line)})`} — {line.units.length} unité{line.units.length > 1 ? "s" : ""}
                         {line.plan && line.plan.n !== line.units.length && (
                           <span className="ml-1 text-slate-500">· plan n = {line.plan.n}</span>
                         )}
@@ -577,7 +599,7 @@ export function ResultEntryForm({
                         htmlFor={`value-${line.parameterId}`}
                         className="block text-xs font-medium text-slate-600"
                       >
-                        Valeur mesurée {line.unit && `(${line.unit})`}
+                        Valeur mesurée {shownUnit(line) && `(${shownUnit(line)})`}
                       </label>
                       <input
                         ref={registerField(line.parameterId, null)}
@@ -595,14 +617,25 @@ export function ResultEntryForm({
                         <p className="mt-1 text-xs text-violet-700">
                           {reading.stored.factored ? `Valeur finale (lue à ${dilutionText(factor ?? line.calcFactor)}) : ` : "Au rapport : "}
                           <b className="font-mono">{reading.stored.value}</b>
-                          {line.unit ? ` ${line.unit}` : ""}
+                          {shownUnit(line) ? ` ${shownUnit(line)}` : ""}
                           {reading.stored.factored ? " — c'est elle qui figure au rapport." : "."}
                         </p>
                       )}
                     </div>
                   )}
 
-                  <div className="flex gap-3">
+                  <div className="flex flex-wrap gap-3">
+                  {/* J6 (b), C-1 of 20/11: the unit of a surface, chosen here. */}
+                  {line.unitChoices && line.unitChoices.length > 0 && (
+                    <SurfaceUnitField
+                      parameterId={line.parameterId}
+                      name={line.name}
+                      choices={line.unitChoices}
+                      value={line.chosenUnit ?? line.unit ?? ""}
+                      disabled={locked}
+                      onChange={(chosenUnit) => update(index, { chosenUnit })}
+                    />
+                  )}
                   {/* J4 (28/10, 2.12): the dilution read at, prefilled by the programme. */}
                   <div>
                     <label
@@ -714,7 +747,7 @@ export function ResultEntryForm({
                   <Verdict
                     reading={reading}
                     limitValue={line.limitValue}
-                    unit={line.unit}
+                    unit={shownUnit(line)}
                     canEdit={!locked}
                     onManual={(conform) => update(index, { manualConform: conform })}
                   />
@@ -843,6 +876,90 @@ export function ResultEntryForm({
           </p>
         )}
       </Card>
+    </div>
+  );
+}
+
+/** The select's value for « UFC/ » followed by another object, typed below it. */
+const OTHER_OBJECT = "__autre__";
+
+/**
+ * « Unité » of a surface counted in UFC (lot 5A, J6 (b) — C-1 of 20/11:
+ * « UFC/100 cm² » or « UFC/objet prélevé »): the units the server offers
+ * (`surfaceUnitChoices`), and « UFC/ … autre objet » with the object typed
+ * beside it. The verdict does not move with it: a surface is judged by its
+ * value whatever the unit (J6 (a)). The server checks the unit again
+ * (`surfaceUnitChoice`).
+ */
+function SurfaceUnitField({
+  parameterId,
+  name,
+  choices,
+  value,
+  disabled,
+  onChange,
+}: {
+  parameterId: string;
+  name: string;
+  choices: string[];
+  value: string;
+  disabled: boolean;
+  onChange: (unit: string) => void;
+}) {
+  const offered = choices.find((choice) => choice.toLocaleLowerCase("fr") === value.trim().toLocaleLowerCase("fr"));
+  const [other, setOther] = useState(!offered);
+  const object = value.replace(/^\s*UFC\s*\/\s*/i, "");
+  const selectId = `unit-${parameterId}`;
+  const objectId = `unit-object-${parameterId}`;
+  return (
+    <div>
+      <label htmlFor={selectId} className="block text-xs font-medium text-slate-600">
+        Unité
+      </label>
+      <select
+        id={selectId}
+        value={other ? OTHER_OBJECT : (offered ?? OTHER_OBJECT)}
+        onChange={(event) => {
+          if (event.target.value === OTHER_OBJECT) {
+            setOther(true);
+            onChange(`UFC/${offered ? "" : object}`);
+          } else {
+            setOther(false);
+            onChange(event.target.value);
+          }
+        }}
+        disabled={disabled}
+        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50 sm:w-48"
+      >
+        {choices.map((choice) => (
+          <option key={choice} value={choice}>
+            {choice}
+          </option>
+        ))}
+        <option value={OTHER_OBJECT}>UFC/ … autre objet</option>
+      </select>
+      {other && (
+        <>
+          <label htmlFor={objectId} className="sr-only">
+            {`${name} — objet prélevé (après « UFC/ »)`}
+          </label>
+          <div className="mt-1.5 flex items-center gap-1 text-sm text-slate-600">
+            <span className="font-mono" aria-hidden="true">
+              UFC/
+            </span>
+            <input
+              id={objectId}
+              type="text"
+              value={object}
+              maxLength={MAX_SURFACE_OBJECT}
+              onChange={(event) => onChange(`UFC/${event.target.value}`)}
+              disabled={disabled}
+              placeholder="couteau"
+              className="w-36 rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50 disabled:text-slate-500"
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

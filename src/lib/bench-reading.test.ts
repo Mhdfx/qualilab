@@ -201,9 +201,22 @@ describe("one rule for the screen and the server", () => {
   });
 
   it("the entry page shows the unit the sheet and the stored result use", () => {
-    expect(read("../app/technicien/[id]/page.tsx")).toContain("unit: resultUnit(bench.context, benchUnit(plan, parameter.unit))");
-    expect(read("../app/api/bench-sheet/route.ts")).toContain("unit: resultUnit(bench.context, benchUnit(plan, parameter.unit))");
-    expect(read("../app/api/samples/[id]/results/route.ts")).toContain("unit: resultUnit(bench.context, benchUnit(plan, parameter.unit))");
+    // The criterion's unit, else the parameter's (`benchUnit`) — then, on a
+    // surface counted in UFC, the unit chosen at entry (lot 5A, J6 (b)).
+    expect(read("../app/technicien/[id]/page.tsx")).toContain("const baseUnit = benchUnit(plan, parameter.unit);");
+    expect(read("../app/technicien/[id]/page.tsx")).toContain(
+      "const unit = unitChoices.length > 0 && existing?.unit ? existing.unit : resultUnit(bench.context, baseUnit);"
+    );
+    expect(read("../app/api/bench-sheet/route.ts")).toContain("const base = benchUnit(plan, parameter.unit);");
+    expect(read("../app/api/bench-sheet/route.ts")).toContain(
+      "unit: stored && surfaceUnitEditable(bench.context, base) ? stored : resultUnit(bench.context, base),"
+    );
+    expect(read("../app/api/samples/[id]/results/route.ts")).toContain(
+      "const baseUnit = plan ? benchUnit(plan, parameter.unit) : parameter.unit;"
+    );
+    expect(read("../app/api/samples/[id]/results/route.ts")).toContain(
+      "const unitChoice = surfaceUnitChoice(bench.context, baseUnit, raw.unit);"
+    );
   });
 });
 

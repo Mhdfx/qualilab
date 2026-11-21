@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { RECONSTRUCTED_LABEL, amendedNumber } from "@/lib/report-amendment";
+import { RECONSTRUCTED_LABEL, amendedNumber, parseCorrectionTrace } from "@/lib/report-amendment";
 
 /**
  * « Versions du rapport » (AMENDEMENT.md §4): every issued version — number,
@@ -40,6 +40,8 @@ export async function GET(
               reconstructed: true,
               issuedAt: true,
               issuedBy: { select: { name: true } },
+              // K11: the corrections before send of this version (internal trace).
+              correctedBeforeSend: true,
             },
             orderBy: { version: "desc" },
           },
@@ -56,6 +58,7 @@ export async function GET(
     return NextResponse.json({ error: "Aucun rapport : cet échantillon n'a pas encore reçu la validation administrative." }, { status: 409 });
   }
 
+  const traces = new Map(report.versions.map((v) => [v.version, parseCorrectionTrace(v.correctedBeforeSend)]));
   const versions = report.versions.map((v) => ({
     version: v.version,
     number: v.number,
@@ -66,7 +69,18 @@ export async function GET(
     label: v.reconstructed ? RECONSTRUCTED_LABEL : null,
     current: v.version === report.version,
     url: `/api/samples/${id}/report?version=${v.version}`,
+    // K11: each correction before send of this version — when, why, by whom;
+    // the data replaced stay internal (no PDF: never printed nor sent).
+    corrections: (traces.get(v.version)?.replaced ?? []).map((row) => ({
+      issuedAt: row.issuedAt,
+      correctedAt: row.correctedAt,
+      reissuedAt: row.reissuedAt,
+      reason: row.reason,
+      by: row.correctedByName,
+    })),
   }));
+  // A correction before send in progress (K11): the same number will be issued again.
+  const correcting = report.amendmentPending && traces.get(report.version)?.pending ? traces.get(report.version)!.pending : null;
   if (!versions.some((v) => v.current)) {
     // Issued before versions existed and never amended: the live report.
     versions.unshift({
@@ -79,6 +93,7 @@ export async function GET(
       label: null,
       current: true,
       url: `/api/samples/${id}/report`,
+      corrections: [],
     });
   }
 
@@ -86,9 +101,13 @@ export async function GET(
     number: amendedNumber(report.number, report.version),
     version: report.version,
     amendmentPending: report.amendmentPending,
-    // The reason of the amendment in progress — not yet printed anywhere.
-    pendingNote: report.amendmentPending ? report.amendmentNote : null,
-    nextNumber: report.amendmentPending ? amendedNumber(report.number, report.version + 1) : null,
+    // « correction » (K11) or « amendment »: what the next approval issues.
+    pendingKind: report.amendmentPending ? (correcting ? "correction" : "amendment") : null,
+    // The reason of the change in progress — not yet printed anywhere (a correction's never is).
+    pendingNote: correcting ? correcting.reason : report.amendmentPending ? report.amendmentNote : null,
+    nextNumber: report.amendmentPending
+      ? amendedNumber(report.number, correcting ? report.version : report.version + 1)
+      : null,
     versions,
   });
 }

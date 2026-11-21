@@ -48,7 +48,8 @@ export type ValidationItem = {
   updatedAt?: Date;
   receivedAt: Date | null;
   /** A report reopened for amendment (AMENDEMENT.md §2): badge « Amendement ». */
-  report?: { amendmentPending: boolean } | null;
+  /** `correction` (K11): the change in progress is a correction before send, not an amendment. */
+  report?: { amendmentPending: boolean; correction?: boolean } | null;
   /** K7 (`alertAwaitingReport`): approved, its contamination alert waits for the report's send. */
   alertAwaitingReport?: boolean;
 };
@@ -162,7 +163,7 @@ export function ValidationQueue({
                             {item.report?.amendmentPending && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
                                 <PencilLine className="h-3 w-3" aria-hidden="true" />
-                                Amendement
+                                {item.report.correction ? "Correction avant envoi" : "Amendement"}
                               </span>
                             )}
                             {item.alertAwaitingReport && (

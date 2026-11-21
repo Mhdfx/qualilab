@@ -2,7 +2,7 @@ import type { Family, LineKind, SerieKind, StorageClass, TemperatureSource } fro
 import { formatDateOnly, isoDayOf } from "./date-only";
 import { STORAGE_CLASS_LABELS, TEMPERATURE_SOURCE_LABELS, formatDecimal } from "./labels";
 import { labDayOf } from "./lab-time";
-import { UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE } from "./lab-proposals";
+import { IDENTIFICATION_TO_VERIFY, UNDECLARED_SAMPLING_DELAY_NOT_EVALUABLE } from "./lab-proposals";
 import type { ChecklistRow, ChecklistStatus } from "./reception-rules";
 
 /**
@@ -141,9 +141,16 @@ export type ComplementaryAnswers = {
   identificationOk: boolean | null;
 };
 
-/** C5's hint: what is compared with the fiche, and what to do when it does not match. */
-export function identificationHint(lineKind: LineKind, answer: boolean | null): string {
-  if (answer === false) return "Corriger la fiche avant de valider";
+/**
+ * C5's hint: what is compared with the fiche, and what to do when it does
+ * not match — « à vérifier » since lot 5A, I10 (`IDENTIFICATION_TO_VERIFY`).
+ */
+export function identificationHint(
+  lineKind: LineKind,
+  answer: boolean | null,
+  toVerify: boolean = IDENTIFICATION_TO_VERIFY
+): string {
+  if (answer === false) return toVerify ? "À vérifier : corriger la fiche si besoin" : "Corriger la fiche avant de valider";
   return lineKind === "ALIMENT"
     ? "Désignation, lot et DLC lus sur l'échantillon, comparés à la fiche"
     : "Désignation lue sur l'échantillon, comparée à la fiche";
@@ -363,9 +370,21 @@ function base(key: ActiveComplementaryKey): Pick<ChecklistRow, "n" | "key" | "co
   return { n: check.n, key: check.key, code: check.code, text: check.text };
 }
 
-/** A ticked row: unanswered → « à confirmer », Non → non conforme with its motif. */
+/**
+ * What C5 « Identification » answered « Non » makes the row: « à vérifier »
+ * since lot 5A, I10 (2.8 / Q70 of 20/11, « seulement « à vérifier » »), the
+ * motif at hand — the sample may be accepted conform, a warning only (no
+ * observation required, `rowNeedsJustification`); « non conforme » while the
+ * switch `IDENTIFICATION_TO_VERIFY` is off. `toVerify` is the switch, passed
+ * by the tests.
+ */
+export function identificationRefusedStatus(toVerify: boolean = IDENTIFICATION_TO_VERIFY): ChecklistStatus {
+  return toVerify ? "A_VERIFIER" : "NON_CONFORME";
+}
+
+/** A ticked row: unanswered → « à confirmer », Non → « à vérifier » (I10) or non conforme, with its motif. */
 function tickedRow(key: Extract<ActiveComplementaryKey, "IDENTIFICATION">, answer: boolean | null, detail: string): ChecklistRow {
-  const status = answer === null ? "A_CONFIRMER" : answer ? "CONFORME" : "NON_CONFORME";
+  const status = answer === null ? "A_CONFIRMER" : answer ? "CONFORME" : identificationRefusedStatus();
   return {
     ...base(key),
     status,

@@ -81,7 +81,13 @@ type ValidationPanelProps = {
   chosenRegulation: string | null;
   /** An amendment in progress (AMENDEMENT.md §2): the version in force, the
    *  one the approval will issue, and the reason. */
-  amendment?: { currentNumber: string; nextNumber: string; note: string | null } | null;
+  amendment?: {
+    currentNumber: string;
+    nextNumber: string;
+    note: string | null;
+    /** K11: a correction before send — the same number issued again, no « annule et remplace ». */
+    correction?: boolean;
+  } | null;
   /**
    * K10 (Q13 of 04/11): the box « Logo d'accréditation » of the
    * administrative validation — null when no logo is uploaded (or the switch
@@ -223,7 +229,20 @@ export function ValidationPanel({
         Validation en deux étapes
       </h2>
 
-      {amendment && state !== "APPROVED" && (
+      {amendment?.correction && state !== "APPROVED" && (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2.5 text-sm text-amber-900">
+          <p className="flex items-center gap-1.5 font-semibold">
+            <PencilLine className="h-4 w-4 shrink-0" aria-hidden="true" />
+            Correction avant envoi du rapport {amendment.currentNumber}
+          </p>
+          {amendment.note && <p className="mt-1">Motif (interne) : {amendment.note}</p>}
+          <p className="mt-1 text-xs text-amber-800">
+            Le client n&apos;a pas reçu ce rapport : à la validation administrative, il sera émis de nouveau sous le même
+            numéro, {amendment.nextNumber}, sans « annule et remplace » ; il sera à envoyer au client.
+          </p>
+        </div>
+      )}
+      {amendment && !amendment.correction && state !== "APPROVED" && (
         <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50/70 px-3 py-2.5 text-sm text-rose-900">
           <p className="flex items-center gap-1.5 font-semibold">
             <PencilLine className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -258,7 +277,9 @@ export function ValidationPanel({
           current={signable && state === "AWAITING_ADMIN"}
           detail={
             amendment && state !== "APPROVED"
-              ? `Émet le rapport amendé ${amendment.nextNumber} ; l'envoi au client se fait ensuite`
+              ? amendment.correction
+                ? `Émet de nouveau le rapport ${amendment.nextNumber}, corrigé ; l'envoi au client se fait ensuite`
+                : `Émet le rapport amendé ${amendment.nextNumber} ; l'envoi au client se fait ensuite`
               : "Émet le rapport ; l'envoi au client se fait ensuite"
           }
         />
@@ -331,7 +352,7 @@ export function ValidationPanel({
           <b>{nonConformes} résultat{nonConformes > 1 ? "s" : ""} non conforme
           {nonConformes > 1 ? "s" : ""}.</b>{" "}
           {alertables > 0
-            ? amendment
+            ? amendment && !amendment.correction
               ? "Une alerte de contamination ne sera renvoyée au client que pour un résultat modifié depuis le rapport en vigueur."
               : !ALERTS_AT_VALIDATION
                 ? "Une alerte de contamination partira avec le rapport (« Valider et envoyer », « Envoyer au client »)."

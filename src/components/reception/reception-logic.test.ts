@@ -440,8 +440,9 @@ describe("depositLineChecklist — the eight rules of a deposit line", () => {
       DEFAULT_THRESHOLDS
     );
     // The merged row keeps its code: the widget lists it in its own group.
-    expect(coded(rows, "C5")).toMatchObject({ key: "IDENTIFICATION", status: "NON_CONFORME", reason: "IDENTIFICATION" });
-    expect(proposal).toMatchObject({ conformity: false, forced: true, rule: null, code: "C5", reason: "IDENTIFICATION" });
+    // Lot 5A, I10: « Non » is « à vérifier » — the line stays conform, the motif at hand.
+    expect(coded(rows, "C5")).toMatchObject({ key: "IDENTIFICATION", status: "A_VERIFIER", reason: "IDENTIFICATION" });
+    expect(proposal).toMatchObject({ conformity: true, forced: false, rule: null, code: null, reason: "IDENTIFICATION" });
     // No C3 (emballage) since 16/10 (Q70): C1, C2, C5, C7 on a food line.
     expect(rows.filter((r) => r.code).map((r) => r.code)).toEqual(["C1", "C2", "C5", "C7"]);
 

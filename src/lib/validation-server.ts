@@ -13,7 +13,7 @@ import { accreditationLogoUploaded } from "./report-images";
 import { getLabSettings, type LabSettings } from "./lab-settings";
 import { needsRegulation, proposeRegulation } from "./regulation";
 import type { Role } from "./roles";
-import { amendedNumber } from "./report-amendment";
+import { IN_FORCE_VERSION_TRACE_SELECT, amendedNumber, versionIssuedAt } from "./report-amendment";
 import {
   serieConclusion,
   serieLine,
@@ -315,6 +315,8 @@ export async function approveSample(
         // « Valider » or « Valider et envoyer » (16/10, Q92).
         send: plan.sendReport,
         ...(report?.amended ? { amendment: true } : {}),
+        // K11: the same version issued again, corrected before its first send.
+        ...(report?.correctedInPlace ? { correctedBeforeSend: true } : {}),
         // K10: the box as posted — journalled even when the issue failed, so
         // that the send issuing the report later follows it (`sendReport`).
         ...(typeof plan.accreditationLogo === "boolean" ? { accreditationLogoRequested: plan.accreditationLogo } : {}),
@@ -584,7 +586,8 @@ async function serieSendCandidates(serieId: string): Promise<SerieSendCandidate[
       airMethod: true,
       airExposureMin: true,
       // `amendedAt`: whether THIS version has left (`reportVersionSent`).
-      report: { select: { number: true, version: true, sentAt: true, amendedAt: true, amendmentPending: true } },
+      // `versions` (K11): a correction reissued in place dates the version in force (`versionIssuedAt`).
+      report: { select: { number: true, sentAt: true, amendmentPending: true, ...IN_FORCE_VERSION_TRACE_SELECT } },
       // K7: an alert not sent yet leaves with this send — the dialog says so.
       alertsSentAt: true,
       _count: { select: { results: { where: ALERT_RESULT_WHERE } } },
@@ -594,9 +597,18 @@ async function serieSendCandidates(serieId: string): Promise<SerieSendCandidate[
   return samples.map((sample) => ({
     ...lineOf(sample),
     status: sample.status,
-    report: sample.report,
-    // An amended report whose earlier version alerted: its alert may leave again (`alertNotSentForVersion`).
-    alertsPending: alertNotSentForVersion({ alertsSentAt: sample.alertsSentAt, versionIssuedAt: sample.report?.amendedAt ?? null })
+    report: sample.report
+      ? {
+          number: sample.report.number,
+          version: sample.report.version,
+          sentAt: sample.report.sentAt,
+          amendedAt: sample.report.amendedAt,
+          amendmentPending: sample.report.amendmentPending,
+        }
+      : null,
+    // An amended report — or one corrected before its send (K11) — whose
+    // earlier issue alerted: its alert may leave again (`alertNotSentForVersion`).
+    alertsPending: alertNotSentForVersion({ alertsSentAt: sample.alertsSentAt, versionIssuedAt: versionIssuedAt(sample.report) })
       ? sample._count.results
       : 0,
   }));

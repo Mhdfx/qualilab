@@ -18,7 +18,10 @@ import { TAKE_OVER_MESSAGES, takeOverRefusal } from "@/lib/take-over";
  *
  * « Libérer » gives it back to « À prendre »: its holder or an
  * administrator, while it is on the bench and nothing is typed on it
- * (`untakeRefusal`). Legacy per-parameter technicians are cleared with it.
+ * (`untakeRefusal`) — the administrator also once readings are typed while
+ * the colleagues' samples are hidden (lot 5A, J7: the way a sample is
+ * handed over; the readings keep their author, D-09, and the journal counts
+ * them). Legacy per-parameter technicians are cleared with it.
  *
  * « Reprendre » (PATCH) takes over a sample a colleague holds (re-ask 2.13,
  * Q107, plan C3 — behind `TAKE_OVER_COLLEAGUE`): any technician, no reason
@@ -66,9 +69,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     // by a non-id field: guarded-writes.test.ts).
     const taken = await tx.sample.updateMany({
       where: { id, technicianId: null, status: { in: [...BENCH_STATUSES] }, analysisBlocked: false },
-      data: { technicianId: session.id, assignedAt: now },
+      data: { technicianId: session.id },
     });
     if (taken.count === 0) return { refusal: { status: 409, error: "Cet échantillon vient de changer : rechargez la page." } };
+    // The start of the analyses, unless they started before an
+    // administrator freed the sample with its readings (J7, `DELETE` below):
+    // this take is then dated by its SAMPLE_TAKEN row (`holderTakenAt`).
+    await tx.sample.updateMany({ where: { id, assignedAt: null }, data: { assignedAt: now } });
     return { done: "taken", state };
   });
 
@@ -165,12 +172,17 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     const typed = state ? await tx.result.count({ where: { sampleId: id, ...TYPED_RESULT_WHERE } }) : 0;
     const refusal = untakeRefusal(state, typed, session);
     if (refusal || !state) return { refusal: refusal ?? { status: 404, error: "Échantillon introuvable." } };
-    await tx.sample.updateMany({ where: { id }, data: { technicianId: null, assignedAt: null } });
+    // A sample freed with readings on it (the admin, J7) keeps `assignedAt`:
+    // its analyses started then — the report's « Date d'analyse »; the next
+    // take leaves it (`assignedAt: null` only is stamped, below).
+    if (typed > 0) await tx.sample.updateMany({ where: { id }, data: { technicianId: null } });
+    else await tx.sample.updateMany({ where: { id }, data: { technicianId: null, assignedAt: null } });
     const cleared = await tx.sampleParameter.updateMany({
       where: { sampleId: id, technicianId: { not: null } },
       data: { technicianId: null },
     });
-    return { done: "untaken", state, clearedParameters: cleared.count };
+    // The readings are not touched: each keeps its author (D-09).
+    return { done: "untaken", state, clearedParameters: cleared.count, typedResults: typed };
   });
 
   if ("refusal" in outcome) return answer(outcome.refusal);
@@ -185,6 +197,8 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       previousTechnicianId: outcome.state.technicianId,
       previousTechnicianName: outcome.state.holderName,
       clearedParameters: outcome.clearedParameters ?? 0,
+      // Lot 5A, J7: how many readings the sample carried when the admin freed it.
+      typedResults: outcome.typedResults ?? 0,
       byAdmin: session.role === "ADMIN",
     },
   });

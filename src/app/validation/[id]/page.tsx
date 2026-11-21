@@ -39,10 +39,11 @@ import { ReceptionNonConformity, RECEPTION_NON_CONFORMITY_SELECT } from "@/compo
 import { ReceptionObservation } from "@/components/samples/ReceptionObservation";
 import { ValidationPanel } from "@/components/validation/ValidationPanel";
 import { ReportActions } from "@/components/validation/ReportActions";
-import { amendedNumber } from "@/lib/report-amendment";
+import { IN_FORCE_VERSION_TRACE_SELECT, amendedNumber, parseCorrectionTrace, pendingReportChange, versionIssuedAt } from "@/lib/report-amendment";
 import { canResendReport, reportVersionSent } from "@/lib/report-actions";
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { sampleTimelineFor } from "@/lib/sample-timeline-server";
+import { holderTakenAtOf } from "@/lib/take-over-server";
 import { heldInvoices } from "@/lib/billing-hold";
 import { heldInvoiceFor } from "@/lib/price-access";
 import { SampleTimelineCard } from "@/components/validation/SampleTimelineCard";
@@ -131,12 +132,14 @@ export default async function ValidationDetailPage({
       serieId: true,
       serie: { select: { serialNumber: true } },
       // Who took it at the bench, and when (prise en charge libre, PROGRAMME.md §10).
+      technicianId: true,
       technician: { select: { name: true } },
       assignedAt: true,
       validatedBy: { select: { name: true } },
       // `amendedAt`: whether THIS version has left (`reportVersionSent`).
       report: {
-        select: { id: true, number: true, version: true, sentTo: true, sentAt: true, amendedAt: true, amendmentPending: true, amendmentNote: true },
+        // `versions` (K11, review of lot 5A): a correction reissued in place dates the version in force (`versionIssuedAt`).
+        select: { id: true, number: true, sentTo: true, sentAt: true, amendmentPending: true, amendmentNote: true, ...IN_FORCE_VERSION_TRACE_SELECT },
       },
       results: {
         select: {
@@ -183,22 +186,36 @@ export default async function ValidationDetailPage({
   // and the amendment in progress, if any.
   const report = sample.report;
   const printedNumber = report ? amendedNumber(report.number, report.version) : null;
+  // Validated, not sent (16/10, Q92): the panel offers « Envoyer au client »;
+  // once this version has left, « Renvoyer » is on the report card.
+  const sent = report ? reportVersionSent(report) : false;
+  // K11: a correction before send in progress — the same number issued
+  // again, its reason in the version's internal trace.
+  const correction =
+    report?.amendmentPending && pendingReportChange(true, sent) === "correction"
+      ? parseCorrectionTrace(
+          (
+            await prisma.reportVersion.findUnique({
+              where: { reportId_version: { reportId: report.id, version: report.version } },
+              select: { correctedBeforeSend: true },
+            })
+          )?.correctedBeforeSend ?? null
+        ).pending
+      : null;
   const amendment =
     report?.amendmentPending
       ? {
           currentNumber: amendedNumber(report.number, report.version),
-          nextNumber: amendedNumber(report.number, report.version + 1),
-          note: report.amendmentNote,
+          nextNumber: amendedNumber(report.number, correction ? report.version : report.version + 1),
+          note: correction ? correction.reason : report.amendmentNote,
+          correction: correction !== null,
         }
       : null;
-  // Validated, not sent (16/10, Q92): the panel offers « Envoyer au client »;
-  // once this version has left, « Renvoyer » is on the report card.
-  const sent = report ? reportVersionSent(report) : false;
   const sendable = report !== null && canResendReport(session.role, sample.status, report.amendmentPending, sent);
 
   // « Réglementation en vigueur » (slice I): proposed from what is known,
   // confirmed or changed by the validator.
-  const [regulations, settings, signedProtocols, timeline, reportSends, earlyAlerts, held, serieSamples, logoUploaded] = await Promise.all([
+  const [regulations, settings, signedProtocols, timeline, reportSends, earlyAlerts, held, serieSamples, logoUploaded, takenAt] = await Promise.all([
     prisma.regulation.findMany({ where: { active: true }, select: { id: true, title: true }, orderBy: [{ sortOrder: "asc" }, { title: "asc" }] }),
     getLabSettings(),
     // Whether the visit's signed protocol was photographed — counted, never
@@ -235,6 +252,10 @@ export default async function ValidationDetailPage({
       : Promise.resolve([]),
     // K10: the box « Logo d'accréditation » exists only when the logo is uploaded.
     ACCREDITATION_LOGO_BY_HAND ? accreditationLogoUploaded() : Promise.resolve(false),
+    // « pris en charge le … »: the holder's own take (`holderTakenAt`) — after
+    // an administrator handed the sample over with its readings (J7),
+    // `assignedAt` stays the start of the analyses, never B's take.
+    holderTakenAtOf(sample),
   ]);
   const accreditationLogo = logoUploaded
     ? accreditationLogoRule(sample.results.map((result) => result.parameter.accreditation))
@@ -490,9 +511,9 @@ export default async function ValidationDetailPage({
               </Field>
               <Field icon={User} label="Analysé par">
                 {analysedBy ?? "—"}
-                {sample.technician && sample.assignedAt && (
+                {sample.technician && takenAt && (
                   <span className="block text-xs font-normal text-slate-500">
-                    pris en charge le {formatDateTime(sample.assignedAt)}
+                    pris en charge le {formatDateTime(takenAt)}
                   </span>
                 )}
               </Field>
@@ -546,7 +567,7 @@ export default async function ValidationDetailPage({
             nonConformes={nonConformes}
             alertables={alertables}
             // K7: « Alerte en attente de l'envoi du rapport » on an approved sample whose alert has not left.
-            alertAwaitingReport={alertAwaitingReport({ status: sample.status, alertsSentAt: sample.alertsSentAt, alerting: alertables, versionIssuedAt: sample.report?.amendedAt ?? null })}
+            alertAwaitingReport={alertAwaitingReport({ status: sample.status, alertsSentAt: sample.alertsSentAt, alerting: alertables, versionIssuedAt: versionIssuedAt(sample.report) })}
             alertsAtTechnical={settings.alertAfterTechnicalValidation}
             reportNumber={printedNumber}
             sentTo={sample.report?.sentTo ?? null}

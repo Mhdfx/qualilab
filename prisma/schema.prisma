@@ -852,6 +852,14 @@ model ReportVersion {
   /// Who approved it; null when unknown (reconstructed) or the user is gone.
   issuedById    String?
   issuedBy      User?    @relation("ReportVersionIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
+  /// Lot 5A, K11 (Q132 of 20/11 — « corriger sans amendement ») : the internal
+  /// trace of « Corriger avant envoi » on this version, never printed nor sent
+  /// (`CorrectionTrace`, report-amendment.ts) — the correction in progress
+  /// (reason, who, when) and every frozen `ReportData` it replaced in place,
+  /// with its issue and the correction's reason, author and date. Null on a
+  /// version never corrected. JSON (LONGTEXT): a `ReportData` does not fit the
+  /// journal's TEXT metadata.
+  correctedBeforeSend Json?
 
   /// Also serves as the index on `reportId`.
   @@unique([reportId, version])

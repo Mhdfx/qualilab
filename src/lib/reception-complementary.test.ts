@@ -10,6 +10,8 @@ import {
   delayMinutes,
   expiredDlcNote,
   formatDelay,
+  identificationHint,
+  identificationRefusedStatus,
   labDayOf,
   parseChoice,
   STABLE_FOOD_STORAGE_LABEL,
@@ -24,7 +26,8 @@ import {
   type ComplementaryLine,
   type ComplementarySerie,
 } from "./reception-complementary";
-import { DEFAULT_THRESHOLDS, checklistRowLabel, proposedConformity, receptionChecklist, type ChecklistRow } from "./reception-rules";
+import { DEFAULT_THRESHOLDS, checklistRowLabel, proposedConformity, receptionChecklist, rowToJustify, type ChecklistRow } from "./reception-rules";
+import { IDENTIFICATION_TO_VERIFY } from "./lab-proposals";
 import { parseReceptionAudit } from "./reception-audit";
 
 /**
@@ -320,7 +323,21 @@ describe("C3 — emballage, no longer asked (16/10, Q70)", () => {
 });
 
 describe("C5 — identification", () => {
-  it("waits for the tick, then reads Oui / Non — a « Non » sends back to the fiche", () => {
+  it("lot 5A, I10 (2.8 / Q70 of 20/11): « Non » is « à vérifier », the motif at hand — no longer non conforme", () => {
+    expect(IDENTIFICATION_TO_VERIFY).toBe(true);
+    expect(byCode(rows({}, { identificationOk: false }), "C5")).toMatchObject({
+      status: "A_VERIFIER",
+      reason: "IDENTIFICATION",
+      detail: "À vérifier : corriger la fiche si besoin",
+    });
+    // The way back: non conforme, as before lot 5A.
+    expect(identificationRefusedStatus(false)).toBe("NON_CONFORME");
+    expect(identificationRefusedStatus()).toBe("A_VERIFIER");
+    expect(identificationHint("ALIMENT", false, false)).toBe("Corriger la fiche avant de valider");
+    expect(identificationHint("ALIMENT", false)).toBe("À vérifier : corriger la fiche si besoin");
+  });
+
+  it("waits for the tick, then reads Oui / Non", () => {
     expect(byCode(rows({}, { identificationOk: null }), "C5")).toMatchObject({
       key: "IDENTIFICATION",
       status: "A_CONFIRMER",
@@ -331,9 +348,8 @@ describe("C5 — identification", () => {
       detail: "Désignation lue sur l'échantillon, comparée à la fiche",
     });
     expect(byCode(rows({}, { identificationOk: false }), "C5")).toMatchObject({
-      status: "NON_CONFORME",
+      status: identificationRefusedStatus(),
       reason: "IDENTIFICATION",
-      detail: "Corriger la fiche avant de valider",
     });
   });
 });
@@ -346,7 +362,7 @@ describe("the rows and the proposal", () => {
     expect(rows().every((row) => row.code && row.text)).toBe(true);
   });
 
-  it("forces « non conforme » after the paper's rules, and blocks the sending while a tick is missing", () => {
+  it("C5 « Non » leaves the sample conform, its motif at hand, nothing to justify (I10), and blocks the sending while a tick is missing", () => {
     const paper = receptionChecklist(
       {
         lineKind: "ALIMENT",
@@ -362,13 +378,18 @@ describe("the rows and the proposal", () => {
       DEFAULT_THRESHOLDS,
       { exploitable: true }
     );
-    expect(proposedConformity([...paper, ...rows({}, { identificationOk: false })])).toMatchObject({
-      conformity: false,
-      forced: true,
+    const refused = [...paper, ...rows({}, { identificationOk: false })];
+    expect(proposedConformity(refused)).toMatchObject({
+      conformity: true,
+      forced: false,
       rule: null,
-      code: "C5",
+      code: null,
       reason: "IDENTIFICATION",
     });
+    // A warning only (as the DLC): no « Observation de réception » required for it.
+    expect(rowToJustify(refused, true, "")).toBeNull();
+    // Switch `OBSERVATION_ONLY_DELAY_AND_TEMPERATURE` off: every « à vérifier » needs it again.
+    expect(rowToJustify(refused, true, "", false)?.code).toBe("C5");
     expect(proposedConformity([...paper, ...rows({}, { identificationOk: null })])).toMatchObject({ forced: false, pending: true });
     expect(proposedConformity([...paper, ...rows()])).toMatchObject({ conformity: true, forced: false, pending: false });
   });
@@ -378,7 +399,9 @@ describe("the rows and the proposal", () => {
       identificationMissing:
         "Indiquez si l'identification est conforme à la fiche (rechargez la page si elle date d'avant la mise à jour).",
     });
-    expect(complementaryRefusal(byCode(rows({}, { identificationOk: false }), "C5"))).toBe(
+    // The wording of a C5 refused while `IDENTIFICATION_TO_VERIFY` is off.
+    const c5 = byCode(rows({}, { identificationOk: false }), "C5");
+    expect(complementaryRefusal({ ...c5, detail: identificationHint("ALIMENT", false, false) })).toBe(
       "Contrôle C5 « Identification lisible et conforme à la fiche (désignation, lot, DLC) » non conforme — corriger la fiche avant de valider. L'échantillon ne peut pas être déclaré conforme."
     );
     // A detail opening on an acronym keeps its capitals (recette locale 10/10: « c4 : flacon… »).

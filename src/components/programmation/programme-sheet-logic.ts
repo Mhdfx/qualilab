@@ -2,6 +2,7 @@ import type { CancelReason, Family, ProgrammePriority, SampleStatus } from "@/ge
 import { BENCH_STATUSES, isUnclaimed } from "@/lib/bench-access";
 import { pickCriterion } from "@/lib/interpretation";
 import { PLAIN_UNIT_CONTEXT, unitJudges, type UnitContext } from "@/lib/result-unit";
+import { SURFACE_DESCRIBED_N_FROM_CRITERION } from "@/lib/lab-proposals";
 import { ANALYSIS_FAMILY_LABELS, CANCEL_REASON_LABELS, formatDateTime } from "@/lib/labels";
 import { roundMoney } from "@/lib/invoice-math";
 import type { InvoiceFact } from "@/lib/billing";
@@ -156,17 +157,38 @@ export function criterionJudges(
 }
 
 /**
+ * Whether a family's criterion sets the n proposed for this line. As
+ * `criterionJudges`, except on a surface described in words while
+ * `SURFACE_DESCRIBED_N_FROM_CRITERION` is off (hypothèse, à confirmer par
+ * D-4 — review of lot 5A): there the rule before lot 5A decides, so a
+ * « /cm² » criterion that J6 now judges a couteau against does not propose
+ * its n = 5 for a single object.
+ */
+export function criterionSetsUnitCount(
+  criterion: Pick<CriterionRef, "parameterId" | "unit">,
+  context: UnitContext = PLAIN_UNIT_CONTEXT,
+  referential?: Pick<ProgrammeReferentialData, "parameters">,
+  nFromCriterion: boolean = SURFACE_DESCRIBED_N_FROM_CRITERION
+): boolean {
+  if (nFromCriterion || context.lineKind !== "SURFACE") return criterionJudges(criterion, context, referential);
+  return unitJudges(context, criterion.unit ?? parameterUnitIn(referential)(criterion.parameterId), undefined, false);
+}
+
+/**
  * The units the type's plans read: the largest n of the criteria that can
  * judge this line (`criterionJudges`), 0 without any — a criterion the bench
- * sets aside never asks for R1 … Rn.
+ * sets aside never asks for R1 … Rn; on a surface described in words, the
+ * criteria per area only while `SURFACE_DESCRIBED_N_FROM_CRITERION` is on
+ * (`criterionSetsUnitCount`).
  */
 export function typeUnitCount(
   type: ProductTypeRef | undefined,
   context: UnitContext = PLAIN_UNIT_CONTEXT,
-  referential?: Pick<ProgrammeReferentialData, "parameters">
+  referential?: Pick<ProgrammeReferentialData, "parameters">,
+  nFromCriterion: boolean = SURFACE_DESCRIBED_N_FROM_CRITERION
 ): number {
   return criteriaOf(type)
-    .filter((criterion) => criterionJudges(criterion, context, referential))
+    .filter((criterion) => criterionSetsUnitCount(criterion, context, referential, nFromCriterion))
     .reduce((max, criterion) => Math.max(max, criterion.n), 0);
 }
 
@@ -857,6 +879,9 @@ export function entryChecks(
     produit?: string | null;
     receptionExploitable?: boolean | null;
     receptionIdentificationOk?: boolean | null;
+    /** The reception's stored verdict — C5 says it when it decided (I10, review of lot 5A). */
+    conformity?: boolean | null;
+    conformityReason?: ProgrammeSampleData["conformityReason"];
     storageClass?: ProgrammeSampleData["storageClass"];
     receptionTemperatureSource?: ProgrammeSampleData["receptionTemperatureSource"];
     expiryDate?: string | null;
@@ -915,9 +940,25 @@ export function entryChecks(
         detail: "Non renseigné : échantillon réceptionné avant les contrôles complémentaires",
       };
     }
+    // I10 (review of lot 5A): C5 « Non » is « à vérifier » since lot 5A, but a
+    // sample received before it — or declared so by hand — is stored non
+    // conforme, motif « Identification »: the row says the stored verdict
+    // instead of a hint the reception no longer has to follow.
+    if (
+      row.code === "C5" &&
+      sample.receptionIdentificationOk === false &&
+      sample.conformity === false &&
+      sample.conformityReason === "IDENTIFICATION"
+    ) {
+      return { ...row, status: "A_VERIFIER", detail: IDENTIFICATION_DECLARED_NON_CONFORME };
+    }
     return row.status === "NON_CONFORME" ? { ...row, status: "A_VERIFIER" } : row;
   });
 }
+
+/** C5's words on the programme sheet when the reception stored the sample non conforme for its identification. */
+export const IDENTIFICATION_DECLARED_NON_CONFORME =
+  "Non : échantillon déclaré non conforme à la réception (motif « Identification »)";
 
 /**
  * The série's times and the reception instant as received — C1 and C7

@@ -1,15 +1,28 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { FlaskConical, ClipboardCheck, AlertTriangle, CheckCircle2, Inbox, type LucideIcon } from "lucide-react";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { VIEW_PARAM, parseView } from "@/lib/dashboard-view";
 import { BENCH_VIEWS, benchViewWhere, type BenchView } from "@/lib/circuit-views";
-import { UNCLAIMED_WHERE, benchHidesClient, benchQueueWhereFor, takenByOthersWhere } from "@/lib/bench-access";
-import { TAKE_OVER_COLLEAGUE } from "@/lib/lab-proposals";
+import { UNCLAIMED_WHERE, benchHidesClient, benchQueueWhereFor, colleaguesListed, takenByOthersWhere } from "@/lib/bench-access";
+import {
+  BENCH_ORDER,
+  TAKE_SORTS,
+  TAKE_SORT_PARAM,
+  parseTakeSort,
+  takeListDescription,
+  takeListOrder,
+  takeListRows,
+  takeSortQuery,
+  truncatedTakeNotice,
+  type TakeSort,
+} from "@/lib/bench-order";
+import { TAKE_LIST_BY_NUMBER, TAKE_OVER_COLLEAGUE } from "@/lib/lab-proposals";
 import { isCurrentSendBack, maySendBack, type SendBackState } from "@/lib/send-back";
 import { lastSubmissionsOf } from "@/lib/send-back-server";
-import { currentTakeOversOf } from "@/lib/take-over-server";
+import { holderTakesOf } from "@/lib/take-over-server";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard, type StatAccent } from "@/components/ui/StatCard";
 import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
@@ -43,7 +56,9 @@ const TILES: { view: BenchView; icon: LucideIcon; accent: StatAccent; wide?: boo
 const EMPTY: Record<BenchView, { title: string; text: string }> = {
   a_prendre: {
     title: "Rien à prendre",
-    text: "Les échantillons dont le programme d'analyse est confirmé apparaissent ici, les urgents d'abord puis les plus anciens, jusqu'à ce qu'un technicien les prenne en charge.",
+    text: TAKE_LIST_BY_NUMBER
+      ? "Les échantillons dont le programme d'analyse est confirmé apparaissent ici, par numéro, jusqu'à ce qu'un technicien les prenne en charge."
+      : "Les échantillons dont le programme d'analyse est confirmé apparaissent ici, les urgents d'abord puis les plus anciens, jusqu'à ce qu'un technicien les prenne en charge.",
   },
   a_commencer: {
     title: "Aucune analyse à commencer",
@@ -125,8 +140,6 @@ const WORK_ITEM_SELECT = {
   client: { select: { name: true } },
 } as const satisfies Prisma.SampleSelect;
 
-/** The bench order: the urgent samples first, then the oldest receptions. */
-const BENCH_ORDER: Prisma.SampleOrderByWithRelationInput[] = [{ priority: "desc" }, { receivedAt: "asc" }];
 /** « Anomalies » reaches the archive: the most recent first. */
 const ARCHIVE_ORDER: Prisma.SampleOrderByWithRelationInput[] = [{ receivedAt: "desc" }, { id: "asc" }];
 
@@ -147,6 +160,13 @@ export default async function TechnicienPage({
   // the page, calendar days on the laboratory's clock (`received-age.ts`).
   // The tiles keep counting the whole bench.
   const age = parseReceivedAge(params[RECEIVED_AGE_PARAM]);
+  // « À prendre » by N° de série, or by N° de contrôle (J8, Q106 of 20/11):
+  // kept in every link of the page, as the filter is.
+  const sort = parseTakeSort(params[TAKE_SORT_PARAM]);
+  const kept = TAKE_LIST_BY_NUMBER ? takeSortQuery(sort) : {};
+  const takeOrder = takeListOrder(sort);
+  // A technician lists their colleagues' samples only while J7 is off (2.14 of 20/11, « pas visible »).
+  const listColleagues = colleaguesListed(session.role);
   const now = new Date();
   const aged = (where: Prisma.SampleWhereInput): Prisma.SampleWhereInput =>
     age === null ? where : { AND: [where, { receivedAt: { lt: receivedBefore(age, now) } }] };
@@ -158,19 +178,24 @@ export default async function TechnicienPage({
   // their colleagues' samples are listed read-only. The admin never takes:
   // they oversee « À prendre » and every taken sample, holder named.
   const count = (tile: BenchView) => prisma.sample.count({ where: benchViewWhere(tile, session) });
-  const list = (where: Prisma.SampleWhereInput, orderBy = BENCH_ORDER): Promise<Omit<WorkItem, "sentBack" | "takenOverAt">[]> =>
+  const list = (where: Prisma.SampleWhereInput, orderBy = BENCH_ORDER): Promise<Omit<WorkItem, "sentBack" | "takenOverAt" | "takenAt">[]> =>
     blind
       ? prisma.sample.findMany({ where: aged(where), select: BLIND_WORK_ITEM_SELECT, orderBy, take: LIST_LIMIT })
       : prisma.sample.findMany({ where: aged(where), select: WORK_ITEM_SELECT, orderBy, take: LIST_LIMIT });
-  const none: Promise<Omit<WorkItem, "sentBack" | "takenOverAt">[]> = Promise.resolve([]);
+  const none: Promise<Omit<WorkItem, "sentBack" | "takenOverAt" | "takenAt">[]> = Promise.resolve([]);
 
   // Every list and every count in one round of parallel queries. With a
   // view, the page is that one list; without, the three lists of the bench.
-  const [viewItems, free, held, colleagues, toTake, waiting, inProgress, anomalies, submitted] = await Promise.all([
-    view ? list(benchViewWhere(view, session), view === "anomalies" ? ARCHIVE_ORDER : BENCH_ORDER) : none,
-    view ? none : list(UNCLAIMED_WHERE),
+  const [loadedView, loadedFree, held, colleagues, toTake, waiting, inProgress, anomalies, submitted] = await Promise.all([
+    view
+      ? list(
+          benchViewWhere(view, session),
+          view === "anomalies" ? ARCHIVE_ORDER : view === "a_prendre" ? takeOrder : BENCH_ORDER
+        )
+      : none,
+    view ? none : list(UNCLAIMED_WHERE, takeOrder),
     view ? none : list(isTechnician ? benchQueueWhereFor(session) : takenByOthersWhere(session)),
-    view || !isTechnician ? none : list(takenByOthersWhere(session)),
+    view || !listColleagues ? none : list(takenByOthersWhere(session)),
     // Counted with each view's own filter: « Anomalies » counts samples (not
     // readings) and « Résultats soumis » samples already off the bench.
     count("a_prendre"),
@@ -180,20 +205,39 @@ export default async function TechnicienPage({
     count("soumis"),
   ]);
 
+  // « À prendre » sorted again by the numbers themselves (J8): the database
+  // ranks by the instant each was drawn at, which two overlapping
+  // receptions may invert (`compareTakeOrder`, review of lot 5A).
+  const viewItems = view === "a_prendre" ? takeListRows(sort, loadedView) : loadedView;
+  const free = takeListRows(sort, loadedFree);
+  // Cut at LIST_LIMIT, « À prendre » no longer has its urgent samples first
+  // (hypothèse D-2): the notice counts those left out.
+  const takeShown = view === "a_prendre" ? viewItems : view ? null : free;
+  const urgentToTake =
+    takeShown && takeShown.length === LIST_LIMIT && TAKE_LIST_BY_NUMBER
+      ? await prisma.sample.count({ where: aged({ AND: [UNCLAIMED_WHERE, { priority: "URGENTE" }] }) })
+      : 0;
+  const takeTruncated = takeShown
+    ? truncatedTakeNotice(takeShown.length, LIST_LIMIT, takeShown.filter((item) => item.priority === "URGENTE").length, urgentToTake)
+    : null;
+
   // « Renvoyé » only while the send-back is unanswered (B2): one grouped
   // read of the journal, for the few rows that may show it. « Repris par B
   // · <time> » (C3): a take-over never moves `assignedAt` (the start of the
-  // analyses), its journal row dates it.
+  // analyses), its journal row dates it — and so does a take after an
+  // administrator handed the sample over with its readings (J7, review of
+  // lot 5A): « Pris par B · <time> » is B's take, never A's.
   const rows = [...viewItems, ...free, ...held, ...colleagues];
-  const [submissions, takeOvers] = await Promise.all([
+  const [submissions, takes] = await Promise.all([
     lastSubmissionsOf(rows.filter(maySendBack).map((item) => item.id)),
-    currentTakeOversOf(rows),
+    holderTakesOf(rows),
   ]);
-  const withSendBack = <T extends SendBackState & { id: string }>(items: T[]) =>
+  const withSendBack = <T extends SendBackState & { id: string; assignedAt: Date | null }>(items: T[]) =>
     items.map((item) => ({
       ...item,
       sentBack: isCurrentSendBack(item, submissions.get(item.id) ?? null),
-      takenOverAt: takeOvers.get(item.id)?.at ?? null,
+      takenOverAt: takes.get(item.id)?.takeOver?.at ?? null,
+      takenAt: takes.get(item.id)?.takenAt ?? item.assignedAt,
     }));
 
   const values: Record<BenchView, number> = {
@@ -222,7 +266,7 @@ export default async function TechnicienPage({
                 value={values[tile.view]}
                 icon={tile.icon}
                 accent={tile.accent}
-                href={receivedAgeHref(PATH, tile.view, age, ANCHOR)}
+                href={receivedAgeHref(PATH, tile.view, age, ANCHOR, kept)}
                 active={view === tile.view}
               />
             </div>
@@ -230,20 +274,30 @@ export default async function TechnicienPage({
         </div>
       </section>
 
-      <ReceivedAgeFilter path={PATH} view={view} days={age} anchor={ANCHOR} />
+      <ReceivedAgeFilter path={PATH} view={view} days={age} anchor={ANCHOR} kept={kept} />
 
       {view ? (
         <BenchList
           id={ANCHOR}
           title={BENCH_VIEWS[view]}
           count={viewItems.length}
-          notice={<ViewFilterNotice label={BENCH_VIEWS[view]} resetHref={receivedAgeHref(PATH, null, age, ANCHOR)} className="mb-3" />}
+          description={view === "a_prendre" ? takeListDescription(sort) : undefined}
+          notice={
+            <>
+              <ViewFilterNotice label={BENCH_VIEWS[view]} resetHref={receivedAgeHref(PATH, null, age, ANCHOR, kept)} className="mb-3" />
+              {view === "a_prendre" && TAKE_LIST_BY_NUMBER && (
+                <TakeSortChoice sort={sort} hrefOf={(choice) => receivedAgeHref(PATH, view, age, ANCHOR, takeSortQuery(choice))} />
+              )}
+            </>
+          }
           truncated={
-            viewItems.length === LIST_LIMIT
-              ? view === "anomalies"
-                ? `Seuls les ${LIST_LIMIT} échantillons les plus récents sont affichés.`
-                : `La liste est limitée aux ${LIST_LIMIT} premiers échantillons.`
-              : null
+            view === "a_prendre"
+              ? takeTruncated
+              : viewItems.length === LIST_LIMIT
+                ? view === "anomalies"
+                  ? `Seuls les ${LIST_LIMIT} échantillons les plus récents sont affichés.`
+                  : `La liste est limitée aux ${LIST_LIMIT} premiers échantillons.`
+                : null
           }
         >
           <WorkQueue
@@ -259,8 +313,16 @@ export default async function TechnicienPage({
             id="a-prendre"
             title={BENCH_VIEWS.a_prendre}
             count={free.length}
-            description="Programme confirmé, personne ne les a pris : les urgents d'abord, puis les plus anciens."
-            truncated={free.length === LIST_LIMIT ? `La liste est limitée aux ${LIST_LIMIT} premiers échantillons.` : null}
+            description={takeListDescription(sort)}
+            notice={
+              TAKE_LIST_BY_NUMBER ? (
+                <TakeSortChoice
+                  sort={sort}
+                  hrefOf={(choice) => receivedAgeHref(PATH, null, age, "a-prendre", takeSortQuery(choice))}
+                />
+              ) : undefined
+            }
+            truncated={takeTruncated}
           >
             <WorkQueue items={withSendBack(free)} viewerId={viewerId} now={now} empty={EMPTY.a_prendre} />
           </BenchList>
@@ -279,7 +341,7 @@ export default async function TechnicienPage({
             <WorkQueue items={withSendBack(held)} viewerId={viewerId} now={now} empty={isTechnician ? undefined : TAKEN_EMPTY} />
           </BenchList>
 
-          {isTechnician && (
+          {listColleagues && (
             <BenchList
               id="collegues"
               title="Pris par un collègue"
@@ -299,6 +361,37 @@ export default async function TechnicienPage({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * « Trier par : N° de série · N° de contrôle » above « À prendre » (J8): two
+ * links, the order in force marked as the current one. Server-rendered.
+ */
+function TakeSortChoice({ sort, hrefOf }: { sort: TakeSort; hrefOf: (sort: TakeSort) => string }) {
+  return (
+    <nav aria-label="Ordre de la liste « À prendre »" className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-slate-600">Trier par :</span>
+      {(Object.keys(TAKE_SORTS) as TakeSort[]).map((choice) =>
+        choice === sort ? (
+          <span
+            key={choice}
+            aria-current="true"
+            className="rounded-full bg-brand-light px-2.5 py-1 text-xs font-semibold text-brand"
+          >
+            {TAKE_SORTS[choice]}
+          </span>
+        ) : (
+          <Link
+            key={choice}
+            href={hrefOf(choice)}
+            className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:border-brand hover:text-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+          >
+            {TAKE_SORTS[choice]}
+          </Link>
+        )
+      )}
+    </nav>
   );
 }
 

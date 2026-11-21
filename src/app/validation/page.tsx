@@ -15,6 +15,8 @@ import {
 import { rechercheHref } from "@/lib/sample-search";
 import { SERIES_VALIDATION } from "@/lib/lab-proposals";
 import { alertAwaitingReport } from "@/lib/alert-moment";
+import { IN_FORCE_VERSION_TRACE_SELECT, pendingReportChange, versionIssuedAt } from "@/lib/report-amendment";
+import { reportVersionSent } from "@/lib/report-actions";
 import { ALERT_RESULT_WHERE } from "@/lib/contamination-alert";
 import { serieBatchCounts, serieViewActions } from "@/lib/serie-validation";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -78,7 +80,9 @@ const ITEM_SELECT = {
   results: { select: { conform: true, workStatus: true } },
   // AMENDEMENT.md §2: a reopened report shows the badge « Amendement ».
   // `amendedAt`: K7, an amended version may alert again (`alertAwaitingReport`).
-  report: { select: { amendmentPending: true, amendedAt: true } },
+  // `sentAt`: K11, a correction before send of a version never sent says so.
+  // `versions` (K11, review of lot 5A): a correction reissued in place dates the version in force (`versionIssuedAt`).
+  report: { select: { amendmentPending: true, sentAt: true, ...IN_FORCE_VERSION_TRACE_SELECT } },
   // K7: « Alerte en attente de l'envoi du rapport » — the results that alert, and whether it left.
   alertsSentAt: true,
   _count: { select: { results: { where: ALERT_RESULT_WHERE } } },
@@ -138,8 +142,13 @@ export default async function ValidationPage({
   // K7: an approved line whose alert waits for the report's send says so.
   const shown = shownRows.map(({ alertsSentAt, _count, report, ...item }) => ({
     ...item,
-    report: report ? { amendmentPending: report.amendmentPending } : null,
-    alertAwaitingReport: alertAwaitingReport({ status: item.status, alertsSentAt, alerting: _count.results, versionIssuedAt: report?.amendedAt ?? null }),
+    report: report
+      ? {
+          amendmentPending: report.amendmentPending,
+          correction: pendingReportChange(report.amendmentPending, reportVersionSent(report)) === "correction",
+        }
+      : null,
+    alertAwaitingReport: alertAwaitingReport({ status: item.status, alertsSentAt, alerting: _count.results, versionIssuedAt: versionIssuedAt(report) }),
   }));
   // « Toute la série » (re-ask 2.16, `SERIES_VALIDATION`): per série shown,
   // what its buttons would take for this person — counted over the whole

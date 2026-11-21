@@ -1,7 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 import type { ResultWorkStatus, SampleStatus } from "@/generated/prisma/enums";
 import type { Role } from "./roles";
-import { BLIND_BENCH_SCREENS } from "./lab-proposals";
+import { BLIND_BENCH_SCREENS, COLLEAGUE_SAMPLES_HIDDEN } from "./lab-proposals";
 
 /**
  * Who works a line at the bench — the « prise en charge libre » of 13/10
@@ -104,11 +104,38 @@ export function splitParameters<T extends { technicianId: string | null }>(
 }
 
 /**
- * May a technician open this sheet? Their own work at any step, and the
- * whole shared bench (« À prendre » and colleagues' samples, read-only).
+ * Is this sample hidden from this technician — lot 5A, J7 (2.14 of 20/11,
+ * « pas visible »; hypothèse, à confirmer par D-1): a colleague holds it and
+ * they hold none of it (a line shared through a legacy parameter stays
+ * visible to each of its holders). Its sheet then answers 404, as a sample
+ * that does not exist. `enabled` is the switch, passed by the tests.
  */
-export function canReadAtBench(sample: BenchSample & { status: SampleStatus }, userId: string): boolean {
-  return isOnBenchOf(sample, userId) || BENCH_STATUSES.includes(sample.status);
+export function colleagueSampleHidden(
+  sample: BenchSample,
+  userId: string,
+  enabled: boolean = COLLEAGUE_SAMPLES_HIDDEN
+): boolean {
+  return enabled && isHeldByOther(sample, userId);
+}
+
+/** Does a technician's bench list « Pris par un collègue »? Not while J7 hides those samples. */
+export function colleaguesListed(role: Role, hidden: boolean = COLLEAGUE_SAMPLES_HIDDEN): boolean {
+  return role === "TECHNICIEN" && !hidden;
+}
+
+/**
+ * May a technician open this sheet? Their own work at any step, and the
+ * shared bench: « À prendre », and — while J7 is off — their colleagues'
+ * samples, read-only (`colleagueSampleHidden`).
+ */
+export function canReadAtBench(
+  sample: BenchSample & { status: SampleStatus },
+  userId: string,
+  colleaguesHidden: boolean = COLLEAGUE_SAMPLES_HIDDEN
+): boolean {
+  if (isOnBenchOf(sample, userId)) return true;
+  if (colleagueSampleHidden(sample, userId, colleaguesHidden)) return false;
+  return BENCH_STATUSES.includes(sample.status);
 }
 
 // ─── Prisma filters ─────────────────────────────────────────────────────────
@@ -258,11 +285,29 @@ export const TAKE_MESSAGES = {
   notYours: (name: string) => `Seul ${name} ou un administrateur peut libérer cet échantillon.`,
   offBench: "Cet échantillon n'est plus à la paillasse : il ne peut plus être libéré.",
   typed: "Des résultats sont déjà saisis sur cet échantillon : il ne peut plus être libéré.",
+  typedAdminOnly:
+    "Des résultats sont déjà saisis sur cet échantillon : seul un administrateur peut encore le libérer.",
   heldByOther: (name: string) =>
     `Cet échantillon est pris en charge par ${name} : vous ne pouvez pas y saisir de résultats.`,
   submitUnclaimed:
     "Personne n'a pris cet échantillon en charge : un technicien doit le prendre avant la soumission.",
 } as const;
+
+/**
+ * The colleague a refusal names to a technician: their name while J7 is
+ * off; while the colleagues' samples are hidden (2.14 of 20/11), never —
+ * « un collègue » (review of lot 5A: the sheet answers 404, the APIs no
+ * longer say who holds the sample). The words keep their shape, so a sheet
+ * whose sample was handed over meanwhile still keeps its typing
+ * (`lostSampleHolder`), and a take that lost the race still says why.
+ */
+export function colleagueNamed(
+  name: string | null | undefined,
+  fallback: string = "un collègue",
+  hidden: boolean = COLLEAGUE_SAMPLES_HIDDEN
+): string {
+  return hidden ? fallback : (name ?? fallback);
+}
 
 /** The sample as the take and the give-back read it, under the row lock. */
 export type TakeState = {
@@ -281,11 +326,15 @@ export type Refusal = { status: 403 | 404 | 409; error: string };
  * May this technician take the sample? Null = yes. Already theirs is not a
  * refusal: the route answers it as done (a double click).
  */
-export function takeRefusal(state: TakeState | null, userId: string): Refusal | null {
+export function takeRefusal(
+  state: TakeState | null,
+  userId: string,
+  colleaguesHidden: boolean = COLLEAGUE_SAMPLES_HIDDEN
+): Refusal | null {
   if (!state) return { status: 404, error: TAKE_MESSAGES.notFound };
   if (state.technicianId === userId) return null;
   if (state.technicianId !== null || state.heldByParameter) {
-    return { status: 409, error: TAKE_MESSAGES.takenBy(state.holderName ?? "un collègue") };
+    return { status: 409, error: TAKE_MESSAGES.takenBy(colleagueNamed(state.holderName, undefined, colleaguesHidden)) };
   }
   if (!BENCH_STATUSES.includes(state.status)) return { status: 409, error: TAKE_MESSAGES.notOnBench };
   if (state.analysisBlocked) return { status: 409, error: TAKE_MESSAGES.blocked };
@@ -293,21 +342,42 @@ export function takeRefusal(state: TakeState | null, userId: string): Refusal | 
 }
 
 /**
+ * Does the administrator's « Libérer » give back a sample that already
+ * carries readings? Lot 5A, J7: while the colleagues' samples are hidden,
+ * it is the only way to hand a sample over (2.13's « Reprendre » is no
+ * longer reached) — so yes, for the ADMIN only; the readings stay, each with
+ * its author (D-09). The holder never frees a sample once a reading is typed.
+ */
+export function adminReleasesTypedSample(
+  role: Role,
+  colleaguesHidden: boolean = COLLEAGUE_SAMPLES_HIDDEN
+): boolean {
+  return colleaguesHidden && role === "ADMIN";
+}
+
+/**
  * May this user give the sample back to « À prendre »? Null = yes. Its
  * holder or an administrator, while it is on the bench and nothing is
- * typed on it (`hasTypedResult`).
+ * typed on it (`hasTypedResult`) — the administrator also once something is
+ * typed, while J7 is on (`adminReleasesTypedSample`).
  */
 export function untakeRefusal(
   state: TakeState | null,
   typedResults: number,
-  session: { id: string; role: Role }
+  session: { id: string; role: Role },
+  colleaguesHidden: boolean = COLLEAGUE_SAMPLES_HIDDEN
 ): Refusal | null {
   if (!state) return { status: 404, error: TAKE_MESSAGES.notFound };
   if (state.technicianId === null && !state.heldByParameter) return { status: 409, error: TAKE_MESSAGES.notTaken };
   if (session.role !== "ADMIN" && state.technicianId !== session.id) {
-    return { status: 403, error: TAKE_MESSAGES.notYours(state.holderName ?? "le technicien qui l'a pris") };
+    return {
+      status: 403,
+      error: TAKE_MESSAGES.notYours(colleagueNamed(state.holderName, "le technicien qui l'a pris", colleaguesHidden)),
+    };
   }
   if (!BENCH_STATUSES.includes(state.status)) return { status: 409, error: TAKE_MESSAGES.offBench };
-  if (typedResults > 0) return { status: 409, error: TAKE_MESSAGES.typed };
+  if (typedResults > 0 && !adminReleasesTypedSample(session.role, colleaguesHidden)) {
+    return { status: 409, error: colleaguesHidden ? TAKE_MESSAGES.typedAdminOnly : TAKE_MESSAGES.typed };
+  }
   return null;
 }

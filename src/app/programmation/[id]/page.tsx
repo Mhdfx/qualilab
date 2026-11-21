@@ -17,6 +17,7 @@ import { requireRole, getSession } from "@/lib/auth";
 import { roleAllowed } from "@/lib/roles";
 import { BENCH_STATUSES } from "@/lib/bench-access";
 import { prisma } from "@/lib/prisma";
+import { holderTakenAtOf } from "@/lib/take-over-server";
 import { heldInvoices } from "@/lib/billing-hold";
 import { heldInvoiceFor, seesBilling } from "@/lib/price-access";
 import { getLabSettings } from "@/lib/lab-settings";
@@ -148,6 +149,12 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
   const programme = proposal?.dueAt ? { ...stored, dueAt: proposal.dueAt.toISOString() } : stored;
   // Who took it at the bench — the holder, else a legacy per-analysis technician (before 13/10).
   const holder = benchHolder(sample);
+  // Since when: the holder's own take (`holderTakenAt`) — a take-over, or a
+  // take after an administrator handed the sample over with its readings
+  // (J7), is dated by the journal; `assignedAt` stays the start of the analyses.
+  const heldSince = holder?.assignedAt
+    ? ((await holderTakenAtOf({ id: row.id, technicianId: row.technicianId, assignedAt: row.assignedAt })) ?? holder.assignedAt)
+    : null;
   // The responsable des paramètres changes the analyses here once the bench
   // has started (16/10, Q128 — « Corriger les analyses »); the admin
   // corrects the whole fiche.
@@ -269,8 +276,8 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
                 {holder ? (
                   <>
                     {holder.names}
-                    {holder.assignedAt && (
-                      <span className="ml-1.5 text-xs font-normal text-slate-500">le {formatDateTime(holder.assignedAt)}</span>
+                    {heldSince && (
+                      <span className="ml-1.5 text-xs font-normal text-slate-500">le {formatDateTime(heldSince)}</span>
                     )}
                   </>
                 ) : (

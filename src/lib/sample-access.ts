@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/auth";
-import { TAKE_MESSAGES, isHeldByOther } from "@/lib/bench-access";
+import { TAKE_MESSAGES, colleagueNamed, isHeldByOther } from "@/lib/bench-access";
 
 /**
  * Loads a sample for the result operations of the bench (`PUT …/results`,
@@ -65,8 +65,10 @@ export async function loadAssignedSample(
   }
 
   if (session.role === "TECHNICIEN" && isHeldByOther(sample, session.id)) {
-    const holder =
-      sample.technician?.name ?? sample.parameters.find((line) => line.technician)?.technician?.name ?? "un collègue";
+    // Never named while J7 hides the colleagues' samples (`colleagueNamed`).
+    const holder = colleagueNamed(
+      sample.technician?.name ?? sample.parameters.find((line) => line.technician)?.technician?.name
+    );
     return {
       error: NextResponse.json({ error: TAKE_MESSAGES.heldByOther(holder) }, { status: 403 }),
     };

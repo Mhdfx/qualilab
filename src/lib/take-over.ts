@@ -1,6 +1,6 @@
 import type { SampleStatus } from "@/generated/prisma/enums";
 import { BENCH_STATUSES, TAKE_MESSAGES, type Refusal, type TakeState } from "./bench-access";
-import { TAKE_OVER_COLLEAGUE } from "./lab-proposals";
+import { COLLEAGUE_SAMPLES_HIDDEN, TAKE_OVER_COLLEAGUE } from "./lab-proposals";
 import { formatDateTime } from "./labels";
 import type { Role } from "./roles";
 
@@ -55,9 +55,15 @@ export const TAKE_OVER_MESSAGES = {
 export function takeOverRefusal(
   state: TakeState | null,
   session: { id: string; role: Role },
-  enabled: boolean = TAKE_OVER_COLLEAGUE
+  enabled: boolean = TAKE_OVER_COLLEAGUE,
+  colleaguesHidden: boolean = COLLEAGUE_SAMPLES_HIDDEN
 ): Refusal | null {
   if (!enabled) return { status: 403, error: TAKE_OVER_MESSAGES.disabled };
+  // Lot 5A, J7 (2.14 of 20/11, hypothèse D-1): a colleague's sample is no
+  // longer reached — the administrator's « Libérer » hands it over instead.
+  // Answered as a sample that does not exist, like its sheet (review of lot
+  // 5A: the button is never offered, only an address typed reaches it).
+  if (colleaguesHidden) return state && state.technicianId === session.id ? null : { status: 404, error: TAKE_MESSAGES.notFound };
   if (session.role !== "TECHNICIEN") return { status: 403, error: TAKE_OVER_MESSAGES.technicianOnly };
   if (!state) return { status: 404, error: TAKE_MESSAGES.notFound };
   if (state.technicianId === session.id) return null;
@@ -147,6 +153,71 @@ export function currentTakeOver(rows: readonly HolderRow[], holderId: string | n
   };
 }
 
+/**
+ * Since when the current holder holds the sample — the « pris le … » of the
+ * bench, the validation and the programme screens (review of lot 5A).
+ *
+ * - Taken over from a colleague (C3): the take-over's own row
+ *   (`currentTakeOver`).
+ * - Taken from « À prendre » after an administrator freed the sample with
+ *   its readings on it (J7, SAMPLE_UNTAKEN `typedResults` > 0): `assignedAt`
+ *   was kept as the start of the analyses — the report's « Date d'analyse »
+ *   — so this take is dated by its own SAMPLE_TAKEN row (explicit, or the
+ *   implicit one of a first reading), never by the previous holder's.
+ * - Any other take: `assignedAt`, as before.
+ *
+ * `rows` in any order; null when nobody holds it.
+ */
+export function holderTakenAt(
+  rows: readonly HolderRow[],
+  holderId: string | null,
+  assignedAt: Date | null
+): Date | null {
+  if (!holderId) return null;
+  const takeOver = currentTakeOver(rows, holderId);
+  if (takeOver) return takeOver.at;
+  const bench = rows.filter((row) => (HOLDER_ACTIONS as readonly string[]).includes(row.action));
+  const latest = bench.reduce<HolderRow | null>((last, row) => (!last || row.createdAt >= last.createdAt ? row : last), null);
+  if (latest && latest.action === "SAMPLE_TAKEN" && latest.actorId === holderId) {
+    const handedOver = bench.some(
+      (row) =>
+        row !== latest &&
+        row.action === "SAMPLE_UNTAKEN" &&
+        row.createdAt <= latest.createdAt &&
+        typedResultsOf(row) > 0
+    );
+    if (handedOver) return latest.createdAt;
+  }
+  return assignedAt;
+}
+
+/**
+ * A technician's samples in the order they took them (the printed bench
+ * sheet): by `holderTakenAt` — `takenAt`, else `assignedAt` — then by
+ * reception and code, a missing time first (as MySQL sorts NULL). A sample
+ * handed over by an administrator with its readings (J7) keeps its old
+ * `assignedAt`, and must not lead the new holder's sheet (review of lot 5A).
+ */
+export function inTakeOrder<T extends { id: string; assignedAt: Date | null; receivedAt: Date | null; code: string }>(
+  rows: readonly T[],
+  takenAt: ReadonlyMap<string, Date | null>
+): T[] {
+  const time = (date: Date | null | undefined) => (date ? date.getTime() : Number.NEGATIVE_INFINITY);
+  const key = (row: T) => time(takenAt.get(row.id) ?? row.assignedAt);
+  return [...rows].sort(
+    (a, b) =>
+      key(a) - key(b) ||
+      time(a.receivedAt) - time(b.receivedAt) ||
+      (a.code < b.code ? -1 : a.code > b.code ? 1 : 0)
+  );
+}
+
+/** How many readings a SAMPLE_UNTAKEN row says the sample carried when freed (lot 5A, J7); 0 when absent. */
+function typedResultsOf(row: HolderRow): number {
+  const typed = parseMeta(row.metadata).typedResults;
+  return typeof typed === "number" && Number.isFinite(typed) ? typed : 0;
+}
+
 function parseMeta(raw: string | null): Record<string, unknown> {
   if (!raw) return {};
   try {
@@ -176,6 +247,19 @@ export function enteredByText(
 ): string | null {
   if (!result?.enteredBy || !result.enteredAt || !(result.value || result.units.length > 0)) return null;
   return `Saisi par ${result.enteredBy.name} le ${formatDateTime(result.enteredAt)}`;
+}
+
+/**
+ * The confirmation of the administrator's « Libérer » on a sample that
+ * carries readings (lot 5A, J7): what stays (the readings, with their
+ * author), where it goes, and that its holder should be told.
+ */
+export function releaseTypedConfirmation(holderName: string): string {
+  return (
+    `Retirer cet échantillon à ${holderName} et le remettre dans « À prendre » ?\n\n` +
+    `Les résultats déjà enregistrés restent, chacun au nom de la personne qui l'a saisi ; le technicien qui le prendra en charge termine la saisie et soumet l'échantillon.\n` +
+    `Ce que ${holderName} n'a pas encore enregistré ne sera pas gardé : pensez à prévenir ${holderName}.`
+  );
 }
 
 /**

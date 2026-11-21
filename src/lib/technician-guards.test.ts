@@ -135,6 +135,7 @@ const SAMPLE_WRITES = [
   "api/samples/[id]/release/route.ts POST",
   "api/samples/[id]/reactivate/route.ts POST",
   "api/samples/[id]/reopen/route.ts POST",
+  "api/samples/[id]/correct/route.ts POST",
   "api/samples/[id]/validation/route.ts POST",
 ];
 

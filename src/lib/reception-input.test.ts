@@ -391,14 +391,22 @@ describe("validateReception — the contrôle complémentaire C5 (C3 retired on 
     }
   });
 
-  it("never declares conform a sample whose C5 says « Non »", () => {
-    const refused = validate({ ...good, lines: [good.lines[0], { ...good.lines[1], identificationOk: false }] });
-    expect(refused).toMatchObject({ ok: false, lineNumber: 2, ref: "2" });
-    if (!refused.ok) {
-      expect(refused.error).toBe(
-        "Échantillon 2 : Contrôle C5 « Identification lisible et conforme à la fiche (désignation, lot, DLC) » non conforme — corriger la fiche avant de valider. L'échantillon ne peut pas être déclaré conforme."
-      );
-    }
+  it("lot 5A, I10: accepts conform a sample whose C5 says « Non » — « à vérifier », nothing to justify", () => {
+    const accepted = validate({ ...good, lines: [good.lines[0], { ...good.lines[1], identificationOk: false }] });
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) return;
+    expect(accepted.value.lines[1]).toMatchObject({ identificationOk: false, conformity: true, conformityReason: null });
+    expect(accepted.value.lines[1].complementary.find((row) => row.code === "C5")).toMatchObject({
+      status: "A_VERIFIER",
+      reason: "IDENTIFICATION",
+    });
+    // The reception may still declare it non conforme by hand, motif « Identification ».
+    const byHand = validate({
+      ...good,
+      lines: [good.lines[0], { ...good.lines[1], identificationOk: false, conformity: false, conformityReason: "IDENTIFICATION" }],
+    });
+    expect(byHand.ok).toBe(true);
+    if (byHand.ok) expect(byHand.value.lines[1]).toMatchObject({ conformity: false, conformityReason: "IDENTIFICATION" });
   });
 
   it("keeps the motif « Emballage ou contenant non conforme » for a container judged by hand, and audits the coded rows", () => {

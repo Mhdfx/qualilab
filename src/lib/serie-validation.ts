@@ -111,7 +111,8 @@ export function serieStepRefusal(
     action === "validate" ? canValidateTechnically(sample, signer.role) : canApprove(sample, signer.role, signer.id);
   if (!check.ok) return check.error;
   if (sample.amendmentPending) {
-    return "Amendement du rapport en cours : à valider depuis sa fiche, qui montre le rapport remplacé.";
+    // A correction before send (lot 5A, K11) reads the same way: `amendmentPending` too.
+    return "Amendement du rapport en cours (ou correction avant envoi) : à valider depuis sa fiche, qui montre le rapport remplacé.";
   }
   return null;
 }
@@ -313,7 +314,9 @@ export function serieSendRefusal(sample: Pick<SerieSendCandidate, "status" | "re
   if (sample.status === "RAPPORT_ENVOYE") return "Rapport déjà envoyé : « Renvoyer au client » depuis sa fiche.";
   if (sample.status !== "VALIDE") return `Pas encore validé (« ${statusLabel(sample.status)} »).`;
   if (!sample.report) return "Rapport pas encore émis : à envoyer depuis sa fiche, qui l'émet.";
-  if (sample.report.amendmentPending) return "Amendement du rapport en cours : à émettre et envoyer depuis sa fiche.";
+  if (sample.report.amendmentPending) {
+    return "Amendement du rapport en cours (ou correction avant envoi) : à émettre et envoyer depuis sa fiche.";
+  }
   if (reportVersionSent(sample.report)) return "Cette version du rapport est déjà partie : « Renvoyer au client » depuis sa fiche.";
   return null;
 }

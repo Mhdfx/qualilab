@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { loadAssignedSample } from "@/lib/sample-access";
 import { canTransition } from "@/lib/sample-status";
 import { loadBenchPlans } from "@/lib/bench-plan";
-import { TYPED_RESULT_WHERE, canEnterParameter, hasTypedResult } from "@/lib/bench-access";
+import { TAKE_MESSAGES, TYPED_RESULT_WHERE, canEnterParameter, colleagueNamed, hasTypedResult } from "@/lib/bench-access";
 import { lockTakeState } from "@/lib/bench-take-server";
 import { dilutionToStore, effectiveFactor, parseDilution } from "@/lib/dilution";
 import { benchUnit, limitConformity, unitsAgainstLimit, valueAgainstLimit } from "@/lib/bench-reading";
@@ -19,7 +19,7 @@ import {
   type UnitReading,
 } from "@/lib/interpretation";
 import { readingsShowGerm, valueShowsGerm } from "@/lib/contamination-alert";
-import { judgingLimit, judgingThreshold, resultUnit } from "@/lib/result-unit";
+import { judgingLimit, judgingThreshold, resultUnit, surfaceUnitChoice } from "@/lib/result-unit";
 import { NOT_DONE_MESSAGE, isNotDoneText, singleValueEntry, suggestConformity } from "@/lib/result-value";
 import { resultAuthor, storedReading, typedUnits } from "@/lib/result-author";
 import { SHEET_SAVED_BY_COLLEAGUE, savedByOthersSince, sheetLoadedAt } from "@/lib/take-over-sheet";
@@ -55,6 +55,8 @@ type IncomingResult = {
   conform?: unknown;
   /** The dilution read at, as typed (« 1/100 »; J4) — absent or empty = the programmed one. */
   dilution?: unknown;
+  /** The unit chosen on a surface counted in UFC (J6 (b)) — absent or empty = the computed one. */
+  unit?: unknown;
 };
 
 type Entry = {
@@ -187,6 +189,9 @@ export async function PUT(
   const seen = new Set<string>();
 
   const entries: Entry[] = [];
+  // The unit each line would carry without a choice (J6 (b)): the journal
+  // names a unit chosen apart from it, or changed since the last save.
+  const computedUnits = new Map<string, string | null>();
 
   for (const raw of results as IncomingResult[]) {
     const parameterId =
@@ -256,6 +261,16 @@ export async function PUT(
     }
 
     const plan = bench.plans.get(parameterId);
+    // The unit of the result: « UFC/couteau », « UFC/m³ »… as computed (J1,
+    // J2, `resultUnit`) — or, on a surface counted in UFC, the one the
+    // technician chose (J6 (b), C-1 of 20/11, `surfaceUnitChoice`).
+    const baseUnit = plan ? benchUnit(plan, parameter.unit) : parameter.unit;
+    const unitChoice = surfaceUnitChoice(bench.context, baseUnit, raw.unit);
+    if ("error" in unitChoice) {
+      return NextResponse.json({ error: `${parameter.name} : ${unitChoice.error}`, parameterId }, { status: 400 });
+    }
+    const unit = unitChoice.unit;
+    computedUnits.set(parameterId, resultUnit(bench.context, baseUnit));
     // The sheet reads a line per unit or as one value exactly as the
     // programme does; a line sent the other way comes from a sheet opened
     // before the programme changed (units, product type) — nothing it holds
@@ -289,8 +304,7 @@ export async function PUT(
           value: summary.value,
           rawValue: null,
           numericValue: summary.numeric,
-          // « UFC/couteau », « UFC/m³ »… (J1, J2, `resultUnit`).
-          unit: resultUnit(bench.context, benchUnit(plan, parameter.unit)),
+          unit,
           threshold: plan.label,
           conform: verdictToConform(judged.official?.verdict ?? null),
           workStatus,
@@ -313,7 +327,7 @@ export async function PUT(
           value: summary.value,
           rawValue: null,
           numericValue: summary.numeric,
-          unit: resultUnit(bench.context, parameter.unit),
+          unit,
           threshold: parameter.threshold,
           // The worst unit against the limit, as the screen computes it;
           // the technician's choice only where the screen asks for one.
@@ -361,7 +375,7 @@ export async function PUT(
       value: entry.value,
       rawValue: entry.rawValue,
       numericValue: parsed.numeric,
-      unit: resultUnit(bench.context, parameter.unit),
+      unit,
       threshold: parameter.threshold,
       // The final value against the limit, as the screen computes it; the
       // technician's choice only where the screen asks for one.
@@ -405,6 +419,7 @@ export async function PUT(
         status: typeof sample.status;
         changed: string[];
         replaced: Record<string, string>;
+        unitChanges: Record<string, { before: string | null; after: string | null }>;
       };
   const written: Written = await prisma.$transaction(async (tx) => {
     // Two saves of the same sheet (double click, two technicians on a free
@@ -463,9 +478,12 @@ export async function PUT(
     if (session.role === "TECHNICIEN" && free && (typed || rewrites)) {
       const taken = await tx.sample.updateMany({
         where: { id: sample.id, technicianId: null },
-        data: { technicianId: session.id, assignedAt: now },
+        data: { technicianId: session.id },
       });
       took = taken.count > 0;
+      // The start of the analyses, unless they started before an
+      // administrator freed the sample with its readings (J7, `…/take`).
+      if (took) await tx.sample.updateMany({ where: { id: sample.id, assignedAt: null }, data: { assignedAt: now } });
     }
     // What each line holds now, read under the lock: a line keeps its author
     // and time unless this save changes what was typed on it (D-09).
@@ -481,12 +499,22 @@ export async function PUT(
         dilutionUsed: true,
         enteredById: true,
         enteredAt: true,
+        unit: true,
         units: { select: { unitIndex: true, rawValue: true } },
       },
     });
     const before = new Map(
       stored.map((row) => [row.parameterId, { ...storedReading(row), enteredById: row.enteredById, enteredAt: row.enteredAt }])
     );
+    // The unit of each line, before → after, where this save changes it (J6 (b)).
+    const storedUnits = new Map(stored.map((row) => [row.parameterId, row.unit]));
+    const unitChanges: Record<string, { before: string | null; after: string | null }> = {};
+    for (const entry of entries) {
+      const was = storedUnits.has(entry.parameterId)
+        ? (storedUnits.get(entry.parameterId) ?? null)
+        : (computedUnits.get(entry.parameterId) ?? null);
+      if (was !== entry.unit) unitChanges[entry.parameterId] = { before: was, after: entry.unit };
+    }
     const changed: string[] = [];
     // The colleague each retyped line is taken from (parameterId → user id).
     const replaced: Record<string, string> = {};
@@ -553,7 +581,7 @@ export async function PUT(
       });
       started = moved.count > 0;
     }
-    return { kind: "ok", took, started, status: started ? "EN_ANALYSE" : locked.status, changed, replaced };
+    return { kind: "ok", took, started, status: started ? "EN_ANALYSE" : locked.status, changed, replaced, unitChanges };
   });
   if (written.kind === "stale") {
     return NextResponse.json(
@@ -569,7 +597,7 @@ export async function PUT(
   }
   if (written.kind === "held") {
     return NextResponse.json(
-      { error: `Déjà pris par ${written.holderName ?? "un collègue"}.` },
+      { error: TAKE_MESSAGES.takenBy(colleagueNamed(written.holderName)) },
       { status: 409 }
     );
   }
@@ -607,6 +635,8 @@ export async function PUT(
       // …and who had typed the ones it retyped, so a correction or a
       // takeover never loses the original typist.
       replaced: written.replaced,
+      // The unit chosen on a surface (J6 (b)), before → after, line by line.
+      ...(Object.keys(written.unitChanges).length > 0 ? { units: written.unitChanges } : {}),
       verdicts: Object.fromEntries(entries.filter((e) => e.interpretation).map((e) => [e.parameterId, e.interpretation])),
       indicative: Object.fromEntries(entries.filter((e) => e.informalInterpretation).map((e) => [e.parameterId, e.informalInterpretation])),
     },

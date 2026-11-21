@@ -65,6 +65,8 @@ export type SheetLine = {
   dilution?: string;
   /** The factor an empty dilution means (the programme's, else the catalogue's), as the bench reads it. */
   calcFactor?: number;
+  /** The unit chosen on a surface counted in UFC (lot 5A, J6 (b)); absent on a line whose unit is computed. */
+  chosenUnit?: string;
 };
 
 /**
@@ -89,7 +91,15 @@ export function sameDilution(a: string | undefined, b: string | undefined, calcF
 function typedOf(line: SheetLine): string {
   const units = line.units.map((unit) => unit.trim());
   while (units.length > 0 && units[units.length - 1] === "") units.pop();
-  return JSON.stringify([line.value.trim(), line.note.trim(), line.workStatus, line.manualConform, units, dilutionKey(line.dilution, line.calcFactor)]);
+  return JSON.stringify([
+    line.value.trim(),
+    line.note.trim(),
+    line.workStatus,
+    line.manualConform,
+    units,
+    dilutionKey(line.dilution, line.calcFactor),
+    (line.chosenUnit ?? "").replace(/\s+/g, " ").trim(),
+  ]);
 }
 
 /**
@@ -140,6 +150,8 @@ export function followServer<L extends SheetLine>(
       ...(previous.dilution !== undefined && !sameDilution(previous.dilution, line.dilution, line.calcFactor)
         ? { dilution: previous.dilution }
         : {}),
+      // The unit chosen (J6 (b)) is typing too: kept while the line still offers a choice.
+      ...(previous.chosenUnit !== undefined && line.chosenUnit !== undefined ? { chosenUnit: previous.chosenUnit } : {}),
     };
     if (origin && typedOf(line) !== typedOf(origin) && typedOf(line) !== typedOf(kept)) overlap.push(line);
     return kept;

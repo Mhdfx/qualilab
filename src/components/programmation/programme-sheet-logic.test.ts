@@ -5,6 +5,7 @@ import { formatDateTime } from "@/lib/labels";
 import { DEFAULT_THRESHOLDS } from "@/lib/reception-rules";
 import { verbsFor } from "@/lib/sample-verbs";
 import { heldInvoiceFor } from "@/lib/price-access";
+import { SURFACE_DESCRIBED_N_FROM_CRITERION } from "@/lib/lab-proposals";
 import {
   adoptReferential,
   applyProductType,
@@ -45,6 +46,8 @@ import {
   toggleParameter,
   typeOf,
   typeUnitCount,
+  criterionSetsUnitCount,
+  IDENTIFICATION_DECLARED_NON_CONFORME,
   uncheckAllOfType,
   unitContextOf,
   unitWarning,
@@ -267,24 +270,42 @@ describe("J1 / J2 — the sheet sets aside the criteria the bench sets aside (un
     expect(unitContextOf({ lineKind: "AIR", airMethod: "BIOCOLLECTEUR", airExposureMin: null }).airMethod).toBe("BIOCOLLECTEUR");
   });
 
-  it("a criterion per cm² neither asks n = 5 nor judges a couteau; it still does on a surface given in cm²", () => {
+  it("lot 5A, J6 (C-1 of 20/11): a criterion per cm² judges a couteau too — by its value — without asking its n = 5 (hypothèse D-4)", () => {
+    expect(SURFACE_DESCRIBED_N_FROM_CRITERION).toBe(false);
+    // The n proposed stays the one before lot 5A on a described surface…
     expect(typeUnitCount(surfaces, couteau, withSurfaces)).toBe(1);
+    expect(criterionSetsUnitCount(surfaces.criteria[0], couteau, withSurfaces)).toBe(false);
+    // …and follows the judging once D-4 says so (switch on).
+    expect(typeUnitCount(surfaces, couteau, withSurfaces, true)).toBe(5);
+    expect(criterionSetsUnitCount(surfaces.criteria[0], couteau, withSurfaces, true)).toBe(true);
+    // A surface given in cm² and a plain line: the criterion's n, as always.
     expect(typeUnitCount(surfaces, cm2, withSurfaces)).toBe(5);
     expect(typeUnitCount(surfaces)).toBe(5);
     const rows = familyParameterRows({ ...initialDraft(received, withSurfaces), productTypeId: "type-surfaces" }, withSurfaces, couteau);
-    expect(rows.find((row) => row.parameterId === "p-flore")?.judges).toBe(false);
+    expect(rows.find((row) => row.parameterId === "p-flore")?.judges).toBe(true);
     expect(rows.find((row) => row.parameterId === "p-salm")?.judges).toBe(true);
+    expect(criterionJudges(surfaces.criteria[0], couteau, withSurfaces)).toBe(true);
     expect(criterionJudges(surfaces.criteria[0], cm2, withSurfaces)).toBe(true);
+  });
+
+  it("the air keeps the rule of lot 3B: a criterion per cm² neither asks its n nor judges a plate", () => {
+    const plate = unitContextOf({ lineKind: "AIR", airMethod: "BOITE_EXPOSEE_30MIN", airExposureMin: 30 });
+    expect(criterionJudges(surfaces.criteria[0], plate, withSurfaces)).toBe(false);
+    expect(typeUnitCount(surfaces, plate, withSurfaces)).toBe(1);
   });
 
   it("choosing the family proposes the n the bench will read, and warns only about it", () => {
     const draft = applyProductType(initialDraft(received, withSurfaces), "type-surfaces", withSurfaces, couteau);
-    // The germs are still ticked: only the plan per cm² is set aside.
     expect(draft.parameterIds).toEqual(expect.arrayContaining(["p-flore", "p-salm"]));
+    // J6 judges the couteau against the plan per cm², but its n = 5 is not
+    // proposed for one object (hypothèse D-4): n = 1, no warning — the
+    // bench then reads it in indicative, and an indicative verdict alerts.
     expect(draft.unitCount).toBe(1);
     expect(unitWarning(draft, surfaces, couteau, withSurfaces)).toBeNull();
-    expect(unitWarning(draft, surfaces, cm2, withSurfaces)).toMatch(/attend n = 5/);
+    expect(unitWarning({ ...draft, unitCount: 1 }, surfaces, cm2, withSurfaces)).toMatch(/attend n = 5/);
     expect(applyProfile(draft, { id: "p", name: "P", clientId: null, unitCount: 1, parameterIds: ["p-flore"] }, withSurfaces, couteau).unitCount).toBe(1);
+    // D-4 answered « le n du critère » (switch on): proposed and warned below it.
+    expect(typeUnitCount(surfaces, couteau, withSurfaces, true)).toBe(5);
   });
 
   it("the sheet and the picker pass the line's context; the GET and the PUT load it", () => {
@@ -726,6 +747,25 @@ describe("entry check and billing", () => {
     expect(coded(answered, "C5")).toMatchObject({ key: "IDENTIFICATION", status: "A_VERIFIER", reason: "IDENTIFICATION" });
     // No C3 (emballage) since 16/10 (Q70) — not even a « Non renseigné » row on a new sample.
     expect(answered.some((r) => r.code === "C3" || r.key === "EMBALLAGE")).toBe(false);
+    // I10 (review of lot 5A): « Non » now reads « à vérifier »; a sample the
+    // reception stored non conforme for its identification (before lot 5A,
+    // or by hand) says so, never the hint of the new rule.
+    expect(coded(answered, "C5")?.detail).not.toBe(IDENTIFICATION_DECLARED_NON_CONFORME);
+    const stored = entryChecks(
+      { ...sample, receptionExploitable: true, receptionIdentificationOk: false, conformity: false, conformityReason: "IDENTIFICATION" },
+      draft,
+      referential,
+      DEFAULT_THRESHOLDS
+    );
+    expect(coded(stored, "C5")).toMatchObject({ status: "A_VERIFIER", reason: "IDENTIFICATION", detail: IDENTIFICATION_DECLARED_NON_CONFORME });
+    // Another motif (a cold chain broken): the C5 row is the rule's.
+    const other = entryChecks(
+      { ...sample, receptionExploitable: true, receptionIdentificationOk: false, conformity: false, conformityReason: "CHAINE_FROID" },
+      draft,
+      referential,
+      DEFAULT_THRESHOLDS
+    );
+    expect(coded(other, "C5")?.detail).toBe(coded(answered, "C5")?.detail);
 
     // Received before the controls: no answer, said so.
     for (const old of [sample, { ...sample, receptionIdentificationOk: null }]) {

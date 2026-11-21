@@ -25,6 +25,10 @@ export const AUDIT_ACTIONS = {
   REPORT_REOPENED: "REPORT_REOPENED",
   /** Amended report approved — metadata `{ number, version, note }`. */
   REPORT_AMENDED: "REPORT_AMENDED",
+  /** « Corriger avant envoi » (lot 5A, K11) — metadata `{ number, version, reason }`. */
+  REPORT_CORRECTED_BEFORE_SEND: "REPORT_CORRECTED_BEFORE_SEND",
+  /** The corrected version issued again in place (K11) — metadata `{ number, version, reason, corrections }`. */
+  REPORT_CORRECTION_ISSUED: "REPORT_CORRECTION_ISSUED",
   /** Duplicate PDF printed — metadata `{ number }`. */
   REPORT_DUPLICATE: "REPORT_DUPLICATE",
   /** A CLIENT account opened the portal — metadata `{ clientId }`. */

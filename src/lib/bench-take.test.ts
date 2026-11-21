@@ -5,10 +5,13 @@ import {
   TAKE_MESSAGES,
   TYPED_RESULT_WHERE,
   UNCLAIMED_WHERE,
+  adminReleasesTypedSample,
   benchWhereFor,
   canEditParameter,
   canEnterParameter,
   canReadAtBench,
+  colleagueSampleHidden,
+  colleaguesListed,
   hasTypedResult,
   isHeldByOther,
   isOnBenchOf,
@@ -18,6 +21,7 @@ import {
   untakeRefusal,
   type TakeState,
 } from "./bench-access";
+import { COLLEAGUE_SAMPLES_HIDDEN } from "./lab-proposals";
 
 /**
  * Prise en charge libre (PROGRAMME.md §10, the laboratory's decision of
@@ -93,10 +97,31 @@ describe("canEnterParameter — who may type", () => {
 });
 
 describe("canReadAtBench — which sheets a technician may open", () => {
-  it("opens the shared bench — free and colleagues' samples — and their own work at any step", () => {
+  it("J7 off (before lot 5A): opens the shared bench — free and colleagues' samples — and their own work at any step", () => {
+    expect(canReadAtBench({ ...free, status: "PROGRAMME" }, "tech2", false)).toBe(true);
+    expect(canReadAtBench({ ...takenByTech1, status: "EN_ANALYSE" }, "tech2", false)).toBe(true);
+    expect(canReadAtBench({ ...takenByTech1, status: "RESULTATS_SAISIS" }, "tech1", false)).toBe(true);
+    expect(colleaguesListed("TECHNICIEN", false)).toBe(true);
+  });
+
+  it("J7 on (lot 5A, 2.14 of 20/11 « pas visible », hypothèse D-1): a colleague's sample is hidden, the 404 of a sample that does not exist", () => {
+    expect(COLLEAGUE_SAMPLES_HIDDEN).toBe(true);
+    expect(colleagueSampleHidden(takenByTech1, "tech2")).toBe(true);
+    expect(canReadAtBench({ ...takenByTech1, status: "EN_ANALYSE" }, "tech2")).toBe(false);
+    // « À prendre » and their own work stay open.
     expect(canReadAtBench({ ...free, status: "PROGRAMME" }, "tech2")).toBe(true);
-    expect(canReadAtBench({ ...takenByTech1, status: "EN_ANALYSE" }, "tech2")).toBe(true);
+    expect(colleagueSampleHidden(free, "tech2")).toBe(false);
     expect(canReadAtBench({ ...takenByTech1, status: "RESULTATS_SAISIS" }, "tech1")).toBe(true);
+    expect(colleagueSampleHidden(takenByTech1, "tech1")).toBe(false);
+    // A line shared through a legacy parameter stays visible to each of its holders.
+    expect(colleagueSampleHidden(legacySplit, "tech2")).toBe(false);
+    const shared = { technicianId: "tech1", parameters: [ecoli, { parameterId: "p-salm", technicianId: "tech2" }] };
+    expect(colleagueSampleHidden(shared, "tech2")).toBe(false);
+    expect(canReadAtBench({ ...shared, status: "EN_ANALYSE" }, "tech2")).toBe(true);
+    expect(colleagueSampleHidden(shared, "tech3")).toBe(true);
+    // No « Pris par un collègue » list on the technician's bench; never the admin's to lose.
+    expect(colleaguesListed("TECHNICIEN")).toBe(false);
+    expect(colleaguesListed("ADMIN", false)).toBe(false);
   });
 
   it("keeps a colleague's sample closed once it has left the bench", () => {
@@ -187,10 +212,16 @@ describe("takeRefusal — « Prendre en charge », first one wins", () => {
     expect(takeRefusal(state({ technicianId: "tech1", holderName: "Yassine" }), "tech1")).toBeNull();
   });
 
-  it("refuses the second technician with the winner's name (409)", () => {
-    expect(takeRefusal(state({ technicianId: "tech1", holderName: "Yassine Amrani" }), "tech2")).toEqual({
+  it("refuses the second technician (409) — naming the winner while J7 is off, « un collègue » while it hides them", () => {
+    expect(takeRefusal(state({ technicianId: "tech1", holderName: "Yassine Amrani" }), "tech2", false)).toEqual({
       status: 409,
       error: "Déjà pris par Yassine Amrani.",
+    });
+    // Lot 5A, J7 (review): the API no longer says who holds a sample the sheet answers 404 for.
+    expect(COLLEAGUE_SAMPLES_HIDDEN).toBe(true);
+    expect(takeRefusal(state({ technicianId: "tech1", holderName: "Yassine Amrani" }), "tech2")).toEqual({
+      status: 409,
+      error: "Déjà pris par un collègue.",
     });
     expect(takeRefusal(state({ heldByParameter: true, holderName: "Imane" }), "tech1")?.status).toBe(409);
   });
@@ -215,16 +246,44 @@ describe("untakeRefusal — « Libérer »", () => {
     expect(untakeRefusal({ ...held, status: "EN_ANALYSE" }, 0, tech1)).toBeNull();
   });
 
-  it("refuses a colleague (403), naming the holder", () => {
-    expect(untakeRefusal(held, 0, tech2)).toEqual({
+  it("refuses a colleague (403) — naming the holder while J7 is off, never while it hides them", () => {
+    expect(untakeRefusal(held, 0, tech2, false)).toEqual({
       status: 403,
       error: "Seul Yassine Amrani ou un administrateur peut libérer cet échantillon.",
     });
+    expect(untakeRefusal(held, 0, tech2)).toEqual({
+      status: 403,
+      error: "Seul le technicien qui l'a pris ou un administrateur peut libérer cet échantillon.",
+    });
   });
 
-  it("refuses once a result is typed — even the admin", () => {
-    expect(untakeRefusal(held, 1, tech1)).toEqual({ status: 409, error: TAKE_MESSAGES.typed });
-    expect(untakeRefusal(held, 3, admin)?.status).toBe(409);
+  it("J7 off (before lot 5A): refuses once a result is typed — even the admin", () => {
+    expect(untakeRefusal(held, 1, tech1, false)).toEqual({ status: 409, error: TAKE_MESSAGES.typed });
+    expect(untakeRefusal(held, 3, admin, false)?.status).toBe(409);
+    expect(adminReleasesTypedSample("ADMIN", false)).toBe(false);
+  });
+
+  it("J7 on (lot 5A): the admin frees a sample that carries readings — the way to hand it over; its holder still cannot", () => {
+    expect(adminReleasesTypedSample("ADMIN")).toBe(true);
+    expect(adminReleasesTypedSample("TECHNICIEN")).toBe(false);
+    expect(untakeRefusal(held, 3, admin)).toBeNull();
+    expect(untakeRefusal({ ...held, status: "EN_ANALYSE" }, 1, admin)).toBeNull();
+    expect(untakeRefusal(held, 1, tech1)).toEqual({ status: 409, error: TAKE_MESSAGES.typedAdminOnly });
+    // Never a colleague, never off the bench, even for the admin.
+    expect(untakeRefusal(held, 1, tech2)?.status).toBe(403);
+    expect(untakeRefusal({ ...held, status: "RESULTATS_SAISIS" }, 2, admin)).toEqual({
+      status: 409,
+      error: TAKE_MESSAGES.offBench,
+    });
+  });
+
+  it("a free sample that already carries readings is taken like any free one — the new holder submits it", () => {
+    // `takeRefusal` reads no readings: the admin freed it with its readings (J7), any technician takes it.
+    expect(takeRefusal(state({ status: "EN_ANALYSE" }), "tech2")).toBeNull();
+    // Taken, it is theirs: they type and submit (`canEnterParameter`), the previous holder no longer does.
+    const retaken = { technicianId: "tech2", parameters: [ecoli, flore] };
+    expect(canEnterParameter(retaken, ecoli, "tech2")).toBe(true);
+    expect(canEnterParameter(retaken, ecoli, "tech1")).toBe(false);
   });
 
   it("refuses a free sample, one off the bench, or a missing one", () => {

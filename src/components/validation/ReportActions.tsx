@@ -6,7 +6,14 @@ import { Copy, FileDown, FilePen, History, PencilLine } from "lucide-react";
 import type { SampleStatus } from "@/generated/prisma/enums";
 import type { Role } from "@/lib/roles";
 import { formatDate } from "@/lib/labels";
-import { canReopen, unsentReopenWarning } from "@/lib/report-amendment";
+import {
+  CORRECTION_MESSAGES,
+  canReopen,
+  pendingCorrectionText,
+  pendingReportChange,
+  reopenMode,
+  unsentReopenWarning,
+} from "@/lib/report-amendment";
 import { canEditConclusion, canResendReport } from "@/lib/report-actions";
 import { ConclusionEditDialog } from "./ConclusionEditDialog";
 import { ReportDialog as Dialog } from "./ReportDialog";
@@ -49,8 +56,12 @@ export function ReportActions({
   /** One line of small links, for a table row. */
   compact?: boolean;
 }) {
-  const [open, setOpen] = useState<"versions" | "reopen" | "conclusion" | null>(null);
+  const [open, setOpen] = useState<"versions" | "reopen" | "correct" | "conclusion" | null>(null);
   const reopenable = !amendmentPending && canReopen(status, role);
+  // K11 (Q132 of 20/11): a version the client never received is corrected
+  // before send — same number, no « annule et remplace » — not amended.
+  const mode = reopenMode(sent);
+  const pending = pendingReportChange(amendmentPending, sent);
   const resendable = sendHere && canResendReport(role, status, amendmentPending, sent);
   // Hidden while an amendment is pending: its approval recomputes the
   // conclusion and would drop the correction (the route refuses it too).
@@ -77,7 +88,21 @@ export function ReportActions({
           Modifier la conclusion
         </button>
       )}
-      {reopenable && (
+      {reopenable && mode === "correct" && (
+        <button
+          type="button"
+          onClick={() => setOpen("correct")}
+          className={
+            compact
+              ? "inline-flex items-center gap-1 text-xs font-medium text-amber-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              : "flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-800 shadow-sm transition hover:bg-amber-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
+          }
+        >
+          <PencilLine className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} aria-hidden="true" />
+          Corriger avant envoi
+        </button>
+      )}
+      {reopenable && mode === "amend" && (
         <button
           type="button"
           onClick={() => setOpen("reopen")}
@@ -91,14 +116,20 @@ export function ReportActions({
           Rouvrir pour amendement
         </button>
       )}
-      {amendmentPending && !compact && (
+      {pending === "amendment" && !compact && (
         <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
           Amendement en cours : le rapport {number}{" "}reste la version en vigueur jusqu&apos;à la nouvelle validation administrative.
+        </p>
+      )}
+      {pending === "correction" && !compact && (
+        <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+          {pendingCorrectionText(number)}
         </p>
       )}
 
       {open === "versions" && <VersionsDialog sampleId={sampleId} onClose={() => setOpen(null)} />}
       {open === "reopen" && <ReopenDialog sampleId={sampleId} number={number} sent={sent} onClose={() => setOpen(null)} />}
+      {open === "correct" && <CorrectDialog sampleId={sampleId} number={number} onClose={() => setOpen(null)} />}
       {open === "conclusion" && reportId && <ConclusionEditDialog reportId={reportId} onClose={() => setOpen(null)} />}
     </div>
   );
@@ -113,11 +144,14 @@ type VersionRow = {
   label: string | null;
   current: boolean;
   url: string;
+  /** K11: the corrections before send of this version (internal, no PDF). */
+  corrections?: { issuedAt: string; correctedAt: string; reissuedAt: string; reason: string; by: string | null }[];
 };
 
 type VersionsPayload = {
   number: string;
   amendmentPending: boolean;
+  pendingKind?: "correction" | "amendment" | null;
   pendingNote: string | null;
   nextNumber: string | null;
   versions: VersionRow[];
@@ -151,8 +185,15 @@ function VersionsDialog({ sampleId, onClose }: { sampleId: string; onClose: () =
         <>
           {payload.amendmentPending && (
             <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">
-              <b>Amendement en cours</b>
-              {payload.nextNumber && <> — le rapport {payload.nextNumber} sera émis à la validation administrative</>}.
+              <b>{payload.pendingKind === "correction" ? "Correction avant envoi en cours" : "Amendement en cours"}</b>
+              {payload.nextNumber && (
+                <>
+                  {" "}
+                  — le rapport {payload.nextNumber} sera {payload.pendingKind === "correction" ? "émis de nouveau, sous le même numéro," : "émis"} à la
+                  validation administrative
+                </>
+              )}
+              .
               {payload.pendingNote && <span className="mt-0.5 block">Motif : {payload.pendingNote}</span>}
             </p>
           )}
@@ -180,6 +221,11 @@ function VersionsDialog({ sampleId, onClose }: { sampleId: string; onClose: () =
                     {v.issuedBy ? ` · validation administrative : ${v.issuedBy}` : ""}
                   </p>
                   {v.note && <p className="mt-0.5 text-xs text-slate-600">Motif de l&apos;amendement : {v.note}</p>}
+                  {(v.corrections ?? []).map((correction) => (
+                    <p key={correction.reissuedAt} className="mt-0.5 text-xs text-slate-600">
+                      {`Corrigé avant envoi le ${formatDate(correction.reissuedAt)}${correction.by ? ` (${correction.by})` : ""} — motif : ${correction.reason}. Version émise le ${formatDate(correction.issuedAt)} remplacée, gardée en trace interne.`}
+                    </p>
+                  ))}
                 </div>
                 <a
                   href={v.url}
@@ -195,6 +241,103 @@ function VersionsDialog({ sampleId, onClose }: { sampleId: string; onClose: () =
           </ul>
         </>
       )}
+    </Dialog>
+  );
+}
+
+/**
+ * « Corriger avant envoi » (lot 5A, K11 — Q132 of 20/11): on a version the
+ * client never received. The reason is mandatory and stays internal (the
+ * trace of the report, the journal); the corrected version keeps the same
+ * number and prints no « annule et remplace ».
+ */
+function CorrectDialog({ sampleId, number, onClose }: { sampleId: string; number: string; onClose: () => void }) {
+  const router = useRouter();
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    if (reason.trim().length < 3) {
+      setError(CORRECTION_MESSAGES.reason);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/samples/${sampleId}/correct`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error ?? "La correction n'a pas pu être enregistrée.");
+        // Sent meanwhile: the page shows the report as it stands now.
+        if (response.status === 409) router.refresh();
+        return;
+      }
+      onClose();
+      // The double validation starts again on the validation page.
+      router.push(`/validation/${sampleId}`);
+      router.refresh();
+    } catch {
+      setError("Une erreur réseau est survenue. Réessayez.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog title={`Corriger avant envoi — ${number}`} onClose={onClose}>
+      <form onSubmit={submit} noValidate>
+        <p className="text-sm text-slate-600">
+          Le client n&apos;a pas encore reçu ce rapport. L&apos;échantillon revient à « Résultats saisis » : la
+          validation technique et la validation administrative sont effacées, les résultats et la fiche peuvent être
+          corrigés. La nouvelle validation administrative émettra de nouveau le rapport {number}{" "}sous le même
+          numéro, sans « annule et remplace » ; la version remplacée reste dans la trace interne du rapport, jamais
+          envoyée.
+        </p>
+        <label htmlFor="correctionReason" className="mt-3 block text-sm font-medium text-slate-700">
+          Motif de la correction <span className="text-rose-600">*</span>
+        </label>
+        <textarea
+          id="correctionReason"
+          value={reason}
+          onChange={(e) => {
+            setReason(e.target.value);
+            setError("");
+          }}
+          rows={3}
+          required
+          // CORRECTION_REASON_MAX (report-dispatch.ts).
+          maxLength={500}
+          placeholder="Ex. : erreur de saisie du N° de lot."
+          className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        />
+        <p className="mt-1 text-xs text-slate-500">Interne : repris dans le journal et la trace du rapport, jamais imprimé.</p>
+        {error && <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row-reverse">
+          <button
+            type="submit"
+            disabled={busy}
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full bg-amber-700 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-800 disabled:opacity-60"
+          >
+            <PencilLine className="h-4 w-4" aria-hidden="true" />
+            {busy ? "Réouverture…" : "Corriger avant envoi"}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          >
+            Annuler
+          </button>
+        </div>
+      </form>
     </Dialog>
   );
 }

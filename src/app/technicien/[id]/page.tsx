@@ -8,9 +8,11 @@ import { labReference } from "@/lib/sample-select";
 import { loadBenchPlans } from "@/lib/bench-plan";
 import {
   BENCH_STATUSES,
+  adminReleasesTypedSample,
   benchHidesClient,
   canEnterParameter,
   canReadAtBench,
+  colleagueSampleHidden,
   hasTypedResult,
   isHeldByOther,
   isUnclaimed,
@@ -20,6 +22,8 @@ import {
   TAKE_OVER_MESSAGES,
   currentTakeOver,
   enteredByText,
+  holderTakenAt,
+  releaseTypedConfirmation,
   takeOverRefusal,
   takeStateOf,
 } from "@/lib/take-over";
@@ -29,7 +33,7 @@ import { isCurrentSendBack, maySendBack } from "@/lib/send-back";
 import { lastSubmissionsOf } from "@/lib/send-back-server";
 import { dilutionText, effectiveFactor, readingFactor } from "@/lib/dilution";
 import { benchStartingReadings, benchUnit } from "@/lib/bench-reading";
-import { judgingLimit, judgingThreshold, resultUnit } from "@/lib/result-unit";
+import { judgingLimit, judgingThreshold, resultUnit, surfaceUnitChoices } from "@/lib/result-unit";
 import { formatDate, formatDateTime, PROGRAMME_PRIORITY_LABELS, surfaceAreaText } from "@/lib/labels";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
@@ -54,8 +58,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const session = await getSession();
   if (!session || session.mustChangePassword || !roleAllowed(session.role, ["TECHNICIEN", "ADMIN"])) return { title: "Analyse" };
   const { id } = await params;
-  const sample = await prisma.sample.findUnique({ where: { id }, select: { code: true, controlCode: true } });
-  return { title: sample ? `Analyse ${labReference(sample)}` : "Analyse" };
+  const select = { code: true, controlCode: true, technicianId: true, parameters: { select: { technicianId: true } } } as const;
+  const sample = await prisma.sample.findUnique({ where: { id }, select });
+  // Nor for a colleague's sample hidden from a technician (J7): it answers 404.
+  if (!sample || (session.role === "TECHNICIEN" && colleagueSampleHidden(sample, session.id))) return { title: "Analyse" };
+  return { title: `Analyse ${labReference(sample)}` };
 }
 
 export default async function AnalysePage({
@@ -164,6 +171,10 @@ export default async function AnalysePage({
   // (PROGRAMME.md §10.4). A colleague's submitted or validated sample stays
   // out of reach.
   const isTechnician = session.role === "TECHNICIEN";
+  // A sample a colleague holds is not visible (lot 5A, J7 — 2.14 of 20/11,
+  // « pas visible »; hypothèse D-1): answered as a sample that does not
+  // exist, nothing said of what it holds.
+  if (isTechnician && colleagueSampleHidden(sample, session.id)) notFound();
   if (isTechnician && !canReadAtBench(sample, session.id)) {
     redirect(getDashboardPath(session.role));
   }
@@ -180,8 +191,10 @@ export default async function AnalysePage({
       ? prisma.auditLog.findMany({
           where: { entity: "Sample", entityId: sample.id, action: { in: [...HOLDER_ACTIONS] } },
           select: { action: true, actorId: true, createdAt: true, metadata: true },
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          take: 1,
+          // Every bench row, oldest first (on a tie the last one wins, as
+          // `currentTakeOver` reads it): a take after an administrator's
+          // « Libérer » with readings is dated by looking back (`holderTakenAt`).
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         })
       : [],
     // The série's other samples this viewer may open here (G4): a
@@ -215,8 +228,10 @@ export default async function AnalysePage({
   // opening the sheet, reads who took it from them.
   const takenOver = currentTakeOver(holderRows, sample.technicianId);
   // Since when the holder holds it: the take-over (its journal row), else
-  // the take — `assignedAt` stays the start of the analyses.
-  const takenAt = takenOver?.at ?? sample.assignedAt;
+  // the take — `assignedAt` stays the start of the analyses, so a take after
+  // an administrator handed the sample over with its readings (J7) is dated
+  // by its own journal row too (`holderTakenAt`, review of lot 5A).
+  const takenAt = holderTakenAt(holderRows, sample.technicianId, sample.assignedAt);
   const takenOn = takenAt ? `le ${formatDateTime(takenAt)}` : null;
   // A colleague's sample: readable, never typed on (403 at the save).
   const heldByOther = isTechnician && isHeldByOther(sample, session.id);
@@ -231,8 +246,14 @@ export default async function AnalysePage({
       unitCount: result.units.length,
     })
   );
+  // While J7 hides the colleagues' samples, the admin frees one with readings
+  // too — the way a sample is handed over (`adminReleasesTypedSample`).
+  const releasesTyped = typed && adminReleasesTypedSample(session.role);
   const canRelease =
-    !free && onBench && !typed && (session.role === "ADMIN" || sample.technicianId === session.id);
+    !free &&
+    onBench &&
+    (!typed || releasesTyped) &&
+    (session.role === "ADMIN" || sample.technicianId === session.id);
   // « Reprendre » a colleague's sample (re-ask 2.13, C3, `TAKE_OVER_COLLEAGUE`):
   // any technician, on the bench, not on a line split before 13/10.
   const takeOver = heldByOther ? takeOverRefusal(takeStateOf(sample), session) : undefined;
@@ -253,6 +274,11 @@ export default async function AnalysePage({
     // What was typed, R1 … Rn or the single value — also when the catalogue
     // added or withdrew a criterion since the last save (`benchStartingReadings`).
     const { units, value } = benchStartingReadings(existing, perUnit, bench.unitCount);
+    // A surface counted in UFC: its unit is chosen (J6 (b), C-1 of 20/11),
+    // prefilled with the stored one, else as computed.
+    const baseUnit = benchUnit(plan, parameter.unit);
+    const unitChoices = surfaceUnitChoices(bench.context, baseUnit);
+    const unit = unitChoices.length > 0 && existing?.unit ? existing.unit : resultUnit(bench.context, baseUnit);
     return {
       perUnit,
       plan: plan?.plan ?? null,
@@ -265,8 +291,11 @@ export default async function AnalysePage({
       // The criterion's unit, as the bench sheet, the stored result and the
       // report print it (« /1 g » rather than the parameter's « /25 g »).
       // « UFC/couteau » for a surface described in words (J1), the air's by
-      // its means (J2) — `resultUnit`, as the save stores it.
-      unit: resultUnit(bench.context, benchUnit(plan, parameter.unit)),
+      // its means (J2) — `resultUnit`, as the save stores it; a surface's
+      // unit as chosen and stored (J6 (b)).
+      unit,
+      unitChoices,
+      chosenUnit: unitChoices.length > 0 ? (unit ?? "") : undefined,
       // Only a limit whose unit can judge what was sampled (`unitJudges`).
       threshold: judgingThreshold(bench.context, parameter.threshold, parameter.unit),
       limitValue: judgingLimit(bench.context, parameter.limitValue, parameter.unit),
@@ -479,9 +508,15 @@ export default async function AnalysePage({
                   )}
                   {canRelease && (
                     <>
-                      <ReleaseButton sampleId={sample.id} className="mt-2.5" />
+                      <ReleaseButton
+                        sampleId={sample.id}
+                        className="mt-2.5"
+                        confirmText={releasesTyped ? releaseTypedConfirmation(holderName) : undefined}
+                      />
                       <span className="mt-2 block text-xs font-normal text-slate-500">
-                        Possible tant qu&apos;aucun résultat n&apos;est saisi.
+                        {releasesTyped
+                          ? "Des résultats sont saisis : ils restent, chacun au nom de la personne qui l'a saisi, et l'échantillon revient dans « À prendre », où un autre technicien le prend en charge."
+                          : "Possible tant qu'aucun résultat n'est saisi."}
                       </span>
                     </>
                   )}

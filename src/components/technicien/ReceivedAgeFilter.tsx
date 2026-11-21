@@ -13,6 +13,7 @@ export function ReceivedAgeFilter({
   view,
   days,
   anchor,
+  kept = {},
 }: {
   path: string;
   /** The tile's view (`?vue=`), kept when the filter changes. */
@@ -20,6 +21,8 @@ export function ReceivedAgeFilter({
   /** The filter in force; null = every sample. */
   days: number | null;
   anchor: string;
+  /** The page's other choices, kept when the filter changes (« À prendre » by N° de contrôle, J8). */
+  kept?: Readonly<Record<string, string>>;
 }) {
   return (
     <form
@@ -28,6 +31,9 @@ export function ReceivedAgeFilter({
       className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm shadow-sm"
     >
       {view && <input type="hidden" name="vue" value={view} />}
+      {Object.entries(kept).map(([name, value]) => (
+        <input key={name} type="hidden" name={name} value={value} />
+      ))}
       <CalendarClock className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
       <label htmlFor="recus" className="font-medium text-slate-700">
         Reçus depuis plus de
@@ -58,7 +64,7 @@ export function ReceivedAgeFilter({
             Filtre : {receivedAgeLabel(days)}
           </span>
           <Link
-            href={receivedAgeHref(path, view, null, anchor)}
+            href={receivedAgeHref(path, view, null, anchor, kept)}
             className="rounded font-medium text-brand underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
             Tout afficher

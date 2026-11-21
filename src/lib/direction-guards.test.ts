@@ -109,6 +109,8 @@ const DIRECTION_ADMITTED = [
   "api/samples/[id]/report/send/route.ts POST",
   // Reopen a sent report, cancel a sample in analysis (16/10, Q13).
   "api/samples/[id]/reopen/route.ts POST",
+  // Correct a report never sent, same number (lot 5A, K11 — the roles of the reopening).
+  "api/samples/[id]/correct/route.ts POST",
   "api/samples/[id]/cancel/route.ts POST",
   // « Corriger la fiche » on the validation page, and what its dialog reads.
   "api/samples/[id]/intake/route.ts PATCH",

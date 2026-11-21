@@ -24,6 +24,8 @@ const SLICE_ACTION_LABELS = {
   PAYMENT_DELETED: "Règlement supprimé",
   REPORT_REOPENED: "Rapport rouvert pour amendement",
   REPORT_AMENDED: "Rapport amendé validé",
+  REPORT_CORRECTED_BEFORE_SEND: "Rapport rouvert pour correction avant envoi",
+  REPORT_CORRECTION_ISSUED: "Rapport corrigé avant envoi émis (même numéro)",
   REPORT_DUPLICATE: "Duplicata de rapport édité",
   PORTAL_LOGIN: "Connexion au portail client",
 } satisfies Record<AuditAction, string>;
