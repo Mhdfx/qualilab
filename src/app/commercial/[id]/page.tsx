@@ -38,6 +38,9 @@ import { ClientMergeActions } from "@/components/commercial/ClientMergeActions";
 import { BillingClientsCard } from "@/components/commercial/BillingClientsCard";
 import { ClientPricesCard } from "@/components/commercial/ClientPricesCard";
 import { loadClientPriceRows } from "@/lib/client-prices-server";
+import { LegacyHistoryCard } from "@/components/legacy-history/LegacyHistoryCard";
+import { loadLegacyHistorySummary } from "@/lib/legacy-history-server";
+import { canManageLegacyLinks } from "@/lib/legacy-history-links";
 import {
   archivedBanner,
   archivedKind,
@@ -108,7 +111,7 @@ export default async function ClientDetailPage({
   const invoiceGroup = invoiceView ? CLIENT_INVOICE_VIEW_FILTERS[invoiceView] : null;
   const period = { du: raw.du, au: raw.au };
 
-  const [client, samples, invoices, figures, sampleCount, reportCount, summary, mergeEntry, prices] =
+  const [client, samples, invoices, figures, sampleCount, reportCount, summary, mergeEntry, prices, legacyHistory] =
     await Promise.all([
     prisma.client.findUnique({
       where: { id },
@@ -189,6 +192,8 @@ export default async function ClientDetailPage({
     // Lot 4H, H5: the prices this client pays instead of the catalogue's (a
     // billing space: GESTIONNAIRE and ADMIN see prices, price-access.ts).
     loadClientPriceRows(id),
+    // Lot 5B, HA5: the old software's history of this client (no price in it).
+    loadLegacyHistorySummary(id),
   ]);
 
   if (!client) notFound();
@@ -452,6 +457,8 @@ export default async function ClientDetailPage({
               site.billingClient && site.billingClient.id !== client.id ? [{ site: site.name, billingClient: site.billingClient.name }] : []
             )}
           />
+
+          <LegacyHistoryCard clientId={client.id} summary={legacyHistory} canManageLinks={canManageLegacyLinks(session.role) && !client.archived} />
 
           <Card className="p-5">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">

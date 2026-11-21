@@ -58,6 +58,8 @@ export type MergeCounts = {
   alertCopies?: number;
   /** Lot 4H, H5: B's own prices, now the kept client's. */
   clientPrices?: number;
+  /** Lot 5B, HA6: B's samples of the old software's history, now the kept client's. */
+  legacySamples?: number;
 };
 
 /** The counts `POST /api/clients/[id]/attach-as-site` returns. */
@@ -73,6 +75,8 @@ export type AttachCounts = {
   alertCopies?: number;
   /** Lot 4H, H5: B's own prices, now the principal's. */
   clientPrices?: number;
+  /** Lot 5B, HA6: B's samples of the old software's history, now the principal's. */
+  legacySamples?: number;
   invoicesKept: number;
 };
 
@@ -109,6 +113,7 @@ function memoryDetails(counts: {
   profiles?: number;
   alertCopies?: number;
   clientPrices?: number;
+  legacySamples?: number;
 }, targetName: string): string[] {
   const details: string[] = [];
   if (n(counts.emails) > 0) details.push(countLabel(n(counts.emails), "adresse e-mail", "adresses e-mail"));
@@ -129,6 +134,9 @@ function memoryDetails(counts: {
   }
   if (n(counts.clientPrices) > 0) {
     details.push(countLabel(n(counts.clientPrices), "prix propre au client", "prix propres au client"));
+  }
+  if (n(counts.legacySamples) > 0) {
+    details.push(countLabel(n(counts.legacySamples), "échantillon de l'ancien logiciel (historique)", "échantillons de l'ancien logiciel (historique)"));
   }
   return details;
 }

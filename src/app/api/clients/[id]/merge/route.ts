@@ -12,7 +12,16 @@ import {
   type ClientFacts,
   type FillableField,
 } from "@/lib/client-merge-rules";
-import { moveAlertCopies, moveClientPrices, moveEmails, movePlaces, moveProducts, moveTypesAndProfiles } from "@/lib/client-transfer";
+import {
+  moveAlertCopies,
+  moveClientPrices,
+  moveEmails,
+  moveLegacyHistory,
+  movePlaces,
+  moveProducts,
+  moveTypesAndProfiles,
+  repointLegacySite,
+} from "@/lib/client-transfer";
 import { normalizeSiteName } from "@/lib/sites-import";
 import { PORTAL_ROLE } from "@/lib/roles";
 
@@ -109,6 +118,8 @@ type MergeCounts = {
   alertCopies: number;
   /** Lot 4H, H5: B's own prices, now A's (those A has for the same analysis stay on B). */
   clientPrices: number;
+  /** Lot 5B, HA6: B's samples of the old software's history, now A's. */
+  legacySamples: number;
   /** Clients billed for B, now billed for A. */
   billingClients: number;
   /** Sites billed to B, now billed to A. */
@@ -193,6 +204,7 @@ async function merge(tx: Prisma.TransactionClient, sourceId: string, targetId: s
     profiles: 0,
     alertCopies: 0,
     clientPrices: 0,
+    legacySamples: 0,
     billingClients: 0,
     billedSites: 0,
   };
@@ -221,6 +233,8 @@ async function merge(tx: Prisma.TransactionClient, sourceId: string, targetId: s
     await tx.serie.updateMany({ where: { siteId: site.id }, data: { siteId: kept.id } });
     await tx.clientEmail.updateMany({ where: { siteId: site.id }, data: { siteId: kept.id } });
     await tx.clientPlace.updateMany({ where: { siteId: site.id }, data: { siteId: kept.id } });
+    // Lot 5B, HA6: the old software's history taken at the merged site follows.
+    await repointLegacySite(tx, site.id, kept.id);
     // The kept site's empty fields are completed by the merged one's; nothing is overwritten.
     const fill: Prisma.SiteUncheckedUpdateInput = {};
     for (const field of ["code", "address", "city", "phone", "contact"] as const) {
@@ -282,6 +296,8 @@ async function merge(tx: Prisma.TransactionClient, sourceId: string, targetId: s
   counts.alertCopies = await moveAlertCopies(tx, [sourceId], targetId);
   // Lot 4H, H5: B's own prices are A's now (A's own price wins).
   counts.clientPrices = await moveClientPrices(tx, [sourceId], targetId);
+  // Lot 5B, HA6: B's history of the old software (and its links) is A's — else it would leave A's portal.
+  counts.legacySamples = (await moveLegacyHistory(tx, [sourceId], targetId)).samples;
 
   // ---- the links that targeted B target A --------------------------------------------------
   counts.billingClients = (await tx.client.updateMany({ where: { billedForId: sourceId }, data: { billedForId: targetId } })).count;

@@ -3,7 +3,15 @@ import type { Prisma } from "@/generated/prisma/client";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { moveAlertCopies, moveClientPrices, moveEmails, movePlaces, moveProducts, moveTypesAndProfiles } from "@/lib/client-transfer";
+import {
+  moveAlertCopies,
+  moveClientPrices,
+  moveEmails,
+  moveLegacyHistory,
+  movePlaces,
+  moveProducts,
+  moveTypesAndProfiles,
+} from "@/lib/client-transfer";
 import { detectDelimiter, parseCsv } from "@/lib/csv";
 import {
   guessSiteColumns,
@@ -55,6 +63,8 @@ type Written = {
   clientPrices: number;
   /** Lot 3C, L5: internal copy addresses newly chosen for the parent. */
   alertCopies: number;
+  /** Lot 5B, HA6: the archived clients' samples of the old software's history, now on the parent's sites. */
+  legacySamples: number;
 };
 
 type AuditEntry = Omit<Parameters<typeof logAudit>[0], "actorId">;
@@ -71,6 +81,7 @@ const emptyWritten = (): Written => ({
   profiles: 0,
   clientPrices: 0,
   alertCopies: 0,
+  legacySamples: 0,
 });
 
 function addWritten(total: Written, part: Written) {
@@ -87,6 +98,7 @@ function addWritten(total: Written, part: Written) {
   total.profiles += part.profiles;
   total.clientPrices += part.clientPrices;
   total.alertCopies += part.alertCopies;
+  total.legacySamples += part.legacySamples;
 }
 
 /** What the screen shows: the plan without its internal list of sites. */
@@ -303,6 +315,8 @@ async function writeParent(
   // the parent, as with a merge and « Rattacher comme site de… ».
   written.clientPrices += await moveClientPrices(tx, ids, parentId);
   written.alertCopies += await moveAlertCopies(tx, ids, parentId);
+  // Lot 5B, HA6: their history of the old software too, onto their site.
+  written.legacySamples += (await moveLegacyHistory(tx, ids, parentId, siteIdFor)).samples;
 
   // ---- archived, never deleted -------------------------------------------------------------
   // `mergedIntoId`: the fiche says « Rattachée comme site de » its parent (CLIENTS-FUSION.md §6).

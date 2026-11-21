@@ -1,4 +1,6 @@
 import { RoleShell } from "@/components/layout/RoleShell";
+import { LEGACY_HISTORY_ON_PORTAL } from "@/lib/lab-proposals";
+import { hasLegacyHistory } from "@/lib/legacy-history-server";
 import { logPortalLogin, requirePortalPage } from "@/lib/portal-server";
 
 export const metadata = { title: { default: "Espace client · Qualilab International", template: "%s · Espace client Qualilab" } };
@@ -16,9 +18,11 @@ export default async function PortailLayout({ children }: { children: React.Reac
   // The portal opens once the password is chosen: the change renews the
   // session, whose first page is then the one journalled.
   if (access.ok && !session.mustChangePassword) await logPortalLogin(session.id, access.clientId);
+  // Lot 5B, HA4: « Historique (ancien logiciel) » in the menu only for a client that has one.
+  const portalHistory = LEGACY_HISTORY_ON_PORTAL && access.ok && (await hasLegacyHistory(access.clientId));
 
   return (
-    <RoleShell role={session.role} userName={session.name}>
+    <RoleShell role={session.role} userName={session.name} portalHistory={portalHistory}>
       {children}
     </RoleShell>
   );

@@ -782,6 +782,8 @@ Enums: `Role`(11: 9 core, `PROGRAMMATEUR` and `DIRECTION` included, + `CLIENT` +
 `SampleStatus`(6) · `ResultWorkStatus`(EN_COURS|TERMINE|ANOMALIE) ·
 `ReportSendStatus` · `InvoiceStatus`.
 
+**Lot 5B (21/11, `lot5b`, not deployed):** `LegacyClientLink` (`legacyClientId` unique → `clientId?` / `siteId?`, `matchedBy` `LegacyLinkSource` ICE | NOM | MAIN), `LegacySample` (`id` = old `LIN_BON_COMMANDE.ID_LIGNE`, `clientId`, `siteId?`, `legacyClientId`, numbers, labels of the time, dates, `interpretation?` + `verdictLabel`, conclusion / observation / amendment, `cancelled`, `sourceHash`; indexes `(clientId, receivedAt)` — the lists order and filter by the reception date —, `(clientId, year)`), `LegacyResult` (`id` = old `PARAMES_BON_COMMANDE.ID`, `position`, parameter / method / unit / value / `readings` JSON / criterion, `interpretation?`). Read-only history of the old software, never joined to `Sample`, `Report` or the catalogue.
+
 ## 5. "Where do I change X?"
 
 | I want to change… | Go to |
@@ -1073,6 +1075,19 @@ Enums: `Role`(11: 9 core, `PROGRAMMATEUR` and `DIRECTION` included, + `CLIENT` +
 | How the ONSSA report counts (month, unit, NC, groups) | `src/lib/onssa-report.ts` (pure, tested); the month's read `src/lib/onssa-report-server.ts`; the day that puts a sample in a month: `ONSSA_COUNT_BY` in `lab-proposals.ts` |
 | The ONSSA Excel's layout (Feuil1/2/3 + Notes) | `src/lib/onssa-workbook.ts`; route `GET /api/onssa/rapport?mois=AAAA-MM` (journal `ONSSA_REPORT_EXPORTED`); screen `/qualite/onssa`; who: `src/lib/onssa-access.ts` (Direction, administrator, validateur; correspondences administrator only). Feuil3's samples, analyses and NC are values, only conformes and totals are formulas |
 | A new family counted in the ONSSA report | it starts « non déclaré » (product-types POST and the criteria import set no group): class it on `/admin/onssa`; « Scinder par domaine » copies the source's group (`api/product-types/[id]/split`) |
+
+**Added 2026-11-21 (lot 5B — the old software's history on the portal and the fiche client, HA1–HA7 of `RETOUR-LABO-20-11.md` §6; branch `lot5b`, worktree `C:\laragon\www\qualilab-lot5b`, local, not deployed; rules still to confirm by D-7 written « hypothèse »):**
+
+| I want to change… | Go to |
+|---|---|
+| What is extracted from the old base (tables, columns, dates, the criterion, the monthly cut) | `scripts/legacy/extract-legacy-history.py` (read-only, `isql` in list mode; files to `backups/historique-ancien/`, git-ignored: `historique-AAAA-MM.ndjson` by month of **reception**, `clients.csv`, `comptes.md`; the tables are noted in `backups/historique-ancien/schema.md`) |
+| How a verdict code, a reading, a criterion print; the screens' queries | `src/lib/legacy-history.ts` (`LEGACY_VERDICTS`, `formatLegacyReading`, `legacyResultInterpretation` — one unit « Non satisfaisant » fails the analysis, a mix of satisfaisant / acceptable gives none —, `legacyCriterionText`, `legacyHistoryWhere` / `legacySampleByIdWhere` — the client always top-level, cancelled never shown) |
+| How the old software's clients are matched, how a month is planned | `src/lib/legacy-history-import.ts` (`HistoryClientResolver` — ICE, else a name naming one fiche only, archived fiches counted; `planLegacyClientLinks`; `readHistoryFile`; `planLegacyMonth` — no link, not written; same hash, unchanged; cancelled since, hidden) |
+| The import (two steps) and its follow-up | `/admin/import` « Historique de l'ancien logiciel » (`ImportLegacyHistory.tsx`); route `POST` / `GET /api/admin/import/historique` (ADMIN; journal `LEGACY_HISTORY_CLIENTS_LINKED`, `LEGACY_HISTORY_IMPORTED` — the follow-up reads it, `loadLegacyImportFollowUp`) |
+| A correspondence decided by hand (ambiguous, not found, wrong) | `PUT /api/admin/historique/liens` (ADMIN, `parseLinkDecision` in `src/lib/legacy-history-links.ts`; `clientId: null` = « Ne pas reprendre » — its samples leave the history; journal `LEGACY_CLIENT_LINKED`); on the fiche: `LegacyLinksManager.tsx` |
+| The portal's screen | `/portail/historique`, `/portail/historique/[id]`, `GET /api/portail/historique[/id]`; menu `portailNavWithHistory` (`navFor(role, { portalHistory })`, the layout asks `hasLegacyHistory`); switch `LEGACY_HISTORY_ON_PORTAL` (`lab-proposals.ts`) |
+| The fiche client's card and lists | `LegacyHistoryCard.tsx` in `/commercial/[id]`; `/commercial/[id]/historique[/sampleId]`; components `src/components/legacy-history/LegacyHistory.tsx`; loaders `src/lib/legacy-history-server.ts` |
+| A merge / attach-as-site / sites import that must carry the history | `moveLegacyHistory` and `repointLegacySite` (`src/lib/client-transfer.ts`), called in the three routes' transactions (`legacy-history-guards.test.ts`) |
 
 ## 6. Environment variables
 
@@ -1473,6 +1488,11 @@ Found by the end-to-end recette of 06/10 (`RECETTE-06-10-PARCOURS.md`).
 
 Six defects seen while capturing the lot 3 PDF, fixed minimally: (1) R-30 — the observation field's star and « Obligatoire pour l'accepter conforme » follow `rowToJustify(rows, conformity, null)` in `DepositForm` / `SerieReceptionForm` (only C1 / C2 / temperature under `OBSERVATION_ONLY_DELAY_AND_TEMPERATURE`, as the step check and the API); (2) Achat — « Corriger la facture … » / « Annuler la saisie de la facture … » are one text each; (3) report — the unit cell may wrap after « / » (`unitCell`, `<wbr>`), unit column 8 % with R1…Rn, still two pages; (4) recap L1 — an alias merges columns within its own category only, twins (same name) still merge: the ambiance « Coliformes » no longer lands under « Coliformes totaux » (on the local catalogue this is the only grouping that changes); (5) /recherche `du` / `au`, the recap title and the « Reçus aujourd'hui » / « Ce mois-ci » tiles on the laboratory's clock (`parseDay`, `labDayOf`, `labToday`, `labMonthStart`) — identical on production while its tzdata is current; (6) « Sauvegardes » without a journal: a plain sentence for the administrator, no DEPLOY.md.
 
+### 2026-11-21 — lot 5B (the old software's history, HA1–HA7 of `RETOUR-LABO-20-11.md` §6) — built and rehearsed locally on `lot5b`, not deployed
+- **Decision (owner, « execute the plan »):** built with the plan's defaults, written « hypothèse, à confirmer par D-7 » where the laboratory has not answered; switch `LEGACY_HISTORY_ON_PORTAL` (ON). Read-only, a separate screen, never mixed with the LIMS's samples, numbers or counters; no PDF generated (ISO 17025 §7.8); « le rapport signé fait foi » on every screen. HA8 (the signed PDFs) not built — waits for D-7.
+- **Model (migration `20261121020000_lot5b_historique_ancien`, additive):** `LegacyClientLink` (old client → ours; `clientId` null = « ne pas reprendre »; `ICE` / `NOM` / `MAIN`), `LegacySample` (id = the old `ID_LIGNE`; `sourceHash` of the file's line), `LegacyResult` (id = the old `PARAMES_BON_COMMANDE.ID`; readings in JSON). No key to the catalogue, no price, no staff name.
+- **Deviations from the plan, on purpose:** one NDJSON file per month holds the samples **and** their results (a call writes a sample with its analyses, one transaction) instead of `samples-` / `results-` pairs; months are cut by the **reception** date (the sampling date holds typos — day and month swapped, the Delphi empty date 1899-12-30); the report's number is the N° de contrôle (`VALIDETAT_INFO.NUM_RAP` is always empty); links are made for the visit's client only (`BONCOMMAND.ID_CLIENT` is always a type-101 client; a visit's site is used when imported as a site of that same client); the matching is **stricter** than the prices' (two fiches of the same name are ambiguous even when one is archived).
+
 ## 8c. A lesson written down (2026-08-25)
 
 Importing anything that touches Prisma from a **client** component drags the
@@ -1683,6 +1703,13 @@ importing a server module.
   - **The date-time field is no longer a native `datetime-local`.** Any local recette script (`.ui-tests`, gitignored) that fills such an input with « AAAA-MM-JJTHH:mm » must type the day « JJ/MM/AAAA » and the hour « HH:MM » into the two parts instead. The value sent to the API is unchanged.
   - **« Non déclarée » is display only.** The « date de prélèvement » filters and sorts of /recherche and the portal still read `Sample.sampledAt`, so an undeclared deposit is found by the day it was entered at the counter (`sampleSearchWhere`, `portalSampleWhere` comments). Lot 2's « Arrivé le » (R5) does not change that.
   - **The client search reads the journal** to tell where an archived fiche went (`ARCHIVING_ACTIONS` in `client-search.ts`) besides `mergedIntoId`; it is bounded (20 rows, 100 sites, 50 fiches scanned per search).
+
+- **Lot 5B — the old software's history (21/11, `lot5b`, not deployed):**
+  - **The criterion shown is today's**, the one the old software prints on a reprint (it reads `TYPENOURITURE_PARAMS` live); nothing in the base keeps the criterion of the time. n and c are dropped when the analysis was not read on n units.
+  - **An analysis with satisfaisant and acceptable units mixed has no verdict of its own** (c of the time unknown): the units and the sample keep theirs. One « Non satisfaisant » unit always fails the analysis.
+  - **« (inv.) » verdict codes (16, 17, 25)** are read by their wording — compare with signed reports before production (risk 2, HA7).
+  - **The worktree's dev server needs `next dev --webpack`**: Turbopack refuses the `node_modules` junction to the main tree.
+  - **Removing a link deletes the samples it brought** (they can be re-imported by re-linking and re-running the months); the import never rewrites a link.
 
 ## 10. Scope additions — client meeting 2026-07-28
 

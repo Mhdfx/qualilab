@@ -1183,6 +1183,18 @@ Built 21/10 on branch `lot2-retour-16-10`, on top of `d4bff04`, committed and pu
 - [ ] Still six migrations applied (none added on 21/10); the laboratory told to reload every tab (the 35-minute bound).
 - [ ] Then the production lines of V18-A to V18-H above, on « TEST UI » data only.
 
+## Checkpoint V24 — Lot 5B, l'historique de l'ancien logiciel (`RETOUR-LABO-20-11.md` §6, HA1–HA7) — built and rehearsed locally 21/11 on `lot5b`, not deployed
+
+Local rehearsal on the copy `qualilab_hist` (clients and sites of the old software replayed), worktree dev server on :3230 (`next dev --webpack`), through the real routes (scripts kept in the session scratchpad; results in `backups/historique-ancien/repetition-locale-*.json`).
+- [x] Extraction (`extract-legacy-history.py`): 200 072 samples read, 191 681 written in 117 monthly files (max 3,7 Mo), 0 unreadable line, `comptes.md` and `clients.csv` written.
+- [x] « Rattacher les clients »: 892 certain (4 ICE, 888 name), 9 ambiguous, 45 not found; commit wrote 892 links; second run 0.
+- [x] 117 months imported: 185 206 samples, 695 572 analyses, average 2,3 s per call (max 6,9 s); same files again: 0 written.
+- [x] An ambiguous client decided by hand: its 2 764 samples arrive at the months' re-run; the next analysis counts it linked.
+- [x] A merge on the copy carries the 8 samples of the archived fiche; total unchanged.
+- [x] Guards: import / links 401 signed out, 403 for the gestionnaire; the technician is redirected from a fiche's history; a portal test account sees « Historique (ancien logiciel) » in its menu, its 9 samples, the detail with per-unit readings, 404 (API) for another client's sample — the page renders « introuvable » with no data —, no price nor staff name.
+- [x] Browser (headless pane): `/portail/historique` list and detail, the fiche card (per year, ten latest, links), `/admin/import` follow-up.
+- [ ] Before production: the owner reads the counts, decides the 9 ambiguous and the 45 not found; 20 samples compared with their signed PDFs (risk 2); VPS disk and nightly dump checked; then deploy and production recette (« TEST UI » and one real client, read-only, demo account).
+
 ## Checkpoint V22 — Lot 4, réponses du laboratoire du 04/11 (lots 4A, 4B, 4H, `RETOUR-LABO-04-11.md` §5) — integrated and tested locally 05/11, final review applied, **deployed 05/11 20 h 30 (`4ebb146`), production recette V22 passed (3 runs: 85/90, 60/64, 31/31 — the failures were the script's own logo reading and the absent `direction1`), hostile re-check 32/32**
 
 Integrated on `lot2-retour-16-10`: 4A `149c3b2` (code) + `05637a0` (documents), merge 4B `c14b596`, merge 4H `f330419`, then S12's first pass and the integration's documents.

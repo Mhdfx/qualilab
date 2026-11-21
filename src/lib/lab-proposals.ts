@@ -326,3 +326,17 @@ export const CLIENT_PRICE_SKIP_LEGACY_TARIFF = true;
  * only. Every conflict is listed on the import's analysis screen.
  */
 export const CLIENT_PRICE_OWN_BEFORE_SITE = true;
+
+// ————— Lot 5B — l'historique de l'ancien logiciel (RETOUR-LABO-20-11.md §6, Q20) —————
+
+/**
+ * Q20 « Ajouter tout l'historique des clients, ancien plus nouveau »: the
+ * client sees on the portal, besides its samples of the LIMS, what the old
+ * software reported for it (« Historique (ancien logiciel) », read-only,
+ * « le rapport signé fait foi »). On (proposed — the separate screen, its
+ * contents and the PDFs wait for D-7): the menu shows the screen to a client
+ * that has a history, /portail/historique and /api/portail/historique/**
+ * answer. Off: the portal's screen and routes are gone (404); the fiche
+ * client of the laboratory keeps its card.
+ */
+export const LEGACY_HISTORY_ON_PORTAL = true;
