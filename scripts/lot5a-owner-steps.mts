@@ -227,11 +227,16 @@ if (runs("s14")) {
 if (runs("s15")) {
   const natures = must(await api(cookie, "GET", "/api/natures"), "GET /api/natures") as { id: string; label: string }[];
   const sensory = new Set(natures.filter((n) => isSensoryNature(n.label)).map((n) => n.id));
-  const families = must(await api(cookie, "GET", "/api/product-types?all=1"), "GET /api/product-types") as {
-    id: string;
-    name: string;
-    natureId: string | null;
-  }[];
+  // One list per sensory type d'analyse: the route caps a list at 400 families, and the
+  // catalogue holds more (the family was missed on the local copy before this filter).
+  const families: { id: string; name: string; natureId: string | null }[] = [];
+  for (const natureId of sensory) {
+    const rows = must(
+      await api(cookie, "GET", `/api/product-types?all=1&natureId=${encodeURIComponent(natureId)}`),
+      "GET /api/product-types"
+    ) as { id: string; name: string; natureId: string | null }[];
+    families.push(...rows);
+  }
   const family = s15Family(families, sensory);
   console.log(`\nS15 — sensory analysis, n = 1 (Q133)`);
   if (!family) {
