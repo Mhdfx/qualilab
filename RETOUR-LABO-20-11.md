@@ -478,7 +478,15 @@ urgents (D-2) ; R-30 / R-15 (Q2 du 02/11) toujours en suspens.
   seulement, ou bloquer le paiement ? (4) Quels fournisseurs ? »
 - **D-4 — C-1, l'air** : « Pour l'air (boîte exposée, biocollecteur), quelle
   limite (UFC par boîte, UFC/m³) ? En attendant, une lecture d'air n'est
-  jugée que contre un critère de la même unité. »
+  jugée que contre un critère de la même unité. » **Et, pour une surface
+  décrite en mots (« couteau »)** : « Un objet prélevé une fois (n = 1) face
+  à un critère à n = 5 : le résultat doit-il être un verdict officiel
+  (« 120 UFC/couteau face à ≤ 100 → non conforme »), ou indicatif ? Faut-il
+  programmer n = 5 sur un couteau ? » — hypothèse construite (revue du lot
+  5A, interrupteur `SURFACE_DESCRIBED_N_FROM_CRITERION` éteint) : le n du
+  critère n'est pas proposé pour une surface décrite ; lue sur une unité,
+  elle reçoit un verdict indicatif (« Non satisfaisant », l'alerte part
+  quand même).
 - **D-5 — adresses** : « La seconde adresse de copie est incomplète (le
   domaine manque) : pouvez-vous nous l'écrire en entier ? L'adresse d'envoi
   des rapports se termine-t-elle par « .com » ? Le nom affiché ? Qui gère

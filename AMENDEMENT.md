@@ -43,6 +43,42 @@ du premier amendement (noté « reconstituée »). `Report` gagne `version`
 Les échantillons en cours d'amendement apparaissent dans la file de
 validation avec le badge « Amendement ».
 
+### 2 bis. Corriger avant envoi (lot 5A, K11 — réponse du 20/11 à Q132)
+
+« Corriger sans amendement : même numéro, sans « annule et remplace » ».
+Interrupteur `UNSENT_REPORT_CORRECTED_IN_PLACE` (`src/lib/lab-proposals.ts`,
+allumé ; éteint : tout rapport rouvert est amendé, comme avant).
+
+1. Sur un rapport **validé jamais envoyé** (`VALIDE`, `reportVersionSent`
+   faux), le verbe est **« Corriger avant envoi »** (mêmes rôles que
+   l'amendement), à la place de « Rouvrir pour amendement » — que la route
+   `…/reopen` refuse alors (409). `POST /api/samples/[id]/correct`, motif
+   obligatoire (3 à 500 caractères), **interne** : jamais imprimé.
+2. L'échantillon revient à `RESULTATS_SAISIS`, les deux validations sont
+   effacées ; le rapport est « en correction » (`amendmentPending`, donc
+   les gardes de l'amendement : ni envoi, ni portail, ni conclusion modifiée,
+   ni annulation) ; la correction est notée sur la version en vigueur
+   (`ReportVersion.correctedBeforeSend`, motif, auteur, date). Un envoi en
+   cours ou parti entre-temps fait refuser la correction (409 : seul un
+   amendement corrige désormais ce rapport).
+3. À la nouvelle approbation, la **même version** est émise de nouveau :
+   même numéro imprimé, aucune mention « Rapport amendé », `version` et
+   `amendedAt` inchangés ; les champs du rapport et ses données sont figés à
+   neuf ; les données remplacées restent dans la trace interne de la version
+   (jamais imprimées ni envoyées), avec le motif, l'auteur, la date de la
+   correction et celle de la nouvelle émission. « Versions du rapport » les
+   liste (« Corrigé avant envoi le … »), sans PDF.
+4. Un amendement pas encore envoyé (`-A1` validé, la version 0 partie) se
+   corrige aussi sur place : il **garde** son numéro `-A1` et son « Annule et
+   remplace » de la version partie (avec le motif de l'amendement).
+5. Les alertes de contamination : comme pour un amendement — une alerte déjà
+   partie pour exactement ce résultat n'est pas répétée, un résultat changé
+   par la correction alerte de nouveau.
+
+Journal : `REPORT_CORRECTED_BEFORE_SEND` (la demande), `REPORT_CORRECTION_ISSUED`
+(la nouvelle émission) ; le parcours de l'échantillon les montre ; la file de
+validation porte le badge « Correction avant envoi ».
+
 ## 3. Duplicata
 
 `GET /api/samples/[id]/report?duplicata=1` (rôles qui lisent déjà le
@@ -54,5 +90,6 @@ version figée (historique), lecture seule, marquée « Version remplacée par
 ## 4. Écrans
 
 Page de validation et fiche de recherche d'un échantillon approuvé :
-« Rouvrir pour amendement » (VALIDATEUR, DIRECTION, ADMIN, avec motif), « Duplicata (PDF) »,
+« Rouvrir pour amendement » (VALIDATEUR, DIRECTION, ADMIN, avec motif ; « Corriger avant envoi » à sa place
+sur un rapport jamais envoyé, §2 bis), « Duplicata (PDF) »,
 « Versions du rapport » (liste : numéro, date, motif, lien PDF).

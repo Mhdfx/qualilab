@@ -1265,6 +1265,90 @@ prices. Prefer a fix forward; each behaviour change is a switch in
 rollback = `git checkout v1.7-avant-lot4 && bash scripts/deploy.sh` +
 restore `qualilab_avant-lot4.sql.gz` (loses everything entered since).
 
+## Lot 5A (21/11) — the laboratory's answers of 20/11: J6, I10, J7, J8, K11, the owner's steps S13–S15
+
+Built on `lot2-retour-16-10` in the main tree (`RETOUR-LABO-20-11.md` §5,
+`LOT5-AVANCEMENT.md`, `HANDOFF.md` §8 « 2026-11-21 — lot 5A »). Production
+runs `4ebb146` (lot 4). **One additive migration**:
+`20261121010000_lot5a_correction_avant_envoi` (`ReportVersion.correctedBeforeSend`
+JSON NULL). Nothing switches on by itself in the data; the behaviour changes
+are in the code, each behind its switch (`lab-proposals.ts` « Lot 5A »).
+
+### 0. Before the window
+
+- Gates on the branch's head (tsc 0, eslint 0, vitest, `npm run build`; the
+  local recette `v23-lot5a-local.mjs`).
+- **K11 — count the amendments pending on a version never sent** (read only;
+  expected 0 — such an amendment would read « Correction avant envoi » on the
+  screens while still being issued as an amendment):
+  `SELECT COUNT(*) FROM Report r JOIN Sample s ON s.id = r.sampleId WHERE r.amendmentPending = 1 AND (r.sentAt IS NULL OR (r.amendedAt IS NOT NULL AND r.sentAt <= r.amendedAt));`
+  Not 0: finish those amendments (validation technique, then administrative)
+  before the deploy.
+- **J6 — count the surfaces described in words still in the circuit** (read
+  only): `SELECT COUNT(*) FROM Sample WHERE lineKind = 'SURFACE' AND TRIM(COALESCE(surfaceAreaNote, '')) <> '' AND status IN ('PROGRAMME', 'EN_ANALYSE', 'RESULTATS_SAISIS');`
+  Their family's criterion « /cm² » now judges them, against its plan (47 of
+  the 86 local surface criteria have n = 5); the programme sheet keeps
+  proposing the n of before lot 5A for them (`SURFACE_DESCRIBED_N_FROM_CRITERION`
+  off, hypothèse D-4), so one programmed with n = 1 under an n = 5 criterion
+  reads an **indicative** verdict (« Non satisfaisant » above the limit, the
+  alert still leaves) — finish them before the deploy, or accept it (0 on the
+  local copy).
+- **Review leftover (main tree only)**: delete the partial production build
+  written into `.next/` on 21/11 at 15:18–15:19 (`.next/build`,
+  `.next/server`, `.next/static`, `.next/types`, `.next/lock` and the
+  `*-manifest*` / `*.nft.json` files of that time; never `.next/dev` nor
+  `.next/cache`), then run `npm run build` at the planned gate, the dev
+  server on :3210 in mind (HANDOFF §9, 05/11, if it misbehaves).
+- **K11 against the local database**: `npx vitest run src/lib/report-correction.db.test.ts`
+  (4 scenarios; skipped when the local DB does not answer).
+- Tell the laboratory (`RETOUR-LABO-20-11.md` §9 step 4): a surface is
+  judged by its value whatever the unit, the unit chosen at entry (a sensitive
+  germ within its limit no longer alerts on its presence alone) — **hypothèse,
+  à confirmer par D-4: the criterion's n is not proposed for a surface
+  described in words, so a couteau read once (n = 1) under an n = 5 criterion
+  gets an indicative « Non satisfaisant », not the official « non conforme »
+  of their example « 120 UFC/couteau face à ≤ 100 »**; identification
+  « Non » = « à vérifier »; « À prendre » by N° de série (or N° de contrôle);
+  « Corriger avant envoi » for a report never sent; (J7) the colleagues'
+  samples hidden, the administrator's « Libérer » hands one over; with D-1 … D-6.
+
+### 1. Restore point
+
+- **Code:** `git tag v1.8-avant-lot5 4ebb146 && git push origin v1.8-avant-lot5`;
+  then the fast-forward of `master` as for lot 4.
+- **Database:** `/var/backups/qualilab/qualilab_avant-lot5.sql.gz`, app
+  stopped, right before `deploy.sh` (as « Lot 4 » step 1).
+
+### 2. Deploy and check
+
+- As « Lot 4 » steps 2 and 3: `docker compose logs migrate` shows
+  `20261121010000_lot5a_correction_avant_envoi` applied;
+  `SHOW COLUMNS FROM ReportVersion LIKE 'correctedBeforeSend'` → one row.
+
+### 3. The owner's steps (demo panel admin — never a password typed; each journalled by its route)
+
+Dry run first, read the plan, then the real run:
+
+```bash
+npx tsx scripts/lot5a-owner-steps.mts --base $PROD --step s13 --dry-run   # then without --dry-run
+npx tsx scripts/lot5a-owner-steps.mts --base $PROD --step s14 --dry-run   # aliases + the prices' analysis
+npx tsx scripts/lot5a-owner-steps.mts --base $PROD --step s15 --dry-run   # sensory family, n = 1
+```
+
+- S13: base TVA, 75 % / 100 %, « fournisseurs soumis » — tick « soumis à la
+  retenue » supplier by supplier when the laboratory names them; the
+  attestation's validity stays 3 months until D-3.
+- S14 needs `backups/prix-clients-ancienne-base.csv` on the operator's
+  machine (`--csv`); the import is idempotent.
+- S16 (the first internal copy address, `backups/retour-labo-20-11/adresses.md`)
+  and S17 (counters, only on the owner's decision) stay by hand in /admin.
+
+### 4. Rollback
+
+`git checkout v1.8-avant-lot5`, rebuild, restore the dump of step 1 (the
+column added by the migration is ignored by the old code; restoring the dump
+removes it). A single behaviour can be turned back by its switch instead.
+
 ## After every deploy — 5-minute check
 
 1. `/api/health` answers `ok`.

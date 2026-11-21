@@ -255,10 +255,9 @@ testé dans `lab-proposals-4a-back.test.ts`) :
   (`accreditationLogo`, `accreditationLogoByHand`) et journalisée
   (SAMPLE_APPROVED : « imprimé (règle par défaut) », « retiré à la main »…) ;
   un amendement repart de la règle. **Qui la touche : la personne qui signe
-  la validation administrative (Direction, administrateur) — hypothèse, à
-  confirmer par C-4.** **Ajouter le logo n'est possible que sur un rapport
+  la validation administrative (Direction, administrateur) — confirmé le  20/11 (C-4).** **Ajouter le logo n'est possible que sur un rapport
   portant au moins une analyse « accréditée » par le laboratoire
-  lui-même — hypothèse, à confirmer par C-4** (ISO 17025 §7.8 et les règles
+  lui-même — confirmé le 20/11 (C-4)** (ISO 17025 §7.8 et les règles
   d'usage de la marque de l'organisme d'accréditation : jamais le logo sur
   un rapport sans analyse accréditée ; une analyse sous-traitée accréditée
   « SA » ne suffit pas tant que le laboratoire ne l'a pas dit) : la case est
@@ -387,14 +386,14 @@ copie locale : 0.
 - **Sites facturés à un autre client** : la carte des prix le dit (« Les échantillons
   du site « X », facturés à Y, sont facturés aux prix de Y : les prix ci-dessous ne
   s'y appliquent pas ») — la facture va au client qui paie, à ses prix
-  (**hypothèse, à confirmer par C-8 (b)**).
+  (**confirmé le 20/11, C-8 (b)**).
 - **Reprise** : `scripts/legacy/extract-client-prices.py` (lecture seule de
   `qlabo-fb`) écrit `backups/prix-clients-ancienne-base.csv` (ignoré par git) ;
   « Importer les prix clients » (/admin/import, administrateur seul) : analyse
   (rapprochés / client introuvable / client ambigu / analyse introuvable / doublons /
   prix à 0), puis import en une transaction, journalisé (`CLIENT_PRICES_IMPORTED`,
   chaque passage), idempotent (`legacyPriceId` ; même fichier relancé : 0 écrit).
-  Règles retenues (**hypothèses, à confirmer par C-8**) : un prix à 0 n'est pas un
+  Règles retenues (**confirmées le 20/11, C-8 : « Oui, d'accord avec ces cinq règles »**) : un prix à 0 n'est pas un
   prix propre (le catalogue s'applique) ; le prix d'un site de l'ancien logiciel va
   au client qui paie ce site (son « Facturé à », sinon son client) ; deux prix pour
   le même client et la même analyse : le prix propre du client avant celui d'un de
