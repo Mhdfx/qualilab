@@ -73,7 +73,13 @@ allumé ; éteint : tout rapport rouvert est amendé, comme avant).
    remplace » de la version partie (avec le motif de l'amendement).
 5. Les alertes de contamination : comme pour un amendement — une alerte déjà
    partie pour exactement ce résultat n'est pas répétée, un résultat changé
-   par la correction alerte de nouveau.
+   par la correction alerte de nouveau. Un original corrigé sur place est jugé
+   **contre le seul registre des alertes réellement parties**
+   (`alertsAlreadySent`, revue de l'intégration du 21/11) — jamais contre les
+   données qu'il remplace : celles-ci peuvent n'avoir jamais été envoyées ni
+   alertées (une première correction approuvée par « Valider » seul, puis une
+   seconde), et l'alerte du résultat qu'elles portaient serait perdue sans
+   bruit (leçon du 09/09 ; scénario (5) de `report-correction.db.test.ts`).
 
 Journal : `REPORT_CORRECTED_BEFORE_SEND` (la demande), `REPORT_CORRECTION_ISSUED`
 (la nouvelle émission) ; le parcours de l'échantillon les montre ; la file de

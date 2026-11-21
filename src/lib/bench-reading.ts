@@ -1,14 +1,14 @@
-import { applyCalcFactor, parseLabValue, suggestConformity, type ParsedValue } from "./result-value";
+import { applyCalcFactor, parseLabValue, type ParsedValue } from "./result-value";
 import {
   aboveBelowLimit,
   applyUnitFactor,
   parseUnitReading,
-  suggestUnitsConformity,
   summariseReadings,
   type UnitReading,
 } from "./interpretation";
 import { repetitionLabel } from "./series";
 import { NO_CRITERION_NO_INTERPRETATION } from "./lab-proposals";
+import { suggestConformityOf, suggestUnitsConformityOf } from "./contamination-alert";
 
 /**
  * How a line of the bench reads — pure, shared by the entry screen
@@ -107,7 +107,8 @@ export function valueAgainstLimit(
   const text = value.trim();
   if (!text) return { parsed: null, suggested: null, undecided: null, needsManual: false };
   const parsed = applyCalcFactor(parseLabValue(text), factor);
-  const suggested = suggestConformity(parsed.numeric, limitValue, parsed.kind);
+  // A germ shown against a limit ≤ 0 is non conforme on its own (J6 review, 21/11).
+  const suggested = suggestConformityOf(text, parsed, limitValue);
   const undecided =
     parsed.kind === "above" && suggested === null
       ? aboveBelowLimit([applyUnitFactor(parseUnitReading(text), factor)], limitValue)
@@ -137,7 +138,7 @@ export function unitsAgainstLimit(
   const read = benchUnits(units, factor);
   const summary = summariseReadings(read.readings);
   const parsed = summary.value ? { ...parseLabValue(summary.value), numeric: summary.numeric } : null;
-  const suggested = suggestUnitsConformity(read.readings, limitValue);
+  const suggested = suggestUnitsConformityOf(read.readings, limitValue);
   const undecided = suggested === null ? aboveBelowLimit(read.readings, limitValue) : null;
   return {
     ...read,

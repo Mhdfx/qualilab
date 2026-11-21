@@ -1,6 +1,6 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { parseLabNumber } from "./counters";
-import { TAKE_LIST_BY_NUMBER } from "./lab-proposals";
+import { TAKE_LIST_BY_NUMBER, TAKE_LIST_URGENT_FIRST } from "./lab-proposals";
 
 /**
  * The order of « À prendre » at the bench — lot 5A, J8 (Q106 of 20/11 : « par
@@ -35,7 +35,10 @@ import { TAKE_LIST_BY_NUMBER } from "./lab-proposals";
 /**
  * The switch `TAKE_LIST_BY_NUMBER` (`lab-proposals.ts`) gives the way back:
  * off, « À prendre » follows the bench order again and offers no choice
- * (`takeListOrder`).
+ * (`takeListOrder`). The urgent samples have a switch of their own,
+ * `TAKE_LIST_URGENT_FIRST` (off — hypothèse, à confirmer par D-2; review of
+ * the integration, 21/11): on, « URGENTE » leads, then the number order
+ * chosen — the confirmed answer of Q106 stays whatever D-2 says.
  */
 
 /** The address parameter: `/technicien?tri=controle`. */
@@ -65,6 +68,8 @@ export function takeSortQuery(sort: TakeSort): Record<string, string> {
 /** The keys a loaded sample is ranked by (`compareTakeOrder`): its numbers, its line, its reception. */
 export type TakeOrderKeys = {
   id: string;
+  /** « URGENTE » leads only while `TAKE_LIST_URGENT_FIRST` is on (D-2). */
+  priority?: string | null;
   code: string;
   lineNumber: number;
   receivedAt: Date | null;
@@ -73,11 +78,17 @@ export type TakeOrderKeys = {
 };
 
 /** The Prisma order of « À prendre » for a choice. */
-export function takeOrderBy(sort: TakeSort): Prisma.SampleOrderByWithRelationInput[] {
+export function takeOrderBy(
+  sort: TakeSort,
+  urgentFirst: boolean = TAKE_LIST_URGENT_FIRST
+): Prisma.SampleOrderByWithRelationInput[] {
+  // « URGENTE » sorts after « NORMALE » in the enum: descending leads with it (as BENCH_ORDER).
+  const lead: Prisma.SampleOrderByWithRelationInput[] = urgentFirst ? [{ priority: "desc" }] : [];
   if (sort === "controle") {
-    return [{ receivedAt: "asc" }, { lineNumber: "asc" }, { code: "asc" }, { id: "asc" }];
+    return [...lead, { receivedAt: "asc" }, { lineNumber: "asc" }, { code: "asc" }, { id: "asc" }];
   }
   return [
+    ...lead,
     { serie: { year: "asc" } },
     { serie: { createdAt: "asc" } },
     { lineNumber: "asc" },
@@ -107,13 +118,19 @@ export function takeListOrder(
  * drawn at (see above). A number that cannot be read comes after every one
  * that can, by reception (MySQL's place for a missing one: first).
  */
-export function compareTakeOrder(sort: TakeSort, a: TakeOrderKeys, b: TakeOrderKeys): number {
+export function compareTakeOrder(
+  sort: TakeSort,
+  a: TakeOrderKeys,
+  b: TakeOrderKeys,
+  urgentFirst: boolean = TAKE_LIST_URGENT_FIRST
+): number {
   const keys = (row: TakeOrderKeys): (number | string)[] => {
     const number = parseLabNumber((sort === "controle" ? row.controlCode : row.serie.serialNumber) ?? "");
     const received = row.receivedAt ? row.receivedAt.getTime() : -Infinity;
+    const urgent = urgentFirst ? (row.priority === "URGENTE" ? 0 : 1) : 0;
     return number
-      ? [0, number.year, number.sequence, 0, row.lineNumber, row.code, row.id]
-      : [1, 0, 0, received, row.lineNumber, row.code, row.id];
+      ? [urgent, 0, number.year, number.sequence, 0, row.lineNumber, row.code, row.id]
+      : [urgent, 1, 0, 0, received, row.lineNumber, row.code, row.id];
   };
   const left = keys(a);
   const right = keys(b);
@@ -125,11 +142,16 @@ export function compareTakeOrder(sort: TakeSort, a: TakeOrderKeys, b: TakeOrderK
 }
 
 /** The sentence under the list's title, for the order in force. */
-export function takeListDescription(sort: TakeSort, enabled: boolean = TAKE_LIST_BY_NUMBER): string {
+export function takeListDescription(
+  sort: TakeSort,
+  enabled: boolean = TAKE_LIST_BY_NUMBER,
+  urgentFirst: boolean = TAKE_LIST_URGENT_FIRST
+): string {
   if (!enabled) return "Programme confirmé, personne ne les a pris : les urgents d'abord, puis les plus anciens.";
-  return sort === "controle"
-    ? "Programme confirmé, personne ne les a pris : par N° de contrôle. Les urgents sont signalés."
-    : "Programme confirmé, personne ne les a pris : par N° de série, puis par échantillon. Les urgents sont signalés.";
+  const order = sort === "controle" ? "par N° de contrôle" : "par N° de série, puis par échantillon";
+  return urgentFirst
+    ? `Programme confirmé, personne ne les a pris : les urgents d'abord, puis ${order}.`
+    : `Programme confirmé, personne ne les a pris : ${order}. Les urgents sont signalés.`;
 }
 
 /**
@@ -140,16 +162,18 @@ export function takeListDescription(sort: TakeSort, enabled: boolean = TAKE_LIST
 export function takeListRows<T extends TakeOrderKeys>(
   sort: TakeSort,
   rows: readonly T[],
-  enabled: boolean = TAKE_LIST_BY_NUMBER
+  enabled: boolean = TAKE_LIST_BY_NUMBER,
+  urgentFirst: boolean = TAKE_LIST_URGENT_FIRST
 ): T[] {
-  return enabled ? [...rows].sort((a, b) => compareTakeOrder(sort, a, b)) : [...rows];
+  return enabled ? [...rows].sort((a, b) => compareTakeOrder(sort, a, b, urgentFirst)) : [...rows];
 }
 
 /**
  * What « À prendre » says when it is cut at `limit` rows: the urgent samples
- * no longer lead it (hypothèse D-2), so an urgent one past the limit would
- * not show — the notice counts them (review of lot 5A). Null when the list
- * is whole.
+ * no longer lead it (hypothèse D-2, `TAKE_LIST_URGENT_FIRST` off), so an
+ * urgent one past the limit would not show — the notice counts them (review
+ * of lot 5A; with the switch on, only past `limit` urgent ones). Null when
+ * the list is whole.
  */
 export function truncatedTakeNotice(shown: number, limit: number, urgentShown: number, urgentTotal: number): string | null {
   if (shown < limit) return null;

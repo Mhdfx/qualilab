@@ -6,6 +6,8 @@ import {
   carriesNoJudgement,
   raisesContaminationAlert,
   readingsShowGerm,
+  suggestConformityOf,
+  suggestUnitsConformityOf,
   valueShowsGerm,
   type AlertCandidate,
 } from "./contamination-alert";
@@ -182,8 +184,8 @@ describe("without a criterion, the server's own judgement keeps the alert", () =
   it("the results route stores that judgement, not the request's", () => {
     const source = ROUTE_SOURCE();
     expect(source).not.toMatch(/conform:\s*typeof raw\.conform/);
-    expect(source).toContain("limitConformity(suggestUnitsConformity(readings, parameter.limitValue), raw.conform, parameter.limitValue)");
-    expect(source).toContain("limitConformity(suggestConformity(parsed.numeric, parameter.limitValue, parsed.kind), raw.conform, parameter.limitValue)");
+    expect(source).toContain("limitConformity(suggestUnitsConformityOf(readings, parameter.limitValue), raw.conform, parameter.limitValue)");
+    expect(source).toContain("limitConformity(suggestConformityOf(value, parsed, parameter.limitValue), raw.conform, parameter.limitValue)");
   });
 
   it("with a limit, the stored conformity is exactly the old one (`benchConformity`), J3 on or off", () => {
@@ -298,5 +300,69 @@ describe("O-12 — a sensitive germ without any judgement alerts on its presence
     const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
     expect(read("./validation-server.ts")).toMatch(/detected: true/);
     expect(read("../app/validation/[id]/page.tsx")).toMatch(/detected: true/);
+  });
+});
+
+/**
+ * J6, review of the integration (21/11) — `PRESENCE_OVER_ZERO_LIMIT_NON_CONFORME`.
+ * Since J6, a surface described in words is judged against the parameter's
+ * numeric limit: a « Présence » of Salmonella against limit 0 has no number,
+ * and its alert hung on the technician's choice. Against a limit ≤ 0, a
+ * reading that shows the germ is non conforme on its own — and alerts.
+ */
+describe("J6 — a germ shown against a zero limit is non conforme and alerts on its own", () => {
+  function stored(typed: string, limit: number | null, presenceOverZero = true): StoredRow {
+    const parsed = parseLabValue(typed);
+    return {
+      value: typed,
+      numericValue: parsed.numeric,
+      interpretation: null,
+      informalInterpretation: null,
+      // What the route stores: the suggestion, the request's « conforme » only where none.
+      conform: limitConformity(suggestConformityOf(typed, parsed, limit, presenceOverZero), true, limit),
+      detected: valueShowsGerm(typed),
+      parameter: { alertOnExceed: true },
+    };
+  }
+
+  it("« Présence », « Positif », « Indénombrable » against limit 0: non conforme even when « Conforme » is posted, and alerts", () => {
+    for (const typed of ["Présence", "présent", "Positif", "Indénombrable", "3", "> 10"]) {
+      const row = stored(typed, 0);
+      expect(row.conform, typed).toBe(false);
+      expect(raisesContaminationAlert(row), typed).toBe(true);
+      expect(matches(ALERT_RESULT_WHERE, row), typed).toBe(true);
+    }
+  });
+
+  it("an absence against limit 0 stays conforme and never alerts", () => {
+    for (const typed of ["Absence", "absent", "< 10", "0", "ND"]) {
+      const row = stored(typed, 0);
+      expect(row.conform, typed).toBe(true);
+      expect(raisesContaminationAlert(row), typed).toBe(false);
+    }
+  });
+
+  it("against a limit above zero, or none, the suggestion is the old one", () => {
+    for (const typed of ["Présence", "120", "50", "Indénombrable", "> 10", "Absence"]) {
+      for (const limit of [100, null]) {
+        const parsed = parseLabValue(typed);
+        expect(suggestConformityOf(typed, parsed, limit), `${typed} / ${limit}`).toBe(suggestConformity(parsed.numeric, limit, parsed.kind));
+      }
+    }
+    expect(suggestConformityOf("Présence", parseLabValue("Présence"), 100)).toBeNull();
+  });
+
+  it("per unit: one repetition showing the germ against limit 0 is enough", () => {
+    const readings = ["Absence", "Présence", ""].map(parseUnitReading);
+    expect(suggestUnitsConformity(readings, 0)).toBeNull();
+    expect(suggestUnitsConformityOf(readings, 0)).toBe(false);
+    expect(suggestUnitsConformityOf(["Absence", "ND"].map(parseUnitReading), 0)).toBe(true);
+    expect(suggestUnitsConformityOf(readings, 100)).toBeNull();
+  });
+
+  it("off: the technician chooses again, as after lot 5A's first build", () => {
+    const parsed = parseLabValue("Présence");
+    expect(suggestConformityOf("Présence", parsed, 0, false)).toBeNull();
+    expect(suggestUnitsConformityOf(["Présence"].map(parseUnitReading), 0, false)).toBeNull();
   });
 });

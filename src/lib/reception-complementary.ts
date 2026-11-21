@@ -445,6 +445,8 @@ export type SignedProtocolRow = {
  * réceptionniste may tick « Protocole papier signé reçu »: Oui is CONFORME,
  * Non is « à vérifier » — amber, never a refusal, never a sample's motif —
  * and no answer stays « à confirmer », optional.
+ * Confirmé le 20/11 (Q73, « Oui, d'accord » — simple signal orange, sans
+ * bloquer, visites seulement).
  */
 export function signedProtocolRow(input: { hasPhoto: boolean; received: boolean | null }): SignedProtocolRow {
   const row = (status: ChecklistStatus, detail: string): SignedProtocolRow => ({ ...SIGNED_PROTOCOL_CHECK, status, detail });

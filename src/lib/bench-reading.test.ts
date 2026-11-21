@@ -52,6 +52,18 @@ describe("valueAgainstLimit — one value against the parameter's limit", () => 
     expect(valueAgainstLimit("Indénombrable", 1, 100)).toMatchObject({ suggested: false, needsManual: false });
   });
 
+  it("J6 review (21/11): a germ shown against a limit ≤ 0 is non conforme on its own — no choice to get wrong", () => {
+    // « Salmonelles surfaces » on a « couteau »: limit 0, read « Présence ».
+    for (const typed of ["Présence", "présent", "Positif", "Indénombrable"]) {
+      expect(valueAgainstLimit(typed, 1, 0), typed).toMatchObject({ suggested: false, needsManual: false });
+    }
+    expect(valueAgainstLimit("Absence", 1, 0)).toMatchObject({ suggested: true, needsManual: false });
+    expect(unitsAgainstLimit(["Absence", "Présence", ""], 1, 0)).toMatchObject({ suggested: false, needsManual: false });
+    expect(unitsAgainstLimit(["Absence", "Absence"], 1, 0)).toMatchObject({ suggested: true, needsManual: false });
+    // Above zero, a presence still asks the technician.
+    expect(valueAgainstLimit("Présence", 1, 100)).toMatchObject({ suggested: null, needsManual: true });
+  });
+
   it("asks nothing for a count without a limit, nor for an empty line", () => {
     expect(valueAgainstLimit("50", 1, null)).toMatchObject({ suggested: null, needsManual: false });
     expect(valueAgainstLimit("", 1, 100)).toEqual({ parsed: null, suggested: null, undecided: null, needsManual: false });

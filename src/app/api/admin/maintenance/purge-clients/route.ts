@@ -7,7 +7,8 @@ import { parseLabNumber, type CounterKind } from "@/lib/counters";
 /**
  * Go-live tool (DEPLOY.md): removes the demonstration clients and everything
  * that hangs off them — séries, samples, results, reports, invoices, e-mail
- * logs, memory — then brings the yearly counters back to the highest number
+ * logs, memory, the old software's history imported and its links (lot 5B,
+ * counted in the dry run) — then brings the yearly counters back to the highest number
  * still in use. ADMIN only, explicit client ids, a dry run first, the word
  * « SUPPRIMER » to commit, one journal entry. The journal itself is never
  * touched: what happened stays written. No screen on purpose — a single
@@ -39,7 +40,8 @@ export async function POST(request: Request) {
     select: {
       id: true,
       name: true,
-      _count: { select: { series: true, samples: true, invoices: true, emails: true, sites: true, products: true, places: true } },
+      // Lot 5B: the imported history and its links cascade with the client — shown before.
+      _count: { select: { series: true, samples: true, invoices: true, emails: true, sites: true, products: true, places: true, legacySamples: true, legacyLinks: true } },
     },
   });
   if (clients.length !== clientIds.length) {

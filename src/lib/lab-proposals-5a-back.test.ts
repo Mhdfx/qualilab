@@ -5,7 +5,10 @@ import { describe, expect, it, vi } from "vitest";
  * §5), put back where they were before it (src/lib/lab-proposals.ts): J6
  * `SURFACE_JUDGED_WHATEVER_UNIT` and `SURFACE_UNIT_CHOSEN_AT_ENTRY` off, I10
  * `IDENTIFICATION_TO_VERIFY` off, J7 `COLLEAGUE_SAMPLES_HIDDEN` off, J8
- * `TAKE_LIST_BY_NUMBER` off, K11 `UNSENT_REPORT_CORRECTED_IN_PLACE` off.
+ * `TAKE_LIST_BY_NUMBER` off, K11 `UNSENT_REPORT_CORRECTED_IN_PLACE` off; the
+ * review of the integration (21/11) adds J6 `PRESENCE_OVER_ZERO_LIMIT_NON_CONFORME`
+ * off (`TAKE_LIST_URGENT_FIRST` is off already, its ON pinned in
+ * `bench-order.test.ts`).
  * Each must give back the behaviour of lot 4 exactly, through the rules' own
  * defaults — the way back the switches promise. The module is mocked, so the
  * pure rules read these values as the server and the screens would.
@@ -18,6 +21,7 @@ vi.mock("./lab-proposals", async (importOriginal) => ({
   COLLEAGUE_SAMPLES_HIDDEN: false,
   TAKE_LIST_BY_NUMBER: false,
   UNSENT_REPORT_CORRECTED_IN_PLACE: false,
+  PRESENCE_OVER_ZERO_LIMIT_NON_CONFORME: false,
 }));
 
 const { PLAIN_UNIT_CONTEXT, judgingLimit, surfaceUnitChoice, surfaceUnitChoices, unitJudges } = await import("./result-unit");
@@ -26,6 +30,7 @@ const { proposedConformity } = await import("./reception-rules");
 const { canReadAtBench, colleagueNamed, colleagueSampleHidden, colleaguesListed, takeRefusal, untakeRefusal, TAKE_MESSAGES } = await import("./bench-access");
 const { takeOverRefusal } = await import("./take-over");
 const { BENCH_ORDER, takeListDescription, takeListOrder } = await import("./bench-order");
+const { unitsAgainstLimit, valueAgainstLimit } = await import("./bench-reading");
 const { correctionRefusal, CORRECTION_MESSAGES, pendingReportChange, reopenMode, unsentReopenWarning } = await import("./report-amendment");
 
 const couteau = { ...PLAIN_UNIT_CONTEXT, lineKind: "SURFACE" as const, surfaceAreaNote: "couteau" };
@@ -75,5 +80,12 @@ describe("lot 5A — the switches back to lot 4", () => {
     expect(
       correctionRefusal({ status: "VALIDE", role: "ADMIN", reason: "Erreur de lot", sent: false, amendmentPending: false })
     ).toBe(CORRECTION_MESSAGES.disabled);
+  });
+
+  it("J6 presence back: « Présence » against a zero limit waits for the technician's choice again", () => {
+    expect(valueAgainstLimit("Présence", 1, 0)).toMatchObject({ suggested: null, needsManual: true });
+    expect(unitsAgainstLimit(["Absence", "Présence"], 1, 0)).toMatchObject({ suggested: null, needsManual: true });
+    // A count is still judged on its own.
+    expect(valueAgainstLimit("3", 1, 0)).toMatchObject({ suggested: false, needsManual: false });
   });
 });

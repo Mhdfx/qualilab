@@ -13,14 +13,13 @@ import {
   applyUnitFactor,
   judgeUnits,
   parseUnitReading,
-  suggestUnitsConformity,
   summariseReadings,
   verdictToConform,
   type UnitReading,
 } from "@/lib/interpretation";
-import { readingsShowGerm, valueShowsGerm } from "@/lib/contamination-alert";
+import { readingsShowGerm, suggestConformityOf, suggestUnitsConformityOf, valueShowsGerm } from "@/lib/contamination-alert";
 import { judgingLimit, judgingThreshold, resultUnit, surfaceUnitChoice } from "@/lib/result-unit";
-import { NOT_DONE_MESSAGE, isNotDoneText, singleValueEntry, suggestConformity } from "@/lib/result-value";
+import { NOT_DONE_MESSAGE, isNotDoneText, singleValueEntry } from "@/lib/result-value";
 import { resultAuthor, storedReading, typedUnits } from "@/lib/result-author";
 import { SHEET_SAVED_BY_COLLEAGUE, savedByOthersSince, sheetLoadedAt } from "@/lib/take-over-sheet";
 import type { Interpretation, ResultWorkStatus } from "@/generated/prisma/enums";
@@ -332,7 +331,7 @@ export async function PUT(
           // The worst unit against the limit, as the screen computes it;
           // the technician's choice only where the screen asks for one.
           // Without a limit either, nothing to choose (J3, `limitConformity`).
-          conform: limitConformity(suggestUnitsConformity(readings, parameter.limitValue), raw.conform, parameter.limitValue),
+          conform: limitConformity(suggestUnitsConformityOf(readings, parameter.limitValue), raw.conform, parameter.limitValue),
           workStatus,
           note: note || null,
           interpretation: null,
@@ -380,7 +379,9 @@ export async function PUT(
       // The final value against the limit, as the screen computes it; the
       // technician's choice only where the screen asks for one.
       // Without a limit either, nothing to choose (J3, `limitConformity`).
-      conform: limitConformity(suggestConformity(parsed.numeric, parameter.limitValue, parsed.kind), raw.conform, parameter.limitValue),
+      // A germ shown against a limit ≤ 0 (« Présence » on « Salmonelles
+      // surfaces ») is non conforme on its own (J6 review, 21/11).
+      conform: limitConformity(suggestConformityOf(value, parsed, parameter.limitValue), raw.conform, parameter.limitValue),
       workStatus,
       note: note || null,
       interpretation: null,

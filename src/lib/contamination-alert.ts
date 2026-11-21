@@ -1,6 +1,8 @@
 import type { Prisma } from "@/generated/prisma/client";
 import type { Interpretation } from "@/generated/prisma/enums";
-import { parseUnitReading, type UnitReading } from "./interpretation";
+import { parseUnitReading, suggestUnitsConformity, type UnitReading } from "./interpretation";
+import { PRESENCE_OVER_ZERO_LIMIT_NON_CONFORME } from "./lab-proposals";
+import { suggestConformity, type ParsedValue } from "./result-value";
 
 /**
  * Which results raise a contamination alert — pure, one rule for the
@@ -74,4 +76,37 @@ export function readingsShowGerm(readings: readonly UnitReading[]): boolean | nu
 /** `readingsShowGerm` for a line read as one value, as typed. */
 export function valueShowsGerm(typed: string | null | undefined): boolean | null {
   return readingsShowGerm([parseUnitReading(typed ?? "")]);
+}
+
+/**
+ * Lot 5A, J6 — review of the integration (21/11),
+ * `PRESENCE_OVER_ZERO_LIMIT_NON_CONFORME`: a reading that shows the germ
+ * against a limit ≤ 0 is non conforme on its own — « Présence » has no
+ * number, and a zero-tolerance alert must not hang on a « Conforme » click.
+ * Otherwise the reading's own suggestion (`suggestConformity`). Lives here,
+ * not in `result-value.ts`, to keep that module free of imports (no cycle
+ * through `interpretation.ts`).
+ */
+export function suggestConformityOf(
+  text: string | null | undefined,
+  parsed: Pick<ParsedValue, "numeric" | "kind">,
+  limitValue: number | null | undefined,
+  presenceOverZero: boolean = PRESENCE_OVER_ZERO_LIMIT_NON_CONFORME
+): boolean | null {
+  if (presenceOverZero && limitValue !== null && limitValue !== undefined && limitValue <= 0 && valueShowsGerm(text) === true) {
+    return false;
+  }
+  return suggestConformity(parsed.numeric, limitValue, parsed.kind);
+}
+
+/** `suggestConformityOf` for a line read per unit: one unit showing the germ against a limit ≤ 0 is enough. */
+export function suggestUnitsConformityOf(
+  readings: UnitReading[],
+  limitValue: number | null | undefined,
+  presenceOverZero: boolean = PRESENCE_OVER_ZERO_LIMIT_NON_CONFORME
+): boolean | null {
+  if (presenceOverZero && limitValue !== null && limitValue !== undefined && limitValue <= 0 && readingsShowGerm(readings) === true) {
+    return false;
+  }
+  return suggestUnitsConformity(readings, limitValue);
 }

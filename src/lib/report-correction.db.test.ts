@@ -337,4 +337,40 @@ describe.skipIf(!prisma)("K11 — « Corriger avant envoi » on the local databa
     const third = await sendContaminationAlerts(id, fixture.adminId);
     expect(third).toMatchObject({ ok: true, sent: 0 });
   });
+
+  it("(5) two corrections, the first approved with « Valider » only: the value it brought, never alerted, still alerts once", async () => {
+    // Review of the integration (21/11): the corrected original used to be
+    // judged against the data it replaced — the first correction's 150, never
+    // sent nor alerted — so the second correction silently dropped the alert.
+    const { amendReportFor, correctBeforeSend, createReportFor, sendContaminationAlerts } = await import("./report-dispatch");
+    const germ = await db.analysisParameter.findFirstOrThrow({
+      where: { alertOnExceed: true, id: "ALIMENTAIRE-E. coli" },
+      select: { id: true, name: true },
+    });
+    const id = await approvedSample(at(17), [{ parameterId: germ.id, value: "120", numericValue: 120 }]);
+    await createReportFor(id);
+    // 120 alerted once, the report left unsent (no report address).
+    expect(await sendContaminationAlerts(id, fixture.adminId)).toEqual({ ok: true, sent: 1 });
+
+    // Correction 1: 120 → 150, approved with « Valider » only (nothing sent).
+    expect(await correctBeforeSend(id, admin(), reason)).toMatchObject({ ok: true });
+    await db.result.updateMany({ where: { sampleId: id, parameterId: germ.id }, data: { value: "150", numericValue: 150 } });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await validateAgain(id, new Date());
+    expect(await amendReportFor(id, fixture.adminId)).toMatchObject({ correctedInPlace: true });
+
+    // Correction 2: the germ untouched, approved again.
+    expect(await correctBeforeSend(id, admin(), "Erreur sur la date de prélèvement")).toMatchObject({ ok: true });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await validateAgain(id, new Date());
+    expect(await amendReportFor(id, fixture.adminId)).toMatchObject({ correctedInPlace: true });
+    expect(parseCorrectionTrace((await reportOf(id)).versions[0].correctedBeforeSend).replaced).toHaveLength(2);
+
+    // The 150 was never alerted: it leaves now, exactly once.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await sendContaminationAlerts(id, fixture.adminId)).toEqual({ ok: true, sent: 1 });
+    expect(await sendContaminationAlerts(id, fixture.adminId)).toMatchObject({ ok: true, sent: 0 });
+    const alerts = await db.auditLog.count({ where: { entity: "Sample", entityId: id, action: "CONTAMINATION_ALERT_SENT" } });
+    expect(alerts).toBe(2);
+  });
 });

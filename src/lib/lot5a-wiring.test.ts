@@ -69,6 +69,11 @@ describe("K11 — the issue and the routes", () => {
     expect(dispatch).toContain(
       "const amendment = report !== null && (report.amendmentPending || report.version > 0 || correctedOriginal !== null);"
     );
+    // Review of the integration (21/11): judged against the ledger of alerts
+    // sent only — the data replaced may never have been alerted.
+    const replaced = dispatch.slice(dispatch.indexOf(": correctedOriginal !== null"), dispatch.indexOf(": loadReportVersion(report.id, replacedVersion),"));
+    expect(replaced).toContain("Promise.resolve(null)");
+    expect(replaced).not.toContain("reportDataFromJson");
   });
 
   it("the route keeps the roles of the reopening", () => {

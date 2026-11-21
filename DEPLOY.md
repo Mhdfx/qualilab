@@ -1286,11 +1286,14 @@ in the same image**; 5B's data steps (5) may wait for the owner.
 ### 0. Before the window
 
 - Gates on the branch's head: `npx tsc --noEmit -p .` 0, `npx eslint src` 0,
-  `npx vitest run` (206 files / 3 775 on 21/11), `npm run build`; the local
-  recette `node .ui-tests/v23-lot5-local.mjs` (75/75 on 21/11) and the
-  regressions v16-1 → v22.
+  `npx vitest run` (206 files / 3 787 on 21/11 after the integration's
+  review), `npm run build`; the local recette
+  `node .ui-tests/v23-lot5-local.mjs` (74/74 on 21/11 after the review) and
+  the regressions v16-1 → v22.
 - **K11 against the local database**: `npx vitest run src/lib/report-correction.db.test.ts`
-  (4 scenarios; skipped when the local DB does not answer).
+  (5 scenarios — the fifth: two corrections in a row, the alert of the value
+  the first one brought still leaves once; skipped when the local DB does
+  not answer).
 - **K11 — count the amendments pending on a version never sent** (production,
   read only; expected 0 — such an amendment would read « Correction avant
   envoi » on the screens while still being issued as an amendment):

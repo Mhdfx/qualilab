@@ -1481,8 +1481,9 @@ export async function sendContaminationAlerts(
   // K11: an original corrected before its send (same version, issued again
   // in place) is alerted like an amendment — an alert already sent for
   // exactly this result is not repeated, a result changed by the correction
-  // alerts again (never silently dropped: the 09/09 lesson). What it
-  // replaced is in the version's internal trace.
+  // alerts again (never silently dropped: the 09/09 lesson). Only the ledger
+  // of alerts actually sent decides: what the correction replaced (kept in
+  // the version's internal trace) was perhaps never sent nor alerted.
   const correctedOriginal =
     report !== null && !report.amendmentPending && report.version === 0
       ? lastReplacedData(
@@ -1502,7 +1503,12 @@ export async function sendContaminationAlerts(
       !sample.alertsSentAt
         ? Promise.resolve(null)
         : correctedOriginal !== null
-          ? Promise.resolve({ data: reportDataFromJson(correctedOriginal as Prisma.JsonValue) })
+          ? // K11: a corrected original is judged against the ledger of
+            // alerts actually sent only (alertsAlreadySent). The data it
+            // replaced may never have been sent nor alerted (a correction
+            // approved with « Valider » only, then corrected again), so it
+            // must not mute a germ — the 09/09 lesson.
+            Promise.resolve(null)
           : loadReportVersion(report.id, replacedVersion),
       alertsAlreadySent(sample.id),
     ]);

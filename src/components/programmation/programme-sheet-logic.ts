@@ -683,7 +683,8 @@ export type OtherAnalysesReset = { unitCount: number; productType: string | null
  *
  * Except into « Autres analyses » from a micro or PC nature (« Analyse
  * sensorielle », 16/10, Q129 — RETOUR-LABO-16-10.md F9: « garder n = 1 pour
- * la sensorielle »): n goes back to 1 and the family is detached — the
+ * la sensorielle »; confirmé le 20/11, Q133, « 1 unité » — les critères
+ * repris de l'ancien logiciel : S15): n goes back to 1 and the family is detached — the
  * micro family's n = 5 would have every analysis read per unit, R1–R5, and
  * its criteria are not the sensory analysis's. The family leaves as
  * « — aucune — » takes it (RETOUR-LABO-19-10.md D-16, `applyProductType`):

@@ -16,7 +16,7 @@ import {
   truncatedTakeNotice,
   type TakeOrderKeys,
 } from "./bench-order";
-import { TAKE_LIST_BY_NUMBER } from "./lab-proposals";
+import { TAKE_LIST_BY_NUMBER, TAKE_LIST_URGENT_FIRST } from "./lab-proposals";
 import { receivedAgeHref } from "./received-age";
 
 /**
@@ -177,5 +177,40 @@ describe("TAKE_LIST_BY_NUMBER — the urgent no longer lead « À prendre » (hy
     expect(page).toContain("const free = takeListRows(sort, loadedFree);");
     expect(page).toContain('await prisma.sample.count({ where: aged({ AND: [UNCLAIMED_WHERE, { priority: "URGENTE" }] }) })');
     expect(page).toContain("truncated={takeTruncated}");
+  });
+});
+
+describe("TAKE_LIST_URGENT_FIRST — the urgent samples, a switch of their own (hypothèse D-2, review of 21/11)", () => {
+  const rows = [
+    { ...sample("100/26", 3, 1, "40003/26", 30), priority: "NORMALE" },
+    { ...sample("9/26", 1, 1, "40001/26", 10), priority: "NORMALE" },
+    { ...sample("99/26", 2, 1, "40002/26", 20), priority: "URGENTE" },
+  ];
+
+  it("is off: the number order alone, the urgent only flagged", () => {
+    expect(TAKE_LIST_URGENT_FIRST).toBe(false);
+    expect(takeOrderBy("serie")).toEqual(takeOrderBy("serie", false));
+    expect(takeOrderBy("serie", false)[0]).toEqual({ serie: { year: "asc" } });
+    expect(takeListRows("serie", rows).map((row) => row.serie.serialNumber)).toEqual(["9/26", "99/26", "100/26"]);
+    expect(takeListDescription("serie")).toContain("Les urgents sont signalés.");
+  });
+
+  it("on: « URGENTE » leads, then the number order chosen — the confirmed order of Q106 kept", () => {
+    expect(takeOrderBy("serie", true)[0]).toEqual({ priority: "desc" });
+    expect(takeOrderBy("serie", true).slice(1)).toEqual(takeOrderBy("serie", false));
+    expect(takeOrderBy("controle", true)).toEqual([{ priority: "desc" }, ...takeOrderBy("controle", false)]);
+    expect(takeListRows("serie", rows, true, true).map((row) => row.serie.serialNumber)).toEqual(["99/26", "9/26", "100/26"]);
+    expect(takeListRows("controle", rows, true, true).map((row) => row.controlCode)).toEqual(["40002/26", "40001/26", "40003/26"]);
+    expect(takeListDescription("serie", true, true)).toBe(
+      "Programme confirmé, personne ne les a pris : les urgents d'abord, puis par N° de série, puis par échantillon."
+    );
+    expect(takeListDescription("controle", true, true)).toBe(
+      "Programme confirmé, personne ne les a pris : les urgents d'abord, puis par N° de contrôle."
+    );
+  });
+
+  it("TAKE_LIST_BY_NUMBER off still gives the bench order, whatever this switch says", () => {
+    expect(takeListOrder("serie", false)).toEqual(BENCH_ORDER);
+    expect(takeListRows("serie", rows, false, true)).toEqual(rows);
   });
 });

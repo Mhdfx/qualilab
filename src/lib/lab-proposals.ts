@@ -401,6 +401,22 @@ export const SURFACE_DESCRIBED_N_FROM_CRITERION = false;
 export const SURFACE_UNIT_CHOSEN_AT_ENTRY = true;
 
 /**
+ * Lot 5A, J6 — review of the integration (21/11): the germ PRESENT against a
+ * zero limit. Hypothèse, à confirmer avec D-4. Since J6 a surface described
+ * in words is judged against the parameter's numeric limit, so a germ under
+ * alert read « Présence » (« Salmonelles surfaces », limit 0) has no number
+ * and used to wait for the technician's « Conforme / Non conforme » — one
+ * wrong click removed a zero-tolerance alert (O-12 alerted it by itself
+ * before lot 5A). ON (now): a reading that shows the germ (« Présence », a
+ * count, « > x », « Indénombrable » — `valueShowsGerm`, `readingsShowGerm`)
+ * against a limit ≤ 0 is non conforme on its own, on the bench and in
+ * `PUT …/results` (`suggestConformityOf`, `suggestUnitsConformityOf`,
+ * `contamination-alert.ts`), and alerts with the report. Off: the
+ * technician chooses, as after lot 5A's first build.
+ */
+export const PRESENCE_OVER_ZERO_LIMIT_NON_CONFORME = true;
+
+/**
  * Lot 5A, I10 — 2.8 (Q70) of 20/11, « Autre (seulement « à vérifier ») ».
  * ON (now): C5 « Identification » answered « Non » makes the row « à
  * vérifier » (motif `IDENTIFICATION` at hand), no longer « non conforme »:
@@ -440,6 +456,16 @@ export const COLLEAGUE_SAMPLES_HIDDEN = true;
  * oldest receptions, no choice, as before lot 5A.
  */
 export const TAKE_LIST_BY_NUMBER = true;
+
+/**
+ * Lot 5A, J8 — the urgent samples in « À prendre ». Hypothèse, à confirmer
+ * par D-2 (review of the integration, 21/11: kept apart from
+ * `TAKE_LIST_BY_NUMBER`, the confirmed answer of Q106, so that each can be
+ * turned back alone). OFF (now): the urgent keep their badge but no longer
+ * lead the list. ON: « URGENTE » leads, then the order chosen (N° de série
+ * or N° de contrôle; `takeOrderBy`, `compareTakeOrder`, `bench-order.ts`).
+ */
+export const TAKE_LIST_URGENT_FIRST = false;
 
 /**
  * Lot 5A, K11 — Q132 of 20/11, « Autre (corriger sans amendement : même

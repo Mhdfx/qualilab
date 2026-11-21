@@ -81,6 +81,16 @@ describe("the history's guards", () => {
   });
 });
 
+describe("the go-live purge counts the history it deletes (review of the integration, 21/11)", () => {
+  it("POST /api/admin/maintenance/purge-clients: ADMIN only, its dry run lists the legacy samples and links that cascade", () => {
+    const route = source("app/api/admin/maintenance/purge-clients/route.ts");
+    expect(guards(route)).toEqual([["ADMIN"]]);
+    expect(route).toMatch(/_count: \{ select: \{[^}]*\blegacySamples: true, legacyLinks: true \} \}/);
+    // The analysis spreads the counts per client.
+    expect(route).toContain("clients: clients.map((c) => ({ id: c.id, name: c.name, ...c._count })),");
+  });
+});
+
 describe("the portal's menu (HA4)", () => {
   it("shows « Historique (ancien logiciel) » only to a client that has one", () => {
     const hrefs = (role: Parameters<typeof navFor>[0], options?: Parameters<typeof navFor>[1]) =>
