@@ -93,6 +93,8 @@ async function signIn(): Promise<string> {
   const browser = await chromium.launch({
     executablePath: String.raw`C:\Program Files\Google\Chrome\Application\chrome.exe`,
     headless: true,
+    // Chrome 157+ upgrades http:// to https and blocks the production IP (ERR_BLOCKED_BY_CLIENT) until there is a domain + TLS.
+    args: ["--disable-features=HttpsUpgrades,HttpsFirstBalancedModeAutoEnable,LocalNetworkAccessChecks,BlockInsecurePrivateNetworkRequests"],
   });
   try {
     const context = await browser.newContext({ locale: "fr-FR", timezoneId: "Africa/Casablanca" });
