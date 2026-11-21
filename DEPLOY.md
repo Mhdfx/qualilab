@@ -1265,42 +1265,54 @@ prices. Prefer a fix forward; each behaviour change is a switch in
 rollback = `git checkout v1.7-avant-lot4 && bash scripts/deploy.sh` +
 restore `qualilab_avant-lot4.sql.gz` (loses everything entered since).
 
-## Lot 5A (21/11) — the laboratory's answers of 20/11: J6, I10, J7, J8, K11, the owner's steps S13–S15
+## Lot 5 (21/11) — the laboratory's answers of 20/11: 5A (J6, I10, J7, J8, K11, the owner's steps S13–S16) and 5B (the old software's history, HA1–HA7)
 
-Built on `lot2-retour-16-10` in the main tree (`RETOUR-LABO-20-11.md` §5,
-`LOT5-AVANCEMENT.md`, `HANDOFF.md` §8 « 2026-11-21 — lot 5A »). Production
-runs `4ebb146` (lot 4). **One additive migration**:
-`20261121010000_lot5a_correction_avant_envoi` (`ReportVersion.correctedBeforeSend`
-JSON NULL). Nothing switches on by itself in the data; the behaviour changes
-are in the code, each behind its switch (`lab-proposals.ts` « Lot 5A »).
+Integrated on `lot2-retour-16-10` (5A `3927034` + `2e1f2eb`, merge of `lot5b`
+`1d14871`, then the integration commit; `RETOUR-LABO-20-11.md` §5–§6,
+`LOT5-AVANCEMENT.md`, `HANDOFF.md` §8 « 2026-11-21 — lot 5 », TESTPLAN
+« Checkpoint V23 »). Production runs `4ebb146` (lot 4). **Two additive
+migrations**, applied by the `migrate` service in this order:
+
+| Migration | What | Touches existing rows? |
+|---|---|---|
+| `20261121010000_lot5a_correction_avant_envoi` | `ReportVersion.correctedBeforeSend` JSON NULL (K11's internal trace) | no |
+| `20261121020000_lot5b_historique_ancien` | tables `LegacyClientLink`, `LegacySample`, `LegacyResult`, enum `LegacyLinkSource`, foreign keys to `Client` / `Site` | no |
+
+Nothing switches on by itself in the data; the behaviour changes are in the
+code, each behind its switch (`lab-proposals.ts` « Lot 5A » and « Lot 5B »).
+The history stays empty until the owner imports it (step 5). **5A and 5B ship
+in the same image**; 5B's data steps (5) may wait for the owner.
 
 ### 0. Before the window
 
-- Gates on the branch's head (tsc 0, eslint 0, vitest, `npm run build`; the
-  local recette `v23-lot5a-local.mjs`).
-- **K11 — count the amendments pending on a version never sent** (read only;
-  expected 0 — such an amendment would read « Correction avant envoi » on the
-  screens while still being issued as an amendment):
+- Gates on the branch's head: `npx tsc --noEmit -p .` 0, `npx eslint src` 0,
+  `npx vitest run` (206 files / 3 775 on 21/11), `npm run build`; the local
+  recette `node .ui-tests/v23-lot5-local.mjs` (75/75 on 21/11) and the
+  regressions v16-1 → v22.
+- **K11 against the local database**: `npx vitest run src/lib/report-correction.db.test.ts`
+  (4 scenarios; skipped when the local DB does not answer).
+- **K11 — count the amendments pending on a version never sent** (production,
+  read only; expected 0 — such an amendment would read « Correction avant
+  envoi » on the screens while still being issued as an amendment):
   `SELECT COUNT(*) FROM Report r JOIN Sample s ON s.id = r.sampleId WHERE r.amendmentPending = 1 AND (r.sentAt IS NULL OR (r.amendedAt IS NOT NULL AND r.sentAt <= r.amendedAt));`
   Not 0: finish those amendments (validation technique, then administrative)
   before the deploy.
-- **J6 — count the surfaces described in words still in the circuit** (read
-  only): `SELECT COUNT(*) FROM Sample WHERE lineKind = 'SURFACE' AND TRIM(COALESCE(surfaceAreaNote, '')) <> '' AND status IN ('PROGRAMME', 'EN_ANALYSE', 'RESULTATS_SAISIS');`
+- **J6 — count the surfaces described in words still in the circuit**
+  (production, read only): `SELECT COUNT(*) FROM Sample WHERE lineKind = 'SURFACE' AND TRIM(COALESCE(surfaceAreaNote, '')) <> '' AND status IN ('PROGRAMME', 'EN_ANALYSE', 'RESULTATS_SAISIS');`
   Their family's criterion « /cm² » now judges them, against its plan (47 of
   the 86 local surface criteria have n = 5); the programme sheet keeps
   proposing the n of before lot 5A for them (`SURFACE_DESCRIBED_N_FROM_CRITERION`
   off, hypothèse D-4), so one programmed with n = 1 under an n = 5 criterion
   reads an **indicative** verdict (« Non satisfaisant » above the limit, the
   alert still leaves) — finish them before the deploy, or accept it (0 on the
-  local copy).
-- **Review leftover (main tree only)**: delete the partial production build
-  written into `.next/` on 21/11 at 15:18–15:19 (`.next/build`,
-  `.next/server`, `.next/static`, `.next/types`, `.next/lock` and the
-  `*-manifest*` / `*.nft.json` files of that time; never `.next/dev` nor
-  `.next/cache`), then run `npm run build` at the planned gate, the dev
-  server on :3210 in mind (HANDOFF §9, 05/11, if it misbehaves).
-- **K11 against the local database**: `npx vitest run src/lib/report-correction.db.test.ts`
-  (4 scenarios; skipped when the local DB does not answer).
+  local copy). A germ under alert read « Présence » against a numeric limit
+  now waits for the technician's conformity choice (the submission is refused
+  until then — HANDOFF §9).
+- **5B — before importing anything (owner):** read the counts of
+  `RETOUR-LABO-20-11.md` §6 « 5B — tel que construit »; compare 20 samples
+  drawn at random with their signed PDFs (risk 2); check the VPS disk
+  (≈ 310 Mo more in the base) and the nightly dump / restore times
+  (`df -h /var/lib/docker`, the size of last night's dump).
 - Tell the laboratory (`RETOUR-LABO-20-11.md` §9 step 4): a surface is
   judged by its value whatever the unit, the unit chosen at entry (a sensitive
   germ within its limit no longer alerts on its presence alone) — **hypothèse,
@@ -1310,44 +1322,108 @@ are in the code, each behind its switch (`lab-proposals.ts` « Lot 5A »).
   of their example « 120 UFC/couteau face à ≤ 100 »**; identification
   « Non » = « à vérifier »; « À prendre » by N° de série (or N° de contrôle);
   « Corriger avant envoi » for a report never sent; (J7) the colleagues'
-  samples hidden, the administrator's « Libérer » hands one over; with D-1 … D-6.
+  samples hidden, the administrator's « Libérer » hands one over; (5B) the
+  history of the old software on the portal, « le rapport signé fait foi »;
+  with D-1 … D-7.
 
 ### 1. Restore point
 
 - **Code:** `git tag v1.8-avant-lot5 4ebb146 && git push origin v1.8-avant-lot5`;
-  then the fast-forward of `master` as for lot 4.
+  then the fast-forward of `master` to the integrated head, as for lot 4.
 - **Database:** `/var/backups/qualilab/qualilab_avant-lot5.sql.gz`, app
   stopped, right before `deploy.sh` (as « Lot 4 » step 1).
 
 ### 2. Deploy and check
 
-- As « Lot 4 » steps 2 and 3: `docker compose logs migrate` shows
-  `20261121010000_lot5a_correction_avant_envoi` applied;
-  `SHOW COLUMNS FROM ReportVersion LIKE 'correctedBeforeSend'` → one row.
+- `bash scripts/deploy.sh` on the VPS (as « Lot 4 » steps 2 and 3).
+- `docker compose logs migrate` shows both migrations applied; then, read only:
+  - `SHOW COLUMNS FROM ReportVersion LIKE 'correctedBeforeSend';` → one row;
+  - `SHOW TABLES LIKE 'Legacy%';` → `LegacyClientLink`, `LegacyResult`, `LegacySample`;
+  - `SELECT COUNT(*) FROM LegacySample;` → 0 (nothing imported yet).
+- `curl -s localhost:3000/api/health` → ok; /login → 200.
 
-### 3. The owner's steps (demo panel admin — never a password typed; each journalled by its route)
+### 3. The owner's steps S13–S15 (demo panel admin — never a password typed; each journalled by its route)
 
-Dry run first, read the plan, then the real run:
+From the operator's machine, the repository checked out at the deployed head
+(`--login panel` is the default outside localhost). Dry run first, read the
+plan, then the real run without `--dry-run`:
 
 ```bash
-npx tsx scripts/lot5a-owner-steps.mts --base $PROD --step s13 --dry-run   # then without --dry-run
-npx tsx scripts/lot5a-owner-steps.mts --base $PROD --step s14 --dry-run   # aliases + the prices' analysis
-npx tsx scripts/lot5a-owner-steps.mts --base $PROD --step s15 --dry-run   # sensory family, n = 1
+PROD=http://<the production address>
+npx tsx scripts/lot5a-owner-steps.mts --base $PROD --step s13 --dry-run   # PUT /api/stock/settings
+npx tsx scripts/lot5a-owner-steps.mts --base $PROD --step s14 --dry-run --csv backups/prix-clients-ancienne-base.csv   # PATCH /api/parameters/[id] aliases + POST /api/admin/import/prix-clients (analyse)
+npx tsx scripts/lot5a-owner-steps.mts --base $PROD --step s15 --dry-run   # PUT /api/product-types/[id]/criteria, sensory n = 1
+# then the same three lines without --dry-run; the report lands in .ui-tests/lot5a-owner-steps.<host>.json
 ```
 
 - S13: base TVA, 75 % / 100 %, « fournisseurs soumis » — tick « soumis à la
   retenue » supplier by supplier when the laboratory names them; the
   attestation's validity stays 3 months until D-3.
-- S14 needs `backups/prix-clients-ancienne-base.csv` on the operator's
-  machine (`--csv`); the import is idempotent.
-- S16 (the first internal copy address, `backups/retour-labo-20-11/adresses.md`)
-  and S17 (counters, only on the owner's decision) stay by hand in /admin.
+- S14: the two water aliases, then the prices' analysis and (real run) the
+  import of the same file — idempotent, a price removed by hand never comes
+  back. The CSV holds client names: it stays outside the repository.
+- S15: the sensory family « PRODUIT ALIMENTAIRE » under « Analyse
+  sensorielle », n = 1 on its active criteria (7 criteria, 5 changed on the
+  local copy). Since 21/11 the script looks the family up per type d'analyse
+  (the families' list is capped at 400).
+- **S16** by hand: /admin/entreprise « Copies internes (alertes et rapports) »
+  (`POST /api/admin/alert-copies`) — the **first** address of
+  `backups/retour-labo-20-11/adresses.md`, « Alertes » and « Rapports », all
+  clients; the second only once D-5 has completed it.
+- S12 (accreditation line by line) waits for the scope (D-6); S17 (counters)
+  only on the owner's decision (Q19).
 
-### 4. Rollback
+### 4. Production recette 5A (demo accounts, « TEST UI » only)
+
+TESTPLAN « Checkpoint V23 », the 5A lines, on « TEST UI » only, never a
+password typed (the demo panel): a couteau with its unit chosen and judged,
+« Corriger avant envoi » on a report never sent (same number), « À prendre »
+by number, C5 « Non » « à vérifier », J7 with tech1 / tech2; every record
+created cancelled at the end. Then tell the owner.
+
+### 5. Lot 5B — the history (when the owner says; the app's own routes, ADMIN through the demo panel)
+
+1. **Extract, locally** (the old base restored in Docker `qlabo-fb`, read
+   only; Docker Desktop's stale-socket note first): from the repository root,
+   `python scripts/legacy/extract-legacy-history.py --container qlabo-fb --out backups/historique-ancien`
+   — 117 monthly files `historique-AAAA-MM.ndjson` (≤ 8 Mo each, with the
+   `cancelled` / `withdrawn` stubs) and `clients.csv`. **Re-run it before
+   production**: the files of 21/11 predate the `withdrawn` stubs. The files
+   name clients: they never enter the repository; carry them to the
+   administrator's machine.
+2. **Link the clients**: /admin/import « Importer l'historique de l'ancien logiciel » →
+   « Rattacher les clients » with `clients.csv` → **Analyser**
+   (`POST /api/admin/import/historique {"step":"clients","mode":"analyse"}`):
+   expect ≈ 888 certain, 13 ambiguous, 45 not found → **Rattacher**
+   (`"mode":"commit"`, journal LEGACY_HISTORY_CLIENTS_LINKED — certain links
+   only).
+3. **Decide by hand** the ambiguous and the not found that matter, those with
+   the most samples first: on the screen's list, or on the client's fiche
+   « Vérifier ce numéro » then « Rattacher » / « Déplacer sur cette fiche »
+   / « Ne pas reprendre » (`PUT /api/admin/historique/liens`).
+4. **Import the months**: select the 117 files → **Analyser** (one
+   `{"step":"mois","mode":"analyse"}` per file), read the totals →
+   « Importer les mois » (one call per month, one transaction each, ≈ 2–7 s; journal
+   LEGACY_HISTORY_IMPORTED per month). A second run writes 0.
+5. **Check** (read only): the follow-up on /admin/import (samples per year,
+   links, months); `SELECT COUNT(*) FROM LegacySample WHERE cancelled = 0;`
+   (≈ 185 000 with the links of the rehearsal); one real client's fiche card
+   and `/commercial/[id]/historique` with the demo admin, read only; the
+   portal on « TEST UI » (none for it: nothing to see — the menu entry stays
+   hidden); `/api/portail/historique/<an id of another client>` → 404.
+6. **Monthly while the old software runs**: re-run the extraction and import
+   the changed months (idempotent; a sample changed or moved in the old
+   software is rewritten or removed); once more when it is switched off.
+
+### 6. Rollback
 
 `git checkout v1.8-avant-lot5`, rebuild, restore the dump of step 1 (the
-column added by the migration is ignored by the old code; restoring the dump
-removes it). A single behaviour can be turned back by its switch instead.
+column and the three tables added by the migrations are ignored by the old
+code; restoring the dump removes them). A single behaviour can be turned
+back by its switch instead (5A: `lab-proposals.ts` « Lot 5A »; 5B:
+`LEGACY_HISTORY_ON_PORTAL` off hides the portal screen and routes — 404 —
+while the fiche keeps its card). To withdraw the history only:
+« Ne pas reprendre » per link, or `DELETE FROM LegacyResult; DELETE FROM LegacySample; DELETE FROM LegacyClientLink;` after a dump.
 
 ## After every deploy — 5-minute check
 

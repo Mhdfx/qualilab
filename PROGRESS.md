@@ -8,7 +8,14 @@
 
 ## ▶ NEXT ACTION
 
-**20/11 — RÉPONSES DU 20/11 ANALYSÉES — LOT 5 PLANIFIÉ — RIEN CONSTRUIT (`RETOUR-LABO-20-11.md`, tracker `LOT5-AVANCEMENT.md`).** Le questionnaire « Dernières précisions » du 07/11 est revenu coché et annoté (scan hors dépôt `backups/retour-labo-20-11/`). Confirmé tel que construit : C-2, C-4, C-5, C-6, C-7, C-8, Q73, Q133. Changé : C-1 (unité des surfaces au choix, jugement par la valeur), 2.8 (identification « à vérifier »), 2.14 (échantillons des collègues « pas visible » — contredit 2.13), Q106 (« À prendre » par n° de série), Q132 (corriger sans amendement), Q20 (tout l'historique de l'ancien logiciel sur le portail). Q19 « pas décidé », Q98 vide. Production `4ebb146` non touchée. **À construire quand le propriétaire le dit**, dans cet ordre :
+**21/11 — LOT 5 (RÉPONSES DU 20/11) CONSTRUIT, RELU, INTÉGRÉ ET TESTÉ EN LOCAL — NON POUSSÉ, NON DÉPLOYÉ.** Branche `lot2-retour-16-10` : 5A `3927034` + `2e1f2eb`, fusion de `lot5b` `1d14871`, puis le commit d'intégration (recherche de la famille S15, documents). Deux migrations additives (`20261121010000_lot5a_correction_avant_envoi`, `20261121020000_lot5b_historique_ancien`). tsc 0, eslint 0, vitest 206 fichiers / 3 775, `npm run build` OK ; recettes v16-1 → v22 vertes (v19 « C » et v21 « J1 » adaptées à J7 / J6), **`.ui-tests/v23-lot5-local.mjs` 75/75** (TESTPLAN « Checkpoint V23 »). Production `4ebb146` non touchée.
+Next, in this order:
+1. Contrôle final hostile de l'intégration, push de `lot2-retour-16-10` (pas de fusion dans `master` avant la fenêtre).
+2. **Déploiement 5A** : `DEPLOY.md` « Lot 5 » (comptes en lecture seule K11 / J6, tag `v1.8-avant-lot5`, dump, deux migrations, gestes S13–S15 à blanc puis réels, S16 à la main, recette « TEST UI »).
+3. **5B** quand le propriétaire le dit : il lit les comptes (`RETOUR-LABO-20-11.md` §6), tranche les 13 ambigus et les 45 introuvables, compare 20 échantillons à leurs PDF signés ; extraction relancée (lignes `withdrawn`) ; liens puis 117 mois par /admin/import.
+4. Prévenir le laboratoire avec D-1 … D-7 ; comptes toujours parqués.
+
+_Previous next action:_ **20/11 — RÉPONSES DU 20/11 ANALYSÉES — LOT 5 PLANIFIÉ — RIEN CONSTRUIT (`RETOUR-LABO-20-11.md`, tracker `LOT5-AVANCEMENT.md`).** Le questionnaire « Dernières précisions » du 07/11 est revenu coché et annoté (scan hors dépôt `backups/retour-labo-20-11/`). Confirmé tel que construit : C-2, C-4, C-5, C-6, C-7, C-8, Q73, Q133. Changé : C-1 (unité des surfaces au choix, jugement par la valeur), 2.8 (identification « à vérifier »), 2.14 (échantillons des collègues « pas visible » — contredit 2.13), Q106 (« À prendre » par n° de série), Q132 (corriger sans amendement), Q20 (tout l'historique de l'ancien logiciel sur le portail). Q19 « pas décidé », Q98 vide. Production `4ebb146` non touchée. **À construire quand le propriétaire le dit**, dans cet ordre :
 1. **Propriétaire, sans code** : décision Q19 (numérotation 5001/26 – 40001/26 : S17) ; S13 (retenue TVA 75 / 100, sans la durée), S14 (alias E. coli / Coliformes, relance de l'import des prix), S15 (critères sensoriels n = 1), S16 (première adresse de copie, `backups/retour-labo-20-11/adresses.md`).
 2. **Lot 5A** (P1, ≈ 1 à 1,5 jour, une migration additive — K11) : J6, I10, J7 (hypothèse D-1), J8, K11, commentaires « confirmé le 20/11 » ; recette V23 locale puis production (`RETOUR-LABO-20-11.md` §5).
 3. **Lot 5B** (P2–P3, ≈ 3 à 5 jours, trois tables additives) : historique de l'ancien logiciel sur le portail et la fiche client — HA2-a d'abord (repérer les tables dans `qlabo-fb`), puis HA1 → HA7 (`RETOUR-LABO-20-11.md` §6).
@@ -440,6 +447,12 @@ layouts noted in `PLAN.md`, Q30 · reprise, portail, bascule 4 w) — planned
 in `PLAN.md`, opened one at a time.
 
 ## Session Log
+
+### 2026-11-21 — lot 5 (5A + 5B) intégré et testé en local
+- 5A commité dans l'arbre principal (`3927034` code et tests, `2e1f2eb` documents) ; `lot5b` fusionné `--no-ff` (`1d14871`), conflit `lab-proposals.ts` résolu en gardant les deux sections ; `prisma migrate deploy` + `generate` sur `qualilab_local`.
+- Serveur de dev :3210 : son worker gardait l'ancien client Prisma (fiche client en erreur) — relancé en touchant `next.config.ts`, sans arrêter le serveur ; serveur orphelin :3230 de l'arbre `lot5b` arrêté.
+- Recette : S15 ne trouvait pas sa famille (liste plafonnée à 400) → script corrigé ; v19 « C » et v21 « J1 » adaptées aux changements voulus (J7, J6) ; nouveau `v23-lot5-local.mjs` 75/75.
+- Contrôles : tsc 0, eslint 0, vitest 206 / 3 775, build OK, v16-1 → v22 vertes. Documents : HANDOFF (§1, §3, §5, §8, §9), TESTPLAN V23, DEPLOY « Lot 5 », RETOUR-LABO-20-11 (état au 21/11), LOT5-AVANCEMENT.
 
 ### 2026-11-20 — réponses du 20/11 analysées, lot 5 planifié (rien construit)
 - Scan `backups/retour-labo-20-11/reponses-derniere-precisions-scan.pdf` (3 pages) relu agrandi (250 / 500 dpi) contre le questionnaire du 07/11 (`backups/Qualilab-questions-2026-11-07.pdf`) ; lectures incertaines notées (`RETOUR-LABO-20-11.md` §4 : durée de l'attestation 4 ou 6 mois, « PAS DÉCIDÉ », seconde adresse incomplète).

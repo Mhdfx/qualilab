@@ -1,7 +1,10 @@
 # Réponses du laboratoire du 20/11 (« Dernières précisions » du 07/11 annoté) — plan du lot 5
 
-> **Analysé le 20/11. État : analysé, lot 5 planifié, rien construit,
-> production non touchée** (production `4ebb146`, lot 4 ; branche
+> **État au 21/11 : lot 5 (5A et 5B) construit, relu, corrigé, intégré sur
+> `lot2-retour-16-10` et testé en local (recette V23 75/75) — non poussé, non
+> déployé ; production `4ebb146` non touchée** (statuts : §5 « état au 21/11 »,
+> §6 « 5B — tel que construit »). Analysé le 20/11 — état d'alors : analysé,
+> lot 5 planifié, rien construit, production non touchée (production `4ebb146`, lot 4 ; branche
 > `lot2-retour-16-10` = `master` + documents). Le 20/11, le laboratoire a
 > renvoyé, scanné (3 pages), notre questionnaire du 07/11 « Dernières
 > précisions » (`backups/Qualilab-questions-2026-11-07.pdf`, 17 questions —
@@ -221,6 +224,28 @@ additive).
 | S16 | Q11 / L6 — /admin/entreprise « Copies internes (alertes et rapports) » : la **première adresse** (`backups/retour-labo-20-11/adresses.md`), « Alertes » et « Rapports », **tous les clients** ; la seconde seulement quand D-5 l'a complétée (jamais une adresse devinée) ; tant que le domaine n'est pas vérifié, les envois restent simulés |
 | S12 | (suite) quand la portée d'accréditation est en main (D-6) : marquer « Accrédité » ligne à ligne dans /admin/parametres (« Accréditation des paramètres ») ; jamais `--domains` |
 | S17 | Q19 — **seulement si le propriétaire le décide** (§7) : /admin « Compteurs » — SERIE 2026 → 5000, CONTROLE 2026 → 40000 (le suivant sera 5001/26 et 40001/26), même geste pour 2027 au 1er janvier si l'ancien logiciel tourne encore |
+
+### 5A — état au 21/11 (construit, intégré, testé en local — non déployé)
+
+| # | Statut | Hypothèse (interrupteur) | Mesuré / vérifié |
+|---|---|---|---|
+| J6 (a) | ✅ construit | `SURFACE_JUDGED_WHATEVER_UNIT` ON ; l'air garde `UNIT_MISMATCH_NOT_JUDGED` — **hypothèse, à confirmer par D-4** | recette V23 : 120 contre ≤ 10 UFC/cm² sur un couteau → non conforme, 5 → conforme ; une présence d'un germe sous alerte contre une limite chiffrée attend le choix du technicien (soumission refusée avant), puis l'alerte part avec le rapport |
+| J6 (n) | ✅ construit éteint | `SURFACE_DESCRIBED_N_FROM_CRITERION` OFF — **hypothèse, à confirmer par D-4** (le n du critère n'est pas proposé pour une surface décrite : verdict indicatif sur un couteau lu une fois sous un critère n = 5) | copie locale : critères des surfaces ufc/cm² 66 lignes dans 14 familles, UFC/25cm² 9, /cm² 7, « Dans 1000cm² » 2, « /Ecouvillon. » 2 ; limites du catalogue UFC/cm² 4, /cm² 4 ; 47 des 86 critères « /cm² » à n = 5 |
+| J6 (b) | ✅ construit | `SURFACE_UNIT_CHOSEN_AT_ENTRY` ON | « Unité » sur la fiche de paillasse (UFC/couteau, UFC/100 cm², UFC/cm², « autre objet ») ; unité invalide → 400 ; « UFC/ » seul = unité calculée ; l'unité choisie journalisée et imprimée |
+| I10 | ✅ construit | `IDENTIFICATION_TO_VERIFY` ON | C5 « Non » + conforme sans observation → accepté ; la réception peut encore déclarer non conforme ; un échantillon reçu avant le lot 5A garde sa non-conformité (sa ligne C5 le dit) |
+| J7 | ✅ construit allumé | `COLLEAGUE_SAMPLES_HIDDEN` ON — **hypothèse, à confirmer par D-1** | page d'un collègue « introuvable » (aucun numéro, aucun nom dans la page), « Reprendre » 404, refus « un collègue » sans le nom, « Libérer » de l'ADMIN avec relevés (journal `typedResults`), auteur des relevés gardé, `assignedAt` (« Date d'analyse ») gardé |
+| J8 | ✅ construit | `TAKE_LIST_BY_NUMBER` ON — urgents sans priorité : **hypothèse, à confirmer par D-2** | série tirée d'abord listée d'abord ; `?tri=controle` suit la réception ; le badge « Urgent » reste |
+| K11 | ✅ construit | `UNSENT_REPORT_CORRECTED_IN_PLACE` ON | même numéro, même version, trace interne (`ReportVersion.correctedBeforeSend`), pas d'« Annule et remplace » ; amendement refusé (409) avant envoi, correction refusée (409) après ; alerte de contamination envoyée une fois avec le rapport ; 4 scénarios en base (`report-correction.db.test.ts`) |
+| commentaires | ✅ | « confirmé le 20/11 » sur C-4 … C-8, Q73, Q133 ; C-3 partiel noté sur `PAYMENT_REQUIRES_TAX_CERTIFICATE` | — |
+| S13 | 🔧 script prêt (essai à blanc local OK) | durée de l'attestation laissée à 3 mois — **D-3** ; aucun fournisseur coché | `scripts/lot5a-owner-steps.mts --step s13` |
+| S14 | 🔧 script prêt (essai à blanc local OK) | les deux alias confirmés seulement | `--step s14 --csv backups/prix-clients-ancienne-base.csv` (analyse puis import, idempotent) |
+| S15 | 🔧 script prêt (essai à blanc local OK) | — | « PRODUIT ALIMENTAIRE » / « Analyse sensorielle » : 7 critères, 5 passent à n = 1 (recherche corrigée le 21/11 : la liste des familles s'arrête à 400) |
+| S16, S12, S17 | ⏳ à la main | S16 première adresse ; S12 attend D-6 ; S17 attend la décision Q19 | `DEPLOY.md` « Lot 5 » étape 3 |
+
+Production : `DEPLOY.md` « Lot 5 » (tag `v1.8-avant-lot5`, dump, deux migrations additives, gestes
+S13–S16, recette « TEST UI », puis 5B quand le propriétaire a lu les comptes). La recette locale est
+`.ui-tests/v23-lot5-local.mjs` (5A et 5B ensemble, TESTPLAN « Checkpoint V23 »), qui remplace le
+`v23-lot5a-local.mjs` prévu.
 
 ## 6. Le plan — lot 5B (l'historique de l'ancien logiciel sur le portail)
 
@@ -613,13 +638,13 @@ urgents (D-2) ; R-30 / R-15 (Q2 du 02/11) toujours en suspens.
 1. **Maintenant, sans code, quand le propriétaire le dit** : S13 (sans la
    durée), S14, S15 (compté d'abord), S16 (la première adresse) ; décision
    Q19 (S17 si (a)).
-2. **Lot 5A** (P1, ≈ 1 à 1,5 jour, une migration additive) : J6, I10, J8,
+2. **Lot 5A** — ✅ construit, intégré et testé en local le 21/11 (reste : production) — (P1, ≈ 1 à 1,5 jour, une migration additive) : J6, I10, J8,
    K11, commentaires ; J7 derrière son interrupteur — **déployé éteint ou
    allumé selon le propriétaire** tant que D-1 n'a pas répondu (proposition :
    construit allumé, puisque « pas visible » est la réponse la plus récente,
    avec « Libérer » de l'administrateur comme reprise) ; contrôles, recette
    locale, déploiement, recette de production (TESTPLAN V23).
-3. **Lot 5B** (P2–P3, ≈ 3 à 5 jours) : HA2-a d'abord (Docker et `qlabo-fb`
+3. **Lot 5B** — ✅ construit, répété sur une copie, intégré et testé en local le 21/11 (reste : comptes relus par le propriétaire, extraction relancée, production) — (P2–P3, ≈ 3 à 5 jours) : HA2-a d'abord (Docker et `qlabo-fb`
    relancés — voir la note du socket périmé), puis HA1 → HA7 ; répétition
    locale relue par le propriétaire avant la production.
 4. **Prévenir le laboratoire** au déploiement de 5A : l'unité des surfaces
