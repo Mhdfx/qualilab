@@ -1,4 +1,5 @@
 import type { Interpretation, Prisma } from "@/generated/prisma/client";
+import { parseLabDayRange } from "./lab-day-range";
 
 /**
  * Lot 5B (RETOUR-LABO-20-11.md §6, Q20 « Ajouter tout l'historique des
@@ -294,35 +295,35 @@ export type LegacyHistoryFilters = {
   q: string | null;
   /** A site id, or `LEGACY_SIEGE`. A site of another client simply matches nothing. */
   siteId: string | null;
+  /** The days typed (« AAAA-MM-JJ », inclusive), a backwards period put right — what the form and the links show back. */
+  fromDay: string | null;
+  toDay: string | null;
   /**
-   * Inclusive day bounds on the RECEPTION date: always typed by the
-   * laboratory, while the old software's sampling date is missing on some
-   * samples and holds typos (a day and a month swapped).
+   * The period on the RECEPTION date — always typed by the laboratory, while
+   * the old software's sampling date is missing on some samples and holds
+   * typos (a day and a month swapped) — cut on the laboratory's clock
+   * (`lab-day-range.ts`, HANDOFF §9: never the runtime's midnight, which
+   * stale tzdata shifts by an hour): from midnight opening `fromDay` to
+   * midnight opening the day after `toDay` (exclusive).
    */
   from: Date | null;
-  to: Date | null;
+  until: Date | null;
   page: number;
 };
-
-function day(value: string | null, endOfDay: boolean): Date | null {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const date = new Date(`${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
 
 /** The filters of the list, read from the URL (`?q=&site=&du=&au=&page=`). */
 export function parseLegacyHistoryFilters(params: URLSearchParams): LegacyHistoryFilters {
   const text = (key: string) => params.get(key)?.trim() || null;
-  let from = day(text("du"), false);
-  let to = day(text("au"), true);
-  if (from && to && from > to) [from, to] = [day(text("au"), false), day(text("du"), true)];
+  const range = parseLabDayRange(text("du"), text("au"));
   const site = text("site");
   const page = Number.parseInt(text("page") ?? "1", 10);
   return {
     q: text("q")?.slice(0, 100) ?? null,
     siteId: site && site.length <= 191 ? site : null,
-    from,
-    to,
+    fromDay: range.fromDay,
+    toDay: range.toDay,
+    from: range.from,
+    until: range.until,
     page: Number.isFinite(page) ? Math.min(Math.max(page, 1), MAX_PAGE) : 1,
   };
 }
@@ -332,12 +333,12 @@ export function parseLegacyHistoryFilters(params: URLSearchParams): LegacyHistor
  * filter can widen — a portal account's client, or the fiche's — and a
  * sample the old software cancelled after its import is never shown.
  */
-export function legacyHistoryWhere(clientId: string, filters: Omit<LegacyHistoryFilters, "page">): Prisma.LegacySampleWhereInput {
+export function legacyHistoryWhere(clientId: string, filters: Pick<LegacyHistoryFilters, "q" | "siteId" | "from" | "until">): Prisma.LegacySampleWhereInput {
   if (!clientId) throw new Error("legacyHistoryWhere: client manquant");
   const and: Prisma.LegacySampleWhereInput[] = [];
   if (filters.siteId) and.push({ siteId: filters.siteId === LEGACY_SIEGE ? null : filters.siteId });
-  if (filters.from || filters.to) {
-    and.push({ receivedAt: { ...(filters.from ? { gte: filters.from } : {}), ...(filters.to ? { lte: filters.to } : {}) } });
+  if (filters.from || filters.until) {
+    and.push({ receivedAt: { ...(filters.from ? { gte: filters.from } : {}), ...(filters.until ? { lt: filters.until } : {}) } });
   }
   if (filters.q) {
     const q = filters.q;
@@ -374,11 +375,30 @@ export const LEGACY_ORDER_BY: Prisma.LegacySampleOrderByWithRelationInput[] = [{
 /** The query string of a filter set, for the pagination links. */
 export function legacyHistoryQueryString(filters: Partial<LegacyHistoryFilters>): string {
   const params = new URLSearchParams();
-  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   if (filters.q) params.set("q", filters.q);
   if (filters.siteId) params.set("site", filters.siteId);
-  if (filters.from) params.set("du", iso(filters.from));
-  if (filters.to) params.set("au", iso(filters.to));
+  // The days as typed — never re-derived from an instant on the runtime's clock.
+  if (filters.fromDay) params.set("du", filters.fromDay);
+  if (filters.toDay) params.set("au", filters.toDay);
   if (filters.page && filters.page > 1) params.set("page", String(filters.page));
   return params.toString();
+}
+
+// ---- a non-conformity without a sample verdict -------------------------------------------
+
+/**
+ * 47 659 samples of the old software carry no sample verdict (none entered,
+ * or code 100), and 4 973 of them hold at least one analysis read « non
+ * satisfaisant » (a unit coded 0, 4, 10, 17, 116, 118 or 123). A list that
+ * prints only the sample's verdict would show them as « — »: the
+ * non-conformity hidden behind a blank (audit lesson — a change never drops
+ * a contamination or non-conformity signal). So when the sample's verdict
+ * places it nowhere on our scale, a list marks it « Analyse non
+ * satisfaisante » next to the « — », without inventing a sample verdict.
+ * Hypothèse, à confirmer par D-7 — switch `LEGACY_HISTORY_FLAG_NON_SATISFYING`.
+ */
+export const LEGACY_NON_SATISFYING_MARK = "Analyse non satisfaisante";
+
+export function legacyNonSatisfyingMark(sampleInterpretation: Interpretation | null, nonSatisfyingAnalyses: number, on: boolean): boolean {
+  return on && sampleInterpretation === null && nonSatisfyingAnalyses > 0;
 }

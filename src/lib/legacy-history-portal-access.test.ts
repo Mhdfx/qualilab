@@ -55,6 +55,8 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(async ({ where }: { where: Where }) => table.filter((r) => matches(r, where)).map(shape)),
       count: vi.fn(async ({ where }: { where: Where }) => table.filter((r) => matches(r, where)).length),
     },
+    // No analysis « non satisfaisant » in this table (the mark's lookup).
+    legacyResult: { findMany: vi.fn(async () => []) },
   },
 }));
 

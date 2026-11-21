@@ -501,7 +501,35 @@ satisfaisante, satisfaisant et acceptable mêlés ne donnent pas de verdict (le 
 inconnu) ; mise en forme des valeurs (« < 1,0.10¹ » là où le rapport a pu imprimer « < 10 ») ;
 échantillons annulés non repris ; échantillons jamais validés (6 840, dont 1 758 de 2017) non repris.
 
-**Avant la production** (propriétaire) : relire les comptes ci-dessus et trancher les 9 ambigus et
+**Revue du 21/11 — corrigé sur la même branche** :
+- **Un échantillon dont le client change dans l'ancien logiciel** (risque 1) : l'import regarde d'abord
+  ce qui est déjà repris ; rattaché à un autre client, l'échantillon le suit (son n° de client de l'ancien
+  logiciel est réécrit) ; client sans correspondance ou « Ne pas reprendre » : il est **retiré** — il ne
+  reste jamais sur le portail de l'ancien client.
+- **« Rattacher à ce client » sur la fiche** : le numéro est d'abord vérifié (nom dans l'ancien logiciel,
+  fiche qui le porte, échantillons) ; le prendre à une autre fiche demande « Déplacer sur cette fiche » —
+  sinon la route refuse (409). Un numéro mal tapé ne déplace plus l'historique d'un autre client.
+- **Plusieurs clients de l'ancien logiciel du même nom** ne sont jamais rattachés sur le nom seul (sauf
+  par un ICE qui leur est propre) : « à trancher à la main ». Sur la copie, 4 rattachements déjà faits
+  sont concernés (n° 2566 et 3223, n° 3174 et 3175 — 18 échantillons) : la prochaine analyse des clients
+  les liste « à revoir » — **le propriétaire les relit avant la production**. En production (aucun lien
+  au départ) : 888 certains, 13 ambigus (9 fiches du même nom, 4 homonymes), 45 introuvables.
+- **« Analyse non satisfaisante »** dans les listes, à côté du « — », quand l'échantillon n'a pas de
+  verdict propre mais une analyse non satisfaisante (4 902 des 47 093 échantillons sans verdict sur la
+  copie) — aucun verdict d'échantillon inventé. Hypothèse, à confirmer par D-7 (interrupteur
+  `LEGACY_HISTORY_FLAG_NON_SATISFYING`, ON).
+- **Échantillon ré-ouvert** dans l'ancien logiciel (plus validé) : l'extraction écrit une ligne « retiré »,
+  l'import masque la copie reprise ; elle revient quand il est validé de nouveau. Un échantillon
+  **supprimé** de l'ancienne base (et non annulé) n'est pas traité (reste repris).
+- Un site fusionné garde son historique aux imports suivants ; filtres « Reçu du / au » sur l'horloge du
+  laboratoire ; fiches archivées traitées pareil par l'import et par la décision à la main ; le mois est
+  planifié dans sa transaction (correspondances verrouillées).
+- La page d'un échantillon d'un autre client répond « introuvable » avec un statut HTTP 200 (le portail
+  affiche son chargement avant) ; l'API répond 404 et aucune donnée n'est montrée — accepté.
+- Répétition sur `qualilab_hist` : `backups/historique-ancien/repetition-locale-revue.json`.
+
+**Avant la production** (propriétaire) : relire les comptes ci-dessus, **relire les 4 rattachements « à
+revoir »** (homonymes) et trancher les ambigus (13 avec la règle des homonymes) et
 les 45 introuvables (les plus gros d'abord) ; comparer 20 échantillons avec leurs PDF signés ; vérifier
 la place disque du VPS (≈ 310 Mo de plus dans la base) et la durée du dump nocturne ; puis tag + dump,
 migration `20261121020000_lot5b_historique_ancien`, « Rattacher les clients », import des 117 mois,

@@ -8,7 +8,7 @@ import { navFor } from "@/components/layout/nav-for-role";
 vi.mock("server-only", () => ({}));
 
 import { moveLegacyHistory, repointLegacySite } from "./client-transfer";
-import { LEGACY_LINK_ROLES, canManageLegacyLinks, parseLinkDecision } from "./legacy-history-links";
+import { LEGACY_LINK_ROLES, canManageLegacyLinks, linkConflict, parseLegacyClientId, parseLinkDecision } from "./legacy-history-links";
 
 /**
  * Lot 5B, HA6 (RETOUR-LABO-20-11.md §6) — who reaches the old software's
@@ -36,8 +36,11 @@ describe("the history's guards", () => {
     expect(route).toMatch(/export async function GET\b/);
     expect(guards(route)).toEqual([["ADMIN"], ["ADMIN"]]);
     const links = source("app/api/admin/historique/liens/route.ts");
-    expect(links).not.toMatch(/export async function (GET|POST|PATCH|DELETE)\b/);
-    expect(guards(links)).toEqual([["ADMIN"]]);
+    expect(links).not.toMatch(/export async function (POST|PATCH|DELETE)\b/);
+    // GET: the lookup before « Rattacher » (who holds the number); PUT: the decision.
+    expect(links).toMatch(/export async function GET\b/);
+    expect(links).toMatch(/export async function PUT\b/);
+    expect(guards(links)).toEqual([["ADMIN"], ["ADMIN"]]);
     expect(source("app/admin/import/page.tsx")).toContain("<ImportLegacyHistory initialFollowUp={legacyHistory} />");
     expect(guards(source("app/admin/import/page.tsx"))).toEqual([["ADMIN"]]);
   });
@@ -172,8 +175,25 @@ describe("the history follows its client (HA6)", () => {
 
 describe("a link decided by hand (PUT /api/admin/historique/liens)", () => {
   it("a fiche, or « Ne pas reprendre » (null) — a decision either way", () => {
-    expect(parseLinkDecision({ legacyClientId: 2303, clientId: "c1", legacyName: " X " })).toEqual({ legacyClientId: 2303, clientId: "c1", legacyName: "X", siteId: null });
-    expect(parseLinkDecision({ legacyClientId: "2303", clientId: null })).toEqual({ legacyClientId: 2303, clientId: null, legacyName: null, siteId: null });
+    expect(parseLinkDecision({ legacyClientId: 2303, clientId: "c1", legacyName: " X " })).toEqual({
+      legacyClientId: 2303,
+      clientId: "c1",
+      legacyName: "X",
+      siteId: null,
+      replace: false,
+      expectedClientId: null,
+    });
+    expect(parseLinkDecision({ legacyClientId: "2303", clientId: null, expectedClientId: "c1" })).toEqual({
+      legacyClientId: 2303,
+      clientId: null,
+      legacyName: null,
+      siteId: null,
+      replace: false,
+      expectedClientId: "c1",
+    });
+    // Only a literal true moves another client's link.
+    expect(parseLinkDecision({ legacyClientId: 1, clientId: "c", replace: "true" })).toMatchObject({ replace: false });
+    expect(parseLinkDecision({ legacyClientId: 1, clientId: "c", replace: true })).toMatchObject({ replace: true });
   });
 
   it("refuses a missing decision, a bad number", () => {
@@ -182,6 +202,40 @@ describe("a link decided by hand (PUT /api/admin/historique/liens)", () => {
     expect(parseLinkDecision({ legacyClientId: -1, clientId: "c" })).toHaveProperty("error");
     expect(parseLinkDecision({ legacyClientId: "12a", clientId: "c" })).toHaveProperty("error");
     expect(parseLinkDecision(null)).toHaveProperty("error");
+  });
+
+  it("another client's link is never taken silently (a mistyped number): only with `replace`, or withdrawn from its own fiche", () => {
+    const decision = (over: Partial<{ clientId: string | null; replace: boolean; expectedClientId: string | null }>) => ({
+      clientId: "here",
+      replace: false,
+      expectedClientId: null,
+      ...over,
+    });
+    // No link yet, or « Ne pas reprendre » before: a decision, nobody's history taken.
+    expect(linkConflict(null, decision({}))).toBe(false);
+    expect(linkConflict({ clientId: null }, decision({}))).toBe(false);
+    // Already this fiche's.
+    expect(linkConflict({ clientId: "here" }, decision({}))).toBe(false);
+    // Another fiche's: refused, unless the administrator saw it and confirmed moving it.
+    expect(linkConflict({ clientId: "other" }, decision({}))).toBe(true);
+    expect(linkConflict({ clientId: "other" }, decision({ replace: true }))).toBe(false);
+    // « Ne pas reprendre » on another fiche's link: refused; from the fiche that holds it: allowed.
+    expect(linkConflict({ clientId: "other" }, decision({ clientId: null, expectedClientId: "here" }))).toBe(true);
+    expect(linkConflict({ clientId: "other" }, decision({ clientId: null, expectedClientId: "other" }))).toBe(false);
+  });
+
+  it("the route answers 409 on a conflict, before writing anything; the fiche looks the number up first", () => {
+    const route = source("app/api/admin/historique/liens/route.ts");
+    const check = route.indexOf("if (linkConflict(before, decision))");
+    expect(check).toBeGreaterThan(0);
+    expect(check).toBeLessThan(route.indexOf("await tx.legacyClientLink.upsert("));
+    expect(route).toMatch(/status: 409/);
+    const manager = readFileSync(join(SRC, "components", "legacy-history", "LegacyLinksManager.tsx"), "utf8");
+    expect(manager).toContain("/api/admin/historique/liens?legacyClientId=");
+    expect(manager).toMatch(/if \(typed !== null\) find\(typed\);/);
+    expect(parseLegacyClientId("2303")).toBe(2303);
+    expect(parseLegacyClientId("23a")).toBeNull();
+    expect(parseLegacyClientId(null)).toBeNull();
   });
 
   it("removing a link takes its samples out of the history; re-pointing it moves them, in one transaction", () => {

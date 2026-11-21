@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma/client";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
@@ -14,6 +15,7 @@ import {
   readLegacyClients,
   summarizeMonthPlan,
   type ExistingLegacySample,
+  type MonthPlan,
 } from "@/lib/legacy-history-import";
 
 /**
@@ -80,7 +82,7 @@ async function importClients(actorId: string, mode: "analyse" | "commit", text: 
 
   const [clients, links] = await Promise.all([
     prisma.client.findMany({ select: { id: true, name: true, ice: true, archived: true, mergedIntoId: true } }),
-    prisma.legacyClientLink.findMany({ select: { legacyClientId: true, clientId: true, matchedBy: true } }),
+    prisma.legacyClientLink.findMany({ select: { legacyClientId: true, legacyName: true, clientId: true, matchedBy: true } }),
   ]);
   const plan = planLegacyClientLinks(read.rows, read.rejected, { clients, links });
   const { writes, ...summary } = plan;
@@ -129,52 +131,73 @@ async function importMonth(actorId: string, mode: "analyse" | "commit", text: st
   const ids = file.lines.map((l) => (l.cancelled ? l.id : l.sample.id));
   const legacyClientIds = [...new Set(file.lines.flatMap((l) => (l.cancelled ? [] : [l.sample.legacyClientId])))];
   const legacySiteIds = [...new Set(file.lines.flatMap((l) => (!l.cancelled && l.sample.legacySiteId !== null ? [l.sample.legacySiteId] : [])))];
-  const load = async () => {
+  /**
+   * The plan from what is stored. On commit it runs inside the writing
+   * transaction and LOCKS the links it reads (FOR UPDATE, as the merges do):
+   * a « Ne pas reprendre » or a re-pointing decided meanwhile
+   * (PUT /api/admin/historique/liens) either commits before — and is read
+   * here — or waits for this import and then moves or removes what it wrote.
+   */
+  const load = async (db: Pick<typeof prisma, "legacySample" | "legacyClientLink" | "site" | "$queryRaw">, lock: boolean) => {
     const [existing, links, sites] = await Promise.all([
-      prisma.legacySample.findMany({ where: { id: { in: ids } }, select: { id: true, sourceHash: true, clientId: true, siteId: true, cancelled: true } }),
-      prisma.legacyClientLink.findMany({ where: { legacyClientId: { in: legacyClientIds } }, select: { legacyClientId: true, clientId: true, siteId: true } }),
-      prisma.site.findMany({ where: { legacyId: { in: legacySiteIds } }, select: { id: true, clientId: true, legacyId: true } }),
+      db.legacySample.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, sourceHash: true, clientId: true, siteId: true, legacyClientId: true, cancelled: true, site: { select: { clientId: true } } },
+      }),
+      legacyClientIds.length === 0
+        ? Promise.resolve([] as { legacyClientId: number; clientId: string | null; siteId: string | null }[])
+        : lock
+          ? db.$queryRaw<{ legacyClientId: number; clientId: string | null; siteId: string | null }[]>`
+              SELECT \`legacyClientId\`, \`clientId\`, \`siteId\` FROM \`LegacyClientLink\`
+              WHERE \`legacyClientId\` IN (${Prisma.join(legacyClientIds)}) FOR UPDATE`
+          : db.legacyClientLink.findMany({ where: { legacyClientId: { in: legacyClientIds } }, select: { legacyClientId: true, clientId: true, siteId: true } }),
+      db.site.findMany({ where: { legacyId: { in: legacySiteIds } }, select: { id: true, clientId: true, legacyId: true } }),
     ]);
     return planLegacyMonth(file, {
-      existing: new Map<number, ExistingLegacySample>(existing.map((e) => [e.id, e])),
-      links: new Map(links.map((l) => [l.legacyClientId, { clientId: l.clientId, siteId: l.siteId }])),
+      existing: new Map<number, ExistingLegacySample>(existing.map(({ site, ...e }) => [e.id, { ...e, siteClientId: site?.clientId ?? null }])),
+      links: new Map(links.map((l) => [Number(l.legacyClientId), { clientId: l.clientId, siteId: l.siteId }])),
       sites: new Map(sites.flatMap((s) => (s.legacyId !== null ? [[s.legacyId, { id: s.id, clientId: s.clientId }] as const] : []))),
     });
   };
-  const plan = await load();
-  const summary = summarizeMonthPlan(plan);
-  if (mode === "analyse") return NextResponse.json({ step: "mois", mode, fileName, ...summary });
-
-  let written = { created: 0, rewritten: 0, hidden: 0, results: 0 };
-  if (monthPlanWrites(plan)) {
-    try {
-      written = await prisma.$transaction(
-        async (tx) => {
-          const hidden = plan.hide.length > 0 ? (await tx.legacySample.updateMany({ where: { id: { in: plan.hide } }, data: { cancelled: true } })).count : 0;
-          // A changed line is rewritten whole: its row and its analyses go, then come back as the file has them.
-          const rewritten = plan.update.length > 0 ? (await tx.legacySample.deleteMany({ where: { id: { in: plan.update.map((s) => s.id) } } })).count : 0;
-          const samples = [...plan.create, ...plan.update];
-          let created = 0;
-          for (let i = 0; i < samples.length; i += CHUNK) {
-            created += (await tx.legacySample.createMany({ data: samples.slice(i, i + CHUNK).map(legacySampleRow), skipDuplicates: true })).count;
-          }
-          const results = legacyResultRows(samples);
-          let resultCount = 0;
-          for (let i = 0; i < results.length; i += RESULT_CHUNK) {
-            resultCount += (await tx.legacyResult.createMany({ data: results.slice(i, i + RESULT_CHUNK), skipDuplicates: true })).count;
-          }
-          return { created: created - rewritten, rewritten, hidden, results: resultCount };
-        },
-        { maxWait: 10_000, timeout: 120_000 }
-      );
-    } catch (error) {
-      console.error("[import/historique] month failed", { month: plan.header.month, error });
-      return NextResponse.json(
-        { error: "L'import de ce mois n'a rien écrit (erreur pendant l'écriture). Relancez l'analyse puis l'import." },
-        { status: 500 }
-      );
-    }
+  if (mode === "analyse") {
+    const plan = await load(prisma, false);
+    return NextResponse.json({ step: "mois", mode, fileName, ...summarizeMonthPlan(plan) });
   }
+
+  let outcome: { plan: MonthPlan; written: { created: number; rewritten: number; hidden: number; removed: number; results: number } };
+  try {
+    outcome = await prisma.$transaction(
+      async (tx) => {
+        const plan = await load(tx, true);
+        const written = { created: 0, rewritten: 0, hidden: 0, removed: 0, results: 0 };
+        if (!monthPlanWrites(plan)) return { plan, written };
+        if (plan.hide.length > 0) written.hidden = (await tx.legacySample.updateMany({ where: { id: { in: plan.hide } }, data: { cancelled: true } })).count;
+        // Its client changed in the old software and the new one is not taken: it leaves the history (its analyses with it).
+        if (plan.remove.length > 0) written.removed = (await tx.legacySample.deleteMany({ where: { id: { in: plan.remove } } })).count;
+        // A changed line is rewritten whole: its row and its analyses go, then come back as the file has them.
+        if (plan.update.length > 0) await tx.legacySample.deleteMany({ where: { id: { in: plan.update.map((s) => s.id) } } });
+        for (const [key, samples] of [["created", plan.create], ["rewritten", plan.update]] as const) {
+          for (let i = 0; i < samples.length; i += CHUNK) {
+            written[key] += (await tx.legacySample.createMany({ data: samples.slice(i, i + CHUNK).map(legacySampleRow), skipDuplicates: true })).count;
+          }
+        }
+        const results = legacyResultRows([...plan.create, ...plan.update]);
+        for (let i = 0; i < results.length; i += RESULT_CHUNK) {
+          written.results += (await tx.legacyResult.createMany({ data: results.slice(i, i + RESULT_CHUNK), skipDuplicates: true })).count;
+        }
+        return { plan, written };
+      },
+      { maxWait: 10_000, timeout: 120_000 }
+    );
+  } catch (error) {
+    console.error("[import/historique] month failed", { month: file.header.month, error });
+    return NextResponse.json(
+      { error: "L'import de ce mois n'a rien écrit (erreur pendant l'écriture). Relancez l'analyse puis l'import." },
+      { status: 500 }
+    );
+  }
+  const { plan, written } = outcome;
+  const summary = summarizeMonthPlan(plan);
   const durationMs = Date.now() - started;
   // A run that writes nothing (the same file again) is journalled too: who ran it, when, with what result.
   await logAudit({

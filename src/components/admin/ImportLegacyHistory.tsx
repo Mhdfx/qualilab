@@ -5,7 +5,7 @@ import { CheckCircle2, History, Link2, PlayCircle, Upload, Users } from "lucide-
 import { Card } from "@/components/ui/Card";
 import { formatDateTime, formatDecimal } from "@/lib/labels";
 import { LEGACY_CLIENTS_FILE_HEADER } from "@/lib/legacy-history";
-import type { MonthCategory } from "@/lib/legacy-history-import";
+import { AMBIGUITY_LABELS, type AmbiguityReason, type MonthCategory } from "@/lib/legacy-history-import";
 import type { LegacyImportFollowUp } from "@/lib/legacy-history-server";
 
 /**
@@ -27,11 +27,12 @@ type Candidate = { id: string; name: string; ice: string | null; archived: boole
 type ClientsSummary = {
   mode: "analyse" | "commit";
   rows: number;
-  counts: { certain: number; byIce: number; byName: number; ambiguous: number; missing: number; linked: number; excluded: number; rejected: number };
+  counts: { certain: number; byIce: number; byName: number; ambiguous: number; missing: number; linked: number; excluded: number; rejected: number; review: number };
   samples: { linked: number; certain: number; waiting: number };
-  ambiguous: { legacyClientId: number; name: string; ice: string; samples: number; candidates: Candidate[] }[];
+  ambiguous: { legacyClientId: number; name: string; ice: string; samples: number; reason: AmbiguityReason; homonyms: number[]; candidates: Candidate[] }[];
   missing: { legacyClientId: number; name: string; ice: string; samples: number }[];
   certainExamples: { legacyClientId: number; name: string; client: string; by: "ICE" | "NOM"; samples: number }[];
+  review: { legacyClientId: number; name: string; client: string; by: string; samples: number; homonyms: number[] }[];
   rejected: { line: number; reason: string }[];
   written?: number;
 };
@@ -44,7 +45,7 @@ type MonthSummary = {
   results: number;
   notLinkedClients: number;
   rejected: { line: number; reason: string }[];
-  written?: { created: number; rewritten: number; hidden: number; results: number };
+  written?: { created: number; rewritten: number; hidden: number; removed: number; results: number };
   durationMs?: number;
 };
 
@@ -87,7 +88,7 @@ export function ImportLegacyHistory({ initialFollowUp }: { initialFollowUp: Foll
         </p>
         <p className="mt-2 text-sm text-slate-500">
           Un échantillon n&apos;arrive chez un client que par une correspondance certaine (l&apos;ICE, ou un nom qui ne désigne qu&apos;une
-          fiche) ou tranchée ici à la main. Rien n&apos;est écrit avant votre confirmation ; relancer un fichier n&apos;écrit que le nouveau
+          fiche active et que ne porte aucun autre client de l&apos;ancien logiciel) ou tranchée ici à la main. Rien n&apos;est écrit avant votre confirmation ; relancer un fichier n&apos;écrit que le nouveau
           ou le changé.
         </p>
       </Card>
@@ -172,6 +173,24 @@ function ClientsStep({ onDone }: { onDone: () => void }) {
               {plural(summary.written ?? 0, "client rattaché", "clients rattachés")}. Les mois peuvent maintenant être importés ; un client
               tranché plus tard reçoit ses échantillons au prochain import des mois.
             </p>
+          )}
+          {summary.review.length > 0 && (
+            <details open className="mt-4 rounded-xl border border-rose-200 bg-rose-50/40">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-800 hover:bg-rose-50">
+                <span>Rattachements automatiques à revoir — plusieurs clients de l&apos;ancien logiciel portent ce nom</span>
+                <Badge>{summary.review.length}</Badge>
+              </summary>
+              <div className="max-h-80 overflow-auto px-4 pb-3">
+                <p className="mb-1.5 text-xs text-slate-600">
+                  Faits avant cette vérification, ils ne sont jamais réécrits par l&apos;import. Sur la fiche, « Retirer » le numéro qui
+                  n&apos;appartient pas à ce client (ou confirmez qu&apos;il s&apos;agit bien du même).
+                </p>
+                <SimpleTable
+                  head={["Client de l'ancien logiciel", "N°", "Fiche", "Homonymes (n°)", "Échantillons"]}
+                  rows={summary.review.map((r) => [r.name, String(r.legacyClientId), r.client, r.homonyms.join(", "), nf(r.samples)])}
+                />
+              </div>
+            </details>
           )}
           {summary.ambiguous.length > 0 && <AmbiguousList rows={summary.ambiguous} onDecided={onDone} />}
           {summary.missing.length > 0 && (
@@ -272,7 +291,7 @@ function AmbiguousList({ rows, onDecided }: { rows: ClientsSummary["ambiguous"];
   return (
     <details open className="mt-4 rounded-xl border border-amber-200 bg-amber-50/40">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-800 hover:bg-amber-50">
-        <span>Clients ambigus — plusieurs fiches portent ce nom (ou cet ICE) : à trancher à la main</span>
+        <span>Clients ambigus — à trancher à la main</span>
         <Badge>{rows.length}</Badge>
       </summary>
       <div className="max-h-[32rem] space-y-3 overflow-auto px-4 pb-4">
@@ -282,6 +301,11 @@ function AmbiguousList({ rows, onDecided }: { rows: ClientsSummary["ambiguous"];
             <legend className="px-1 text-sm font-semibold text-slate-800">
               {row.name} <span className="font-normal text-slate-500">· n° {row.legacyClientId}{row.ice ? ` · ICE ${row.ice}` : ""} · {plural(row.samples, "échantillon", "échantillons")}</span>
             </legend>
+            <p className="text-xs text-amber-800">
+              {AMBIGUITY_LABELS[row.reason]}
+              {row.homonyms.length > 0 ? ` Même nom dans l'ancien logiciel : n° ${row.homonyms.join(", ")}.` : ""}
+              {row.candidates.length === 0 ? " Aucune fiche active : rattachez-le depuis la fiche voulue, ou ne le reprenez pas." : ""}
+            </p>
             {decided[row.legacyClientId] ? (
               <p className="mt-1 flex items-center gap-1.5 text-sm text-emerald-700">
                 <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
@@ -378,7 +402,7 @@ function MonthsStep({ onDone }: { onDone: () => void }) {
 
   const analysed = files.filter((f) => f.state === "analysed");
   const total = (key: MonthCategory) => analysed.reduce((sum, f) => sum + (f.summary?.counts[key] ?? 0), 0);
-  const toWrite = total("create") + total("update") + total("hide");
+  const toWrite = total("create") + total("update") + total("hide") + total("remove");
 
   return (
     <Card className="p-5">
@@ -414,7 +438,7 @@ function MonthsStep({ onDone }: { onDone: () => void }) {
                 <th scope="col" className="pb-1.5 pr-3 text-right font-medium">Nouveaux</th>
                 <th scope="col" className="pb-1.5 pr-3 text-right font-medium">Changés</th>
                 <th scope="col" className="pb-1.5 pr-3 text-right font-medium">Inchangés</th>
-                <th scope="col" className="pb-1.5 pr-3 text-right font-medium">Annulés</th>
+                <th scope="col" className="pb-1.5 pr-3 text-right font-medium">Annulés ou retirés</th>
                 <th scope="col" className="pb-1.5 pr-3 text-right font-medium">Client non rattaché</th>
                 <th scope="col" className="pb-1.5 font-medium">État</th>
               </tr>
@@ -429,7 +453,7 @@ function MonthsStep({ onDone }: { onDone: () => void }) {
                     <td className="py-1.5 pr-3 text-right tabular-nums">{c ? nf(c.create) : "—"}</td>
                     <td className="py-1.5 pr-3 text-right tabular-nums">{c ? nf(c.update) : "—"}</td>
                     <td className="py-1.5 pr-3 text-right tabular-nums text-slate-500">{c ? nf(c.unchanged) : "—"}</td>
-                    <td className="py-1.5 pr-3 text-right tabular-nums text-slate-500">{c ? nf(c.hide + c.cancelledSkipped) : "—"}</td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums text-slate-500">{c ? nf(c.hide + c.remove + c.cancelledSkipped) : "—"}</td>
                     <td className={`py-1.5 pr-3 text-right tabular-nums ${c && c.clientNotLinked + c.clientExcluded > 0 ? "text-amber-800" : ""}`}>
                       {c ? nf(c.clientNotLinked + c.clientExcluded) : "—"}
                     </td>
@@ -460,7 +484,7 @@ function MonthsStep({ onDone }: { onDone: () => void }) {
             <p className="text-sm text-slate-600">Rien à écrire : chaque échantillon rattaché de ces fichiers est déjà repris.</p>
           ) : confirming ? (
             <Confirm
-              text={`Importer ${plural(analysed.length, "fichier", "fichiers")} : ${plural(total("create"), "échantillon nouveau", "échantillons nouveaux")}, ${plural(total("update"), "changé", "changés")}, ${plural(total("hide"), "annulé à masquer", "annulés à masquer")} ? ${total("clientNotLinked") > 0 ? `${plural(total("clientNotLinked"), "échantillon attend", "échantillons attendent")} le rattachement de son client.` : ""}`}
+              text={`Importer ${plural(analysed.length, "fichier", "fichiers")} : ${plural(total("create"), "échantillon nouveau", "échantillons nouveaux")}, ${plural(total("update"), "changé", "changés")}, ${plural(total("hide"), "annulé à masquer", "annulés à masquer")}${total("remove") > 0 ? `, ${plural(total("remove"), "retiré (client changé dans l'ancien logiciel)", "retirés (client changé dans l'ancien logiciel)")}` : ""} ? ${total("clientNotLinked") > 0 ? `${plural(total("clientNotLinked"), "échantillon attend", "échantillons attendent")} le rattachement de son client.` : ""}`}
               busy={false}
               onCancel={() => setConfirming(false)}
               onConfirm={() => run("commit")}

@@ -1,10 +1,12 @@
 import "server-only";
 import type { Interpretation } from "@/generated/prisma/client";
 import { prisma } from "./prisma";
+import { LEGACY_HISTORY_FLAG_NON_SATISFYING } from "./lab-proposals";
 import {
   LEGACY_ORDER_BY,
   LEGACY_PAGE_SIZE,
   legacyHistoryWhere,
+  legacyNonSatisfyingMark,
   legacySampleByIdWhere,
   storedReadings,
   type LegacyHistoryFilters,
@@ -39,6 +41,35 @@ const ROW_SELECT = {
   site: { select: { name: true } },
 } as const;
 
+type RowRecord = { id: number; site: { name: string } | null; interpretation: Interpretation | null };
+
+/**
+ * The rows as the screens get them: the site's name, and the mark of a
+ * non-conformity without a sample verdict (`legacyNonSatisfyingMark`). The
+ * analyses read « non satisfaisant » are looked up for the rows of the page
+ * only — those without a sample verdict — through the (legacySampleId, …)
+ * index: a relation count in the main query (`_count` with a `where`) would
+ * aggregate the whole results table on every page (≈ 4 s measured on the
+ * rehearsal copy, 695 572 analyses).
+ */
+async function toRows<T extends RowRecord>(records: T[]): Promise<(Omit<T, "site"> & { siteName: string | null; nonSatisfyingMark: boolean })[]> {
+  const blank = LEGACY_HISTORY_FLAG_NON_SATISFYING ? records.filter((r) => r.interpretation === null).map((r) => r.id) : [];
+  const failing =
+    blank.length === 0
+      ? []
+      : await prisma.legacyResult.findMany({
+          where: { legacySampleId: { in: blank }, interpretation: "NON_SATISFAISANT" },
+          select: { legacySampleId: true },
+          distinct: ["legacySampleId"],
+        });
+  const marked = new Set(failing.map((r) => r.legacySampleId));
+  return records.map(({ site, ...row }) => ({
+    ...row,
+    siteName: site?.name ?? null,
+    nonSatisfyingMark: legacyNonSatisfyingMark(row.interpretation, marked.has(row.id) ? 1 : 0, LEGACY_HISTORY_FLAG_NON_SATISFYING),
+  }));
+}
+
 export type LegacyHistoryRow = {
   id: number;
   controlNumber: string | null;
@@ -54,6 +85,8 @@ export type LegacyHistoryRow = {
   reportedAt: Date | null;
   interpretation: Interpretation | null;
   verdictLabel: string | null;
+  /** No sample verdict, an analysis « non satisfaisant »: « Analyse non satisfaisante » next to the « — ». */
+  nonSatisfyingMark: boolean;
 };
 
 export type LegacyHistoryPage = { rows: LegacyHistoryRow[]; total: number; page: number; pages: number; pageSize: number };
@@ -72,7 +105,7 @@ export async function loadLegacyHistory(clientId: string, filters: LegacyHistory
     }),
   ]);
   return {
-    rows: records.map(({ site, ...row }) => ({ ...row, siteName: site?.name ?? null })),
+    rows: await toRows(records),
     total,
     page: filters.page,
     pages: Math.max(1, Math.ceil(total / LEGACY_PAGE_SIZE)),
@@ -114,8 +147,9 @@ export async function loadLegacySample(clientId: string, id: number): Promise<Le
     },
   });
   if (!record) return null;
-  const { site, results, ...rest } = record;
-  return { ...rest, siteName: site?.name ?? null, results: results.map((r) => ({ ...r, readings: storedReadings(r.readings) })) };
+  const { results, ...rest } = record;
+  const [row] = await toRows([rest]);
+  return { ...row, results: results.map((r) => ({ ...r, readings: storedReadings(r.readings) })) };
 }
 
 /** Whether the client has any history (the portal's menu shows the screen only then). */
@@ -161,7 +195,7 @@ export async function loadLegacyHistorySummary(clientId: string): Promise<Legacy
   return {
     total: byYear.reduce((sum, y) => sum + y.count, 0),
     byYear,
-    latest: latest.map(({ site, ...row }) => ({ ...row, siteName: site?.name ?? null })),
+    latest: await toRows(latest),
     links: links.map(({ site, ...link }) => ({ ...link, siteName: site?.name ?? null })),
   };
 }

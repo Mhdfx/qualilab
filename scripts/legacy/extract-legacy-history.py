@@ -34,9 +34,13 @@ The tables (found on the base on 21/11, HA2-a — `schema.md` beside the files):
 
 Only the samples the old software validated (ETAT = 3) and did not cancel
 are written in full; a cancelled sample is written as a stub
-`{"id": …, "cancelled": true}` so that the import hides one it brought
-before (hypothèse, à confirmer par D-7); the samples still in progress come
-with the next run. No price, no member of the staff (sampler, receiver,
+`{"id": …, "cancelled": true}`, and one not validated (still in progress, or
+re-opened for a correction) as `{"id": …, "withdrawn": true}`, so that the
+import hides a copy it brought before (hypothèse, à confirmer par D-7); a
+validated one comes in full with the next run. A sample deleted from the
+base appears in no file and stays imported — not handled here (the old
+software marks a cancellation with ANNULER = 9 rather than deleting); a
+full-sync check would compare the imported ids with a complete extraction. No price, no member of the staff (sampler, receiver,
 validator) is written.
 
 The base runs in a Docker container (default `qlabo-fb`, Firebird 3,
@@ -297,6 +301,10 @@ def main() -> int:
             continue
         if state != VALIDATED:
             counts["en cours (non repris)"] += 1
+            # A stub, as for a cancelled one: a copy imported while it was validated
+            # (then re-opened for a correction, ETAT back below 3) is hidden by the
+            # import until a later extraction has it validated again.
+            by_month[month].append({"id": sample_id, "withdrawn": True})
             continue
         client_id = to_int(r[5])
         report = reports.get(sample_id)

@@ -340,3 +340,14 @@ export const CLIENT_PRICE_OWN_BEFORE_SITE = true;
  * client of the laboratory keeps its card.
  */
 export const LEGACY_HISTORY_ON_PORTAL = true;
+
+/**
+ * Lot 5B, revue du 21/11 — hypothèse, à confirmer par D-7: a sample of the
+ * old software without a sample verdict (none entered, or code 100) but with
+ * an analysis read « non satisfaisant » is marked « Analyse non
+ * satisfaisante » in the lists (portal, fiche client), next to the « — »;
+ * no sample verdict is invented (`legacyNonSatisfyingMark`). On (proposed —
+ * a non-conformity is never hidden behind a blank). Off: the lists show the
+ * sample's verdict only; the detail always shows each analysis's verdict.
+ */
+export const LEGACY_HISTORY_FLAG_NON_SATISFYING = true;

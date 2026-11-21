@@ -8,6 +8,7 @@ import {
   legacyHistoryQueryString,
   legacyHistoryWhere,
   legacyLimit,
+  legacyNonSatisfyingMark,
   legacyReadings,
   legacyResultInterpretation,
   legacySampleByIdWhere,
@@ -148,11 +149,11 @@ describe("the criterion in clear", () => {
 });
 
 describe("the screens' queries keep a client's history to that client (HA6)", () => {
-  const none = { q: null, siteId: null, from: null, to: null };
+  const none = { q: null, siteId: null, from: null, until: null };
 
   it("the client is a top-level equality, a cancelled sample never listed", () => {
     expect(legacyHistoryWhere("c1", none)).toEqual({ clientId: "c1", cancelled: false });
-    const where = legacyHistoryWhere("c1", { q: "2772", siteId: "s9", from: new Date(2020, 0, 1), to: null });
+    const where = legacyHistoryWhere("c1", { q: "2772", siteId: "s9", from: new Date("2020-01-01T00:00:00.000Z"), until: null });
     expect(where.clientId).toBe("c1");
     expect(where.cancelled).toBe(false);
     expect(where.AND).toHaveLength(3);
@@ -180,11 +181,45 @@ describe("the screens' queries keep a client's history to that client (HA6)", ()
 
   it("filters from the URL: a period typed backwards is still that period; the page bounded", () => {
     const filters = parseLegacyHistoryFilters(new URLSearchParams("du=2024-12-31&au=2024-01-01&page=0&q=%20lot%20"));
-    expect(filters.from?.getFullYear()).toBe(2024);
-    expect(filters.from! < filters.to!).toBe(true);
+    expect([filters.fromDay, filters.toDay]).toEqual(["2024-01-01", "2024-12-31"]);
+    expect(filters.from! < filters.until!).toBe(true);
     expect(filters.page).toBe(1);
     expect(filters.q).toBe("lot");
     expect(parseLegacyHistoryFilters(new URLSearchParams("page=99999")).page).toBe(2000);
+    expect(parseLegacyHistoryFilters(new URLSearchParams("du=2026-02-30")).from).toBeNull();
     expect(legacyHistoryQueryString({ q: "x", siteId: "s", page: 2 })).toBe("q=x&site=s&page=2");
+  });
+
+  it("the period is cut on the laboratory's clock (lab-day-range.ts), never the runtime's midnight; the last day included", () => {
+    // After Morocco's return to UTC (20/09/2026): midnight is 00:00 UTC; the day after « au » excluded.
+    const after = parseLegacyHistoryFilters(new URLSearchParams("du=2026-10-01&au=2026-10-03"));
+    expect(after.from).toEqual(new Date("2026-10-01T00:00:00.000Z"));
+    expect(after.until).toEqual(new Date("2026-10-04T00:00:00.000Z"));
+    expect(legacyHistoryWhere("c1", after).AND).toEqual([{ receivedAt: { gte: after.from, lt: after.until } }]);
+    // Before it, the lab's clock was UTC+1: its midnight is 23:00 UTC the day before.
+    expect(parseLegacyHistoryFilters(new URLSearchParams("du=2026-01-15")).from).toEqual(new Date("2026-01-14T23:00:00.000Z"));
+    // The links carry the days as typed, not an instant read back on the runtime's clock.
+    expect(legacyHistoryQueryString(after)).toBe("du=2026-10-01&au=2026-10-03");
+  });
+});
+
+describe("a non-conformity without a sample verdict is never a bare « — » (hypothèse D-7)", () => {
+  it("marks a sample with no verdict of its own and an analysis « non satisfaisant »", () => {
+    expect(legacyNonSatisfyingMark(null, 1, true)).toBe(true);
+    expect(legacyNonSatisfyingMark(null, 3, true)).toBe(true);
+  });
+
+  it("never when the sample has a verdict on our scale (that verdict prints), nor without such an analysis, nor switched off", () => {
+    expect(legacyNonSatisfyingMark("SATISFAISANT", 1, true)).toBe(false);
+    expect(legacyNonSatisfyingMark("NON_SATISFAISANT", 1, true)).toBe(false);
+    expect(legacyNonSatisfyingMark(null, 0, true)).toBe(false);
+    expect(legacyNonSatisfyingMark(null, 1, false)).toBe(false);
+  });
+
+  it("an analysis read on several units is « non satisfaisant » as soon as one unit is (what the mark counts)", () => {
+    // Units 2 and 1 (Satisfaisant, Non satisfaisant), sample verdict blank (code 100).
+    expect(legacyResultInterpretation([2, 0])).toBe("NON_SATISFAISANT");
+    expect(legacyVerdict(100)).toBeNull();
+    for (const code of [0, 4, 10, 17, 116, 118, 123]) expect(legacyVerdict(code)?.interpretation, String(code)).toBe("NON_SATISFAISANT");
   });
 });

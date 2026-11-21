@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Link2, Unlink } from "lucide-react";
+import { Link2, Search, Unlink } from "lucide-react";
 
 /**
  * The old software's clients linked to this fiche (lot 5B, HA5): listed for
@@ -11,9 +11,22 @@ import { Link2, Unlink } from "lucide-react";
  * (PUT /api/admin/historique/liens) refuses any other role. Withdrawing
  * takes that client's samples out of the history; each decision is
  * journalled.
+ *
+ * « Rattacher » never acts on the number alone: the number is looked up
+ * first (GET /api/admin/historique/liens) and the administrator sees its
+ * name in the old software, the fiche that holds it now and the samples it
+ * brought, then confirms. Taking it from another fiche is a separate,
+ * explicit confirmation (`replace`); the route refuses it otherwise (409) —
+ * a mistyped number never moves another client's history.
  */
 
 type LinkRow = { legacyClientId: number; legacyName: string; matchedBy: string; siteName: string | null; createdAt: string };
+
+type Lookup = {
+  legacyClientId: number;
+  link: { legacyName: string; clientId: string | null; clientName: string | null; clientArchived: boolean; siteName: string | null; matchedBy: string } | null;
+  samples: number;
+};
 
 const SOURCE_LABELS: Record<string, string> = { ICE: "par l'ICE", NOM: "par le nom", MAIN: "à la main" };
 
@@ -22,12 +35,30 @@ const plural = (count: number, one: string, many: string) => `${count} ${count >
 export function LegacyLinksManager({ clientId, canManage, links }: { clientId: string; canManage: boolean; links: LinkRow[] }) {
   const router = useRouter();
   const [legacyClientId, setLegacyClientId] = useState("");
-  const [busy, setBusy] = useState<number | "add" | null>(null);
+  const [busy, setBusy] = useState<number | "add" | "lookup" | null>(null);
   const [confirming, setConfirming] = useState<number | null>(null);
+  const [lookup, setLookup] = useState<Lookup | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  async function decide(id: number, target: string | null) {
+  async function find(id: number) {
+    setBusy("lookup");
+    setError("");
+    setMessage("");
+    setLookup(null);
+    try {
+      const response = await fetch(`/api/admin/historique/liens?legacyClientId=${id}`, { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "Recherche impossible.");
+      setLookup(data as Lookup);
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function decide(id: number, target: string | null, options: { replace?: boolean } = {}) {
     setBusy(target === null ? id : "add");
     setError("");
     setMessage("");
@@ -35,7 +66,13 @@ export function LegacyLinksManager({ clientId, canManage, links }: { clientId: s
       const response = await fetch("/api/admin/historique/liens", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ legacyClientId: id, clientId: target }),
+        body: JSON.stringify({
+          legacyClientId: id,
+          clientId: target,
+          // « Retirer » acts on this fiche's own link only; « Déplacer » only once the lookup was seen.
+          ...(target === null ? { expectedClientId: clientId } : {}),
+          ...(options.replace ? { replace: true } : {}),
+        }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error ?? "La correspondance n'a pas été enregistrée.");
@@ -47,6 +84,7 @@ export function LegacyLinksManager({ clientId, canManage, links }: { clientId: s
           : `Client n° ${id} de l'ancien logiciel rattaché${moved > 0 ? ` : ${plural(moved, "échantillon déplacé", "échantillons déplacés")}` : ""}. Ses autres échantillons arriveront au prochain import des mois.`
       );
       setLegacyClientId("");
+      setLookup(null);
       setConfirming(null);
       router.refresh();
     } catch (cause) {
@@ -117,7 +155,7 @@ export function LegacyLinksManager({ clientId, canManage, links }: { clientId: s
           className="mt-3 flex flex-wrap items-end gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            if (typed !== null) decide(typed, clientId);
+            if (typed !== null) find(typed);
           }}
         >
           <div>
@@ -128,7 +166,10 @@ export function LegacyLinksManager({ clientId, canManage, links }: { clientId: s
               id="legacy-client-id"
               inputMode="numeric"
               value={legacyClientId}
-              onChange={(event) => setLegacyClientId(event.target.value)}
+              onChange={(event) => {
+                setLegacyClientId(event.target.value);
+                setLookup(null);
+              }}
               className="input-field mt-1 w-40 px-3"
               placeholder="ex. 2303"
             />
@@ -138,13 +179,23 @@ export function LegacyLinksManager({ clientId, canManage, links }: { clientId: s
             disabled={typed === null || busy !== null}
             className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl bg-brand px-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Link2 className="h-4 w-4" aria-hidden="true" />
-            {busy === "add" ? "Rattachement…" : "Rattacher à ce client"}
+            <Search className="h-4 w-4" aria-hidden="true" />
+            {busy === "lookup" ? "Recherche…" : "Vérifier ce numéro"}
           </button>
           <p className="w-full text-xs text-slate-500">
-            Le numéro figure dans « Importer l&apos;historique de l&apos;ancien logiciel » (clients ambigus ou introuvables).
+            Le numéro figure dans « Importer l&apos;historique de l&apos;ancien logiciel » (clients ambigus ou introuvables). Rien n&apos;est
+            rattaché avant votre confirmation.
           </p>
         </form>
+      )}
+      {canManage && lookup && lookup.legacyClientId === typed && (
+        <LookupPanel
+          lookup={lookup}
+          clientId={clientId}
+          busy={busy !== null}
+          onCancel={() => setLookup(null)}
+          onConfirm={(replace) => decide(lookup.legacyClientId, clientId, { replace })}
+        />
       )}
       {error && (
         <p role="alert" className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -155,6 +206,70 @@ export function LegacyLinksManager({ clientId, canManage, links }: { clientId: s
         <p role="status" className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           {message}
         </p>
+      )}
+    </div>
+  );
+}
+
+/** What the number names now, and the confirmation that fits it. */
+function LookupPanel({
+  lookup,
+  clientId,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  lookup: Lookup;
+  clientId: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (replace: boolean) => void;
+}) {
+  const { link, samples, legacyClientId } = lookup;
+  const held = link !== null && link.clientId !== null;
+  const here = held && link.clientId === clientId;
+  const elsewhere = held && !here;
+  const name = link ? `« ${link.legacyName} »` : `Le client n° ${legacyClientId}`;
+  let text: string;
+  if (!link) {
+    text = `${name} de l'ancien logiciel n'a encore aucune correspondance (aucun échantillon repris) : son nom n'est connu que du fichier clients.csv — vérifiez-le dans « Importer l'historique » (clients ambigus ou introuvables) avant de confirmer.`;
+  } else if (here) {
+    text = `${name} (n° ${legacyClientId}) est déjà rattaché à cette fiche.`;
+  } else if (elsewhere) {
+    text = `${name} (n° ${legacyClientId}) est rattaché à la fiche « ${link.clientName ?? "?"} »${link.clientArchived ? " (archivée)" : ""}, ${
+      SOURCE_LABELS[link.matchedBy] ?? ""
+    } : ${plural(samples, "échantillon repris", "échantillons repris")}. Le rattacher ici les déplacera sur cette fiche et les retirera de l'autre.`;
+  } else {
+    text = `${name} (n° ${legacyClientId}) est marqué « Ne pas reprendre ». Le rattacher ici fera arriver ses échantillons au prochain import des mois.`;
+  }
+  return (
+    <div
+      role="status"
+      className={`mt-3 rounded-xl border px-3 py-2.5 text-sm ${elsewhere ? "border-amber-300 bg-amber-50 text-amber-900" : "border-slate-200 bg-slate-50 text-slate-800"}`}
+    >
+      <p>{text}</p>
+      {!here && (
+        <div className="mt-2 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="inline-flex min-h-[36px] items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(elsewhere)}
+            disabled={busy}
+            className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-white disabled:opacity-50 ${
+              elsewhere ? "bg-amber-600 hover:bg-amber-700" : "bg-brand hover:bg-brand-dark"
+            }`}
+          >
+            <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
+            {busy ? "Rattachement…" : elsewhere ? `Déplacer sur cette fiche (${plural(samples, "échantillon", "échantillons")})` : "Confirmer le rattachement"}
+          </button>
+        </div>
       )}
     </div>
   );

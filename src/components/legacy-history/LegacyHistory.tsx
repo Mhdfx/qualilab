@@ -6,6 +6,7 @@ import { INTERPRETATION_LABELS } from "@/lib/interpretation";
 import { formatDate, formatDecimal } from "@/lib/labels";
 import {
   LEGACY_HISTORY_NOTICE,
+  LEGACY_NON_SATISFYING_MARK,
   LEGACY_SIEGE,
   legacyHistoryQueryString,
   type LegacyHistoryFilters,
@@ -64,7 +65,24 @@ export function LegacyVerdict({ interpretation, label }: { interpretation: Inter
 }
 
 const day = (date: Date | null) => (date ? formatDate(date) : "—");
-const isoDay = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+/**
+ * « Analyse non satisfaisante » — a sample with no verdict of its own but an
+ * analysis read « non satisfaisant » (`legacyNonSatisfyingMark`): shown next
+ * to the « — » so the non-conformity never hides behind a blank; no sample
+ * verdict is invented.
+ */
+export function LegacyNonSatisfyingMark() {
+  return (
+    <span
+      title="Le rapport ne porte pas de verdict pour l'échantillon ; au moins une de ses analyses est non satisfaisante — voir le détail."
+      className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700 ring-1 ring-rose-200"
+    >
+      <XCircle className="h-3 w-3" aria-hidden="true" />
+      {LEGACY_NON_SATISFYING_MARK}
+    </span>
+  );
+}
 
 /** The list with its filter form (a plain GET form: the URL is the search). */
 export function LegacyHistoryList({
@@ -79,7 +97,7 @@ export function LegacyHistoryList({
   /** « /portail/historique », « /commercial/<id>/historique »: the list's own path; a sample is `${basePath}/${id}`. */
   basePath: string;
 }) {
-  const filtered = Boolean(filters.q || filters.siteId || filters.from || filters.to);
+  const filtered = Boolean(filters.q || filters.siteId || filters.fromDay || filters.toDay);
   return (
     <>
       <Card className="p-5">
@@ -108,11 +126,11 @@ export function LegacyHistoryList({
           <div className="hidden lg:block" aria-hidden="true" />
           <div>
             <label htmlFor="du" className="block text-sm font-medium text-slate-700">Reçu du</label>
-            <input id="du" name="du" type="date" defaultValue={filters.from ? isoDay(filters.from) : ""} className="input-field mt-1.5 px-3" />
+            <input id="du" name="du" type="date" defaultValue={filters.fromDay ?? ""} className="input-field mt-1.5 px-3" />
           </div>
           <div>
             <label htmlFor="au" className="block text-sm font-medium text-slate-700">Au</label>
-            <input id="au" name="au" type="date" defaultValue={filters.to ? isoDay(filters.to) : ""} className="input-field mt-1.5 px-3" />
+            <input id="au" name="au" type="date" defaultValue={filters.toDay ?? ""} className="input-field mt-1.5 px-3" />
           </div>
           <div className="flex flex-wrap items-end gap-2 sm:col-span-2">
             <button
@@ -206,7 +224,10 @@ export function LegacyRowsTable({ rows, basePath }: { rows: LegacyHistoryRow[]; 
             <td className="py-2.5 pr-3 text-slate-600">{day(row.receivedAt)}</td>
             <td className="py-2.5 pr-3 text-slate-600">{day(row.reportedAt)}</td>
             <td className="py-2.5">
-              <LegacyVerdict interpretation={row.interpretation} label={row.verdictLabel} />
+              <span className="inline-flex flex-wrap items-center gap-1.5">
+                <LegacyVerdict interpretation={row.interpretation} label={row.verdictLabel} />
+                {row.nonSatisfyingMark && <LegacyNonSatisfyingMark />}
+              </span>
             </td>
           </tr>
         ))}
@@ -239,7 +260,10 @@ export function LegacySampleView({ sample, backHref }: { sample: LegacySampleDet
             <History className="h-4 w-4 text-brand" aria-hidden="true" />
             Échantillon {sample.controlNumber ?? `n° ${sample.id}`}
           </h2>
-          <LegacyVerdict interpretation={sample.interpretation} label={sample.verdictLabel} />
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            <LegacyVerdict interpretation={sample.interpretation} label={sample.verdictLabel} />
+            {sample.nonSatisfyingMark && <LegacyNonSatisfyingMark />}
+          </span>
         </div>
         <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
           {facts.map(([label, value]) => (
