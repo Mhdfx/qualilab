@@ -4,7 +4,15 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { checkAttachAsSite, type ClientFacts } from "@/lib/client-merge-rules";
-import { moveAlertCopies, moveClientPrices, moveEmails, movePlaces, moveProducts, moveTypesAndProfiles } from "@/lib/client-transfer";
+import {
+  moveAlertCopies,
+  moveClientPrices,
+  moveEmails,
+  moveLegacyHistory,
+  movePlaces,
+  moveProducts,
+  moveTypesAndProfiles,
+} from "@/lib/client-transfer";
 import { normalizeSiteName } from "@/lib/sites-import";
 
 /**
@@ -57,6 +65,8 @@ type AttachCounts = {
   alertCopies: number;
   /** Lot 4H, H5: B's own prices, now the principal's (those it has for the same analysis stay on B). */
   clientPrices: number;
+  /** Lot 5B, HA6: B's samples of the old software's history, now the principal's (on the site). */
+  legacySamples: number;
   /** B's invoices, which stay in its name. */
   invoicesKept: number;
 };
@@ -163,6 +173,8 @@ async function attach(
   const alertCopies = await moveAlertCopies(tx, [sourceId], parentId);
   // Lot 4H, H5: B's own prices go to the principal with its samples (the principal's own price wins).
   const clientPrices = await moveClientPrices(tx, [sourceId], parentId);
+  // Lot 5B, HA6: B's history of the old software goes with it, onto the site (its links too).
+  const legacy = await moveLegacyHistory(tx, [sourceId], parentId, () => siteId);
 
   // ---- archived, never deleted; the invoices stay in B's name ----------------------------------
   await tx.client.update({ where: { id: sourceId }, data: { archived: true, mergedIntoId: parentId } });
@@ -184,6 +196,7 @@ async function attach(
       profiles: owned.profiles,
       alertCopies,
       clientPrices,
+      legacySamples: legacy.samples,
       invoicesKept: sourceRow._count.invoices,
     },
   };

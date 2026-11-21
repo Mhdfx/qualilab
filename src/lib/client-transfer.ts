@@ -345,3 +345,48 @@ export async function moveClientPrices(tx: Tx, fromClientIds: string[], toClient
   }
   return moved;
 }
+
+/**
+ * Lot 5B, HA6 (RETOUR-LABO-20-11.md §6): the old software's history of the
+ * sources — its samples (`LegacySample`) and its links (`LegacyClientLink`,
+ * so the next monthly import brings their new samples to the target too) —
+ * goes to the target in the caller's transaction; without it the history
+ * would vanish from the kept client's portal. `siteIdFor` (« Rattacher comme
+ * site de… », the sites import) puts each source's samples that had no site
+ * onto its new site, and makes it its links' site; absent (a merge), each
+ * sample keeps its site — the sites were moved or merged first. Returns the
+ * samples moved.
+ */
+export async function moveLegacyHistory(
+  tx: Tx,
+  fromClientIds: string[],
+  toClientId: string,
+  siteIdFor: ((clientId: string) => string) | null = null
+): Promise<{ samples: number; links: number }> {
+  const sources = fromClientIds.filter((id) => id !== toClientId);
+  const result = { samples: 0, links: 0 };
+  for (const sourceId of sources) {
+    const siteId = siteIdFor ? siteIdFor(sourceId) : null;
+    if (siteId) {
+      result.samples += (
+        await tx.legacySample.updateMany({ where: { clientId: sourceId, siteId: null }, data: { clientId: toClientId, siteId } })
+      ).count;
+      result.links += (
+        await tx.legacyClientLink.updateMany({ where: { clientId: sourceId, siteId: null }, data: { clientId: toClientId, siteId } })
+      ).count;
+    }
+    result.samples += (await tx.legacySample.updateMany({ where: { clientId: sourceId }, data: { clientId: toClientId } })).count;
+    result.links += (await tx.legacyClientLink.updateMany({ where: { clientId: sourceId }, data: { clientId: toClientId } })).count;
+  }
+  return result;
+}
+
+/**
+ * Lot 5B, HA6: a site merged into another one (« Fusionner avec… », two
+ * sites of the same name) — the history taken there follows, before the
+ * merged site is deleted (its foreign keys would otherwise be set to null).
+ */
+export async function repointLegacySite(tx: Tx, fromSiteId: string, toSiteId: string): Promise<void> {
+  await tx.legacySample.updateMany({ where: { siteId: fromSiteId }, data: { siteId: toSiteId } });
+  await tx.legacyClientLink.updateMany({ where: { siteId: fromSiteId }, data: { siteId: toSiteId } });
+}

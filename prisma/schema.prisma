@@ -455,6 +455,10 @@ model Client {
   alertCopies    AlertCopyClient[]
   /// Lot 4H, H5 (RETOUR-LABO-04-11.md): the prices proper to this client.
   prices         ClientPrice[]
+  /// Lot 5B (RETOUR-LABO-20-11.md §6): the old software's clients linked to
+  /// this one, and the samples of the old software shown as its history.
+  legacyLinks    LegacyClientLink[]
+  legacySamples  LegacySample[]
 
   @@index([archived, name])
   @@index([mergedIntoId])
@@ -1036,6 +1040,10 @@ model Site {
   emails          ClientEmail[]
   series          Serie[]
   places          ClientPlace[]
+  /// Lot 5B: the old software's samples taken at this site, and the links
+  /// whose samples default to it (« Rattacher comme site de… »).
+  legacySamples   LegacySample[]
+  legacyLinks     LegacyClientLink[]
 
   @@unique([clientId, name])
   @@index([clientId, active])
@@ -1996,4 +2004,126 @@ model ClientPrice {
   @@index([parameterId])
   @@index([labServiceId])
   @@index([updatedById])
+}
+
+// ————— Lot 5B — l'historique de l'ancien logiciel (RETOUR-LABO-20-11.md §6, HA1) —————
+// Read-only copies of what the old software reported, imported from its
+// Firebird base (scripts/legacy/extract-legacy-history.py, then « Importer
+// l'historique de l'ancien logiciel », /admin/import). Never mixed with the
+// samples, reports or counters of the LIMS: their numbers cross ours in 2026
+// (Q19). No key to our catalogue: the labels of the time are kept as they
+// were, so the history does not change when the catalogue does. No price.
+
+/// How a link between an old software's client and ours was made.
+enum LegacyLinkSource {
+  /// The ICE (digits) names one of our clients — or, shared, one of the same name.
+  ICE
+  /// The normalised name names one of our clients, and only one.
+  NOM
+  /// Decided by hand by the administrator (an ambiguous name, a client not found).
+  MAIN
+}
+
+/// Which client of ours an old software's client (CLIENTS.ID, TYPECLIENT
+/// 101 — the client of every visit, BONCOMMAND.ID_CLIENT) is. Only a
+/// certain match is written automatically; an ambiguous one waits for the
+/// administrator. `clientId` null: « ne pas reprendre », decided by hand —
+/// its samples are never imported.
+model LegacyClientLink {
+  id             String           @id @default(cuid())
+  legacyClientId Int              @unique
+  /// The old software's name, as the link was made (the screens list it).
+  legacyName     String           @db.VarChar(191)
+  clientId       String?
+  client         Client?          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  /// The site its samples go to when their visit names none (« Rattacher
+  /// comme site de… » moves a client and its history onto a site).
+  siteId         String?
+  site           Site?            @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  matchedBy      LegacyLinkSource
+  /// Who decided it by hand (MAIN), or ran the import that wrote it.
+  createdById    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([clientId])
+  @@index([siteId])
+}
+
+/// One sample the old software validated (LIN_BON_COMMANDE), as its report
+/// gave it. `id` is the old software's own id (ID_LIGNE): re-importing the
+/// same file writes nothing; a row changed in the old software (an
+/// amendment) has another `sourceHash` and is rewritten.
+model LegacySample {
+  /// LIN_BON_COMMANDE.ID_LIGNE.
+  id             Int             @id
+  clientId       String
+  client         Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  siteId         String?
+  site           Site?           @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  /// The old software's client of the visit (BONCOMMAND.ID_CLIENT): the link it came through.
+  legacyClientId Int
+  /// « 2772/26 » — BONCOMMAND.CODE/ANNE.
+  serieNumber    String?         @db.VarChar(32)
+  /// « 20459/26 » — LIN_BON_COMMANDE.NUM/ANNE.
+  controlNumber  String?         @db.VarChar(32)
+  year           Int
+  /// The type d'analyse (NATURE_ECHANTILLION), as labelled then.
+  nature         String?         @db.VarChar(191)
+  /// The family of products (TYPE_NOURITURE), as labelled then.
+  productType    String?         @db.VarChar(191)
+  designation    String?         @db.VarChar(255)
+  lot            String?         @db.VarChar(191)
+  /// The place of sampling (LIEU_PRELEVEMENT).
+  place          String?         @db.VarChar(255)
+  sampledAt      DateTime?
+  receivedAt     DateTime?
+  /// The report's number — the N° de contrôle in the old software.
+  reportNumber   String?         @db.VarChar(32)
+  reportedAt     DateTime?
+  /// The sample's verdict (SAISIE_RESULTAT.CONCLU_RESULT) read on our scale; null: none.
+  interpretation Interpretation?
+  /// The old software's own wording of that verdict (« Satisfaisante », « Conforme »…).
+  verdictLabel   String?         @db.VarChar(64)
+  conclusion     String?         @db.Text
+  observation    String?         @db.Text
+  /// « Ce rapport annule et remplace le rapport N° … » — an amended report.
+  amendmentNote  String?         @db.Text
+  /// Cancelled in the old software after it was imported: hidden everywhere.
+  cancelled      Boolean         @default(false)
+  /// SHA-256 of the file's line: only a changed line is rewritten.
+  sourceHash     String          @db.Char(64)
+  importedAt     DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  results        LegacyResult[]
+
+  /// The lists: newest reception first (always typed, unlike the sampling date), period filter on it.
+  @@index([clientId, receivedAt])
+  @@index([clientId, year])
+  @@index([siteId])
+  @@index([legacyClientId])
+}
+
+/// One analysis of a legacy sample (PARAMES_BON_COMMANDE), with its per-unit
+/// readings (RESULTA_LIGNES) and the value as printed.
+model LegacyResult {
+  /// PARAMES_BON_COMMANDE.ID.
+  id             Int             @id
+  legacySampleId Int
+  legacySample   LegacySample    @relation(fields: [legacySampleId], references: [id], onDelete: Cascade)
+  /// The order the report printed it in (TYPENOURITURE_PARAMS.LORDRE).
+  position       Int
+  parameter      String          @db.VarChar(255)
+  /// The norm (NORMES.VALEUR).
+  method         String?         @db.VarChar(255)
+  unit           String?         @db.VarChar(64)
+  /// As printed: « < 10 », « 3,0.10³ », « Absence » — the units joined with « ; ».
+  value          String?         @db.VarChar(1000)
+  /// The readings, one per unit: { u, value, verdict } (`LegacyReading`, legacy-history.ts).
+  readings       Json?
+  /// The criterion in clear (« n = 5 ; c = 2 ; m = 10² ; M = 10³ »).
+  criterion      String?         @db.VarChar(255)
+  interpretation Interpretation?
+
+  @@index([legacySampleId, position])
 }

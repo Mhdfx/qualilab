@@ -6,11 +6,15 @@ import { ImportMemoire } from "@/components/admin/ImportMemoire";
 import { ImportLegacy } from "@/components/admin/ImportLegacy";
 import { ImportSites } from "@/components/admin/ImportSites";
 import { ImportClientPrices } from "@/components/admin/ImportClientPrices";
+import { ImportLegacyHistory } from "@/components/admin/ImportLegacyHistory";
+import { loadLegacyImportFollowUp } from "@/lib/legacy-history-server";
 
 export const metadata = { title: "Import de données" };
 
 export default async function ImportPage() {
   await requireRole("ADMIN");
+  // Lot 5B, HA3: the follow-up of the history import, read with the page.
+  const legacyHistory = await loadLegacyImportFollowUp();
 
   return (
     <div>
@@ -44,6 +48,11 @@ export default async function ImportPage() {
           {/* Lot 4H, H5 (RETOUR-LABO-04-11.md §5): after the clients and their sites. */}
           <h2 className="mb-3 text-base font-semibold text-slate-900">Prix propres aux clients (ancien logiciel, CSV)</h2>
           <ImportClientPrices />
+        </section>
+        <section>
+          {/* Lot 5B, HA3 (RETOUR-LABO-20-11.md §6): after the clients and their sites. */}
+          <h2 className="mb-3 text-base font-semibold text-slate-900">Historique de l&apos;ancien logiciel (échantillons et résultats)</h2>
+          <ImportLegacyHistory initialFollowUp={legacyHistory} />
         </section>
       </div>
     </div>

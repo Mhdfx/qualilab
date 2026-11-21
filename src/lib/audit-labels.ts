@@ -125,6 +125,10 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   CLIENT_PRICES_IMPORTED: "Prix clients de l'ancien logiciel importés",
   CLIENT_PRICE_SET: "Prix propre à un client enregistré",
   CLIENT_PRICE_DELETED: "Prix propre à un client retiré",
+  // Lot 5B (RETOUR-LABO-20-11.md §6): the old software's history.
+  LEGACY_HISTORY_CLIENTS_LINKED: "Clients de l'ancien logiciel rattachés (historique)",
+  LEGACY_CLIENT_LINKED: "Client de l'ancien logiciel rattaché à la main (historique)",
+  LEGACY_HISTORY_IMPORTED: "Historique de l'ancien logiciel importé (un mois)",
   COMPANY_UPDATED: "Coordonnées du laboratoire modifiées",
   LAB_SETTINGS_UPDATED: "Réglages du laboratoire modifiés",
   SERVICE_UPDATED: "Prestation du catalogue modifiée",

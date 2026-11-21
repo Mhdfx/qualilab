@@ -3,7 +3,7 @@ import type { NavSection } from "./nav-types";
 import { adminNav } from "./admin-nav";
 import { preleveurNav } from "./preleveur-nav";
 import { programmationNav } from "./programmation-nav";
-import { portailNav } from "./portail-nav";
+import { portailNav, portailNavWithHistory } from "./portail-nav";
 import {
   receptionNav,
   technicienNav,
@@ -49,8 +49,15 @@ const NAVS: Record<Role, NavSection[]> = {
   CLIENT: portailNav,
 };
 
+/** What a menu depends on besides the role. */
+export type NavOptions = {
+  /** Lot 5B, HA4: the portal account's client has a history of the old software. */
+  portalHistory?: boolean;
+};
+
 /** Sidebar sections for a role. */
-export function navFor(role: Role): NavSection[] {
+export function navFor(role: Role, options: NavOptions = {}): NavSection[] {
+  if (role === "CLIENT" && options.portalHistory) return portailNavWithHistory;
   return NAVS[role];
 }
 

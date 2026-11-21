@@ -456,3 +456,28 @@ export const TAKE_LIST_BY_NUMBER = true;
  * lot 5A (`report-amendment.ts`).
  */
 export const UNSENT_REPORT_CORRECTED_IN_PLACE = true;
+
+// ————— Lot 5B — l'historique de l'ancien logiciel (RETOUR-LABO-20-11.md §6, Q20) —————
+
+/**
+ * Q20 « Ajouter tout l'historique des clients, ancien plus nouveau »: the
+ * client sees on the portal, besides its samples of the LIMS, what the old
+ * software reported for it (« Historique (ancien logiciel) », read-only,
+ * « le rapport signé fait foi »). On (proposed — the separate screen, its
+ * contents and the PDFs wait for D-7): the menu shows the screen to a client
+ * that has a history, /portail/historique and /api/portail/historique/**
+ * answer. Off: the portal's screen and routes are gone (404); the fiche
+ * client of the laboratory keeps its card.
+ */
+export const LEGACY_HISTORY_ON_PORTAL = true;
+
+/**
+ * Lot 5B, revue du 21/11 — hypothèse, à confirmer par D-7: a sample of the
+ * old software without a sample verdict (none entered, or code 100) but with
+ * an analysis read « non satisfaisant » is marked « Analyse non
+ * satisfaisante » in the lists (portal, fiche client), next to the « — »;
+ * no sample verdict is invented (`legacyNonSatisfyingMark`). On (proposed —
+ * a non-conformity is never hidden behind a blank). Off: the lists show the
+ * sample's verdict only; the detail always shows each analysis's verdict.
+ */
+export const LEGACY_HISTORY_FLAG_NON_SATISFYING = true;

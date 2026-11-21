@@ -427,6 +427,114 @@ compte, rien n'est vu (question au propriétaire, D-7) ; (6) les clients
 fusionnés depuis la reprise du 01/10 : la fusion doit emporter l'historique
 (HA6).
 
+### 5B — tel que construit (21/11, branche `lot5b`, arbre `C:\laragon\www\qualilab-lot5b` — local, non déployé)
+
+Construit avec les choix du plan ; ce que le laboratoire n'a pas confirmé est écrit « hypothèse, à
+confirmer par D-7 », derrière l'interrupteur `LEGACY_HISTORY_ON_PORTAL` (ON). HA8 (les PDF signés)
+n'est pas construit : il attend D-7.
+
+**HA2-a — les tables trouvées** (détail : `backups/historique-ancien/schema.md`, ignoré par git) :
+le rapport d'un échantillon est `VALIDETAT_INFO` (un par échantillon : date `DATEVALIDATION`,
+conclusion imprimée si `PCONCLU` = 1, note d'amendement `NAMENDM` — 791 rapports amendés —, motif
+des décimales `FORMAT_NUM`) ; **son numéro est le N° de contrôle** (`NUM_RAP` est toujours vide ;
+les notes d'amendement citent « rapport N° 2314/17 ») ; le verdict de l'échantillon est
+`SAISIE_RESULTAT.CONCLU_RESULT` ; les lectures par unité sont `RESULTA_LIGNES` (`NUM_ECHE` = l'unité,
+`RESULTA` × 10^`EXP_R`, `OPER`, `CONCLUSION` de l'unité, `TYPE_RESULTAT` 11 nombre / 12 présence /
+13 texte) ; l'annulation est `LIN_BON_COMMANDE.ANNULER` = 9, la validation `ETAT` = 3. Le critère
+de l'époque n'est gardé nulle part : le critère montré est celui d'aujourd'hui (celui d'une
+réimpression), sans n ni c quand l'analyse n'a pas été lue sur n unités.
+
+**HA2 — volumes mesurés** (extraction du 21/11, 141 s ; `backups/historique-ancien/comptes.md`) :
+
+| Année | Échantillons | Repris (validés) | Annulés | Jamais validés | Analyses | Lectures |
+|---|---:|---:|---:|---:|---:|---:|
+| 2017 | 15 554 | 13 635 | 161 | 1 758 | 54 680 | 59 574 |
+| 2018 | 18 974 | 18 592 | 118 | 264 | 74 157 | 82 633 |
+| 2019 | 18 714 | 18 388 | 163 | 163 | 74 286 | 85 222 |
+| 2020 | 15 102 | 14 804 | 72 | 226 | 58 640 | 66 775 |
+| 2021 | 16 709 | 16 334 | 117 | 258 | 58 041 | 64 944 |
+| 2022 | 16 405 | 15 931 | 95 | 379 | 57 781 | 63 933 |
+| 2023 | 22 565 | 21 420 | 166 | 979 | 78 219 | 106 551 |
+| 2024 | 26 171 | 24 982 | 239 | 950 | 89 559 | 131 122 |
+| 2025 | 29 532 | 28 629 | 299 | 604 | 106 244 | 158 139 |
+| 2026 (→ sept.) | 20 346 | 18 966 | 121 | 1 259 | 69 405 | 107 533 |
+| **Total** | **200 072** | **191 681** | **1 551** | **6 840** | **721 012** | **926 426** |
+
+Moins que l'ordre de grandeur du plan (≈ 270 000 échantillons) : la base restaurée compte 200 072
+échantillons. 947 clients de l'ancien logiciel ont au moins un échantillon repris. 117 fichiers
+mensuels (rangés par mois de **réception** : la date de prélèvement porte des fautes de frappe et la
+date vide « 1899-12-30 »), le plus gros 3,7 Mo (plafond 8 Mo) ; 0 ligne illisible.
+
+**HA7 — répétition locale** (21/11, copie `qualilab_hist` = `qualilab_h5`, où les clients et les
+sites de l'ancien logiciel ont été rejoués ; import par les routes réelles, serveur de l'arbre
+`lot5b` sur le port 3230 ; comptes dans `backups/historique-ancien/repetition-locale-*.json`) :
+
+- **Clients** : 947 lus → **892 certains** (4 par l'ICE, 888 par le nom), **9 ambigus** (plusieurs
+  fiches du même nom), **45 introuvables**, 1 ligne illisible (client sans nom, 4 échantillons) ;
+  les certains portent 185 206 échantillons, les autres 6 475 (en attente d'une décision).
+- **Mois** : 117 fichiers, **185 206 échantillons et 695 572 analyses écrits** pour 890 clients ;
+  6 475 « client non rattaché », 1 551 annulés non repris ; durée par import mensuel moyenne 2,3 s,
+  maximum 6,9 s (cible : moins de 30 s) ; taille dans MariaDB ≈ 310 Mo (échantillons 103 Mo,
+  analyses 206 Mo).
+- **Relance** des mêmes fichiers : 0 écrit (idempotent) ; relance des clients : 0 lien.
+- **Un ambigu tranché à la main** (n° 161) : ses 2 764 échantillons arrivent à la relance des mois.
+- **Fusion** de deux fiches sur la copie : les 8 échantillons repris de la fiche archivée passent à
+  la fiche conservée, total inchangé (187 970 → 187 970).
+- **Gardes** : import et liens refusés sans session (401) et au gestionnaire (403) ; fiche
+  « Historique » refusée au technicien ; un compte portail de test lit les 9 échantillons de son
+  client, le détail d'un autre client répond 404 (API ; la page affiche « introuvable » sans aucune
+  donnée), il n'ouvre pas la fiche du laboratoire ; aucun prix ni nom du personnel dans les réponses.
+- **Vitesse** (serveur de développement, client le plus gros : 37 903 échantillons) : liste 0,5 à
+  0,8 s, détail et API du portail 0,1 s.
+
+**Écarts voulus par rapport au plan** : un fichier mensuel contient les échantillons **et** leurs
+analyses (un appel écrit un échantillon avec ses analyses, en une transaction) ; les listes se
+rangent et se filtrent par la **date de réception** (toujours saisie) ; le rapprochement est plus
+strict que celui des prix (deux fiches du même nom = ambigu, même si l'une est archivée) ; un lien
+n'est fait que pour le client de la visite (`BONCOMMAND.ID_CLIENT`, toujours un client de type 101) —
+le site de la visite est repris quand il est un site importé de ce même client.
+
+**Hypothèses (à confirmer par D-7, et par la comparaison de 20 rapports signés tirés au hasard avant
+la production — risque 2)** : numéro du rapport = N° de contrôle ; codes « (inv.) » 16 / 17 / 25 lus
+selon leur libellé ; une analyse à plusieurs unités : une unité « Non satisfaisant » la rend non
+satisfaisante, satisfaisant et acceptable mêlés ne donnent pas de verdict (le c de l'époque est
+inconnu) ; mise en forme des valeurs (« < 1,0.10¹ » là où le rapport a pu imprimer « < 10 ») ;
+échantillons annulés non repris ; échantillons jamais validés (6 840, dont 1 758 de 2017) non repris.
+
+**Revue du 21/11 — corrigé sur la même branche** :
+- **Un échantillon dont le client change dans l'ancien logiciel** (risque 1) : l'import regarde d'abord
+  ce qui est déjà repris ; rattaché à un autre client, l'échantillon le suit (son n° de client de l'ancien
+  logiciel est réécrit) ; client sans correspondance ou « Ne pas reprendre » : il est **retiré** — il ne
+  reste jamais sur le portail de l'ancien client.
+- **« Rattacher à ce client » sur la fiche** : le numéro est d'abord vérifié (nom dans l'ancien logiciel,
+  fiche qui le porte, échantillons) ; le prendre à une autre fiche demande « Déplacer sur cette fiche » —
+  sinon la route refuse (409). Un numéro mal tapé ne déplace plus l'historique d'un autre client.
+- **Plusieurs clients de l'ancien logiciel du même nom** ne sont jamais rattachés sur le nom seul (sauf
+  par un ICE qui leur est propre) : « à trancher à la main ». Sur la copie, 4 rattachements déjà faits
+  sont concernés (n° 2566 et 3223, n° 3174 et 3175 — 18 échantillons) : la prochaine analyse des clients
+  les liste « à revoir » — **le propriétaire les relit avant la production**. En production (aucun lien
+  au départ) : 888 certains, 13 ambigus (9 fiches du même nom, 4 homonymes), 45 introuvables.
+- **« Analyse non satisfaisante »** dans les listes, à côté du « — », quand l'échantillon n'a pas de
+  verdict propre mais une analyse non satisfaisante (4 902 des 47 093 échantillons sans verdict sur la
+  copie) — aucun verdict d'échantillon inventé. Hypothèse, à confirmer par D-7 (interrupteur
+  `LEGACY_HISTORY_FLAG_NON_SATISFYING`, ON).
+- **Échantillon ré-ouvert** dans l'ancien logiciel (plus validé) : l'extraction écrit une ligne « retiré »,
+  l'import masque la copie reprise ; elle revient quand il est validé de nouveau. Un échantillon
+  **supprimé** de l'ancienne base (et non annulé) n'est pas traité (reste repris).
+- Un site fusionné garde son historique aux imports suivants ; filtres « Reçu du / au » sur l'horloge du
+  laboratoire ; fiches archivées traitées pareil par l'import et par la décision à la main ; le mois est
+  planifié dans sa transaction (correspondances verrouillées).
+- La page d'un échantillon d'un autre client répond « introuvable » avec un statut HTTP 200 (le portail
+  affiche son chargement avant) ; l'API répond 404 et aucune donnée n'est montrée — accepté.
+- Répétition sur `qualilab_hist` : `backups/historique-ancien/repetition-locale-revue.json`.
+
+**Avant la production** (propriétaire) : relire les comptes ci-dessus, **relire les 4 rattachements « à
+revoir »** (homonymes) et trancher les ambigus (13 avec la règle des homonymes) et
+les 45 introuvables (les plus gros d'abord) ; comparer 20 échantillons avec leurs PDF signés ; vérifier
+la place disque du VPS (≈ 310 Mo de plus dans la base) et la durée du dump nocturne ; puis tag + dump,
+migration `20261121020000_lot5b_historique_ancien`, « Rattacher les clients », import des 117 mois,
+recette sur « TEST UI » et sur un client réel en lecture seule (compte de démonstration).
+
 ## 7. Ce qui reste en attente
 
 **Le laboratoire (pas de relance hors du prochain échange — règle du
