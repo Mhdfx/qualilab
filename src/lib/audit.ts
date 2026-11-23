@@ -43,6 +43,8 @@ export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
  * The lab must be able to answer "who did what, and when" on any record, so
  * writing the audit entry is part of the operation, not an optional extra.
  * Auditing must never break the business action: failures are logged, swallowed.
+ * Answers whether the entry was written — a caller that remembers it (the
+ * portal's login journal) must not remember a write that failed.
  */
 export async function logAudit(params: {
   actorId: string | null;
@@ -50,7 +52,7 @@ export async function logAudit(params: {
   entity: string;
   entityId?: string | null;
   metadata?: Record<string, unknown>;
-}) {
+}): Promise<boolean> {
   try {
     await prisma.auditLog.create({
       data: {
@@ -61,6 +63,7 @@ export async function logAudit(params: {
         metadata: params.metadata ? JSON.stringify(params.metadata) : null,
       },
     });
+    return true;
   } catch (error) {
     console.error("[audit] failed to record entry", {
       action: params.action,
@@ -68,5 +71,6 @@ export async function logAudit(params: {
       entityId: params.entityId,
       error,
     });
+    return false;
   }
 }

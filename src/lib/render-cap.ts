@@ -75,6 +75,35 @@ export function capGroups<G, T>(
   return { groups: kept, hidden };
 }
 
+/**
+ * How many rows of the whole list that `matches` picks the cut left out:
+ * those of `all` minus those still drawn in `drawnGroups`.
+ */
+export function hiddenMatching<G, T>(
+  all: readonly T[],
+  drawnGroups: readonly G[],
+  rowsOf: (group: G) => readonly T[],
+  matches: (row: T) => boolean
+): number {
+  let drawn = 0;
+  for (const group of drawnGroups) for (const row of rowsOf(group)) if (matches(row)) drawn += 1;
+  return Math.max(0, all.filter(matches).length - drawn);
+}
+
+/**
+ * What « Afficher les N suivants » adds when urgent samples are among the
+ * rows left out: neither « À prendre » (hypothèse D-2,
+ * `TAKE_LIST_URGENT_FIRST` off) nor the programmation queue lead with them,
+ * so the cut could hide one without a word (review of lot performance).
+ * Null when none is hidden.
+ */
+export function hiddenUrgentNotice(hiddenUrgent: number): string | null {
+  if (hiddenUrgent <= 0) return null;
+  return hiddenUrgent > 1
+    ? `Attention : ${hiddenUrgent} échantillons urgents ne sont pas encore affichés.`
+    : "Attention : 1 échantillon urgent n'est pas encore affiché.";
+}
+
 
 /**
  * The address of a server list's next step: the page's own parameters (a

@@ -1,6 +1,16 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { RENDER_STEP, SHOWN_PARAM, capGroups, moreHref, nextStep, parseShown, showMoreLabel } from "./render-cap";
+import {
+  RENDER_STEP,
+  SHOWN_PARAM,
+  capGroups,
+  hiddenMatching,
+  hiddenUrgentNotice,
+  moreHref,
+  nextStep,
+  parseShown,
+  showMoreLabel,
+} from "./render-cap";
 
 /**
  * Lot performance, step 2 — lighter pages (.ui-tests/perf/plan.md P1-6,
@@ -56,6 +66,34 @@ describe("render caps (P1-6, P2-10)", () => {
     expect(groups[1].rows).toHaveLength(4);
   });
 
+  it("counts the urgent samples the cut leaves out — « À prendre » is sorted by number (D-2)", () => {
+    type Row = { id: number; priority: "NORMALE" | "URGENTE" };
+    const row = (id: number, urgent = false): Row => ({ id, priority: urgent ? "URGENTE" : "NORMALE" });
+    const all = [row(1), row(2, true), row(3), row(4), row(5, true), row(6, true)];
+    const groups = [
+      { serie: "A", rows: all.slice(0, 3) },
+      { serie: "B", rows: all.slice(3) },
+    ];
+    const urgent = (r: Row) => r.priority === "URGENTE";
+    const at = (limit: number) => {
+      const drawn = capGroups(groups, limit, (g) => g.rows, (g, rows) => ({ ...g, rows }));
+      return hiddenMatching(all, drawn.groups, (g) => g.rows, urgent);
+    };
+    expect(at(1)).toBe(3);
+    expect(at(2)).toBe(2);
+    expect(at(4)).toBe(2);
+    expect(at(5)).toBe(1);
+    expect(at(6)).toBe(0);
+    expect(at(100)).toBe(0);
+  });
+
+  it("warns about the hidden urgent samples, in the singular or the plural", () => {
+    expect(hiddenUrgentNotice(0)).toBeNull();
+    expect(hiddenUrgentNotice(-1)).toBeNull();
+    expect(hiddenUrgentNotice(1)).toBe("Attention : 1 échantillon urgent n'est pas encore affiché.");
+    expect(hiddenUrgentNotice(7)).toBe("Attention : 7 échantillons urgents ne sont pas encore affichés.");
+  });
+
   it("links the next step with the page's own parameters", () => {
     expect(moreHref("/technicien", { vue: "a_prendre", age: null, tri: "" }, 100)).toBe("/technicien?vue=a_prendre&afficher=200");
     expect(moreHref("/programmation", { vue: null }, 300)).toBe("/programmation?afficher=400");
@@ -67,6 +105,19 @@ describe("render caps (P1-6, P2-10)", () => {
       expect(source, rel).toContain("capGroups(groups, cap.limit,");
       expect(source, rel).toContain("<ShowMore shown={");
     }
+    // The urgent samples the cut leaves out are counted under the list (review of the lot).
+    for (const [rel, list] of [
+      ["components/programmation/ProgrammationQueue.tsx", "lines"],
+      ["components/technicien/WorkQueue.tsx", "items"],
+    ] as const) {
+      const source = read(rel);
+      expect(source, rel).toContain(`const urgentHidden = hiddenMatching(${list}, drawn.groups, (entry) => entry.rows,`);
+      expect(source, rel).toContain('.priority === "URGENTE");');
+      expect(source, rel).toContain("urgentHidden={urgentHidden}");
+    }
+    const showMore = read("components/ui/ShowMore.tsx");
+    expect(showMore).toContain("const urgent = hiddenUrgentNotice(urgentHidden);");
+    expect(showMore).toContain("{urgent && ");
     // The truncation notices still count the whole list the query read.
     expect(read("app/programmation/page.tsx")).toContain("const truncated = rows.length === QUEUE_LIMIT;");
     expect(read("app/technicien/page.tsx")).toContain("held.length === LIST_LIMIT ?");
@@ -145,5 +196,13 @@ describe("dashboards with their first data (P2-7)", () => {
     expect(first).toContain("select: serieSelectFor(session.role),");
     expect(first).toContain("serializeSerie(row, serieStatus(row.samples))");
     expect(read("components/PreleveurDashboard.tsx")).toContain("if (loadedFor.current === key) return;");
+  });
+});
+
+describe("favicon (P2-8)", () => {
+  it("/favicon.ico leads to the declared logo, not to the not-found page", () => {
+    const config = readFileSync(`${process.cwd()}/next.config.ts`, "utf8");
+    expect(config).toContain('{ source: "/favicon.ico", destination: "/qualilab-logo-nobg.png", permanent: false }');
+    expect(read("app/layout.tsx")).toContain('icon: "/qualilab-logo-nobg.png",');
   });
 });

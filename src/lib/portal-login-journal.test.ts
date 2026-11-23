@@ -12,6 +12,8 @@ vi.mock("server-only", () => ({}));
 
 const journal: { entity: string; entityId: string; action: string; actorId: string | null }[] = [];
 const lookups = { count: 0 };
+/** Makes the next journal writes fail as `logAudit` does: swallowed, `false`. */
+const writes = { failing: false, attempts: 0 };
 
 vi.mock("./prisma", () => ({
   prisma: {
@@ -32,7 +34,10 @@ vi.mock("./audit", async (importOriginal) => {
   return {
     ...actual,
     logAudit: vi.fn(async (entry: { actorId: string | null; action: string; entity: string; entityId: string }) => {
+      writes.attempts += 1;
+      if (writes.failing) return false;
       journal.push({ entity: entry.entity, entityId: entry.entityId, action: entry.action, actorId: entry.actorId });
+      return true;
     }),
   };
 });
@@ -53,6 +58,8 @@ const logins = (sessionId: string) =>
 describe("the portal's login journal", () => {
   beforeEach(() => {
     lookups.count = 0;
+    writes.failing = false;
+    writes.attempts = 0;
   });
 
   it("journals a session's first portal page once, whatever the pages that follow", async () => {
@@ -75,6 +82,34 @@ describe("the portal's login journal", () => {
     journal.push({ entity: "Session", entityId: "s-before-restart", action: "PORTAL_LOGIN", actorId: "u2" });
     await logPortalLogin({ id: "u2", sessionId: "s-before-restart" }, "c2");
     expect(logins("s-before-restart")).toBe(1);
+  });
+
+  it("a journal write that failed is not remembered: the session's next page writes it", async () => {
+    const session = { id: "u3", sessionId: "s-pool-timeout" };
+    writes.failing = true;
+    await logPortalLogin(session, "c3");
+    await logPortalLogin(session, "c3");
+    expect(logins("s-pool-timeout")).toBe(0);
+    // Each page looked again and tried again.
+    expect(lookups.count).toBe(2);
+    expect(writes.attempts).toBe(2);
+
+    writes.failing = false;
+    await logPortalLogin(session, "c3");
+    await logPortalLogin(session, "c3");
+    expect(logins("s-pool-timeout")).toBe(1);
+    expect(writes.attempts).toBe(3);
+    // Written at last, then known: the fourth page reads nothing.
+    expect(lookups.count).toBe(3);
+  });
+
+  it("logAudit answers whether the entry was written", () => {
+    const audit = read("./audit.ts");
+    expect(audit).toContain("}): Promise<boolean> {");
+    const body = audit.slice(audit.indexOf("export async function logAudit("));
+    expect(body.indexOf("return true;")).toBeGreaterThan(body.indexOf("await prisma.auditLog.create("));
+    expect(body.indexOf("return false;")).toBeGreaterThan(body.indexOf("} catch (error) {"));
+    expect(read("./portal-server.ts")).toContain("if (journalled) rememberJournalled(sessionId);");
   });
 
   it("the layout passes the guard's session, and nothing asks Better Auth for it again", () => {

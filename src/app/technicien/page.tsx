@@ -30,6 +30,8 @@ import { WorkQueue, type WorkItem } from "@/components/technicien/WorkQueue";
 import { ReceivedAgeFilter } from "@/components/technicien/ReceivedAgeFilter";
 import { RECEIVED_AGE_PARAM, parseReceivedAge, receivedAgeHref, receivedBefore } from "@/lib/received-age";
 import { SHOWN_PARAM, moreHref, parseShown } from "@/lib/render-cap";
+import { RefreshWhenRestored } from "@/components/ui/RefreshWhenRestored";
+import { newRenderId } from "@/lib/restored-render";
 
 export const metadata = { title: "Saisie des résultats" };
 
@@ -260,6 +262,8 @@ export default async function TechnicienPage({
 
   return (
     <div>
+      {/* Back after « Prendre en charge » asks the bench again (review of the lot performance). */}
+      <RefreshWhenRestored renderId={newRenderId()} />
       <PageHeader
         badge="Espace technicien"
         title="Saisie des résultats"

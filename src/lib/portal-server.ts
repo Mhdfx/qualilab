@@ -106,7 +106,8 @@ function rememberJournalled(sessionId: string) {
 /**
  * Journal « PORTAL_LOGIN » once per session (the first portal page it opens).
  * The session is the one the guard read (`SessionUser.sessionId`) — Better
- * Auth is not asked for it again. Never breaks the page.
+ * Auth is not asked for it again. Never breaks the page; a journal write
+ * that failed is not remembered, so the next page tries again.
  */
 export async function logPortalLogin(session: Pick<SessionUser, "id" | "sessionId">, clientId: string): Promise<void> {
   const { id: userId, sessionId } = session;
@@ -116,16 +117,18 @@ export async function logPortalLogin(session: Pick<SessionUser, "id" | "sessionI
       where: { entity: "Session", entityId: sessionId, action: AUDIT_ACTIONS.PORTAL_LOGIN },
       select: { id: true },
     });
-    if (!seen) {
-      await logAudit({
+    // Remembered only once the entry is known to exist: a write that failed
+    // (`logAudit` swallows it) is tried again on the session's next page.
+    const journalled =
+      seen !== null ||
+      (await logAudit({
         actorId: userId,
         action: AUDIT_ACTIONS.PORTAL_LOGIN,
         entity: "Session",
         entityId: sessionId,
         metadata: { clientId },
-      });
-    }
-    rememberJournalled(sessionId);
+      }));
+    if (journalled) rememberJournalled(sessionId);
   } catch (error) {
     console.error("[portail] journal de connexion impossible", { userId, error });
   }

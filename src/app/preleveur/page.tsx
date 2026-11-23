@@ -5,6 +5,8 @@ import { VIEW_PARAM, parseView } from "@/lib/dashboard-view";
 import { PRELEVEUR_VIEWS, visitViewStart } from "@/lib/circuit-views";
 import { VISITS_PAGE_SIZE } from "@/lib/series";
 import { asJson, preleveurFirstVisits } from "@/lib/dashboard-first-page";
+import { RefreshWhenRestored } from "@/components/ui/RefreshWhenRestored";
+import { newRenderId } from "@/lib/restored-render";
 
 export const metadata = { title: "Prélèvements" };
 
@@ -34,13 +36,17 @@ export default async function PreleveurPage({
     preleveurFirstVisits(session, VISITS_PAGE_SIZE),
   ]);
   return (
-    <PreleveurDashboard
-      userName={session.name}
-      view={view}
-      totalSamples={totalSamples}
-      todayVisits={todayVisits}
-      weekSamples={weekSamples}
-      initialVisits={asJson(firstVisits) as { items: VisitSummary[]; nextCursor: string | null }}
-    />
+    <>
+      {/* The first visits come with the page: Back asks them again (review of the lot performance). */}
+      <RefreshWhenRestored renderId={newRenderId()} />
+      <PreleveurDashboard
+        userName={session.name}
+        view={view}
+        totalSamples={totalSamples}
+        todayVisits={todayVisits}
+        weekSamples={weekSamples}
+        initialVisits={asJson(firstVisits) as { items: VisitSummary[]; nextCursor: string | null }}
+      />
+    </>
   );
 }

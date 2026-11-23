@@ -7,7 +7,7 @@ import { groupQueue } from "@/lib/programmation-queue";
 import { isLate } from "@/lib/circuit-views";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
-import { capGroups } from "@/lib/render-cap";
+import { capGroups, hiddenMatching } from "@/lib/render-cap";
 import { Card } from "@/components/ui/Card";
 import { ShowMore } from "@/components/ui/ShowMore";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -80,7 +80,9 @@ const DEFAULT_EMPTY = {
  *
  * `cap` draws only the first `limit` samples, in the order shown, then
  * « Afficher les N suivants » (`moreHref`, lot performance P2-10): a série
- * cut by the limit keeps its heading and its counts.
+ * cut by the limit keeps its heading and its counts. The queue is ordered by
+ * status and reception, not by priority: the urgent samples the cut leaves
+ * out are counted under the list (`hiddenUrgentNotice`).
  */
 export function ProgrammationQueue({
   lines,
@@ -109,6 +111,7 @@ export function ProgrammationQueue({
   const drawn = cap
     ? capGroups(groups, cap.limit, (entry) => entry.rows, (entry, rows) => ({ ...entry, rows }))
     : { groups, hidden: 0 };
+  const urgentHidden = hiddenMatching(lines, drawn.groups, (entry) => entry.rows, (line) => line.priority === "URGENTE");
 
   return (
     <div className="space-y-5">
@@ -220,7 +223,9 @@ export function ProgrammationQueue({
           </section>
         );
       })}
-      {cap && <ShowMore shown={lines.length - drawn.hidden} total={lines.length} href={cap.moreHref} />}
+      {cap && (
+        <ShowMore shown={lines.length - drawn.hidden} total={lines.length} href={cap.moreHref} urgentHidden={urgentHidden} />
+      )}
     </div>
   );
 }

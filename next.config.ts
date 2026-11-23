@@ -49,6 +49,13 @@ const nextConfig: NextConfig = {
   },
   // A self-contained build for the VPS: smaller image, faster start.
   output: "standalone",
+  // `src/app/favicon.ico` (Next's default icon) is gone (P2-8): the layout
+  // declares the PNG logo. A client that still asks for /favicon.ico gets
+  // that logo instead of a render of the « page introuvable » (review of the
+  // lot performance). Temporary (307), so a real icon can come back.
+  async redirects() {
+    return [{ source: "/favicon.ico", destination: "/qualilab-logo-nobg.png", permanent: false }];
+  },
   async headers() {
     return [
       {

@@ -51,6 +51,8 @@ import {
 import { ReleaseButton, TakeButton, TakeOverButton } from "@/components/technicien/BenchTakeActions";
 import { SerieNeighbourLinks } from "@/components/ui/SerieNeighbourLinks";
 import { serieNeighbours } from "@/lib/serie-neighbours";
+import { RefreshWhenRestored } from "@/components/ui/RefreshWhenRestored";
+import { newRenderId } from "@/lib/restored-render";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   // Metadata renders alongside the layout's redirect: the sample's blind
@@ -343,6 +345,8 @@ export default async function AnalysePage({
 
   return (
     <div>
+      {/* Back after a release or a submission asks the sheet again (review of the lot performance). */}
+      <RefreshWhenRestored renderId={newRenderId()} />
       <Link
         href="/technicien"
         className="mb-4 inline-flex items-center gap-1.5 rounded text-sm font-medium text-slate-600 transition hover:text-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"

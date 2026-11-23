@@ -10,7 +10,7 @@ import { BENCH_STATUSES, isOnBenchOf, isUnclaimed, splitParameters } from "@/lib
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
-import { capGroups } from "@/lib/render-cap";
+import { capGroups, hiddenMatching } from "@/lib/render-cap";
 import { Card } from "@/components/ui/Card";
 import { ShowMore } from "@/components/ui/ShowMore";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -235,7 +235,9 @@ function RowDetails({
  *
  * `cap` draws only the first `limit` rows, in the order shown, then
  * « Afficher les N suivants » (`moreHref`, lot performance P2-10): a série
- * cut by the limit keeps its heading and its count.
+ * cut by the limit keeps its heading and its count. The urgent samples the
+ * cut leaves out are counted under the list (`hiddenUrgentNotice`): « À
+ * prendre » no longer leads with them (D-2).
  */
 export function WorkQueue({
   items,
@@ -267,6 +269,7 @@ export function WorkQueue({
   const drawn = cap
     ? capGroups(groups, cap.limit, (entry) => entry.rows, (entry, rows) => ({ ...entry, rows }))
     : { groups, hidden: 0 };
+  const urgentHidden = hiddenMatching(items, drawn.groups, (entry) => entry.rows, (item) => item.priority === "URGENTE");
 
   return (
     <div className="space-y-5">
@@ -347,7 +350,9 @@ export function WorkQueue({
           </ul>
         </section>
       ))}
-      {cap && <ShowMore shown={items.length - drawn.hidden} total={items.length} href={cap.moreHref} />}
+      {cap && (
+        <ShowMore shown={items.length - drawn.hidden} total={items.length} href={cap.moreHref} urgentHidden={urgentHidden} />
+      )}
     </div>
   );
 }
