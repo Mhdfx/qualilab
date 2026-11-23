@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { ArrowRight, ShieldCheck, AlertTriangle, Clock, PencilLine, Send } from "lucide-react";
 import type { AirMethod, LineKind, SampleType, SurfaceState } from "@/generated/prisma/client";
 import type { SampleStatus } from "@/generated/prisma/enums";

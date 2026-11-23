@@ -32,6 +32,16 @@ const productionHeaders = [
   },
 ];
 
+/**
+ * The logos in /public (the tab's icon, the sidebar's, the documents'):
+ * kept a day, then revalidated in the background, instead of a conditional
+ * request on every page (.ui-tests/perf/plan.md P2-8). A new logo shows
+ * within a day.
+ */
+const LOGO_CACHE = [
+  { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
+];
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   devIndicators: {
@@ -48,6 +58,8 @@ const nextConfig: NextConfig = {
             ? [...securityHeaders, ...productionHeaders]
             : securityHeaders,
       },
+      { source: "/qualilab-logo.png", headers: LOGO_CACHE },
+      { source: "/qualilab-logo-nobg.png", headers: LOGO_CACHE },
     ];
   },
 };

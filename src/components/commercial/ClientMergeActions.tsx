@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight, Eye, GitMerge, MapPin, RefreshCw } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { goFresh } from "@/lib/navigate-fresh";
 import { ClientPicker, type PickedClient } from "./ClientPicker";
 import {
   attachSummary,
@@ -39,6 +40,7 @@ export function ClientMergeActions({
   canAttach: boolean;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [mode, setMode] = useState<Mode | null>(null);
   const [target, setTarget] = useState<PickedClient | null>(null);
   // Attach: "" = a site named below (new, or A's site of the same name).
@@ -95,8 +97,7 @@ export function ClientMergeActions({
         return;
       }
       if (kind === "commit") {
-        router.push(`/commercial/${target.id}`);
-        router.refresh();
+        goFresh(router, pathname, `/commercial/${target.id}`);
         return;
       }
       const warnings: string[] = Array.isArray(data.warnings) ? data.warnings : [];

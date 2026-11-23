@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Copy, FileDown, FilePen, History, PencilLine } from "lucide-react";
 import type { SampleStatus } from "@/generated/prisma/enums";
 import type { Role } from "@/lib/roles";
 import { formatDate } from "@/lib/labels";
+import { goFresh } from "@/lib/navigate-fresh";
 import {
   CORRECTION_MESSAGES,
   canReopen,
@@ -253,6 +254,7 @@ function VersionsDialog({ sampleId, onClose }: { sampleId: string; onClose: () =
  */
 function CorrectDialog({ sampleId, number, onClose }: { sampleId: string; number: string; onClose: () => void }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -281,8 +283,7 @@ function CorrectDialog({ sampleId, number, onClose }: { sampleId: string; number
       }
       onClose();
       // The double validation starts again on the validation page.
-      router.push(`/validation/${sampleId}`);
-      router.refresh();
+      goFresh(router, pathname, `/validation/${sampleId}`);
     } catch {
       setError("Une erreur réseau est survenue. Réessayez.");
     } finally {
@@ -349,6 +350,7 @@ function CorrectDialog({ sampleId, number, onClose }: { sampleId: string; number
  */
 function ReopenDialog({ sampleId, number, sent, onClose }: { sampleId: string; number: string; sent: boolean; onClose: () => void }) {
   const router = useRouter();
+  const pathname = usePathname();
   const unsent = unsentReopenWarning(number, sent);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -376,8 +378,7 @@ function ReopenDialog({ sampleId, number, sent, onClose }: { sampleId: string; n
       }
       onClose();
       // The double validation starts again on the validation page.
-      router.push(`/validation/${sampleId}`);
-      router.refresh();
+      goFresh(router, pathname, `/validation/${sampleId}`);
     } catch {
       setError("Une erreur réseau est survenue. Réessayez.");
     } finally {

@@ -580,9 +580,9 @@ export type IssueOptions = { accreditationLogo?: boolean | null };
 const REPORT_NUMBER_TRIES = 10;
 
 /**
- * Every issue queues on the one RAPPORT row, through a pool of five
- * connections (database-url.ts): Prisma's defaults (2 s to start, 5 s to
- * run) left a burst of 30 approvals with 14 report-less samples (P2028).
+ * Every issue queues on the one RAPPORT row, through the connection pool
+ * (database-url.ts: DB_POOL_SIZE, default 5): Prisma's defaults (2 s to
+ * start, 5 s to run) left a burst of 30 approvals with 14 report-less samples (P2028).
  * Room to queue — and the pause the retry keeps — instead.
  */
 const ISSUE_TRANSACTION = { maxWait: 10_000, timeout: 20_000 };

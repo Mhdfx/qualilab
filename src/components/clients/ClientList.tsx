@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { Search, Building2, ArrowRight, Archive, Plus, Mail, ClipboardList } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { awaitsCompletion, clientCompletionGaps, completionHint } from "@/lib/client-completion";

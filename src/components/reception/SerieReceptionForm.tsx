@@ -755,7 +755,6 @@ export function SerieReceptionForm({
         decided={decided}
         justReceived={result !== null}
         onBack={() => {
-          router.refresh();
           router.push("/reception");
         }}
       />

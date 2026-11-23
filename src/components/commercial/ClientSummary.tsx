@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { BarChart3, Download, Search } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { searchQueryString, type SampleSearch } from "@/lib/sample-search";

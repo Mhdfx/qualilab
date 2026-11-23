@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { useInvoiceBasePath } from "@/lib/invoice-paths";
 import { ArrowLeft, Download, Layers, Printer } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";

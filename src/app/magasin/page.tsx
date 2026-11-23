@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import {
   Boxes,
   PackageMinus,

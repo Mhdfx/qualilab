@@ -67,6 +67,9 @@ services:
       # sheet) and every printed timestamp follow it, not the container's UTC.
       TZ: ${TZ:-Africa/Casablanca}
       DATABASE_URL: "mysql://qualilab:${DB_PASSWORD}@db:3306/qualilab"
+      # Connections the app keeps to the database (database-url.ts; 1–50,
+      # 5 when unset): room for a burst without starving the other pages.
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-15}
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL in .env}
       BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:?set BETTER_AUTH_TRUSTED_ORIGINS in .env}

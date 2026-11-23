@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { Gauge, Thermometer, Award, AlertTriangle, CalendarClock } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { calibrationDue } from "@/lib/quality";

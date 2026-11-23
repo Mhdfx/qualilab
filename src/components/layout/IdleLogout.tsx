@@ -233,6 +233,7 @@ export function IdleLogout({ timeoutMs }: { timeoutMs: number }) {
     // past the limit when the page opened (tab closed without signing out).
     mounted.current = true;
     const start = Date.now();
+    let arrival: number | null = null;
     if (expiredOnArrival(readSharedRaw(), start, timeoutMs)) {
       void signOut();
     } else {
@@ -241,9 +242,9 @@ export function IdleLogout({ timeoutMs }: { timeoutMs: number }) {
       writeShared(start);
       // An activity, so the server hears of it too: the page may come from
       // the browser's cache (Back) with no request that stamped the session.
-      // After a full load its guard did — the touch then writes nothing
-      // (Better Auth's update age).
-      void touchServer();
+      // 5 s later, out of the page's own requests (perf P1-4): the server's
+      // idle margin absorbs it. After a full load its guard did stamp it.
+      arrival = window.setTimeout(() => { void touchServer(); }, 5000);
     }
 
     const options: AddEventListenerOptions = { capture: true, passive: true };
@@ -258,6 +259,7 @@ export function IdleLogout({ timeoutMs }: { timeoutMs: number }) {
       window.removeEventListener("storage", onStorage);
       document.removeEventListener("visibilitychange", onVisibility);
       window.clearInterval(interval);
+      if (arrival !== null) window.clearTimeout(arrival);
       if (retryTimer.current !== null) {
         window.clearTimeout(retryTimer.current);
         retryTimer.current = null;

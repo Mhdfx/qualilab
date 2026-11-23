@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { SearchX, Home } from "lucide-react";
 
 export default function NotFound() {

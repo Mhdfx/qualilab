@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { AlertTriangle, CheckCircle2, History, Info, Search, XCircle } from "lucide-react";
 import type { Interpretation } from "@/generated/prisma/enums";
 import { Card } from "@/components/ui/Card";

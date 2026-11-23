@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { History } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { formatDecimal } from "@/lib/labels";

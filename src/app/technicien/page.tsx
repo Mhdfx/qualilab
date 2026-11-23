@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { FlaskConical, ClipboardCheck, AlertTriangle, CheckCircle2, Inbox, type LucideIcon } from "lucide-react";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireRole } from "@/lib/auth";

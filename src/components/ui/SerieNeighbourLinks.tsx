@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import type { MouseEvent } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { UNSAVED_CHANGES_MESSAGE } from "@/lib/serie-neighbours";

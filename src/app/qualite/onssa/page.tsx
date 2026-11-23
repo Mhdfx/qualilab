@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { AlertTriangle, Download, FileSpreadsheet, FlaskConical, Landmark, ShieldAlert } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { formatDecimal } from "@/lib/labels";

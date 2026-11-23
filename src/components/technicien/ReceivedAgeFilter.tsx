@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { CalendarClock } from "lucide-react";
 import { MAX_RECEIVED_AGE, RECEIVED_AGE_PARAM, receivedAgeHref, receivedAgeLabel } from "@/lib/received-age";
 

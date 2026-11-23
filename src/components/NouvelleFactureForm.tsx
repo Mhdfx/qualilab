@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import Link from "@/components/ui/AppLink";
 import {
   ArrowLeft,
   Building2,
@@ -15,6 +15,7 @@ import {
   Send,
 } from "lucide-react";
 import { useInvoiceBasePath } from "@/lib/invoice-paths";
+import { goFresh } from "@/lib/navigate-fresh";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
@@ -125,6 +126,7 @@ function draftLines(draft: DraftFormInvoice | undefined): LineItem[] {
  */
 export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}) {
   const router = useRouter();
+  const pathname = usePathname();
   const base = useInvoiceBasePath();
   // The client is searched on the server (ClientPicker), never the whole base
   // loaded. A draft starts on its own client — even one that has since left
@@ -281,8 +283,7 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
     if ("error" in built) throw new Error(built.error);
     if (!draft) {
       const invoice = await sendJson("/api/invoices", "POST", { ...built.body, issue });
-      router.push(`${base}/${invoice.id}`);
-      router.refresh();
+      goFresh(router, pathname, `${base}/${invoice.id}`);
       return;
     }
     await sendJson(`/api/invoices/${draft.id}`, "PATCH", built.body);
@@ -295,8 +296,7 @@ export function NouvelleFactureForm({ draft }: { draft?: DraftFormInvoice } = {}
         );
       }
     }
-    router.push(`${base}/${draft.id}`);
-    router.refresh();
+    goFresh(router, pathname, `${base}/${draft.id}`);
   }
 
   async function handleSubmit(e: React.FormEvent) {

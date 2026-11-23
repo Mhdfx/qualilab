@@ -186,7 +186,6 @@ export function ClientForm({ clientId, initial, sites = [], archived, mergedInto
         return;
       }
 
-      router.refresh();
       router.push(clientId ? `/commercial/${clientId}` : `/commercial/${data.id}`);
     } catch {
       setError("Une erreur réseau est survenue. Réessayez.");
@@ -210,7 +209,6 @@ export function ClientForm({ clientId, initial, sites = [], archived, mergedInto
         setError(data.error ?? "Action impossible.");
         return;
       }
-      router.refresh();
       router.push(`/commercial/${clientId}`);
     } catch {
       setError("Une erreur réseau est survenue. Réessayez.");

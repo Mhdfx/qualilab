@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, Building2, Package, Hash, Calendar, ClipboardList, Hourglass, Undo2, UserCheck, Eye, FlaskConical } from "lucide-react";
 import { requireRole, getSession } from "@/lib/auth";

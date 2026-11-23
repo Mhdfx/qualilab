@@ -225,3 +225,10 @@ button {
     margin: 8mm;
   }
 }
+
+/* A link clicked before it was prefetched (AppLink.tsx): visible at once
+   that the next page is on its way. */
+a:has(> [data-pending="true"]) {
+  cursor: progress;
+  opacity: 0.7;
+}

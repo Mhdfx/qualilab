@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { Plus, FlaskConical, Calendar, ClipboardList, ChevronRight, MapPin, Search, RefreshCw } from "lucide-react";
 import { PrimaryLink } from "@/components/PrimaryButton";
 import { PageHeader } from "@/components/ui/PageHeader";

@@ -262,6 +262,11 @@ describe("IdleLogout.tsx reports to the server as these rules say", () => {
     expect(source).not.toMatch(/lastTouch\.current = start/);
   });
 
+  it("sends that arrival touch a few seconds after the page opens, out of its own requests, and drops it if the page goes", () => {
+    expect(source).toMatch(/setTimeout\(\(\) => \{ void touchServer\(\); \}, \d+\)/);
+    expect(source).toMatch(/clearTimeout\(arrival\)/);
+  });
+
   it("abandons a touch after SERVER_TOUCH_TIMEOUT_MS and retries it by a timer", () => {
     expect(source).toMatch(/AbortSignal\.timeout\(SERVER_TOUCH_TIMEOUT_MS\)/);
     expect(source).toMatch(/setTimeout\([\s\S]{0,120}touch\(\)[\s\S]{0,40}SERVER_TOUCH_RETRY_MS\)/);

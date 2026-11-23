@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { Check, Scale } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { WrappingSelect } from "@/components/ui/WrappingSelect";

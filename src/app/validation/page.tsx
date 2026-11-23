@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { requireRole } from "@/lib/auth";
 import { ShieldCheck, ClipboardList, FileCheck2, Send } from "lucide-react";
 import type { Prisma } from "@/generated/prisma/client";

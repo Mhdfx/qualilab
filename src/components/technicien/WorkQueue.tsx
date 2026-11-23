@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { ArrowRight, FlaskConical, AlertTriangle, Inbox, Undo2, UserCheck, Zap } from "lucide-react";
 import type { AirMethod, LineKind, ProgrammePriority, SampleStatus, SampleType, SurfaceState } from "@/generated/prisma/client";
 import { formatDate, formatDateTime } from "@/lib/labels";

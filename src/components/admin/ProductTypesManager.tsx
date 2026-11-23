@@ -1,7 +1,7 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { useRouter } from "next/navigation";
 import { Check, ChevronRight, Plus, Search, Tags, X } from "lucide-react";
 import type { Family } from "@/generated/prisma/enums";

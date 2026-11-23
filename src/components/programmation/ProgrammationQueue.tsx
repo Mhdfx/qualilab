@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { AlertTriangle, ArrowRight, ClipboardList, Clock, Lock, User, Zap } from "lucide-react";
 import type { AirMethod, Family, LineKind, ProgrammePriority, SampleStatus, SerieKind, SurfaceState } from "@/generated/prisma/enums";
 import { LINE_KIND_LABELS, SERIE_KIND_LABELS, formatDateTime, formatDayTime } from "@/lib/labels";

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/AppLink";
 import { ArrowRight, Clock, Inbox, MapPin, Thermometer, User } from "lucide-react";
 import type { SamplerKind, SerieKind } from "@/generated/prisma/enums";
 import { SAMPLER_KIND_LABELS, SERIE_KIND_LABELS, formatDateTime, formatDecimal } from "@/lib/labels";
