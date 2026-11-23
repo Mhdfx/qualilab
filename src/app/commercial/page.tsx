@@ -3,7 +3,8 @@ import { Building2, FlaskConical, Send, FileText } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
-import { ClientList } from "@/components/clients/ClientList";
+import { ClientList, type ClientRow } from "@/components/clients/ClientList";
+import { awaitsCompletion, clientCompletionGaps, completionHint } from "@/lib/client-completion";
 import { rechercheHref } from "@/lib/sample-search";
 import { invoiceTileHref } from "@/lib/management-views";
 
@@ -12,24 +13,34 @@ export const metadata = { title: "Clients" };
 export default async function CommercialPage() {
   // Belt and braces with the layout guard: a page must be safe on its own.
   const session = await requireRole("GESTIONNAIRE", "ADMIN");
-  const [clients, echantillons, rapportsEnvoyes, factures] = await Promise.all([
+  const [rows, toCompleteFacts, echantillons, rapportsEnvoyes, factures] = await Promise.all([
+    // The client base, slim (lot performance P1-6): what the list shows and
+    // searches — never the phone, the postal address or the addresses
+    // themselves, only how many there are.
     prisma.client.findMany({
       select: {
         id: true,
         name: true,
         contact: true,
         email: true,
-        phone: true,
         ice: true,
-        address: true,
         archived: true,
-        // « À compléter » (E3) and what is missing: the ICE, the postal
-        // address and an address that receives the reports.
+        // « À compléter » (E3): the flag; what is missing is worded below.
         toComplete: true,
-        emails: { select: { id: true, email: true, siteId: true, forReports: true, forAlerts: true } },
-        _count: { select: { samples: true, invoices: true } },
+        _count: { select: { samples: true, invoices: true, emails: true } },
       },
       orderBy: { name: "asc" },
+    }),
+    // What the clients « À compléter » lack — the ICE, the postal address and
+    // an address that receives the reports — read for those few alone
+    // (`awaitsCompletion`: flagged and not archived).
+    prisma.client.findMany({
+      where: { toComplete: true, archived: false },
+      select: {
+        id: true,
+        address: true,
+        emails: { select: { email: true, siteId: true, forReports: true, forAlerts: true } },
+      },
     }),
     prisma.sample.count(),
     prisma.sample.count({ where: { status: "RAPPORT_ENVOYE" } }),
@@ -37,6 +48,16 @@ export default async function CommercialPage() {
     // not « factures » for this figure (FACTURATION.md §4).
     prisma.invoice.count({ where: { kind: "FACTURE", status: { in: ["EN_ATTENTE", "PAYEE"] } } }),
   ]);
+
+  // The hint under « À compléter », worded here (`clientCompletionGaps`).
+  const factsById = new Map(toCompleteFacts.map((facts) => [facts.id, facts]));
+  const clients: ClientRow[] = rows.map((client) => {
+    const facts = awaitsCompletion(client) ? factsById.get(client.id) : undefined;
+    return {
+      ...client,
+      hint: facts ? completionHint(clientCompletionGaps({ ...client, address: facts.address, emails: facts.emails })) : null,
+    };
+  });
 
   const active = clients.filter((client) => !client.archived).length;
   // Each figure opens exactly what it counts (« comme un tri »). The client

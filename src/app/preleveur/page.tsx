@@ -1,8 +1,10 @@
-import { PreleveurDashboard } from "@/components/PreleveurDashboard";
+import { PreleveurDashboard, type VisitSummary } from "@/components/PreleveurDashboard";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { VIEW_PARAM, parseView } from "@/lib/dashboard-view";
 import { PRELEVEUR_VIEWS, visitViewStart } from "@/lib/circuit-views";
+import { VISITS_PAGE_SIZE } from "@/lib/series";
+import { asJson, preleveurFirstVisits } from "@/lib/dashboard-first-page";
 
 export const metadata = { title: "Prélèvements" };
 
@@ -22,10 +24,14 @@ export default async function PreleveurPage({
   // where the list's views start (`visitViewStart`).
   const now = new Date();
   const mine = { createdById: session.id };
-  const [totalSamples, todayVisits, weekSamples] = await Promise.all([
+  // « Mes visites » comes with the page too (lot performance P2-7): the
+  // first page `/api/series?mine=1` would answer them; the dashboard asks
+  // again only for a search, a status or « Voir plus ».
+  const [totalSamples, todayVisits, weekSamples, firstVisits] = await Promise.all([
     prisma.sample.count({ where: { serie: mine } }),
     prisma.serie.count({ where: { ...mine, startedAt: { gte: visitViewStart("aujourdhui", now) } } }),
     prisma.sample.count({ where: { serie: { ...mine, startedAt: { gte: visitViewStart("semaine", now) } } } }),
+    preleveurFirstVisits(session, VISITS_PAGE_SIZE),
   ]);
   return (
     <PreleveurDashboard
@@ -34,6 +40,7 @@ export default async function PreleveurPage({
       totalSamples={totalSamples}
       todayVisits={todayVisits}
       weekSamples={weekSamples}
+      initialVisits={asJson(firstVisits) as { items: VisitSummary[]; nextCursor: string | null }}
     />
   );
 }

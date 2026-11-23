@@ -7,7 +7,9 @@ import { groupQueue } from "@/lib/programmation-queue";
 import { isLate } from "@/lib/circuit-views";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
+import { capGroups } from "@/lib/render-cap";
 import { Card } from "@/components/ui/Card";
+import { ShowMore } from "@/components/ui/ShowMore";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 
 /** One sample of the responsable des paramètres' queue, as the dashboard selects it. */
@@ -75,15 +77,21 @@ const DEFAULT_EMPTY = {
  * The programme assigns nobody (13/10): a programmed sample nobody took
  * shows « À prendre » — it waits in the bench's shared list — and a taken
  * one « Pris par X le … ».
+ *
+ * `cap` draws only the first `limit` samples, in the order shown, then
+ * « Afficher les N suivants » (`moreHref`, lot performance P2-10): a série
+ * cut by the limit keeps its heading and its counts.
  */
 export function ProgrammationQueue({
   lines,
   now,
   empty = DEFAULT_EMPTY,
+  cap,
 }: {
   lines: QueueLine[];
   now: Date;
   empty?: { title: string; text: string };
+  cap?: { limit: number; moreHref: string };
 }) {
   if (lines.length === 0) {
     return (
@@ -97,9 +105,14 @@ export function ProgrammationQueue({
     );
   }
 
+  const groups = groupQueue(lines).map((group) => ({ group, rows: group.lines }));
+  const drawn = cap
+    ? capGroups(groups, cap.limit, (entry) => entry.rows, (entry, rows) => ({ ...entry, rows }))
+    : { groups, hidden: 0 };
+
   return (
     <div className="space-y-5">
-      {groupQueue(lines).map((group) => {
+      {drawn.groups.map(({ group, rows }) => {
         const waiting = group.lines.filter((line) => line.status === "RECU").length;
         return (
           <section key={group.serieId} aria-label={`Série ${group.serialNumber}`}>
@@ -116,7 +129,7 @@ export function ProgrammationQueue({
               </span>
             </div>
             <ul className="space-y-3">
-              {group.lines.map((line) => {
+              {rows.map((line) => {
                 const late = isLate(line, now);
                 return (
                   <li key={line.id}>
@@ -207,6 +220,7 @@ export function ProgrammationQueue({
           </section>
         );
       })}
+      {cap && <ShowMore shown={lines.length - drawn.hidden} total={lines.length} href={cap.moreHref} />}
     </div>
   );
 }

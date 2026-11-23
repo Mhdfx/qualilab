@@ -22,10 +22,11 @@ d'enquête `.ui-tests/perf/investigate-*.md` (dossier non versionné, sur le pos
 | Étape | Éléments du plan | État | Commit |
 |---|---|---|---|
 | 1 — navigation | P1-1, P1-4, P1-5, P1-3, P2-8 (code) | fait localement, non déployé | « Perf 1 » |
-| 2 | P1-6, P2-5 | à faire | |
-| 3 | P2-1, P2-2, P2-4, P2-6, P2-7, P2-10 | à faire | |
+| 2 — pages allégées | P1-6, P2-1, P2-2, P2-7, P2-10 | fait localement, non déployé | « Perf 2 » |
+| 3 | P2-4, P2-5, P2-6 (+ P3 au besoin) | à faire | |
 | nginx / compose (hors code) | P1-2, P2-3, P2-8 (nginx), P2-9 | à faire sur le VPS | |
 
 ## Journal
 
 - 23/11 — Étape 1 : `AppLink` (préchargement à l'intention seulement : survol 80 ms, focus, toucher) à la place de `next/link` dans 52 fichiers + règle ESLint ; toucher de session d'IdleLogout différé de 5 s ; doubles rendus refresh+push retirés (`goFresh`) ; pool DB réglable `DB_POOL_SIZE` (défaut 5, compose 15) ; favicon Next par défaut supprimé, logos en cache 1 jour. Reprise : étape 2 (P1-6 /commercial, P2-5 températures).
+- 23/11 — Étape 2 : /commercial allégé (plus de téléphone, d'adresse ni d'adresses e-mail par client ; l'indication « À compléter » calculée côté serveur ; 100 lignes puis « Afficher les N suivants », filtre sur toute la base) ; référentiel de /programmation/[id] et de `GET /api/samples/[id]/programme` compact (`programme-referential-wire.ts`, `hydrateReferential`) ; /recherche n'envoie plus que les sites du client choisi, les autres via `GET /api/recherche/sites` (rôles de /recherche, 403 au technicien, sites inactifs inclus) ; /admin et /preleveur reçoivent leurs premières données avec la page ; file de programmation et listes du technicien plafonnées à 100 lignes (`?afficher=`). Mesures locales (dev) : /commercial 269 Ko, `GET …/programme` 344 Ko. Reprise : étape 3 (P2-4 index LegacySample, P2-5 températures, P2-6 fiche de paillasse).

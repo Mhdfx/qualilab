@@ -61,9 +61,11 @@ export default async function RecherchePage({ searchParams }: { searchParams: Pr
       select: { id: true, name: true, archived: true },
       orderBy: { name: "asc" },
     }),
-    // Every site of those clients, inactive ones included: old analyses were done there.
-    blind ? [] : prisma.site.findMany({
-      where: { OR: [{ client: { archived: false } }, ...chosenClient.map(({ id }) => ({ clientId: id }))] },
+    // The sites of the client in the address, inactive ones included: old
+    // analyses were done there. Another client's come when it is chosen
+    // (`GET /api/recherche/sites`, lot performance P2-2).
+    blind || !search.clientId ? [] : prisma.site.findMany({
+      where: { clientId: search.clientId },
       select: { id: true, clientId: true, name: true, active: true },
       orderBy: [{ active: "desc" }, { name: "asc" }],
     }),

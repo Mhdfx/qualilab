@@ -10,7 +10,9 @@ import { BENCH_STATUSES, isOnBenchOf, isUnclaimed, splitParameters } from "@/lib
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
+import { capGroups } from "@/lib/render-cap";
 import { Card } from "@/components/ui/Card";
+import { ShowMore } from "@/components/ui/ShowMore";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
 import { TakeButton } from "@/components/technicien/BenchTakeActions";
@@ -230,18 +232,24 @@ function RowDetails({
  * link; a free row's link is its reference, stretched over the card, with
  * « Prendre en charge » above it — never inside it (a button inside an
  * anchor is invalid and would navigate).
+ *
+ * `cap` draws only the first `limit` rows, in the order shown, then
+ * « Afficher les N suivants » (`moreHref`, lot performance P2-10): a série
+ * cut by the limit keeps its heading and its count.
  */
 export function WorkQueue({
   items,
   viewerId = null,
   empty = DEFAULT_EMPTY,
   now = new Date(),
+  cap,
 }: {
   items: WorkItem[];
   viewerId?: string | null;
   empty?: { title: string; text: string };
   /** The page's instant, so every row counts « reçu il y a N j » from the same one. */
   now?: Date;
+  cap?: { limit: number; moreHref: string };
 }) {
   if (items.length === 0) {
     return (
@@ -255,9 +263,14 @@ export function WorkQueue({
     );
   }
 
+  const groups = groupBySerie(items).map((group) => ({ group, rows: group.items }));
+  const drawn = cap
+    ? capGroups(groups, cap.limit, (entry) => entry.rows, (entry, rows) => ({ ...entry, rows }))
+    : { groups, hidden: 0 };
+
   return (
     <div className="space-y-5">
-      {groupBySerie(items).map((group) => (
+      {drawn.groups.map(({ group, rows }) => (
         <section key={group.serialNumber} aria-label={`Série ${group.serialNumber}`}>
           <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span className="font-mono text-sm font-bold text-brand">Série {group.serialNumber}</span>
@@ -267,7 +280,7 @@ export function WorkQueue({
             </span>
           </div>
           <ul className="space-y-3">
-            {group.items.map((item) => {
+            {rows.map((item) => {
               const total = item.parameters.length;
               // A germ read per unit only counts once every unit is read.
               const done = item.results.filter(
@@ -334,6 +347,7 @@ export function WorkQueue({
           </ul>
         </section>
       ))}
+      {cap && <ShowMore shown={items.length - drawn.hidden} total={items.length} href={cap.moreHref} />}
     </div>
   );
 }

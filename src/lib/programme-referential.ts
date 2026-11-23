@@ -14,6 +14,8 @@ import {
 } from "./programme-input";
 import { twinOfCode, type SampleTwin } from "./sample-code";
 import { PROGRAMMABLE_STATUSES } from "./sample-status";
+import { compactReferential, type ProgrammeReferentialWire } from "@/components/programmation/programme-referential-wire";
+import type { ProgrammeReferentialData } from "@/components/programmation/programme-sheet-types";
 
 /**
  * What the programme d'analyse reads and writes (PROGRAMME.md §4–5): the
@@ -393,7 +395,7 @@ export async function loadProgrammeReferential(
     parameters: { parameterId: string; normVersionId: string | null }[];
   },
   options: { natureId?: string | null; natures?: ProgrammeNatureOption[]; withPrices: boolean }
-) {
+): Promise<ProgrammeReferentialWire> {
   const natures = selectableNatures(options.natures ?? (await loadProgrammeNatures(sample)), {
     family: sample.nature.family,
     twin: twinOfCode(sample.code),
@@ -498,7 +500,7 @@ export async function loadProgrammeReferential(
     }
   }
 
-  return {
+  const referential: ProgrammeReferentialData = {
     /** The nature this referential was computed for, and its category. */
     natureId,
     category,
@@ -557,6 +559,10 @@ export async function loadProgrammeReferential(
     /** Lot 4H, H5: the parameters priced at the billed client's own price — empty without `withPrices`. */
     clientPriced,
   };
+  // Lot performance P2-1: the page and the route send it compact — each
+  // criterion a tuple, its germ's name and its norm version said once; the
+  // sheet rebuilds it (`hydrateReferential`).
+  return compactReferential(referential);
 }
 
 /**

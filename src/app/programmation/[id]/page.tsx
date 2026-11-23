@@ -48,7 +48,8 @@ import { ProgrammeSheet } from "@/components/programmation/ProgrammeSheet";
 import { SerieNeighbourLinks } from "@/components/ui/SerieNeighbourLinks";
 import { serieNeighbours } from "@/lib/serie-neighbours";
 import { benchHolder } from "@/components/programmation/programme-sheet-logic";
-import type { ProgrammeReferentialData, ProgrammeResponse } from "@/components/programmation/programme-sheet-types";
+import type { ProgrammeResponse } from "@/components/programmation/programme-sheet-types";
+import type { ProgrammeReferentialWire } from "@/components/programmation/programme-referential-wire";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   // Metadata renders alongside the layout's redirect: the sample's blind
@@ -132,7 +133,8 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
   // Dates become strings and decimals numbers: the client component reads
   // exactly what the API would have answered.
   const data = JSON.parse(JSON.stringify(serializeProgramme(row))) as ProgrammeResponse;
-  const referentialData = JSON.parse(JSON.stringify(referential)) as ProgrammeReferentialData;
+  // Compact as it travels (lot performance P2-1): the sheet rebuilds it.
+  const referentialData = JSON.parse(JSON.stringify(referential)) as ProgrammeReferentialWire;
   const { sample, programme: stored } = data;
   // K5 (Q8, « la date à rendre le se remplit seule et reste modifiable »):
   // a programme not yet confirmed, without a promised date, gets the one its

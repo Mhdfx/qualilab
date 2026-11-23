@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { VIEW_PARAM, parseView, viewHref } from "@/lib/dashboard-view";
 import { PROGRAMMATION_VIEWS, programmationWhere, type ProgrammationView } from "@/lib/circuit-views";
 import { isUnclaimed } from "@/lib/bench-access";
+import { SHOWN_PARAM, moreHref, parseShown } from "@/lib/render-cap";
 import { reportTechnicianNames } from "@/lib/report-programme";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard, type StatAccent } from "@/components/ui/StatCard";
@@ -57,7 +58,11 @@ export default async function ProgrammationPage({
   const clock = { now, startOfDay };
   // A tile is a sort (« comme un tri »): `?vue=` narrows the list below to
   // exactly what that tile counts — one definition each, `circuit-views.ts`.
-  const view = parseView((await searchParams)[VIEW_PARAM], PROGRAMMATION_VIEWS);
+  const params = await searchParams;
+  const view = parseView(params[VIEW_PARAM], PROGRAMMATION_VIEWS);
+  // The rows drawn (`?afficher=`, lot performance P2-10): the list below is
+  // still the whole queue — its count, its order and its notice.
+  const shown = parseShown(params[SHOWN_PARAM]);
   const count = (tile: ProgrammationView) => prisma.sample.count({ where: programmationWhere(tile, clock) });
 
   const [, rows, aProgrammer, programmeesAujourdhui, enRetard, enAttente] = await Promise.all([
@@ -186,7 +191,12 @@ export default async function ProgrammationPage({
               : `La file est tronquée aux ${QUEUE_LIMIT} échantillons les plus anciens : programmez-les pour voir les suivants.`}
           </p>
         )}
-        <ProgrammationQueue lines={lines} now={now} empty={EMPTY[view ?? "a_programmer"]} />
+        <ProgrammationQueue
+          lines={lines}
+          now={now}
+          empty={EMPTY[view ?? "a_programmer"]}
+          cap={{ limit: shown, moreHref: moreHref(PATH, { [VIEW_PARAM]: view }, shown) }}
+        />
       </section>
     </div>
   );

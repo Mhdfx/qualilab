@@ -100,6 +100,7 @@ import type {
   ProgrammeSampleData,
   ProgrammeState,
 } from "./programme-sheet-types";
+import { hydrateReferential, type ProgrammeReferentialWire } from "./programme-referential-wire";
 
 /**
  * The programme sheet (PROGRAMME.md §4): the sections the responsable des
@@ -133,8 +134,12 @@ import type {
 type ProgrammeSheetProps = {
   sample: ProgrammeSampleData;
   programme: ProgrammeState;
-  /** The referential of the sample's own nature; the sheet replaces it when another nature is chosen. */
-  referential: ProgrammeReferentialData;
+  /**
+   * The referential of the sample's own nature, as it travels (compact,
+   * `programme-referential-wire.ts`); the sheet replaces it when another
+   * nature is chosen.
+   */
+  referential: ProgrammeReferentialWire | ProgrammeReferentialData;
   /** The laboratory's acceptance thresholds, for the entry check. */
   thresholds: ReceptionThresholds;
   role: Role;
@@ -206,11 +211,12 @@ export function ProgrammeSheet({
   dueHint = null,
 }: ProgrammeSheetProps) {
   const router = useRouter();
-  const [referential, setReferential] = useState<ProgrammeReferentialData>(initialReferential);
-  const [draft, setDraft] = useState<ProgrammeDraft>(() => initialDraft(programme, initialReferential));
+  // The referential travels compact (lot performance P2-1): rebuilt once here.
+  const [referential, setReferential] = useState<ProgrammeReferentialData>(() => hydrateReferential(initialReferential));
+  const [draft, setDraft] = useState<ProgrammeDraft>(() => initialDraft(programme, referential));
   // The draft as the server last gave it: anything else is typing not saved,
   // which « Échantillon précédent / suivant » asks about first (G4).
-  const [savedDraft, setSavedDraft] = useState(() => JSON.stringify(initialDraft(programme, initialReferential)));
+  const [savedDraft, setSavedDraft] = useState(() => JSON.stringify(initialDraft(programme, referential)));
   // The nature the sample carries in the database — the draft's may differ until the save.
   const [savedNatureId, setSavedNatureId] = useState(programme.natureId);
   // The nature being loaded, shown in the select while its referential travels.
@@ -343,7 +349,7 @@ export function ProgrammeSheet({
       const response = await fetch(`/api/samples/${sample.id}/programme`);
       const data = (await response.json().catch(() => ({}))) as Partial<ProgrammeReadResponse>;
       if (!response.ok || !data.sample || !data.programme) return;
-      adopt(data as ProgrammeResponse, data.referential ?? referential);
+      adopt(data as ProgrammeResponse, data.referential ? hydrateReferential(data.referential) : referential);
       setNotice("Fiche mise à jour.");
     } catch {
       // The server part of the page was refreshed anyway; the next save re-checks everything.
@@ -370,10 +376,11 @@ export function ProgrammeSheet({
         setError(data.error ?? "Impossible de charger les analyses de cette nature. Réessayez.");
         return;
       }
+      const loaded = hydrateReferential(data.referential);
       const next: ProgrammeReferentialData = {
-        ...data.referential,
+        ...loaded,
         // The « actuelle » flag is the stored nature's, whatever the route computed it for.
-        natures: data.referential.natures.map((nature) => ({ ...nature, current: nature.id === savedNatureId })),
+        natures: loaded.natures.map((nature) => ({ ...nature, current: nature.id === savedNatureId })),
       };
       // The family's notice goes too (D-15) — or says, in amber, that the nature detached that family (D-16).
       const outcome = natureChangeOutcome(draftRef.current, referential, next, savedNatureId);

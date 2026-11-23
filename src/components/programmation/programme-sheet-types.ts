@@ -13,6 +13,7 @@ import type {
   StorageClass,
   TemperatureSource,
 } from "@/generated/prisma/enums";
+import type { ProgrammeReferentialWire } from "./programme-referential-wire";
 
 /**
  * What the programme sheet receives (PROGRAMME.md §4–5): the line, its
@@ -261,7 +262,10 @@ export type ProgrammeResponse = {
   programme: ProgrammeState;
 };
 
-/** What `GET /api/samples/[id]/programme[?natureId=]` answers: the PUT's answer plus the referential. */
+/**
+ * What `GET /api/samples/[id]/programme[?natureId=]` answers: the PUT's
+ * answer plus the referential, compact (`hydrateReferential` rebuilds it).
+ */
 export type ProgrammeReadResponse = ProgrammeResponse & {
-  referential: ProgrammeReferentialData;
+  referential: ProgrammeReferentialWire;
 };

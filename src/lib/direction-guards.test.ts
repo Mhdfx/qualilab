@@ -98,6 +98,8 @@ const DIRECTION_ADMITTED = [
   "api/series/[id]/reports/send/route.ts POST",
   "recherche/layout.tsx layout",
   "recherche/page.tsx page",
+  // Lot performance P2-2: the « Site » list of the search, asked on a change of client.
+  "api/recherche/sites/route.ts GET",
   "api/samples/route.ts GET",
   "api/samples/stats/route.ts GET",
   "api/samples/export/route.ts GET",

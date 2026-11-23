@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SampleTable, type SampleRow } from "@/components/SampleTable";
 import { SampleDetailPanel } from "@/components/SampleDetailPanel";
 import { SAMPLE_TYPE_LABELS } from "@/lib/labels";
@@ -9,30 +9,41 @@ import type { SampleType } from "@/generated/prisma/client";
 import { Search, Users, FlaskConical, Droplets, type LucideIcon } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard, type StatAccent } from "@/components/ui/StatCard";
-import { LoadingState } from "@/components/ui/LoadingState";
 
-export function AdminDashboard() {
-  const [samples, setSamples] = useState<SampleRow[]>([]);
-  const [loading, setLoading] = useState(true);
+/** What `GET /api/samples/stats` answers. */
+export type AdminTotals = {
+  total: number;
+  byType: Record<string, number>;
+  activePreleveurs: number;
+};
+
+/**
+ * The administrator's sample dashboard. The figures and the first page (the
+ * 50 newest samples) come with the page (`/admin`, lot performance P2-7) —
+ * what `/api/samples/stats` and `/api/samples?limit=50` answer; the list is
+ * asked again only when the search changes.
+ */
+export function AdminDashboard({
+  initialTotals,
+  initialSamples,
+}: {
+  initialTotals: AdminTotals;
+  initialSamples: SampleRow[];
+}) {
+  const [samples, setSamples] = useState<SampleRow[]>(initialSamples);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<SampleType | "ALL">("ALL");
   const [selected, setSelected] = useState<SampleRow | null>(null);
   // Counted by the database over the whole table — the page below is only
   // the 50 most recent rows and must never be mistaken for the total.
-  const [totals, setTotals] = useState<{
-    total: number;
-    byType: Record<string, number>;
-    activePreleveurs: number;
-  } | null>(null);
+  const totals = initialTotals;
+  // The search the rows on screen were read for: the page's first rows
+  // answer the empty search, so the first run of the effect asks nothing.
+  const loadedFor = useRef<string | null>("");
 
   useEffect(() => {
-    fetch("/api/samples/stats")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => data && setTotals(data))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
+    if (loadedFor.current === search) return;
+    loadedFor.current = null;
     // The search runs in the database: a code typed here finds a sample from
     // any year, not just the newest page. Debounced so typing stays smooth.
     const handle = window.setTimeout(() => {
@@ -42,7 +53,7 @@ export function AdminDashboard() {
       fetch(`/api/samples?limit=50${query}`)
         .then((r) => r.json())
         .then((data) => setSamples(data.items ?? []))
-        .finally(() => setLoading(false));
+        .catch(() => {});
     }, search ? 250 : 0);
 
     return () => window.clearTimeout(handle);
@@ -57,11 +68,11 @@ export function AdminDashboard() {
   // is only the 50 newest rows). « Préleveurs actifs » counts the accounts
   // that ever created a sample — no screen lists those: a plain figure.
   const stats: { label: string; value: number | string; icon: LucideIcon; accent: StatAccent; href?: string }[] = [
-    { label: "Prélèvements", value: totals?.total ?? "…", icon: FlaskConical, accent: "brand", href: rechercheHref() },
-    { label: "Préleveurs actifs", value: totals?.activePreleveurs ?? "…", icon: Users, accent: "emerald" },
+    { label: "Prélèvements", value: totals.total, icon: FlaskConical, accent: "brand", href: rechercheHref() },
+    { label: "Préleveurs actifs", value: totals.activePreleveurs, icon: Users, accent: "emerald" },
     {
       label: "Analyses eau",
-      value: totals?.byType.EAU ?? "…",
+      value: totals.byType.EAU ?? "…",
       icon: Droplets,
       accent: "blue",
       href: rechercheHref({ type: "EAU" }),
@@ -88,11 +99,9 @@ export function AdminDashboard() {
       >
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold text-slate-800">Tous les prélèvements</h2>
-          {!loading && (
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
-              {filtered.length} résultat{filtered.length !== 1 ? "s" : ""}
-            </span>
-          )}
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
+            {filtered.length} résultat{filtered.length !== 1 ? "s" : ""}
+          </span>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
           <div className="relative">
@@ -120,16 +129,12 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      {loading ? (
-        <LoadingState />
-      ) : (
-        <SampleTable
-          samples={filtered}
-          showPreleveur
-          onSelect={setSelected}
-          selectedId={selected?.id}
-        />
-      )}
+      <SampleTable
+        samples={filtered}
+        showPreleveur
+        onSelect={setSelected}
+        selectedId={selected?.id}
+      />
 
       {selected && (
         <SampleDetailPanel sample={selected} onClose={() => setSelected(null)} />

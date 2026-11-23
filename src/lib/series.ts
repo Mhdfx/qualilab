@@ -92,3 +92,10 @@ export function repetitionRange(unitCount: number) {
 export function lineReference(serialNumber: string, lineNumber: number) {
   return `${serialNumber} · échantillon ${lineNumber}`;
 }
+
+/**
+ * The préleveur's « Mes visites » page size: the first page comes with
+ * /preleveur (lot performance P2-7), « Voir plus » asks `GET /api/series`
+ * for the next ones.
+ */
+export const VISITS_PAGE_SIZE = 50;

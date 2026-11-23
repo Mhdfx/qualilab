@@ -29,6 +29,7 @@ import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
 import { WorkQueue, type WorkItem } from "@/components/technicien/WorkQueue";
 import { ReceivedAgeFilter } from "@/components/technicien/ReceivedAgeFilter";
 import { RECEIVED_AGE_PARAM, parseReceivedAge, receivedAgeHref, receivedBefore } from "@/lib/received-age";
+import { SHOWN_PARAM, moreHref, parseShown } from "@/lib/render-cap";
 
 export const metadata = { title: "Saisie des résultats" };
 
@@ -165,6 +166,14 @@ export default async function TechnicienPage({
   const sort = parseTakeSort(params[TAKE_SORT_PARAM]);
   const kept = TAKE_LIST_BY_NUMBER ? takeSortQuery(sort) : {};
   const takeOrder = takeListOrder(sort);
+  // The rows each list draws (`?afficher=`, lot performance P2-10); each list
+  // is still the whole list — its count, its order and its notices. The
+  // next step keeps the view, the age filter and the order.
+  const shown = parseShown(params[SHOWN_PARAM]);
+  const cap = {
+    limit: shown,
+    moreHref: moreHref(PATH, { [VIEW_PARAM]: view, [RECEIVED_AGE_PARAM]: age === null ? null : String(age), ...kept }, shown),
+  };
   // A technician lists their colleagues' samples only while J7 is off (2.14 of 20/11, « pas visible »).
   const listColleagues = colleaguesListed(session.role);
   const now = new Date();
@@ -305,6 +314,7 @@ export default async function TechnicienPage({
             viewerId={viewerId}
             now={now}
             empty={(!isTechnician && ADMIN_EMPTY[view]) || EMPTY[view]}
+            cap={cap}
           />
         </BenchList>
       ) : (
@@ -324,7 +334,7 @@ export default async function TechnicienPage({
             }
             truncated={takeTruncated}
           >
-            <WorkQueue items={withSendBack(free)} viewerId={viewerId} now={now} empty={EMPTY.a_prendre} />
+            <WorkQueue items={withSendBack(free)} viewerId={viewerId} now={now} empty={EMPTY.a_prendre} cap={cap} />
           </BenchList>
 
           <BenchList
@@ -338,7 +348,13 @@ export default async function TechnicienPage({
             }
             truncated={held.length === LIST_LIMIT ? `La liste est limitée aux ${LIST_LIMIT} premiers échantillons.` : null}
           >
-            <WorkQueue items={withSendBack(held)} viewerId={viewerId} now={now} empty={isTechnician ? undefined : TAKEN_EMPTY} />
+            <WorkQueue
+              items={withSendBack(held)}
+              viewerId={viewerId}
+              now={now}
+              empty={isTechnician ? undefined : TAKEN_EMPTY}
+              cap={cap}
+            />
           </BenchList>
 
           {listColleagues && (
@@ -355,7 +371,7 @@ export default async function TechnicienPage({
                 colleagues.length === LIST_LIMIT ? `La liste est limitée aux ${LIST_LIMIT} premiers échantillons.` : null
               }
             >
-              <WorkQueue items={withSendBack(colleagues)} viewerId={viewerId} now={now} empty={COLLEAGUES_EMPTY} />
+              <WorkQueue items={withSendBack(colleagues)} viewerId={viewerId} now={now} empty={COLLEAGUES_EMPTY} cap={cap} />
             </BenchList>
           )}
         </div>

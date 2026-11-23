@@ -4,21 +4,26 @@ import { useMemo, useState } from "react";
 import Link from "@/components/ui/AppLink";
 import { Search, Building2, ArrowRight, Archive, Plus, Mail, ClipboardList } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { awaitsCompletion, clientCompletionGaps, completionHint } from "@/lib/client-completion";
+import { ShowMore } from "@/components/ui/ShowMore";
+import { awaitsCompletion } from "@/lib/client-completion";
+import { RENDER_STEP } from "@/lib/render-cap";
 
 export type ClientRow = {
   id: string;
   name: string;
   contact: string | null;
   email: string | null;
-  phone: string | null;
   ice: string | null;
-  address: string | null;
   archived: boolean;
   /** « À compléter » (RETOUR-LABO-16-10.md E3): created at the counter or in the field. */
   toComplete: boolean;
-  _count: { samples: number; invoices: number };
-  emails: { id: string; email: string; siteId: string | null; forReports: boolean; forAlerts: boolean }[];
+  /** `emails`: how many addresses the client has (the list shows the number only). */
+  _count: { samples: number; invoices: number; emails: number };
+  /**
+   * What a client « À compléter » lacks (`completionHint` of
+   * `clientCompletionGaps`), worded by the page; null for any other client.
+   */
+  hint: string | null;
 };
 
 /**
@@ -27,6 +32,10 @@ export type ClientRow = {
  * Filtering happens in the browser because the list is small (a laboratory has
  * clients, not users) and instant feedback beats a round-trip. If it ever grows
  * past a few hundred, move the search to the API — it already accepts `?q=`.
+ * The page sends each client slim (no phone, no postal address, the number of
+ * addresses only) and the list draws the first `RENDER_STEP` matches, then
+ * « Afficher les N suivants » (lot performance P1-6): the search and the
+ * filters always run over the whole base, the cut only applies after them.
  *
  * « À compléter (N) » keeps the active clients created at the counter or in
  * the field that the gestionnaire has not completed yet; each says what it
@@ -36,6 +45,8 @@ export function ClientList({ clients }: { clients: ClientRow[] }) {
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [onlyToComplete, setOnlyToComplete] = useState(false);
+  // How many matches are drawn; a new search or filter starts again from the first step.
+  const [limit, setLimit] = useState(RENDER_STEP);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -67,7 +78,10 @@ export function ClientList({ clients }: { clients: ClientRow[] }) {
           <input
             type="search"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setLimit(RENDER_STEP);
+            }}
             placeholder="Rechercher par raison sociale, contact ou ICE…"
             aria-label="Rechercher un client"
             className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900 shadow-sm transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
@@ -79,7 +93,10 @@ export function ClientList({ clients }: { clients: ClientRow[] }) {
             <input
               type="checkbox"
               checked={onlyToComplete}
-              onChange={(event) => setOnlyToComplete(event.target.checked)}
+              onChange={(event) => {
+                setOnlyToComplete(event.target.checked);
+                setLimit(RENDER_STEP);
+              }}
               className="h-4 w-4 rounded border-amber-400 text-brand focus:ring-brand"
             />
             À compléter ({toCompleteCount})
@@ -91,7 +108,10 @@ export function ClientList({ clients }: { clients: ClientRow[] }) {
             <input
               type="checkbox"
               checked={showArchived}
-              onChange={(event) => setShowArchived(event.target.checked)}
+              onChange={(event) => {
+                setShowArchived(event.target.checked);
+                setLimit(RENDER_STEP);
+              }}
               className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
             />
             Archivés ({archivedCount})
@@ -124,69 +144,76 @@ export function ClientList({ clients }: { clients: ClientRow[] }) {
           </p>
         </Card>
       ) : (
-        <ul className="space-y-2.5">
-          {visible.map((client) => {
-            const hint = awaitsCompletion(client) ? completionHint(clientCompletionGaps(client)) : null;
-            return (
-            <li key={client.id}>
-              <Link
-                href={`/commercial/${client.id}`}
-                className="group block rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="flex flex-wrap items-center gap-2 font-semibold text-slate-800">
-                      {client.name}
-                      {client.archived && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
-                          <Archive className="h-3 w-3" aria-hidden="true" />
-                          Archivé
-                        </span>
-                      )}
-                      {hint && (
-                        <span
-                          title={hint}
-                          className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200"
-                        >
-                          <ClipboardList className="h-3 w-3" aria-hidden="true" />
-                          À compléter
-                        </span>
-                      )}
-                    </p>
-                    {hint && <p className="mt-0.5 text-xs text-amber-800">{hint}</p>}
+        <>
+          <ul className="space-y-2.5">
+            {visible.slice(0, limit).map((client) => {
+              const hint = awaitsCompletion(client) ? client.hint : null;
+              return (
+              <li key={client.id}>
+                <Link
+                  href={`/commercial/${client.id}`}
+                  className="group block rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="flex flex-wrap items-center gap-2 font-semibold text-slate-800">
+                        {client.name}
+                        {client.archived && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                            <Archive className="h-3 w-3" aria-hidden="true" />
+                            Archivé
+                          </span>
+                        )}
+                        {hint && (
+                          <span
+                            title={hint}
+                            className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200"
+                          >
+                            <ClipboardList className="h-3 w-3" aria-hidden="true" />
+                            À compléter
+                          </span>
+                        )}
+                      </p>
+                      {hint && <p className="mt-0.5 text-xs text-amber-800">{hint}</p>}
 
-                    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
-                      {client.contact && <span>{client.contact}</span>}
-                      {client.ice && (
-                        <span className="font-mono text-xs">ICE {client.ice}</span>
-                      )}
-                      {client.emails.length > 0 && (
-                        <span className="inline-flex items-center gap-1">
-                          <Mail className="h-3.5 w-3.5" aria-hidden="true" />
-                          {client.emails.length} adresse
-                          {client.emails.length > 1 ? "s" : ""}
-                        </span>
-                      )}
+                      <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
+                        {client.contact && <span>{client.contact}</span>}
+                        {client.ice && (
+                          <span className="font-mono text-xs">ICE {client.ice}</span>
+                        )}
+                        {client._count.emails > 0 && (
+                          <span className="inline-flex items-center gap-1">
+                            <Mail className="h-3.5 w-3.5" aria-hidden="true" />
+                            {client._count.emails} adresse
+                            {client._count.emails > 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="mt-1 text-xs text-slate-400">
+                        {client._count.samples} échantillon
+                        {client._count.samples > 1 ? "s" : ""} ·{" "}
+                        {client._count.invoices} facture
+                        {client._count.invoices > 1 ? "s" : ""}
+                      </p>
                     </div>
 
-                    <p className="mt-1 text-xs text-slate-400">
-                      {client._count.samples} échantillon
-                      {client._count.samples > 1 ? "s" : ""} ·{" "}
-                      {client._count.invoices} facture
-                      {client._count.invoices > 1 ? "s" : ""}
-                    </p>
+                    <ArrowRight
+                      className="mt-1 h-4 w-4 shrink-0 self-center text-slate-300 transition group-hover:text-brand"
+                      aria-hidden="true"
+                    />
                   </div>
-
-                  <ArrowRight
-                    className="mt-1 h-4 w-4 shrink-0 self-center text-slate-300 transition group-hover:text-brand"
-                    aria-hidden="true"
-                  />
-                </div>
-              </Link>
-            </li>
-            );
-          })}
-        </ul>
+                </Link>
+              </li>
+              );
+            })}
+          </ul>
+          <ShowMore
+            shown={Math.min(limit, visible.length)}
+            total={visible.length}
+            onMore={() => setLimit((current) => current + RENDER_STEP)}
+          />
+        </>
       )}
     </div>
   );

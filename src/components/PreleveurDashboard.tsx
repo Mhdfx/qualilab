@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "@/components/ui/AppLink";
 import { Plus, FlaskConical, Calendar, ClipboardList, ChevronRight, MapPin, Search, RefreshCw } from "lucide-react";
 import { PrimaryLink } from "@/components/PrimaryButton";
@@ -10,11 +10,11 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { Card } from "@/components/ui/Card";
 import { ViewFilterNotice } from "@/components/ui/ViewFilterNotice";
 import { formatDateTime } from "@/lib/labels";
-import { SERIE_STATUS_LABELS, type SerieProgress, type SerieStatus } from "@/lib/series";
+import { SERIE_STATUS_LABELS, VISITS_PAGE_SIZE, type SerieProgress, type SerieStatus } from "@/lib/series";
 import { viewHref } from "@/lib/dashboard-view";
 import { PRELEVEUR_VIEWS, visitsInView, type PreleveurView } from "@/lib/circuit-views";
 
-type VisitSummary = {
+export type VisitSummary = {
   id: string;
   serialNumber: string;
   kind: "VISITE" | "DEPOT";
@@ -37,10 +37,16 @@ type PreleveurDashboardProps = {
   todayVisits: number;
   /** The samples of their visits of the week, counted on the server over every visit. */
   weekSamples: number;
+  /**
+   * The first page of their visits, no search and no status — what
+   * `GET /api/series?mine=1&limit=50` answers them — read with the page (lot
+   * performance P2-7).
+   */
+  initialVisits: { items: VisitSummary[]; nextCursor: string | null };
 };
 
 /** One page of visits; « Voir plus » appends the next one. */
-const PAGE_SIZE = 50;
+const PAGE_SIZE = VISITS_PAGE_SIZE;
 
 /** The search waits for a pause in the typing. */
 const SEARCH_DELAY_MS = 300;
@@ -103,13 +109,24 @@ async function fetchVisits(url: string, signal?: AbortSignal) {
  * week's, or all of them — the list filtered with the rule the tile counts
  * with (`visitViewStart`).
  */
-export function PreleveurDashboard({ userName, view, totalSamples, todayVisits, weekSamples }: PreleveurDashboardProps) {
+export function PreleveurDashboard({
+  userName,
+  view,
+  totalSamples,
+  todayVisits,
+  weekSamples,
+  initialVisits,
+}: PreleveurDashboardProps) {
   const searchId = useId();
   const statusId = useId();
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<SerieStatus | "">("");
-  const [list, setList] = useState<VisitList | null>(null);
+  // The page's first visits answer the empty search and no status.
+  const [list, setList] = useState<VisitList | null>(() => ({ key: listKey("", ""), ...initialVisits, failed: false }));
+  // The search and status the list was last read for: the first run of the
+  // effect below asks nothing, the page already sent that list.
+  const loadedFor = useRef<string | null>(listKey("", ""));
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreFailed, setMoreFailed] = useState(false);
 
@@ -121,6 +138,8 @@ export function PreleveurDashboard({ userName, view, totalSamples, todayVisits, 
   // The first page for the current search and status; « Voir plus » appends.
   useEffect(() => {
     const key = listKey(query, status);
+    if (loadedFor.current === key) return;
+    loadedFor.current = null;
     const controller = new AbortController();
     fetchVisits(visitsUrl(query, status, null), controller.signal)
       .then((page) => setList({ key, ...page, failed: false }))
