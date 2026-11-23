@@ -15,11 +15,14 @@ export const metadata = { title: { default: "Espace client · Qualilab Internati
  */
 export default async function PortailLayout({ children }: { children: React.ReactNode }) {
   const { session, access } = await requirePortalPage({ allowsPasswordChange: true });
-  // The portal opens once the password is chosen: the change renews the
-  // session, whose first page is then the one journalled.
-  if (access.ok && !session.mustChangePassword) await logPortalLogin(session.id, access.clientId);
-  // Lot 5B, HA4: « Historique (ancien logiciel) » in the menu only for a client that has one.
-  const portalHistory = LEGACY_HISTORY_ON_PORTAL && access.ok && (await hasLegacyHistory(access.clientId));
+  // Side by side (Perf 3, P3-1): the login journal and the menu's history entry.
+  const [, portalHistory] = await Promise.all([
+    // The portal opens once the password is chosen: the change renews the
+    // session, whose first page is then the one journalled.
+    access.ok && !session.mustChangePassword ? logPortalLogin(session, access.clientId) : Promise.resolve(),
+    // Lot 5B, HA4: « Historique (ancien logiciel) » in the menu only for a client that has one.
+    LEGACY_HISTORY_ON_PORTAL && access.ok ? hasLegacyHistory(access.clientId) : Promise.resolve(false),
+  ]);
 
   return (
     <RoleShell role={session.role} userName={session.name} portalHistory={portalHistory}>

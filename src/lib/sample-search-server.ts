@@ -76,6 +76,24 @@ type SearchSample = Prisma.SampleGetPayload<{ select: typeof BLIND_SEARCH_SELECT
   serie: { site?: { name: string } | null };
 };
 
+type SearchOptions = { scope?: Prisma.SampleWhereInput; excludeCancelled?: boolean };
+
+/** The filter and the order of a search — one definition for every reader of it. */
+function searchQuery(search: SampleSearch, options: SearchOptions) {
+  const where: Prisma.SampleWhereInput = {
+    ...sampleSearchWhere(search),
+    ...(options.scope ? { AND: [options.scope] } : {}),
+    ...(options.excludeCancelled ? { NOT: { status: "ANNULE" as const } } : {}),
+  };
+  // On the column itself: an undeclared deposit takes its place by the
+  // instant it was entered, the same instant the period filter reads.
+  const orderBy =
+    search.dateField === "prelevement"
+      ? [{ sampledAt: "desc" as const }, { createdAt: "desc" as const }]
+      : [{ receivedAt: { sort: "desc" as const, nulls: "first" as const } }, { createdAt: "desc" as const }];
+  return { where, orderBy };
+}
+
 /**
  * One page of a search. `scope` narrows it to what the caller may see — a
  * technician's search stays on the samples they hold (`benchWhereFor`,
@@ -88,17 +106,7 @@ export async function searchSamples(
   search: SampleSearch,
   options: { scope?: Prisma.SampleWhereInput; take: number; skip?: number; excludeCancelled?: boolean; blind?: boolean }
 ): Promise<{ rows: SearchRow[]; total: number }> {
-  const where: Prisma.SampleWhereInput = {
-    ...sampleSearchWhere(search),
-    ...(options.scope ? { AND: [options.scope] } : {}),
-    ...(options.excludeCancelled ? { NOT: { status: "ANNULE" as const } } : {}),
-  };
-  // On the column itself: an undeclared deposit takes its place by the
-  // instant it was entered, the same instant the period filter reads.
-  const orderBy =
-    search.dateField === "prelevement"
-      ? [{ sampledAt: "desc" as const }, { createdAt: "desc" as const }]
-      : [{ receivedAt: { sort: "desc" as const, nulls: "first" as const } }, { createdAt: "desc" as const }];
+  const { where, orderBy } = searchQuery(search, options);
   const page = { where, orderBy, take: options.take, skip: options.skip ?? 0 };
   const [samples, total]: [SearchSample[], number] = await Promise.all([
     options.blind
@@ -129,4 +137,29 @@ export async function searchSamples(
       conclusion: sampleConclusion(s),
     })),
   };
+}
+
+/** What a conclusion reads of a sample (`sampleConclusion`) — nothing else. */
+const CONCLUSION_SELECT = {
+  status: true,
+  report: { select: { interpretation: true } },
+  results: { select: { interpretation: true, informalInterpretation: true, conform: true } },
+} as const satisfies Prisma.SampleSelect;
+
+/**
+ * The conclusions of a search, in the search's own order, and its total —
+ * the client summary's counts by conclusion (`ClientSummary`). The same
+ * filter, order and cap as `searchSamples`, without reading what its rows
+ * print (client, série, nature, parameters, dates) — Perf 3, P3-6.
+ */
+export async function searchConclusions(
+  search: SampleSearch,
+  options: SearchOptions & { take: number }
+): Promise<{ rows: { conclusion: Conclusion }[]; total: number }> {
+  const { where, orderBy } = searchQuery(search, options);
+  const [samples, total] = await Promise.all([
+    prisma.sample.findMany({ where, orderBy, take: options.take, select: CONCLUSION_SELECT }),
+    prisma.sample.count({ where }),
+  ]);
+  return { total, rows: samples.map((s) => ({ conclusion: sampleConclusion(s) })) };
 }

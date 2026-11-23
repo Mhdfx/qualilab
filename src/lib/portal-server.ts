@@ -1,8 +1,7 @@
 import "server-only";
-import { headers } from "next/headers";
+import { cache } from "react";
 import { NextResponse } from "next/server";
 import { passwordChangeGuards, requireApiRole, requireRole, type SessionUser } from "./auth";
-import { auth } from "./auth-server";
 import { AUDIT_ACTIONS, logAudit } from "./audit";
 import { prisma } from "./prisma";
 import { PORTAL_REFUSAL_MESSAGES, portalAccess, type PortalAccess } from "./portal-access";
@@ -28,10 +27,15 @@ import {
  * returned — never one read from a request.
  */
 
-/** The account's client, read again from the database (never from the session cookie). */
-async function resolveAccess(session: SessionUser): Promise<PortalAccess> {
+/**
+ * The account's client, read again from the database (never from the
+ * session cookie). Once per server render (React's `cache`, keyed by the
+ * account): the portal's layout and its page share the read, as they share
+ * `getSession` — never shared between two requests.
+ */
+const resolveAccess = cache(async (userId: string): Promise<PortalAccess> => {
   const user = await prisma.user.findUnique({
-    where: { id: session.id },
+    where: { id: userId },
     select: {
       role: true,
       clientId: true,
@@ -40,7 +44,7 @@ async function resolveAccess(session: SessionUser): Promise<PortalAccess> {
   });
   if (!user) return { ok: false, reason: "NO_CLIENT" };
   return portalAccess(user);
-}
+});
 
 /**
  * Page guard of /portail. Not signed in → /login; a laboratory account →
@@ -58,7 +62,7 @@ export async function requirePortalPage(
   const session = options.allowsPasswordChange
     ? await passwordChangeGuards.requireRole("CLIENT")
     : await requireRole("CLIENT");
-  return { session, access: await resolveAccess(session) };
+  return { session, access: await resolveAccess(session.id) };
 }
 
 /**
@@ -70,7 +74,7 @@ export async function requirePortalApi(): Promise<
 > {
   const session = await requireApiRole("CLIENT");
   if (session instanceof NextResponse) return session;
-  const access = await resolveAccess(session);
+  const access = await resolveAccess(session.id);
   if (!access.ok) {
     return NextResponse.json({ error: PORTAL_REFUSAL_MESSAGES[access.reason] }, { status: 403 });
   }
@@ -83,26 +87,45 @@ export function portalNotFound() {
 }
 
 /**
- * Journal « PORTAL_LOGIN » once per session (the first portal page it opens).
- * Never breaks the page.
+ * The sessions this process already found journalled: their next portal
+ * pages skip the journal's lookup. Only a hint — the journal itself stays
+ * the reference (a restart, or another session, reads it again). Bounded:
+ * past its size the oldest are forgotten, which costs one lookup each.
  */
-export async function logPortalLogin(userId: string, clientId: string): Promise<void> {
+const journalledSessions = new Set<string>();
+const JOURNALLED_SESSIONS_KEPT = 5000;
+
+function rememberJournalled(sessionId: string) {
+  journalledSessions.add(sessionId);
+  if (journalledSessions.size > JOURNALLED_SESSIONS_KEPT) {
+    const oldest = journalledSessions.values().next().value;
+    if (oldest !== undefined) journalledSessions.delete(oldest);
+  }
+}
+
+/**
+ * Journal « PORTAL_LOGIN » once per session (the first portal page it opens).
+ * The session is the one the guard read (`SessionUser.sessionId`) — Better
+ * Auth is not asked for it again. Never breaks the page.
+ */
+export async function logPortalLogin(session: Pick<SessionUser, "id" | "sessionId">, clientId: string): Promise<void> {
+  const { id: userId, sessionId } = session;
   try {
-    const current = await auth.api.getSession({ headers: await headers() });
-    const sessionId = current?.session?.id;
-    if (!sessionId) return;
+    if (!sessionId || journalledSessions.has(sessionId)) return;
     const seen = await prisma.auditLog.findFirst({
       where: { entity: "Session", entityId: sessionId, action: AUDIT_ACTIONS.PORTAL_LOGIN },
       select: { id: true },
     });
-    if (seen) return;
-    await logAudit({
-      actorId: userId,
-      action: AUDIT_ACTIONS.PORTAL_LOGIN,
-      entity: "Session",
-      entityId: sessionId,
-      metadata: { clientId },
-    });
+    if (!seen) {
+      await logAudit({
+        actorId: userId,
+        action: AUDIT_ACTIONS.PORTAL_LOGIN,
+        entity: "Session",
+        entityId: sessionId,
+        metadata: { clientId },
+      });
+    }
+    rememberJournalled(sessionId);
   } catch (error) {
     console.error("[portail] journal de connexion impossible", { userId, error });
   }

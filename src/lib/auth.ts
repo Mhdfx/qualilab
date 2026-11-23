@@ -21,6 +21,12 @@ export { getDashboardPath, landingPath };
 
 export type SessionUser = {
   id: string;
+  /**
+   * The id of the session row (never its token) — the portal's login
+   * journal, one « PORTAL_LOGIN » per session (`logPortalLogin`), reads it
+   * here instead of asking Better Auth for the session a second time.
+   */
+  sessionId: string;
   username: string;
   name: string;
   role: Role;
@@ -61,6 +67,7 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
 
   return {
     id: user.id,
+    sessionId: session.session.id,
     username: user.username ?? "",
     name: user.name ?? "",
     role: user.role,

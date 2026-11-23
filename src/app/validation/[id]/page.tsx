@@ -1,5 +1,6 @@
 import Link from "@/components/ui/AppLink";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import {
   ArrowLeft,
   Building2,
@@ -30,7 +31,7 @@ import { NO_CRITERION_NO_INTERPRETATION } from "@/lib/lab-proposals";
 import { dilutionText, readingFactor } from "@/lib/dilution";
 import { sampleRef } from "@/lib/reception-input";
 import { lineDesignation } from "@/components/preleveur/visit-types";
-import { approvalState } from "@/lib/sample-status";
+import { approvalState, validationControls, validationPhase } from "@/lib/sample-status";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -63,19 +64,16 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const session = await getSession();
   if (!session || session.mustChangePassword || !roleAllowed(session.role, ["VALIDATEUR", "DIRECTION", "ADMIN"])) return { title: "Validation des résultats" };
   const { id } = await params;
-  const sample = await prisma.sample.findUnique({ where: { id }, select: { code: true, controlCode: true } });
+  const sample = await validationSampleOf(id);
   return { title: sample ? `Contrôle ${labReference(sample)}` : "Validation des résultats" };
 }
 
-export default async function ValidationDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const session = await requireRole("VALIDATEUR", "DIRECTION", "ADMIN");
-  const { id } = await params;
-
-  const sample = await prisma.sample.findUnique({
+/**
+ * The page's sample, read once per request for the title and the page
+ * (Perf 3, P3-6): `cache` hands the metadata the page's own read.
+ */
+const validationSampleOf = cache((id: string) =>
+  prisma.sample.findUnique({
     where: { id },
     select: {
       id: true,
@@ -171,7 +169,18 @@ export default async function ValidationDetailPage({
         },
       },
     },
-  });
+  })
+);
+
+export default async function ValidationDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const session = await requireRole("VALIDATEUR", "DIRECTION", "ADMIN");
+  const { id } = await params;
+
+  const sample = await validationSampleOf(id);
 
   if (!sample) notFound();
 
@@ -278,6 +287,16 @@ export default async function ValidationDetailPage({
     },
     new Set(regulations.map((r) => r.id))
   );
+  // The « Réglementation en vigueur » box lists the regulations only to who
+  // signs now — the panel's own rule (`validationPhase`, `validationControls`):
+  // nobody else's page carries the list (Perf 3, P3-6). The proposal above is
+  // read from the full list either way.
+  const phase = validationPhase(sample.status);
+  const signable = phase === "AT_VALIDATION" || phase === "APPROVED";
+  const signerControls = signable
+    ? validationControls(state, session.role, { validatedById: sample.validatedById, userId: session.id })
+    : null;
+  const signsNow = signerControls !== null && (signerControls.validate || signerControls.approve);
   const nonConformes = sample.results.filter((r) => r.conform === false).length;
   // Only a sensitive germ over its limit raises a contamination alert — the
   // same rule as the dispatch's filter.
@@ -576,7 +595,7 @@ export default async function ValidationDetailPage({
             emailLive={!!process.env.RESEND_API_KEY}
             validatedById={sample.validatedById}
             userId={session.id}
-            regulations={regulations}
+            regulations={signsNow ? regulations : []}
             proposedRegulationId={proposedRegulationId}
             regulationRequired={needsRegulation(sample)}
             chosenRegulation={sample.regulation?.title ?? null}

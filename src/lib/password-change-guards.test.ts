@@ -74,6 +74,8 @@ describe("getSession", () => {
     signedIn("TECHNICIEN", true);
     expect(await getSession()).toEqual({
       id: "u-1",
+      // The session row's id, for the portal's login journal (Perf 3).
+      sessionId: "s-1",
       username: "x.nom",
       name: "Personne Test",
       role: "TECHNICIEN",
@@ -229,13 +231,13 @@ describe("no page or route reaches its data around the guards", () => {
   });
 
   it("only auth.ts reads Better Auth's session for a decision", () => {
-    // portal-server.ts reads it after the guard, for the session id of the
-    // portal's login journal only.
+    // The portal's login journal takes the session id the guard read
+    // (`SessionUser.sessionId`, Perf 3) — no second read of the session.
     const readers = sources
       .filter((file) => /auth\.api\.getSession\(/.test(file.source))
       .map((file) => file.rel)
       .sort();
-    expect(readers).toEqual(["lib/auth.ts", "lib/portal-server.ts"]);
+    expect(readers).toEqual(["lib/auth.ts"]);
   });
 
   it("a direct getSession() either lands through landingPath or keeps the flagged account out", () => {

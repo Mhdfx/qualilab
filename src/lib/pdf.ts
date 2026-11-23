@@ -54,6 +54,19 @@ async function getBrowser(): Promise<Browser> {
   return browserPromise;
 }
 
+/**
+ * Starts the shared browser ahead of the first PDF (Perf 3, P3-7): called
+ * once at server start in production (`src/instrumentation.ts`), so the
+ * first report, invoice or bench sheet after a deploy does not pay the
+ * launch. Never waits and never throws: a browser that cannot start is
+ * logged, and the first PDF tries again — and says so — as it always did.
+ */
+export function warmPdfBrowser(): void {
+  getBrowser().catch((error: unknown) => {
+    console.error("[pdf] préchauffage du navigateur impossible", { error });
+  });
+}
+
 export type PdfOptions = {
   /**
    * Header HTML for every page (Chromium's header template): the quality

@@ -728,6 +728,8 @@ model Sample {
   @@index([sampledAt])
   @@index([receivedAt])
   @@index([clientId, sampledAt])
+  // A client's samples newest reception first (/commercial/[id], Perf 3 P3-6).
+  @@index([clientId, receivedAt])
 }
 
 /// One measured value per (sample, parameter), entered by a technician.
@@ -906,6 +908,8 @@ model AuditLog {
   @@index([createdAt])
   // The audit journal filtered by action over a period.
   @@index([action, createdAt])
+  // The audit journal filtered by actor, newest first (Perf 3, P3-6).
+  @@index([actorId, createdAt])
 }
 
 model SampleParameter {
@@ -2102,6 +2106,11 @@ model LegacySample {
   @@index([clientId, year])
   @@index([siteId])
   @@index([legacyClientId])
+  // Perf 3 (P2-4) : la carte d'historique (comptes par année, nombre, sites
+  // distincts) filtre toujours `cancelled = false` — ces index la servent seuls.
+  @@index([clientId, cancelled, year])
+  @@index([clientId, cancelled, receivedAt])
+  @@index([clientId, cancelled, siteId])
 }
 
 /// One analysis of a legacy sample (PARAMES_BON_COMMANDE), with its per-unit

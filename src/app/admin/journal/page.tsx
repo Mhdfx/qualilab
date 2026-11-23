@@ -82,19 +82,25 @@ function matchesSummary(matches: ReferenceMatches): string {
   return parts.join(", ");
 }
 
-export default async function JournalPage({ searchParams }: { searchParams: Promise<Params> }) {
-  await requireRole("ADMIN");
-  const params = await searchParams;
+/** The first value of a parameter, trimmed — as `parseJournalFilters` reads it. */
+function firstParam(params: Params, key: string): string | null {
+  const raw = params[key];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
 
-  // Banned accounts stay in the list: their past actions are still theirs.
-  const users = await prisma.user.findMany({
-    select: { id: true, name: true, username: true, role: true, banned: true },
-    orderBy: [{ name: "asc" }, { id: "asc" }],
-  });
+/** The filters of the address and the page of the journal they select. */
+async function loadJournal(params: Params) {
+  // Only an existing user filters the journal (else the filter is ignored).
+  const rawActor = firstParam(params, "acteur");
+  const knownActor =
+    rawActor && rawActor !== SYSTEM_ACTOR
+      ? await prisma.user.findUnique({ where: { id: rawActor }, select: { id: true } })
+      : null;
 
   const filters = parseJournalFilters(params, {
     actions: Object.keys(ACTION_LABELS),
-    actorIds: users.map((user) => user.id),
+    actorIds: knownActor ? [knownActor.id] : [],
   });
 
   const matches = filters.reference ? await resolveReference(filters.reference) : null;
@@ -107,8 +113,33 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
         where: journalWhere(filters, targets),
         orderBy: JOURNAL_ORDER,
         take: JOURNAL_PAGE_SIZE + 1,
-        include: { actor: { select: { name: true, role: true } } },
+        // Only what an entry prints.
+        select: {
+          id: true,
+          action: true,
+          metadata: true,
+          createdAt: true,
+          actor: { select: { name: true, role: true } },
+        },
       });
+  return { filters, matches, unresolved, rows };
+}
+
+export default async function JournalPage({ searchParams }: { searchParams: Promise<Params> }) {
+  await requireRole("ADMIN");
+  const params = await searchParams;
+
+  // The users of the form and the journal's page are read side by side
+  // (Perf 3, P3-6). The « Utilisateur » filter is still checked against the
+  // user table — one lookup of the id typed, the same answer as the list.
+  const [users, { filters, matches, unresolved, rows }] = await Promise.all([
+    // Banned accounts stay in the list: their past actions are still theirs.
+    prisma.user.findMany({
+      select: { id: true, name: true, username: true, role: true, banned: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+    }),
+    loadJournal(params),
+  ]);
   const { items: entries, nextCursor } = journalPage(rows);
 
   const filtered = isFiltered(filters);

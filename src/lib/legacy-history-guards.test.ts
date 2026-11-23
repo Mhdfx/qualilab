@@ -100,7 +100,8 @@ describe("the portal's menu (HA4)", () => {
     // A laboratory role's menu never changes with it.
     expect(hrefs("GESTIONNAIRE", { portalHistory: true })).toEqual(hrefs("GESTIONNAIRE"));
     const layout = source("app/portail/layout.tsx");
-    expect(layout).toMatch(/LEGACY_HISTORY_ON_PORTAL && access\.ok && \(await hasLegacyHistory\(access\.clientId\)\)/);
+    // Read beside the login journal (Perf 3, P3-1), still behind the switch and an open client.
+    expect(layout).toMatch(/LEGACY_HISTORY_ON_PORTAL && access\.ok \? hasLegacyHistory\(access\.clientId\) : Promise\.resolve\(false\)/);
   });
 });
 

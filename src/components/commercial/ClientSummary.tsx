@@ -10,7 +10,7 @@ import type { SearchRow } from "@/lib/sample-search-server";
  * counts by conclusion, the detail in the search screen, the Excel export.
  * A plain GET form on the client page — the period is in the URL.
  */
-export function ClientSummary({ search, rows, total }: { search: SampleSearch; rows: SearchRow[]; total: number }) {
+export function ClientSummary({ search, rows, total }: { search: SampleSearch; rows: Pick<SearchRow, "conclusion">[]; total: number }) {
   // The days read on the laboratory's clock (`parseSampleSearch`), written back on it.
   const iso = (d: Date | null) => (d ? labDayOf(d) : "");
   const byConclusion = new Map<string, { count: number; tone: string }>();

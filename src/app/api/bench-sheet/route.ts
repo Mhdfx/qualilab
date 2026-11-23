@@ -11,7 +11,7 @@ import { DOC_TYPE_LABELS } from "@/lib/document-types";
 import { formatIsoDay } from "@/lib/labels";
 import { labDayBounds } from "@/lib/lab-day-range";
 import { labReference } from "@/lib/sample-select";
-import { loadBenchPlans } from "@/lib/bench-plan";
+import { emptyBenchPlans, loadBenchPlansMany } from "@/lib/bench-plan";
 import { judgingThreshold, resultUnit, surfaceUnitEditable } from "@/lib/result-unit";
 import { benchQueueWhereFor, canEditParameter } from "@/lib/bench-access";
 import { benchUnit } from "@/lib/bench-reading";
@@ -104,43 +104,44 @@ export async function GET(request: Request) {
     ? inTakeOrder(rows, new Map([...takes].map(([id, take]) => [id, take.takenAt])))
     : rows;
 
-  const samples: BenchSheetSample[] = await Promise.all(
-    ordered.map(async (row) => {
-      const bench = await loadBenchPlans(row.id);
-      const perUnit = bench.plans.size > 0 || row.unitCount > 1;
-      // My sheet carries my parameters; the other roles print the whole échantillon.
-      const lines = isTechnician
-        ? row.parameters.filter((line) => canEditParameter(row, line, session.id))
-        : row.parameters;
-      const storedUnits = new Map(row.results.map((result) => [result.parameterId, result.unit]));
-      return {
-        reference: labReference(row),
-        serieNumber: row.serie.serialNumber,
-        type: row.type,
-        designation: sampleDesignation(row),
-        numeroLot: row.numeroLot,
-        // Null when nobody took it: the sheet prints « À prendre ».
-        technicianName: reportTechnicianNames(row),
-        unitCount: perUnit ? Math.max(1, row.unitCount) : 1,
-        parameters: lines.map(({ parameter, normVersion }) => {
-          const plan = bench.plans.get(parameter.id);
-          // The method: the programmed norm version, else the criterion's.
-          const norm = normVersion?.label ?? plan?.normLabel ?? null;
-          const base = benchUnit(plan, parameter.unit);
-          const stored = storedUnits.get(parameter.id) ?? null;
-          return {
-            name: parameter.name,
-            // « UFC/couteau », « UFC/m³ »… as the result will store it (J1,
-            // J2) — a surface's as chosen and saved at the bench (J6 (b)).
-            unit: stored && surfaceUnitEditable(bench.context, base) ? stored : resultUnit(bench.context, base),
-            threshold: plan
-              ? `${plan.label}${norm ? ` · ${norm}` : ""}`
-              : judgingThreshold(bench.context, parameter.threshold, parameter.unit),
-          };
-        }),
-      };
-    })
-  );
+  // Every sample's criteria in one batch (Perf 3, P2-6): a busy day's sheet
+  // no longer reads them sample by sample.
+  const benchPlans = await loadBenchPlansMany(ordered.map((row) => row.id));
+  const samples: BenchSheetSample[] = ordered.map((row) => {
+    const bench = benchPlans.get(row.id) ?? emptyBenchPlans();
+    const perUnit = bench.plans.size > 0 || row.unitCount > 1;
+    // My sheet carries my parameters; the other roles print the whole échantillon.
+    const lines = isTechnician
+      ? row.parameters.filter((line) => canEditParameter(row, line, session.id))
+      : row.parameters;
+    const storedUnits = new Map(row.results.map((result) => [result.parameterId, result.unit]));
+    return {
+      reference: labReference(row),
+      serieNumber: row.serie.serialNumber,
+      type: row.type,
+      designation: sampleDesignation(row),
+      numeroLot: row.numeroLot,
+      // Null when nobody took it: the sheet prints « À prendre ».
+      technicianName: reportTechnicianNames(row),
+      unitCount: perUnit ? Math.max(1, row.unitCount) : 1,
+      parameters: lines.map(({ parameter, normVersion }) => {
+        const plan = bench.plans.get(parameter.id);
+        // The method: the programmed norm version, else the criterion's.
+        const norm = normVersion?.label ?? plan?.normLabel ?? null;
+        const base = benchUnit(plan, parameter.unit);
+        const stored = storedUnits.get(parameter.id) ?? null;
+        return {
+          name: parameter.name,
+          // « UFC/couteau », « UFC/m³ »… as the result will store it (J1,
+          // J2) — a surface's as chosen and saved at the bench (J6 (b)).
+          unit: stored && surfaceUnitEditable(bench.context, base) ? stored : resultUnit(bench.context, base),
+          threshold: plan
+            ? `${plan.label}${norm ? ` · ${norm}` : ""}`
+            : judgingThreshold(bench.context, parameter.threshold, parameter.unit),
+        };
+      }),
+    };
+  });
 
   try {
     const [company, reference] = await Promise.all([getCompany(), getDocumentReference("FEUILLE_PAILLASSE")]);

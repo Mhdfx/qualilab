@@ -4,9 +4,14 @@ import type { MonitoredEquipment } from "@/components/qualite/TemperatureBoard";
 
 /**
  * The equipment under temperature watch — not archived, with a lower or an
- * upper bound — each with its last reading, by name. One query for the two
+ * upper bound — each with its last reading, by name. One loader for the two
  * boards that record readings: the quality space (`/qualite/temperatures`)
  * and the bench (`/technicien/temperatures`).
+ *
+ * The last reading is one `LIMIT 1` read per equipment on
+ * `@@index([equipmentId, readAt])` (Perf 3, P2-5): a nested `take: 1` would
+ * read every reading of every equipment and keep the first in memory —
+ * a cost that grows with each reading recorded.
  */
 export async function loadMonitoredEquipment(): Promise<MonitoredEquipment[]> {
   const equipments = await prisma.equipment.findMany({
@@ -21,16 +26,20 @@ export async function loadMonitoredEquipment(): Promise<MonitoredEquipment[]> {
       location: true,
       tempMin: true,
       tempMax: true,
-      temperatures: {
-        orderBy: { readAt: "desc" },
-        take: 1,
-        select: { value: true, readAt: true, outOfRange: true },
-      },
     },
   });
+  const lastReadings = await Promise.all(
+    equipments.map((equipment) =>
+      prisma.temperatureReading.findFirst({
+        where: { equipmentId: equipment.id },
+        orderBy: { readAt: "desc" },
+        select: { value: true, readAt: true, outOfRange: true },
+      })
+    )
+  );
 
-  return equipments.map((equipment) => {
-    const last = equipment.temperatures[0];
+  return equipments.map((equipment, index) => {
+    const last = lastReadings[index];
     return {
       id: equipment.id,
       name: equipment.name,

@@ -65,7 +65,7 @@ import { amendedNumber } from "@/lib/report-amendment";
 import { resolveRecipients } from "@/lib/email-recipients";
 import { canResendReport, reportVersionSent } from "@/lib/report-actions";
 import { ResendReportButton } from "@/components/validation/ResendReportButton";
-import { searchSamples } from "@/lib/sample-search-server";
+import { searchConclusions } from "@/lib/sample-search-server";
 import { billingFigures } from "@/components/invoices/invoice-queries";
 import { invoicePdfPath } from "@/lib/invoice-html-layout";
 
@@ -182,7 +182,8 @@ export default async function ClientDetailPage({
     billingFigures({ clientId: id }),
     prisma.sample.count({ where: { clientId: id } }),
     prisma.report.count({ where: { sample: { clientId: id } } }),
-    searchSamples(summarySearch, { take: 5000 }),
+    // Only the conclusions the summary counts (same filter, order and cap as the search).
+    searchConclusions(summarySearch, { take: 5000 }),
     // « Fusionnée dans » or « Rattachée comme site de »: the journal knows which.
     prisma.auditLog.findFirst({
       where: { entity: "Client", entityId: id, action: { in: ["CLIENT_MERGED", "CLIENT_ATTACHED_AS_SITE"] } },

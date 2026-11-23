@@ -1,4 +1,5 @@
 import Link from "@/components/ui/AppLink";
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import {
   ArrowLeft,
@@ -57,9 +58,15 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const session = await getSession();
   if (!session || session.mustChangePassword || !roleAllowed(session.role, ["PROGRAMMATEUR", "ADMIN"])) return { title: "Programme d'analyse" };
   const { id } = await params;
-  const sample = await prisma.sample.findUnique({ where: { id }, select: { code: true, controlCode: true } });
+  const sample = await programmeSampleOf(id);
   return { title: sample ? `Programme ${labReference(sample)}` : "Programme d'analyse" };
 }
+
+/**
+ * The sheet's sample, read once per request for the title and the page
+ * (Perf 3, P3-6): `cache` hands the metadata the page's own read.
+ */
+const programmeSampleOf = cache(loadProgrammeSample);
 
 /**
  * The identification fields the programme select leaves out: what names a
@@ -92,8 +99,6 @@ const IDENTITY_SELECT = {
   awaitingClientSince: true,
   // « Annuler » says whether an alert already reached the client (D1).
   alertsSentAt: true,
-  // « Échantillon précédent / suivant » in the série (G4).
-  serieId: true,
 } as const;
 
 /** The programme sheet of one sample (PROGRAMME.md §4). */
@@ -102,10 +107,10 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
   const session = await requireRole("PROGRAMMATEUR", "ADMIN");
   const { id } = await params;
 
-  const row = await loadProgrammeSample(id);
+  const row = await programmeSampleOf(id);
   if (!row) notFound();
 
-  const [referential, settings, identity, held, delays] = await Promise.all([
+  const [referential, settings, identity, held, delays, siblings, takenAt] = await Promise.all([
     // The catalogue prices (section 7) for the administrator only: the
     // responsable des paramètres sees no price (the owner's rule of 25/10).
     loadProgrammeReferential(row, { withPrices: seesBilling(session.role) }),
@@ -115,15 +120,20 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
     heldInvoices([id]),
     // K5 (Q8): the laboratory's delays, to propose « à rendre le ».
     getDueDelays(),
+    // The série's received samples, in its order (G4): a line not received
+    // yet has no programme to open, a cancelled one no programme to change.
+    prisma.sample.findMany({
+      where: { serieId: row.serie.id, status: { notIn: ["PRELEVE", "ANNULE"] } },
+      select: { id: true, lineNumber: true, code: true, controlCode: true },
+    }),
+    // The holder's own take (`holderTakenAt`), read with the rest — used
+    // below only when the sheet names a holder taken at a known time.
+    row.technicianId && row.assignedAt
+      ? holderTakenAtOf({ id: row.id, technicianId: row.technicianId, assignedAt: row.assignedAt })
+      : Promise.resolve(null),
   ]);
   if (!identity) notFound();
   const heldInvoice = held.get(id) ?? null;
-  // The série's received samples, in its order (G4): a line not received
-  // yet has no programme to open, a cancelled one no programme to change.
-  const siblings = await prisma.sample.findMany({
-    where: { serieId: identity.serieId, status: { notIn: ["PRELEVE", "ANNULE"] } },
-    select: { id: true, lineNumber: true, code: true, controlCode: true },
-  });
   const neighbours = serieNeighbours(siblings, id);
   const neighbourLink = (sibling: (typeof siblings)[number] | null) =>
     sibling ? { href: `/programmation/${sibling.id}`, reference: labReference(sibling) } : null;
@@ -154,9 +164,7 @@ export default async function ProgrammePage({ params }: { params: Promise<{ id: 
   // Since when: the holder's own take (`holderTakenAt`) — a take-over, or a
   // take after an administrator handed the sample over with its readings
   // (J7), is dated by the journal; `assignedAt` stays the start of the analyses.
-  const heldSince = holder?.assignedAt
-    ? ((await holderTakenAtOf({ id: row.id, technicianId: row.technicianId, assignedAt: row.assignedAt })) ?? holder.assignedAt)
-    : null;
+  const heldSince = holder?.assignedAt ? (takenAt ?? holder.assignedAt) : null;
   // The responsable des paramètres changes the analyses here once the bench
   // has started (16/10, Q128 — « Corriger les analyses »); the admin
   // corrects the whole fiche.
