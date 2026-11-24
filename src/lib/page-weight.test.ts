@@ -197,6 +197,15 @@ describe("dashboards with their first data (P2-7)", () => {
     expect(first).toContain("serializeSerie(row, serieStatus(row.samples))");
     expect(read("components/PreleveurDashboard.tsx")).toContain("if (loadedFor.current === key) return;");
   });
+
+  it("/preleveur: a view (« Aujourd'hui », « Cette semaine ») is filtered in the browser only — the viewer's midnight, never the server's", () => {
+    const dashboard = read("components/PreleveurDashboard.tsx");
+    // The server render and the hydration both show the loading state for a view…
+    expect(dashboard).toContain("(view !== null && !inBrowser)");
+    expect(dashboard).toContain("useSyncExternalStore(noSubscription, () => true, () => false)");
+    // …and the list is still cut by the browser's clock, as before the lot.
+    expect(dashboard).toContain("visitsInView(visits, view, new Date())");
+  });
 });
 
 describe("favicon (P2-8)", () => {

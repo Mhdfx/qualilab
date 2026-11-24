@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import Link from "@/components/ui/AppLink";
 import { Plus, FlaskConical, Calendar, ClipboardList, ChevronRight, MapPin, Search, RefreshCw } from "lucide-react";
 import { PrimaryLink } from "@/components/PrimaryButton";
@@ -47,6 +47,12 @@ type PreleveurDashboardProps = {
 
 /** One page of visits; « Voir plus » appends the next one. */
 const PAGE_SIZE = VISITS_PAGE_SIZE;
+
+const noSubscription = () => () => {};
+/** False on the server and while the page hydrates, true once it runs in the browser. */
+function useInBrowser() {
+  return useSyncExternalStore(noSubscription, () => true, () => false);
+}
 
 /** The search waits for a pause in the typing. */
 const SEARCH_DELAY_MS = 300;
@@ -149,8 +155,14 @@ export function PreleveurDashboard({
     return () => controller.abort();
   }, [query, status]);
 
+  // « Aujourd'hui » / « Cette semaine » start at the viewer's midnight
+  // (`visitsInView` with the browser's clock), which the server cannot know:
+  // the filtered list waits for the browser, as it did before the first
+  // visits came with the page, or the hydration would compare two clocks
+  // (verification of the lot performance: 13 visits against 0 around midnight).
+  const inBrowser = useInBrowser();
   const currentKey = listKey(query, status);
-  const loading = list === null || list.key !== currentKey;
+  const loading = list === null || list.key !== currentKey || (view !== null && !inBrowser);
   const visits = !loading && list ? list.items : [];
   const nextCursor = !loading && list ? list.nextCursor : null;
   const failed = !loading && list ? list.failed : false;
