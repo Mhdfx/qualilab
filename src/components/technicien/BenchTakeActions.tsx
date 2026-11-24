@@ -88,10 +88,9 @@ export function TakeButton({
         }
         return;
       }
-      // One render: the sample's page, or this one again — not both.
       startNavigation(() => {
+        router.refresh();
         if (openAfter) router.push(`/technicien/${sampleId}`);
-        else router.refresh();
       });
     } catch {
       setError(NETWORK_ERROR);
@@ -153,8 +152,8 @@ export function ReleaseButton({
         setError(answer.error ?? "Impossible de libérer cet échantillon.");
         return;
       }
-      // Another page: the push renders it fresh, no refresh before it.
       startNavigation(() => {
+        router.refresh();
         router.push("/technicien");
       });
     } catch {

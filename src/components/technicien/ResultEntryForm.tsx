@@ -481,6 +481,7 @@ export function ResultEntryForm({
         refused(response.status, data.error ?? "Impossible de soumettre les résultats.", true);
         return;
       }
+      router.refresh();
       router.push("/technicien");
     } catch {
       setError("Une erreur réseau est survenue. Réessayez.");

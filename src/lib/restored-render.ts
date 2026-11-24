@@ -1,8 +1,7 @@
 /**
  * A page shown again from the router's cache (browser Back / Forward) is the
- * render it was when it was left: since the lot performance no save
- * refreshes the page it leaves (`goFresh`, Perf 1) and the dashboards read
- * their first rows with the page (P2-7), Back could show « À prendre » with
+ * render it was when it was left: since the lot performance the dashboards
+ * read their first rows with the page (P2-7), Back could show « À prendre » with
  * a sample just taken, or « Mes visites » without the visit just created
  * (review of the lot, points 3 and 4).
  *

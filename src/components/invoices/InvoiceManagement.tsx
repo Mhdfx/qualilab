@@ -2,10 +2,9 @@
 
 import { useId, useState } from "react";
 import Link from "@/components/ui/AppLink";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Ban, FilePen, FileMinus2, Send, Trash2, Wallet } from "lucide-react";
 import { useInvoiceBasePath } from "@/lib/invoice-paths";
-import { goFresh } from "@/lib/navigate-fresh";
 import { formatCurrency, formatDate } from "@/lib/labels";
 import { PAYMENT_MODE_LABELS } from "@/lib/invoice-lifecycle";
 import { Card } from "@/components/ui/Card";
@@ -29,7 +28,6 @@ type Open = "issue" | "deleteDraft" | "payment" | "creditNote" | "cancel" | null
 
 export function InvoiceActionsBar({ invoice, canManage }: { invoice: InvoiceDetailView; canManage: boolean }) {
   const router = useRouter();
-  const pathname = usePathname();
   const base = useInvoiceBasePath();
   const [open, setOpen] = useState<Open>(null);
   const blockedId = useId();
@@ -117,7 +115,8 @@ export function InvoiceActionsBar({ invoice, canManage }: { invoice: InvoiceDeta
           danger
           onConfirm={async () => {
             await sendJson(`/api/invoices/${invoice.id}`, "DELETE");
-            goFresh(router, pathname, base);
+            router.push(base);
+            router.refresh();
           }}
           onClose={close}
         />
@@ -141,8 +140,8 @@ export function InvoiceActionsBar({ invoice, canManage }: { invoice: InvoiceDeta
           closing={{ remainingSubtotal: invoice.remainingSubtotal, previousNotes: invoice.creditNotes.length }}
           onDone={(id) => {
             setOpen(null);
-            if (id) goFresh(router, pathname, `${base}/${id}`);
-            else router.refresh();
+            if (id) router.push(`${base}/${id}`);
+            router.refresh();
           }}
           onClose={close}
         />

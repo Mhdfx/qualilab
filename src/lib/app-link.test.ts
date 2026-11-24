@@ -4,11 +4,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * Navigation without the prefetch storm (.ui-tests/perf/plan.md P1-1, P1-5).
+ * Navigation without the prefetch storm (.ui-tests/perf/plan.md P1-1).
  * Every link goes through AppLink.tsx, which prefetches on intent only (a
- * pointer resting, the focus, a touch) instead of on sight; and a save does
- * not render a page twice by pairing `router.refresh()` with a
- * `router.push()`. These read the sources.
+ * pointer resting, the focus, a touch) instead of on sight. These read the
+ * sources.
  */
 
 const SRC = fileURLToPath(new URL("..", import.meta.url));
@@ -67,17 +66,43 @@ describe("every link goes through AppLink (intent prefetch only)", () => {
 });
 
 /**
- * Signing in and « Déconnexion » change the session itself: the push leaves
- * the page, the refresh drops what the router kept of the previous person.
+ * A save refreshes the router before it moves on — pinned on purpose.
+ *
+ * Perf 1 (P1-5) once dropped `router.refresh()` from these post-save
+ * navigations to spare a second render. But the refresh also empties Next's
+ * client router cache: without it, browser Back after a save showed the page
+ * as it was before the save. Reproduced on production 24/11 (ClientForm:
+ * save, then Back to /commercial/<id>/modifier showed the old values, and
+ * saving that stale form again silently reverted the edit — report e-mail
+ * recipients included). Data integrity first: each of these keeps its
+ * refresh, exactly as before the lot (« router.refresh(); router.push(x) »
+ * or « router.push(x); router.refresh() »).
  */
-const AUTH_FLOWS = new Set(["components/LoginForm.tsx", "components/layout/DashboardShell.tsx"]);
+const REFRESH_THEN_PUSH = /router\.refresh\(\);\s*(?:if \(openAfter\) )?router\.push\(/g;
+const PUSH_THEN_REFRESH = /router\.push\([^;]*\);\s*router\.refresh\(\);/g;
 
-describe("a save renders the next page once", () => {
-  it("no refresh() right before a push(), nor a push() right before a refresh()", () => {
-    const offenders = sources
-      .filter((file) => !AUTH_FLOWS.has(file.name))
-      .filter((file) => /router\.refresh\(\);\s*router\.push\(|router\.push\([^;]*\);\s*router\.refresh\(\);/.test(file.text))
-      .map((file) => file.name);
+const SAVES_THAT_REFRESH: { file: string; pattern: RegExp; count: number; what: string }[] = [
+  { file: "components/clients/ClientForm.tsx", pattern: REFRESH_THEN_PUSH, count: 2, what: "client saved, archived / restored" },
+  { file: "components/reception/SerieReceptionForm.tsx", pattern: REFRESH_THEN_PUSH, count: 1, what: "« Retour » after a reception" },
+  { file: "components/technicien/ResultEntryForm.tsx", pattern: REFRESH_THEN_PUSH, count: 1, what: "results submitted" },
+  { file: "components/technicien/BenchTakeActions.tsx", pattern: REFRESH_THEN_PUSH, count: 2, what: "take, release" },
+  { file: "components/NouvelleFactureForm.tsx", pattern: PUSH_THEN_REFRESH, count: 2, what: "invoice created, draft saved" },
+  { file: "components/invoices/InvoiceManagement.tsx", pattern: PUSH_THEN_REFRESH, count: 2, what: "draft deleted, credit note" },
+  { file: "components/commercial/ClientMergeActions.tsx", pattern: PUSH_THEN_REFRESH, count: 1, what: "clients merged" },
+  { file: "components/validation/ReportActions.tsx", pattern: PUSH_THEN_REFRESH, count: 2, what: "correction, amendment" },
+];
+
+describe("a save refreshes the router cache before Back can show it", () => {
+  for (const { file, pattern, count, what } of SAVES_THAT_REFRESH) {
+    it(`${file} calls router.refresh() in its post-save navigation (${what})`, () => {
+      const text = sources.find((source) => source.name === file)?.text;
+      expect(text, file).toBeDefined();
+      expect(text!.match(pattern)?.length ?? 0).toBe(count);
+    });
+  }
+
+  it("no post-save helper skips the refresh any more (goFresh is gone)", () => {
+    const offenders = sources.filter((file) => /\bgoFresh\b|navigate-fresh/.test(file.text)).map((file) => file.name);
     expect(offenders).toEqual([]);
   });
 });
