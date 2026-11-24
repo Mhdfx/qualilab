@@ -1428,6 +1428,141 @@ back by its switch instead (5A: `lab-proposals.ts` « Lot 5A »; 5B:
 while the fiche keeps its card). To withdraw the history only:
 « Ne pas reprendre » per link, or `DELETE FROM LegacyResult; DELETE FROM LegacySample; DELETE FROM LegacyClientLink;` after a dump.
 
+## Lot performance (23/11) — code, one migration, then nginx and MySQL by hand
+
+Built and verified locally on `lot2-retour-16-10` (commits « Perf 1 », « Perf 2 »,
+« Perf 3 », « Perf : corrections de la relecture » `c61845a`, « Perf : corrections
+de la vérification » `eb55427`; `PERF-AVANCEMENT.md`, `HANDOFF.md` §8 « 2026-11-23 — lot
+performance », plan `.ui-tests/perf/plan.md`, a local file that is not committed). Production runs
+`0305d67` (lot 5). **Nothing changes for the laboratory:** roles, guards, French
+texts and switches are unchanged. What changes: links prefetch only on intent (hover, focus, touch), the
+longest lists show 100 rows then « Afficher les N suivants », /commercial,
+/programmation/[id] and /recherche send less, and /admin and /preleveur arrive with
+their first data.
+
+**One additive migration**, applied by the `migrate` service:
+
+| Migration | What | Touches existing rows? |
+|---|---|---|
+| `20261123010000_perf_index_additifs` | indexes only: `LegacySample (clientId, cancelled, year)`, `(clientId, cancelled, receivedAt)`, `(clientId, cancelled, siteId)`; `AuditLog (actorId, createdAt)`; `Sample (clientId, receivedAt)` | no (built online, seconds on ≈ 190 000 legacy rows) |
+
+**One new environment variable:** `DB_POOL_SIZE` (connections the app keeps to
+MySQL, whole number 1–50; the code defaults to 5 when it is unset or invalid).
+`docker-compose.yml` passes `${DB_POOL_SIZE:-15}`, so production gets **15**
+with nothing to add to `.env` (set it there only to choose another value;
+`.env.production.example`).
+
+### 0. Before the window
+
+- Gates on the branch's head: `npx tsc --noEmit -p .` 0, `npx eslint src` 0,
+  `npx vitest run` (214 files / 3 844 on 24/11), `npm run build`; the local
+  regressions v16-1 → v23 (`HANDOFF.md` §8 « 2026-11-23 — lot performance »).
+- Baseline measures on production, read only, with a label:
+  `node .ui-tests/perf-prod.mjs before2`, `node .ui-tests/perf-prod-2.mjs before2`,
+  `node .ui-tests/perf-count.mjs` (references `perf-prod.before.json`,
+  `perf-prod-2.before.json`).
+
+### 1. Restore point
+
+- **Code:** `git tag v1.9-avant-perf 0305d67 && git push origin v1.9-avant-perf`;
+  then fast-forward `master` to the verified head, as for lot 5.
+- **Database:** `/var/backups/qualilab/qualilab_avant-perf.sql.gz`, app stopped,
+  right before `deploy.sh` (as « Lot 4 » step 1).
+- **nginx:** `sudo cp /etc/nginx/sites-available/qualilab /etc/nginx/sites-available/qualilab.avant-perf`
+  (outside `sites-enabled`).
+
+### 2. Deploy the code and check
+
+- `bash scripts/deploy.sh` on the VPS (as « Lot 4 » steps 2 and 3).
+- `docker compose logs migrate` shows `20261123010000_perf_index_additifs`
+  applied; then, read only:
+  - `SHOW INDEX FROM LegacySample WHERE Key_name LIKE '%cancelled%';` → three indexes;
+  - `SHOW INDEX FROM AuditLog WHERE Column_name = 'actorId';` → includes `(actorId, createdAt)`;
+  - `docker compose exec app printenv DB_POOL_SIZE` → `15`.
+- « After every deploy — 5-minute check » below, plus: /commercial shows 100
+  clients then « Afficher les N suivants » (the search still filters every client);
+  hovering a link on /admin sends at most 2 `?_rsc` requests (DevTools); a
+  report PDF opens (Chromium is now warmed at start-up, `src/instrumentation.ts`);
+  `curl -sI http://127.0.0.1:3000/favicon.ico` → 307 to `/qualilab-logo-nobg.png`.
+
+### 3. nginx — by hand, reload only (plan P1-2 and P3-5)
+
+Edit `/etc/nginx/sites-available/qualilab`, then `sudo nginx -t && sudo systemctl reload nginx`.
+No container restarts. Keep `proxy_set_header X-Real-IP $remote_addr;`
+exactly as it is (Better Auth's sign-in rate limit depends on it; « Deploying an update »).
+
+```nginx
+# Top of the file (http level): per-request timing (P1-2) and upstream keepalive (P3-5).
+log_format qualilab_timing '$remote_addr [$time_local] "$request" $status $body_bytes_sent '
+  'rt=$request_time uct=$upstream_connect_time uht=$upstream_header_time urt=$upstream_response_time '
+  'pf=$http_next_router_prefetch seg=$http_next_router_segment_prefetch rsc=$http_rsc';
+map $http_upgrade $connection_upgrade { default upgrade; '' ''; }
+upstream qualilab_app {
+    server 127.0.0.1:3000;
+    keepalive 32;
+    keepalive_timeout 4s;   # MUST stay below Node's 5 s keep-alive timeout (502s otherwise)
+}
+
+server {
+    # … listen / server_name / client_max_body_size unchanged …
+    access_log /var/log/nginx/qualilab-timing.log qualilab_timing;
+
+    location / {
+        proxy_pass http://qualilab_app;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;    # P1-2: the shell and loading.tsx skeletons stream
+        proxy_read_timeout 60s;
+    }
+}
+```
+
+- **Check:** `curl -sN -o /dev/null -H 'Accept-Encoding: gzip' -H 'Cookie: …' -w 'ttfb=%{time_starttransfer} total=%{time_total}\n' http://127.0.0.1/technicien/temperatures`
+  (through nginx) against the same URL on `:3000`: the TTFB through nginx should now match the direct one
+  instead of the total; `ss -tn dst 127.0.0.1:3000 | wc -l` small and stable;
+  `grep -c ' 502 ' /var/log/nginx/qualilab-timing.log` → 0.
+- Copy the final file into `deploy/nginx.conf.example` (the repo still has
+  the old one) in the next commit.
+- The logo / favicon caching (P2-8) is in the code (`next.config.ts`), not in nginx.
+- HTTP/2 + TLS (P2-9) stays blocked until the domain exists.
+
+### 4. MySQL buffer pool 1 GB — by hand (plan P2-3)
+
+- **Online, off-hours, no restart:**
+  `docker compose exec db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SET GLOBAL innodb_buffer_pool_size=1073741824; SHOW STATUS LIKE \"Innodb_buffer_pool_resize_status\";"'`
+  (the resize briefly blocks new InnoDB work).
+- **Durable, at the next planned db recreate:** add under `db:` in
+  `docker-compose.yml` `command: ["--innodb-buffer-pool-size=1G"]`, then
+  `docker compose up -d db` (the app loses its connections for 10–20 s). This line
+  is **not** in the repo yet: commit it with that recreate.
+- **Never** use `SET PERSIST` (it hides the value in the volume) or
+  `innodb_dedicated_server` (≈ 6 GB).
+- **Check:** `SELECT @@innodb_buffer_pool_size;` → 1073741824; after a day,
+  `Innodb_buffer_pool_reads / Innodb_buffer_pool_read_requests` ≈ 0.
+
+### 5. Measure after
+
+`node .ui-tests/perf-prod.mjs after`, `node .ui-tests/perf-prod-2.mjs after`,
+`node .ui-tests/perf-count.mjs`. Expected: 0–2 `?_rsc` per page view (before: 25–59), get-session
+under 0.4 s on `tech1 /technicien/<id>` (before: up to 6.5 s), /commercial about
+0.3 MB (before: 2 MB), /programmation/<id> about 0.4–0.5 MB (before: 1 MB). Also read
+the `uht` / `urt` values in `/var/log/nginx/qualilab-timing.log`. Write the numbers in `PERF-AVANCEMENT.md`.
+
+### 6. Rollback
+
+- **Code:** `git checkout v1.9-avant-perf` + `bash scripts/deploy.sh`. The
+  migration only adds indexes, which the old code ignores: leave them. Restoring
+  the dump of step 1 is needed only if data went wrong, not for this lot.
+  `DB_POOL_SIZE` is ignored by the old code (its pool is 5).
+- **nginx:** `sudo cp /etc/nginx/sites-available/qualilab.avant-perf /etc/nginx/sites-available/qualilab && sudo nginx -t && sudo systemctl reload nginx`.
+- **Buffer pool:** `SET GLOBAL innodb_buffer_pool_size=134217728;` (and remove
+  the compose line if it was added).
+
 ## After every deploy — 5-minute check
 
 1. `/api/health` answers `ok`.
