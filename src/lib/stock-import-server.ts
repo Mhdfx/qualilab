@@ -12,6 +12,7 @@ import {
   workbookKeys,
   type ArticlePlan,
   type ExistingArticle,
+  type ImportedMovement,
   type StockWorkbook,
   type WorkbookPlan,
 } from "./stock-workbook-import";
@@ -65,11 +66,24 @@ export async function planFromDatabase(parsed: StockWorkbook, today: string): Pr
     ])
   );
 
+  // What was written for each row already imported — an edited row is then reported, not re-imported.
   const keys = workbookKeys(parsed);
-  const imported = new Set<string>();
+  const imported = new Map<string, ImportedMovement>();
   for (let i = 0; i < keys.length; i += KEY_CHUNK) {
-    const found = await prisma.stockMovement.findMany({ where: { importKey: { in: keys.slice(i, i + KEY_CHUNK) } }, select: { importKey: true } });
-    for (const row of found) if (row.importKey) imported.add(row.importKey);
+    const found = await prisma.stockMovement.findMany({
+      where: { importKey: { in: keys.slice(i, i + KEY_CHUNK) } },
+      select: { importKey: true, type: true, quantity: true, lot: true, expiryDate: true, unitPriceHT: true },
+    });
+    for (const row of found) {
+      if (!row.importKey) continue;
+      imported.set(row.importKey, {
+        type: row.type,
+        quantity: toMoney(row.quantity),
+        lot: row.lot,
+        expiryDay: row.expiryDate ? isoDayOf(row.expiryDate) : null,
+        unitPriceHT: row.unitPriceHT === null ? null : toMoney(row.unitPriceHT),
+      });
+    }
   }
   return planStockWorkbook(parsed, existing, imported, today);
 }
@@ -79,16 +93,25 @@ const writes = (plan: ArticlePlan) => plan.status === "a-creer" || (plan.status 
 /** What the commit writes, article by article (the analysis shows the same figures). */
 export type WrittenCounts = { articlesCreated: number; articlesResumed: number; movements: number; adjustments: number };
 
+export const emptyCounts = (): WrittenCounts => ({ articlesCreated: 0, articlesResumed: 0, movements: 0, adjustments: 0 });
+
+/** Whether anything was written. */
+export const wroteSomething = (counts: WrittenCounts) => counts.articlesCreated + counts.articlesResumed + counts.movements + counts.adjustments > 0;
+
 /**
  * Writes the plan: per article, the article (created, or its level moved
  * from the planned level — guarded, like a typed movement), its movements in
  * date order with their levels, then the adjustment. One transaction per 50
  * articles; a conflict (an article created or moved meanwhile, a row
  * imported meanwhile) stops the import — what is written stays, and the
- * next analysis skips it.
+ * next analysis skips it. `counts` (the caller's) holds what the committed
+ * transactions wrote, so that a stop partway is still journalled.
  */
-export async function writeWorkbookPlan(plan: WorkbookPlan, context: { actorId: string; fileName: string }): Promise<WrittenCounts> {
-  const counts: WrittenCounts = { articlesCreated: 0, articlesResumed: 0, movements: 0, adjustments: 0 };
+export async function writeWorkbookPlan(
+  plan: WorkbookPlan,
+  context: { actorId: string; fileName: string },
+  counts: WrittenCounts = emptyCounts()
+): Promise<WrittenCounts> {
   const todo = plan.articles.filter(writes);
   const file = context.fileName.slice(0, 120);
   for (let i = 0; i < todo.length; i += ARTICLES_PER_TRANSACTION) {
@@ -205,8 +228,10 @@ export function workbookReport(parsed: StockWorkbook, plan: WorkbookPlan) {
       })),
     })),
     refused: [...parsed.refused, ...plan.articles.flatMap((article) => article.refused)],
+    changed: plan.articles.flatMap((article) => article.changed),
     warnings: parsed.warnings,
     ignored: parsed.ignored,
+    ignoredCount: parsed.ignoredCount,
     emptySheets: parsed.emptySheets,
   };
 }

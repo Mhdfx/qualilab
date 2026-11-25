@@ -29,12 +29,21 @@ export type SheetRow = SheetCell[];
 
 export const MAX_IMPORT_ROWS = 5_000;
 
-/** Lower case, without accents, spaces squeezed — to match the headers. */
+/**
+ * Lower case, without accents, spaces squeezed — to match the headers, and
+ * the names the database compares (`utf8mb4_unicode_ci` reads « Œ » as
+ * « OE », « Æ » as « AE », « ß » as « ss »: folded the same way here, else a
+ * name the database calls a duplicate would never match — a 409 on every
+ * retry, relecture du lot 6).
+ */
 export function headerKey(value: SheetCell): string {
   return String(value ?? "")
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
+    .replace(/œ/g, "oe")
+    .replace(/æ/g, "ae")
+    .replace(/ß/g, "ss")
     .replace(/[^a-z0-9%]+/g, " ")
     .trim();
 }
@@ -54,8 +63,10 @@ export function cellNumber(value: SheetCell): number | null {
 /** A day typed in a cell: « AAAA-MM-JJ », « JJ/MM/AAAA » or an Excel serial; null otherwise. */
 export function cellDay(value: SheetCell): string | null {
   if (typeof value === "number" && value > 20000 && value < 80000) {
-    // Excel's day 1 is 1900-01-01, with its phantom 29/02/1900.
-    return isoDayOf(new Date(Date.UTC(1899, 11, 30) + Math.round(value) * 86_400_000));
+    // Excel's day 1 is 1900-01-01, with its phantom 29/02/1900. A date-time
+    // keeps its day (floor, not round: 17:00 is not tomorrow); the epsilon
+    // absorbs a serial stored a hair under its midnight.
+    return isoDayOf(new Date(Date.UTC(1899, 11, 30) + Math.floor(value + 1e-7) * 86_400_000));
   }
   const raw = String(value ?? "").trim();
   if (parseIsoDay(raw.slice(0, 10))) return raw.slice(0, 10);

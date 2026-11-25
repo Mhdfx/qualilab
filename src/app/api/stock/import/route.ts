@@ -5,9 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { parseIsoDay } from "@/lib/date-only";
 import { labDayOf } from "@/lib/lab-time";
 import { parseArticleSheet, splitKnown, type SheetRow } from "@/lib/stock-import";
-import { readImportWorkbook } from "@/lib/stock-import-file";
+import { importRequestTooLarge, readImportWorkbook } from "@/lib/stock-import-file";
 import { detectStockFormat, parseStockWorkbook, planWrites, type StockImportFormat } from "@/lib/stock-workbook-import";
-import { StockImportConflict, planFromDatabase, workbookReport, writeWorkbookPlan } from "@/lib/stock-import-server";
+import { StockImportConflict, emptyCounts, planFromDatabase, workbookReport, wroteSomething, writeWorkbookPlan, type WrittenCounts } from "@/lib/stock-import-server";
 
 /**
  * Import of the laboratory's stock file (MAGASINIER, ADMIN), two formats:
@@ -32,6 +32,7 @@ export async function POST(request: Request) {
   const session = await requireApiRole("MAGASINIER", "ADMIN");
   if (session instanceof NextResponse) return session;
 
+  if (importRequestTooLarge(request)) return NextResponse.json({ error: "Fichier trop volumineux (8 Mo maximum)." }, { status: 413 });
   let form: FormData;
   try {
     form = await request.formData();
@@ -75,10 +76,33 @@ async function importWorkbook(sheets: Parameters<typeof parseStockWorkbook>[0], 
   if (!planWrites(plan)) {
     return NextResponse.json({ mode: "commit", ...base, written: { articlesCreated: 0, articlesResumed: 0, movements: 0, adjustments: 0 } });
   }
-  let written;
+  const written = emptyCounts();
+  const journal = (counts: WrittenCounts, partial: boolean) =>
+    logAudit({
+      actorId: context.actorId,
+      action: "STOCK_IMPORTED",
+      entity: "StockItem",
+      metadata: {
+        format: "par-article",
+        file: context.file.name.slice(0, 191),
+        sheets: parsed.sheets,
+        ...(partial ? { partial: true } : {}),
+        articlesCreated: counts.articlesCreated,
+        articlesResumed: counts.articlesResumed,
+        movements: counts.movements,
+        adjustments: counts.adjustments,
+        skipped: plan.totals.skipped,
+        changed: plan.totals.changed,
+        refused: plan.totals.refused,
+        untouched: plan.totals.untouched,
+        warnings: parsed.warnings.length,
+      },
+    });
   try {
-    written = await writeWorkbookPlan(plan, { actorId: context.actorId, fileName: context.file.name });
+    await writeWorkbookPlan(plan, { actorId: context.actorId, fileName: context.file.name }, written);
   } catch (error) {
+    // The batches already committed stay: journalled as a partial import.
+    if (wroteSomething(written)) await journal(written, true);
     if (error instanceof StockImportConflict || (error as { code?: string }).code === "P2002") {
       return NextResponse.json(
         { error: "Le stock a changé pendant l'import (un article créé ou modifié par ailleurs) — relancez l'analyse : ce qui est déjà importé sera sauté." },
@@ -88,24 +112,7 @@ async function importWorkbook(sheets: Parameters<typeof parseStockWorkbook>[0], 
     throw error;
   }
 
-  await logAudit({
-    actorId: context.actorId,
-    action: "STOCK_IMPORTED",
-    entity: "StockItem",
-    metadata: {
-      format: "par-article",
-      file: context.file.name.slice(0, 191),
-      sheets: parsed.sheets,
-      articlesCreated: written.articlesCreated,
-      articlesResumed: written.articlesResumed,
-      movements: written.movements,
-      adjustments: written.adjustments,
-      skipped: plan.totals.skipped,
-      refused: plan.totals.refused,
-      untouched: plan.totals.untouched,
-      warnings: parsed.warnings.length,
-    },
-  });
+  await journal(written, false);
   return NextResponse.json({ mode: "commit", ...base, written });
 }
 

@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import type { PaymentMode } from "@/generated/prisma/enums";
 import { parseIsoDay } from "./date-only";
+import { roundMoney } from "./invoice-math";
 import { validatePurchaseInvoice, validateSupplier, MAX_EXCHANGE_RATE, TEXT_MAX, type CleanPurchaseInvoice } from "./achat-validation";
 import { cellDay, cellNumber, headerKey, paymentTermDays, type SheetCell, type SheetRow } from "./stock-import";
 import { certificateState, withholdingFor, type CertificateState, type WithholdingBaseCode, type WithholdingSettings } from "./withholding";
@@ -22,16 +24,22 @@ import {
  *
  * - empty rows, and the template rows prepared for a month (no supplier, no
  *   number, amounts at zero), are ignored;
- * - no number: « SN-AAAA-MM-JJ-k » (`PURCHASE_IMPORT_UNNUMBERED`, E-4);
+ * - no number: « SN-AAAA-MM-JJ-k » (`PURCHASE_IMPORT_UNNUMBERED`, E-4) — a
+ *   rank above 1 (several on the same day for one supplier) flagged « à
+ *   vérifier »;
  * - the same supplier + number twice in the file: identical rows (same day,
  *   same amounts) are imported once; different rows are « à trancher » —
  *   none of them is imported;
  * - HT and TVA rounded to the centime, TTC = HT + TVA; a TTC more than one
  *   centime away from HT + TVA is refused (« ligne à corriger »); a row with
  *   the TTC only is imported « TTC seul »; a row in euros without its DH
- *   amount needs the « Taux EUR → DH » of the screen, else it is refused;
- * - « Statut » « Payée » / « Prélèvement » → paid; empty → to pay
- *   (`PURCHASE_IMPORT_EMPTY_STATUS_UNPAID`, E-5);
+ *   amount needs the « Taux EUR → DH » of the screen, else it is refused; a
+ *   row with both keeps the rate of the file (DH HT, else TTC, ÷ euros) only
+ *   when plausible (`EUR_RATE_PLAUSIBLE`), else the screen's, flagged;
+ * - « Statut » — the whole cell — « Payée » / « Prélèvement » → paid
+ *   (« payée partiellement » is no status: refused); empty → to pay
+ *   (`PURCHASE_IMPORT_EMPTY_STATUS_UNPAID`, E-5); « À payer » with a payment
+ *   day keeps the invoice to pay, the payment left out and flagged;
  * - « Date paiement »: one day, or « date montant + date montant » (several
  *   payments, their amounts adding up to the TTC); a payment dated before
  *   the invoice (or in the future, or unreadable) is never recorded — the
@@ -44,13 +52,27 @@ import {
  * Nothing already in the database is ever modified (`planPurchaseJournal`):
  * an invoice known by its supplier + number is skipped — « créer seulement »,
  * like every import of the magasin — so a second import writes nothing.
+ * Each invoice imported keeps its `importKey` (relecture du lot 6, constat
+ * 6): the file's supplier name + the number, or — no number — the row's
+ * fingerprint (supplier, day, amounts); a re-import finds it whatever the
+ * supplier is called now, and an unnumbered row numbered since is not
+ * imported twice.
  */
 
 // ————— Cells —————
 
 const text = (value: SheetCell | undefined) => String(value ?? "").trim();
-const cents = (value: number) => Math.round(value * 100);
-const round2 = (value: number) => cents(value) / 100;
+/** Rounded on the decimal written (`roundMoney`: 0,145 → 0,15, not 0,14). */
+const round2 = roundMoney;
+const cents = (value: number) => Math.round(roundMoney(value) * 100);
+
+/** A rate EUR → DH outside this range is a slip (an amount in the wrong column, a TTC against an HT…). */
+export const EUR_RATE_PLAUSIBLE = { min: 8, max: 14 } as const;
+
+/** The fingerprint kept in `PurchaseInvoice.importKey` (64 hex). */
+export function purchaseImportKey(parts: (string | number | null)[]): string {
+  return createHash("sha256").update(JSON.stringify(["lot6b-v1", ...parts])).digest("hex");
+}
 
 /** « AAAA-MM-JJ » + n days. */
 export function addDays(day: string, days: number): string {
@@ -184,6 +206,10 @@ export type JournalDraft = {
   paymentReference: string | null;
   /** Converted from euros at the rate typed on the screen. */
   convertedFromEuro: boolean;
+  /** `PurchaseInvoice.importKey`: the number's key, or — no number — `printKey`. */
+  importKey: string;
+  /** The row's fingerprint: supplier of the file, day, amounts (and its rank among identical ones). */
+  printKey: string;
 };
 
 export type RefusalKind =
@@ -212,6 +238,10 @@ export type WarningKind =
   | "mode-inconnu"
   | "mode-vide"
   | "taux-eur"
+  | "taux-eur-improbable"
+  | "sans-numero-rang"
+  | "paiement-ignore"
+  | "numero-ajoute"
   | "tva-sans-ht"
   | "fournisseur-archive";
 
@@ -237,11 +267,15 @@ export const WARNING_LABELS: Record<WarningKind, string> = {
   "paiement-avant-facture": "Paiement daté avant la facture — payée, sans ligne de paiement",
   "paiement-futur": "Paiement daté dans le futur — payée, sans ligne de paiement",
   "paiement-illisible": "Date de paiement illisible — payée, sans ligne de paiement",
-  "paiement-montants": "Paiement en plusieurs fois sans montants (ou montants ≠ TTC) — payée, sans ligne de paiement",
+  "paiement-montants": "Paiement sans montants (ou montants ≠ TTC) — payée, sans ligne de paiement, à vérifier",
   "statut-vide-paiement": "Statut vide mais date de paiement — reprise payée",
   "mode-inconnu": "Mode de paiement non reconnu — « Autre », le texte en référence",
   "mode-vide": "Paiement sans mode — « Autre »",
   "taux-eur": "Montant en DH calculé au taux EUR → DH saisi",
+  "taux-eur-improbable": "Taux EUR → DH du fichier improbable — à vérifier",
+  "sans-numero-rang": "Sans numéro, plusieurs factures du fournisseur ce jour-là — à vérifier",
+  "paiement-ignore": "Statut « à payer » mais date de paiement — reprise à payer, paiement non repris, à vérifier",
+  "numero-ajoute": "Reprise sans numéro lors d'un import précédent, numérotée depuis dans le fichier — non réimportée : reportez le numéro à la main",
   "tva-sans-ht": "TVA sans montant HT — reprise au TTC seul",
   "fournisseur-archive": "Fournisseur archivé — facture rattachée quand même",
 };
@@ -337,11 +371,15 @@ function vatRateOf(ht: number, vat: number): number {
 
 type StatusReading = "PAYEE" | "A_PAYER" | "VIDE" | "INCONNU";
 
+/**
+ * The « Statut » cell, read whole: « payée partiellement » or « payé 50 % »
+ * is no status the import can record (refused, « Statut à préciser »).
+ */
 function statusOf(value: SheetCell | undefined): StatusReading {
   const key = headerKey(value ?? null);
   if (!key) return "VIDE";
-  if (/^(payee?s?|paye|reglee?s?|regle|soldee?|prelev)/.test(key) || key.startsWith("prelevement")) return "PAYEE";
-  if (/^(a payer|non payee?|impayee?|en attente|non reglee?)$/.test(key)) return "A_PAYER";
+  if (/^(payee?s?|reglee?s?|soldee?s?|prelevee?s?|prelevements?)( en totalite| totalement)?$/.test(key)) return "PAYEE";
+  if (/^(a payer|non payee?s?|impayee?s?|en attente|non reglee?s?)$/.test(key)) return "A_PAYER";
   return "INCONNU";
 }
 
@@ -377,6 +415,8 @@ export function parsePurchaseJournal(rows: SheetRow[], options: JournalOptions):
   // Per supplier + day: the rank of the next unnumbered row.
   const unnumberedRank = new Map<string, number>();
   const fingerprints = new Map<number, string>();
+  // Per supplier + fingerprint: how many rows so far (two identical unnumbered invoices keep two keys).
+  const printRank = new Map<string, number>();
 
   let count = 0;
   let templateRows = 0;
@@ -443,6 +483,7 @@ export function parsePurchaseJournal(rows: SheetRow[], options: JournalOptions):
       number = `SN-${issueDay}-${rank}`;
       generatedNumber = true;
       warn(line, "sans-numero", number);
+      if (rank > 1) warn(line, "sans-numero-rang", `${rank}e de la journée`);
     }
 
     // The amounts.
@@ -506,7 +547,19 @@ export function parsePurchaseJournal(rows: SheetRow[], options: JournalOptions):
     if (euro !== null) {
       input.currency = "EUR";
       input.amountForeign = euro;
-      const rate = convertedFromEuro ? options.eurRate : Math.round((dhTotal / euro) * 1_000_000) / 1_000_000;
+      let rate = options.eurRate;
+      if (!convertedFromEuro) {
+        // The file's rate: the DH amount before VAT when there is one (euros carry no Moroccan VAT).
+        const fromFile = Math.round(((ht ?? dhTotal) / euro) * 1_000_000) / 1_000_000;
+        if (fromFile >= EUR_RATE_PLAUSIBLE.min && fromFile <= EUR_RATE_PLAUSIBLE.max) rate = fromFile;
+        else {
+          warn(
+            line,
+            "taux-eur-improbable",
+            `${String(fromFile).replace(".", ",")} DH pour 1 EUR — ${options.eurRate !== null ? `taux saisi ${String(options.eurRate).replace(".", ",")} enregistré` : "aucun taux enregistré"}`
+          );
+        }
+      }
       if (rate !== null && rate > 0 && rate <= MAX_EXCHANGE_RATE) input.exchangeRate = rate;
     }
 
@@ -544,6 +597,14 @@ export function parsePurchaseJournal(rows: SheetRow[], options: JournalOptions):
       }
     }
 
+    if (status === "A_PAYER" && payment.kind !== "vide") warn(line, "paiement-ignore");
+
+    const printParts = [supplierKey, issueDay, cents(validated.value.amount), validated.value.amountHT === null ? null : cents(validated.value.amountHT), euro === null ? null : cents(euro)];
+    const printSignature = JSON.stringify(printParts);
+    const printOccurrence = (printRank.get(printSignature) ?? 0) + 1;
+    printRank.set(printSignature, printOccurrence);
+    const printKey = purchaseImportKey(["empreinte", ...printParts, printOccurrence]);
+
     const draft: JournalDraft = {
       line,
       supplierName,
@@ -558,6 +619,8 @@ export function parsePurchaseJournal(rows: SheetRow[], options: JournalOptions):
       paymentMethod: null,
       paymentReference: null,
       convertedFromEuro,
+      importKey: generatedNumber ? printKey : purchaseImportKey(["numero", supplierKey, invoiceNumberKey(number)]),
+      printKey,
     };
 
     if (draft.status === "PAYEE") {
@@ -572,7 +635,7 @@ export function parsePurchaseJournal(rows: SheetRow[], options: JournalOptions):
           warn(line, "paiement-avant-facture", days.map((day) => day.split("-").reverse().join("/")).join(" + "));
         } else if (days.some((day) => day > options.today)) {
           warn(line, "paiement-futur", days.map((day) => day.split("-").reverse().join("/")).join(" + "));
-        } else if (payment.entries.length === 1) {
+        } else if (payment.entries.length === 1 && (amounts[0] === null || cents(amounts[0]) === cents(total))) {
           draft.payments = [{ day: days[0], amount: total }];
           draft.paidAt = days[0];
         } else if (amounts.every((amount) => amount !== null) && amounts.reduce((sum, amount) => sum + cents(amount as number), 0) === cents(total)) {
@@ -659,6 +722,9 @@ export type ExistingSupplier = {
 
 export type ExistingInvoice = { issueDay: string; amount: number; status: "A_PAYER" | "PAYEE" | "ANNULEE" };
 
+/** An invoice written by an import, found by its `importKey`. */
+export type ImportedInvoice = { supplierId: string; supplierName: string; number: string; issueDay: string; amount: number };
+
 export type InvoicePlan = {
   draft: JournalDraft;
   /** Null = the supplier is created by the import. */
@@ -697,15 +763,22 @@ export type PlanContext = {
   suppliers: Map<string, ExistingSupplier>;
   /** By `${supplierId}|${invoiceNumberKey(number)}`. */
   invoices: Map<string, ExistingInvoice>;
+  /** By `importKey` — the invoices of the file already imported (`importKey`, `printKey` of the drafts). */
+  imported?: Map<string, ImportedInvoice>;
+  /** Every supplier by its id: the one a previous import attached a file's supplier to, renamed since. */
+  suppliersById?: Map<string, ExistingSupplier>;
   settings: WithholdingSettings;
   withholding?: "UNPAID_ONLY" | "NEVER";
 };
 
 /**
  * What an import would write: the suppliers to create (the others matched by
- * their name — an archived one is still matched, flagged), the invoices to
- * create with their due day and retenue (§2.5), the ones already there
- * (skipped), and the refusals the retenue adds. Pure.
+ * their name, or by the invoices a previous import attached to them — a
+ * supplier renamed since is still found; an archived one is still matched,
+ * flagged), the invoices to create with their due day and retenue (§2.5),
+ * the ones already there (by `importKey`, else supplier + number: skipped),
+ * and the refusals the retenue adds. A generated « SN-… » number already
+ * taken by the supplier moves to the next free rank. Pure.
  */
 export function planPurchaseJournal(journal: PurchaseJournal, context: PlanContext): PurchaseJournalPlan {
   const mode = context.withholding ?? PURCHASE_IMPORT_WITHHOLDING;
@@ -716,9 +789,38 @@ export function planPurchaseJournal(journal: PurchaseJournal, context: PlanConte
   const toCreate = new Map<string, ProposedSupplier>();
   const matched = new Set<string>();
   const archivedWarned = new Set<string>();
+  const imported = context.imported ?? new Map<string, ImportedInvoice>();
+  const priorOf = (draft: JournalDraft) => {
+    const byKey = imported.get(draft.importKey);
+    if (byKey) return { prior: byKey, numbered: false };
+    const byPrint = draft.generatedNumber ? undefined : imported.get(draft.printKey);
+    return byPrint ? { prior: byPrint, numbered: true } : null;
+  };
+  // The file's suppliers a previous import attached to a supplier of the database (renamed or not).
+  const attached = new Map<string, string>();
+  for (const draft of journal.drafts) {
+    const found = priorOf(draft);
+    if (found && !attached.has(draft.supplierKey)) attached.set(draft.supplierKey, found.prior.supplierId);
+  }
+  const used = new Set<string>();
 
   for (const draft of journal.drafts) {
-    const known = context.suppliers.get(draft.supplierKey) ?? null;
+    const found = priorOf(draft);
+    if (found) {
+      const { prior } = found;
+      existing.push({
+        line: draft.line,
+        supplierName: prior.supplierName,
+        number: prior.number,
+        same: prior.issueDay === draft.invoice.issueDate.toISOString().slice(0, 10) && cents(prior.amount) === cents(draft.invoice.amount),
+      });
+      if (found.numbered) {
+        warnings.push({ line: draft.line, kind: "numero-ajoute", message: `${WARNING_LABELS["numero-ajoute"]} (${prior.number} → ${draft.invoice.number})` });
+      }
+      continue;
+    }
+    const attachedId = attached.get(draft.supplierKey);
+    const known = context.suppliers.get(draft.supplierKey) ?? (attachedId ? (context.suppliersById?.get(attachedId) ?? null) : null);
     const proposed = journal.suppliers.get(draft.supplierKey) as ProposedSupplier;
     if (known) matched.add(known.id);
     if (!known) {
@@ -729,7 +831,12 @@ export function planPurchaseJournal(journal: PurchaseJournal, context: PlanConte
       }
     }
     if (known) {
-      const already = context.invoices.get(`${known.id}|${invoiceNumberKey(draft.invoice.number)}`);
+      // A generated « SN-… » is no number of the supplier's: its invoice is found by its fingerprint
+      // above — or, imported before the fingerprints were kept, by the same number, day and TTC.
+      const holder = context.invoices.get(`${known.id}|${invoiceNumberKey(draft.invoice.number)}`);
+      const sameRow = (invoice: ExistingInvoice) =>
+        invoice.issueDay === draft.invoice.issueDate.toISOString().slice(0, 10) && cents(invoice.amount) === cents(draft.invoice.amount);
+      const already = holder && (!draft.generatedNumber || sameRow(holder)) ? holder : undefined;
       if (already) {
         existing.push({
           line: draft.line,
@@ -743,6 +850,19 @@ export function planPurchaseJournal(journal: PurchaseJournal, context: PlanConte
         archivedWarned.add(known.id);
         warnings.push({ line: draft.line, kind: "fournisseur-archive", message: `${WARNING_LABELS["fournisseur-archive"]} (${known.name})` });
       }
+    }
+
+    // A generated number the supplier already holds (another unnumbered invoice of that day): the next free rank.
+    let planned = draft;
+    if (draft.generatedNumber) {
+      const owner = known?.id ?? `nouveau:${draft.supplierKey}`;
+      const taken = (number: string) => used.has(`${owner}|${invoiceNumberKey(number)}`) || (known !== null && context.invoices.has(`${known.id}|${invoiceNumberKey(number)}`));
+      const stem = draft.invoice.number.replace(/-\d+$/, "");
+      let rank = Number(/-(\d+)$/.exec(draft.invoice.number)?.[1] ?? "1");
+      let number = draft.invoice.number;
+      while (taken(number)) number = `${stem}-${(rank += 1)}`;
+      if (number !== draft.invoice.number) planned = { ...draft, invoice: { ...draft.invoice, number } };
+      used.add(`${owner}|${invoiceNumberKey(number)}`);
     }
 
     const issueDay = draft.invoice.issueDate.toISOString().slice(0, 10);
@@ -776,7 +896,7 @@ export function planPurchaseJournal(journal: PurchaseJournal, context: PlanConte
     }
 
     if (!known && !toCreate.has(draft.supplierKey)) toCreate.set(draft.supplierKey, proposed);
-    invoices.push({ draft, supplierId: known?.id ?? null, dueDay, withholding });
+    invoices.push({ draft: planned, supplierId: known?.id ?? null, dueDay, withholding });
   }
 
   const sum = (pick: (plan: InvoicePlan) => number | null) => invoices.reduce((total, plan) => total + cents(pick(plan) ?? 0), 0) / 100;

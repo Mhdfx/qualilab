@@ -1,9 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
 import ExcelJS from "exceljs";
+import JSZip from "jszip";
 
 vi.mock("server-only", () => ({}));
 
-const { MAX_IMPORT_SHEETS, XLS_REFUSAL, columnLetters, isMonthYearFormat, readImportFile, readImportWorkbook } = await import("./stock-import-file");
+const {
+  MAX_IMPORT_BYTES,
+  MAX_IMPORT_CELLS,
+  MAX_IMPORT_COLUMNS,
+  MAX_IMPORT_SHEETS,
+  MAX_IMPORT_UNCOMPRESSED,
+  MAX_SHEET_ROW,
+  XLS_REFUSAL,
+  columnLetters,
+  columnNumber,
+  importRequestTooLarge,
+  isMonthYearFormat,
+  readImportFile,
+  readImportWorkbook,
+  sanitizeWorksheetXml,
+} = await import("./stock-import-file");
 const { MAX_IMPORT_ROWS } = await import("./stock-import");
 
 /**
@@ -124,6 +140,135 @@ describe("readImportWorkbook", () => {
     const read = await readImportWorkbook(new File(["Date;Libellé\n2026-01-02;3/26\n"], "fiche.csv"), { sheets: "all" });
     if ("error" in read) throw new Error(read.error);
     expect(read.sheets).toEqual([expect.objectContaining({ name: "fiche", rows: [["Date", "Libellé"], ["2026-01-02", "3/26"]] })]);
+  });
+});
+
+/**
+ * Relecture du lot 6, constat 2 — tiny files that once held hundreds of Mo
+ * of memory, now refused (or bounded) before the work they would cause.
+ */
+describe("readImportWorkbook — limits checked before the work", () => {
+  async function withXml(edit: (xml: string) => string, extra?: (zip: JSZip) => void): Promise<File> {
+    const workbook = new ExcelJS.Workbook();
+    workbook.addWorksheet("Feuille").getCell("A1").value = "x";
+    const zip = await JSZip.loadAsync(await workbook.xlsx.writeBuffer());
+    const xml = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
+    zip.file("xl/worksheets/sheet1.xml", edit(xml));
+    extra?.(zip);
+    return new File([await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" })], "piege.xlsx");
+  }
+
+  it("refuses a filled cell far below the data (A1 + A1048576), naming the sheet", async () => {
+    const file = await xlsx((workbook) => {
+      const sheet = workbook.addWorksheet("Haute");
+      sheet.getCell("A1").value = "x";
+      sheet.getCell("A1048576").value = "y";
+    });
+    const started = Date.now();
+    expect(await readImportWorkbook(file, { sheets: "all" })).toEqual({ error: expect.stringMatching(/ligne 1048576 de la feuille « Haute »/) });
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("ignores the columns past the limit (a value in column XFD)", async () => {
+    const file = await xlsx((workbook) => {
+      const sheet = workbook.addWorksheet("Large");
+      for (let r = 1; r <= 50; r += 1) {
+        sheet.getCell(r, 1).value = `ligne ${r}`;
+        sheet.getCell(r, 16_384).value = 1;
+      }
+    });
+    const read = await readImportWorkbook(file, { sheets: "all" });
+    if ("error" in read) throw new Error(read.error);
+    expect(read.sheets[0].rows).toHaveLength(50);
+    expect(Math.max(...read.sheets[0].rows.map((row) => row.length))).toBe(1);
+    expect(MAX_IMPORT_COLUMNS).toBe(256);
+  });
+
+  it("refuses a huge merged range before exceljs expands it", async () => {
+    const file = await withXml((xml) =>
+      xml.replace("</sheetData>", '</sheetData><mergeCells count="1"><mergeCell ref="A1:XFD1048576"/></mergeCells>')
+    );
+    const started = Date.now();
+    expect(await readImportWorkbook(file, { sheets: "all" })).toEqual({ error: expect.stringContaining("Plage fusionnée trop grande") });
+    expect(Date.now() - started).toBeLessThan(2_000);
+    const quoted = await withXml((xml) => xml.replace("</sheetData>", "</sheetData><mergeCells count=\"1\"><mergeCell ref='A1:J20000'/></mergeCells>"));
+    expect(await readImportWorkbook(quoted, { sheets: "all" })).toEqual({ error: expect.stringContaining("Plage fusionnée trop grande") });
+  });
+
+  it("stops inflating a « zip bomb » at the limit", async () => {
+    const file = await withXml(
+      (xml) => xml,
+      (zip) => zip.file("xl/media/remplissage.bin", new Uint8Array(MAX_IMPORT_UNCOMPRESSED + 1024))
+    );
+    expect(file.size).toBeLessThan(MAX_IMPORT_BYTES);
+    expect(await readImportWorkbook(file, { sheets: "all" })).toEqual({ error: expect.stringContaining("trop volumineux une fois décompressé") });
+  });
+
+  it("counts the sheets in the archive, before exceljs reads them", async () => {
+    const file = await withXml(
+      (xml) => xml,
+      (zip) => {
+        for (let i = 2; i <= MAX_IMPORT_SHEETS + 1; i += 1) zip.file(`xl/worksheets/sheet${i}.xml`, "<worksheet/>");
+      }
+    );
+    expect(await readImportWorkbook(file, { sheets: "first" })).toEqual({ error: expect.stringContaining("Trop de feuilles") });
+  });
+
+  it("refuses an unreadable merged range", async () => {
+    const file = await withXml((xml) => xml.replace("</sheetData>", '</sheetData><mergeCells count="1"><mergeCell ref="A:A"/></mergeCells>'));
+    expect(await readImportWorkbook(file, { sheets: "all" })).toEqual({ error: expect.stringContaining("Cellules fusionnées illisibles") });
+  });
+
+  it("refuses a .csv with too many lines before parsing it", async () => {
+    const file = new File(["a\n".repeat(MAX_SHEET_ROW + 1)], "long.csv");
+    expect(await readImportWorkbook(file, { sheets: "all" })).toEqual({ error: expect.stringContaining("Trop de lignes dans le fichier") });
+  });
+});
+
+describe("sanitizeWorksheetXml", () => {
+  const sheet = (rows: string) => `<worksheet><sheetData>${rows}</sheetData></worksheet>`;
+
+  it("drops the formatting-only cells and the rows left empty, keeps the filled ones", () => {
+    const budget = { cells: 100 };
+    const out = sanitizeWorksheetXml(
+      sheet('<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" s="3"/></row><row r="2" ht="20" customHeight="1"><c r="A2" s="3"/></row><row r="9000" s="2"/>'),
+      "Feuille",
+      budget
+    );
+    expect(out).toBe(sheet('<row r="1"><c r="A1" t="s"><v>0</v></c></row>'));
+    expect(budget.cells).toBe(98);
+  });
+
+  it("spends one budget on cells, rows and merged cells, and refuses past it", () => {
+    expect(() => sanitizeWorksheetXml(sheet('<row r="1"><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c></row>'), "F", { cells: 2 })).toThrow(
+      "Trop de cellules"
+    );
+    expect(() =>
+      sanitizeWorksheetXml(`${sheet('<row r="1"><c r="A1"><v>1</v></c></row>')}<mergeCells><mergeCell ref="A1:B3"/></mergeCells>`, "F", { cells: 7 })
+    ).toThrow("Trop de cellules");
+    expect(MAX_IMPORT_CELLS).toBeGreaterThan(100_000);
+  });
+
+  it("refuses a filled row below the limit, the cell's or the row's", () => {
+    expect(() => sanitizeWorksheetXml(sheet(`<row r="${MAX_SHEET_ROW + 1}"><c r="A${MAX_SHEET_ROW + 1}"><v>1</v></c></row>`), "Bas", { cells: 10 })).toThrow(
+      `ligne ${MAX_SHEET_ROW + 1} de la feuille « Bas »`
+    );
+    expect(() => sanitizeWorksheetXml(sheet(`<row r="${MAX_SHEET_ROW + 1}"><c><v>1</v></c></row>`), "Bas", { cells: 10 })).toThrow("Bas");
+  });
+
+  it("reads the column letters back", () => {
+    expect(columnNumber("A")).toBe(1);
+    expect(columnNumber("AB")).toBe(28);
+    expect(columnNumber("XFD")).toBe(16_384);
+  });
+});
+
+describe("importRequestTooLarge", () => {
+  const request = (length: string | null) => new Request("http://localhost/api", { method: "POST", headers: length ? { "content-length": length } : {} });
+  it("tells a body announced too large, before it is read", () => {
+    expect(importRequestTooLarge(request(String(MAX_IMPORT_BYTES)))).toBe(false);
+    expect(importRequestTooLarge(request(String(MAX_IMPORT_BYTES + 1024 * 1024)))).toBe(true);
+    expect(importRequestTooLarge(request(null))).toBe(false);
   });
 });
 

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { parseIsoDay } from "./date-only";
 import { applyMovement, MAX_STOCK_LEVEL } from "./stock";
+import { roundMoney } from "./invoice-math";
 import { cellDay, cellNumber, headerKey, type SheetCell, type SheetRow } from "./stock-import";
 import { STOCK_EXPIRY_MONTH_END, STOCK_IMPORT_LEVEL_FROM_FILE, STOCK_IMPORT_QUANTITY_FROM_PRICE } from "./lab-proposals";
 
@@ -23,12 +24,21 @@ import { STOCK_EXPIRY_MONTH_END, STOCK_IMPORT_LEVEL_FROM_FILE, STOCK_IMPORT_QUAN
  *   Prix | Lieu de stockage. The package of « Entrée/C500 » gives the unit
  *   (« carton de 500 ») and its size.
  * - **Rows → movements**: an entry, an exit, or — a row with a « Stock »
- *   only — a « stock de départ » (an entry). Each with its day (never in the
- *   future), bon de commande, lot, expiry, quantity and unit price HT, and
- *   an `importKey` (a fingerprint of the tab, the variant and the row's
- *   cells) that makes a second import write nothing.
+ *   only, **the table's first** (by day) — a « stock de départ » (an entry);
+ *   a « Stock »-only row further down is a level check, not an entry (its
+ *   « Stock » feeds the final level). Each movement with its day (never in
+ *   the future), bon de commande, lot, expiry, quantity and unit price HT,
+ *   and an `importKey` — the tab, the variant, the day, the bon de commande
+ *   and the row's rank among those of the same day and bon — that makes a
+ *   second import write nothing, **even after a row was edited** (a price
+ *   added, a lot fixed: the plan reports it « modifiée », never re-imports
+ *   it — relecture du lot 6, constat 5).
  * - **Quantities against prices** (`STOCK_IMPORT_QUANTITY_FROM_PRICE`):
- *   `reconcile`.
+ *   `reconcile`; then, in a table with a package size, a row whose prices
+ *   settle nothing is never imported as written (constat 4): read in pieces
+ *   when the table's other rows are (« pieces-deduites »), else refused —
+ *   « à saisir à la main »; an exit of a table counted in pieces is refused
+ *   too (pieces or packages: nothing tells).
  * - Texts outside any table are ignored and listed; every doubt is a
  *   warning in French, with its tab and line.
  */
@@ -44,8 +54,14 @@ export type PriceCheck =
   | "prix-piece"
   /** total = (quantité ÷ taille) × unitaire: the quantity was in pieces. */
   | "quantite-pieces"
-  /** the two prices agree with none of the above: imported as written. */
+  /** the two prices agree with none of the above: imported as written (no package size). */
   | "non-departage"
+  /**
+   * the prices agree with nothing, in a table counted in pieces elsewhere: the
+   * quantity read in pieces like its neighbours (q ÷ size packages), its price
+   * left out (relecture du lot 6, constat 4).
+   */
+  | "pieces-deduites"
   /** one price only: nothing to check. */
   | "un-prix"
   | "sans-prix";
@@ -99,13 +115,19 @@ export type StockWorkbook = {
   refused: WorkbookNote[];
   /** Imported, with a doubt to read. */
   warnings: WorkbookNote[];
+  /** The first `MAX_IGNORED` texts outside any table… */
   ignored: IgnoredText[];
+  /** …and how many there are in all. */
+  ignoredCount: number;
   /** Tabs holding no table. */
   emptySheets: string[];
 };
 
+/** Texts outside the tables listed (the rest only counted): the answer and the screen stay small. */
+export const MAX_IGNORED = 200;
+
 const MAX_PRICE = 9_999_999_999.99;
-const round2 = (value: number) => Math.round(value * 100) / 100;
+const round2 = roundMoney;
 const isBlank = (value: SheetCell | undefined) => value === null || value === undefined || String(value).trim() === "";
 const text = (value: SheetCell | undefined) => (isBlank(value) ? "" : String(value).trim());
 
@@ -228,6 +250,7 @@ export const PRICE_CHECK_LABELS: Record<PriceCheck, string> = {
   "prix-piece": "prix unitaire d'une pièce — ramené au conditionnement",
   "quantite-pieces": "quantité comptée en pièces — ramenée en conditionnements",
   "non-departage": "quantité × prix unitaire ≠ prix total — importé tel qu'écrit, à vérifier",
+  "pieces-deduites": "prix non concordants — quantité lue en pièces comme les autres lignes du tableau, prix non repris, à vérifier",
   "un-prix": "un seul prix — non vérifié",
   "sans-prix": "sans prix",
 };
@@ -372,16 +395,57 @@ function nameVariants(rows: SheetRow[], tables: Table[]) {
 
 // ————— Rows —————
 
-/** The fingerprint of a row (`StockMovement.importKey`, 64 hex). */
+/**
+ * The fingerprint of a row (`StockMovement.importKey`, 64 hex). « v2 »
+ * (relecture du lot 6, constat 5): the row's place — tab, variant, day, bon
+ * de commande, rank — not its cells, so that an edited row keeps its key.
+ */
 export function importKeyOf(parts: (string | number | null)[]): string {
-  return createHash("sha256").update(JSON.stringify(["lot6a-v1", ...parts])).digest("hex");
+  return createHash("sha256").update(JSON.stringify(["lot6a-v2", ...parts])).digest("hex");
 }
 
 const ORDER_REFERENCE_MAX = 64;
 const LOT_MAX = 191;
 
+/**
+ * What a table says before its rows are read: whether some entry is counted
+ * in pieces (`reconcile` → « quantite-pieces »), and its first day — the day
+ * of the « stock de départ ».
+ */
+function tableFacts(rows: SheetRow[], table: Table, today: string): { pieces: boolean; firstDay: string | null } {
+  const c = table.col;
+  const number = (row: SheetRow, index: number) => {
+    const value = index >= 0 ? row[index] : null;
+    if (isBlank(value)) return null;
+    const read = cellNumber(value ?? null);
+    return read !== null && read >= 0 ? read : null;
+  };
+  let pieces = false;
+  let firstDay: string | null = null;
+  for (let r = table.dataStart; r < table.dataEnd; r += 1) {
+    const row = rows[r] ?? [];
+    const [entry, exit, stock] = [number(row, c.entry), number(row, c.exit), number(row, c.stock)];
+    const day = c.date >= 0 ? cellDay(row[c.date] ?? null) : null;
+    if (day && day <= today && (entry || exit || stock) && (firstDay === null || day < firstDay)) firstDay = day;
+    if (entry && STOCK_IMPORT_QUANTITY_FROM_PRICE && table.pkg.size && table.pkg.size > 1) {
+      if (reconcile(entry, table.pkg.size, number(row, c.unit), number(row, c.total)).check === "quantite-pieces") pieces = true;
+    }
+  }
+  return { pieces, firstDay };
+}
+
 export function parseStockWorkbook(sheets: ImportSheetInput[], options: { today: string }): StockWorkbook {
-  const out: StockWorkbook = { sheets: sheets.length, tables: 0, dataRows: 0, articles: [], refused: [], warnings: [], ignored: [], emptySheets: [] };
+  const out: StockWorkbook = {
+    sheets: sheets.length,
+    tables: 0,
+    dataRows: 0,
+    articles: [],
+    refused: [],
+    warnings: [],
+    ignored: [],
+    ignoredCount: 0,
+    emptySheets: [],
+  };
   const names = new Map<string, string>();
 
   for (const sheet of sheets) {
@@ -422,8 +486,20 @@ export function parseStockWorkbook(sheets: ImportSheetInput[], options: { today:
         lastStockLine: null,
       };
       const seen = new Map<string, number>();
+      const ranks = new Map<string, number>();
+      const facts = tableFacts(rows, table, options.today);
       let lastStockDay: string | null = null;
       const c = table.col;
+      const size = table.pkg.size;
+      const piecesFix = STOCK_IMPORT_QUANTITY_FROM_PRICE && size !== null && size > 1;
+      // The latest row's « Stock » (by day, then by line): the level the sheet ends on.
+      const noteStock = (stock: number | null, day: string, line: number) => {
+        if (stock !== null && (lastStockDay === null || day >= lastStockDay)) {
+          article.lastStock = round2(stock);
+          article.lastStockLine = line;
+          lastStockDay = day;
+        }
+      };
 
       for (let r = table.dataStart; r < table.dataEnd; r += 1) {
         const row = rows[r] ?? [];
@@ -442,6 +518,12 @@ export function parseStockWorkbook(sheets: ImportSheetInput[], options: { today:
         if (location) article.location = location.slice(0, 191);
 
         const day = cellDay(inside(c.date) ?? null);
+        // The row's rank among those of its day and bon de commande — counted
+        // before any refusal, so that a row fixed later does not shift the others.
+        const orderKey = text(inside(c.label)).slice(0, ORDER_REFERENCE_MAX).toLowerCase();
+        const rankKey = JSON.stringify([day, orderKey]);
+        const rank = (ranks.get(rankKey) ?? 0) + 1;
+        ranks.set(rankKey, rank);
         const entryRaw = inside(c.entry);
         const exitRaw = inside(c.exit);
         const stockRaw = inside(c.stock);
@@ -508,18 +590,36 @@ export function parseStockWorkbook(sheets: ImportSheetInput[], options: { today:
         if (stock !== null && STOCK_IMPORT_QUANTITY_FROM_PRICE && table.stockMl && table.pkg.volumeMl) {
           stock = round2((stock * table.stockMl) / table.pkg.volumeMl);
         }
-        const baseKey = [headerKey(sheetName), headerKey(table.variant ?? ""), day, orderReference, lot, text(expiryRaw), text(entryRaw), text(exitRaw), text(stockRaw), text(inside(c.unit)), text(inside(c.total))];
-        const signature = JSON.stringify(baseKey);
+        const signature = JSON.stringify([day, orderReference, lot, text(expiryRaw), text(entryRaw), text(exitRaw), text(stockRaw), text(inside(c.unit)), text(inside(c.total))]);
         const occurrence = (seen.get(signature) ?? 0) + 1;
         seen.set(signature, occurrence);
         if (occurrence > 1) warn(line, "Ligne identique à une ligne précédente du même tableau — importée elle aussi.");
 
         const common = { sheet: sheetName, line, day, orderReference, lot, expiryDay };
-        const opening = !entry && !exit && stock !== null;
+        const keyOf = (kind: "E" | "S") => importKeyOf([headerKey(sheetName), headerKey(table.variant ?? ""), day, orderKey, rank, kind]);
+        const stockOnly = !entry && !exit && stock !== null;
+        // Only a row of the table's first day is its « stock de départ » (one); later, a level check.
+        const opening = stockOnly && day === facts.firstDay && !article.movements.some((movement) => movement.opening);
+        if (stockOnly && !opening) {
+          warn(line, "« Stock » seul après le début du tableau — lu comme un contrôle du niveau, pas comme une entrée.");
+        }
         const quantityWritten = entry ?? (opening ? stock : null);
         let entryQuantity: number | null = null;
         if (quantityWritten) {
-          const result = reconcile(quantityWritten, table.pkg.size, unitPrice, totalPrice);
+          let result = reconcile(quantityWritten, size, unitPrice, totalPrice);
+          if (result.check === "non-departage" && piecesFix) {
+            if (facts.pieces && quantityWritten >= (size as number)) {
+              result = { quantity: round2(quantityWritten / (size as number)), unitPriceHT: null, check: "pieces-deduites" };
+            } else {
+              refuse(
+                line,
+                `Quantité × prix unitaire ≠ prix total (${quantityWritten} × ${unitPrice} ≠ ${totalPrice}) pour un article en « ${table.pkg.unit} » — ` +
+                  "ligne non importée : quantité en pièces ou en conditionnements ? À saisir à la main après vérification."
+              );
+              noteStock(opening ? null : stock, day, line);
+              continue;
+            }
+          }
           if (result.check === "non-departage") {
             warn(line, `Quantité × prix unitaire ≠ prix total — importée telle qu'écrite (${quantityWritten} × ${unitPrice} ≠ ${totalPrice}), à vérifier.`);
           } else if (result.check !== "ok" && result.check !== "sans-prix" && result.check !== "un-prix") {
@@ -533,7 +633,7 @@ export function parseStockWorkbook(sheets: ImportSheetInput[], options: { today:
           }
           // The « Stock » written in pieces follows the quantity back to packages.
           if (stock !== null && STOCK_IMPORT_QUANTITY_FROM_PRICE && table.pkg.size && table.pkg.size > 1) {
-            if (result.check === "quantite-pieces" && !opening) {
+            if ((result.check === "quantite-pieces" || result.check === "pieces-deduites") && !opening) {
               if (stock >= table.pkg.size) stock = round2(stock / table.pkg.size);
             }
             else if (!opening && entry && close(stock, entry * table.pkg.size) && !close(stock, entry)) {
@@ -549,10 +649,12 @@ export function parseStockWorkbook(sheets: ImportSheetInput[], options: { today:
             quantity: entryQuantity,
             unitPriceHT,
             check: result.check,
-            importKey: importKeyOf([...baseKey, "E", occurrence]),
+            importKey: keyOf("E"),
           });
         }
-        if (exit) {
+        if (exit && piecesFix && facts.pieces) {
+          refuse(line, "Sortie d'un tableau dont des entrées sont comptées en pièces — non importée (pièces ou conditionnements ?) : à saisir à la main.");
+        } else if (exit) {
           article.movements.push({
             ...common,
             type: "SORTIE",
@@ -560,15 +662,10 @@ export function parseStockWorkbook(sheets: ImportSheetInput[], options: { today:
             quantity: round2(exit),
             unitPriceHT: null,
             check: "sans-prix",
-            importKey: importKeyOf([...baseKey, "S", occurrence]),
+            importKey: keyOf("S"),
           });
         }
-        // The latest row's « Stock » (by day, then by line): the level the sheet ends on.
-        if (stock !== null && (lastStockDay === null || day >= lastStockDay)) {
-          article.lastStock = round2(stock);
-          article.lastStockLine = line;
-          lastStockDay = day;
-        }
+        noteStock(stock, day, line);
       }
       out.articles.push(article);
     }
@@ -577,7 +674,8 @@ export function parseStockWorkbook(sheets: ImportSheetInput[], options: { today:
     rows.forEach((row, r) =>
       (row ?? []).forEach((value, c) => {
         if (!isBlank(value) && !consumed.has(`${r},${c}`)) {
-          out.ignored.push({ sheet: sheetName, cell: `${letters(c)}${r + 1}`, text: text(value).slice(0, 80) });
+          out.ignoredCount += 1;
+          if (out.ignored.length < MAX_IGNORED) out.ignored.push({ sheet: sheetName, cell: `${letters(c)}${r + 1}`, text: text(value).slice(0, 80) });
         }
       })
     );
@@ -631,6 +729,30 @@ export type PlannedMovement = WorkbookMovement & {
 
 export type PlannedAdjustment = { from: number; to: number; day: string; importKey: string };
 
+/** A movement already imported, as the database holds it (`importKey` known). */
+export type ImportedMovement = {
+  type: "ENTREE" | "SORTIE" | "AJUSTEMENT";
+  quantity: number;
+  lot: string | null;
+  expiryDay: string | null;
+  unitPriceHT: number | null;
+};
+
+/** What changed in the file since a row was imported, « quantité 3 → 4 » …; empty when nothing did. */
+export function rowChanges(before: ImportedMovement, row: WorkbookMovement): string[] {
+  const shown = (value: string | number | null) => (value === null ? "vide" : String(value));
+  const changes: string[] = [];
+  if (before.type !== row.type) changes.push(`sens ${before.type === "ENTREE" ? "entrée" : "sortie"} → ${row.type === "ENTREE" ? "entrée" : "sortie"}`);
+  if (Math.round(before.quantity * 100) !== Math.round(row.quantity * 100)) changes.push(`quantité ${shown(before.quantity)} → ${shown(row.quantity)}`);
+  if ((before.lot ?? null) !== (row.lot ?? null)) changes.push(`lot ${shown(before.lot)} → ${shown(row.lot)}`);
+  if ((before.expiryDay ?? null) !== (row.expiryDay ?? null)) changes.push(`expiration ${shown(before.expiryDay)} → ${shown(row.expiryDay)}`);
+  const price = (value: number | null) => (value === null ? null : Math.round(value * 100));
+  if (row.type === "ENTREE" && price(before.unitPriceHT) !== price(row.unitPriceHT)) {
+    changes.push(`prix unitaire HT ${shown(before.unitPriceHT)} → ${shown(row.unitPriceHT)}`);
+  }
+  return changes;
+}
+
 export type ArticlePlan = {
   article: WorkbookArticle;
   status: ArticleStatus;
@@ -642,6 +764,8 @@ export type ArticlePlan = {
   levelAfter: number;
   /** Rows already imported (their `importKey` is known). */
   skipped: number;
+  /** Of those, rows edited in the file since: reported « modifiée — à vérifier », never re-imported. */
+  changed: WorkbookNote[];
   refused: WorkbookNote[];
 };
 
@@ -654,6 +778,7 @@ export type WorkbookPlan = {
     movements: number;
     adjustments: number;
     skipped: number;
+    changed: number;
     refused: number;
   };
 };
@@ -682,16 +807,20 @@ export function workbookKeys(parsed: StockWorkbook): string[] {
  * archived, is left alone. The new rows go in date order (file order within
  * a day) from the article's level; a row dated before the article's latest
  * movement is refused (« à saisir à la main ») so that no recorded level is
- * rewritten; an exit beyond the level is refused. Then, with
- * `STOCK_IMPORT_LEVEL_FROM_FILE`, one adjustment dated `today` to the file's
- * last « Stock ».
+ * rewritten; an exit beyond the level is refused. A row already imported is
+ * skipped — and reported « modifiée — à vérifier » when its cells changed
+ * since (`imported` holds what was written; a `Set` of keys says only that
+ * they were). Then, with `STOCK_IMPORT_LEVEL_FROM_FILE`, one adjustment dated
+ * `today` to the file's last « Stock ».
  */
 export function planStockWorkbook(
   parsed: StockWorkbook,
   existing: Map<string, ExistingArticle>,
-  importedKeys: Set<string>,
+  imported: ReadonlyMap<string, ImportedMovement> | ReadonlySet<string>,
   today: string
 ): WorkbookPlan {
+  const isImported = (key: string) => imported.has(key);
+  const before = (key: string) => (imported instanceof Map ? (imported.get(key) ?? null) : null);
   const articles: ArticlePlan[] = parsed.articles.map((article) => {
     const known = existing.get(article.key) ?? null;
     const status: ArticleStatus = !known ? "a-creer" : known.archived ? "archive" : known.handMovements > 0 ? "suivi-a-la-main" : "reprise";
@@ -705,13 +834,23 @@ export function planStockWorkbook(
       adjustment: null,
       levelAfter: levelNow,
       skipped: 0,
+      changed: [],
       refused: [],
     };
     if (status === "suivi-a-la-main" || status === "archive") return plan;
 
     const fresh = article.movements.filter((movement) => {
-      if (!importedKeys.has(movement.importKey)) return true;
+      if (!isImported(movement.importKey)) return true;
       plan.skipped += 1;
+      const was = before(movement.importKey);
+      const changes = was ? rowChanges(was, movement) : [];
+      if (changes.length > 0) {
+        plan.changed.push({
+          sheet: movement.sheet,
+          line: movement.line,
+          message: `Ligne modifiée depuis l'import précédent (${changes.join(", ")}) — non réimportée, à vérifier : corrigez le mouvement à la main si besoin.`,
+        });
+      }
       return false;
     });
     const ordered = fresh.map((movement, index) => ({ movement, index })).sort((a, b) => a.movement.day.localeCompare(b.movement.day) || a.index - b.index);
@@ -733,7 +872,7 @@ export function planStockWorkbook(
     }
     if (STOCK_IMPORT_LEVEL_FROM_FILE && article.lastStock !== null && Math.abs(article.lastStock - level) >= 0.005) {
       const importKey = adjustmentKeyOf(article);
-      if (!importedKeys.has(importKey)) {
+      if (!isImported(importKey)) {
         plan.adjustment = { from: level, to: article.lastStock, day: today, importKey };
         level = article.lastStock;
       }
@@ -752,6 +891,7 @@ export function planStockWorkbook(
       movements: articles.reduce((sum, plan) => sum + plan.movements.length, 0),
       adjustments: articles.filter((plan) => plan.adjustment).length,
       skipped: articles.reduce((sum, plan) => sum + plan.skipped, 0),
+      changed: articles.reduce((sum, plan) => sum + plan.changed.length, 0),
       refused: parsed.refused.length + articles.reduce((sum, plan) => sum + plan.refused.length, 0),
     },
   };

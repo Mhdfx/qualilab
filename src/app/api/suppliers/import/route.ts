@@ -3,7 +3,7 @@ import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { parseSupplierSheet, splitKnown } from "@/lib/stock-import";
-import { readImportFile } from "@/lib/stock-import-file";
+import { importRequestTooLarge, readImportFile } from "@/lib/stock-import-file";
 
 /**
  * Import of the suppliers from the laboratory's « Journal Achat » workbook
@@ -17,6 +17,7 @@ export async function POST(request: Request) {
   const session = await requireApiRole("MAGASINIER", "ADMIN");
   if (session instanceof NextResponse) return session;
 
+  if (importRequestTooLarge(request)) return NextResponse.json({ error: "Fichier trop volumineux (8 Mo maximum)." }, { status: 413 });
   let form: FormData;
   try {
     form = await request.formData();

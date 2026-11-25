@@ -41,7 +41,7 @@ Interrupteurs (défaut) : `STOCK_IMPORT_QUANTITY_FROM_PRICE` ON, `STOCK_IMPORT_L
 | 6B — M16, M17 | ✅ 25/11 (commité après reprise) | tsc 0 / eslint 0 / vitest 221 / 4 005 ; V24B local 30/30 ; build ✅ | route `api/purchase-invoices/import`, `purchase-import-server.ts`, `PurchaseJournalImport.tsx` sur `/magasin/import`, « Reprise du journal des achats » dans la liste des factures, garde ajoutée à `price-access-guards.test.ts` |
 | 6C — N4, N5 | ✅ 25/11 | tsc 0 / eslint 0 / vitest 223 / 4 032 | `onssa-sections.ts` (+ test), `onssa-canevas-workbook.ts` (+ test), options de `buildOnssaReport`, cinq interrupteurs + `lab-proposals-6-back.test.ts` |
 | 6C — N6, N7 | ✅ 25/11 | tsc 0 / eslint 0 / vitest 223 / 4 032 ; V24C local 19/19 ; build ✅ | route `?format=canevas` / `extrait`, `/qualite/onssa` (deux téléchargements, aperçu III), `CANEVAS_2026_GROUPS` + bouton sur `/admin/onssa`, `onssa-guards.test.ts` étendu |
-| Relecture hostile + corrections | ⬜ | | |
+| Relecture hostile + corrections | ✅ 25/11 | tsc 0 / eslint 0 / vitest ✅ ; V24 A 23/23, V24B A 27/27 + B réel (0 écrit, rien en double), V24C 19/19, volume 4 000 factures 5,9 s ; build ✅ | 7 constats + bas + nits appliqués (« Lot 6 : corrections de la relecture ») ; migration `20261125020000_lot6_purchase_import_key` (locale) ; **l'historique publié garde deux valeurs : réécriture = décision du propriétaire** |
 | Recette locale V24 (synthétique) + répétition avec les vrais fichiers | ⬜ | | comptes seulement, aucune valeur |
 | `npm run build`, régressions v20 / v22 / v23 | ⬜ | | |
 | Documents (HANDOFF §5 §8 §9, TESTPLAN V24, DEPLOY « Lot 6 », PROGRESS) | ⬜ | | |
@@ -62,7 +62,7 @@ Interrupteurs (défaut) : `STOCK_IMPORT_QUANTITY_FROM_PRICE` ON, `STOCK_IMPORT_L
 - 25/11 — **analyse des trois fichiers reçus le 25/11** (lecture seule, Python `openpyxl` / `xlrd`) :
   « Consommable labo.xlsx » (21 onglets, 24 tableaux, 29 lignes de données ; aucune sortie écrite ;
   10 lignes sur 24 où les prix ne vérifient pas quantité × unitaire ; sous-colonnes de prix dans les
-  deux ordres ; expirations en 4 formats), « Journal Achat 2026.xls » (BIFF8, une feuille, 580 lignes
+  deux ordres ; expirations en 4 formats), « Journal Achat 2026.xls » (BIFF8, une feuille, quelques centaines de lignes
   remplies dont 11 lignes de modèle à zéro, plage utilisée ≈ 7 600 × 253 ; ≈ 18 factures sans numéro,
   4 groupes de doublons fournisseur + numéro, 62 lignes en euros sans DH, 118 TTC seul, 105 sans
   statut, 4 dates de paiement en texte, 14 paiements avant la facture, références bancaires dans
@@ -188,32 +188,30 @@ Interrupteurs (défaut) : `STOCK_IMPORT_QUANTITY_FROM_PRICE` ON, `STOCK_IMPORT_L
     fragments de dates génériques et des mots du modèle.
   - **Répétition avec « Journal Achat 2026.xlsx »** (copie `.xlsx` du `.xls`, dans `backups/`, ignorée ;
     vérifiée cellule par cellule contre le `.xls` sur les 13 colonnes : seules diffèrent 12 cellules date à
-    zéro), base locale, **comptes seulement**. Les écritures de la tentative interrompue (486 factures,
-    293 paiements, 84 fournisseurs) supprimées d'abord de la base locale pour repartir de zéro.
-    - Analyse : 580 lignes lues, 11 lignes de modèle ignorées, **486 factures à créer** (419 payées, 67 à
-      payer dont 2 en retard), 293 paiements, 18 numéros « SN-… » attribués, 84 fournisseurs à créer,
-      4 groupes « à trancher » ; **83 lignes refusées** : 70 « montant en DH manquant » (euros sans DH — le
-      §2.3 en comptait ≈ 62 ; recompté sur le `.xls` : 70, et 2 lignes portent euros et DH), 10 « à
-      trancher », 1 « HT + TVA ≠ TTC », 1 « montant », 1 « date » ; 59 à vérifier (14 paiements avant la
+    zéro), base locale, **comptes seulement**. Les écritures de la tentative interrompue (factures,
+    paiements, fournisseurs) supprimées d'abord de la base locale pour repartir de zéro.
+    - Analyse : toutes les lignes lues, 11 lignes de modèle ignorées, **toutes les factures lisibles à
+      créer** (payées et à payer, dont 2 en retard) avec leurs paiements, 18 numéros « SN-… » attribués,
+      chaque fournisseur du fichier à créer, 4 groupes « à trancher » ; lignes refusées : les lignes en
+      euros sans DH (« montant en DH manquant » — un peu plus que l'estimation du §2.3, recomptées sur le
+      `.xls` ; 2 lignes portent euros et DH), 10 « à trancher », 1 « HT + TVA ≠ TTC », 1 « montant », 1 « date » ; 59 à vérifier (14 paiements avant la
       facture, 18 sans numéro, 13 modes inconnus, 6 échéances, 3 modes vides, 2 mois, 2 paiements en
       plusieurs fois sans montants, 1 date de paiement illisible).
     - Lignes refusées (numéro de ligne : motif) — à trancher : 6, 7, 56, 57, 58, 61, 120, 121, 435, 437 ;
-      HT + TVA ≠ TTC : 28 ; montant : 450 ; date : 563 ; montant en DH manquant : 15, 17–23, 26, 34, 49,
-      53, 55, 67, 68, 89, 104, 108, 129, 144, 158, 159, 186, 187, 210, 222, 245, 246, 258–260, 289, 292,
-      305, 312, 313, 321, 365, 387, 397, 400–403, 415–417, 453, 470–474, 479, 489, 502, 504, 519,
-      532–534, 548, 552–554, 558, 562, 565, 569, 570.
-    - **Import** : 84 fournisseurs, 486 factures, 293 paiements (≈ 9 s) — exactement ce que l'analyse
-      annonçait ; **second import : 0 écrit** (486 déjà enregistrées, toutes identiques) ; base locale
-      73 → 559 factures, 12 → 305 paiements, 59 → 143 fournisseurs.
-    - Analyse seule avec un taux EUR → DH d'essai : les 70 lignes en euros deviennent importables (rien
+      HT + TVA ≠ TTC : 28 ; montant : 450 ; date : 563 ; montant en DH manquant : la liste que la recette
+      locale imprime (partie B).
+    - **Import** : les fournisseurs, factures et paiements annoncés (≈ 9 s) — exactement ce que l'analyse
+      annonçait ; **second import : 0 écrit** (toutes déjà enregistrées, identiques) ; base locale
+      augmentée d'autant.
+    - Analyse seule avec un taux EUR → DH d'essai : les lignes en euros deviennent importables (rien
       importé).
   - Recette `.ui-tests/v24-lot6b-local.mjs` (ignoré) : partie A synthétique 26/26 (gardes, `.xls`, taux
     illisible, en-tête absent, analyse avec et sans taux, import, contenu en base, audit, second import = 0,
     liste « Reprise du journal », écran), partie B (fichier réel) 4/4 — 30/30.
   - Contrôles : tsc 0, eslint 0, vitest 221 fichiers / 4 005 tests, `npm run build` ✅.
   - Reste : 6C (N4–N7), relecture hostile de l'ensemble, documents (HANDOFF, TESTPLAN V24, DEPLOY
-    « Lot 6 »), production. À poser au laboratoire : le taux EUR → DH à utiliser (ou les montants en DH des
-    70 lignes), les 4 groupes « à trancher » (E-4).
+    « Lot 6 »), production. À poser au laboratoire : le taux EUR → DH à utiliser (ou les montants en DH de
+    ces lignes), les 4 groupes « à trancher » (E-4).
 - 25/11 (nuit) — **lot 6C (N4–N7) construit et vérifié en local**, branche `lot2-retour-16-10`, rien poussé,
   production `c608cf7` non touchée. N8 (rapport annuel) non construit : attend E-8.
   - **Interrupteurs** (`lab-proposals.ts`, section « Lot 6C ») : `ONSSA_EXPORT_LAYOUT` « CANEVAS_2026 »,
@@ -295,3 +293,32 @@ Interrupteurs (défaut) : `STOCK_IMPORT_QUANTITY_FROM_PRICE` ON, `STOCK_IMPORT_L
     DEPLOY « Lot 6 »), production. À poser au laboratoire : E-6 (origine, chimie sur sa ligne, totaux sur toutes les
     colonnes), E-7 (qui remplit III / IV), E-8 (annuel).
 - 25/11 (16 h) — **PAUSE demandée par le propriétaire** (« we are going to finish later »). Fait et poussé : plan `c1548b9`, 6A `a4e13a9` (stock), 6B `35dd916` (journal des achats), 6C `f81f655` (ONSSA). Reste à faire, dans l'ordre : relecture hostile (correction : 6C était déjà commité en `f81f655` juste avant la pause, construit et vérifié en local) du lot, corrections, vérification finale (portes, `.ui-tests/v24-lot6-local.mjs`, régressions, documents DEPLOY « Lot 6 », TESTPLAN V24, HANDOFF), push ; puis production : tag `v1.11-avant-lot6` sur `c608cf7`, dump, `deploy.sh` (migration `20261125010000_lot6_imports`), import des vrais fichiers (analyse puis import), recette production. Rien n'est déployé : la production reste sur `c608cf7`.
+- 25/11 (soir) — **relecture hostile du lot 6 (`c608cf7..9c88af7`) appliquée**, branche `lot2-retour-16-10`, production
+  `c608cf7` non touchée, rien poussé. Les sept constats sont valides, tous corrigés (détail : HANDOFF §8, entrée
+  « Lot 6 — relecture hostile ») :
+  1. ONSSA III-6-3 : le filtre perdait les non-conformes **non annulés** (NULL en SQL) — `receptionNonConformWhere`,
+     test en logique SQL à trois valeurs ; base locale : 95 retenus au lieu de 61 (toutes périodes).
+  2. Lecteur de classeur : archive ouverte d'abord (JSZip, 64 Mo décompressés, 100 feuilles, cellules de mise en
+     forme retirées, ligne ≤ 20 000, fusion ≤ 100 000 cellules, budget de 250 000 cellules), 413 avant
+     `formData()`, `ignored` limité à 200. Fichiers piégés de la relecture : refusés en < 50 ms ; les trois fichiers
+     réels lus à l'identique (le journal en 0,4 s).
+  3. Dépôt public : la valeur de bon de commande du test et le prix cité dans `RETOUR-LABO-25-11.md` remplacés,
+     une note libre du journal aussi, les chiffres d'achats agrégés retirés de ce journal ;
+     `scripts/scan-lab-values.py` (`npm run scan:labo`) dans la routine de commit. **Les valeurs restent dans
+     l'historique déjà poussé (`origin/lot2-retour-16-10` = `9c88af7`) : réécrire l'historique et forcer la
+     poussée est la décision du propriétaire.**
+  4. Stock : une ligne aux prix incohérents dans un tableau à conditionnement est lue en pièces (« pieces-deduites »)
+     si le tableau l'est ailleurs, sinon refusée ; sortie d'un tableau en pièces refusée ; « Stock » seul = stock de
+     départ seulement au premier jour du tableau. Fichier réel : 27 mouvements, 2 ajustements, l'article 9 lu en
+     pièces.
+  5. Stock : `importKey` v2 (onglet, variante, jour, bon, rang) — une ligne modifiée est signalée « modifiée — à
+     vérifier », jamais réimportée.
+  6. Factures : `PurchaseInvoice.importKey` (migration additive appliquée en local) — fournisseur renommé, numéro
+     ajouté après coup, « SN-… » déplacés : plus de doublon ; rang « SN » > 1 signalé. Journal réel : toutes déjà
+     là, 0 écrit, aucun doublon (y compris les « SN-… » importés avant les clés).
+  7. Taux EUR → DH : sur le HT, gardé entre 8 et 14, sinon le taux saisi (ou aucun), signalé (1 ligne du fichier réel).
+  Bas : import partiel journalisé, écriture des factures par lots (4 000 factures synthétiques en 5,9 s), statut lu en
+  entier, « À payer » + date signalé, paiement unique ≠ TTC sans ligne de paiement, dates Excel tronquées au jour,
+  arrondi au centime sur la décimale écrite. Nits : `headerKey` replie œ/æ/ß. Contrôles : tsc 0, eslint 0, vitest
+  (tous verts), `npm run build` ✅. Reste : documents (TESTPLAN V24, DEPLOY « Lot 6 » avec les **deux** migrations,
+  PROGRESS), production.

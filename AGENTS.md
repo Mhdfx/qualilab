@@ -73,6 +73,11 @@ blind grepping.
    Never rely on hiding a button in the UI.
 4. **Sensitive data.** Health results + client data. Never log secrets, never
    weaken auth, never expose another role's data. Audit every mutation.
+   **The repository is public**: no value of the laboratory's files (names,
+   numbers, amounts, lots, figures) in code, tests or docs — tests use
+   synthetic data; `git add` then `npm run scan:labo` before every commit
+   that follows the lab's files (`scripts/scan-lab-values.py`, exact
+   substrings against `backups/fichiers-labo-*/`).
 5. **One source of truth per fact.** Business identity lives in
    `src/lib/company.ts`. Never hardcode company/legal facts in components.
 6. **Migrations, never manual schema edits.** Change `prisma/schema.prisma` →
@@ -163,6 +168,7 @@ npm run db:seed          # seed demo data
 npm run db:setup         # migrate deploy + seed
 npm run db:check         # scripts/check-db.ts — connectivity smoke test
 npm run db:studio        # prisma studio
+npm run scan:labo        # before a commit (staged lines): no value of the lab's files (backups/, ignored) in the PUBLIC repo
 ```
 
 Demo logins after seed (all password `password`): `pre1`, `recep1`, `param1`,

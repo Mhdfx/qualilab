@@ -123,7 +123,7 @@
 - **Sous-colonnes de prix inversées ou mal titrées** : l'ordre
   unitaire / total varie d'un tableau à l'autre, et dans quelques lignes la
   valeur titrée « unitaire » est plus grande que le « total ». 7 lignes ont
-  leurs prix en **texte** (« 21200 » saisi comme texte).
+  leurs prix en **texte** (un nombre saisi comme texte).
 - **Lignes incomplètes** : 3 lignes sans entrée mais avec un « Stock » (un
   stock de départ), 2 lignes sans aucune quantité (prix seuls), 2 lignes sans
   date (le libellé d'une variante, un nombre isolé).
@@ -212,8 +212,8 @@ le remplacer.
 - **Mode de paiement** : « Virement » (386), vide (101), « Prélèvement »,
   « Caisse » / « Espèce », « Carte … », « chèque », « Versement compte »,
   et surtout **des références bancaires** à la place du mode (« TRF… » ×
-  ≈ 30, deux autres familles de codes) et des notes libres (« fac payé 2* »,
-  « Virement + avance espèce »). Correspondance proposée : virement / TRF… →
+  ≈ 30, deux autres familles de codes) et des notes libres (une mention de paiement
+  partiel, « Virement + avance espèce »). Correspondance proposée : virement / TRF… →
   VIREMENT (le code en référence) ; caisse / espèce → ESPECES ; carte →
   CARTE ; chèque → CHEQUE ; prélèvement → VIREMENT, référence
   « Prélèvement » (hypothèse : `PaymentMode` n'a pas de prélèvement) ; tout

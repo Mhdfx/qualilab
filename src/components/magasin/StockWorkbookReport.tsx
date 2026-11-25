@@ -50,8 +50,12 @@ export type WorkbookReportData = {
     }[];
   }[];
   refused: { sheet: string; line: number; message: string }[];
+  /** Rows imported before and edited in the file since: never re-imported. */
+  changed: { sheet: string; line: number; message: string }[];
   warnings: { sheet: string; line: number; message: string }[];
+  /** The first texts outside the tables (`ignoredCount` in all). */
   ignored: { sheet: string; cell: string; text: string }[];
+  ignoredCount: number;
   emptySheets: string[];
   written: { articlesCreated: number; articlesResumed: number; movements: number; adjustments: number } | null;
 };
@@ -154,7 +158,7 @@ export function StockWorkbookReport({ report }: { report: WorkbookReportData }) 
                   <td className="px-3 py-1.5 text-right tabular-nums">
                     {movement.unitPriceHT !== null ? formatCurrency(movement.unitPriceHT) : ""}
                     {!["ok", "sans-prix", "un-prix"].includes(movement.check) && (
-                      <span className={`block text-[11px] ${movement.check === "non-departage" ? "text-rose-700" : "text-amber-700"}`}>{movement.checkLabel}</span>
+                      <span className={`block text-[11px] ${movement.check === "non-departage" || movement.check === "pieces-deduites" ? "text-rose-700" : "text-amber-700"}`}>{movement.checkLabel}</span>
                     )}
                   </td>
                   <td className="px-3 py-1.5 text-right tabular-nums text-slate-700">{quantity(movement.levelAfter)}</td>
@@ -188,6 +192,18 @@ export function StockWorkbookReport({ report }: { report: WorkbookReportData }) 
           </ul>
         </details>
       )}
+      {report.changed.length > 0 && (
+        <details open>
+          <summary className="cursor-pointer text-rose-700">Lignes modifiées depuis l&apos;import précédent — à vérifier ({report.changed.length})</summary>
+          <ul className="mt-2 list-disc pl-5 text-rose-700">
+            {report.changed.map((row) => (
+              <li key={`${row.sheet}-${row.line}-${row.message}`}>
+                « {row.sheet} », ligne {row.line} : {row.message}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {report.warnings.length > 0 && (
         <details>
           <summary className="cursor-pointer text-amber-800">À vérifier ({report.warnings.length})</summary>
@@ -200,10 +216,10 @@ export function StockWorkbookReport({ report }: { report: WorkbookReportData }) 
           </ul>
         </details>
       )}
-      {(report.ignored.length > 0 || report.emptySheets.length > 0) && (
+      {(report.ignoredCount > 0 || report.emptySheets.length > 0) && (
         <details>
           <summary className="cursor-pointer text-slate-600">
-            Textes hors tableau, non lus ({report.ignored.length}){report.emptySheets.length > 0 && ` · onglets sans tableau (${report.emptySheets.length})`}
+            Textes hors tableau, non lus ({report.ignoredCount}){report.emptySheets.length > 0 && ` · onglets sans tableau (${report.emptySheets.length})`}
           </summary>
           <ul className="mt-2 list-disc pl-5 text-slate-600">
             {report.ignored.map((row) => (
@@ -211,6 +227,9 @@ export function StockWorkbookReport({ report }: { report: WorkbookReportData }) 
                 « {row.sheet} », {row.cell} : {row.text}
               </li>
             ))}
+            {report.ignoredCount > report.ignored.length && (
+              <li>… et {plural(report.ignoredCount - report.ignored.length, "autre texte", "autres textes")} non listés.</li>
+            )}
             {report.emptySheets.map((sheet) => (
               <li key={`vide-${sheet}`}>« {sheet} » : aucun tableau (en-tête « Date », « Libellé », « Entrée » introuvable)</li>
             ))}

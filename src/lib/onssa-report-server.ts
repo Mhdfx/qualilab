@@ -14,6 +14,8 @@ import {
   eilRows,
   isEilOfMonth,
   onssaYearStart,
+  RECEPTION_REFUSALS,
+  receptionNonConformWhere,
   receptionRows,
   regulationRows,
   strainRows,
@@ -187,17 +189,13 @@ async function loadOnssaSections(
       },
     }),
     // Received in the month and declared non conforme at reception (a sample
-    // cancelled afterwards is counted below by its cancellation, not twice).
+    // rejected or destroyed at reception is counted below by its cancellation, not twice).
     prisma.sample.findMany({
-      where: {
-        receivedAt: range,
-        conformity: false,
-        NOT: { cancelReason: { in: ["REJETE_A_RECEPTION", "DETRUIT_A_RECEPTION"] } },
-      },
+      where: receptionNonConformWhere(range),
       select: { conformityReason: true },
     }),
     prisma.sample.findMany({
-      where: { cancelledAt: range, cancelReason: { in: ["REJETE_A_RECEPTION", "DETRUIT_A_RECEPTION"] } },
+      where: { cancelledAt: range, cancelReason: { in: [...RECEPTION_REFUSALS] } },
       select: { cancelReason: true },
     }),
     ONSSA_IV_NON_ACCREDITED

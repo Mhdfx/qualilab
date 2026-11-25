@@ -1678,6 +1678,11 @@ model PurchaseInvoice {
   /// achats »: the file and the day of the import that created this invoice;
   /// null = typed on the screen.
   importedFrom           String?      @db.VarChar(191)
+  /// Relecture du lot 6 (constat 6) — the import's fingerprint of the row:
+  /// the file's supplier name + the number, or (no number) the row's
+  /// supplier, day and amounts. A re-import finds the invoice by it, whatever
+  /// the supplier is called now; null = typed on the screen.
+  importKey              String?      @unique @db.VarChar(64)
 
   payments PurchasePayment[]
 

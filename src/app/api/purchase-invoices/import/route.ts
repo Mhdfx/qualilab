@@ -5,7 +5,7 @@ import { labDayOf } from "@/lib/lab-time";
 import { loadAchatSettings } from "@/lib/achat-settings";
 import { MAX_EXCHANGE_RATE } from "@/lib/achat-validation";
 import { cellNumber } from "@/lib/stock-import";
-import { readImportFile } from "@/lib/stock-import-file";
+import { importRequestTooLarge, readImportFile } from "@/lib/stock-import-file";
 import { parsePurchaseJournal } from "@/lib/purchase-import";
 import { purchasePlanFromDatabase, purchasePlanReport, purchasePlanWrites, writePurchasePlan } from "@/lib/purchase-import-server";
 
@@ -33,6 +33,7 @@ export async function POST(request: Request) {
   const session = await requireApiRole("MAGASINIER", "ADMIN");
   if (session instanceof NextResponse) return session;
 
+  if (importRequestTooLarge(request)) return NextResponse.json({ error: "Fichier trop volumineux (8 Mo maximum)." }, { status: 413 });
   let form: FormData;
   try {
     form = await request.formData();

@@ -7,8 +7,11 @@ import {
   parseStockWorkbook,
   planStockWorkbook,
   reconcile,
+  rowChanges,
   workbookKeys,
+  MAX_IGNORED,
   type ExistingArticle,
+  type ImportedMovement,
   type ImportSheetInput,
 } from "./stock-workbook-import";
 import type { SheetRow } from "./stock-import";
@@ -290,7 +293,7 @@ describe("parseStockWorkbook — tables", () => {
         [],
         header("Entrée/C500"),
         PRICE_SUB(true, 0),
-        row(0, ["2026-01-13", "70/25", null, "fin d'année", 10, null, 10, 1.1, 5500]),
+        row(0, ["2026-01-13", "93/24", null, "fin d'année", 10, null, 10, 1.1, 5500]),
         row(0, ["2026-02-03", null, null, null, null, 4, 6, null, null]),
       ])
     );
@@ -373,7 +376,7 @@ describe("planStockWorkbook (M12)", () => {
     // The last « Stock » written (2) is not entries − exits (5): one adjustment, dated today.
     expect(gants.adjustment).toEqual({ from: 5, to: 2, day: TODAY, importKey: adjustmentKeyOf(gants.article) });
     expect(tubes).toMatchObject({ status: "a-creer", levelAfter: 1, adjustment: null });
-    expect(plan.totals).toEqual({ toCreate: 2, resumed: 0, untouched: 0, movements: 3, adjustments: 1, skipped: 0, refused: 0 });
+    expect(plan.totals).toEqual({ toCreate: 2, resumed: 0, untouched: 0, movements: 3, adjustments: 1, skipped: 0, changed: 0, refused: 0 });
   });
 
   it("writes nothing the second time (every fingerprint known)", () => {
@@ -438,5 +441,133 @@ describe("planStockWorkbook (M12)", () => {
       ["SORTIE", 1],
     ]);
     expect(plan.refused).toEqual([{ sheet: "Gants", line: 4, message: expect.stringContaining("Stock insuffisant") }]);
+  });
+});
+
+/**
+ * Relecture du lot 6, constats 4 et 5 — a row whose prices settle nothing in
+ * a table counted in packages, the « Stock »-only rows, the exits of a table
+ * counted in pieces, and the fingerprint that survives an edited row.
+ */
+describe("parseStockWorkbook — rows whose prices settle nothing (constat 4)", () => {
+  it("reads in pieces a row of a table whose other entries are in pieces, its price left out", () => {
+    const parsed = parse(
+      sheet("Écouvillons", [
+        header("Entrée/C500"),
+        PRICE_SUB(true, 0),
+        // 1 000 pieces = 2 cartons × 80 = 160: counted in pieces.
+        row(0, ["2026-01-05", "41/26", null, null, 1_000, null, 2, 80, 160]),
+        // 1 500 × 33 ≠ 50, nothing settles it: 1 500 pieces like the row above.
+        row(0, ["2026-02-09", "44/26", null, null, 1_500, null, 5, 33, 50]),
+      ])
+    );
+    expect(parsed.articles[0].movements.map((movement) => [movement.quantity, movement.unitPriceHT, movement.check])).toEqual([
+      [2, 80, "quantite-pieces"],
+      [3, null, "pieces-deduites"],
+    ]);
+    expect(parsed.refused).toEqual([]);
+    expect(parsed.warnings.map((note) => [note.line, note.message])).toContainEqual([4, expect.stringContaining("Prix non concordants")]);
+  });
+
+  it("refuses such a row when nothing says the table is in pieces, its « Stock » still read", () => {
+    const parsed = parse(
+      sheet("Écouvillons", [
+        header("Entrée/C500"),
+        PRICE_SUB(true, 0),
+        row(0, ["2026-01-05", "41/26", null, null, 2, null, 2, 80, 160]),
+        row(0, ["2026-02-09", "44/26", null, null, 1_500, null, 4, 33, 50]),
+      ])
+    );
+    expect(parsed.articles[0].movements.map((movement) => movement.quantity)).toEqual([2]);
+    expect(parsed.refused).toEqual([{ sheet: "Écouvillons", line: 4, message: expect.stringContaining("ligne non importée : quantité en pièces ou en conditionnements ?") }]);
+    expect(parsed.articles[0]).toMatchObject({ lastStock: 4, lastStockLine: 4 });
+  });
+
+  it("keeps such a row as written where the article has no package size", () => {
+    const parsed = parse(sheet("Gants", [header("Entrée"), PRICE_SUB(true, 0), row(0, ["2026-01-05", "41/26", null, null, 7, null, 7, 33, 50])]));
+    expect(parsed.articles[0].movements).toEqual([expect.objectContaining({ quantity: 7, unitPriceHT: 33, check: "non-departage" })]);
+  });
+
+  it("refuses an exit of a table counted in pieces (pieces or packages: nothing tells)", () => {
+    const parsed = parse(
+      sheet("Écouvillons", [
+        header("Entrée/C500"),
+        PRICE_SUB(true, 0),
+        row(0, ["2026-01-05", "41/26", null, null, 1_000, null, 2, 80, 160]),
+        row(0, ["2026-01-20", null, null, null, null, 24, null, null, null]),
+      ])
+    );
+    expect(parsed.articles[0].movements.map((movement) => movement.type)).toEqual(["ENTREE"]);
+    expect(parsed.refused).toEqual([{ sheet: "Écouvillons", line: 4, message: expect.stringContaining("Sortie d'un tableau dont des entrées sont comptées en pièces") }]);
+  });
+
+  it("reads a « Stock »-only row as the opening stock only when it is the table's first, else as a level check", () => {
+    const parsed = parse(
+      sheet("Gants", [
+        header("Entrée"),
+        PRICE_SUB(true, 0),
+        row(0, ["2026-03-01", "41/26", null, null, 2, null, 6, null, null]),
+        // Written above, dated first: the opening stock.
+        row(0, ["2026-01-02", null, null, null, null, null, 4, null, null]),
+        // Further down: a level check, no entry.
+        row(0, ["2026-04-01", null, null, null, null, null, 5, null, null]),
+      ])
+    );
+    const [article] = parsed.articles;
+    expect(article.movements.map((movement) => [movement.day, movement.opening, movement.quantity])).toEqual([
+      ["2026-03-01", false, 2],
+      ["2026-01-02", true, 4],
+    ]);
+    expect(article).toMatchObject({ lastStock: 5, lastStockLine: 5 });
+    expect(parsed.warnings).toEqual([{ sheet: "Gants", line: 5, message: expect.stringContaining("contrôle du niveau") }]);
+  });
+
+  it("lists at most MAX_IGNORED texts outside the tables, and counts them all", () => {
+    const notes = Array.from({ length: MAX_IGNORED + 5 }, (_, index): SheetRow => [`note ${index}`]);
+    const parsed = parse(sheet("Notes", notes));
+    expect(parsed.ignored).toHaveLength(MAX_IGNORED);
+    expect(parsed.ignoredCount).toBe(MAX_IGNORED + 5);
+  });
+});
+
+describe("importKey — an edited row keeps its fingerprint (constat 5)", () => {
+  const tubes = (price: number | null, lot: string | null) =>
+    parse(
+      sheet("Tubes", [
+        header("Entrée/B50"),
+        PRICE_SUB(true, 0),
+        row(0, ["2026-04-24", "41/26", lot, null, 2, null, 2, price, price === null ? null : price * 2]),
+        row(0, ["2026-04-24", "41/26", null, null, 1, null, 3, null, null]),
+      ])
+    );
+
+  it("does not change with a price added or a lot fixed; does with the day, the bon or the rank", () => {
+    const before = tubes(null, null).articles[0].movements.map((movement) => movement.importKey);
+    const after = tubes(130, "L-7").articles[0].movements.map((movement) => movement.importKey);
+    expect(after).toEqual(before);
+    expect(new Set(before).size).toBe(2);
+  });
+
+  it("reports the edited row « modifiée — à vérifier », never re-imports it", () => {
+    const first = tubes(null, null);
+    const imported = new Map<string, ImportedMovement>(
+      first.articles[0].movements.map((movement) => [
+        movement.importKey,
+        { type: movement.type, quantity: movement.quantity, lot: movement.lot, expiryDay: movement.expiryDay, unitPriceHT: movement.unitPriceHT },
+      ])
+    );
+    const existing = new Map<string, ExistingArticle>([["tubes", { id: "t", name: "Tubes", quantity: 3, archived: false, handMovements: 0, lastDay: "2026-04-24" }]]);
+    const plan = planStockWorkbook(tubes(130, "L-7"), existing, imported, TODAY);
+    expect(plan.articles[0]).toMatchObject({ skipped: 2, movements: [], adjustment: null });
+    expect(plan.articles[0].changed).toEqual([
+      { sheet: "Tubes", line: 3, message: expect.stringContaining("Ligne modifiée depuis l'import précédent (lot vide → L-7, prix unitaire HT vide → 130)") },
+    ]);
+    expect(plan.totals).toMatchObject({ movements: 0, skipped: 2, changed: 1 });
+  });
+
+  it("rowChanges lists nothing for the row as imported", () => {
+    const [movement] = tubes(130, "L-7").articles[0].movements;
+    expect(rowChanges({ type: "ENTREE", quantity: 2, lot: "L-7", expiryDay: null, unitPriceHT: 130 }, movement)).toEqual([]);
+    expect(rowChanges({ type: "ENTREE", quantity: 3, lot: "L-7", expiryDay: null, unitPriceHT: 130 }, movement)).toEqual(["quantité 3 → 2"]);
   });
 });

@@ -9,7 +9,9 @@ import {
   parsePurchaseJournal,
   paymentModeOf,
   planPurchaseJournal,
+  EUR_RATE_PLAUSIBLE,
   type ExistingSupplier,
+  type ImportedInvoice,
   type JournalOptions,
   type PlanContext,
   type PurchaseJournal,
@@ -149,7 +151,8 @@ describe("parsePurchaseJournal — the rows of §2.3", () => {
       ["SN-2026-03-10-1", true],
       ["SN-2026-03-11-1", true],
     ]);
-    expect(kinds(journal.warnings)).toEqual(["sans-numero", "sans-numero", "sans-numero", "sans-numero"]);
+    // The second of the day for one supplier: « à vérifier » (its rank depends on the file's order).
+    expect(kinds(journal.warnings)).toEqual(["sans-numero", "sans-numero", "sans-numero-rang", "sans-numero", "sans-numero"]);
     // The same file read again gives the same numbers: the import stays idempotent.
     expect(parse(rows).drafts.map((draft) => draft.invoice.number)).toEqual(journal.drafts.map((draft) => draft.invoice.number));
     // « SKIP »: listed, not imported.
@@ -480,5 +483,150 @@ describe("importedFrom", () => {
     expect(importedFromLabel(value)).toBe("Reprise du journal des achats (Journal des achats.xlsx, 25/11/2026)");
     expect(importedFromLabel(null)).toBeNull();
     expect(importedFromValue("2026-11-25", "x".repeat(400))).toHaveLength(191);
+  });
+});
+
+/**
+ * Relecture du lot 6, constats 6 et 7 and the low ones — the import key that
+ * survives a renamed supplier and a number filled in later, the generated
+ * numbers that never collide, the euro rate checked, the « Statut » read
+ * whole, the payments the status contradicts, the centimes.
+ */
+describe("parsePurchaseJournal — relecture du lot 6", () => {
+  it("reads « Statut » whole: « payée partiellement », « payé 50 % » are refused, not paid", () => {
+    const journal = parse([
+      { ...base, status: "Payée partiellement" },
+      { ...base, number: "FA-102", status: "payé 50 %" },
+      { ...base, number: "FA-103", status: "Réglée" },
+      { ...base, number: "FA-104", status: "Payée en totalité" },
+    ]);
+    expect(journal.refused.map((note) => [note.line, note.kind])).toEqual([
+      [2, "statut"],
+      [3, "statut"],
+    ]);
+    expect(journal.drafts.map((draft) => draft.status)).toEqual(["PAYEE", "PAYEE"]);
+  });
+
+  it("an explicit « À payer » with a payment day stays to pay, the payment left out and flagged", () => {
+    const journal = parse([{ ...base, status: "À payer", paidOn: "2026-04-02" }]);
+    expect(journal.drafts[0]).toMatchObject({ status: "A_PAYER", payments: [], paidAt: null });
+    expect(kinds(journal.warnings)).toContain("paiement-ignore");
+  });
+
+  it("a single « date montant » whose amount is not the TTC records no payment row, flagged", () => {
+    const partial = parse([{ ...base, paidOn: "02/04/2026 500" }]);
+    expect(partial.drafts[0]).toMatchObject({ status: "PAYEE", payments: [], paidAt: "2026-04-02" });
+    expect(kinds(partial.warnings)).toContain("paiement-montants");
+    const whole = parse([{ ...base, paidOn: "02/04/2026 1200" }]);
+    expect(whole.drafts[0].payments).toEqual([{ day: "2026-04-02", amount: 1200 }]);
+  });
+
+  it("the euro rate: the file's on the HT, kept when plausible; else the screen's (or none), flagged", () => {
+    // 1 100 DH HT for 100 EUR (TTC 1 320): 11 on the HT, not 13,2 on the TTC.
+    const onHT = parse([{ ...base, ht: 1100, vat: 220, ttc: 1320, euro: 100 }]);
+    expect(onHT.drafts[0].invoice.exchangeRate).toBe(11);
+    // 1 200 DH for 10 EUR: 120 DH per euro — a slip.
+    const slip = parse([{ ...base, ht: null, vat: null, ttc: 1200, euro: 10 }]);
+    expect(slip.drafts[0].invoice.exchangeRate).toBeNull();
+    expect(slip.warnings.find((note) => note.kind === "taux-eur-improbable")?.message).toContain("120 DH pour 1 EUR — aucun taux enregistré");
+    const typed = parse([{ ...base, ht: null, vat: null, ttc: 1200, euro: 10 }], { eurRate: 10.9 });
+    expect(typed.drafts[0].invoice.exchangeRate).toBe(10.9);
+    expect(EUR_RATE_PLAUSIBLE).toEqual({ min: 8, max: 14 });
+  });
+
+  it("rounds a half-centime held below the half by the floating point up, as written", () => {
+    // 1 000,005 is held a hair below: rounded on its decimal, it is 1 000,01 — HT + TVA = TTC to the centime.
+    const journal = parse([{ ...base, ht: 1000.005, vat: 200, ttc: 1200.01 }]);
+    expect(journal.refused).toEqual([]);
+    expect(journal.drafts[0].invoice).toMatchObject({ amountHT: 1000.01, amount: 1200.01 });
+  });
+
+  it("keys a numbered row by its supplier and number, an unnumbered one by its fingerprint and rank", () => {
+    const journal = parse([base, { ...base, number: null }, { ...base, number: null }]);
+    const [numbered, sn1, sn2] = journal.drafts;
+    expect(numbered.importKey).not.toBe(numbered.printKey);
+    expect(sn1.importKey).toBe(sn1.printKey);
+    // Two identical unnumbered invoices: two keys.
+    expect(sn2.importKey).not.toBe(sn1.importKey);
+    expect(parse([{ ...base, supplier: "VERRERIE  alpha" }]).drafts[0].importKey).toBe(numbered.importKey);
+    expect(numbered.importKey).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe("planPurchaseJournal — import keys (constat 6)", () => {
+  const settings: WithholdingSettings = { scope: "AUCUN", base: "TVA", rateWithCertificate: 75, rateWithoutCertificate: 100, certificateValidityMonths: 6 };
+  const renamed: ExistingSupplier = {
+    id: "sup-alpha",
+    name: "Alpha Verrerie SARL",
+    archived: false,
+    paymentTermDays: 45,
+    withholdingSubject: false,
+    taxCertificateDate: null,
+    taxCertificateValidUntil: null,
+  };
+  const context = (over: Partial<PlanContext> = {}): PlanContext => ({ today: "2026-11-25", suppliers: new Map(), invoices: new Map(), settings, ...over });
+  const importedAs = (key: string, number: string, over: Partial<ImportedInvoice> = {}): [string, ImportedInvoice] => [
+    key,
+    { supplierId: "sup-alpha", supplierName: renamed.name, number, issueDay: "2026-03-10", amount: 1200, ...over },
+  ];
+
+  it("finds an imported invoice whatever its supplier is called now, and attaches the supplier's new ones to it", () => {
+    const first = parse([base]);
+    const again = parse([base, { ...base, number: "FA-102" }]);
+    const plan = planPurchaseJournal(
+      again,
+      context({
+        imported: new Map([importedAs(first.drafts[0].importKey, "FA-101")]),
+        suppliersById: new Map([["sup-alpha", renamed]]),
+      })
+    );
+    expect(plan.existing).toEqual([{ line: 2, supplierName: "Alpha Verrerie SARL", number: "FA-101", same: true }]);
+    expect(plan.suppliersToCreate).toEqual([]);
+    expect(plan.invoices.map((invoice) => [invoice.draft.invoice.number, invoice.supplierId])).toEqual([["FA-102", "sup-alpha"]]);
+  });
+
+  it("does not import twice an unnumbered row numbered since: skipped, the number to report by hand", () => {
+    const before = parse([{ ...base, number: null }]);
+    const after = parse([base]);
+    const plan = planPurchaseJournal(
+      after,
+      context({ imported: new Map([importedAs(before.drafts[0].importKey, "SN-2026-03-10-1")]), suppliersById: new Map([["sup-alpha", renamed]]) })
+    );
+    expect(plan.invoices).toEqual([]);
+    expect(plan.existing).toEqual([{ line: 2, supplierName: renamed.name, number: "SN-2026-03-10-1", same: true }]);
+    expect(plan.warnings.map((note) => [note.kind, note.message])).toContainEqual(["numero-ajoute", expect.stringContaining("(SN-2026-03-10-1 → FA-101)")]);
+  });
+
+  it("an unnumbered row removed from the file: the kept one is found, a new one takes the next free « SN-… »", () => {
+    const original = parse([{ ...base, number: null }, { ...base, number: null, ht: 50, vat: 10, ttc: 60 }]);
+    const [, second] = original.drafts;
+    // The first row is gone and a new one comes: the kept row is found by its fingerprint; the new one cannot take « -1 », held by the removed row's invoice.
+    const edited = parse([{ ...base, number: null, ht: 50, vat: 10, ttc: 60 }, { ...base, number: null, ht: 70, vat: 14, ttc: 84 }]);
+    const plan = planPurchaseJournal(
+      edited,
+      context({
+        suppliers: new Map([["verrerie alpha", { ...renamed, name: "Verrerie Alpha" }]]),
+        imported: new Map([importedAs(second.importKey, "SN-2026-03-10-2", { amount: 60 })]),
+        invoices: new Map([
+          ["sup-alpha|sn-2026-03-10-1", { issueDay: "2026-03-10", amount: 1200, status: "PAYEE" as const }],
+          ["sup-alpha|sn-2026-03-10-2", { issueDay: "2026-03-10", amount: 60, status: "PAYEE" as const }],
+        ]),
+      })
+    );
+    expect(plan.existing.map((row) => row.number)).toEqual(["SN-2026-03-10-2"]);
+    expect(plan.invoices.map((invoice) => invoice.draft.invoice.number)).toEqual(["SN-2026-03-10-3"]);
+  });
+
+  it("an « SN-… » imported before the keys were kept is found by its number, day and TTC", () => {
+    const journal = parse([{ ...base, number: null }]);
+    const plan = planPurchaseJournal(
+      journal,
+      context({
+        suppliers: new Map([["verrerie alpha", { ...renamed, name: "Verrerie Alpha" }]]),
+        invoices: new Map([["sup-alpha|sn-2026-03-10-1", { issueDay: "2026-03-10", amount: 1200, status: "PAYEE" as const }]]),
+      })
+    );
+    expect(plan.invoices).toEqual([]);
+    expect(plan.existing).toEqual([{ line: 2, supplierName: "Verrerie Alpha", number: "SN-2026-03-10-1", same: true }]);
   });
 });

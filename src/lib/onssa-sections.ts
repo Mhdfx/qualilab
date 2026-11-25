@@ -168,6 +168,27 @@ export function regulationRows(samples: OnssaSampleInput[], groups: OnssaGroupRe
   return [...counts.values()].sort((a, b) => b.samples - a.samples || collator.compare(a.label, b.label));
 }
 
+/** The cancellations III-6-3 counts as the reception's rejections and destructions. */
+export const RECEPTION_REFUSALS = ["REJETE_A_RECEPTION", "DETRUIT_A_RECEPTION"] as const satisfies readonly CancelReason[];
+
+/**
+ * III-6-3's non-conformities: the samples received in the month and
+ * declared non conformes at reception — **not cancelled** (the normal case,
+ * `cancelReason` empty) or cancelled for another reason than a rejection or
+ * a destruction at reception (those are counted by their cancellation, not
+ * twice). The empty `cancelReason` is named explicitly: in SQL
+ * `NOT (cancelReason IN (…))` is never true for a NULL, so a bare `NOT … in`
+ * (the filter of 25/11) dropped every sample not cancelled — the very rows
+ * the section lists (relecture du lot 6, constat 1).
+ */
+export function receptionNonConformWhere(range: { gte: Date; lt: Date }) {
+  return {
+    receivedAt: range,
+    conformity: false,
+    OR: [{ cancelReason: null }, { cancelReason: { notIn: [...RECEPTION_REFUSALS] } }],
+  };
+}
+
 export const UNCODED_RECEPTION_NC = "Non-conformité à la réception (motif non codé)";
 
 /**

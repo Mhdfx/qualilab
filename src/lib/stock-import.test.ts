@@ -36,6 +36,12 @@ describe("cell readers", () => {
     expect(cellDay("31/03/2027")).toBe("2027-03-31");
     expect(cellDay("1/2/27")).toBe("2027-02-01");
     expect(cellDay(46477)).toBe("2027-03-31");
+    // A date-time stored as a number keeps its day (relecture du lot 6): 17:00 is not tomorrow.
+    expect(cellDay(46477.75)).toBe("2027-03-31");
+    // The ligatures the database's collation unfolds.
+    expect(headerKey("Œufs & Cie")).toBe(headerKey("OEUFS & CIE"));
+    expect(headerKey("Straße Æther")).toBe("strasse aether");
+    expect(cellDay(46476.99999999999)).toBe("2027-03-31");
     expect(cellDay("31/02/2027")).toBeNull();
     expect(cellDay("bientôt")).toBeNull();
   });
