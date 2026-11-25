@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireApiRole } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { PROPOSED_ONSSA_GROUPS } from "@/lib/onssa-canevas";
+import { CANEVAS_2026_GROUPS, PROPOSED_ONSSA_GROUPS, missingGroups } from "@/lib/onssa-canevas";
 import { ONSSA_MAPPING_MESSAGES, validateGroupInput } from "@/lib/onssa-mapping";
 
 const GROUP_SELECT = { id: true, name: true, domain: true, sortOrder: true, active: true } as const;
@@ -12,8 +12,11 @@ const isUniqueConflict = (error: unknown) => (error as { code?: unknown })?.code
 /**
  * Lot 3E, N2 — creates a product group of the ONSSA report: `{ name, domain }`,
  * or `{ proposed: true }` for the proposed list (`PROPOSED_ONSSA_GROUPS`,
- * hypothèse R-22) — the names already there are skipped. Administrator only;
- * journalled ONSSA_GROUP_CREATED.
+ * hypothèse R-22) — the names already there are skipped — or `{ canevas: true }`
+ * for the groups of the canevas of 2026 (`CANEVAS_2026_GROUPS`, lot 6C N7):
+ * the missing ones only, after the others in the canevas' order; nothing is
+ * deleted, archived or renamed. Administrator only; journalled
+ * ONSSA_GROUP_CREATED.
  */
 export async function POST(request: Request) {
   const session = await requireApiRole("ADMIN");
@@ -26,11 +29,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: ONSSA_MAPPING_MESSAGES.invalid }, { status: 400 });
   }
 
-  if (body && typeof body === "object" && (body as Record<string, unknown>).proposed === true) {
+  const asked = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  if (asked.proposed === true || asked.canevas === true) {
+    const canevas = asked.canevas === true;
     const existing = await prisma.onssaProductGroup.findMany({ select: { name: true, sortOrder: true } });
-    const taken = new Set(existing.map((group) => group.name.toLocaleLowerCase("fr")));
     const start = existing.reduce((max, group) => Math.max(max, group.sortOrder), -1) + 1;
-    const missing = PROPOSED_ONSSA_GROUPS.filter((group) => !taken.has(group.name.toLocaleLowerCase("fr")));
+    const missing = canevas
+      ? missingGroups(CANEVAS_2026_GROUPS, existing)
+      : (() => {
+          const taken = new Set(existing.map((group) => group.name.toLocaleLowerCase("fr")));
+          return PROPOSED_ONSSA_GROUPS.filter((group) => !taken.has(group.name.toLocaleLowerCase("fr")));
+        })();
     if (missing.length === 0) return NextResponse.json({ created: [] });
     await prisma.onssaProductGroup.createMany({
       data: missing.map((group, i) => ({ name: group.name, domain: group.domain, sortOrder: Math.min(999, start + i) })),
@@ -45,7 +54,7 @@ export async function POST(request: Request) {
       actorId: session.id,
       action: "ONSSA_GROUP_CREATED",
       entity: "OnssaProductGroup",
-      metadata: { proposee: true, groupes: created.map((group) => group.name) },
+      metadata: { ...(canevas ? { canevas2026: true } : { proposee: true }), groupes: created.map((group) => group.name) },
     });
     return NextResponse.json({ created }, { status: 201 });
   }

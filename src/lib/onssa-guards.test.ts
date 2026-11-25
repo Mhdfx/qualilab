@@ -31,6 +31,17 @@ describe("the ONSSA report's rights (N3)", () => {
     expect(read("app/api/onssa/rapport/route.ts")).toMatch(/action: "ONSSA_REPORT_EXPORTED"/);
   });
 
+  it("serves both layouts behind the same guard, the format read and journalled (lot 6C, N6)", () => {
+    const source = read("app/api/onssa/rapport/route.ts");
+    // One guard, before the format is even read.
+    expect(source.match(/requireApiRole\(/g)).toHaveLength(1);
+    expect(source.indexOf("requireApiRole(")).toBeLessThan(source.indexOf("onssaExportFormat("));
+    expect(source).toMatch(/onssaExportFormat\(params\.get\("format"\)\)/);
+    expect(source).toMatch(/buildOnssaCanevasWorkbook\(/);
+    expect(source).toMatch(/buildOnssaWorkbook\(/);
+    expect(source).toMatch(/mois: month\.month,\s+format,/);
+  });
+
   it("is in the menus of those roles", () => {
     for (const role of ONSSA_REPORT_ROLES) {
       const hrefs = navFor(role).flatMap((section) => section.items.map((item) => item.href));

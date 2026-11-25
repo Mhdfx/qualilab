@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  CANEVAS_2026_GROUPS,
   ONSSA_COLUMNS,
+  ONSSA_GROUP_NAME_MAX,
   PROPOSED_ONSSA_GROUPS,
   isOnssaColumnKey,
+  missingGroups,
   matchText,
   normKey,
   proposeOnssaColumn,
@@ -158,5 +161,22 @@ describe("the proposed groups (hypothèse R-22)", () => {
     expect(new Set(PROPOSED_ONSSA_GROUPS.map((g) => g.name)).size).toBe(PROPOSED_ONSSA_GROUPS.length);
     expect(PROPOSED_ONSSA_GROUPS.at(-1)).toEqual({ name: "Eaux", domain: "EAU" });
     expect(PROPOSED_ONSSA_GROUPS.filter((g) => g.domain === "EAU")).toHaveLength(1);
+  });
+});
+
+describe("the groups of the canevas of 2026 (lot 6C, N7)", () => {
+  it("are the canevas' five, in its order, the water last", () => {
+    expect(CANEVAS_2026_GROUPS.map((group) => group.domain)).toEqual(["ALIMENTAIRE", "ALIMENTAIRE", "ALIMENTAIRE", "ALIMENTAIRE", "EAU"]);
+    expect(CANEVAS_2026_GROUPS[0].name).toBe("Produits végétaux et d'origine végétale");
+    expect(CANEVAS_2026_GROUPS.every((group) => group.name.length <= ONSSA_GROUP_NAME_MAX)).toBe(true);
+  });
+
+  it("creates only the missing ones, case, accents and spaces aside", () => {
+    const missing = missingGroups(CANEVAS_2026_GROUPS, [
+      { name: "produits vegetaux et d'origine  vegetale" },
+      { name: "Autre groupe" },
+    ]);
+    expect(missing.map((group) => group.name)).toEqual(CANEVAS_2026_GROUPS.slice(1).map((group) => group.name));
+    expect(missingGroups(CANEVAS_2026_GROUPS, [...CANEVAS_2026_GROUPS])).toEqual([]);
   });
 });

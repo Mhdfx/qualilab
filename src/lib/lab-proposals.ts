@@ -572,3 +572,48 @@ export const PURCHASE_IMPORT_EMPTY_STATUS_UNPAID = true;
  * retenue on any imported invoice.
  */
 export const PURCHASE_IMPORT_WITHHOLDING: "UNPAID_ONLY" | "NEVER" = "UNPAID_ONLY";
+
+// ————— Lot 6C — le nouveau canevas ONSSA (RETOUR-LABO-25-11.md §3, §4, §7) —————
+
+/**
+ * Lot 6C, N6: what « Télécharger » on /qualite/onssa gives. « CANEVAS_2026 »:
+ * the complete canevas received on 25/11 (7 sheets + « Notes Qualilab »,
+ * `onssa-canevas-workbook.ts`), the extract of 28/10 staying a secondary
+ * link. « EXTRAIT_2025 »: the lot 3E export (`onssa-workbook.ts`) first.
+ * Both stay reachable with `?format=canevas | extrait`.
+ */
+export const ONSSA_EXPORT_LAYOUT: "CANEVAS_2026" | "EXTRAIT_2025" = "CANEVAS_2026";
+
+/**
+ * Lot 6C, N5 (E-6): the canevas of 2026 has a row « Chimie alimentaire »
+ * of its own in II-2 (column Z only) and II-1. On: the chemistry analyses of
+ * every group go to that row (I-AGL « Chimie alimentaire » unchanged). Off:
+ * the chemistry stays in the row of the sample's group (lot 3E).
+ */
+export const ONSSA_CHEMISTRY_OWN_ROW = true;
+
+/**
+ * Lot 6C, N5 (E-6): « Origine » of II-1 — the tutorial reads it as the
+ * establishment's domain of activity, the month the laboratory filled writes
+ * « Agro-alimentaire » everywhere. On: an empty origin prints
+ * « Agro-alimentaire », a typed one prints as typed. Off: « Non précisée »
+ * (lot 3E).
+ */
+export const ONSSA_EMPTY_ORIGIN_AGRO = true;
+
+/**
+ * Lot 6C, N4/N5 (E-7): section III of the canevas. On: III-1 (the EIL),
+ * III-5 (sensitive germs detected), III-6-1 (the regulations chosen) and
+ * III-6-3 (reception non-conformities, refusals, destructions) are filled
+ * from the application — « RàS » when the month has none. Off: every table
+ * of III is left empty, for the laboratory to fill.
+ */
+export const ONSSA_SECTIONS_FROM_APP = true;
+
+/**
+ * Lot 6C, N5 (E-7): section IV (« autres analyses en développement »). On:
+ * the parameters marked « non accrédité » are listed (norm and « validé »
+ * blank, « accrédité » non). Off (proposed until the laboratory answers —
+ * its own list is not the catalogue's): IV is left empty, to fill.
+ */
+export const ONSSA_IV_NON_ACCREDITED = false;

@@ -1,13 +1,24 @@
 import "server-only";
 import { prisma } from "./prisma";
-import { ONSSA_COUNT_BY, ONSSA_OFFICIAL_CONTROL } from "./lab-proposals";
+import { ONSSA_COUNT_BY, ONSSA_IV_NON_ACCREDITED, ONSSA_OFFICIAL_CONTROL } from "./lab-proposals";
+import { labDayOf } from "./lab-time";
 import {
   buildOnssaReport,
   onssaGroupOf,
   type OnssaMonth,
   type OnssaReport,
+  type OnssaReportOptions,
   type OnssaSampleInput,
 } from "./onssa-report";
+import {
+  eilRows,
+  isEilOfMonth,
+  onssaYearStart,
+  receptionRows,
+  regulationRows,
+  strainRows,
+  type OnssaSections,
+} from "./onssa-sections";
 
 /**
  * Lot 3E, N3 — reads a month's samples for the ONSSA report (the screen and
@@ -32,9 +43,18 @@ export type OnssaMonthData = {
   pendingSamples: number | null;
   /** The month holds more samples than one report reads. */
   tooMany: boolean;
+  /** Lot 6C, N4 — section III / IV of the canevas of 2026; null unless asked. */
+  sections: OnssaSections | null;
 };
 
-export async function loadOnssaMonth(month: OnssaMonth): Promise<OnssaMonthData> {
+export type OnssaLoadOptions = {
+  /** Lot 6C: the canevas of 2026's reading (`canevasReportOptions`). */
+  report?: OnssaReportOptions;
+  /** Lot 6C, N4: also read what section III (and IV) of the canevas shows. */
+  sections?: boolean;
+};
+
+export async function loadOnssaMonth(month: OnssaMonth, options: OnssaLoadOptions = {}): Promise<OnssaMonthData> {
   const range = { gte: month.from, lt: month.until };
   const where =
     ONSSA_COUNT_BY === "VALIDATION"
@@ -50,6 +70,8 @@ export async function loadOnssaMonth(month: OnssaMonth): Promise<OnssaMonthData>
         id: true,
         code: true,
         controlCode: true,
+        receivedAt: true,
+        regulation: { select: { title: true } },
         client: { select: { name: true } },
         serie: {
           select: {
@@ -57,7 +79,7 @@ export async function loadOnssaMonth(month: OnssaMonth): Promise<OnssaMonthData>
             organismePreleveur: true,
             etablissement: true,
             origine: true,
-            site: { select: { name: true } },
+            site: { select: { name: true, city: true } },
           },
         },
         nature: { select: { label: true, onssaGroupId: true } },
@@ -106,6 +128,9 @@ export async function loadOnssaMonth(month: OnssaMonth): Promise<OnssaMonthData>
       organismePreleveur: official ? sample.serie.organismePreleveur : null,
       etablissement: official ? sample.serie.etablissement : null,
       origine: ONSSA_OFFICIAL_CONTROL ? sample.serie.origine : null,
+      receivedDay: sample.receivedAt ? labDayOf(sample.receivedAt) : null,
+      city: sample.serie.site?.city ?? null,
+      regulationTitle: sample.regulation?.title ?? null,
       results: sample.results.map((result) => ({
         parameterName: result.parameter.name,
         parameterColumn: result.parameter.onssaColumn,
@@ -120,5 +145,78 @@ export async function loadOnssaMonth(month: OnssaMonth): Promise<OnssaMonthData>
     };
   });
 
-  return { report: buildOnssaReport(inputs, groups), pendingSamples, tooMany };
+  const sections = options.sections ? await loadOnssaSections(month, inputs, groups) : null;
+  return { report: buildOnssaReport(inputs, groups, options.report), pendingSamples, tooMany, sections };
+}
+
+/** At most this many EIL in III-1 (a laboratory runs a few dozen a year). */
+const MAX_EIL = 500;
+
+/**
+ * Lot 6C, N4 — section III (and IV) of the canevas of 2026 for the month:
+ * the EIL of the year still in scope, the sensitive germs detected and the
+ * regulations of the month's declared samples (`inputs`), the reception's
+ * non-conformities, rejections and destructions of the month. Read-only.
+ */
+async function loadOnssaSections(
+  month: OnssaMonth,
+  inputs: OnssaSampleInput[],
+  groups: { id: string; name: string; domain: "ALIMENTAIRE" | "EAU"; sortOrder: number; active: boolean }[]
+): Promise<OnssaSections> {
+  const range = { gte: month.from, lt: month.until };
+  const yearStart = onssaYearStart(month);
+  const [campaigns, nonConform, refused, nonAccredited] = await Promise.all([
+    prisma.eilCampaign.findMany({
+      where: {
+        OR: [
+          { startDate: { gte: yearStart, lt: month.until } },
+          { status: { not: "CLOTUREE" }, OR: [{ startDate: null }, { startDate: { lt: month.until } }] },
+        ],
+      },
+      orderBy: [{ startDate: "asc" }, { name: "asc" }],
+      take: MAX_EIL,
+      select: {
+        name: true,
+        organizer: true,
+        scope: true,
+        startDate: true,
+        resultDate: true,
+        status: true,
+        outcome: true,
+        satisfactory: true,
+      },
+    }),
+    // Received in the month and declared non conforme at reception (a sample
+    // cancelled afterwards is counted below by its cancellation, not twice).
+    prisma.sample.findMany({
+      where: {
+        receivedAt: range,
+        conformity: false,
+        NOT: { cancelReason: { in: ["REJETE_A_RECEPTION", "DETRUIT_A_RECEPTION"] } },
+      },
+      select: { conformityReason: true },
+    }),
+    prisma.sample.findMany({
+      where: { cancelledAt: range, cancelReason: { in: ["REJETE_A_RECEPTION", "DETRUIT_A_RECEPTION"] } },
+      select: { cancelReason: true },
+    }),
+    ONSSA_IV_NON_ACCREDITED
+      ? prisma.analysisParameter.findMany({
+          where: { accreditation: "NON_ACCREDITE" },
+          orderBy: { name: "asc" },
+          select: { name: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  return {
+    eil: eilRows(campaigns.filter((campaign) => isEilOfMonth(campaign, yearStart, month.until))),
+    strains: strainRows(inputs, groups),
+    regulations: regulationRows(inputs, groups),
+    reception: receptionRows(
+      nonConform.map((sample) => ({ reason: sample.conformityReason })),
+      refused.flatMap((sample) => (sample.cancelReason ? [{ reason: sample.cancelReason }] : []))
+    ),
+    nonAccredited: nonAccredited.map((parameter) => parameter.name),
+  };
 }

@@ -330,4 +330,26 @@ export const PROPOSED_ONSSA_GROUPS: readonly { name: string; domain: OnssaDomain
   { name: "Eaux", domain: "EAU" },
 ];
 
+/**
+ * Lot 6C, N7 (RETOUR-LABO-25-11.md §3.3) — the product groups the canevas
+ * of 2026 fixes, in its order (II-2), its spelling corrected (« pêche »,
+ * « couscous, épices… »). « Chimie alimentaire » is not a group: the
+ * chemistry gets its own row from the report (`ONSSA_CHEMISTRY_OWN_ROW`).
+ * Created in one click on /admin/onssa (the missing ones only); families and
+ * types d'analyse are then reclassed there by the owner (S22).
+ */
+export const CANEVAS_2026_GROUPS: readonly { name: string; domain: OnssaDomain }[] = [
+  { name: "Produits végétaux et d'origine végétale", domain: "ALIMENTAIRE" },
+  { name: "Produits animaux et d'origine animale", domain: "ALIMENTAIRE" },
+  { name: "Produits de pêche et d'origine de la pêche", domain: "ALIMENTAIRE" },
+  { name: "Produits alimentaires (couscous, épices…) et produits dérivés", domain: "ALIMENTAIRE" },
+  { name: "Eaux d'élevage ou d'agro-industrie", domain: "EAU" },
+];
+
+/** The groups of `list` not yet among `existing` (case, accents and spaces aside). */
+export function missingGroups<T extends { name: string }>(list: readonly T[], existing: { name: string }[]): T[] {
+  const taken = new Set(existing.map((group) => matchText(group.name)));
+  return list.filter((group) => !taken.has(matchText(group.name)));
+}
+
 export const ONSSA_GROUP_NAME_MAX = 120;

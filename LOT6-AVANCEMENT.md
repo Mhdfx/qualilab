@@ -6,8 +6,8 @@
 > ONSSA, N4–N8), §4 (interrupteurs), §8 (migration), §10 (gestes du propriétaire S18–S22),
 > §11 (questions E-1 … E-8).
 > Production : **`c608cf7`** — non touchée par le lot 6.
-> **État (25/11) : 6A (M9, M13, M10–M14) et 6B (M15–M17) construits, vérifiés en local et commités —
-> non poussés, non déployés ; 6C reste à construire.**
+> **État (25/11) : 6A (M9, M13, M10–M14), 6B (M15–M17) et 6C (N4–N7) construits, vérifiés en local et
+> commités — non poussés, non déployés ; restent la relecture hostile, les documents et la production.**
 > Fichiers du laboratoire : `backups/fichiers-labo-25-11/` (ignoré par git) ; **dépôt public** :
 > aucune valeur de ces fichiers dans le code, les tests, les documents ni ce journal (comptes de
 > lignes seulement).
@@ -19,7 +19,7 @@
 | 6 — commun | M9 lecteur de classeur (toutes les feuilles, plage étendue, `.xls` refusé avec le pas à pas) ; M13 migration additive (`StockMovement.orderReference`, `StockMovement.importKey` unique, `PurchaseInvoice.importedFrom`) | `C:\laragon\www\qualilab proto` | `lot2-retour-16-10` | ✅ local (25/11) |
 | 6A | M10 analyse « une feuille par article », M11 détection du format, M12 route d'import (analyse / import, idempotent, journal `STOCK_IMPORTED`), M14 écran + bon de commande dans le journal des mouvements | idem | idem | ✅ local (25/11) |
 | 6B | M15 analyse du journal des achats, M16 route `POST /api/purchase-invoices/import` (idempotent sur fournisseur + numéro, paiements, retenue §2.5, journal `PURCHASE_INVOICES_IMPORTED`), M17 écran | idem | idem | ✅ local (25/11) |
-| 6C | N4 données des sections III, N5 classeur au nouveau canevas (7 feuilles + « Notes Qualilab »), N6 route `?format=` et écran, N7 « Groupes du nouveau canevas » ; N8 (annuel) seulement sur E-8 | idem | idem | planifié |
+| 6C | N4 données des sections III, N5 classeur au nouveau canevas (7 feuilles + « Notes Qualilab »), N6 route `?format=` et écran, N7 « Groupes du nouveau canevas » ; N8 (annuel) seulement sur E-8 | idem | idem | ✅ local (25/11) — N8 non construit (E-8) |
 | Gestes | S18 dump, S19 import du stock + inventaire, S20 fournisseurs soumis, S21 conversion `.xlsx` + import des factures, S22 groupes ONSSA + export à valider | production, par les écrans | — | après le déploiement |
 
 Interrupteurs (défaut) : `STOCK_IMPORT_QUANTITY_FROM_PRICE` ON, `STOCK_IMPORT_LEVEL_FROM_FILE` ON,
@@ -39,8 +39,8 @@ Interrupteurs (défaut) : `STOCK_IMPORT_QUANTITY_FROM_PRICE` ON, `STOCK_IMPORT_L
 | 6A — M12, M14 | ✅ 25/11 (commité après reprise) | tsc 0 / eslint 0 / vitest ✅ ; V24 local 26/26 ; build ✅ | route `api/stock/import`, `stock-import-server.ts`, écran, journal (+ export), entrée saisie |
 | 6B — M15 | ✅ 25/11 (commité après reprise) | tsc 0 / eslint 0 / vitest ✅ | `purchase-import.ts` (+ test), trois interrupteurs + `lab-proposals-6-back.test.ts`, `withholdingFor` déplacé (pur) dans `withholding.ts` |
 | 6B — M16, M17 | ✅ 25/11 (commité après reprise) | tsc 0 / eslint 0 / vitest 221 / 4 005 ; V24B local 30/30 ; build ✅ | route `api/purchase-invoices/import`, `purchase-import-server.ts`, `PurchaseJournalImport.tsx` sur `/magasin/import`, « Reprise du journal des achats » dans la liste des factures, garde ajoutée à `price-access-guards.test.ts` |
-| 6C — N4, N5 | ⬜ | | |
-| 6C — N6, N7 | ⬜ | | |
+| 6C — N4, N5 | ✅ 25/11 | tsc 0 / eslint 0 / vitest 223 / 4 032 | `onssa-sections.ts` (+ test), `onssa-canevas-workbook.ts` (+ test), options de `buildOnssaReport`, cinq interrupteurs + `lab-proposals-6-back.test.ts` |
+| 6C — N6, N7 | ✅ 25/11 | tsc 0 / eslint 0 / vitest 223 / 4 032 ; V24C local 19/19 ; build ✅ | route `?format=canevas` / `extrait`, `/qualite/onssa` (deux téléchargements, aperçu III), `CANEVAS_2026_GROUPS` + bouton sur `/admin/onssa`, `onssa-guards.test.ts` étendu |
 | Relecture hostile + corrections | ⬜ | | |
 | Recette locale V24 (synthétique) + répétition avec les vrais fichiers | ⬜ | | comptes seulement, aucune valeur |
 | `npm run build`, régressions v20 / v22 / v23 | ⬜ | | |
@@ -214,3 +214,83 @@ Interrupteurs (défaut) : `STOCK_IMPORT_QUANTITY_FROM_PRICE` ON, `STOCK_IMPORT_L
   - Reste : 6C (N4–N7), relecture hostile de l'ensemble, documents (HANDOFF, TESTPLAN V24, DEPLOY
     « Lot 6 »), production. À poser au laboratoire : le taux EUR → DH à utiliser (ou les montants en DH des
     70 lignes), les 4 groupes « à trancher » (E-4).
+- 25/11 (nuit) — **lot 6C (N4–N7) construit et vérifié en local**, branche `lot2-retour-16-10`, rien poussé,
+  production `c608cf7` non touchée. N8 (rapport annuel) non construit : attend E-8.
+  - **Interrupteurs** (`lab-proposals.ts`, section « Lot 6C ») : `ONSSA_EXPORT_LAYOUT` « CANEVAS_2026 »,
+    `ONSSA_CHEMISTRY_OWN_ROW` ON, `ONSSA_EMPTY_ORIGIN_AGRO` ON, `ONSSA_SECTIONS_FROM_APP` ON,
+    `ONSSA_IV_NON_ACCREDITED` OFF ; chacun repassé dans l'autre sens dans `lab-proposals-6-back.test.ts`.
+  - **Comptage** (`onssa-report.ts`) : `buildOnssaReport(samples, groups, options)` — `chemistryOwnRow` (les analyses
+    de chimie de tous les groupes vont au bloc « Chimie alimentaire », `ONSSA_CHEMISTRY_GROUP`, dernier, présent même
+    à zéro ; synthèse, totaux par colonne et total inchangés ; un échantillon micro + chimie compte dans les deux
+    blocs, avec ses lignes II-1 dans chacun) et `emptyOrigin`. Sans options : le lot 3E à l'identique (l'extrait du
+    28/10 reste construit ainsi).
+  - **N4** `onssa-sections.ts` (pur) + `loadOnssaMonth(month, { report, sections })` : III-1 = EIL commencés dans
+    l'année jusqu'à la fin du mois, ou non clôturés (portée sinon nom, organisateur, jour sinon statut, résultat sinon
+    statut) ; III-5 = germes sensibles (`alertOnExceed`) lus détectés dans les échantillons déclarés (jour de
+    réception, germe, famille sinon type d'analyse, ville du site sinon « Non précisée ») ; III-6-1 = textes
+    réglementaires choisis sur les échantillons déclarés (par nombre) ; III-6-3 = non-conformités de réception du mois
+    par motif, puis rejets / destructions à la réception du mois ; IV (option) = paramètres « non accrédité ».
+  - **N5** `buildOnssaCanevasWorkbook(report, sections, meta)` : les 7 feuilles aux noms reçus (espaces finaux
+    compris) dans l'ordre, puis « Notes Qualilab » ; textes fixes (page de garde, plan, tutoriel, titres de III et
+    IV) ; I-AGL : échantillons en valeurs, analyses / NC en formules vers « II-AT » (résultat en cache), conformes =
+    analyses − NC partout ; II-1 côte à côte (contrôle officiel B–D, autocontrôle E, « RàS » quand vide, organisme
+    répété fusionné, total du groupe fusionné = formule vers II-2) + ligne « Total » ; II-2 : en-têtes et normes de
+    `ONSSA_COLUMNS`, lignes « Réalisées » / « NC », totaux de ligne toujours `SUM(C:Z)`, total par `SUMIF` ;
+    III-AD rempli (N4) ou « RàS », III-2 / III-3 / III-4 / III-6-2 / III-6-4 laissés à remplir ; IV vide (option
+    off) ; impression : II-AT en paysage, zones d'impression du canevas ; `fullCalcOnLoad`.
+  - **N6** `GET /api/onssa/rapport?mois=AAAA-MM&format=canevas|extrait` (défaut selon `ONSSA_EXPORT_LAYOUT`,
+    format inconnu → 400), même garde unique (VALIDATEUR, DIRECTION, ADMIN), journal `ONSSA_REPORT_EXPORTED`
+    + `format` ; fichier « rapport-activite-onssa-AAAA-MM.xlsx » (l'extrait garde « Rapport-ONSSA-AAAA-MM.xlsx ») ;
+    `/qualite/onssa` : téléchargement principal + lien vers l'autre format, carte « Sections III et IV du canevas »
+    (nombre de lignes par rubrique remplie, rubriques à compléter), le bloc chimie libellé à part.
+  - **N7** `CANEVAS_2026_GROUPS` (5 groupes, ordre du canevas, orthographe corrigée) + `missingGroups` ;
+    `POST /api/admin/onssa/groups { canevas: true }` crée les manquants à la suite (rien supprimé, archivé ni
+    renommé), journal `ONSSA_GROUP_CREATED` (`canevas2026`) ; `/admin/onssa` : encadré « Groupes du nouveau
+    canevas (n) » tant qu'il en manque.
+  - **Tests** : `onssa-canevas-workbook.test.ts` (noms et ordre des feuilles, page de garde, plan, tutoriel,
+    orientation / zones d'impression, en-têtes et normes de II-2, ligne chimie, II-1 côte à côte et « RàS », chaque
+    total de ligne = somme de ses cellules, formules de I-AGL **évaluées** sur les valeurs de II-AT = chiffres du
+    rapport, I-AGL E7 = total II-1 = total II-2, NC, chimie dans les groupes quand l'option est coupée, aucun nom
+    de client ni d'établissement dans II-2, III rempli / « RàS », IV vide, notes), `onssa-sections.test.ts`,
+    `onssa-report.test.ts` (options), `onssa-canevas.test.ts` (groupes du canevas), `onssa-guards.test.ts`
+    (format, garde unique avant la lecture du format, journal), `vocabulary.test.ts` (exception : l'en-tête
+    officiel « Types de produits » de II-2). Exemples et essais datés d'un mois inventé (pas celui du fichier
+    reçu). Contrôles : tsc 0, eslint 0, vitest 223 fichiers / 4 032 tests, `npm run build` ✅.
+  - **Recette locale** `.ui-tests/v24-lot6c-local.mjs` (+ `v24-lot6c-proposals.ts`, ignorés) 19/19 : technicien et
+    réception refusés, validateur / direction / admin servis, format inconnu 400, extrait = Feuil1–3 + Notes, défaut =
+    canevas, journal avec le format, écran (deux liens, aperçu III), groupes du canevas créés une fois puis 0,
+    validateur refusé, journal ; puis le mois 2026-10 de la base locale **avec correspondances posées pour l'essai**
+    (natures aliments / eaux, familles par mots-clés, colonnes proposées des paramètres — remises comme avant à la
+    fin ; les 5 groupes du canevas restent dans la base locale) : 8 feuilles, I-AGL E7 = total II-1 = total II-2
+    (143 analyses), E12 = NC de II-2 (14), 15 lignes II-1.
+  - **Comparaison avec « NV CANEVAS RA LABO.xlsx »** (Python `openpyxl`, structure seulement ; le classeur local
+    enregistré hors du dépôt) : mêmes 7 noms de feuilles dans le même ordre ; P,Garde, Plan, TUTORIEL : mêmes textes,
+    fusions, largeurs, orientation et zones d'impression ; I-AGL : mêmes libellés, fusions, largeurs, zone
+    d'impression A1:E14 ; II-1 : mêmes en-têtes (A3, A4–F6) ; II-2 : les 23 germes, « chimie alimentaires » et les 23
+    normes identiques ; III-AD : mêmes titres et en-têtes de tableaux ; IV : mêmes en-têtes et fusions.
+    **Différences qui restent** :
+    1. En-têtes de II-2 sans l'espace final du canevas (6 cellules : « Coliformes Fécaux », « Entérobacteries »,
+       « Recherche Salmonella », « Pseudomonas », « chimie alimentaires », la norme « NM ISO 4833 ») —
+       `ONSSA_COLUMNS` les garde coupés depuis le lot 3E ; mots identiques.
+    2. Lignes de II-2 = groupes **actifs de l'administrateur** : tant que les anciens groupes (liste proposée du
+       lot 3E) ne sont pas archivés, ils s'impriment avant ceux du canevas (geste S22).
+    3. Ordre de II-1 = celui de II-2 (le canevas reçu range II-1 autrement : végétaux, pêche, animaux, eaux,
+       produits alimentaires, chimie).
+    4. II-1 : une ligne « Total » sous le tableau (le canevas met `SUM(F7:F36)` hors tableau, en G) ; pas de nombre
+       par ligne (comme le canevas) — il est dans « Notes Qualilab ».
+    5. Formules corrigées, volontairement : totaux de ligne de II-2 toujours sur C:Z (reçu : C:T, C:V, C:Y,
+       `=Z52:Z53`, `=Z53`), seconde ligne des eaux et de la chimie titrée « NC » (reçu : « Réalisées »), total de
+       II-2 par `SUMIF`, I-AGL « Conformes » = analyses − NC pour les trois colonnes (reçu : la chimie sans retrait),
+       I-AGL eaux = lignes des eaux de II-2 (reçu : `='II-AT  '!F34`, une cellule de II-1).
+    6. Positions : II-2 commence juste après II-1 (sa ligne dépend du nombre de lignes de II-1 ; reçu : ligne 40) ;
+       III-AD rangé à la suite selon le nombre de lignes (reçu : lignes fixes), zone d'impression jusqu'à L (reçu :
+       I) ; II-AT imprimé jusqu'à AA (reçu : AE).
+    7. Contenus non produits par le logiciel : III-2, III-3, III-4, III-6-2, III-6-4 et IV restent à remplir
+       (le canevas reçu les remplit à la main) ; III-1 n'a ni « Méthode utilisée » ni « Validation de la méthode »
+       (absentes du modèle des EIL : la méthode prend le nom de la campagne quand la portée remplit « Parametres »).
+    8. Styles simplifiés (Calibri, bordures fines, trois teintes) — le canevas reçu mêle Bahnschrift Light,
+       bordures moyennes et couleurs du thème.
+    9. Une 8e feuille « Notes Qualilab » (hors canevas, à ne pas envoyer).
+  - Reste : relecture hostile du lot 6 entier (et de ses correctifs), documents (HANDOFF §5 §8 §9, TESTPLAN V24,
+    DEPLOY « Lot 6 »), production. À poser au laboratoire : E-6 (origine, chimie sur sa ligne, totaux sur toutes les
+    colonnes), E-7 (qui remplit III / IV), E-8 (annuel).

@@ -2,15 +2,17 @@ import Link from "@/components/ui/AppLink";
 import { AlertTriangle, Download, FileSpreadsheet, FlaskConical, Landmark, ShieldAlert } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { formatDecimal } from "@/lib/labels";
-import { ONSSA_COUNT_BY, ONSSA_OFFICIAL_CONTROL } from "@/lib/lab-proposals";
+import { ONSSA_COUNT_BY, ONSSA_OFFICIAL_CONTROL, ONSSA_SECTIONS_FROM_APP } from "@/lib/lab-proposals";
 import {
-  ONSSA_EXPORT_PATH,
   ONSSA_MAPPING_PATH,
   ONSSA_REPORT_PATH,
+  defaultOnssaExportFormat,
   onssaCountBasisLabel,
+  onssaExportHref,
 } from "@/lib/onssa-access";
 import { ONSSA_DOMAIN_LABELS } from "@/lib/onssa-canevas";
-import { onssaMonth, previousOnssaMonth } from "@/lib/onssa-report";
+import { canevasReportOptions } from "@/lib/onssa-canevas-workbook";
+import { ONSSA_CHEMISTRY_GROUP, onssaMonth, previousOnssaMonth } from "@/lib/onssa-report";
 import { MAX_ONSSA_SAMPLES, loadOnssaMonth } from "@/lib/onssa-report-server";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
@@ -25,6 +27,11 @@ const n = (value: number) => formatDecimal(value, 0);
  * month's figures as the canevas counts them, what is left out and why, and
  * the Excel in the canevas' layout. The Direction, the administrator and the
  * validateur. Rules: `onssa-report.ts` (hypothèses, à confirmer par R-22).
+ *
+ * Lot 6C, N6: two downloads — the complete canevas of 2026 and the extract of
+ * 28/10, the first one chosen by `ONSSA_EXPORT_LAYOUT` — and what section III
+ * of the canevas will hold. The figures are read as the main download counts
+ * them (the chemistry's own row, the empty origin).
  */
 export default async function OnssaReportPage({
   searchParams,
@@ -39,8 +46,26 @@ export default async function OnssaReportPage({
   if (!month) throw new Error("Mois du rapport ONSSA introuvable.");
   const invalidMonth = requested !== null && onssaMonth(requested) === null;
 
-  const { report, pendingSamples, tooMany } = await loadOnssaMonth(month);
-  const exportHref = `${ONSSA_EXPORT_PATH}?mois=${month.month}`;
+  const mainFormat = defaultOnssaExportFormat();
+  const otherFormat = mainFormat === "canevas" ? "extrait" : "canevas";
+  const { report, pendingSamples, tooMany, sections } = await loadOnssaMonth(month, {
+    report: mainFormat === "canevas" ? canevasReportOptions() : undefined,
+    sections: true,
+  });
+  const exportHref = onssaExportHref(month.month, mainFormat);
+  const otherHref = onssaExportHref(month.month, otherFormat);
+  const formatLabel = { canevas: "Excel au nouveau canevas ONSSA (7 feuilles)", extrait: "Excel au format de l'extrait du 28/10 (3 feuilles)" };
+  const sectionLines = sections
+    ? [
+        { label: "III-1 — Essais interlaboratoires (EIL de l'année et EIL ouverts)", count: sections.eil.length },
+        { label: "III-5 — Souches isolées (germes sensibles détectés)", count: sections.strains.length },
+        { label: "III-6-1 — Textes réglementaires choisis", count: sections.regulations.length },
+        {
+          label: "III-6-3 — Non-conformités, refus et destructions à la réception (échantillons)",
+          count: sections.reception.reduce((sum, row) => sum + row.samples, 0),
+        },
+      ]
+    : [];
   const isAdmin = session.role === "ADMIN";
   const unmappedCount = report.unmapped.samples.length + report.unmapped.parameters.length;
   const synthesisColumns = [
@@ -62,7 +87,7 @@ export default async function OnssaReportPage({
               className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-brand shadow-sm transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-brand"
             >
               <Download className="h-4 w-4" aria-hidden="true" />
-              Télécharger l&apos;Excel
+              {mainFormat === "canevas" ? "Télécharger le canevas ONSSA" : "Télécharger l'Excel"}
             </a>
           )
         }
@@ -92,9 +117,18 @@ export default async function OnssaReportPage({
           </button>
           <p className="basis-full text-xs text-slate-500">
             Échantillons comptés par {onssaCountBasisLabel(ONSSA_COUNT_BY)}, une fois leur validation administrative
-            signée. Règles proposées en attendant la réponse du laboratoire (relance R-22) : voir la feuille « Notes » de
-            l&apos;Excel.
+            signée. Règles proposées en attendant la réponse du laboratoire : voir la feuille{" "}
+            {mainFormat === "canevas" ? "« Notes Qualilab » de l'Excel." : "« Notes » de l'Excel."}
           </p>
+          {!tooMany && (
+            <p className="basis-full text-sm text-slate-600">
+              Téléchargement principal : {formatLabel[mainFormat]}. Aussi disponible :{" "}
+              <a href={otherHref} className="font-semibold text-brand hover:underline">
+                {formatLabel[otherFormat]}
+              </a>
+              .
+            </p>
+          )}
           {invalidMonth && (
             <p id="onssa-mois-erreur" role="alert" className="basis-full text-sm text-rose-700">
               Le mois demandé n&apos;existe pas : {month.label} est affiché.
@@ -171,7 +205,9 @@ export default async function OnssaReportPage({
                     <th scope="row" className="py-2 pr-3 text-left font-medium text-slate-800">
                       {block.group.name}
                       <span className="block text-xs font-normal text-slate-500">
-                        {ONSSA_DOMAIN_LABELS[block.group.domain]}
+                        {block.group.id === ONSSA_CHEMISTRY_GROUP.id
+                          ? "Toutes les analyses de chimie (ligne propre du canevas)"
+                          : ONSSA_DOMAIN_LABELS[block.group.domain]}
                         {block.group.active ? "" : " · archivé"}
                       </span>
                     </th>
@@ -227,6 +263,34 @@ export default async function OnssaReportPage({
             </tbody>
           </table>
         </div>
+      </Card>
+
+      <Card className="mb-6 p-5">
+        <h2 className="text-base font-semibold text-slate-900">Sections III et IV du canevas</h2>
+        {ONSSA_SECTIONS_FROM_APP ? (
+          <>
+            <p className="mt-2 text-sm text-slate-600">
+              Remplies par le logiciel dans le nouveau canevas (« RàS » quand le mois n&apos;a rien) :
+            </p>
+            <ul className="mt-2 divide-y divide-slate-100 text-sm">
+              {sectionLines.map((line) => (
+                <li key={line.label} className="flex justify-between gap-3 py-1.5">
+                  <span className="text-slate-700">{line.label}</span>
+                  <span className="shrink-0 tabular-nums text-slate-500">
+                    {line.count === 0 ? "RàS" : `${n(line.count)} ligne${line.count > 1 ? "s" : ""}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-slate-600">Le logiciel ne remplit aucune rubrique de la section III.</p>
+        )}
+        <p className="mt-3 text-sm text-slate-600">
+          À compléter par le laboratoire avant l&apos;envoi : III-2 (accréditation, audits), III-3 (formations), III-4
+          (participations), III-6-2 (critères d&apos;acceptation des prélèvements), III-6-4 (réclamations) et la partie
+          IV.
+        </p>
       </Card>
 
       <Card className="p-5">

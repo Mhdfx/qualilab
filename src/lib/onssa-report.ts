@@ -130,6 +130,12 @@ export type OnssaSampleInput = {
   etablissement: string | null;
   origine: string | null;
   results: OnssaResultInput[];
+  /** Lot 6C, N4 — the laboratory's day of reception (« 2026-10-14 »), for III-5. */
+  receivedDay?: string | null;
+  /** Lot 6C, N4 — the city of the série's site, for III-5's « Région d'origine ». */
+  city?: string | null;
+  /** Lot 6C, N4 — the regulation the technical validator chose, for III-6-1. */
+  regulationTitle?: string | null;
 };
 
 /** The group a sample is counted in: its family's, else its type d'analyse's. */
@@ -223,6 +229,26 @@ export type OnssaReport = {
 
 export const NO_ORIGIN = "Non précisée";
 
+/**
+ * Lot 6C (RETOUR-LABO-25-11.md §3.3) — the canevas of 2026 gives the
+ * chemistry its own row of II-2 (« Chimie alimentaire », column Z only): a
+ * block that is no administrator's group, last of the list.
+ */
+export const ONSSA_CHEMISTRY_GROUP: OnssaGroupRef = {
+  id: "__chimie-alimentaire__",
+  name: "Chimie alimentaire",
+  domain: "ALIMENTAIRE",
+  sortOrder: Number.MAX_SAFE_INTEGER,
+  active: true,
+};
+
+export type OnssaReportOptions = {
+  /** Lot 6C (`ONSSA_CHEMISTRY_OWN_ROW`): the chemistry analyses of every group in `ONSSA_CHEMISTRY_GROUP`. */
+  chemistryOwnRow?: boolean;
+  /** Lot 6C (`ONSSA_EMPTY_ORIGIN_AGRO`): what an empty origin reads; « Non précisée » by default. */
+  emptyOrigin?: string;
+};
+
 function emptyColumns(): Record<OnssaColumnKey, OnssaCount> {
   return Object.fromEntries(ONSSA_COLUMNS.map((column) => [column.key, { realisees: 0, nonConformes: 0 }])) as Record<
     OnssaColumnKey,
@@ -249,7 +275,12 @@ export function onssaEstablishment(sample: Pick<OnssaSampleInput, "etablissement
  * groups too: one still named by a family keeps its counts); every active
  * group gets its rows, even at zero — the canevas lists them all.
  */
-export function buildOnssaReport(samples: OnssaSampleInput[], groups: OnssaGroupRef[]): OnssaReport {
+export function buildOnssaReport(
+  samples: OnssaSampleInput[],
+  groups: OnssaGroupRef[],
+  options: OnssaReportOptions = {}
+): OnssaReport {
+  const emptyOrigin = options.emptyOrigin ?? NO_ORIGIN;
   const byId = new Map(groups.map((group) => [group.id, group]));
   const blocks = new Map<string, OnssaGroupBlock>();
   const blockOf = (group: OnssaGroupRef) => {
@@ -270,6 +301,7 @@ export function buildOnssaReport(samples: OnssaSampleInput[], groups: OnssaGroup
     return block;
   };
   for (const group of groups) if (group.active) blockOf(group);
+  if (options.chemistryOwnRow) blockOf(ONSSA_CHEMISTRY_GROUP);
 
   const columnTotals = emptyColumns();
   const total: OnssaCount = { realisees: 0, nonConformes: 0 };
@@ -298,9 +330,10 @@ export function buildOnssaReport(samples: OnssaSampleInput[], groups: OnssaGroup
       continue;
     }
 
-    let declared = 0;
+    // Lot 6C (`chemistryOwnRow`): the chemistry analyses go to the canevas'
+    // « Chimie alimentaire » row, the rest to the sample's group.
+    const declaredBy = new Map<OnssaGroupBlock, number>();
     const domains = new Set<"ALIMENTAIRE" | "EAU" | "CHIMIE">();
-    const block = blockOf(group);
     for (const result of done) {
       const key = resolveOnssaColumn(result.parameterColumn, result.normCode);
       if (!key) {
@@ -309,45 +342,50 @@ export function buildOnssaReport(samples: OnssaSampleInput[], groups: OnssaGroup
         unmappedParameters.set(result.parameterName, entry);
         continue;
       }
+      const chemistry = onssaColumn(key)?.kind === "CHIMIE";
+      const block = blockOf(chemistry && options.chemistryOwnRow ? ONSSA_CHEMISTRY_GROUP : group);
       const nc = isNonConformResult(result) ? 1 : 0;
-      declared += 1;
+      declaredBy.set(block, (declaredBy.get(block) ?? 0) + 1);
       for (const count of [block.columns[key], columnTotals[key], block.total, total]) {
         count.realisees += 1;
         count.nonConformes += nc;
       }
-      const domain = onssaColumn(key)?.kind === "CHIMIE" ? "CHIMIE" : group.domain;
+      const domain = chemistry ? "CHIMIE" : group.domain;
       synthesis[domain].analyses += 1;
       synthesis[domain].nonConformes += nc;
       domains.add(domain);
     }
-    if (declared === 0) continue;
+    if (declaredBy.size === 0) continue;
 
     declaredSamples += 1;
-    block.samples += 1;
     for (const domain of domains) synthesis[domain].samples += 1;
-    const origine = sample.origine?.trim() || NO_ORIGIN;
-    if (sample.controleOfficiel) {
-      officialAnalyses += declared;
-      block.officialAnalyses += declared;
-      const organisme = sample.organismePreleveur?.trim() || "Non précisé";
-      const etablissement = onssaEstablishment(sample);
-      const key = JSON.stringify([onssaFold(organisme), onssaFold(etablissement), onssaFold(origine)]);
-      const rows = official.get(group.id) ?? new Map<string, OnssaOfficialRow>();
-      const row = rows.get(key) ?? { organisme, etablissement, origine, analyses: 0, samples: 0 };
-      row.analyses += declared;
-      row.samples += 1;
-      rows.set(key, row);
-      official.set(group.id, rows);
-    } else {
-      selfAnalyses += declared;
-      block.selfAnalyses += declared;
-      const rows = self.get(group.id) ?? new Map<string, OnssaSelfRow>();
-      const key = onssaFold(origine);
-      const row = rows.get(key) ?? { origine, analyses: 0, samples: 0 };
-      row.analyses += declared;
-      row.samples += 1;
-      rows.set(key, row);
-      self.set(group.id, rows);
+    const origine = sample.origine?.trim() || emptyOrigin;
+    for (const [block, declared] of declaredBy) {
+      block.samples += 1;
+      const groupId = block.group.id;
+      if (sample.controleOfficiel) {
+        officialAnalyses += declared;
+        block.officialAnalyses += declared;
+        const organisme = sample.organismePreleveur?.trim() || "Non précisé";
+        const etablissement = onssaEstablishment(sample);
+        const key = JSON.stringify([onssaFold(organisme), onssaFold(etablissement), onssaFold(origine)]);
+        const rows = official.get(groupId) ?? new Map<string, OnssaOfficialRow>();
+        const row = rows.get(key) ?? { organisme, etablissement, origine, analyses: 0, samples: 0 };
+        row.analyses += declared;
+        row.samples += 1;
+        rows.set(key, row);
+        official.set(groupId, rows);
+      } else {
+        selfAnalyses += declared;
+        block.selfAnalyses += declared;
+        const rows = self.get(groupId) ?? new Map<string, OnssaSelfRow>();
+        const key = onssaFold(origine);
+        const row = rows.get(key) ?? { origine, analyses: 0, samples: 0 };
+        row.analyses += declared;
+        row.samples += 1;
+        rows.set(key, row);
+        self.set(groupId, rows);
+      }
     }
   }
 

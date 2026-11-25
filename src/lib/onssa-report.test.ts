@@ -4,6 +4,7 @@ import { ONSSA_COUNT_BY } from "./lab-proposals";
 import { toLabWallTime } from "./lab-time";
 import {
   NO_ORIGIN,
+  ONSSA_CHEMISTRY_GROUP,
   buildOnssaReport,
   isDoneResult,
   isNonConformResult,
@@ -315,5 +316,46 @@ describe("buildOnssaReport", () => {
     const report = buildOnssaReport([sample({ groupId: ARCHIVE.id })], GROUPS);
     expect(report.groups.map((block) => block.group.name)).toContain("Ancien groupe");
     expect(report.groups.find((block) => block.group.id === ARCHIVE.id)!.total.realisees).toBe(1);
+  });
+});
+
+describe("lot 6C — the canevas of 2026's reading (options)", () => {
+  const chemistry = result({ parameterName: "Histamine test", parameterColumn: "CHIMIE_ALIMENTAIRE", value: "5" });
+  const ncChemistry = { ...chemistry, interpretation: "NON_SATISFAISANT" as const };
+  const samples = [
+    sample({ results: [result(), ncChemistry] }),
+    sample({ groupId: EAUX.id, controleOfficiel: true, organismePreleveur: "DR test", origine: "Élevage", results: [chemistry] }),
+  ];
+
+  it("puts every group's chemistry on the « Chimie alimentaire » row, the synthesis unchanged", () => {
+    const plain = buildOnssaReport(samples, GROUPS);
+    const own = buildOnssaReport(samples, GROUPS, { chemistryOwnRow: true });
+    expect(own.synthesis).toEqual(plain.synthesis);
+    expect(own.total).toEqual(plain.total);
+    expect(own.columnTotals).toEqual(plain.columnTotals);
+    expect(own.declaredSamples).toBe(2);
+    const block = own.groups.at(-1)!;
+    expect(block.group).toEqual(ONSSA_CHEMISTRY_GROUP);
+    expect(block.total).toEqual({ realisees: 2, nonConformes: 1 });
+    expect(block.samples).toBe(2);
+    expect(block.official).toEqual([
+      { organisme: "DR test", etablissement: "Client Test", origine: "Élevage", analyses: 1, samples: 1 },
+    ]);
+    expect(block.self).toEqual([{ origine: NO_ORIGIN, analyses: 1, samples: 1 }]);
+    const lait = own.groups.find((b) => b.group.id === LAIT.id)!;
+    expect(lait.total).toEqual({ realisees: 1, nonConformes: 0 });
+    expect(lait.columns.CHIMIE_ALIMENTAIRE).toEqual({ realisees: 0, nonConformes: 0 });
+    // The water group had chemistry only: it keeps its (empty) row.
+    expect(own.groups.find((b) => b.group.id === EAUX.id)!.samples).toBe(0);
+    // The row is there even in a month without chemistry.
+    expect(buildOnssaReport([], GROUPS, { chemistryOwnRow: true }).groups.at(-1)!.group.id).toBe(ONSSA_CHEMISTRY_GROUP.id);
+  });
+
+  it("prints an empty origin as asked, a typed one as typed", () => {
+    const report = buildOnssaReport(samples, GROUPS, { emptyOrigin: "Agro-alimentaire" });
+    expect(report.groups.find((b) => b.group.id === LAIT.id)!.self).toEqual([
+      { origine: "Agro-alimentaire", analyses: 2, samples: 1 },
+    ]);
+    expect(report.groups.find((b) => b.group.id === EAUX.id)!.official[0].origine).toBe("Élevage");
   });
 });

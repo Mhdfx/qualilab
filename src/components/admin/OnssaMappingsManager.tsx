@@ -7,11 +7,13 @@ import { Card } from "@/components/ui/Card";
 import { PrimaryButton, SecondaryButton } from "@/components/PrimaryButton";
 import { FAMILY_SHORT_LABELS, SAMPLE_TYPE_LABELS } from "@/lib/labels";
 import {
+  CANEVAS_2026_GROUPS,
   ONSSA_COLUMNS,
   ONSSA_DOMAIN_LABELS,
   ONSSA_GROUP_NAME_MAX,
   PROPOSED_ONSSA_GROUPS,
   matchText,
+  missingGroups,
   onssaColumn,
   type OnssaColumnKey,
 } from "@/lib/onssa-canevas";
@@ -123,6 +125,7 @@ export function OnssaMappingsManager({
   }
 
   // ---- Groups ----------------------------------------------------------------
+  const canevasMissing = useMemo(() => missingGroups(CANEVAS_2026_GROUPS, groups), [groups]);
   const [newName, setNewName] = useState("");
   const [newDomain, setNewDomain] = useState<OnssaDomain>("ALIMENTAIRE");
 
@@ -223,6 +226,25 @@ export function OnssaMappingsManager({
           Les lignes du canevas, une par groupe. La liste du laboratoire est demandée (relance R-22) ; en attendant,
           une liste proposée se crée en un clic, puis se renomme, se réordonne ou s&apos;archive.
         </p>
+        {canevasMissing.length > 0 && (
+          <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+            <p>
+              Le nouveau canevas ONSSA (reçu le 25/11) fixe ses groupes de produits. Manquants ici :{" "}
+              {canevasMissing.map((g) => g.name).join(" ; ")}. Ils sont créés à la suite, sans rien supprimer, archiver
+              ni renommer ; reclassez ensuite familles et types d&apos;analyse, puis archivez les anciens groupes quand
+              plus rien ne les nomme.
+            </p>
+            <SecondaryButton
+              type="button"
+              className="mt-3"
+              disabled={busy}
+              onClick={() => addGroups({ canevas: true }, "Les groupes du nouveau canevas sont créés.")}
+            >
+              <Wand2 className="h-4 w-4" aria-hidden="true" />
+              Groupes du nouveau canevas ({canevasMissing.length})
+            </SecondaryButton>
+          </div>
+        )}
 
         {groups.length === 0 ? (
           <div className="mt-4 rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-600">
