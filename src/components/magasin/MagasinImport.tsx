@@ -5,13 +5,26 @@ import { useRouter } from "next/navigation";
 import { CheckCircle2, FileSpreadsheet, PlayCircle } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { formatCurrency } from "@/lib/labels";
+import { StockWorkbookReport, workbookWriteCount, type WorkbookReportData } from "./StockWorkbookReport";
 
 /**
  * One import of the magasin (lot 3D, M8): choose the workbook, read what
- * would be created (l'essai), then import — « créer seulement ».
+ * would be created (l'essai), then import — « créer seulement ». The stock
+ * file (lot 6A, M14) adds its format: « une feuille par article » (the
+ * laboratory's real file, detected by default) or the single register.
  */
 
-type Report = {
+type StockFormat = "auto" | "par-article" | "registre";
+
+const FORMAT_LABELS: Record<StockFormat, string> = {
+  auto: "Détecter le format",
+  "par-article": "Une feuille par article (« Consommable labo »)",
+  registre: "Registre unique (modèle « Fiche de stock »)",
+};
+
+type ListReport = {
+  format?: "registre";
+  detected?: "par-article" | "registre";
   mode: "analyse" | "commit";
   rows: number;
   toCreate: {
@@ -32,9 +45,25 @@ type Report = {
   created: number;
 };
 
-export function MagasinImport({ kind, endpoint, help }: { kind: "articles" | "fournisseurs"; endpoint: string; help: string }) {
+type Report = ListReport | WorkbookReportData;
+
+const isWorkbook = (report: Report): report is WorkbookReportData => report.format === "par-article";
+
+export function MagasinImport({
+  kind,
+  endpoint,
+  help,
+  formats = false,
+}: {
+  kind: "articles" | "fournisseurs";
+  endpoint: string;
+  help: string;
+  /** The stock file: offer the choice of its format (lot 6A). */
+  formats?: boolean;
+}) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
+  const [format, setFormat] = useState<StockFormat>("auto");
   const [report, setReport] = useState<Report | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -48,6 +77,8 @@ export function MagasinImport({ kind, endpoint, help }: { kind: "articles" | "fo
       const form = new FormData();
       form.append("file", file);
       form.append("mode", mode);
+      // The import writes what the analysis showed: the format it used.
+      if (formats) form.append("format", mode === "commit" && report && "format" in report && report.format ? report.format : format);
       const response = await fetch(endpoint, { method: "POST", body: form });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Import impossible.");
@@ -64,6 +95,26 @@ export function MagasinImport({ kind, endpoint, help }: { kind: "articles" | "fo
     <Card className="p-5">
       <p className="text-sm text-slate-600">{help}</p>
       <div className="mt-4 flex flex-wrap items-center gap-3">
+        {formats && (
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <span className="font-medium">Format</span>
+            <select
+              value={format}
+              onChange={(event) => {
+                setFormat(event.target.value as StockFormat);
+                setReport(null);
+                setError("");
+              }}
+              className="input-field min-h-[42px] bg-white px-3 text-sm"
+            >
+              {(Object.keys(FORMAT_LABELS) as StockFormat[]).map((key) => (
+                <option key={key} value={key}>
+                  {FORMAT_LABELS[key]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="inline-flex min-h-[42px] cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 focus-within:ring-2 focus-within:ring-brand">
           <FileSpreadsheet className="h-4 w-4" aria-hidden="true" />
           {file ? file.name : "Choisir le fichier (.xlsx ou .csv)"}
@@ -88,7 +139,20 @@ export function MagasinImport({ kind, endpoint, help }: { kind: "articles" | "fo
           <PlayCircle className="h-4 w-4" aria-hidden="true" />
           {busy && report === null ? "Analyse…" : "Analyser"}
         </button>
-        {report?.mode === "analyse" && report.toCreate.length > 0 && (
+        {report && isWorkbook(report) && report.mode === "analyse" && workbookWriteCount(report).articles > 0 && (
+          <button
+            type="button"
+            onClick={() => call("commit")}
+            disabled={busy}
+            className="inline-flex min-h-[42px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50"
+          >
+            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+            {busy
+              ? "Import…"
+              : `Importer ${workbookWriteCount(report).articles} article${workbookWriteCount(report).articles > 1 ? "s" : ""} et ${report.totals.movements} mouvement${report.totals.movements > 1 ? "s" : ""}`}
+          </button>
+        )}
+        {report && !isWorkbook(report) && report.mode === "analyse" && report.toCreate.length > 0 && (
           <button
             type="button"
             onClick={() => call("commit")}
@@ -107,7 +171,16 @@ export function MagasinImport({ kind, endpoint, help }: { kind: "articles" | "fo
         </p>
       )}
 
-      {report && (
+      {formats && report && (
+        <p className="mt-3 text-xs text-slate-500">
+          Format lu : {FORMAT_LABELS[isWorkbook(report) ? "par-article" : "registre"]}
+          {report.detected && format === "auto" ? " (détecté)" : report.detected && report.detected !== (isWorkbook(report) ? "par-article" : "registre") ? ` — le fichier ressemble plutôt à : ${FORMAT_LABELS[report.detected]}` : ""}
+        </p>
+      )}
+
+      {report && isWorkbook(report) && <StockWorkbookReport report={report} />}
+
+      {report && !isWorkbook(report) && (
         <div className="mt-4 space-y-3 text-sm" aria-live="polite">
           <p className={report.mode === "commit" ? "font-semibold text-emerald-700" : "text-slate-700"}>
             {report.mode === "commit"

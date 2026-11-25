@@ -16,6 +16,7 @@ export const STOCK_JOURNAL_SELECT = {
   levelBefore: true,
   levelAfter: true,
   unitPriceHT: true,
+  orderReference: true,
   item: { select: { id: true, name: true, unit: true, location: true } },
   createdBy: { select: { name: true } },
 } satisfies Prisma.StockMovementSelect;

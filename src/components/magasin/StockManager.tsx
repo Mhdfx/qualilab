@@ -50,6 +50,7 @@ type Movement = {
   day: string;
   levelAfter: number | null;
   unitPriceHT: number | null;
+  orderReference: string | null;
   createdBy: { name: string } | null;
 };
 
@@ -364,6 +365,7 @@ function MovementForm({
   const [quantity, setQuantity] = useState("");
   const [unitPriceHT, setUnitPriceHT] = useState("");
   const [lot, setLot] = useState("");
+  const [orderReference, setOrderReference] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -382,6 +384,7 @@ function MovementForm({
           movementDate,
           quantity,
           unitPriceHT: type === "ENTREE" ? unitPriceHT : "",
+          orderReference: type === "ENTREE" ? orderReference : "",
           lot,
           expiryDate,
           note,
@@ -437,6 +440,12 @@ function MovementForm({
           <label className="block text-sm">
             <span className="font-medium text-slate-700">Prix unitaire HT (facultatif)</span>
             <input value={unitPriceHT} onChange={(e) => setUnitPriceHT(e.target.value)} inputMode="decimal" className={`mt-1 ${inputClass}`} placeholder={item.lastUnitPrice !== null ? formatDecimal(item.lastUnitPrice, 2) : "DH"} />
+          </label>
+        )}
+        {type === "ENTREE" && (
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">Bon de commande (facultatif)</span>
+            <input value={orderReference} onChange={(e) => setOrderReference(e.target.value)} maxLength={64} className={`mt-1 ${inputClass}`} placeholder="12/26" />
           </label>
         )}
         <label className="block text-sm">
@@ -533,6 +542,7 @@ function MovementHistory({ itemId, unit }: { itemId: string; unit: string }) {
             </span>
             <span className="text-xs text-slate-500">
               {day(movement.day)}
+              {movement.orderReference && ` · BC ${movement.orderReference}`}
               {movement.lot && ` · lot ${movement.lot}`}
               {movement.expiryDate && ` · péremption ${day(movement.expiryDate)}`}
               {movement.unitPriceHT !== null && ` · ${formatCurrency(movement.unitPriceHT)} HT / ${unit}`}

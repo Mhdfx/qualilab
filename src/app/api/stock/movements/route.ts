@@ -20,7 +20,7 @@ import { pageParams, toPage } from "@/lib/pagination";
  * (`movementDate`, today on the lab's clock by default, never in the
  * future), the levels before and after it (written in the same guarded
  * transaction, so they are exactly the levels the update moved between) and,
- * for an entry, its unit price HT.
+ * for an entry, its unit price HT — and (lot 6A, M14) its bon de commande.
  */
 export async function POST(request: Request) {
   const session = await requireApiRole("MAGASINIER", "ADMIN");
@@ -76,6 +76,7 @@ export async function POST(request: Request) {
             levelBefore: before,
             levelAfter: result.next,
             unitPriceHT: input.unitPriceHT,
+            orderReference: input.orderReference,
             createdById: session.id,
           },
         });
@@ -100,6 +101,7 @@ export async function POST(request: Request) {
         lot: movement.lot,
         day: isoDayOf(input.movementDate),
         ...(input.unitPriceHT !== null ? { unitPriceHT: input.unitPriceHT } : {}),
+        ...(input.orderReference ? { orderReference: input.orderReference } : {}),
       },
     });
 

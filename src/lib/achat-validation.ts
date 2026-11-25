@@ -488,7 +488,12 @@ export type CleanMovement = {
   movementDate: Date;
   /** M5 — an entry's unit price HT; null otherwise. */
   unitPriceHT: number | null;
+  /** Lot 6A, M14 — an entry's bon de commande (« Libellé » of the stock sheet); null otherwise. */
+  orderReference: string | null;
 };
+
+/** `StockMovement.orderReference` is a VARCHAR(64). */
+export const ORDER_REFERENCE_MAX = 64;
 
 const MOVEMENT_TYPES = ["ENTREE", "SORTIE", "AJUSTEMENT"] as const;
 
@@ -538,6 +543,11 @@ export function validateMovement(
     unitPriceHT = price > 0 ? Math.round(price * 100) / 100 : null;
   }
 
+  const orderReference = type === "ENTREE" ? text(input.orderReference) : "";
+  if (orderReference.length > ORDER_REFERENCE_MAX) {
+    return { ok: false, error: `Le bon de commande est trop long (${ORDER_REFERENCE_MAX} caractères max).` };
+  }
+
   return {
     ok: true,
     value: {
@@ -549,6 +559,7 @@ export function validateMovement(
       note: note || null,
       movementDate,
       unitPriceHT,
+      orderReference: orderReference || null,
     },
   };
 }

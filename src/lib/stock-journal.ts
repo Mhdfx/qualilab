@@ -12,7 +12,10 @@ import { entryAmount, type MovementType } from "./stock";
  * One chronological register for EVERY article, in the template's columns
  * and order: Date | Libellé | Lot | Expiration | Entrée | Sortie | Stock |
  * Prix (DH HT, two sub-columns: unit price and amount — hypothèse R-23) |
- * Lieu de stockage; then ours: unit, type, note, who.
+ * Lieu de stockage; then ours: unit, type, note, who. Lot 6A (M14): the
+ * laboratory's own sheet writes the bon de commande under « Libellé » (one
+ * tab per article): here « Libellé » stays the article — the register spans
+ * every article — and the bon de commande has its column right after it.
  *
  * - « Date »: the movement's day (`movementDate`, M1); a movement recorded
  *   before lot 3D has none — the day of its recording stands for it.
@@ -48,6 +51,8 @@ export type StockJournalMovement = {
   levelBefore: MoneyInput;
   levelAfter: MoneyInput;
   unitPriceHT: MoneyInput;
+  /** Lot 6A — the bon de commande (absent from a row read before lot 6). */
+  orderReference?: string | null;
   item: { id: string; name: string; unit: string; location: string | null };
   createdBy: { name: string } | null;
 };
@@ -57,6 +62,8 @@ export type StockJournalRow = {
   /** « AAAA-MM-JJ ». */
   day: string;
   label: string;
+  /** Lot 6A, M14 — the bon de commande: the « Libellé » of the laboratory's sheet. */
+  orderReference: string;
   lot: string;
   /** « AAAA-MM-JJ » or "". */
   expiry: string;
@@ -99,6 +106,7 @@ export function stockJournalRows(movements: StockJournalMovement[], labDay: (at:
       id: movement.id,
       day: movementDay(movement, labDay),
       label: movement.item.name,
+      orderReference: movement.orderReference ?? "",
       lot: movement.lot ?? "",
       expiry: movement.expiryDate ? isoDayOf(movement.expiryDate) : "",
       entry,
@@ -127,6 +135,7 @@ export type StockJournalColumn = {
 export const STOCK_JOURNAL_COLUMNS: StockJournalColumn[] = [
   { header: "Date", key: "day", width: 12, format: "day" },
   { header: "Libellé", key: "label", width: 32 },
+  { header: "Bon de commande", key: "orderReference", width: 16 },
   { header: "Lot", key: "lot", width: 14 },
   { header: "Expiration", key: "expiry", width: 12, format: "day" },
   { header: "Entrée", key: "entry", width: 10, format: "quantity" },

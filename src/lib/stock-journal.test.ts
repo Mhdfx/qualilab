@@ -39,9 +39,10 @@ const movement = (patch: Partial<StockJournalMovement> = {}): StockJournalMoveme
 
 describe("the register's columns", () => {
   it("keeps the template's columns in its order, the price in two sub-columns", () => {
-    expect(STOCK_JOURNAL_COLUMNS.slice(0, 10).map((column) => column.header)).toEqual([
+    expect(STOCK_JOURNAL_COLUMNS.slice(0, 11).map((column) => column.header)).toEqual([
       "Date",
       "Libellé",
+      "Bon de commande",
       "Lot",
       "Expiration",
       "Entrée",
@@ -55,6 +56,12 @@ describe("the register's columns", () => {
 });
 
 describe("stockJournalRows", () => {
+  it("lot 6A: carries the bon de commande, empty when none (or read before lot 6)", () => {
+    expect(stockJournalRows([movement({ orderReference: "BC 64/26" })], labDay)[0]).toMatchObject({ label: "Gélose PCA", orderReference: "BC 64/26" });
+    expect(stockJournalRows([movement({ orderReference: null })], labDay)[0].orderReference).toBe("");
+    expect(stockJournalRows([movement()], labDay)[0].orderReference).toBe("");
+  });
+
   it("writes an entry with its day, lot, expiry, level after, price and amount", () => {
     expect(stockJournalRows([movement()], labDay)[0]).toMatchObject({
       day: "2026-10-30",

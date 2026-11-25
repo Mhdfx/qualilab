@@ -6,8 +6,10 @@ export const metadata = { title: "Import des listes" };
 
 /**
  * The imports of the magasin (lot 3D, RETOUR-LABO-28-10.md M8): the
- * articles from the laboratory's « Fiche de stock », the suppliers from its
- * « Journal Achat » — analyse, then import; « créer seulement ».
+ * articles from the laboratory's « Fiche de stock » — since lot 6A
+ * (RETOUR-LABO-25-11.md M14) its real file too, one tab per article, with
+ * every row as a dated movement —, the suppliers from its « Journal Achat »
+ * — analyse, then import.
  */
 export default async function MagasinImportPage() {
   // Belt and braces with the layout guard: a page must be safe on its own.
@@ -21,11 +23,12 @@ export default async function MagasinImportPage() {
       />
       <div className="max-w-4xl space-y-8">
         <section>
-          <h2 className="mb-3 text-base font-semibold text-slate-900">Articles et stock d&apos;ouverture (« Fiche de stock »)</h2>
+          <h2 className="mb-3 text-base font-semibold text-slate-900">Articles et mouvements de stock (« Fiche de stock »)</h2>
           <MagasinImport
             kind="articles"
             endpoint="/api/stock/import"
-            help="Colonnes lues : Libellé, Lot, Expiration, Entrée, Sortie, Stock, Prix (dh/ht), Lieu de stockage (et, si vous les ajoutez : Unité, Catégorie, Seuil). Un article par libellé ; son stock d'ouverture (la colonne « Stock » de sa dernière ligne, sinon entrées − sorties) devient une entrée datée d'aujourd'hui."
+            formats
+            help="Une feuille par article (votre fichier « Consommable labo ») : chaque onglet est un article (deux tableaux dans un onglet = deux articles), « Libellé » est le bon de commande ; chaque ligne devient un mouvement daté, avec son bon de commande, son lot, son expiration et son prix — l'unité vient de « Entrée/… » (C500 = carton de 500). Les quantités sont rapprochées des prix, et un fichier réimporté n'écrit que ses lignes nouvelles. Registre unique (modèle du 28/10) : un article par libellé, son stock d'ouverture daté d'aujourd'hui."
           />
         </section>
         <section>

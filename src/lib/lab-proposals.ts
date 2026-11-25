@@ -507,3 +507,38 @@ export const LEGACY_HISTORY_ON_PORTAL = true;
  * sample's verdict only; the detail always shows each analysis's verdict.
  */
 export const LEGACY_HISTORY_FLAG_NON_SATISFYING = true;
+
+// ————— Lot 6A — la fiche de stock, un onglet par article (RETOUR-LABO-25-11.md §4, §5) —————
+// The owner's go of 25/11. ON = the plan's proposal (« hypothèse, à confirmer
+// par E-1 / E-2 »), OFF = the file read as written; the way back of each is
+// pinned by `lab-proposals-6-back.test.ts`.
+
+/**
+ * Lot 6A, M10 (E-1): the « Entrée » column of a table mixes packages and
+ * pieces, and the two prices give it away. On: a quantity the prices show
+ * to be counted in pieces is brought back to packages (÷ the size read from
+ * « Entrée/C500 »), a unit price the prices show to be a piece's becomes the
+ * package's (× the size), the two price sub-columns are read in the order
+ * the arithmetic confirms, and a « Stock » written in pieces (or in mL for
+ * a « Entrée/1l » article) is brought back to packages too; a row the
+ * arithmetic does not settle is imported as written and flagged. Off: the
+ * quantities and the price titled « prix unitaire » are taken as written
+ * (a mismatch is still flagged).
+ */
+export const STOCK_IMPORT_QUANTITY_FROM_PRICE = true;
+
+/**
+ * Lot 6A, M12 (E-2): the file never writes an exit, so its « Stock » is not
+ * entries − exits. On: after an article's movements, when the last « Stock »
+ * of its table differs from the level they lead to, one inventory adjustment
+ * dated the import day sets the level to it (note « Niveau de la fiche
+ * importée »). Off: the level is entries − exits of the file.
+ */
+export const STOCK_IMPORT_LEVEL_FROM_FILE = true;
+
+/**
+ * Lot 6A, M10 (E-1): an expiry written as a month and a year (« 11-2030 »,
+ * « 09/2031 », or a date shown « juil.-28 »). On: the last day of that month.
+ * Off: the 1st of the month.
+ */
+export const STOCK_EXPIRY_MONTH_END = true;

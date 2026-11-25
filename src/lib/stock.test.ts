@@ -325,6 +325,29 @@ describe("lot 3D — validateMovement (M1, M5)", () => {
   });
 });
 
+describe("lot 6A — the bon de commande of an entry (M14)", () => {
+  const today = "2026-11-25";
+  const base = { itemId: "i1", type: "ENTREE", quantity: "2" };
+
+  it("keeps it on an entry, trimmed, and never on an exit or an adjustment", () => {
+    const entry = validateMovement({ ...base, orderReference: " BC 12/26 " }, today);
+    expect(entry.ok && entry.value.orderReference).toBe("BC 12/26");
+    const blank = validateMovement({ ...base, orderReference: "  " }, today);
+    expect(blank.ok && blank.value.orderReference).toBeNull();
+    const exit = validateMovement({ ...base, type: "SORTIE", orderReference: "12/26" }, today);
+    expect(exit.ok && exit.value.orderReference).toBeNull();
+    const adjustment = validateMovement({ ...base, type: "AJUSTEMENT", orderReference: "12/26" }, today);
+    expect(adjustment.ok && adjustment.value.orderReference).toBeNull();
+  });
+
+  it("refuses one longer than its column", () => {
+    expect(validateMovement({ ...base, orderReference: "x".repeat(65) }, today)).toEqual({
+      ok: false,
+      error: "Le bon de commande est trop long (64 caractères max).",
+    });
+  });
+});
+
 describe("lot 3D — the article's place and the supplier's attestation (M1, M7)", () => {
   it("records the place of an article, bounded by its column", () => {
     const result = validateStockItem({ name: "Gélose", unit: "boîte", location: " Réfrigérateur 2 " });

@@ -1674,6 +1674,10 @@ model PurchaseInvoice {
   correctedAt            DateTime?
   cancelledAt            DateTime?
   cancelReason           String?      @db.Text
+  /// Lot 6B (RETOUR-LABO-25-11.md M13, M16) — « Reprise du journal des
+  /// achats »: the file and the day of the import that created this invoice;
+  /// null = typed on the screen.
+  importedFrom           String?      @db.VarChar(191)
 
   payments PurchasePayment[]
 
@@ -1760,6 +1764,16 @@ model StockMovement {
   /// M5 — an entry's unit price excluding VAT (DH); the register's « Prix
   /// (dh/ht) » = this price and quantity × price (hypothèse R-23).
   unitPriceHT  Decimal?  @db.Decimal(12, 2)
+
+  // ---- Lot 6A (RETOUR-LABO-25-11.md M13). Null on a movement typed on the
+  // screen before lot 6 (and on any other movement but an entry's).
+  /// The bon de commande of an entry — the « Libellé » of the laboratory's
+  /// stock sheet (« 12/26 », « BC 64/26 »).
+  orderReference String?  @db.VarChar(64)
+  /// The fingerprint of the row of the stock workbook this movement was
+  /// imported from (tab, variant, cells): a second import of the same file
+  /// skips it. Null = recorded on the screen (or by lot 3D's import).
+  importKey      String?  @unique @db.VarChar(64)
 
   @@index([itemId, createdAt])
   @@index([movementDate])

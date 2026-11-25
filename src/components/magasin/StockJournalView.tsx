@@ -135,6 +135,7 @@ export function StockJournalView({
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <th scope="col" className="px-3 py-3 font-semibold">Date</th>
                   <th scope="col" className="px-3 py-3 font-semibold">Libellé</th>
+                  <th scope="col" className="px-3 py-3 font-semibold">Bon de commande</th>
                   <th scope="col" className="px-3 py-3 font-semibold">Lot</th>
                   <th scope="col" className="px-3 py-3 font-semibold">Expiration</th>
                   <th scope="col" className="px-3 py-3 text-right font-semibold">Entrée</th>
@@ -156,6 +157,7 @@ export function StockJournalView({
                         {row.note && ` · ${row.note}`}
                       </span>
                     </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{row.orderReference}</td>
                     <td className="px-3 py-2.5 text-slate-600">{row.lot}</td>
                     <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-600">{day(row.expiry)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-emerald-700">{quantity(row.entry)}</td>
