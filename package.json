@@ -22,6 +22,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@better-auth/core": "^1.6.25",
     "@prisma/adapter-mariadb": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "better-auth": "^1.6.25",

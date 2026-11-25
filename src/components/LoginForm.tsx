@@ -9,6 +9,7 @@ import { authClient } from "@/lib/auth-client";
 import { DemoAccounts } from "@/components/DemoAccounts";
 import { recordSignIn } from "@/components/layout/IdleLogout";
 import { retryAfterFromHeaders, SIGN_IN_LOCKED_CODE, signInErrorMessage } from "@/lib/sign-in-errors";
+import type { DemoPanel } from "@/lib/demo-accounts";
 
 /**
  * `notice`: why the user is back on the sign-in page, when the application
@@ -16,8 +17,8 @@ import { retryAfterFromHeaders, SIGN_IN_LOCKED_CODE, signInErrorMessage } from "
  * administrator's reset, disabling or access change, or the person's own
  * password change on another device, `revocationNoticeFor` — `noticeKind`
  * "account", a key instead of the clock).
- * `demoAccounts`: the demo usernames that can sign in (the login page asks
- * the database, demo-accounts-server.ts); the panel lists only those.
+ * `demoPanel`: the demo accounts that can sign in and their password (the
+ * login page asks the database, demo-accounts-server.ts); `null`, no panel.
  *
  * A refused sign-in says why (sign-in-errors.ts): a wrong password, a
  * disabled account, or a 429 — too many sign-ins from the laboratory's
@@ -27,11 +28,11 @@ import { retryAfterFromHeaders, SIGN_IN_LOCKED_CODE, signInErrorMessage } from "
 export default function LoginForm({
   notice = null,
   noticeKind = "idle",
-  demoAccounts = [],
+  demoPanel = null,
 }: {
   notice?: string | null;
   noticeKind?: "idle" | "account";
-  demoAccounts?: readonly string[];
+  demoPanel?: DemoPanel | null;
 }) {
   const router = useRouter();
   const [username, setUsername] = useState("");
@@ -183,7 +184,7 @@ export default function LoginForm({
           </form>
 
           <DemoAccounts
-            available={demoAccounts}
+            panel={demoPanel}
             onPick={(demoUsername, demoPassword) => {
               setUsername(demoUsername);
               setPassword(demoPassword);

@@ -5,7 +5,6 @@ import { prisma } from "@/lib/prisma";
 import { ROLES } from "@/lib/roles";
 import { SESSION_ACTIVITY_UPDATE_AGE_S, SESSION_COOKIE_PREFIX } from "@/lib/session-idle";
 import { closeIdleSessionHook } from "@/lib/session-idle-server";
-import { SIGN_IN_IP_RULE } from "@/lib/sign-in-limit";
 import { signInLimitPlugin } from "@/lib/sign-in-limit-server";
 
 /**
@@ -134,15 +133,18 @@ export const auth = betterAuth({
     "/is-username-available",
     "/sign-in/email",
   ],
-  // Better Auth's per-address sign-in limit (production only, its default).
-  // Its own rule — 3 requests per 10 s — blocked colleagues signing in within
-  // the same 10 seconds: every PC of the laboratory leaves through one NAT
-  // address. 10 per 10 s per address here; guessing one account's password
-  // is bounded by the per-account limit instead (10 wrong passwords per
-  // 15 minutes, `signInLimitPlugin` below, sign-in-limit.ts).
+  // Better Auth's own rate limit (production only, its default) stays on
+  // every path but the sign-in. Its sign-in rule — 3 requests per 10 s per
+  // address — only restarts its count after a 10-second pause, so it really
+  // meant « 3 sign-ins in a chain »: every PC of the laboratory leaves
+  // through one NAT address, and colleagues signing in one after the other
+  // (one every 6 s) were refused. /sign-in/username is limited by
+  // `signInLimitPlugin` below instead (sign-in-limit.ts): 30 requests per
+  // sliding minute per address, 10 wrong passwords per 15 minutes per
+  // account and address, 100 per account from every address.
   rateLimit: {
     customRules: {
-      "/sign-in/username": { ...SIGN_IN_IP_RULE },
+      "/sign-in/username": false,
     },
   },
   advanced: {
@@ -155,9 +157,9 @@ export const auth = betterAuth({
     // client cannot forge), then a single-value X-Forwarded-For. nginx
     // appends to an X-Forwarded-For the client sent, and Better Auth does
     // not trust a multi-valued chain: read alone, it sent every such request
-    // to one shared « no-trusted-ip » bucket. The sign-in rule is widened
-    // above (`rateLimit`): all the laboratory's PCs leave through one NAT
-    // address.
+    // to one shared « no-trusted-ip » bucket. The sign-in limits read the
+    // same address (`getIp`, sign-in-limit-server.ts): all the laboratory's
+    // PCs leave through one NAT address.
     ipAddress: {
       ipAddressHeaders: ["x-real-ip", "x-forwarded-for"],
     },
@@ -179,8 +181,9 @@ export const auth = betterAuth({
       adminRoles: ["ADMIN"],
       defaultRole: "PRELEVEUR",
     }),
-    // 10 wrong passwords per 15 minutes per username, then 429 until the
-    // window ends (sign-in-limit-server.ts). The account is not modified.
+    // The sign-in limits (sign-in-limit.ts, sign-in-limit-server.ts): per
+    // address, per account and address, per account; 429 until the window
+    // ends. The account is not modified.
     signInLimitPlugin(),
   ],
 });

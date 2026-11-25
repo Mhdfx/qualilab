@@ -2,8 +2,11 @@
 
 import { useState } from "react";
 import { ChevronDown, Copy, Check, LogIn } from "lucide-react";
-import { ROLES, ROLE_LABELS } from "@/lib/roles";
-import { DEMO_ACCOUNTS, DEMO_PASSWORD, demoModeEnabled } from "@/lib/demo-accounts";
+import { ROLE_LABELS } from "@/lib/roles";
+// Types only: the accounts and the password come from the server
+// (`panel`), never from the browser's code — a build with the demo mode off
+// carries none of them.
+import type { DemoPanel } from "@/lib/demo-accounts";
 
 /**
  * Demo accounts panel — a testing aid for the demonstration phase.
@@ -12,31 +15,26 @@ import { DEMO_ACCOUNTS, DEMO_PASSWORD, demoModeEnabled } from "@/lib/demo-accoun
  * must do once the laboratory's real accounts exist: this panel lists working
  * credentials and has no place in front of real users.
  *
- * Only the accounts the database holds and has not disabled are listed
- * (`available`, read by the login page, demo-accounts-server.ts): an account
- * the panel offers must be one that can sign in. None available, no panel.
+ * The login page reads the panel on the server (`loadDemoPanel`,
+ * demo-accounts-server.ts): only the accounts the database holds, has not
+ * disabled and that still have the demo password — an account the panel
+ * offers must be one that can sign in. `null` (demo mode off, or none
+ * available): no panel.
  */
 
-// Fails the build if a role ever loses its demo account.
-const COVERED = new Set(DEMO_ACCOUNTS.map((a) => a.role));
-// CLIENT (portal, PORTAIL.md) deliberately has no demo account: a portal
-// account belongs to one client, so the admin creates it in /admin/utilisateurs.
-const MISSING = ROLES.filter((role) => role !== "CLIENT" && !COVERED.has(role));
-
 type DemoAccountsProps = {
-  /** The demo usernames that can sign in (the login page asks the database). */
-  available: readonly string[];
+  /** The accounts that can sign in and their password (the login page asks the database). */
+  panel: DemoPanel | null;
   /** Fills the login form with the chosen account. */
   onPick: (username: string, password: string) => void;
 };
 
-export function DemoAccounts({ available, onPick }: DemoAccountsProps) {
+export function DemoAccounts({ panel, onPick }: DemoAccountsProps) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
-  if (!demoModeEnabled()) return null;
-  const accounts = DEMO_ACCOUNTS.filter((account) => available.includes(account.username));
-  if (accounts.length === 0) return null;
+  if (!panel || panel.accounts.length === 0) return null;
+  const { accounts, password, missingRoles } = panel;
 
   function copy(username: string) {
     navigator.clipboard?.writeText(username);
@@ -69,7 +67,7 @@ export function DemoAccounts({ available, onPick }: DemoAccountsProps) {
           <p className="mb-2 px-1 text-[11px] text-slate-500">
             Mot de passe commun :{" "}
             <span className="font-mono font-semibold text-slate-700">
-              {DEMO_PASSWORD}
+              {password}
             </span>{" "}
             · cliquez sur un compte pour remplir le formulaire.
           </p>
@@ -79,7 +77,7 @@ export function DemoAccounts({ available, onPick }: DemoAccountsProps) {
               <li key={account.username} className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => onPick(account.username, DEMO_PASSWORD)}
+                  onClick={() => onPick(account.username, password)}
                   className="group flex min-h-[38px] flex-1 items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-left ring-1 ring-slate-200 transition hover:ring-brand/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   <span className="min-w-0">
@@ -112,9 +110,9 @@ export function DemoAccounts({ available, onPick }: DemoAccountsProps) {
             ))}
           </ul>
 
-          {MISSING.length > 0 && (
+          {missingRoles.length > 0 && (
             <p className="mt-2 px-1 text-[11px] text-amber-700">
-              Rôles sans compte de démonstration : {MISSING.join(", ")}.
+              Rôles sans compte de démonstration : {missingRoles.join(", ")}.
             </p>
           )}
         </div>

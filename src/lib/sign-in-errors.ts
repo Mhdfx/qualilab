@@ -2,7 +2,8 @@
  * What the sign-in form (LoginForm.tsx) says when Better Auth refuses a
  * sign-in. It used to say « Identifiants incorrects. » for every refusal: a
  * 429 of the per-address limit looked like a wrong password, people retried
- * and stayed blocked longer.
+ * and stayed blocked longer. No server import: the form must not bundle the
+ * counters.
  */
 
 /**
@@ -11,7 +12,14 @@
  */
 export const SIGN_IN_LOCKED_CODE = "TOO_MANY_FAILED_SIGN_INS";
 
-/** When no wait can be read from the answer: Better Auth's sign-in window. */
+/**
+ * The `code` of the per-address refusal (too many sign-ins from one network,
+ * sign-in-limit-server.ts). The form treats every other 429 the same way —
+ * Better Auth's own, on its other paths, carries no code.
+ */
+export const SIGN_IN_ADDRESS_LIMIT_CODE = "TOO_MANY_SIGN_INS_FROM_ADDRESS";
+
+/** When no wait can be read from the answer. */
 export const SIGN_IN_FALLBACK_WAIT_S = 10;
 
 /** The sign-in error as the auth client hands it over (`error` of `signIn.username`). */
@@ -21,8 +29,8 @@ export type SignInError = {
 };
 
 /**
- * The wait in whole seconds, from the 429's `X-Retry-After` (Better Auth's,
- * and the per-account refusal's) or `Retry-After`; the fallback when neither
+ * The wait in whole seconds, from the 429's `X-Retry-After` (the per-address
+ * and the per-account refusals', as Better Auth's own) or `Retry-After`; the fallback when neither
  * is a positive number.
  */
 export function retryAfterFromHeaders(headers: Pick<Headers, "get"> | null | undefined): number {

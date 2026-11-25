@@ -131,3 +131,29 @@ describe("AttemptLimiter.sweep — a counter keyed by whatever username a reques
     expect(counter.begin("recent", T0 + 16 * MINUTE).ok).toBe(false);
   });
 });
+
+describe("AttemptLimiter.sweepIfDue — the sweep runs at most once per interval", () => {
+  it("sweeps the first time, then not again before the interval has passed", () => {
+    const counter = limiter();
+    fail(counter, "old", T0);
+    expect(counter.sweepIfDue(T0, MINUTE)).toBe(true);
+    expect(counter.size).toBe(1);
+    // Past the window but inside the interval: nothing is scanned.
+    fail(counter, "other", T0 + 30_000);
+    expect(counter.sweepIfDue(T0 + 59_999, MINUTE)).toBe(false);
+    expect(counter.size).toBe(2);
+    // The interval has passed: expired keys go, live ones stay.
+    expect(counter.sweepIfDue(T0 + 15 * MINUTE + 1, MINUTE)).toBe(true);
+    expect(counter.size).toBe(1);
+    expect(counter.sweepIfDue(T0 + 15 * MINUTE + 2, MINUTE)).toBe(false);
+  });
+
+  it("never drops a live key: a flood of other keys cannot reset an account's count", () => {
+    const counter = limiter();
+    for (let i = 0; i < 5; i += 1) fail(counter, "victim", T0);
+    for (let i = 0; i < 10_000; i += 1) fail(counter, `flood-${i}`, T0 + 1000);
+    expect(counter.sweepIfDue(T0 + 2 * MINUTE, MINUTE)).toBe(true);
+    expect(counter.size).toBe(10_001);
+    expect(counter.begin("victim", T0 + 2 * MINUTE).ok).toBe(false);
+  });
+});

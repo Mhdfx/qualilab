@@ -34,6 +34,8 @@ export type AttemptOutcome = "FAILED" | "SUCCEEDED" | "NEUTRAL";
 
 export class AttemptLimiter {
   private readonly entries = new Map<string, Attempt[]>();
+  /** When `sweep` last ran (`sweepIfDue`). */
+  private lastSweep = Number.NEGATIVE_INFINITY;
 
   constructor(private readonly options: AttemptLimiterOptions) {}
 
@@ -80,6 +82,20 @@ export class AttemptLimiter {
    */
   sweep(now: number = Date.now()): void {
     for (const key of [...this.entries.keys()]) this.live(key, now);
+    this.lastSweep = now;
+  }
+
+  /**
+   * `sweep`, at most once per `intervalMs`. A full scan on every request
+   * would cost one pass over every tracked key per sign-in once many keys
+   * are live — a request flood would burn the CPU. Nothing is ever dropped
+   * before its window ends: evicting live keys would let a flood reset a
+   * victim's count.
+   */
+  sweepIfDue(now: number, intervalMs: number): boolean {
+    if (now - this.lastSweep < intervalMs) return false;
+    this.sweep(now);
+    return true;
   }
 
   /** Accounts currently tracked (tests and diagnostics). */

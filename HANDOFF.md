@@ -4,6 +4,8 @@
 > "where do I change X" map. Read after `AGENTS.md`. **Keep this current** — it
 > is what lets any AI on any platform continue without archaeology.
 >
+> **Connexion (25/11) — the client reported demo-panel sign-ins failing: `3cfa462` + « Connexion : corrections de la relecture » on `lot2-retour-16-10`, local, not pushed, not deployed, no migration.** Sign-in limits rebuilt for the lab's shared NAT address (§3 « Sign-in limits »), the form says why a sign-in is refused, the demo panel lists only accounts that can sign in (§8 « 2026-11-25 »).
+>
 > **Lot performance (23–24/11) — built and verified locally on `lot2-retour-16-10` (« Perf 1 » → « Perf : corrections de la vérification » `eb55427`), not pushed, not deployed: one additive migration (`20261123010000_perf_index_additifs`), `DB_POOL_SIZE`, then nginx and the buffer pool by hand (`DEPLOY.md` « Lot performance », tracker `PERF-AVANCEMENT.md`, §8 « 2026-11-23 — lot performance »).**
 >
 > **Production runs `0305d67` (lot 5, deployed 21/11 18 h 25, recette passed; restore point tag `v1.8-avant-lot5` + dump `qualilab_avant-lot5.sql.gz`; legacy history imported: 187 663 samples, 891 links). Before: `4ebb146` (lot 4, deployed 05/11 20 h 30; restore point tag
@@ -366,6 +368,36 @@ wrong. Role → landing page mapping lives in `src/lib/roles.ts` (`ROLE_HOME`).
   flagCleared` for a forced change, below), and at most
   5 wrong current passwords per account per 15 min (`passwordChangeLimiter`,
   `src/lib/attempt-limiter.ts`, in memory → 429 « Trop de tentatives… »).
+- **Sign-in limits** (25/11, `src/lib/sign-in-limit.ts` constants,
+  `src/lib/sign-in-limit-server.ts` the Better Auth plugin `signInLimitPlugin`,
+  hooks before/after on `/sign-in/username`, the only sign-in door —
+  `/sign-in/email` is in `disabledPaths`). Every PC of the laboratory leaves
+  through **one public address (NAT)**, so:
+  1. **per address: 30 requests per sliding minute** (every request counts
+     for 60 s from its own moment; production only, like Better Auth's own
+     limiter: `ctx.context.rateLimit.enabled`; HTTP only). 429 `code`
+     `TOO_MANY_SIGN_INS_FROM_ADDRESS`, `X-Retry-After`. Better Auth's own rule
+     is **off** on that path (`rateLimit.customRules["/sign-in/username"] =
+     false`): its counter restarts only after a pause longer than its window,
+     so « 3 per 10 s » meant « 3 sign-ins in a chain » — colleagues signing
+     in one every ~6 s got 429s on production (tech1, magasin1, 25/11).
+     Better Auth's default limits still apply on every other path.
+  2. **per account and address: 10 wrong passwords / 15 min** (key
+     `address|username`) — someone outside cannot lock a colleague out of the
+     laboratory's address.
+  3. **per account, all addresses: 100 wrong passwords / 15 min** — against
+     guessing spread over many addresses.
+  Refusal 2 or 3: 429 `code` `TOO_MANY_FAILED_SIGN_INS`, « Trop de mots de
+  passe erronés pour ce compte… », before the password is checked. A
+  successful sign-in clears the account's counts; a disabled account
+  (BANNED_USER) and a malformed body are not failures; unknown usernames
+  count like real ones. The account itself is never modified. Counters in
+  memory (one process; a restart clears them), swept at most once a minute
+  (never evicted while live). The form (`LoginForm.tsx` +
+  `src/lib/sign-in-errors.ts`) says which refusal it is — network (button
+  counts the wait down), account, disabled, wrong password, server — instead
+  of « Identifiants incorrects. » for everything.
+  The address is Better Auth's `getIp` with `advanced.ipAddress` below.
 - Better Auth reads the client's address from `x-real-ip` first, then a
   single-valued `x-forwarded-for` (`advanced.ipAddress` in `auth-server.ts`):
   the live nginx site must set `proxy_set_header X-Real-IP $remote_addr`
@@ -962,7 +994,9 @@ Enums: `Role`(11: 9 core, `PROGRAMMATEUR` and `DIRECTION` included, + `CLIENT` +
 | « Mot de passe à changer » (H1, Q81): who must choose their password, its wording, where they land | rule and wording in `src/lib/password-change.ts` (`PASSWORD_CHANGE_NOTICE`, `PASSWORD_CHANGE_API_ERROR`, `PASSWORD_STILL_REQUIRED_MESSAGE`, `landingPath`, `accountPath`, `passwordChangeBlocks`, `passwordChangeNext`); enforced only in the guards of `src/lib/auth.ts` (`passwordChangeGuards` = the exemption, 7 files pinned by `password-change-guards.test.ts`); set in `POST /api/admin/users` and on a reset in `PATCH /api/admin/users/[id]` (journal `USER_PASSWORD_CHANGE_REQUIRED { username, reason: CREATED \| RESET }`, « Changement de mot de passe exigé »), cleared in `changeOwnPassword`; notice `src/app/portail/_components/PasswordRequiredNotice.tsx`, form `ChangePasswordForm.tsx` (`required`); badge « Mot de passe à changer » in `UsersManager.tsx` |
 | Sign-out after inactivity | `src/lib/idle-policy.ts` (30 min, 2 min warning, PRELEVEUR exempt — constants, not a réglage) + `src/components/layout/IdleLogout.tsx` (mounted in `DashboardShell`); the server's bound (35 min, the touch interval / retry / timeout, `touchOutcome`, the session cookie's name) `src/lib/session-idle.ts`, its hook `src/lib/session-idle-server.ts` (`hooks.before` and `updateAge` in `auth-server.ts`); login notice `?motif=inactivite` (also `signedOutPath` in `src/lib/auth.ts`) |
 | Sign-in notice of a session closed on purpose (admin reset / disabling / portal access, own password change elsewhere) | causes, `?motif=` and wording `REVOCATION_NOTICES` in `src/lib/session-revocation.ts`; markers (`Verification`, SHA-256 of the token, read / written) `src/lib/session-revocation-server.ts`; written by `PATCH /api/admin/users/[id]` and `password-change-server.ts`, read by `signedOutPath` (`src/lib/auth.ts`) and the touch hook (`session-idle-server.ts`); shown by `src/app/login/page.tsx` + `LoginForm` (`noticeKind`) |
-| Client IP for Better Auth's rate limit | `advanced.ipAddress.ipAddressHeaders` in `auth-server.ts` (`x-real-ip` first) |
+| Client IP for Better Auth's rate limit and the sign-in limits | `advanced.ipAddress.ipAddressHeaders` in `auth-server.ts` (`x-real-ip` first) |
+| Sign-in limits (per address, per account and address, per account), their 429s | numbers and keys `src/lib/sign-in-limit.ts`; the plugin `src/lib/sign-in-limit-server.ts` (installed in `auth-server.ts`, Better Auth's own sign-in rule off in `rateLimit.customRules`); the counter class `src/lib/attempt-limiter.ts`; the form's messages `src/lib/sign-in-errors.ts`; end to end `src/lib/sign-in-limit-flow.test.ts` |
+| Demo-accounts panel on /login (which accounts, the password) | list `DEMO_ACCOUNTS` / `DEMO_PASSWORD` in `src/lib/demo-accounts.ts` (kept in step with `prisma/seed.ts` and `prisma/disable-demo-accounts.ts` by `demo-accounts.test.ts`); read on the server by `loadDemoPanel` (`src/lib/demo-accounts-server.ts`: the account exists, is not disabled, still has the demo password — checked once per stored hash); shown by `src/components/DemoAccounts.tsx` (types only, nothing of the demo in the browser's code) |
 | Who did what on a record (journal filters, reference) | `src/lib/audit-journal-filters.ts` + `src/app/admin/journal/page.tsx` (50 per page, cursor on date and id, indexed columns only) |
 | The wording of an audit action / a new action code | `ACTION_LABELS` in `src/lib/audit-labels.ts`; `audit-labels.test.ts` fails on any code passed to `logAudit()` without a label |
 | Accounting export (journal des ventes, règlements) | `GET /api/invoices/export` + `src/lib/sales-journal.ts` (rows, totals, presets); « Export comptable » in `src/components/FacturesList.tsx`; client name / ICE / IF / RC as the document keeps them (`invoiceClientIdentity`); the « Journal des ventes » columns `salesJournalColumns` |
@@ -1121,7 +1155,7 @@ Enums: `Role`(11: 9 core, `PROGRAMMATEUR` and `DIRECTION` included, + `CLIENT` +
 | `NODE_ENV` | `development` / `production` | |
 | `PORT` | prod port (default 3000) | |
 | `AUTH_COOKIE_SECURE` | set `false` only for plain-HTTP testing | HTTPS in prod |
-| `NEXT_PUBLIC_DEMO_MODE` | `false` hides the demo-accounts panel on the login page | **Set to `false`** once the lab's real accounts exist |
+| `NEXT_PUBLIC_DEMO_MODE` | `false` hides the demo-accounts panel on the login page (the server then sends nothing of it — accounts and password are no longer in the browser's code) | **Set to `false`** once the lab's real accounts exist |
 | `CHROMIUM_PATH` | browser used to render report PDFs | Optional. On the VPS: `apt install chromium` — the default paths are tried first |
 | `RESEND_API_KEY` | mail provider key | **Absent → sends are journalised as `SIMULE`, not delivered.** Needs the client's DNS first |
 | `EMAIL_FROM` | sender address — a real mailbox, never a no-reply (lot 3C L4); the « Envoi des e-mails » setting of /admin/entreprise wins over it, a no-reply value is skipped, the identity's e-mail is the last fallback | e.g. `Qualilab International <contact@qualilabinternational.com>` |
@@ -1592,6 +1626,14 @@ importing a server module.
 - **Regression fixed (24/11, « Perf : rafraîchissement après enregistrement rétabli »).** The production hostile re-check found that P1-5 (dropping `router.refresh()` around post-save navigation, `goFresh`) also stopped emptying Next's client router cache: browser Back after a save showed the pre-save page, and re-saving that stale form silently reverted the edit (reproduced 3/3 on ClientForm, report e-mail recipients included). The pre-lot `router.refresh(); router.push(x)` / `router.push(x); router.refresh()` pairs are back, exactly as before, in ClientForm, SerieReceptionForm (« Retour »), ResultEntryForm, BenchTakeActions (take/release), NouvelleFactureForm, InvoiceManagement, ClientMergeActions, ReportActions (correction/amendment); `src/lib/navigate-fresh.ts` and its test removed; `src/lib/app-link.test.ts` now pins the refresh in each of them. **Do not remove these refreshes to save a render.** The rest of the lot stays. `RefreshWhenRestored` was not added to /commercial/[id]/modifier (ClientForm keeps `useState(initial)`, so a refresh alone would not reset it).
 - **Still open:** push of `lot2-retour-16-10` (refused to the agent, owner to run it); deploy per `DEPLOY.md` « Lot performance » (restore tag `v1.9-avant-perf`, dump, nginx P1-2 / P3-5, buffer pool P2-3 by hand); after measures with `perf-prod*.mjs`; `deploy/nginx.conf.example` to mirror the live file after the change.
 
+### 2026-11-25 — connexion : le panneau de démonstration et les limites de connexion — local on `lot2-retour-16-10`, not pushed, not deployed
+
+- **Why.** The client reported demo-panel sign-ins failing. Tried on production, every panel account, one sign-in every ~6 s from one address: 8 OK; `direction1` 401 (the account was added to the seed after production was seeded — the panel offered it anyway); `tech1` and `magasin1` 429 from Better Auth's default sign-in rule (3 per 10 s per address; the laboratory's PCs share one NAT address); and the form showed every refusal as « Identifiants incorrects. », so people retried and stayed blocked.
+- **`3cfa462`.** The form tells the refusals apart (`sign-in-errors.ts`; a network wait is counted down on the button); per-account limit added; `/sign-in/email` closed; the panel lists only the accounts the database holds and has not disabled; `direction1` added to `prisma/disable-demo-accounts.ts`.
+- **Hostile review of `3cfa462`, applied (« Connexion : corrections de la relecture »).** (1) Better Auth's limiter restarts its count only after a pause longer than its window: « 10 per 10 s » still refused the 11th of a steady trickle (one every 2.5 s) → its sign-in rule is off and the plugin counts every request per address over a true sliding minute (30). (2) The per-account key was the username alone: anyone could lock any account (10 wrong passwords per 15 min, from anywhere) → keyed `address|username` (10 / 15 min), plus a looser cap per username over every address (100 / 15 min). (3) The sweep scanned every key on each sign-in past 5 000 keys → at most once a minute, never evicting a live key. (4) Spraying: the per-address budget (30 / sliding minute) stays below the ~36 / min one address had before through the two sign-in doors. Nits: the demo accounts and password are no longer in the browser's code (the server sends them only while the demo mode is on); `@better-auth/core` declared (same range as better-auth; a test fails if better-auth ever gets its own copy); the panel leaves out an account whose password is no longer the demo one (checked with Better Auth's own `password.verify`, once per stored hash — the login page is public); this file and the `.ui-tests` comments updated.
+- **Not done (optional in the review):** exempting the laboratory's public address from the per-username cap (`LAB_PUBLIC_IP`) — the préleveurs sign in from their phones, outside that address, so it would not cover them; revisit if the 100 / 15 min cap is ever hit by an attack.
+- **Deploy:** no migration, no new variable. Production keeps `direction1` absent: the panel no longer offers it. After the deploy, sign in once per panel account from one address, spaced a few seconds apart: all 200.
+
 ## 9. Known debt / watch-outs
 
 - **Lot 5 — integration watch-outs (21/11).** (1) **Restart the dev worker after `prisma generate`**: the :3210 server kept the old Prisma client in `globalThis` after the 5B migration (`Cannot read properties of undefined (reading 'groupBy')` on every fiche client — the cause of two v16-1 failures); `npm run build` did not restart it this time — touching `next.config.ts` (no content change) restarts the worker without stopping the server. (2) **J6 × a presence germ on a described surface**: « Présence » against the parameter's numeric limit (e.g. « Salmonelles surfaces », limit 0) used to wait for the technician's « Conforme / Non conforme » — one wrong click removed a zero-tolerance alert. **Hardened by the review of 21/11:** `PRESENCE_OVER_ZERO_LIMIT_NON_CONFORME` (ON, hypothèse to confirm with D-4) — a reading that shows the germ against a limit ≤ 0 is non conforme on its own (a posted « Conforme » is ignored) and alerts with the report; against a limit above 0 a presence still asks the technician (the submission refused until then). Off: the choice again (pinned by `lab-proposals-5a-back.test.ts`; end to end in v23). (3) The 5B migration file is CRLF in the main tree's working copy (git `autocrlf`): its local checksum differs from an LF checkout — harmless for `migrate deploy`; production applies it from the image. (4) `GET /api/product-types` caps at 400 rows: a script looking for one family must filter (`natureId`, `q`).
@@ -1749,7 +1791,7 @@ importing a server module.
   - **VAT:** a rate that is not a number from 0 to 100 is refused (400 `taxRateRefusal`) instead of being stored at 0 % or 100 % in silence; the invoice sheet's recap lists Morocco's rates 20 / 14 / 10 / 7 % (was 20 / 10 / 5,5).
   - **Partial PATCH:** `/api/equipments/[id]`, `/api/eil/[id]`, `/api/suppliers/[id]`, `/api/stock/items/[id]` keep every field the body leaves out (a body of one field used to null the rest); the screens still send the whole form, and « » still clears a field.
   - Supplier notes are bounded (5 000 characters; 100 000 was a 500). The length messages of the quality and stock forms agree in gender (« L'adresse est trop longue »).
-  - **Sign-in limiter verified in production mode** (in-process, `NODE_ENV=production`, `.ui-tests/full-verify-ratelimit.mts`): 3 tries per 10 s per address, then 429; another address has its own bucket.
+  - **Sign-in limiter verified in production mode** (in-process, `NODE_ENV=production`, `.ui-tests/full-verify-ratelimit.mts`): 3 tries per 10 s per address, then 429; another address has its own bucket. *(Superseded 25/11: Better Auth's sign-in rule is off, §3 « Sign-in limits ».)*
   - **Still open:** the day cuts of /recherche and the « aujourd'hui » tiles on a box with stale tz data (see above — production relies on the DEPLOY.md tz check); /programmation renders the whole queue (3 s in `next dev` with 407 queued test samples); ~~the early contamination alert has no `EmailLog.reportId`~~ (linked to its sample through the journal since 21/10); a NON_CONFORME calibration still moves the next due date (question for the laboratory); the invoice list searches the live client name, not the name frozen at issue; the DB pool is 5 connections (`database-url.ts`) — `pool timeout` 500s were seen only under the four recettes' combined load.
 
 - **After 2026-10-13 (réponses du 12/10, deployed 13/10):**

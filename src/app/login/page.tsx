@@ -3,7 +3,7 @@ import { getSession, landingPath } from "@/lib/auth";
 import { loginNoticeFor } from "@/lib/idle-policy";
 import { revocationNoticeFor } from "@/lib/session-revocation";
 import LoginForm from "@/components/LoginForm";
-import { availableDemoUsernames } from "@/lib/demo-accounts-server";
+import { loadDemoPanel } from "@/lib/demo-accounts-server";
 
 export const metadata = { title: "Connexion" };
 
@@ -31,14 +31,15 @@ export default async function LoginPage({
 
   const { motif } = await searchParams;
   const revoked = revocationNoticeFor(motif);
-  // The demo panel offers only the accounts that can sign in (none when the
-  // demo mode is off or the database cannot be read).
-  const demoAccounts = await availableDemoUsernames();
+  // The demo panel offers only the accounts that can sign in, and is sent
+  // to the browser only then (null when the demo mode is off or the
+  // database cannot be read).
+  const demoPanel = await loadDemoPanel();
   return (
     <LoginForm
       notice={revoked ?? loginNoticeFor(motif)}
       noticeKind={revoked ? "account" : "idle"}
-      demoAccounts={demoAccounts}
+      demoPanel={demoPanel}
     />
   );
 }
