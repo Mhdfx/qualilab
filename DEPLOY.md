@@ -1563,6 +1563,30 @@ the `uht` / `urt` values in `/var/log/nginx/qualilab-timing.log`. Write the numb
 - **Buffer pool:** `SET GLOBAL innodb_buffer_pool_size=134217728;` (and remove
   the compose line if it was added).
 
+## Connexion (25/11) — code only: no migration, no new variable, just deploy
+
+Built and verified locally on `lot2-retour-16-10` (`3cfa462`, « Connexion :
+corrections de la relecture » `dc4e5dd`; `HANDOFF.md` §8 « 2026-11-25 — connexion »).
+Production runs `41114c3` (lot performance). What changes for the laboratory: the
+sign-in form says why a sign-in is refused (wrong password, disabled account, too
+many sign-ins from the network with a countdown, too many wrong passwords for the
+account); colleagues signing in one after the other from the laboratory's shared
+address are no longer refused (30 sign-ins per sliding minute per address instead
+of Better Auth's « 3 in a row »); the demo panel offers only the accounts that can
+sign in (production has no `direction1`: it is no longer offered).
+
+1. **Restore point:** `git tag v1.10-avant-connexion 41114c3 && git push origin v1.10-avant-connexion`;
+   fast-forward `master` to the verified head. No dump needed (no data touched).
+2. **Deploy:** `bash scripts/deploy.sh` as usual. Nothing to change in nginx (it
+   already sends `X-Real-IP $remote_addr`, which the limits read) nor in `.env`.
+3. **Check:** `/login` 200; open the demo panel — every account listed signs in,
+   one after the other from one PC without waiting (`.ui-tests/demo-login-all-prod.mjs`,
+   panel clicks only, may drop its 4 s pause); `POST /api/auth/sign-in/email` → 404;
+   a username that does not exist (e.g. `inconnu-test`, any text as password)
+   shows « Identifiants incorrects. ».
+4. **Rollback:** `git checkout v1.10-avant-connexion` + `bash scripts/deploy.sh`
+   (the counters live in memory: nothing to clean).
+
 ## After every deploy — 5-minute check
 
 1. `/api/health` answers `ok`.
