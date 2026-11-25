@@ -1,6 +1,7 @@
 import { requireRole } from "@/lib/auth";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MagasinImport } from "@/components/magasin/MagasinImport";
+import { PurchaseJournalImport } from "@/components/magasin/PurchaseJournalImport";
 
 export const metadata = { title: "Import des listes" };
 
@@ -9,7 +10,8 @@ export const metadata = { title: "Import des listes" };
  * articles from the laboratory's « Fiche de stock » — since lot 6A
  * (RETOUR-LABO-25-11.md M14) its real file too, one tab per article, with
  * every row as a dated movement —, the suppliers from its « Journal Achat »
- * — analyse, then import.
+ * and, since lot 6B (M17), that journal's invoices themselves — analyse,
+ * then import.
  */
 export default async function MagasinImportPage() {
   // Belt and braces with the layout guard: a page must be safe on its own.
@@ -36,8 +38,12 @@ export default async function MagasinImportPage() {
           <MagasinImport
             kind="fournisseurs"
             endpoint="/api/suppliers/import"
-            help="Colonnes lues : Fournisseurs, Délai de paiement (et, si vous les ajoutez : ICE, Contact, Téléphone, Email, Adresse, Soumis à la retenue). Un fournisseur par nom ; les factures du journal ne sont pas importées."
+            help="Colonnes lues : Fournisseurs, Délai de paiement (et, si vous les ajoutez : ICE, Contact, Téléphone, Email, Adresse, Soumis à la retenue). Un fournisseur par nom, sans ses factures — pour reprendre aussi les factures du journal, utilisez l'import ci-dessous (il crée les fournisseurs qui manquent)."
           />
+        </section>
+        <section>
+          <h2 className="mb-3 text-base font-semibold text-slate-900">Factures fournisseurs (« Journal Achat »)</h2>
+          <PurchaseJournalImport />
         </section>
       </div>
     </div>

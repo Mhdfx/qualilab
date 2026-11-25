@@ -263,7 +263,8 @@ describe("prices and invoices (the owner's rule of 24–25/10) — read from eve
         expect(roles, handler.at).toContain("ADMIN");
       }
     }
-    // Lot 3D — the stock's prices (M5), the purchase journal (M2), the payments and the imports stay inside.
+    // Lot 3D — the stock's prices (M5), the purchase journal (M2), the payments and the imports stay inside
+    // (lot 6B, M16: the import of the journal's invoices too).
     for (const rel of [
       "api/stock/items/route.ts",
       "api/stock/journal/route.ts",
@@ -272,6 +273,7 @@ describe("prices and invoices (the owner's rule of 24–25/10) — read from eve
       "api/purchase-invoices/export/route.ts",
       "api/purchase-invoices/[id]/payments/route.ts",
       "api/suppliers/import/route.ts",
+      "api/purchase-invoices/import/route.ts",
       "magasin/stock/journal/page.tsx",
       "magasin/reglages/page.tsx",
       "magasin/import/page.tsx",

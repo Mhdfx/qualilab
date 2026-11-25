@@ -1,4 +1,5 @@
 import { isoDayOf, parseIsoDay } from "./date-only";
+import type { CleanPurchaseInvoice } from "./achat-validation";
 
 /**
  * La retenue à la source et l'attestation de régularité fiscale (lot 3D,
@@ -208,3 +209,39 @@ export function parseRate(value: unknown): number | null {
 
 /** Whether a day string is a real calendar day. */
 export const isDay = (value: string) => parseIsoDay(value) !== null;
+
+// ————— Recording / correcting / importing an invoice: its retenue —————
+
+/**
+ * The retenue of an invoice as typed: the rate typed, else the settings'
+ * proposal (scope, supplier, attestation), and its amount on the settings'
+ * base. Null rate = nothing withheld. `refusal` (French) when it cannot be
+ * recorded: a rate on the HT or the TVA of a TTC-only invoice, or a retenue
+ * taking the whole TTC — the routes answer 400 with it.
+ */
+export function withholdingFor(
+  value: CleanPurchaseInvoice,
+  supplier: { withholdingSubject: boolean; taxCertificateDate: Date | null; taxCertificateValidUntil: Date | null },
+  settings: WithholdingSettings
+): {
+  rate: number | null;
+  amount: number | null;
+  base: WithholdingBaseCode;
+  certificate: CertificateState;
+  refusal: string | null;
+} {
+  const certificate = certificateState({
+    issueDate: value.issueDate,
+    invoiceProvided: value.taxCertificateProvided,
+    invoiceCertificateDate: value.taxCertificateDate,
+    supplierCertificateDate: supplier.taxCertificateDate,
+    supplierCertificateValidUntil: supplier.taxCertificateValidUntil,
+    validityMonths: settings.certificateValidityMonths,
+  });
+  const rate = value.withholdingRate ?? proposedWithholdingRate(settings, supplier.withholdingSubject, certificate);
+  const base = settings.base;
+  if (rate === null || rate === 0) return { rate: rate === 0 ? 0 : null, amount: null, base, certificate, refusal: null };
+  const amounts = { ht: value.amountHT, tva: value.vatAmount, ttc: value.amount };
+  const amount = withholdingAmountFor(base, rate, amounts);
+  return { rate, amount, base, certificate, refusal: withholdingRefusal(base, rate, amounts) };
+}

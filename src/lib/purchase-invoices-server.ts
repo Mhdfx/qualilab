@@ -10,15 +10,12 @@ import { purchaseBalance, purchaseStatusLabel, isCorrectable, type PurchaseStatu
 import {
   certificateState,
   effectiveCertificateState,
-  proposedWithholdingRate,
-  withholdingAmountFor,
-  withholdingRefusal,
   type CertificateState,
   type WithholdingBaseCode,
-  type WithholdingSettings,
 } from "./withholding";
 import type { CleanPurchaseInvoice } from "./achat-validation";
 import { purchasePeriod } from "./purchase-journal";
+import { importedFromLabel } from "./purchase-import";
 
 /**
  * The supplier invoices as the magasin reads them (lot 3D): one query
@@ -89,6 +86,8 @@ export type PurchaseInvoiceView = {
   correctedAt: string | null;
   cancelledAt: string | null;
   cancelReason: string | null;
+  /** Lot 6B — « Reprise du journal des achats (<fichier>, <jour>) »; null = typed on the screen. */
+  importedFrom: string | null;
   payments: PurchasePaymentView[];
   supplier: { id: string; name: string };
 };
@@ -159,6 +158,7 @@ export function purchaseInvoiceView(invoice: LoadedPurchaseInvoice, validityMont
     correctedAt: invoice.correctedAt?.toISOString() ?? null,
     cancelledAt: invoice.cancelledAt?.toISOString() ?? null,
     cancelReason: invoice.cancelReason,
+    importedFrom: importedFromLabel(invoice.importedFrom),
     payments,
     supplier: { id: invoice.supplier.id, name: invoice.supplier.name },
   };
@@ -235,39 +235,8 @@ export async function purchaseListSummary(where: Prisma.PurchaseInvoiceWhereInpu
 
 // ————— Recording / correcting: the retenue (M7) —————
 
-/**
- * The retenue of an invoice as typed: the rate typed, else the settings'
- * proposal (scope, supplier, attestation), and its amount on the settings'
- * base. Null rate = nothing withheld. `refusal` (French) when it cannot be
- * recorded: a rate on the HT or the TVA of a TTC-only invoice, or a retenue
- * taking the whole TTC — the routes answer 400 with it.
- */
-export function withholdingFor(
-  value: CleanPurchaseInvoice,
-  supplier: { withholdingSubject: boolean; taxCertificateDate: Date | null; taxCertificateValidUntil: Date | null },
-  settings: WithholdingSettings
-): {
-  rate: number | null;
-  amount: number | null;
-  base: WithholdingBaseCode;
-  certificate: CertificateState;
-  refusal: string | null;
-} {
-  const certificate = certificateState({
-    issueDate: value.issueDate,
-    invoiceProvided: value.taxCertificateProvided,
-    invoiceCertificateDate: value.taxCertificateDate,
-    supplierCertificateDate: supplier.taxCertificateDate,
-    supplierCertificateValidUntil: supplier.taxCertificateValidUntil,
-    validityMonths: settings.certificateValidityMonths,
-  });
-  const rate = value.withholdingRate ?? proposedWithholdingRate(settings, supplier.withholdingSubject, certificate);
-  const base = settings.base;
-  if (rate === null || rate === 0) return { rate: rate === 0 ? 0 : null, amount: null, base, certificate, refusal: null };
-  const amounts = { ht: value.amountHT, tva: value.vatAmount, ttc: value.amount };
-  const amount = withholdingAmountFor(base, rate, amounts);
-  return { rate, amount, base, certificate, refusal: withholdingRefusal(base, rate, amounts) };
-}
+/** Pure since lot 6B (the import of the journal shares it): `withholding.ts`. */
+export { withholdingFor } from "./withholding";
 
 /** The columns an invoice's form writes (create and correction alike). */
 export function purchaseInvoiceData(

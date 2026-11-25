@@ -6,8 +6,8 @@
 > ONSSA, N4–N8), §4 (interrupteurs), §8 (migration), §10 (gestes du propriétaire S18–S22),
 > §11 (questions E-1 … E-8).
 > Production : **`c608cf7`** — non touchée par le lot 6.
-> **État (25/11) : 6A construit, vérifié en local et commité (M9, M13, M10–M14) — non poussé, non déployé ;
-> 6B et 6C restent à construire.**
+> **État (25/11) : 6A (M9, M13, M10–M14) et 6B (M15–M17) construits, vérifiés en local et commités —
+> non poussés, non déployés ; 6C reste à construire.**
 > Fichiers du laboratoire : `backups/fichiers-labo-25-11/` (ignoré par git) ; **dépôt public** :
 > aucune valeur de ces fichiers dans le code, les tests, les documents ni ce journal (comptes de
 > lignes seulement).
@@ -18,7 +18,7 @@
 |---|---|---|---|---|
 | 6 — commun | M9 lecteur de classeur (toutes les feuilles, plage étendue, `.xls` refusé avec le pas à pas) ; M13 migration additive (`StockMovement.orderReference`, `StockMovement.importKey` unique, `PurchaseInvoice.importedFrom`) | `C:\laragon\www\qualilab proto` | `lot2-retour-16-10` | ✅ local (25/11) |
 | 6A | M10 analyse « une feuille par article », M11 détection du format, M12 route d'import (analyse / import, idempotent, journal `STOCK_IMPORTED`), M14 écran + bon de commande dans le journal des mouvements | idem | idem | ✅ local (25/11) |
-| 6B | M15 analyse du journal des achats, M16 route `POST /api/purchase-invoices/import` (idempotent sur fournisseur + numéro, paiements, retenue §2.5, journal `PURCHASE_INVOICES_IMPORTED`), M17 écran | idem | idem | planifié |
+| 6B | M15 analyse du journal des achats, M16 route `POST /api/purchase-invoices/import` (idempotent sur fournisseur + numéro, paiements, retenue §2.5, journal `PURCHASE_INVOICES_IMPORTED`), M17 écran | idem | idem | ✅ local (25/11) |
 | 6C | N4 données des sections III, N5 classeur au nouveau canevas (7 feuilles + « Notes Qualilab »), N6 route `?format=` et écran, N7 « Groupes du nouveau canevas » ; N8 (annuel) seulement sur E-8 | idem | idem | planifié |
 | Gestes | S18 dump, S19 import du stock + inventaire, S20 fournisseurs soumis, S21 conversion `.xlsx` + import des factures, S22 groupes ONSSA + export à valider | production, par les écrans | — | après le déploiement |
 
@@ -37,8 +37,8 @@ Interrupteurs (défaut) : `STOCK_IMPORT_QUANTITY_FROM_PRICE` ON, `STOCK_IMPORT_L
 | M13 migration additive (locale) | ✅ 25/11 | — | `20261125010000_lot6_imports` appliquée sur `qualilab_local` (`migrate deploy` + `generate`), `next.config.ts` touché |
 | 6A — M10, M11 | ✅ 25/11 | tsc 0 / eslint 0 / vitest ✅ | `stock-workbook-import.ts` (+ test), interrupteurs + `lab-proposals-6-back.test.ts` |
 | 6A — M12, M14 | ✅ 25/11 (commité après reprise) | tsc 0 / eslint 0 / vitest ✅ ; V24 local 26/26 ; build ✅ | route `api/stock/import`, `stock-import-server.ts`, écran, journal (+ export), entrée saisie |
-| 6B — M15 | ⬜ | | |
-| 6B — M16, M17 | ⬜ | | |
+| 6B — M15 | ✅ 25/11 (commité après reprise) | tsc 0 / eslint 0 / vitest ✅ | `purchase-import.ts` (+ test), trois interrupteurs + `lab-proposals-6-back.test.ts`, `withholdingFor` déplacé (pur) dans `withholding.ts` |
+| 6B — M16, M17 | ✅ 25/11 (commité après reprise) | tsc 0 / eslint 0 / vitest 221 / 4 005 ; V24B local 30/30 ; build ✅ | route `api/purchase-invoices/import`, `purchase-import-server.ts`, `PurchaseJournalImport.tsx` sur `/magasin/import`, « Reprise du journal des achats » dans la liste des factures, garde ajoutée à `price-access-guards.test.ts` |
 | 6C — N4, N5 | ⬜ | | |
 | 6C — N6, N7 | ⬜ | | |
 | Relecture hostile + corrections | ⬜ | | |
@@ -150,3 +150,67 @@ Interrupteurs (défaut) : `STOCK_IMPORT_QUANTITY_FROM_PRICE` ON, `STOCK_IMPORT_L
     23/23, A + B 26/26.
   - Reste : 6B (M15–M17), 6C (N4–N7), relecture hostile, documents (HANDOFF, TESTPLAN V24, DEPLOY
     « Lot 6 »), production.
+- 25/11 (soir) — **lot 6B (M15–M17) repris après une interruption, relu, terminé et commité**, branche
+  `lot2-retour-16-10`, rien poussé, production `c608cf7` non touchée. Le travail non commité (sauvegardé
+  aussi en `refs/wip/lot6b-interrompu-2026-11-25`) relu contre le §6 et gardé :
+  - **M15** `purchase-import.ts` (pur) : en-tête « Fournisseurs » + « N° Facture » repéré dans les dix
+    premières lignes ; lignes vides et lignes de modèle à zéro ignorées ; chaque ligne validée par
+    `validatePurchaseInvoice` (les règles du formulaire) ; numéro absent → « SN-AAAA-MM-JJ-k »
+    (`PURCHASE_IMPORT_UNNUMBERED`) ; doublons fournisseur + numéro du fichier (casse et accents ignorés,
+    comme la base) : identiques → une fois, différents → « à trancher », aucun importé ; HT / TVA arrondis,
+    TTC = HT + TVA, écart de plus d'un centime refusé ; TTC seul ; euros avec ou sans DH (« Taux EUR → DH ») ;
+    statut (`PURCHASE_IMPORT_EMPTY_STATUS_UNPAID`), paiements (« date montant + date montant »), paiement
+    avant la facture / dans le futur / illisible → payée sans ligne de paiement, signalé ; mode de paiement
+    par table de correspondance (référence bancaire → virement, le code en référence ; inconnu → « Autre »,
+    le texte en référence) ; délai proposé d'un fournisseur créé (le plus fréquent, sinon l'écart échéance −
+    date, sinon 30) ; `planPurchaseJournal` contre la base : fournisseur rapproché par son nom normalisé
+    (archivé : rattaché, signalé), facture déjà présente sautée et jamais modifiée, retenue §2.5
+    (`PURCHASE_IMPORT_WITHHOLDING` : payée → aucune retenue ; à payer → la règle du formulaire, TTC seul
+    d'un fournisseur soumis refusé). `withholdingFor` déplacé tel quel de `purchase-invoices-server.ts`
+    (réexporté) dans `withholding.ts` pour être partagé par l'analyse pure.
+  - **M16** `POST /api/purchase-invoices/import` (MAGASINIER, ADMIN ; `mode=analyse | commit`, `eurRate`) +
+    `purchase-import-server.ts` : une transaction (60 s) — fournisseurs créés, factures (`createdById`,
+    `importedFrom` = « jour|fichier »), paiements (`PurchasePayment`, `createdById`) ; 409 sur P2002 ; journal
+    `PURCHASE_INVOICES_IMPORTED` seulement quand quelque chose est écrit. Garde : route ajoutée à la liste
+    nommée de `price-access-guards.test.ts` (préfixes `direction-guards` / `technician-guards` déjà
+    couvrants) ; libellé d'audit ajouté.
+  - **M17** `PurchaseJournalImport.tsx` sur `/magasin/import` (section « Factures fournisseurs (« Journal
+    Achat ») ») : conseil `.xlsx` avant le choix du fichier, « Taux EUR → DH » (l'import reprend le taux de
+    l'analyse), compte rendu (à créer, payées / à payer / en retard, fournisseurs, totaux, « à trancher »,
+    refusées et à vérifier par motif, déjà enregistrées) ; la liste des factures fournisseurs affiche
+    « Reprise du journal des achats (<fichier>, <jour>) » (la fiche des factures fournisseurs est cette
+    liste — `FactureDetail.tsx` est la facture client, non concernée) ; l'aide de l'import des fournisseurs
+    renvoie à cet import.
+  - **Correction de la relecture** : une cellule date laissée à zéro (jour 0 d'Excel, lu « 1899-12-30 ») est
+    lue vide (`journalDay`) — avant, elle donnait une échéance « avant la date » ou un paiement « avant la
+    facture » ; test ajouté. **Dépôt public** : un montant d'essai qui existait aussi dans le journal
+    remplacé ; balayage automatique des fichiers touchés contre les cellules du journal : ne restent que des
+    fragments de dates génériques et des mots du modèle.
+  - **Répétition avec « Journal Achat 2026.xlsx »** (copie `.xlsx` du `.xls`, dans `backups/`, ignorée ;
+    vérifiée cellule par cellule contre le `.xls` sur les 13 colonnes : seules diffèrent 12 cellules date à
+    zéro), base locale, **comptes seulement**. Les écritures de la tentative interrompue (486 factures,
+    293 paiements, 84 fournisseurs) supprimées d'abord de la base locale pour repartir de zéro.
+    - Analyse : 580 lignes lues, 11 lignes de modèle ignorées, **486 factures à créer** (419 payées, 67 à
+      payer dont 2 en retard), 293 paiements, 18 numéros « SN-… » attribués, 84 fournisseurs à créer,
+      4 groupes « à trancher » ; **83 lignes refusées** : 70 « montant en DH manquant » (euros sans DH — le
+      §2.3 en comptait ≈ 62 ; recompté sur le `.xls` : 70, et 2 lignes portent euros et DH), 10 « à
+      trancher », 1 « HT + TVA ≠ TTC », 1 « montant », 1 « date » ; 59 à vérifier (14 paiements avant la
+      facture, 18 sans numéro, 13 modes inconnus, 6 échéances, 3 modes vides, 2 mois, 2 paiements en
+      plusieurs fois sans montants, 1 date de paiement illisible).
+    - Lignes refusées (numéro de ligne : motif) — à trancher : 6, 7, 56, 57, 58, 61, 120, 121, 435, 437 ;
+      HT + TVA ≠ TTC : 28 ; montant : 450 ; date : 563 ; montant en DH manquant : 15, 17–23, 26, 34, 49,
+      53, 55, 67, 68, 89, 104, 108, 129, 144, 158, 159, 186, 187, 210, 222, 245, 246, 258–260, 289, 292,
+      305, 312, 313, 321, 365, 387, 397, 400–403, 415–417, 453, 470–474, 479, 489, 502, 504, 519,
+      532–534, 548, 552–554, 558, 562, 565, 569, 570.
+    - **Import** : 84 fournisseurs, 486 factures, 293 paiements (≈ 9 s) — exactement ce que l'analyse
+      annonçait ; **second import : 0 écrit** (486 déjà enregistrées, toutes identiques) ; base locale
+      73 → 559 factures, 12 → 305 paiements, 59 → 143 fournisseurs.
+    - Analyse seule avec un taux EUR → DH d'essai : les 70 lignes en euros deviennent importables (rien
+      importé).
+  - Recette `.ui-tests/v24-lot6b-local.mjs` (ignoré) : partie A synthétique 26/26 (gardes, `.xls`, taux
+    illisible, en-tête absent, analyse avec et sans taux, import, contenu en base, audit, second import = 0,
+    liste « Reprise du journal », écran), partie B (fichier réel) 4/4 — 30/30.
+  - Contrôles : tsc 0, eslint 0, vitest 221 fichiers / 4 005 tests, `npm run build` ✅.
+  - Reste : 6C (N4–N7), relecture hostile de l'ensemble, documents (HANDOFF, TESTPLAN V24, DEPLOY
+    « Lot 6 »), production. À poser au laboratoire : le taux EUR → DH à utiliser (ou les montants en DH des
+    70 lignes), les 4 groupes « à trancher » (E-4).

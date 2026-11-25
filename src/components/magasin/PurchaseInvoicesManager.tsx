@@ -79,6 +79,8 @@ export type PurchaseInvoiceRow = {
   correctedAt: string | null;
   cancelledAt: string | null;
   cancelReason: string | null;
+  /** Lot 6B — « Reprise du journal des achats (…) »; null = typed on the screen. */
+  importedFrom: string | null;
   payments: PurchasePaymentRow[];
   supplier: { id: string; name: string };
 };
@@ -475,6 +477,7 @@ function InvoiceRow({
           {invoice.supplier.name}
           {invoice.label && <span className="block text-xs font-normal text-slate-500">{invoice.label}</span>}
           <span className="block text-xs font-normal text-slate-500">Facture du {day(invoice.issueDay)}</span>
+          {invoice.importedFrom && <span className="block text-xs font-normal text-slate-500">{invoice.importedFrom}</span>}
           {invoice.certificate !== "VALIDE" && !cancelled && (
             <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
               <FileWarning className="h-3 w-3" aria-hidden="true" />

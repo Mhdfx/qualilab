@@ -542,3 +542,33 @@ export const STOCK_IMPORT_LEVEL_FROM_FILE = true;
  * Off: the 1st of the month.
  */
 export const STOCK_EXPIRY_MONTH_END = true;
+
+// ————— Lot 6B — le journal des achats : les factures (RETOUR-LABO-25-11.md §4, §6) —————
+
+/**
+ * Lot 6B, M15 (E-4): a row of « Journal Achat » without an invoice number
+ * cannot be held by the key supplier + number. « GENERATE »: it receives a
+ * deterministic number « SN-AAAA-MM-JJ-k » (k = its rank among the
+ * unnumbered rows of the same supplier and day, in the file's order — a
+ * second import of the same file finds it again). « SKIP »: the row is
+ * listed « sans numéro » and not imported.
+ */
+export const PURCHASE_IMPORT_UNNUMBERED: "GENERATE" | "SKIP" = "GENERATE";
+
+/**
+ * Lot 6B, M15 (E-5): an empty « Statut ». On: the invoice is still to pay
+ * (its past due dates show « En retard » on the magasin's dashboard — the
+ * analysis counts them). Off: the row is listed « statut à préciser » and
+ * not imported.
+ */
+export const PURCHASE_IMPORT_EMPTY_STATUS_UNPAID = true;
+
+/**
+ * Lot 6B, M16 (D-3, §2.5): the retenue à la source of an imported invoice.
+ * « UNPAID_ONLY »: an invoice already paid withholds nothing (what was paid
+ * was the TTC); an invoice still to pay follows the form's rule (scope,
+ * supplier « soumis », attestation — a TTC-only invoice of a supplier
+ * withheld on the HT or the TVA is refused, like the form). « NEVER »: no
+ * retenue on any imported invoice.
+ */
+export const PURCHASE_IMPORT_WITHHOLDING: "UNPAID_ONLY" | "NEVER" = "UNPAID_ONLY";

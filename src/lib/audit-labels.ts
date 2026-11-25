@@ -171,6 +171,7 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   STOCK_JOURNAL_EXPORTED: "Journal du stock exporté",
   STOCK_IMPORTED: "Articles de stock importés",
   SUPPLIERS_IMPORTED: "Fournisseurs importés",
+  PURCHASE_INVOICES_IMPORTED: "Factures fournisseurs importées (journal des achats)",
   ACHAT_SETTINGS_UPDATED: "Réglages Achat & Stock modifiés",
 };
 
