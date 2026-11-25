@@ -116,3 +116,18 @@ describe("tooManyAttemptsMessage / retryAfterSeconds", () => {
     expect(retryAfterSeconds(1)).toBe("1");
   });
 });
+
+describe("AttemptLimiter.sweep — a counter keyed by whatever username a request sends", () => {
+  it("drops the keys whose attempts have all left the window, keeps the others", () => {
+    const counter = limiter();
+    fail(counter, "old-a", T0);
+    fail(counter, "old-b", T0 + MINUTE);
+    fail(counter, "recent", T0 + 10 * MINUTE);
+    expect(counter.size).toBe(3);
+    counter.sweep(T0 + 16 * MINUTE);
+    expect(counter.size).toBe(1);
+    // The recent one still counts.
+    for (let i = 0; i < 4; i += 1) fail(counter, "recent", T0 + 16 * MINUTE);
+    expect(counter.begin("recent", T0 + 16 * MINUTE).ok).toBe(false);
+  });
+});

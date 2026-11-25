@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { ROLES } from "@/lib/roles";
 import { SESSION_ACTIVITY_UPDATE_AGE_S, SESSION_COOKIE_PREFIX } from "@/lib/session-idle";
 import { closeIdleSessionHook } from "@/lib/session-idle-server";
+import { SIGN_IN_IP_RULE } from "@/lib/sign-in-limit";
+import { signInLimitPlugin } from "@/lib/sign-in-limit-server";
 
 /**
  * Origins allowed to call the auth endpoints (CSRF protection).
@@ -120,14 +122,29 @@ export const auth = betterAuth({
   //   messages, 5 wrong passwords per 15 min per account) — which call
   //   `auth.api.changePassword` server-side: `disabledPaths` only applies to
   //   HTTP requests, not to `auth.api.*`;
-  // - /is-username-available: an anonymous oracle of who has an account.
+  // - /is-username-available: an anonymous oracle of who has an account;
+  // - /sign-in/email: every sign-in goes through /sign-in/username (the form,
+  //   the demo panel) — a second door would only be a second place to guess
+  //   passwords, outside the per-account limit (sign-in-limit-server.ts).
   disabledPaths: [
     "/admin/remove-user",
     "/update-user",
     "/update-session",
     "/change-password",
     "/is-username-available",
+    "/sign-in/email",
   ],
+  // Better Auth's per-address sign-in limit (production only, its default).
+  // Its own rule — 3 requests per 10 s — blocked colleagues signing in within
+  // the same 10 seconds: every PC of the laboratory leaves through one NAT
+  // address. 10 per 10 s per address here; guessing one account's password
+  // is bounded by the per-account limit instead (10 wrong passwords per
+  // 15 minutes, `signInLimitPlugin` below, sign-in-limit.ts).
+  rateLimit: {
+    customRules: {
+      "/sign-in/username": { ...SIGN_IN_IP_RULE },
+    },
+  },
   advanced: {
     // « qualilab.session_token »: the page guards read whether it is there
     // (`carriesSessionCookie`, session-idle.ts).
@@ -138,8 +155,9 @@ export const auth = betterAuth({
     // client cannot forge), then a single-value X-Forwarded-For. nginx
     // appends to an X-Forwarded-For the client sent, and Better Auth does
     // not trust a multi-valued chain: read alone, it sent every such request
-    // to one shared « no-trusted-ip » bucket. The sign-in rule itself is left
-    // as it is: all the laboratory's PCs leave through one NAT address.
+    // to one shared « no-trusted-ip » bucket. The sign-in rule is widened
+    // above (`rateLimit`): all the laboratory's PCs leave through one NAT
+    // address.
     ipAddress: {
       ipAddressHeaders: ["x-real-ip", "x-forwarded-for"],
     },
@@ -161,6 +179,9 @@ export const auth = betterAuth({
       adminRoles: ["ADMIN"],
       defaultRole: "PRELEVEUR",
     }),
+    // 10 wrong passwords per 15 minutes per username, then 429 until the
+    // window ends (sign-in-limit-server.ts). The account is not modified.
+    signInLimitPlugin(),
   ],
 });
 

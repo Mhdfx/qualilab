@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { User, Lock, ShieldCheck, Clock, KeyRound } from "lucide-react";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -8,6 +8,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { authClient } from "@/lib/auth-client";
 import { DemoAccounts } from "@/components/DemoAccounts";
 import { recordSignIn } from "@/components/layout/IdleLogout";
+import { retryAfterFromHeaders, SIGN_IN_LOCKED_CODE, signInErrorMessage } from "@/lib/sign-in-errors";
 
 /**
  * `notice`: why the user is back on the sign-in page, when the application
@@ -15,33 +16,62 @@ import { recordSignIn } from "@/components/layout/IdleLogout";
  * administrator's reset, disabling or access change, or the person's own
  * password change on another device, `revocationNoticeFor` — `noticeKind`
  * "account", a key instead of the clock).
+ * `demoAccounts`: the demo usernames that can sign in (the login page asks
+ * the database, demo-accounts-server.ts); the panel lists only those.
+ *
+ * A refused sign-in says why (sign-in-errors.ts): a wrong password, a
+ * disabled account, or a 429 — too many sign-ins from the laboratory's
+ * shared address, or too many wrong passwords for the account — whose wait
+ * the button counts down instead of inviting a retry that would fail.
  */
 export default function LoginForm({
   notice = null,
   noticeKind = "idle",
+  demoAccounts = [],
 }: {
   notice?: string | null;
   noticeKind?: "idle" | "account";
+  demoAccounts?: readonly string[];
 }) {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Seconds left before a 429's wait is over (0: no wait).
+  const [waitS, setWaitS] = useState(0);
+
+  useEffect(() => {
+    if (waitS <= 0) return;
+    const timer = window.setTimeout(() => setWaitS((s) => s - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [waitS]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (waitS > 0) return;
     setError("");
     setLoading(true);
 
     try {
-      const { error: signInError } = await authClient.signIn.username({
-        username: username.trim(),
-        password,
-      });
+      let retryAfterS: number | undefined;
+      const { error: signInError } = await authClient.signIn.username(
+        { username: username.trim(), password },
+        {
+          onError: ({ response }) => {
+            if (response.status === 429) retryAfterS = retryAfterFromHeaders(response.headers);
+          },
+        }
+      );
 
       if (signInError) {
-        setError("Identifiants incorrects.");
+        setError(signInErrorMessage(signInError, retryAfterS));
+        // The shared address's wait (seconds) is counted down on the button.
+        // An account's lock (up to 15 minutes) is not: a colleague may still
+        // sign in to another account from this PC.
+        if (signInError.status === 429 && signInError.code !== SIGN_IN_LOCKED_CODE) {
+          setWaitS(retryAfterS ?? retryAfterFromHeaders(null));
+        }
         return;
       }
 
@@ -54,7 +84,7 @@ export default function LoginForm({
       router.push("/");
       router.refresh();
     } catch {
-      setError("Connexion impossible. Réessayez.");
+      setError(signInErrorMessage({}));
     } finally {
       setLoading(false);
     }
@@ -135,21 +165,25 @@ export default function LoginForm({
             </div>
 
             {error && (
-              <p className="rounded-xl bg-red-50 px-3 py-2.5 text-center text-sm text-red-600 ring-1 ring-red-100">
+              <p
+                role="alert"
+                className="rounded-xl bg-red-50 px-3 py-2.5 text-center text-sm text-red-600 ring-1 ring-red-100"
+              >
                 {error}
               </p>
             )}
 
             <PrimaryButton
               type="submit"
-              disabled={loading}
+              disabled={loading || waitS > 0}
               className="w-full min-h-[48px] py-3.5 text-sm font-bold tracking-widest"
             >
-              {loading ? "CONNEXION..." : "SE CONNECTER"}
+              {loading ? "CONNEXION..." : waitS > 0 ? `PATIENTEZ ${waitS} S` : "SE CONNECTER"}
             </PrimaryButton>
           </form>
 
           <DemoAccounts
+            available={demoAccounts}
             onPick={(demoUsername, demoPassword) => {
               setUsername(demoUsername);
               setPassword(demoPassword);

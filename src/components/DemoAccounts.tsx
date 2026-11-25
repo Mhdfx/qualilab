@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, Copy, Check, LogIn } from "lucide-react";
 import { ROLES, ROLE_LABELS } from "@/lib/roles";
-import type { Role } from "@/lib/roles";
+import { DEMO_ACCOUNTS, DEMO_PASSWORD, demoModeEnabled } from "@/lib/demo-accounts";
 
 /**
  * Demo accounts panel — a testing aid for the demonstration phase.
@@ -11,24 +11,11 @@ import type { Role } from "@/lib/roles";
  * Hidden by setting NEXT_PUBLIC_DEMO_MODE=false, which is what production
  * must do once the laboratory's real accounts exist: this panel lists working
  * credentials and has no place in front of real users.
+ *
+ * Only the accounts the database holds and has not disabled are listed
+ * (`available`, read by the login page, demo-accounts-server.ts): an account
+ * the panel offers must be one that can sign in. None available, no panel.
  */
-
-export const DEMO_PASSWORD = "password";
-
-/** Ordered as the sample travels through the laboratory. */
-const DEMO_ACCOUNTS: { username: string; role: Role; name: string }[] = [
-  { username: "pre1", role: "PRELEVEUR", name: "Karim Benali" },
-  { username: "recep1", role: "RECEPTIONNISTE", name: "Salma Idrissi" },
-  { username: "param1", role: "PROGRAMMATEUR", name: "Rachid Alaoui" },
-  { username: "tech1", role: "TECHNICIEN", name: "Yassine Amrani" },
-  { username: "tech2", role: "TECHNICIEN", name: "Imane Cherkaoui" },
-  { username: "valid1", role: "VALIDATEUR", name: "Dr. Nawal Bennani" },
-  { username: "direction1", role: "DIRECTION", name: "Direction (démo)" },
-  { username: "commercial1", role: "GESTIONNAIRE", name: "Hicham Tazi" },
-  { username: "compta1", role: "COMPTABLE", name: "Leila Fassi" },
-  { username: "admin", role: "ADMIN", name: "Sara Mansouri" },
-  { username: "magasin1", role: "MAGASINIER", name: "Omar Benjelloun" },
-];
 
 // Fails the build if a role ever loses its demo account.
 const COVERED = new Set(DEMO_ACCOUNTS.map((a) => a.role));
@@ -37,15 +24,19 @@ const COVERED = new Set(DEMO_ACCOUNTS.map((a) => a.role));
 const MISSING = ROLES.filter((role) => role !== "CLIENT" && !COVERED.has(role));
 
 type DemoAccountsProps = {
+  /** The demo usernames that can sign in (the login page asks the database). */
+  available: readonly string[];
   /** Fills the login form with the chosen account. */
   onPick: (username: string, password: string) => void;
 };
 
-export function DemoAccounts({ onPick }: DemoAccountsProps) {
+export function DemoAccounts({ available, onPick }: DemoAccountsProps) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "false") return null;
+  if (!demoModeEnabled()) return null;
+  const accounts = DEMO_ACCOUNTS.filter((account) => available.includes(account.username));
+  if (accounts.length === 0) return null;
 
   function copy(username: string) {
     navigator.clipboard?.writeText(username);
@@ -64,7 +55,7 @@ export function DemoAccounts({ onPick }: DemoAccountsProps) {
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
           Comptes de démonstration
           <span className="ml-2 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
-            {DEMO_ACCOUNTS.length}
+            {accounts.length}
           </span>
         </span>
         <ChevronDown
@@ -84,7 +75,7 @@ export function DemoAccounts({ onPick }: DemoAccountsProps) {
           </p>
 
           <ul className="space-y-1">
-            {DEMO_ACCOUNTS.map((account) => (
+            {accounts.map((account) => (
               <li key={account.username} className="flex items-center gap-1">
                 <button
                   type="button"

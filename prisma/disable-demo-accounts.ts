@@ -15,9 +15,12 @@ import { getMariaDbConfig } from "../src/lib/database-url";
  *   docker compose run --rm migrate node node_modules/tsx/dist/cli.mjs prisma/disable-demo-accounts.ts
  */
 
+// Every account prisma/seed.ts creates — « direction1 » included (12/10):
+// one left out would keep its printed password after go-live
+// (src/lib/demo-accounts.test.ts checks the lists stay in step).
 const DEMO_USERNAMES = [
   "pre1", "recep1", "param1", "tech1", "tech2", "valid1",
-  "commercial1", "compta1", "admin", "magasin1",
+  "direction1", "commercial1", "compta1", "admin", "magasin1",
 ];
 
 const prisma = new PrismaClient({ adapter: new PrismaMariaDb(getMariaDbConfig()) });

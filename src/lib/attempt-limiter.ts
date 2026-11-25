@@ -73,6 +73,15 @@ export class AttemptLimiter {
     else this.entries.delete(key);
   }
 
+  /**
+   * Drops every key whose attempts have all left the window. `begin` only
+   * cleans the key it reads: a counter keyed by whatever username a request
+   * sends (the sign-in, sign-in-limit.ts) calls this to stay bounded.
+   */
+  sweep(now: number = Date.now()): void {
+    for (const key of [...this.entries.keys()]) this.live(key, now);
+  }
+
   /** Accounts currently tracked (tests and diagnostics). */
   get size(): number {
     return this.entries.size;
