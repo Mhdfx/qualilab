@@ -6,8 +6,9 @@
 > ONSSA, N4–N8), §4 (interrupteurs), §8 (migration), §10 (gestes du propriétaire S18–S22),
 > §11 (questions E-1 … E-8).
 > Production : **`c608cf7`** — non touchée par le lot 6.
-> **État (25/11) : 6A (M9, M13, M10–M14), 6B (M15–M17) et 6C (N4–N7) construits, vérifiés en local et
-> commités — non poussés, non déployés ; restent la relecture hostile, les documents et la production.**
+> **État (26/11) : prêt pour la production.** 6A, 6B, 6C construits, relecture hostile appliquée (`08f67d0`),
+> vérification finale faite (portes, fichiers réels, recette V24, régressions, documents) et poussée — non
+> déployé. Production : `DEPLOY.md` « Lot 6 » (tag `v1.11-avant-lot6` sur `c608cf7`, dump, `deploy.sh`, gestes).
 > Fichiers du laboratoire : `backups/fichiers-labo-25-11/` (ignoré par git) ; **dépôt public** :
 > aucune valeur de ces fichiers dans le code, les tests, les documents ni ce journal (comptes de
 > lignes seulement).
@@ -42,10 +43,10 @@ Interrupteurs (défaut) : `STOCK_IMPORT_QUANTITY_FROM_PRICE` ON, `STOCK_IMPORT_L
 | 6C — N4, N5 | ✅ 25/11 | tsc 0 / eslint 0 / vitest 223 / 4 032 | `onssa-sections.ts` (+ test), `onssa-canevas-workbook.ts` (+ test), options de `buildOnssaReport`, cinq interrupteurs + `lab-proposals-6-back.test.ts` |
 | 6C — N6, N7 | ✅ 25/11 | tsc 0 / eslint 0 / vitest 223 / 4 032 ; V24C local 19/19 ; build ✅ | route `?format=canevas` / `extrait`, `/qualite/onssa` (deux téléchargements, aperçu III), `CANEVAS_2026_GROUPS` + bouton sur `/admin/onssa`, `onssa-guards.test.ts` étendu |
 | Relecture hostile + corrections | ✅ 25/11 | tsc 0 / eslint 0 / vitest ✅ ; V24 A 23/23, V24B A 27/27 + B réel (0 écrit, rien en double), V24C 19/19, volume 4 000 factures 5,9 s ; build ✅ | 7 constats + bas + nits appliqués (« Lot 6 : corrections de la relecture ») ; migration `20261125020000_lot6_purchase_import_key` (locale) ; **l'historique publié garde deux valeurs : réécriture = décision du propriétaire** |
-| Recette locale V24 (synthétique) + répétition avec les vrais fichiers | ⬜ | | comptes seulement, aucune valeur |
-| `npm run build`, régressions v20 / v22 / v23 | ⬜ | | |
-| Documents (HANDOFF §5 §8 §9, TESTPLAN V24, DEPLOY « Lot 6 », PROGRESS) | ⬜ | | |
-| Production (tag `v1.9-avant-lot6`, dump, migration, recette `v24-lot6-prod.mjs`) | ⬜ | | |
+| Recette locale V24 (synthétique) + répétition avec les vrais fichiers | ✅ 26/11 | `v24-lot6-local` 51/51, `v24-lot6-real-local` 21/21, `v24-lot6c-local` 19/19 | comptes seulement, aucune valeur |
+| `npm run build`, régressions | ✅ 26/11 | tsc 0 / eslint 0 / vitest 223 / 4 065 ; build ✅ ; régressions : v16-1 64/64, v17 78/78, v19 73/73, v22-lot4 93/93, v23-lot5 74/74, v24-refresh-back 29/29 | |
+| Documents (HANDOFF §8, TESTPLAN « Checkpoint V24 — Lot 6 », DEPLOY « Lot 6 ») | ✅ 26/11 | | |
+| Production (tag `v1.11-avant-lot6` sur `c608cf7`, dump, deux migrations, gestes analyse → import, contrôle ONSSA) | ⬜ | | `DEPLOY.md` « Lot 6 » |
 | Gestes S18–S22 (propriétaire) | ⬜ | | |
 
 ## Ordre
@@ -322,3 +323,26 @@ Interrupteurs (défaut) : `STOCK_IMPORT_QUANTITY_FROM_PRICE` ON, `STOCK_IMPORT_L
   arrondi au centime sur la décimale écrite. Nits : `headerKey` replie œ/æ/ß. Contrôles : tsc 0, eslint 0, vitest
   (tous verts), `npm run build` ✅. Reste : documents (TESTPLAN V24, DEPLOY « Lot 6 » avec les **deux** migrations,
   PROGRESS), production.
+- 26/11 — **vérification finale, prêt pour la production**, branche `lot2-retour-16-10`, production `c608cf7` non
+  touchée. Les sept constats de la relecture confirmés dans `08f67d0` (III-6-3 et le NULL ; limites du lecteur avant
+  le travail — archive, lignes, colonnes, fusions, feuilles, liste `ignored` plafonnée ; valeurs du laboratoire retirées ;
+  lignes pièces / cartons du stock jamais importées telles qu'écrites ; `importKey` v2 du stock ; `PurchaseInvoice.importKey` ;
+  taux EUR → DH sur le HT entre 8 et 14). `npm run scan:labo` sur `c608cf7..HEAD` : un mot générique d'un libellé de
+  variante dans `RETOUR-LABO-25-11.md` §1.1, reformulé.
+  - Portes : tsc 0, eslint 0, vitest 223 fichiers / 4 065 tests, `npm run build` ✅ (les types générés par le serveur de
+    développement, `.next/dev/types`, étaient à moitié réécrits : reconstruits depuis `.next/types`, rien dans le dépôt).
+  - Base locale : lignes des répétitions précédentes issues des deux fichiers retirées (24 articles et 29 mouvements ;
+    486 factures, 293 paiements, 84 fournisseurs — rien d'autre). Puis, par les routes de l'application : stock (ADMIN)
+    analyse → import 24 articles / 27 mouvements / 2 ajustements → second import 0 → analyse + import (MAGASINIER) 0,
+    niveaux = l'analyse (24/24) ; journal (MAGASINIER) analyse → import 486 factures / 293 paiements / 84 fournisseurs →
+    second import 0 → analyse + import (ADMIN) 0, somme TTC en base = total de l'analyse ; `/magasin/stock`,
+    `/magasin/stock/journal`, `/magasin/factures` affichent les données. Recomptés dans les fichiers (openpyxl) :
+    onglets / tableaux / lignes datées égaux, 580 lignes du journal toutes expliquées, TTC de chaque facture en DH = sa
+    ligne (484/484). ONSSA octobre 2026 : 7 feuilles du canevas + « Notes Qualilab », structure identique au canevas
+    reçu (sauf mois et nom du laboratoire), III-6-3 = 49 non-conformes (dont 33 jamais annulés) + 94 détruits, égal à la base.
+  - Recette : `.ui-tests/v24-lot6-local.mjs` complétée (gardes de tous les autres rôles sur les deux imports et sur ONSSA,
+    journal synthétique, fichiers piégés — ligne 1 048 000, 101 feuilles, bombe zip, requête de 9 Mo — refusés en français
+    en moins de 350 ms sur les deux routes, téléchargement ONSSA) 51/51 ; `.ui-tests/v24-lot6-real-local.mjs` (nouveau)
+    21/21. Régressions : v16-1 64/64, v17 78/78, v19 73/73, v22-lot4 93/93, v23-lot5 74/74, v24-refresh-back 29/29 — aucun script adapté.
+  - Documents : DEPLOY « Lot 6 » (étapes exactes, routes et formes des requêtes, retour arrière), TESTPLAN « Checkpoint
+    V24 — Lot 6 », HANDOFF §8 « 2026-11-26 — lot 6 ».

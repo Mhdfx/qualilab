@@ -1183,6 +1183,39 @@ Built 21/10 on branch `lot2-retour-16-10`, on top of `d4bff04`, committed and pu
 - [ ] Still six migrations applied (none added on 21/10); the laboratory told to reload every tab (the 35-minute bound).
 - [ ] Then the production lines of V18-A to V18-H above, on « TEST UI » data only.
 
+## Checkpoint V24 — Lot 6, fichiers du laboratoire du 25/11 (6A fiche de stock « un onglet par article », 6B journal des achats, 6C nouveau canevas ONSSA, `RETOUR-LABO-25-11.md` §5–§7) — final verification 26/11 on `lot2-retour-16-10`, **ready for production, not deployed** (not to be confused with the older « Checkpoint V24 — Lot 3D » below)
+
+Local server http://localhost:3210, database `qualilab_local`; scripts `.ui-tests/v24-lot6-local.mjs` (synthetic files, 51/51) and `.ui-tests/v24-lot6-real-local.mjs` (the laboratory's files, counts only, 21/21); `.ui-tests/v24-lot6c-local.mjs` (ONSSA, 19/19). Production steps: `DEPLOY.md` « Lot 6 ».
+
+**Guards**
+- [x] `POST /api/stock/import` and `POST /api/purchase-invoices/import`: technicien, réception, validateur, direction, préleveur, programmateur, comptable, gestionnaire → 403; no session → 401; `magasin1` and `admin` pass.
+- [x] `GET /api/onssa/rapport`: technicien, réception, magasinier, comptable, gestionnaire, préleveur, programmateur → 403; `valid1`, `test.direction1`, `admin` → the canevas.
+
+**6A — stock workbook (synthetic, then the real file)**
+- [x] Analysis: format « par-article » detected, articles « à créer », pieces brought back to packages, a piece's price brought back to the package, text outside the tables listed; nothing written.
+- [x] Import: articles, dated movements with their bon de commande, levels, end-of-month expiry, final adjustment; journal `STOCK_IMPORTED`.
+- [x] Second import → 0 written; a new analysis → « déjà importé », 0 to write; an article typed by hand since → « suivi à la main — non touché ».
+- [x] Movements' journal and its Excel export: « Bon de commande » after « Libellé »; the register (lot 3D) still read; a workbook without a table → a clear refusal.
+- [x] Real « Consommable labo.xlsx » (ADMIN): 21 tabs, 24 tables, 28 rows; 24 articles, 27 movements, 2 adjustments, 1 row refused, 14 to check; import = the analysis; second import (ADMIN) and analysis + import (MAGASINIER) → 0; each article's level in the database = the analysis' level (24/24); /magasin/stock lists them (magasin1, admin), /magasin/stock/journal shows « Fiche de stock importée ». Tabs / tables / dated rows recounted in the file with openpyxl: equal.
+
+**6B — purchase journal (synthetic, then the real file)**
+- [x] Synthetic journal: 3 invoices (2 paid, 1 to pay), 2 suppliers, 1 refused (HT + TVA ≠ TTC); import (admin) 2 / 3 / 3 payments, each with its `importKey`; second import (magasinier) → 0, 3 already recorded.
+- [x] Real « Journal Achat 2026.xlsx » (the .xlsx copy, MAGASINIER): 580 rows, 11 template rows, 486 invoices (419 paid, 67 to pay), 293 payments, 84 suppliers to create, 83 refused, 66 to check; import = the analysis; second import (MAGASINIER) and analysis + import (ADMIN) → 0, 486 already recorded, all identical. In the database: 486 invoices, 293 payments, 84 suppliers, 486 keys; sum TTC = the analysis' total to the centime; paid / to pay = the analysis. In the file (openpyxl): 580 filled rows = 486 invoices + refused + identical duplicates + 11 template rows; each DH invoice's TTC = its row's TTC (484/484), the sum equal once each row is rounded to the centime. /magasin/factures shows « Reprise du journal des achats » (magasin1, admin).
+
+**Reader limits (relecture du lot 6, constat 2) — on both imports**
+- [x] A cell at row 1 048 000 → 400 « Cellule remplie à la ligne 1048000 … 20000 lignes au plus par feuille. » (< 100 ms).
+- [x] 101 sheets → 400 « Trop de feuilles (101) — 100 maximum par classeur. » (< 100 ms).
+- [x] Zip bomb (86 Ko compressed, 80 Mo inflated) → 400 « Classeur trop volumineux une fois décompressé (64 Mo maximum) … » (< 350 ms).
+- [x] A 9 Mo request → 413 « Fichier trop volumineux (8 Mo maximum). » before the form is read.
+
+**6C — ONSSA canevas**
+- [x] October 2026 (local data, correspondences posed for the test then restored): 7 sheets of the canevas in order + « Notes Qualilab »; I-AGL E7 = II-1 total = II-2 total (143), E12 = II-2 NC (14); format « extrait » = lot 3E workbook; unknown format → 400; journal `ONSSA_REPORT_EXPORTED` with the format; /qualite/onssa two downloads + « Sections III et IV du canevas ».
+- [x] Compared with « NV CANEVAS RA LABO.xlsx » (openpyxl): same 7 sheet names and order; « Plan » and « TUTORIEL » texts identical; I-AGL 13/13 labels on the same cells; II-2 germ headers (27) and norms (23) identical (trimmed); « P,Garde » differs only by the month and the laboratory's name as written in the settings.
+- [x] III-6-3 (the NULL fix): October 2026 lists 49 samples non conformes at reception by motif (33 never cancelled + 16 cancelled for another reason) and 94 destroyed at reception — equal to the database's counts.
+
+**Regressions (26/11, BASE 3210)**
+- [x] v16-1 64/64, v17 78/78, v19 73/73, v22-lot4 93/93, v23-lot5 74/74, v24-refresh-back 29/29 — no script adapted
+
 ## Checkpoint V23 — Lot 5, réponses du laboratoire du 20/11 (5A J6, I10, J7, J8, K11, S13–S15 ; 5B HA1–HA7, `RETOUR-LABO-20-11.md` §5–§6) — integrated and tested locally 21/11, review of the integration applied, **pushed (with `lot5b`), not merged into master, not deployed**
 
 Integrated on `lot2-retour-16-10`: 5A `3927034` (code and tests) + `2e1f2eb` (documents), merge of `lot5b` `1d14871` (`0f280fc`, `65cdf59`), then the integration commit (S15's family lookup, the documents). Per-lot detail of 5B: « Checkpoint V23-5B » below.

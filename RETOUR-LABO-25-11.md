@@ -65,8 +65,8 @@
   (désignation, parfois suivie du fournisseur ou d'une référence catalogue —
   noms laissés dans le fichier). Trois onglets portent **deux tableaux**
   l'un sous l'autre, deux variantes d'un même consommable (par exemple
-  « DPD 1 » / « DPD 3 », indicateur « sèche » / « humide ») : ce sont **deux
-  articles**.
+  deux numéros d'un même réactif, ou deux formes d'un même indicateur) : ce
+  sont **deux articles**.
 - **En-tête à hauteur variable** : ligne 2, 3, 4 ou 5 (et 11, 12, 15 pour
   les seconds tableaux), première colonne en A (15 tableaux) ou en B (9) ;
   en-tête sur **deux lignes** : « Prix (dh/ht) » fusionné sur deux colonnes,

@@ -1587,6 +1587,167 @@ sign in (production has no `direction1`: it is no longer offered).
 4. **Rollback:** `git checkout v1.10-avant-connexion` + `bash scripts/deploy.sh`
    (the counters live in memory: nothing to clean).
 
+## Lot 6 (26/11) — the laboratory's files of 25/11: stock workbook (6A), purchase journal (6B), ONSSA canevas (6C)
+
+Built and verified locally on `lot2-retour-16-10` (plan `c1548b9`, 6A `a4e13a9`, 6B
+`35dd916`, 6C `f81f655`, review fixes `08f67d0`, final verification « Lot 6 :
+vérification finale »; `RETOUR-LABO-25-11.md`, `LOT6-AVANCEMENT.md`, `HANDOFF.md` §8
+« 2026-11-26 — lot 6 », TESTPLAN « Checkpoint V24 — Lot 6 »). Production runs
+`c608cf7` (connexion). **Two additive migrations**, applied by the `migrate` service in
+this order:
+
+| Migration | What | Touches existing rows? |
+|---|---|---|
+| `20261125010000_lot6_imports` | `StockMovement.orderReference` VARCHAR(64) NULL, `StockMovement.importKey` VARCHAR(64) NULL + unique index, `PurchaseInvoice.importedFrom` VARCHAR(191) NULL | no |
+| `20261125020000_lot6_purchase_import_key` | `PurchaseInvoice.importKey` VARCHAR(64) NULL + unique index | no |
+
+Nothing is imported by the deploy: the data arrive only through the owner's steps (4),
+analysis first. What changes for the laboratory once deployed: /magasin/import reads
+the stock workbook « one tab per article » and the « Journal Achat » (saved as .xlsx);
+the movements' journal (screen and export) carries the « Bon de commande »; the
+supplier invoices list says « Reprise du journal des achats (fichier, jour) » on the
+imported ones; /qualite/onssa downloads the report **in the ONSSA's new canevas** (the
+lot 3E extract stays one click away). Switches: `lab-proposals.ts` « Lot 6A / 6B / 6C ».
+
+### 0. Before the window
+
+- Gates on the branch's head: `npx tsc --noEmit -p .` 0, `npx eslint src` 0,
+  `npx vitest run` (223 files / 4 065 on 26/11), `npm run build`;
+  `npm run scan:labo -- --range c608cf7..HEAD` (the repository is public: only the
+  known coincidences may remain); the local recette
+  `node .ui-tests/v24-lot6-local.mjs` (51/51 on 26/11) and the rehearsal with the real
+  files `node .ui-tests/v24-lot6-real-local.mjs` (21/21), then the regressions v16-1,
+  v17, v19, v22-lot4, v23-lot5, v24-refresh-back.
+- **The files, on the operator's machine only** (never in the repository, never on the
+  VPS): `backups/fichiers-labo-25-11/Consommable labo.xlsx` and
+  `backups/fichiers-labo-25-11/Journal Achat 2026.xlsx` — the **.xlsx copy** of
+  « Journal Achat 2026.xls » (Excel → Fichier → Enregistrer sous → « Classeur Excel
+  (.xlsx) »; the app refuses the .xls with that sentence). Close Excel first (a
+  `~$…` lock file next to it means the workbook is open).
+- Expected on the local copy (production may differ only by what was typed there
+  before: an article of the same name is « suivi à la main — non touché », a supplier
+  of the same name is matched, a supplier + number already typed is « déjà
+  enregistrée », skipped):
+  - stock — format « par-article » detected, 21 tabs, 24 tables, 28 rows read,
+    **24 articles to create, 27 movements, 2 adjustments**, 1 row refused (« à saisir
+    à la main »), 14 to check, 4 texts outside the tables;
+  - journal — 580 rows, 11 template rows, **486 invoices to create (419 paid, 67 to
+    pay), 293 payments, 84 suppliers to create**, 4 groups « à trancher » (10 rows),
+    83 rows refused (70 « montant en DH manquant » — the euro rows wait for E-3's rate,
+    10 « à trancher », 3 single rows), 66 to check.
+
+### 1. Restore point
+
+- **Code:** `git tag v1.11-avant-lot6 c608cf7 && git push origin v1.11-avant-lot6`;
+  then `git checkout master && git merge --ff-only lot2-retour-16-10 && git push
+  origin master`.
+- **Database:** `/var/backups/qualilab/qualilab_avant-lot6.sql.gz`, the app stopped,
+  right before `deploy.sh` (the commands of « Lot 2 du 16/10 » step 2 with this name:
+  `gzip -t`, « -- Dump completed », `chown qualilab:`).
+
+### 2. Deploy and check (on the VPS, as root)
+
+- `sudo -u qualilab git rev-parse --short HEAD` → `c608cf7`; the last migration
+  `20261123010000_perf_index_additifs`, none unfinished.
+- `sudo -u qualilab git pull --ff-only`; `docker compose build`; `docker compose stop app`;
+  the dump of step 1; `bash scripts/deploy.sh`.
+- Then:
+
+```bash
+docker compose ps -a migrate                     # Exited (0)
+docker compose logs migrate | tail -12           # 20261125010000_lot6_imports, 20261125020000_lot6_purchase_import_key applied
+curl -s localhost:3000/api/health                # {"status":"ok","database":"connected"}
+docker compose logs app --since 10m              # no error
+```
+
+- Read only: `SHOW COLUMNS FROM StockMovement LIKE 'orderReference';`,
+  `SHOW COLUMNS FROM StockMovement LIKE 'importKey';`,
+  `SHOW COLUMNS FROM PurchaseInvoice LIKE 'importedFrom';`,
+  `SHOW COLUMNS FROM PurchaseInvoice LIKE 'importKey';` → one row each;
+  `SELECT COUNT(*) FROM StockMovement WHERE importKey IS NOT NULL;` → 0;
+  `SELECT COUNT(*) FROM PurchaseInvoice WHERE importKey IS NOT NULL OR importedFrom IS NOT NULL;` → 0.
+  Write down `SELECT COUNT(*) FROM StockItem`, `StockMovement`, `Supplier`,
+  `PurchaseInvoice`, `PurchasePayment` (step 4 compares).
+
+### 3. The owner's steps (production, through the app, ADMIN by the demo panel — never a password typed; each journalled by its route)
+
+Either on /magasin/import with the demo « admin » (« Analyser », read, then
+« Importer »), or scripted from the operator's machine with the session cookie the demo
+panel gives (click « admin » in « Comptes de démonstration » on /login, as
+`scripts/lot5a-owner-steps.mts --login panel` does). Every call: `Cookie: <the panel
+session>`, `Origin: <the production address>`, body `multipart/form-data`.
+
+1. **Stock — analysis.** `POST /api/stock/import` with `file` = « Consommable
+   labo.xlsx », `mode=analyse` (`format` left out = `auto`). 200 JSON:
+   `{ mode, format: "par-article", detected, file, sheets, tables, dataRows,
+   totals: { toCreate, resumed, untouched, movements, adjustments, skipped, changed,
+   refused }, articles[], warnings[], ignored[], written: null }`. Compare with step 0;
+   stop on any difference not explained there.
+2. **Stock — import.** The same call with `mode=commit`, `format=par-article`. 200 with
+   `written: { articlesCreated, articlesResumed, movements, adjustments }` = the
+   analysis' `toCreate`, `resumed`, `movements`, `adjustments`; journal
+   `STOCK_IMPORTED`. 409 (« Le stock a changé pendant l'import ») → analysis again,
+   then import: what is written is skipped. **Then once more `mode=commit`: `written`
+   all 0** (idempotent).
+3. **Purchase journal — analysis.** `POST /api/purchase-invoices/import` with `file` =
+   « Journal Achat 2026.xlsx » (the .xlsx copy), `mode=analyse`, **no `eurRate`**
+   (E-3 unanswered: the euro rows stay refused, to be imported later with the rate).
+   200 JSON: `{ mode, file, eurRate: null, rows, templateRows, suppliers: { toCreate[],
+   matched }, totals: { invoices, paid, toPay, late, payments, ht, vat, ttc, withheld,
+   generatedNumbers }, invoices[], existing[], conflicts[], refused[], warnings[],
+   labels, written: null }`. Compare with step 0.
+4. **Purchase journal — import.** The same call with `mode=commit`. 200 with
+   `written: { suppliersCreated, invoices, payments }` = the analysis'
+   `suppliers.toCreate.length`, `totals.invoices`, `totals.payments`; journal
+   `PURCHASE_INVOICES_IMPORTED`; one transaction (≈ 1–2 s). 409 → analysis again,
+   then import. **Then once more `mode=commit`: `written` all 0**, `existing` = the
+   invoices written, every `same: true`.
+5. **Counts** (read only): the five counts of step 2 grew by exactly what step 2 and 4
+   wrote (`StockItem` + articlesCreated, `StockMovement` + movements + adjustments,
+   `Supplier` + suppliersCreated, `PurchaseInvoice` + invoices, `PurchasePayment` +
+   payments); /magasin/stock lists the articles, /magasin/stock/journal shows
+   « Fiche de stock importée … » and the « Bon de commande », /magasin/factures shows
+   « Reprise du journal des achats (Journal Achat 2026.xlsx, <jour>) ».
+6. **ONSSA — download check.** `GET /api/onssa/rapport?mois=<a past month with
+   samples, AAAA-MM>&format=canevas` (VALIDATEUR, DIRECTION or ADMIN) → 200,
+   `Content-Disposition: attachment; filename="rapport-activite-onssa-AAAA-MM.xlsx"`;
+   it opens with the 7 sheets of the canevas in order (« P,Garde », « Plan »,
+   « TUTORIEL », « I-AGL », « II-AT  », « III-AD », « IV-Autres informations ») then
+   « Notes Qualilab » (not to send); I-AGL E7 = the II-1 total = the II-2 total; III-6-3
+   lists the samples received non conformes in the month (not only the cancelled ones)
+   and the rejections / destructions at reception. `format=extrait` still gives the lot
+   3E workbook (Feuil1–3 + Notes); an unknown format → 400. On /qualite/onssa: two
+   downloads and the card « Sections III et IV du canevas ».
+7. **Later, the owner's decisions** (not part of the deploy): S20 tick « soumis à la
+   retenue » on the suppliers the laboratory names; S22 « Groupes du nouveau canevas »
+   on /admin/onssa (`POST /api/admin/onssa/groups {"canevas": true}`, creates the 5
+   missing groups, nothing archived) then archive the lot 3E groups and map natures /
+   families to them before sending a canevas to the ONSSA; the 4 groups « à trancher »
+   and the euro rate (E-3, E-4) — re-import the journal after the answers: only the
+   new rows are written.
+
+### 4. Production recette
+
+Steps 3.1–3.6 are the recette (counts only in any note — the files' values never leave
+the machine). Guards, read only: `magasin1` (or `tech1`) → `GET /api/onssa/rapport?…`
+→ 403; `tech1` → `POST /api/stock/import` and `POST /api/purchase-invoices/import` →
+403 (an empty form is enough: the guard answers first).
+
+### 5. Rollback
+
+`git checkout v1.11-avant-lot6` + `bash scripts/deploy.sh`, then restore the dump of
+step 1 (the four columns and two indexes added by the migrations are ignored by the
+old code; restoring the dump removes them and every imported row). To withdraw the
+imports only (after a dump): the purchase journal —
+`DELETE pp FROM PurchasePayment pp JOIN PurchaseInvoice p ON p.id = pp.invoiceId WHERE p.importedFrom LIKE '%|Journal Achat 2026.xlsx';`
+then `DELETE FROM PurchaseInvoice WHERE importedFrom LIKE '%|Journal Achat 2026.xlsx';`
+then the suppliers it created (those of the import's minute that no invoice uses any
+more); the stock — the movements whose `note` starts with « Fiche de stock importée
+« Consommable labo.xlsx » » or « Niveau de la fiche importée « Consommable labo.xlsx » »
+and the articles created by the import (same minute, no other movement). A single
+behaviour can be turned back by its switch instead (`ONSSA_EXPORT_LAYOUT` « EXTRAIT_2025 »
+makes the lot 3E workbook the default again).
+
 ## After every deploy — 5-minute check
 
 1. `/api/health` answers `ok`.
